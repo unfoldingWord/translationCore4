@@ -16,7 +16,7 @@ import { test, expect } from './helpers/test';
 import type { Page, BrowserContext } from '@playwright/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
 import { pickOption } from './helpers/dropdown';
-import { RIG_API, askInternet } from './helpers/door43Share';
+import { gateOff, turnOnInternet } from './helpers/door43Share';
 import fs from 'node:fs';
 import path from 'node:path';
 import { unzipSync, zipSync, strToU8, strFromU8 } from 'fflate';
@@ -272,17 +272,14 @@ async function openTitusCheck(page: Page) {
   await page.getByRole('tab', { name: 'Check', exact: true }).click();
 }
 
-async function openSources(page: Page) {
+async function openSources(page: Page, online = false) {
   await page.goto('/');
+  // D95: a page load starts with the internet off; the cases that check for updates turn
+  // it on here, through the account menu, before the Source texts dialog covers it.
+  if (online) await turnOnInternet(page);
   await page.getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`).getByRole('button', { name: 'Settings' }).click();
   await page.getByTestId('settings-manage-sources').click();
   await expect(page.getByTestId('sources-modal')).toBeVisible({ timeout: 120_000 });
-}
-
-/** D88: these cases run with "Ask before using the internet" off, so the Source texts
- * task needs no dialog; the dialog itself is the first case below and @internet-consent. */
-async function goOnline(page: Page) {
-  await expect(page.getByTestId('check-updates')).toBeEnabled();
 }
 
 /** Check for updates, accept the primary set's offer, and wait for the
@@ -297,11 +294,10 @@ async function acceptPrimaryOffer(page: Page) {
 
 /** The rig boots net-disabled, but the gate is in-memory and survives a reseed:
  * a previous run that went online leaves it on. Each case states its own
- * starting condition (POST /net/disable is the platform's own switch). D88: the
- * stored preference is "ask off", so the cases go online without the dialog. */
+ * starting condition (POST /net/disable is the platform's own switch). D95: the
+ * app's internet state is off at every page load, and nothing is stored. */
 async function forceOffline() {
-  await askInternet(false);
-  await fetch(`${RIG_API}/net/disable`, { method: 'POST' });
+  await gateOff();
 }
 
 test.beforeEach(async () => {
@@ -333,14 +329,13 @@ test.describe('J12 — a facilitator upgrades the pinned resources', () => {
       expect(onlyWritten(pinIdentities())).toEqual(written);
       const before = pinsBytes();
 
-      // Ask on (D88): the click asks first, and Cancel sends nothing (replaces D86 point 4).
-      await askInternet(true);
+      // The internet is off (D95): the click asks to turn it on, and Not now sends nothing.
       await openSources(page);
       await page.getByTestId('check-updates').click();
       await expect(page.getByTestId('net-ask')).toHaveAttribute('data-kind', 'sources');
       await page.getByTestId('net-cancel').click();
       await expect(page.getByTestId('upgrade-offer-primary')).toHaveCount(0);
-      // Continue: the check runs; later steps in this open Source texts dialog do not ask again.
+      // Turn on internet: the check runs, and later steps ask nothing more: the internet stays on.
       await page.getByTestId('check-updates').click();
       await page.getByTestId('net-confirm').click();
 
@@ -383,8 +378,7 @@ test.describe('J12 — a facilitator upgrades the pinned resources', () => {
       const [decidedBefore, totalBefore] = [Number(progressBefore[1]), Number(progressBefore[2])];
       expect(decidedBefore).toBeGreaterThan(0);
 
-      await openSources(page);
-      await goOnline(page);
+      await openSources(page, true);
       await acceptPrimaryOffer(page);
 
       // The confirmation states the exact outcome per book and tool BEFORE the pins move…
@@ -465,8 +459,7 @@ test.describe('J12 — a facilitator upgrades the pinned resources', () => {
       const pinsBefore = pinsBytes();
       const decisionsBefore = decisionBytes();
 
-      await openSources(page);
-      await goOnline(page);
+      await openSources(page, true);
       await acceptPrimaryOffer(page);
       // The release is installed and verified; the project is untouched until the user says so.
       await page.getByTestId('upgrade-cancel').click();
@@ -516,8 +509,7 @@ test.describe('J12 — a facilitator upgrades the original-language text (#258)'
       const marked = records.filter(({ r }) => r.invalid !== true && ((r.alignments as unknown[]).length > 0 || (r.wordBank as unknown[]).length > 0));
       expect(marked.length).toBeGreaterThan(0);
 
-      await openSources(page);
-      await goOnline(page);
+      await openSources(page, true);
       await page.getByTestId('check-updates').click();
       // Its own offer, beside the help-set offers.
       const row = page.getByTestId(`upgrade-text-${OL_REPO}`);
@@ -598,10 +590,10 @@ test.describe('J12 — the scripture-text offers name only the originals of the 
       await mockDcs(context, '', true, { repo, otNewer: true });
 
       await page.goto('/');
+      await turnOnInternet(page);
       await page.getByTestId(`project-_local_/_local_/${repo}`).getByRole('button', { name: 'Settings' }).click();
       await page.getByTestId('settings-manage-sources').click();
       await expect(page.getByTestId('sources-modal')).toBeVisible({ timeout: 120_000 });
-      await goOnline(page);
       await page.getByTestId('check-updates').click();
       await expect(page.getByTestId('upgrade-texts')).toBeVisible({ timeout: 60_000 });
       await expect(page.getByTestId(`upgrade-text-${OL_REPO}`)).toHaveAttribute('data-kind', 'original');
@@ -617,8 +609,7 @@ test.describe('J12 — the scripture-text offers name only the originals of the 
       // The mock serves the unfoldingWord org only: pin the English helps (the other J12 cases do the same).
       writeProjectPins(SEEDED_PROJECT, PINS());
       await mockDcs(context, '', true, { otNewer: true });
-      await openSources(page);
-      await goOnline(page);
+      await openSources(page, true);
       await page.getByTestId('check-updates').click();
       await expect(page.getByTestId(`upgrade-text-${OL_REPO}`)).toContainText(`${OL_REPO} v0.34 → ${OL_TAG}`);
       // The seeded sample pins the shipped Hebrew Bible (v3.0.0 since #504).
@@ -633,7 +624,7 @@ test.afterAll(async () => {
   try {
     await verifyAllJournaledProjects();
   } finally {
-    await askInternet(true);
+    await gateOff();
     resetSeededChecking();
   }
 });

@@ -11,7 +11,7 @@
 import { test, expect } from './helpers/test';
 import type { Page } from '@playwright/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
-import { RIG_API, RIG_STATE, dropOrigin, fakeShare, filesHolding, git, head, makeBareRemote, shareFirstTime, USER, askInternet } from './helpers/door43Share';
+import { RIG_API, RIG_STATE, dropOrigin, fakeShare, filesHolding, git, head, makeBareRemote, shareFirstTime, USER, gateOff, turnOnInternet } from './helpers/door43Share';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -435,13 +435,13 @@ test.describe('J8 — the Increment 4 journey: open, resume, and share a project
     async ({ page, context }) => {
       test.setTimeout(120_000);
       const remote = makeBareRemote();
-      // D88 (#514): this journey runs with "Ask before using the internet" off; the
-      // consent dialog of a Share is covered by J11 case 12 and @internet-consent.
-      await askInternet(false);
       try {
         dropOrigin(SEEDED_PROJECT);
         const fake = await fakeShare(context, remote);
         await page.goto('/');
+        // D95: the internet is turned on for this page load through the account menu; the
+        // dialog that a Share opens while it is off is J11 case 12 and @internet-consent.
+        await turnOnInternet(page);
         const id = `_local_/_local_/${SEEDED_PROJECT}`;
         await expect(page.getByTestId(`share-card-${id}`)).toHaveAttribute('data-shared', '0');
         const commitsBefore = commitCount(SEEDED_PROJECT);
@@ -465,10 +465,10 @@ test.describe('J8 — the Increment 4 journey: open, resume, and share a project
         expect(filesHolding(RIG_STATE, token)).toEqual([]);
         expect(fs.readFileSync(path.join(rigRepo(SEEDED_PROJECT), '.git', 'config'), 'utf8')).not.toContain(token);
       } finally {
-        // Leave the seeded project as this test found it: unshared, asking again.
+        // Leave the seeded project as this test found it: unshared, and the gate off.
         dropOrigin(SEEDED_PROJECT);
         remote.dispose();
-        await askInternet(true);
+        await gateOff();
       }
     },
   );

@@ -1,18 +1,24 @@
-// D88 (#514): "Ask before using the internet" and the Door43 account menu. Replaces the
-// D86 Internet / Local journeys (internet-local.spec.ts, retired by #514).
+// D95 (#559, amends D88 points 2–4): the internet is one on/off state for the app session,
+// and the Door43 account menu (D88, #514). Replaces the D86 Internet / Local journeys
+// (internet-local.spec.ts, retired by #514) and the D88 "Ask before using the internet" cases.
 //
 // What the journeys prove, against the real client and the rig:
-//   a  fresh settings ask; an old `internet: true`, an invalid flag and an unreadable
-//      document ask; a gate the rig left on ends off
-//   b  the preference persists across a restart; the menu switch turns it off and on;
-//      sign-in and sign-out leave it alone
-//   c  the account menu in its three states, on Home and inside a project
-//   d  Cancel sends nothing and stores nothing; Continue starts the exact task; Share is
-//      one dialog and keeps its review; "Don't ask again" persists only after Continue;
-//      Upload changes opens its dialog with no request and asks when it is sent (#530)
-//   e  startup, idle, the menu and local work make zero external requests, with asking
-//      on and off, before and after a permitted task has turned the gate on
-//   f  a gate that cannot be established stops the task and says so
+//   a  every launch starts with the internet off, whatever the settings document holds (a D88
+//      `askInternet: false`, an old `internet: true`, an unreadable document); a gate the rig
+//      left on ends off
+//   b  one question after launch, none after Turn on internet; the menu switch turns it off and
+//      the next step asks again; a relaunch starts off and asks again; nothing is stored; sign-in
+//      and sign-out leave the state alone
+//   c  the account menu in its three states, on Home and inside a project; the saved sign-in
+//      check and the profile link ask while the internet is off
+//   d  Not now sends nothing and keeps the user where they were; Turn on internet continues the
+//      exact step in place, and later steps ask nothing; Share is one dialog and keeps its review;
+//      Upload changes opens its dialog with no request and asks when it is sent (#530); a step
+//      whose dialog was cancelled while it waited runs nothing (#530, #540)
+//   e  startup, idle, the menu and local work make zero external requests, before Turn on (a
+//      request is refused) and after (a request is allowed, none is made); off in the menu
+//      refuses the next request at once
+//   f  a gate that cannot be established stops the step and says so
 //   g  sign out needs no network; a keychain that cannot forget is reported
 //   h  the keyboard opens, walks and closes the menu and returns focus to its trigger
 //   i  About translationCore (#520) shows the version, the commit, the copyright line and the
@@ -28,7 +34,8 @@ import { test, expect } from './helpers/test';
 import type { Page, TestInfo } from '@playwright/test';
 import { SEEDED_PROJECT, readClientSettingsDoc, resetClientSettings, resetPlaces, resetSeededChecking } from './helpers/rig';
 import {
-  QA_SERVER, RIG_API, USER, addOrigin, askInternet, commitLocally, dropOrigin, expectCleanCard, fakeFor, fakeKeychain, fakeShare, head, makeBareRemote, signIn,
+  QA_SERVER, RIG_API, USER, addOrigin, commitLocally, dropOrigin, expectCleanCard, fakeFor, fakeKeychain, fakeShare, gateOff, head, makeBareRemote, signIn,
+  turnOnInternet,
 } from './helpers/door43Share';
 import { recordExternal } from './helpers/externalRequests';
 import { verifyAllJournaledProjects } from './helpers/journal';
@@ -38,14 +45,18 @@ import { TC4_ROOT } from './helpers/root';
 const TAG = { tag: ['@internet-consent', '@inc85'] };
 const NO_CONSENT = 'tC4 has no permission to use the internet for this task';
 const SEEDED_ID = `_local_/_local_/${SEEDED_PROJECT}`;
+const TOOLTIP_ON = 'The internet is on. Click to turn it off.';
+const UNTIL = 'tC4 will use the internet until you turn it off in the account menu, or close tC4.';
 
 const gateOn = async (): Promise<boolean> =>
   ((await (await fetch(`${RIG_API}/net/status`)).json()) as { is_enabled: boolean }).is_enabled;
-const storedAsk = (): unknown => readClientSettingsDoc()?.askInternet;
+/** Nothing about the internet state is stored: the settings document has no key for it. */
+const storedInternetKeys = (): string[] => Object.keys(readClientSettingsDoc() ?? {}).filter((key) => /internet/i.test(key));
 const trigger = (page: Page) => page.getByTestId('account-menu');
 const panel = (page: Page) => page.getByTestId('account-menu-panel');
 const askDialog = (page: Page) => page.getByTestId('net-ask');
-const dontAsk = (page: Page) => page.getByLabel(/Don.t ask again on this computer/);
+const switchRow = (page: Page) => page.getByTestId('account-internet');
+const indicator = (page: Page) => page.getByTestId('internet-indicator');
 
 async function openMenu(page: Page): Promise<void> {
   await trigger(page).click();
@@ -54,6 +65,33 @@ async function openMenu(page: Page): Promise<void> {
 async function closeMenu(page: Page): Promise<void> {
   await page.keyboard.press('Escape');
   await expect(panel(page)).toHaveCount(0);
+}
+/** The internet state as the account button shows it. */
+async function expectInternet(page: Page, on: boolean): Promise<void> {
+  await expect(trigger(page)).toHaveAttribute('data-internet', on ? 'on' : 'off');
+  await expect(indicator(page)).toHaveCount(on ? 1 : 0);
+  if (on) await expect(trigger(page)).toHaveAttribute('title', TOOLTIP_ON);
+  else await expect(trigger(page)).not.toHaveAttribute('title', TOOLTIP_ON);
+}
+/** The menu's switch, turned off; the menu stays open and is closed here. */
+async function turnOffInMenu(page: Page): Promise<void> {
+  await openMenu(page);
+  await expect(switchRow(page)).toHaveAttribute('aria-checked', 'true');
+  await switchRow(page).click();
+  await expect(switchRow(page)).toHaveAttribute('aria-checked', 'false');
+  await expect(panel(page)).toBeVisible();
+  await closeMenu(page);
+  await expectInternet(page, false);
+}
+/** The "Turn on the internet?" dialog, as D95 words it, for one step kind. */
+async function expectAsk(page: Page, kind: string, what: string): Promise<void> {
+  await expect(askDialog(page)).toHaveAttribute('data-kind', kind);
+  await expect(askDialog(page)).toContainText('Turn on the internet?');
+  await expect(page.getByTestId('net-ask-reason')).toContainText(`This step needs the internet to ${what}`);
+  await expect(askDialog(page)).toContainText(UNTIL);
+  await expect(page.getByTestId('net-confirm')).toHaveText('Turn on internet');
+  await expect(page.getByTestId('net-cancel')).toHaveText('Not now');
+  await expect(askDialog(page).getByRole('checkbox')).toHaveCount(0);
 }
 /** A screenshot into the test's output folder, attached to the report. */
 async function shot(page: Page, testInfo: TestInfo, name: string): Promise<void> {
@@ -88,7 +126,7 @@ const backHome = async (page: Page) => {
   await page.getByTitle('Switch project').click();
   await expect(page.getByTestId(`share-${SEEDED_ID}`)).toBeVisible({ timeout: 30_000 });
 };
-/** Count how many times the "Use the internet?" dialog is mounted in this page load. */
+/** Count how many times the "Turn on the internet?" dialog is mounted in this page load. */
 async function countAsks(page: Page): Promise<void> {
   await page.addInitScript(() => {
     const w = window as unknown as { __asks: number };
@@ -105,9 +143,13 @@ async function countAsks(page: Page): Promise<void> {
   });
 }
 const asksSeen = (page: Page) => page.evaluate(() => (window as unknown as { __asks: number }).__asks);
-/** The browser refuses a request made outside a permitted task before it is sent. */
-const refusedOutsideATask = (page: Page) =>
-  page.evaluate(async () => {
+/** What the browser does with a request that uses the internet, made outside any step: 'sent'
+ * while the internet is on, the refusal text while it is off (refused before it is sent).
+ * Neither probe leaves the computer: the fake Door43 answers the QA server, and the platform
+ * route is answered here, so the rig never calls Door43 for it. */
+const requestOutcomes = async (page: Page) => {
+  await page.route('**/api/gitea/x', (route) => route.fulfill({ status: 404, body: 'probe' }));
+  return page.evaluate(async () => {
     const out: string[] = [];
     for (const url of ['https://qa.door43.org/api/v1/version', '/api/gitea/x']) {
       try {
@@ -119,6 +161,8 @@ const refusedOutsideATask = (page: Page) =>
     }
     return out;
   });
+};
+const REFUSED = [NO_CONSENT, NO_CONSENT];
 
 /** #530: hold Door43's answer to a sign-in (`GET /user` with Basic credentials) until the
  * journey releases it. The check of a saved token (`token …`) is not a sign-in and passes.
@@ -169,43 +213,48 @@ async function holdFirstGateRead(page: Page): Promise<{ reads: () => number; fin
   return { reads: () => reads, finished: () => finished, release };
 }
 
-test.describe('D88 — ask before using the internet, and the account menu', () => {
+test.describe('D95 — the internet is one on/off state for the app session, and the account menu', () => {
   test.beforeEach(async () => {
     // A Home tile reopens the place an earlier spec left (#329); these cases open Titus 1.
     resetPlaces();
     resetClientSettings();
     dropOrigin(SEEDED_PROJECT);
-    await fetch(`${RIG_API}/net/disable`, { method: 'POST' });
+    await gateOff();
   });
   test.afterAll(async () => {
     try {
       await verifyAllJournaledProjects();
     } finally {
-      await askInternet(true);
+      await gateOff();
       resetSeededChecking();
       resetPlaces();
     }
   });
 
-  // ---- a · defaults ----
-  test('a. fresh settings ask, and a gate the rig left on ends off at start', TAG, async ({ page }) => {
+  // ---- a · every launch starts off ----
+  test('a. a launch starts with the internet off: no indicator, the switch off, nothing stored; a gate the rig left on ends off at start', TAG, async ({ page }, testInfo) => {
     await fetch(`${RIG_API}/net/enable`, { method: 'POST' });
     expect(await gateOn()).toBe(true);
-    expect(storedAsk()).toBeUndefined();
+    expect(storedInternetKeys()).toEqual([]);
     await page.goto('/');
     await expect(trigger(page)).toBeVisible();
     await expect.poll(gateOn).toBe(false);
+    await expectInternet(page, false);
     await openMenu(page);
-    await expect(page.getByTestId('account-ask')).toHaveAttribute('aria-checked', 'true');
-    await expect(page.getByTestId('account-ask')).toContainText('Internet actions ask for confirmation.');
+    await expect(switchRow(page)).toHaveAttribute('role', 'menuitemcheckbox');
+    await expect(switchRow(page)).toHaveAttribute('aria-checked', 'false');
+    await expect(switchRow(page)).toContainText('Use the internet');
+    await expect(switchRow(page)).toContainText('Off. A step that needs the internet asks first.');
+    await shot(page, testInfo, 'menu-internet-off');
     await closeMenu(page);
-    // Starting the client asked nothing.
+    // Starting the client asked nothing, and stored nothing.
     await expect(askDialog(page)).toHaveCount(0);
+    expect(storedInternetKeys()).toEqual([]);
   });
 
-  test('a. an old Internet choice, an invalid flag and an unreadable document do not turn asking off', TAG, async ({ page }) => {
+  test('a. a stored "Don\'t ask again" of D88, an old Internet choice and an unreadable document have no effect: the internet is off and Share asks', TAG, async ({ page }) => {
     const write = async (settings: Record<string, unknown>) => {
-      // Keep the rest of the document (the seed's install records): only the preference changes.
+      // Keep the rest of the document (the seed's install records): only the old keys change.
       const rest = { ...(readClientSettingsDoc() ?? {}) };
       delete rest.internet;
       delete rest.askInternet;
@@ -216,79 +265,126 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
       });
       expect(res.ok).toBe(true);
     };
-    const asksOnShare = async () => {
+    const offAndAsks = async () => {
       await page.goto('/');
+      await expectInternet(page, false);
       await openMenu(page);
-      await expect(page.getByTestId('account-ask')).toHaveAttribute('aria-checked', 'true');
+      await expect(switchRow(page)).toHaveAttribute('aria-checked', 'false');
       await closeMenu(page);
       await page.getByTestId(`share-${SEEDED_ID}`).click();
       await expect(askDialog(page)).toHaveAttribute('data-kind', 'share');
       await page.getByTestId('net-cancel').click();
       await expect(askDialog(page)).toHaveCount(0);
     };
-    // D86 stored `internet: true`; D88 ignores it.
-    await write({ internet: true });
-    await asksOnShare();
-    // Only the boolean `false` turns asking off.
-    for (const invalid of ['false', 0, null]) {
-      await write({ askInternet: invalid });
-      await asksOnShare();
-    }
-    // The document cannot be read: the client asks.
+    // D88 stored `askInternet: false` ("Don't ask again"); D95 reads nothing, so it asks once per session.
     await write({ askInternet: false });
+    await offAndAsks();
+    // The stored D88 flag is neither read nor rewritten.
+    expect(readClientSettingsDoc()?.askInternet).toBe(false);
+    // D86 stored `internet: true`; it has no effect either.
+    await write({ internet: true });
+    await offAndAsks();
+    // The document cannot be read: the same.
     await page.route('**/api/client-settings/uw-tc4', (route) =>
       route.request().method() === 'GET' ? route.fulfill({ status: 500, body: 'unreadable' }) : route.fallback());
-    await asksOnShare();
+    await offAndAsks();
+    await page.unroute('**/api/client-settings/uw-tc4');
   });
 
-  // ---- b · persistence ----
-  test('b. the preference persists across a restart; the menu switch turns it off and on and stays open', TAG, async ({ page }, testInfo) => {
+  // ---- b · the session state ----
+  test('b. one question after launch, none after Turn on internet; off in the menu asks again; a relaunch starts off and asks again; nothing is stored', TAG, async ({ page, context }, testInfo) => {
+    const fake = await fakeFor(context);
+    await countAsks(page);
+    const recorder = recordExternal(page);
     await page.goto('/');
-    await openMenu(page);
-    const row = page.getByTestId('account-ask');
-    await expect(row).toHaveAttribute('aria-checked', 'true');
-    await row.click();
-    await expect(row).toHaveAttribute('aria-checked', 'false');
-    await expect(row).toContainText('Internet actions continue without asking.');
-    await expect(panel(page)).toBeVisible(); // the menu stays open
-    await expect.poll(storedAsk).toBe(false);
-    await shot(page, testInfo, 'menu-ask-off');
-    await closeMenu(page);
+    const share = page.getByTestId(`share-${SEEDED_ID}`);
+    await expect(share).toBeVisible();
+    await expectInternet(page, false);
 
-    await page.reload();
-    await openMenu(page);
-    await expect(row).toHaveAttribute('aria-checked', 'false');
-    await row.click();
-    await expect(row).toHaveAttribute('aria-checked', 'true');
-    await expect.poll(storedAsk).toBeUndefined();
-    await closeMenu(page);
-    await page.reload();
-    await openMenu(page);
-    await expect(row).toHaveAttribute('aria-checked', 'true');
-    // Turning the switch on or off started no task.
+    // The first step that needs the internet asks, in place.
+    await share.click();
+    await expectAsk(page, 'share', 'contact Door43, sign in if needed and prepare sharing.');
+    await shot(page, testInfo, 'net-ask-share');
+    expect(storedInternetKeys()).toEqual([]);
+    // Turn on internet: on for the session, the step goes on (the sign-in step opens), and the button says so.
+    await page.getByTestId('net-confirm').click();
     await expect(askDialog(page)).toHaveCount(0);
+    await expect(page.getByTestId('share-signin')).toBeVisible();
+    await expectInternet(page, true);
+    await expect(trigger(page)).toHaveAttribute('aria-label', /The internet is on\. Click to turn it off\./);
+    await shot(page, testInfo, 'account-button-internet-on');
+    await page.getByTestId('signin-cancel').click();
+    await expect(page.getByTestId('share-signin')).toHaveCount(0);
+    expect(storedInternetKeys()).toEqual([]);
+
+    // A second step in the same session asks nothing.
+    await share.click();
+    await expect(page.getByTestId('share-signin')).toBeVisible();
+    await expect(askDialog(page)).toHaveCount(0);
+    await page.getByTestId('signin-cancel').click();
+    expect(await asksSeen(page)).toBe(1);
+
+    // The menu: the switch is on, and turning it off starts no request and clears the indicator.
+    await openMenu(page);
+    await expect(switchRow(page)).toHaveAttribute('aria-checked', 'true');
+    await expect(switchRow(page)).toContainText('On until you turn it off or close tC4.');
+    await shot(page, testInfo, 'menu-internet-on');
+    await closeMenu(page);
+    await turnOffInMenu(page);
+    await expect(askDialog(page)).toHaveCount(0);
+    expect(storedInternetKeys()).toEqual([]);
+    // The next step asks again. Not now: nothing is sent, and the user stays on Home.
+    await share.click();
+    await expect(askDialog(page)).toHaveAttribute('data-kind', 'share');
+    await page.getByTestId('net-cancel').click();
+    await expect(askDialog(page)).toHaveCount(0);
+    await expect(page.getByTestId('share-signin')).toHaveCount(0);
+    await expect(page.getByTestId('share-dialog')).toHaveCount(0);
+    await expectInternet(page, false);
+    expect(await asksSeen(page)).toBe(2);
+    // The menu switch turns it on as well: the step then asks nothing.
+    await turnOnInternet(page);
+    await share.click();
+    await expect(page.getByTestId('share-signin')).toBeVisible();
+    await expect(askDialog(page)).toHaveCount(0);
+    await page.getByTestId('signin-cancel').click();
+    expect(await asksSeen(page)).toBe(2);
+
+    // A relaunch: off again, and the first step asks again.
+    await page.reload();
+    await expect(share).toBeVisible();
+    await expectInternet(page, false);
+    await openMenu(page);
+    await expect(switchRow(page)).toHaveAttribute('aria-checked', 'false');
+    await closeMenu(page);
+    await share.click();
+    await expect(askDialog(page)).toHaveAttribute('data-kind', 'share');
+    await page.getByTestId('net-cancel').click();
+    expect(await asksSeen(page), 'one question in the new session').toBe(1);
+    expect(storedInternetKeys()).toEqual([]);
+    // No sign-in was sent in this whole case: nothing left the computer.
+    await page.waitForTimeout(500);
+    expect(fake.calls).toEqual([]);
+    expect(recorder.external()).toEqual([]);
+    await recorder.save(testInfo, 'b-session-state-requests');
   });
 
-  test('b. signing in and signing out do not change the preference (asking off, and asking on)', TAG, async ({ page, context }) => {
+  test('b. signing in and signing out leave the internet state alone', TAG, async ({ page, context }) => {
     await fakeFor(context);
-    for (const ask of [false, true]) {
-      await askInternet(ask);
-      await page.goto('/');
-      await openMenu(page);
-      await page.getByTestId('account-sign-in').click();
-      await expect(page.getByTestId('share-signin')).toBeVisible();
-      await signIn(page);
-      if (ask) {
-        await expect(askDialog(page)).toHaveAttribute('data-kind', 'signIn');
-        await page.getByTestId('net-confirm').click();
-      }
-      await expect(trigger(page)).toHaveAttribute('data-state', 'in');
-      expect(storedAsk()).toBe(ask ? undefined : false);
-      await openMenu(page);
-      await page.getByTestId('account-sign-out').click();
-      await expect(trigger(page)).toHaveAttribute('data-state', 'out');
-      expect(storedAsk()).toBe(ask ? undefined : false);
-    }
+    await page.goto('/');
+    await turnOnInternet(page);
+    await openMenu(page);
+    await page.getByTestId('account-sign-in').click();
+    await expect(page.getByTestId('share-signin')).toBeVisible();
+    await signIn(page);
+    await expect(askDialog(page)).toHaveCount(0);
+    await expect(trigger(page)).toHaveAttribute('data-state', 'in');
+    await expectInternet(page, true);
+    await openMenu(page);
+    await page.getByTestId('account-sign-out').click();
+    await expect(trigger(page)).toHaveAttribute('data-state', 'out');
+    await expectInternet(page, true);
+    expect(storedInternetKeys()).toEqual([]);
   });
 
   // ---- c · the three account states, on Home and in a project ----
@@ -306,7 +402,7 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
       await expect(page.getByRole('menu')).toBeVisible();
       await expect(page.getByTestId('account-sign-in')).toContainText('Sign in to Door43');
       await expect(page.getByTestId('account-sign-in')).toContainText('Sign in to share projects on Door43.');
-      await expect(page.getByTestId('account-ask')).toHaveAttribute('role', 'menuitemcheckbox');
+      await expect(switchRow(page)).toHaveAttribute('role', 'menuitemcheckbox');
       await expect(page.getByTestId('account-page')).toHaveCount(0);
       await expect(page.getByTestId('account-check')).toHaveCount(0);
       await expect(page.getByTestId('account-sign-out')).toHaveCount(0);
@@ -318,7 +414,7 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
     await recorder.save(testInfo, 'c-out-requests');
   });
 
-  test('c. sign-in saved but not checked: the menu shows no identity and sends nothing; Check asks, Cancel sends nothing, Continue checks', TAG, async ({ page, context }, testInfo) => {
+  test('c. sign-in saved but not checked: the menu shows no identity and sends nothing; Check asks to turn the internet on, Not now sends nothing, Turn on internet checks', TAG, async ({ page, context }, testInfo) => {
     const fake = await fakeFor(context, { tokens: ['kept-token'] });
     const keychain = await fakeKeychain(context, 'kept-token');
     const recorder = recordExternal(page);
@@ -339,32 +435,33 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
     expect(fake.calls, 'opening the menu fetched no identity').toEqual([]);
     expect(recorder.external()).toEqual([]);
 
-    // Check: asks (kind checkSignIn). Cancel sends nothing and keeps the sign-in.
+    // Check: asks (kind checkSignIn). Not now sends nothing and keeps the sign-in saved.
     await openMenu(page);
     await page.getByTestId('account-check').click();
-    await expect(askDialog(page)).toHaveAttribute('data-kind', 'checkSignIn');
+    await expectAsk(page, 'checkSignIn', 'check with Door43 the sign-in saved on this computer.');
     await shot(page, testInfo, 'net-ask-checkSignIn');
     await page.getByTestId('net-cancel').click();
     await expect(askDialog(page)).toHaveCount(0);
     expect(fake.calls).toEqual([]);
     expect(recorder.external()).toEqual([]);
     await expect(trigger(page)).toHaveAttribute('data-state', 'saved');
+    await expectInternet(page, false);
     expect(keychain.held).toBe('kept-token');
-    expect(storedAsk()).toBeUndefined();
 
-    // Continue: the saved token is checked with exactly one Door43 call.
+    // Turn on internet: the saved token is checked with exactly one Door43 call.
     await openMenu(page);
     await page.getByTestId('account-check').click();
     await page.getByTestId('net-confirm').click();
     await expect(trigger(page)).toHaveAttribute('data-state', 'in');
+    await expectInternet(page, true);
     expect(fake.calls.map((c) => `${c.method} ${c.url}`)).toEqual([`GET ${QA_SERVER}/api/v1/user`]);
     await recorder.save(testInfo, 'c-saved-requests');
   });
 
-  test('c. signed in: the login and Open my page on Door43 on Home and in a project; the page link asks first', TAG, async ({ page, context }, testInfo) => {
+  test('c. signed in: the login and Open my page on Door43 on Home and in a project; the page link opens at once while the internet is on, and asks after it is turned off', TAG, async ({ page, context }, testInfo) => {
     await fakeFor(context);
-    await askInternet(false);
     await page.goto('/');
+    await turnOnInternet(page);
     await openMenu(page);
     await page.getByTestId('account-sign-in').click();
     await signIn(page);
@@ -380,18 +477,24 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
       await shot(page, testInfo, `account-menu-in-${where}`);
       await closeMenu(page);
     }
-    // With asking on, the profile link asks (kind profile); Cancel opens nothing.
-    await askInternet(true);
-    await page.reload();
-    await signInAgain(page);
+    // With the internet on, the profile link opens at once.
     let popups = 0;
     page.on('popup', () => { popups += 1; });
+    const first = page.waitForEvent('popup');
     await openMenu(page);
     await page.getByTestId('account-page').click();
-    await expect(askDialog(page)).toHaveAttribute('data-kind', 'profile');
+    await expect(askDialog(page)).toHaveCount(0);
+    const popup1 = await first;
+    expect(popup1.url()).toContain(`${QA_SERVER}/${USER.username}`);
+    await popup1.close();
+    // Off in the menu: the link asks (kind profile); Not now opens nothing; Turn on internet opens it.
+    await turnOffInMenu(page);
+    await openMenu(page);
+    await page.getByTestId('account-page').click();
+    await expectAsk(page, 'profile', 'open your Door43 profile in your browser.');
     await page.getByTestId('net-cancel').click();
     await page.waitForTimeout(500);
-    expect(popups).toBe(0);
+    expect(popups).toBe(1);
     await openMenu(page);
     const opened = page.waitForEvent('popup');
     await page.getByTestId('account-page').click();
@@ -399,10 +502,11 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
     const popup = await opened;
     expect(popup.url()).toContain(`${QA_SERVER}/${USER.username}`);
     await popup.close();
+    await expectInternet(page, true);
   });
 
-  // ---- d · Cancel, Continue, one dialog for Share ----
-  test('d. Share: one dialog; Cancel sends and stores nothing (also with the box checked); Continue goes on to sign-in and the reviewed upload; the page link asks first', TAG, async ({ page, context }, testInfo) => {
+  // ---- d · Not now, Turn on internet, one dialog for Share ----
+  test('d. Share: one question; Not now sends nothing and keeps the user on Home; Turn on internet goes on to sign-in and the reviewed upload with no second question; Open on Door43 asks nothing', TAG, async ({ page, context }, testInfo) => {
     test.setTimeout(120_000);
     const remote = makeBareRemote();
     try {
@@ -413,60 +517,47 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
       const share = page.getByTestId(`share-${SEEDED_ID}`);
       await expect(share).toBeVisible();
 
-      // Cancel, with the box checked: nothing is sent and nothing is stored.
+      // Not now: nothing is sent, nothing is stored, and the user stays on Home.
       await share.click();
-      await expect(askDialog(page)).toHaveAttribute('data-kind', 'share');
-      await expect(askDialog(page)).toContainText('Use the internet?');
-      await expect(page.getByTestId('net-ask-reason')).toContainText('This will contact Door43');
-      await expect(page.getByTestId('net-confirm')).toHaveText('Continue');
-      await expect(page.getByTestId('net-cancel')).toHaveText('Cancel');
-      await expect(dontAsk(page)).not.toBeChecked();
-      await shot(page, testInfo, 'net-ask-share');
-      await dontAsk(page).check();
+      await expectAsk(page, 'share', 'contact Door43, sign in if needed and prepare sharing. You will review the destination and books before uploading.');
       await page.getByTestId('net-cancel').click();
       await expect(askDialog(page)).toHaveCount(0);
       await page.waitForTimeout(500);
       expect(fake.calls).toEqual([]);
       expect(recorder.external()).toEqual([]);
-      expect(storedAsk()).toBeUndefined();
+      expect(storedInternetKeys()).toEqual([]);
       await expect(page.getByTestId('share-signin')).toHaveCount(0);
       await expect(page.getByTestId('share-dialog')).toHaveCount(0);
+      await expectInternet(page, false);
       expect(remote.main()).toBeNull();
-      await recorder.save(testInfo, 'd-after-cancel-requests');
+      await recorder.save(testInfo, 'd-after-not-now-requests');
 
-      // A new Share asks again; Continue (box unchecked) starts the task.
+      // A new Share asks again; Turn on internet starts the step.
       await page.evaluate(() => { (window as unknown as { __asks: number }).__asks = 0; });
       await share.click();
       await expect(askDialog(page)).toHaveAttribute('data-kind', 'share');
-      await expect(dontAsk(page)).not.toBeChecked();
       expect(recorder.external()).toEqual([]);
       await page.getByTestId('net-confirm').click();
       await expect(page.getByTestId('share-signin')).toBeVisible();
-      expect(storedAsk()).toBeUndefined();
+      await expectInternet(page, true);
       await signIn(page);
       // The existing review is kept: the where-it-goes step, then the upload, then the end.
       await expect(page.getByTestId('share-orgs-loading')).toHaveCount(0);
       await page.getByTestId('share-next').click();
       await page.getByTestId('share-submit').click();
       await expect(page.getByTestId('share-done')).toBeVisible({ timeout: 30_000 });
-      expect(await asksSeen(page), 'sign-in, destinations and the upload share one dialog').toBe(1);
+      expect(await asksSeen(page), 'sign-in, destinations and the upload needed one question').toBe(1);
       expect(remote.main()).toBe(head(SEEDED_PROJECT));
       expect(recorder.external().some((line) => line.includes('qa.door43.org'))).toBe(true);
 
-      // "Open on Door43" is a task of its own: it asks (kind repoLink).
-      let popups = 0;
-      page.on('popup', () => { popups += 1; });
-      await page.getByTestId('share-open').click();
-      await expect(askDialog(page)).toHaveAttribute('data-kind', 'repoLink');
-      await page.getByTestId('net-cancel').click();
-      await page.waitForTimeout(500);
-      expect(popups).toBe(0);
+      // "Open on Door43" is a step of its own; the internet is on, so it opens at once.
       const opened = page.waitForEvent('popup');
       await page.getByTestId('share-open').click();
-      await page.getByTestId('net-confirm').click();
+      await expect(askDialog(page)).toHaveCount(0);
       const popup = await opened;
       expect(popup.url()).toContain(`${QA_SERVER}/${USER.username}/${SEEDED_PROJECT}`);
       await popup.close();
+      expect(await asksSeen(page)).toBe(1);
       await recorder.save(testInfo, 'd-share-requests');
     } finally {
       dropOrigin(SEEDED_PROJECT);
@@ -474,9 +565,9 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
     }
   });
 
-  // #530: Upload changes opens its dialog with no internet task. The one "Use the internet?"
-  // dialog of an upload opens when its sign-in, or the upload, is sent.
-  test('d. Upload changes: the sign-in step and the upload dialog open with no request; the question comes when the sign-in or the upload is sent, once for each upload; Cancel in each place pushes nothing', TAG, async ({ page, context }, testInfo) => {
+  // #530: Upload changes opens its dialog with no internet step. The question of an upload opens
+  // when its sign-in, or the upload, is sent, while the internet is off.
+  test('d. Upload changes: the sign-in step and the upload dialog open with no request; the question comes when the sign-in or the upload is sent; Not now in each place pushes nothing; Turn on internet continues in place', TAG, async ({ page, context }, testInfo) => {
     const remote = makeBareRemote();
     try {
       const fake = await fakeShare(context, remote);
@@ -496,10 +587,9 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
       expect(await asksSeen(page)).toBe(0);
       expect(recorder.external()).toEqual([]);
 
-      // The sign-in is sent: the question opens (kind upload). Cancel keeps the step and sends nothing.
+      // The sign-in is sent: the question opens (kind upload). Not now keeps the step and sends nothing.
       await signIn(page);
-      await expect(askDialog(page)).toHaveAttribute('data-kind', 'upload');
-      await expect(page.getByTestId('net-ask-reason')).toContainText('upload this project’s changes to its existing repository on Door43');
+      await expectAsk(page, 'upload', 'sign in to Door43 if needed and upload this project’s changes to its existing repository on Door43.');
       await shot(page, testInfo, 'net-ask-upload');
       await page.getByTestId('net-cancel').click();
       await expect(askDialog(page)).toHaveCount(0);
@@ -508,26 +598,28 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
       expect(fake.calls).toEqual([]);
       expect(recorder.external()).toEqual([]);
 
-      // Continue: the sign-in is sent, and the upload dialog opens for review. Nothing is pushed.
+      // Turn on internet: the sign-in is sent, and the upload dialog opens for review. Nothing is pushed.
       await signIn(page);
       await page.getByTestId('net-confirm').click();
       await expect(page.getByTestId('share-upload')).toBeVisible();
-      await expect(page.getByTestId('share-account')).toHaveText(`Sharing as @${USER.username} · Change`);
+      await expect(page.getByTestId('share-account')).toHaveText(SHARING_AS);
       expect(remote.main(), 'the sign-in pushed nothing').toBeNull();
-      // That one consent covers the upload: Upload changes asks nothing more.
+      // The internet is on: Upload changes asks nothing more.
       await page.getByTestId('share-submit').click();
       await expect(page.getByTestId('share-done')).toBeVisible({ timeout: 30_000 });
-      expect(await asksSeen(page), 'the sign-in and the upload share one answered question (one Cancel, one Continue)').toBe(2);
+      expect(await asksSeen(page), 'one Not now and one Turn on internet').toBe(2);
       expect(remote.main()).toBe(head(SEEDED_PROJECT));
       await page.getByTestId('share-close').click();
       await expectCleanCard(page, SEEDED_ID);
       await recorder.save(testInfo, 'd-upload-signed-out-requests');
 
-      // Signed in, a new upload: the dialog opens with no question and no request.
+      // Signed in, the internet turned off in the menu, a new upload: the dialog opens with no
+      // question and no request; the question comes when Upload changes is sent.
+      await turnOffInMenu(page);
       recorder.reset();
       await page.evaluate(() => { (window as unknown as { __asks: number }).__asks = 0; });
       const pushed = remote.main();
-      const next = commitLocally(SEEDED_PROJECT, 'a local edit for the consent journey');
+      const next = commitLocally(SEEDED_PROJECT, 'a local edit for the internet journey');
       await action.click();
       await expect(page.getByTestId('share-upload')).toBeVisible();
       await page.waitForTimeout(500);
@@ -535,7 +627,7 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
       expect(recorder.external(), 'opening the dialog sends nothing').toEqual([]);
       await shot(page, testInfo, 'upload-dialog-review');
 
-      // Upload changes asks. Cancel returns to the review; nothing left the computer.
+      // Upload changes asks. Not now returns to the review; nothing left the computer.
       await page.getByTestId('share-submit').click();
       await expect(askDialog(page)).toHaveAttribute('data-kind', 'upload');
       await page.getByTestId('net-cancel').click();
@@ -551,8 +643,9 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
       expect(recorder.external()).toEqual([]);
       expect(remote.main()).toBe(pushed);
       await expectCleanCard(page, SEEDED_ID);
+      await expectInternet(page, false);
 
-      // Upload changes, then Continue: one question, and the push.
+      // Upload changes, then Turn on internet: one question, and the push.
       await page.evaluate(() => { (window as unknown as { __asks: number }).__asks = 0; });
       await action.click();
       await page.getByTestId('share-submit').click();
@@ -569,10 +662,11 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
     }
   });
 
-  // #530 (review rounds 2 and 3): the consent of an upload belongs to the dialog it was given
-  // in. A dialog that was closed while the saved sign-in was checked gives nothing to the
-  // next dialog: no push, no sign-in step, and the next upload asks again.
-  test('d. Upload changes: Cancel while the saved sign-in is checked ends that upload; the dialog opened after it does not push, and its upload asks again', TAG, async ({ page, context }, testInfo) => {
+  // #530 (review rounds 2 and 3): an upload belongs to the dialog it was sent from. A dialog that
+  // was closed while the saved sign-in was checked runs nothing afterwards: no push, no sign-in
+  // step. The internet stays on (D95: the state belongs to the session, not to the dialog), so
+  // the next upload asks nothing and runs at its own click.
+  test('d. Upload changes: Cancel while the saved sign-in is checked ends that upload; the dialog opened after it does not push, and its own upload runs with no second question', TAG, async ({ page, context }, testInfo) => {
     const KEPT_TOKEN = 'kept-token-for-530';
     const remote = makeBareRemote();
     try {
@@ -588,16 +682,13 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
         await held;
         await route.fallback();
       });
-      const pushes: string[] = [];
-      page.on('request', (request) => {
-        if (new URL(request.url()).pathname.startsWith('/api/git/push/')) pushes.push(request.url());
-      });
+      const pushes = watchPushes(page);
       await countAsks(page);
       await page.goto('/');
       const action = page.getByTestId(`share-${SEEDED_ID}`);
       await expect(action).toHaveText('Upload changes');
 
-      // Upload changes, Continue: the check of the saved sign-in is sent, and held.
+      // Upload changes, Turn on internet: the check of the saved sign-in is sent, and held.
       await action.click();
       await expect(page.getByTestId('share-account')).toHaveText('Signed in · Change');
       await page.getByTestId('share-submit').click();
@@ -621,18 +712,15 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
       await expect(page.getByTestId('share-signin')).toHaveCount(0);
       await expect(page.getByTestId('share-upload')).toBeVisible();
 
-      // The next upload asks again: the first consent ended with its dialog.
-      await page.evaluate(() => { (window as unknown as { __asks: number }).__asks = 0; });
+      // The next upload runs at its own click, with no question: the internet is on.
       await page.getByTestId('share-submit').click();
-      await expect(askDialog(page)).toHaveAttribute('data-kind', 'upload');
-      expect(pushes).toEqual([]);
-      await page.getByTestId('net-confirm').click();
+      await expect(askDialog(page)).toHaveCount(0);
       await expect(page.getByTestId('share-done')).toBeVisible({ timeout: 30_000 });
-      expect(await asksSeen(page)).toBe(1);
+      expect(await asksSeen(page), 'one question in all').toBe(1);
       expect(pushes.length).toBe(1);
       expect(remote.main()).toBe(head(SEEDED_PROJECT));
       const log = testInfo.outputPath('d-upload-cancel-reopen.json');
-      fs.writeFileSync(log, JSON.stringify({ savedSignInChecks: checks, door43Calls: fake.calls.map((c) => `${c.method} ${c.url}`), pushes: pushes.length }, null, 2));
+      fs.writeFileSync(log, JSON.stringify({ savedSignInChecks: checks, door43Calls: fake.calls.map((c) => `${c.method} ${c.url}`), pushes: pushes.length, asks: await asksSeen(page) }, null, 2));
       await testInfo.attach('d-upload-cancel-reopen', { path: log, contentType: 'application/json' });
     } finally {
       dropOrigin(SEEDED_PROJECT);
@@ -640,7 +728,7 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
     }
   });
 
-  test('d. Upload changes: Cancel while the sign-in is sent signs nothing in; the sign-in step opened after it asks again', TAG, async ({ page, context }) => {
+  test('d. Upload changes: Cancel while the sign-in is sent signs nothing in; the sign-in step opened after it sends its own sign-in, with no second question', TAG, async ({ page, context }) => {
     const remote = makeBareRemote();
     try {
       const fake = await fakeShare(context, remote);
@@ -653,7 +741,7 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
       const action = page.getByTestId(`share-${SEEDED_ID}`);
       await expect(action).toHaveText('Upload changes');
 
-      // Signed out: the sign-in step. Sign in, Continue: the sign-in is sent, and held.
+      // Signed out: the sign-in step. Sign in, Turn on internet: the sign-in is sent, and held.
       await action.click();
       await signIn(page);
       await page.getByTestId('net-confirm').click();
@@ -677,12 +765,10 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
       await expect(trigger(page)).toHaveAttribute('data-state', 'out');
       expect(remote.main()).toBeNull();
 
-      // The new sign-in asks again.
-      await page.evaluate(() => { (window as unknown as { __asks: number }).__asks = 0; });
+      // The new sign-in asks nothing (the internet is on) and signs in.
       await signIn(page);
-      await expect(askDialog(page)).toHaveAttribute('data-kind', 'upload');
-      await page.getByTestId('net-confirm').click();
       await expect(page.getByTestId('share-upload')).toBeVisible();
+      await expect(askDialog(page)).toHaveCount(0);
       expect(await asksSeen(page)).toBe(1);
       expect(remote.main(), 'the sign-in pushed nothing').toBeNull();
       expect(fake.tokens.size).toBeGreaterThan(0);
@@ -692,16 +778,16 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
     }
   });
 
-  // #530 (review rounds 4 and 5): the same rule for a sign-in step that opens inside an
-  // upload the user has already consented to. Two ways lead to that step: Door43 refuses
-  // the saved sign-in, or the user presses Change after the consent.
-  for (const way of ['a refused saved sign-in', 'Change after the consent'] as const) {
-    test(`d. Upload changes: ${way}, then Cancel while the new sign-in is sent: the step opened after it asks again, and sends no sign-in before the answer`, TAG, async ({ page, context }, testInfo) => {
+  // #530 (review rounds 4 and 5): the same rule for a sign-in step that opens inside an upload
+  // after Turn on internet. Two ways lead to that step: Door43 refuses the saved sign-in, or the
+  // user presses Change.
+  for (const way of ['a refused saved sign-in', 'Change after Turn on internet'] as const) {
+    test(`d. Upload changes: ${way}, then Cancel while the new sign-in is sent: the step opened after it sends its own sign-in, and nothing is pushed`, TAG, async ({ page, context }, testInfo) => {
       const KEPT_TOKEN = 'kept-token-for-530';
       const remote = makeBareRemote();
       try {
         // "Refused": the fake knows no token. "Change": the token is good, and the push fails
-        // once, so the consented dialog returns to its review step, where Change is.
+        // once, so the dialog returns to its review step, where Change is.
         const refused = way === 'a refused saved sign-in';
         const fake = await fakeShare(context, remote, refused ? {} : { tokens: [KEPT_TOKEN] });
         const keychain = await fakeKeychain(context, KEPT_TOKEN);
@@ -715,7 +801,7 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
         const action = page.getByTestId(`share-${SEEDED_ID}`);
         await expect(action).toHaveText('Upload changes');
 
-        // Upload changes, Continue: the one question of this upload.
+        // Upload changes, Turn on internet: the one question of this session.
         await action.click();
         await page.getByTestId('share-submit').click();
         await page.getByTestId('net-confirm').click();
@@ -723,11 +809,11 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
           await expect(page.getByTestId('share-error')).toHaveAttribute('data-code', 'share.push-failed', { timeout: 30_000 });
           await page.getByTestId('share-account-change').click();
         }
-        // The sign-in step is a step of that upload: it asks nothing more. It is sent, and held.
+        // The sign-in step: it asks nothing more. It is sent, and held.
         await expect(page.getByTestId('share-signin')).toBeVisible();
         await signIn(page);
         await expect.poll(() => signIns.sent).toBe(1);
-        expect(await asksSeen(page), 'the sign-in of a consented upload does not ask again').toBe(1);
+        expect(await asksSeen(page), 'the sign-in does not ask again').toBe(1);
 
         // Cancel while it is held, then press Upload changes again. No sign-in is left, in
         // memory or saved, so the sign-in step opens.
@@ -748,22 +834,16 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
         await expect(trigger(page)).toHaveAttribute('data-state', 'out');
         expect(pushes.length).toBe(pushed);
 
-        // The step opened after the Cancel asks again, and sends no sign-in before the answer.
-        await page.evaluate(() => { (window as unknown as { __asks: number }).__asks = 0; });
-        const calls = fake.calls.length;
+        // The step opened after the Cancel sends its own sign-in, with no question.
         await signIn(page);
-        await expect(askDialog(page)).toHaveAttribute('data-kind', 'upload');
-        expect(signIns.sent, 'no sign-in is sent before the answer').toBe(1);
-        expect(fake.calls.length, 'no Door43 request before the answer').toBe(calls);
-        await page.getByTestId('net-confirm').click();
         await expect(page.getByTestId('share-upload')).toBeVisible();
         await expect(page.getByTestId('share-account')).toHaveText(SHARING_AS);
         expect(await asksSeen(page)).toBe(1);
         expect(signIns.sent).toBe(2);
         expect(pushes.length, 'the sign-in pushed nothing').toBe(pushed);
-        const log = testInfo.outputPath('d-upload-consented-sign-in-cancel.json');
-        fs.writeFileSync(log, JSON.stringify({ way, signIns: signIns.events, pushes: pushes.length }, null, 2));
-        await testInfo.attach('d-upload-consented-sign-in-cancel', { path: log, contentType: 'application/json' });
+        const log = testInfo.outputPath('d-upload-sign-in-cancel.json');
+        fs.writeFileSync(log, JSON.stringify({ way, signIns: signIns.events, pushes: pushes.length, door43Calls: fake.calls.length }, null, 2));
+        await testInfo.attach('d-upload-sign-in-cancel', { path: log, contentType: 'application/json' });
       } finally {
         dropOrigin(SEEDED_PROJECT);
         remote.dispose();
@@ -772,8 +852,8 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
   }
 
   // #530 (review round 6): an upload belongs to the review it was submitted in. Change leaves
-  // that review, so the upload that was waiting for the check of the saved sign-in ends.
-  // The flow, and its consent, go on: the new review uploads at its own click, with no new question.
+  // that review, so the upload that was waiting for the check of the saved sign-in ends. The
+  // new review uploads at its own click.
   test('d. Upload changes: Change while the saved sign-in is checked ends that upload; after the new sign-in nothing is pushed until Upload changes is pressed again, and then one push', TAG, async ({ page, context }, testInfo) => {
     const KEPT_TOKEN = 'kept-token-for-530';
     const remote = makeBareRemote();
@@ -798,14 +878,14 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
       const action = page.getByTestId(`share-${SEEDED_ID}`);
       await expect(action).toHaveText('Upload changes');
 
-      // Upload changes, Continue: the check of the saved sign-in is sent, and held.
+      // Upload changes, Turn on internet: the check of the saved sign-in is sent, and held.
       await action.click();
       await expect(page.getByTestId('share-account')).toHaveText('Signed in · Change');
       await page.getByTestId('share-submit').click();
       await page.getByTestId('net-confirm').click();
       await expect.poll(() => checks).toBe(1);
 
-      // Change while it is held, and sign in. The consent of this upload covers the sign-in.
+      // Change while it is held, and sign in. No question: the internet is on.
       await page.getByTestId('share-account-change').click();
       await expect(page.getByTestId('share-signin')).toBeVisible();
       await signIn(page);
@@ -830,7 +910,7 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
       await expect(page.getByTestId('share-done')).toBeVisible({ timeout: 30_000 });
       expect(pushes.length, 'one push for the one click').toBe(1);
       expect(remote.main()).toBe(head(SEEDED_PROJECT));
-      expect(await asksSeen(page), 'Change keeps the consent of the upload: one question').toBe(1);
+      expect(await asksSeen(page), 'one question').toBe(1);
       const log = testInfo.outputPath('d-upload-change-while-checking.json');
       fs.writeFileSync(log, JSON.stringify({ savedSignInChecks: checks, door43Calls: fake.calls.map((c) => `${c.method} ${c.url}`), pushes: pushes.length }, null, 2));
       await testInfo.attach('d-upload-change-while-checking', { path: log, contentType: 'application/json' });
@@ -840,10 +920,10 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
     }
   });
 
-  // #540 review round 7: the steps of one flow share its question and its gate check. A step
-  // that starts while the first one still waits for the gate asks nothing and takes no
-  // consent of its own, so the close of the flow leaves no request permitted.
-  test('d. Upload changes: Change and a new sign-in while the gate is checked share the one question; after Close no request is permitted', TAG, async ({ page, context }, testInfo) => {
+  // #540 review round 7: steps that start while the gate is checked share that one check. The
+  // internet state outlives the dialog (D95): after Close a request is still allowed; off in the
+  // menu refuses the next one at once.
+  test('d. Upload changes: Change and a new sign-in while the gate is checked share the one gate check; after Close the internet stays on; off in the menu refuses the next request', TAG, async ({ page, context }, testInfo) => {
     const KEPT_TOKEN = 'kept-token-for-530';
     const remote = makeBareRemote();
     try {
@@ -857,7 +937,7 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
       const action = page.getByTestId(`share-${SEEDED_ID}`);
       await expect(action).toHaveText('Upload changes');
 
-      // Upload changes, Continue: the gate is read, and the answer is held.
+      // Upload changes, Turn on internet: the gate is read, and the answer is held.
       await action.click();
       await expect(page.getByTestId('share-account')).toHaveText('Signed in · Change');
       await page.getByTestId('share-submit').click();
@@ -870,8 +950,8 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
       await expect(page.getByTestId('share-signin')).toBeVisible();
       await signIn(page);
       await expect.poll(() => asksSeen(page), { timeout: 1500 }).toBe(2).catch(() => {});
-      expect(await asksSeen(page), 'the sign-in shares the question of its flow').toBe(1);
-      expect(gate.reads(), 'one gate check for the flow').toBe(1);
+      expect(await asksSeen(page), 'the sign-in asks nothing').toBe(1);
+      expect(gate.reads(), 'one gate check for both steps').toBe(1);
 
       // The held read ends: the check goes on, the sign-in is sent, and the review returns.
       gate.release();
@@ -879,10 +959,14 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
       await expect(page.getByTestId('share-account')).toHaveText(SHARING_AS);
       expect(pushes, 'nothing is pushed without a new click').toEqual([]);
 
-      // Close the dialog. The flow's consent ends with it: a request outside a task is refused.
+      // Close the dialog. The internet stays on: a request outside any step is sent. Off in the
+      // menu: the next request is refused before it is sent.
       await page.getByTestId('share-cancel').click();
       await expect(page.getByTestId('share-dialog')).toHaveCount(0);
-      expect(await refusedOutsideATask(page), 'no consent is left after Close').toEqual([NO_CONSENT, NO_CONSENT]);
+      await expectInternet(page, true);
+      expect(await requestOutcomes(page), 'the internet stays on after Close').toEqual(['sent', 'sent']);
+      await turnOffInMenu(page);
+      expect(await requestOutcomes(page), 'off refuses at once').toEqual(REFUSED);
       expect(await asksSeen(page), 'one question in all').toBe(1);
       expect(pushes).toEqual([]);
       expect(remote.main()).toBeNull();
@@ -895,16 +979,17 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
     }
   });
 
-  // #540 review round 7 (Frank): with asking off, Sign in pressed twice while the gate is
-  // checked. The two submits share one authorization; after Cancel no request is permitted.
-  test('d. Upload changes: two quick Sign in submits while the gate is checked, then Cancel: nothing is sent, and no request is permitted', TAG, async ({ page, context }, testInfo) => {
+  // #540 review round 7 (Frank): with the internet on, Sign in pressed twice while the gate is
+  // checked. The two submits share one gate check; after Cancel nothing is sent.
+  test('d. Upload changes: two quick Sign in submits while the gate is checked, then Cancel: one gate check, and nothing is sent', TAG, async ({ page, context }, testInfo) => {
     const remote = makeBareRemote();
     try {
       const fake = await fakeShare(context, remote);
       addOrigin(SEEDED_PROJECT, remote);
-      await askInternet(false);
       const gate = await holdFirstGateRead(page);
+      const recorder = recordExternal(page);
       await page.goto('/');
+      await turnOnInternet(page);
       const action = page.getByTestId(`share-${SEEDED_ID}`);
       await expect(action).toHaveText('Upload changes');
 
@@ -925,12 +1010,13 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
       gate.release();
       await expect.poll(() => gate.finished(), { timeout: 30_000 }).toBeGreaterThanOrEqual(2);
       await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0))));
+      await page.waitForTimeout(500);
 
-      expect(await refusedOutsideATask(page), 'no consent is left after Cancel').toEqual([NO_CONSENT, NO_CONSENT]);
       expect(fake.calls, 'the cancelled step signed nothing in').toEqual([]);
+      expect(recorder.external(), 'nothing left the computer').toEqual([]);
       expect(remote.main()).toBeNull();
       const log = testInfo.outputPath('d-upload-two-submits-while-gate-checked.json');
-      fs.writeFileSync(log, JSON.stringify({ gateReads: gate.reads(), gateReadsFinished: gate.finished(), door43Calls: fake.calls.length }, null, 2));
+      fs.writeFileSync(log, JSON.stringify({ gateReads: gate.reads(), gateReadsFinished: gate.finished(), door43Calls: fake.calls.length, external: recorder.external() }, null, 2));
       await testInfo.attach('d-upload-two-submits-while-gate-checked', { path: log, contentType: 'application/json' });
     } finally {
       dropOrigin(SEEDED_PROJECT);
@@ -946,8 +1032,8 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
       await fakeShare(context, remote);
       addOrigin(SEEDED_PROJECT, remote);
       const signIns = await holdSignIns(page, (n) => n === 1);
-      await askInternet(false); // no questions here: the order of the sign-ins is the subject
       await page.goto('/');
+      await turnOnInternet(page); // no questions here: the order of the sign-ins is the subject
       const action = page.getByTestId(`share-${SEEDED_ID}`);
       await expect(action).toHaveText('Upload changes');
 
@@ -981,40 +1067,7 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
     }
   });
 
-  test('d. "Don\'t ask again" is stored only by Continue; the menu switch restores asking', TAG, async ({ page }) => {
-    await page.goto('/');
-    const share = page.getByTestId(`share-${SEEDED_ID}`);
-    await share.click();
-    await dontAsk(page).check();
-    await page.getByTestId('net-confirm').click();
-    await expect(page.getByTestId('share-signin')).toBeVisible();
-    await expect.poll(storedAsk).toBe(false);
-    await page.getByTestId('signin-cancel').click();
-
-    // After a restart there is no dialog: Share goes straight to the sign-in step.
-    await page.reload();
-    await openMenu(page);
-    await expect(page.getByTestId('account-ask')).toHaveAttribute('aria-checked', 'false');
-    await closeMenu(page);
-    await share.click();
-    await expect(page.getByTestId('share-signin')).toBeVisible();
-    await expect(askDialog(page)).toHaveCount(0);
-    await page.getByTestId('signin-cancel').click();
-
-    // The menu switch restores asking, and starts no task.
-    await openMenu(page);
-    await page.getByTestId('account-ask').click();
-    await expect(page.getByTestId('account-ask')).toHaveAttribute('aria-checked', 'true');
-    await expect.poll(storedAsk).toBeUndefined();
-    await expect(askDialog(page)).toHaveCount(0);
-    await closeMenu(page);
-    await share.click();
-    await expect(askDialog(page)).toHaveAttribute('data-kind', 'share');
-    await page.getByTestId('net-cancel').click();
-    await expect(page.getByTestId('share-signin')).toHaveCount(0);
-  });
-
-  test('d. sign-in from the menu asks when the password is sent; Cancel keeps the dialog and sends nothing; Continue signs in', TAG, async ({ page, context }, testInfo) => {
+  test('d. sign-in from the menu asks when the password is sent; Not now keeps the dialog and sends nothing; Turn on internet signs in', TAG, async ({ page, context }, testInfo) => {
     const fake = await fakeFor(context);
     const recorder = recordExternal(page);
     await page.goto('/');
@@ -1024,8 +1077,7 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
     await expect(page.getByTestId('share-signin')).toBeVisible();
     await expect(askDialog(page)).toHaveCount(0);
     await signIn(page);
-    await expect(askDialog(page)).toHaveAttribute('data-kind', 'signIn');
-    await expect(page.getByTestId('net-confirm')).toHaveText('Sign in');
+    await expectAsk(page, 'signIn', 'send your sign-in details to Door43.');
     await shot(page, testInfo, 'net-ask-signIn');
     await page.getByTestId('net-cancel').click();
     await expect(askDialog(page)).toHaveCount(0);
@@ -1036,108 +1088,119 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
     await page.getByTestId('signin-submit').click();
     await page.getByTestId('net-confirm').click();
     await expect(trigger(page)).toHaveAttribute('data-state', 'in');
+    await expectInternet(page, true);
     expect(fake.calls.length).toBeGreaterThan(0);
-    expect(storedAsk()).toBeUndefined();
+    expect(storedInternetKeys()).toEqual([]);
     await recorder.save(testInfo, 'd-signin-requests');
   });
 
-  // ---- e · zero external requests, before and after a permitted task ----
-  for (const ask of [true, false]) {
-    test(`e. startup, idle, the menu and local work make zero external requests; the same after a permitted task has turned the gate on (asking ${ask ? 'on' : 'off'})`, TAG, async ({ page }, testInfo) => {
-      test.setTimeout(180_000);
-      await askInternet(ask);
-      const recorder = recordExternal(page);
-      // A saved sign-in token must not change this, so the page holds a keychain with one. The
-      // fake Door43 knows no token, so the Share step below never reaches the real server.
-      const fake = await fakeFor(page.context());
-      await fakeKeychain(page.context(), 'kept-token');
-      const localSession = async (label: string, first: boolean) => {
-        if (first) await page.goto('/');
-        await expect(trigger(page)).toBeVisible();
-        await page.waitForTimeout(5_000); // idle
-        await openMenu(page);
-        await closeMenu(page);
-        await openTitus(page);
-        await openCheckTool(page);
-        await openMenu(page);
-        await shot(page, testInfo, `menu-in-project-${label}`);
-        await closeMenu(page);
-        await page.waitForTimeout(1_000);
-        await backHome(page);
-      };
+  // ---- e · zero external requests, before and after Turn on internet ----
+  test('e. startup, idle, the menu and local work make zero external requests, before Turn on internet (a request is refused) and after it (a request is allowed, none is made); off in the menu refuses again', TAG, async ({ page }, testInfo) => {
+    test.setTimeout(180_000);
+    const recorder = recordExternal(page);
+    // A saved sign-in token must not change this, so the page holds a keychain with one. The
+    // fake Door43 knows no token, so the Share step below never reaches the real server.
+    const fake = await fakeFor(page.context());
+    await fakeKeychain(page.context(), 'kept-token');
+    const localSession = async (label: string, first: boolean) => {
+      if (first) await page.goto('/');
+      await expect(trigger(page)).toBeVisible();
+      await page.waitForTimeout(5_000); // idle
+      await openMenu(page);
+      await closeMenu(page);
+      await openTitus(page);
+      await openCheckTool(page);
+      await openMenu(page);
+      await shot(page, testInfo, `menu-in-project-${label}`);
+      await closeMenu(page);
+      await page.waitForTimeout(1_000);
+      await backHome(page);
+    };
 
-      await localSession('before-task', true);
-      expect(recorder.external(), 'before any permitted task').toEqual([]);
-      expect(fake.calls, 'a saved token sent nothing to Door43 before a task').toEqual([]);
-      expect(await refusedOutsideATask(page)).toEqual([NO_CONSENT, NO_CONSENT]);
-      expect(recorder.external()).toEqual([]);
-      await recorder.save(testInfo, `e-before-task-ask-${ask ? 'on' : 'off'}`);
+    await localSession('before', true);
+    expect(recorder.external(), 'before Turn on internet').toEqual([]);
+    expect(fake.calls, 'a saved token sent nothing to Door43').toEqual([]);
+    await expectInternet(page, false);
+    expect(await requestOutcomes(page), 'off: refused before it is sent').toEqual(REFUSED);
+    expect(recorder.external()).toEqual([]);
+    await recorder.save(testInfo, 'e-before-turn-on');
 
-      // One permitted task: Share goes as far as the sign-in step (nothing is held, so nothing is sent),
-      // and turns the gate on. Closing the step ends the task.
-      expect(await gateOn()).toBe(false);
-      await page.getByTestId(`share-${SEEDED_ID}`).click();
-      if (ask) {
-        await expect(askDialog(page)).toHaveAttribute('data-kind', 'share');
-        await page.getByTestId('net-confirm').click();
-      } else {
-        await expect(askDialog(page)).toHaveCount(0);
-      }
-      await expect(page.getByTestId('share-signin')).toBeVisible();
-      await page.getByTestId('signin-cancel').click();
-      await expect(page.getByTestId('share-signin')).toHaveCount(0);
-      expect(await gateOn(), 'the gate stays on for the session').toBe(true);
+    // Turn on internet, at a Share that goes as far as the sign-in step (nothing is held, so
+    // nothing is sent); the gate turns on. Closing the step changes nothing: the internet stays on.
+    expect(await gateOn()).toBe(false);
+    await page.getByTestId(`share-${SEEDED_ID}`).click();
+    await expect(askDialog(page)).toHaveAttribute('data-kind', 'share');
+    await page.getByTestId('net-confirm').click();
+    await expect(page.getByTestId('share-signin')).toBeVisible();
+    await page.getByTestId('signin-cancel').click();
+    await expect(page.getByTestId('share-signin')).toHaveCount(0);
+    expect(await gateOn(), 'the gate stays on for the session').toBe(true);
+    await expectInternet(page, true);
 
-      const callsAtTaskEnd = fake.calls.length;
-      recorder.reset();
-      await localSession('after-task', false);
-      expect(fake.calls.length, 'no Door43 call after the task closed').toBe(callsAtTaskEnd);
-      expect(recorder.external(), 'after a permitted task, with the gate on').toEqual([]);
-      expect(await refusedOutsideATask(page), 'consent ended with the task').toEqual([NO_CONSENT, NO_CONSENT]);
-      expect(recorder.external()).toEqual([]);
-      await recorder.save(testInfo, `e-after-task-ask-${ask ? 'on' : 'off'}`);
-    });
-  }
+    const callsAtTaskEnd = fake.calls.length;
+    recorder.reset();
+    await localSession('after', false);
+    expect(fake.calls.length, 'no Door43 call after the step closed').toBe(callsAtTaskEnd);
+    expect(recorder.external(), 'after Turn on internet, with the gate on: local work still sends nothing').toEqual([]);
+    await recorder.save(testInfo, 'e-after-turn-on');
+    // On: a request made outside any step is allowed (the probe itself is the only external request).
+    expect(await requestOutcomes(page), 'on: allowed').toEqual(['sent', 'sent']);
+    recorder.reset();
+    // Off in the menu: refused again, at once.
+    await turnOffInMenu(page);
+    expect(await requestOutcomes(page), 'off again: refused').toEqual(REFUSED);
+    expect(recorder.external()).toEqual([]);
+    await recorder.save(testInfo, 'e-after-turn-off');
+  });
 
   // ---- f · a gate that cannot be established ----
-  for (const ask of [true, false]) {
-    test(`f. a gate that does not turn on stops the task: net-failed, nothing runs, no external request (asking ${ask ? 'on' : 'off'})`, TAG, async ({ page, context }, testInfo) => {
-      const fake = await fakeFor(context);
-      await askInternet(ask);
-      // The server answers the enable but the gate stays off.
-      await page.route('**/api/net/enable', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '{"is_good":true}' }));
-      await page.route('**/api/net/status', (route) =>
-        route.request().method() === 'GET' ? route.fulfill({ status: 200, contentType: 'application/json', body: '{"is_enabled":false}' }) : route.fallback());
-      const recorder = recordExternal(page);
-      await page.goto('/');
-      await page.getByTestId(`share-${SEEDED_ID}`).click();
-      if (ask) {
-        await expect(askDialog(page)).toHaveAttribute('data-kind', 'share');
-        await page.getByTestId('net-confirm').click();
-      }
-      await expect(page.getByTestId('net-failed')).toBeVisible();
-      await expect(page.getByTestId('net-failed')).toContainText('did not start and nothing was sent');
-      await shot(page, testInfo, `net-failed-ask-${ask ? 'on' : 'off'}`);
-      await expect(page.getByTestId('share-signin')).toHaveCount(0);
-      await expect(page.getByTestId('share-dialog')).toHaveCount(0);
-      await page.waitForTimeout(500);
-      expect(fake.calls).toEqual([]);
-      expect(recorder.external()).toEqual([]);
-      expect(await gateOn(), 'the real gate was never turned on').toBe(false);
-      await page.getByTestId('net-failed-close').click();
-      await expect(page.getByTestId('net-failed')).toHaveCount(0);
-      // The profile link has no gate step (the browser opens it): it is not blocked by a gate failure.
-      await recorder.save(testInfo, `f-requests-ask-${ask ? 'on' : 'off'}`);
-    });
-  }
-
-  test('f. a gate that cannot be read stops the task the same way', TAG, async ({ page, context }) => {
+  test('f. a gate that does not turn on stops the step: net-failed, nothing runs, no external request; the internet stays on, and the next press reads the gate again', TAG, async ({ page, context }, testInfo) => {
     const fake = await fakeFor(context);
-    await askInternet(false);
+    // The server answers the enable but the gate stays off.
+    let enables = 0;
+    await page.route('**/api/net/enable', (route) => {
+      enables += 1;
+      return route.fulfill({ status: 200, contentType: 'application/json', body: '{"is_good":true}' });
+    });
+    await page.route('**/api/net/status', (route) =>
+      route.request().method() === 'GET' ? route.fulfill({ status: 200, contentType: 'application/json', body: '{"is_enabled":false}' }) : route.fallback());
+    const recorder = recordExternal(page);
+    await page.goto('/');
+    await page.getByTestId(`share-${SEEDED_ID}`).click();
+    await expect(askDialog(page)).toHaveAttribute('data-kind', 'share');
+    await page.getByTestId('net-confirm').click();
+    await expect(page.getByTestId('net-failed')).toBeVisible();
+    await expect(page.getByTestId('net-failed')).toContainText('did not start and nothing was sent');
+    await shot(page, testInfo, 'net-failed');
+    await expect(page.getByTestId('share-signin')).toHaveCount(0);
+    await expect(page.getByTestId('share-dialog')).toHaveCount(0);
+    await page.waitForTimeout(500);
+    expect(fake.calls).toEqual([]);
+    expect(recorder.external()).toEqual([]);
+    expect(await gateOn(), 'the real gate was never turned on').toBe(false);
+    expect(enables).toBe(1);
+    await page.getByTestId('net-failed-close').click();
+    await expect(page.getByTestId('net-failed')).toHaveCount(0);
+    // The internet is on (the user turned it on): the next press asks nothing, reads the gate
+    // again, and stops the same way.
+    await expectInternet(page, true);
+    await page.getByTestId(`share-${SEEDED_ID}`).click();
+    await expect(askDialog(page)).toHaveCount(0);
+    await expect(page.getByTestId('net-failed')).toBeVisible();
+    expect(enables).toBe(2);
+    await expect(page.getByTestId('share-signin')).toHaveCount(0);
+    expect(fake.calls).toEqual([]);
+    expect(recorder.external()).toEqual([]);
+    await recorder.save(testInfo, 'f-requests');
+  });
+
+  test('f. a gate that cannot be read stops the step the same way', TAG, async ({ page, context }) => {
+    const fake = await fakeFor(context);
     await page.route('**/api/net/status', (route) =>
       route.request().method() === 'GET' ? route.fulfill({ status: 500, body: 'no status' }) : route.fallback());
     const recorder = recordExternal(page);
     await page.goto('/');
+    await turnOnInternet(page);
     await page.getByTestId(`share-${SEEDED_ID}`).click();
     await expect(page.getByTestId('net-failed')).toBeVisible();
     await expect(page.getByTestId('share-signin')).toHaveCount(0);
@@ -1223,11 +1286,26 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
       await expect(panel(page)).toHaveCount(0);
     };
     await page.goto('/');
-    await walk(['account-sign-in', 'account-ask', 'account-about']);
+    await walk(['account-sign-in', 'account-internet', 'account-about']);
+    // The switch itself works from the keyboard: Enter on the row turns the internet on, the
+    // menu stays open, and Enter again turns it off.
+    await trigger(page).focus();
+    await page.keyboard.press('Enter');
+    await expect.poll(focused).toBe('account-sign-in');
+    await page.keyboard.press('ArrowDown');
+    await expect.poll(focused).toBe('account-internet');
+    await page.keyboard.press('Enter');
+    await expect(switchRow(page)).toHaveAttribute('aria-checked', 'true');
+    await expect(panel(page)).toBeVisible();
+    await expect(trigger(page)).toHaveAttribute('data-internet', 'on');
+    await page.keyboard.press('Enter');
+    await expect(switchRow(page)).toHaveAttribute('aria-checked', 'false');
+    await expect(trigger(page)).toHaveAttribute('data-internet', 'off');
+    await page.keyboard.press('Escape');
     await fakeKeychain(context, 'kept-token');
     await page.reload();
     await expect(trigger(page)).toHaveAttribute('data-state', 'saved');
-    await walk(['account-check', 'account-ask', 'account-about', 'account-sign-out']);
+    await walk(['account-check', 'account-internet', 'account-about', 'account-sign-out']);
     // An outside click closes it as well.
     await openMenu(page);
     await page.mouse.click(5, 400);
@@ -1319,13 +1397,3 @@ test.describe('D88 — ask before using the internet, and the account menu', () 
     await recorder.save(testInfo, 'i-about-requests');
   });
 });
-
-/** After a reload the page holds no token: sign in again through the menu (asking is on, so Continue). */
-async function signInAgain(page: Page): Promise<void> {
-  await openMenu(page);
-  await page.getByTestId('account-sign-in').click();
-  await signIn(page);
-  await expect(askDialog(page)).toHaveAttribute('data-kind', 'signIn');
-  await page.getByTestId('net-confirm').click();
-  await expect(trigger(page)).toHaveAttribute('data-state', 'in');
-}

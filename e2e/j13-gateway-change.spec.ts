@@ -34,7 +34,7 @@ import {
   verseTextSpan,
   TC4_ROOT,
 } from './helpers/rig';
-import { askInternet } from './helpers/door43Share';
+import { gateOff, turnOnInternet } from './helpers/door43Share';
 import { createObsProject, RIG_API } from './helpers/story';
 
 // The configured org, NOT the one the export records: es-419's sb-zip exports
@@ -977,10 +977,7 @@ test.describe('J13 — one name for a gateway language on every screen (#579)', 
       test.skip(!fs.existsSync(ES_TA_ZIP), 'es-419_ta v4 is not cached under dev-env/resources-cache — see dev-env/README.md, "Journeys from a clean clone"');
       test.setTimeout(120_000);
       writeProjectPins(SEEDED_PROJECT, EN());
-      // The download at the end goes online without the "Use the internet?" step. The app
-      // reads this preference when it loads, so it is set before the first page load.
       await fetch(`${RIG_API}/net/enable`, { method: 'POST' });
-      await askInternet(false);
       try {
         const seen: Record<string, unknown> = {};
         const dialogue = async () => ({
@@ -1009,6 +1006,9 @@ test.describe('J13 — one name for a gateway language on every screen (#579)', 
         await expect(page.getByTestId('gateway-confirm')).toHaveText('Change to English');
         seen.toEnglish = await dialogue();
         await confirmChange(page);
+        // D95: the download at the end needs the internet. It is turned on here, in the
+        // account menu of the open project, before Project Settings covers the top bar.
+        await turnOnInternet(page);
         await openSettingsFromHome(page);
         await expect(page.getByTestId('settings-gateway-current')).toHaveText('This project checks in English · unfoldingWord.');
         seen.sentenceEnglish = await page.getByTestId('settings-gateway-current').textContent();
@@ -1035,7 +1035,7 @@ test.describe('J13 — one name for a gateway language on every screen (#579)', 
         fs.writeFileSync(artifactPath, `${JSON.stringify(seen, null, 2)}\n`);
         await testInfo.attach('j13-gateway-names.json', { path: artifactPath, contentType: 'application/json' });
       } finally {
-        await askInternet(true);
+        await gateOff();
       }
     },
   );

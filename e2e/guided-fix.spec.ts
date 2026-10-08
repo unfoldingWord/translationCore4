@@ -15,7 +15,6 @@
 import { test, expect } from './helpers/test';
 import type { Page, BrowserContext } from '@playwright/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
-import { askInternet } from './helpers/door43Share';
 import { recordExternal } from './helpers/externalRequests';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -78,9 +77,8 @@ async function mockDcs(context: BrowserContext, repo: string, tag: string) {
 
 const NEEDED: Array<[string, string]> = [['en_tn', 'v88'], ['en_tw', 'v90'], ['en_tw', SEEDED_TAG]];
 
-// D88: "Ask before using the internet" as the app leaves it, so a page load keeps it:
-// `setNet(true)` is the preference off (the task goes on without a dialog), `setNet(false)` is on.
-const setNet = (online: boolean) => askInternet(!online);
+// D95: the internet is off at every page load, and nothing is stored. Download is the first
+// step of its page load that needs the internet, so it asks to turn the internet on.
 
 async function openCheck(page: Page) {
   await page.goto('/');
@@ -106,7 +104,6 @@ test.describe('#9 — the guided fix screen for a pinned resource this computer 
     'offline, the screen refuses to download and re-pins to the installed version, with the D36 counts confirmed first',
     { tag: ['@inc6', '@J4'] },
     async ({ page }, testInfo) => {
-      await setNet(false);
       const requests = recordExternal(page);
       const pins = PINS();
       const missing = missingPin('en_tw', 'v90');
@@ -121,13 +118,16 @@ test.describe('#9 — the guided fix screen for a pinned resource this computer 
       const screen = page.getByTestId('guided-fix');
       await expect(screen).toBeVisible();
       await expect(screen.getByTestId('fix-pin')).toContainText(missing.sha);
-      // 1 · Download asks first (ask on); Cancel sends nothing (D88).
+      // 1 · Download asks to turn the internet on (D95); Not now sends nothing.
       await screen.getByTestId('fix-fetch-go').click();
       await expect(page.getByTestId('net-ask')).toHaveAttribute('data-kind', 'fix');
-      await expect(page.getByTestId('net-confirm')).toHaveText('Download');
+      await expect(page.getByTestId('net-ask-reason')).toContainText('download from Door43 the source text this check needs');
+      await expect(page.getByTestId('net-confirm')).toHaveText('Turn on internet');
+      await expect(page.getByTestId('net-cancel')).toHaveText('Not now');
       await page.getByTestId('net-cancel').click();
       await expect(page.getByTestId('net-ask')).toHaveCount(0);
-      expect(requests.external(), 'Cancel sends nothing').toEqual([]);
+      await expect(screen).toBeVisible();
+      expect(requests.external(), 'Not now sends nothing').toEqual([]);
       await requests.save(testInfo, 'guided-fix-cancel-requests');
       // 2 · re-pin lists the installed release of the same repo.
       await expect(screen.getByTestId('fix-repin')).toHaveAttribute('data-candidates', '1');
@@ -161,7 +161,6 @@ test.describe('#9 — the guided fix screen for a pinned resource this computer 
     { tag: ['@inc6', '@J4'] },
     async ({ page, context }) => {
       test.setTimeout(180_000);
-      await setNet(true);
       const missing = missingPin('en_tn', 'v88');
       writeProjectPins(SEEDED_PROJECT, { ...PINS(), tn: missing });
       await mockDcs(context, 'en_tn', 'v88');
@@ -173,7 +172,10 @@ test.describe('#9 — the guided fix screen for a pinned resource this computer 
       await card.getByTestId('fix-translationNotes').click();
       const screen = page.getByTestId('guided-fix');
       await expect(screen.getByTestId('fix-fetch-go')).toBeEnabled();
+      // Download asks to turn the internet on (D95); Turn on internet continues the download.
       await screen.getByTestId('fix-fetch-go').click();
+      await expect(page.getByTestId('net-ask')).toHaveAttribute('data-kind', 'fix');
+      await page.getByTestId('net-confirm').click();
       await expect(screen).toHaveCount(0, { timeout: 150_000 });
 
       await expect(card).toHaveAttribute('data-state', 'ready');
@@ -193,7 +195,6 @@ test.describe('#9 — the guided fix screen for a pinned resource this computer 
     { tag: ['@inc6', '@J4'] },
     async ({ page }) => {
       test.setTimeout(180_000);
-      await setNet(false);
       const missing = missingPin('en_tw', 'v90');
       writeProjectPins(SEEDED_PROJECT, { ...PINS(), tw: missing });
       expect(fs.existsSync(installDir('en_tw'))).toBe(false);
@@ -230,6 +231,5 @@ test.afterAll(async () => {
     await verifyAllJournaledProjects();
   } finally {
     resetSeededChecking();
-    await setNet(false);
   }
 });

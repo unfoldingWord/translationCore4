@@ -57,7 +57,7 @@ import { runExport } from './data/export/kernel';
 import { runImport } from './data/import/shell';
 import { OpsLog, serialSettingsWriter } from './data/journal/opsLog';
 import { Door43Api } from './data/share/door43Api';
-import { Consent, ensureGate, startGate, storedAsk, withAsk } from './data/internet';
+import { InternetSwitch, ensureGate, startGate } from './data/internet';
 import { currentSession, hasKeptToken, resumeKeptSession, signIn as door43SignIn, signOut as door43SignOut } from './data/share/session';
 import { desktopKeychain } from './data/share/keychain';
 import { share as door43Share, repositoryOf } from './data/share/shareOperation';
@@ -106,59 +106,51 @@ const settingsWriter = serialSettingsWriter(
 /** #374: the ops log — one record per store operation, in the same document. */
 export const opsLog = new OpsLog({ read: () => api.getClientSettings(STORAGE_ID), update: settingsWriter });
 /** #362/#203: the one Door43 adapter; its server is the build's `dcsServer`. */
-// D88 (#514): the permitted internet tasks that are open. main.jsx guards
-// every client request with it (guardFetch), and the Door43 adapter refuses
-// outside one before it builds a request.
-export const consent = new Consent();
-export const door43 = new Door43Api({ allowed: () => consent.active() });
-/** Whether a permitted task is open, as the share and sign-in code asks for it. */
-const internetAllowed = async () => consent.active();
-/** D88: the answer to the open "Use the internet?" dialog — true for Continue. */
+// D95 (#559): the one on/off internet state of the app session. main.jsx
+// guards every client request with it (guardFetch), and the Door43 adapter
+// refuses while it is off before it builds a request. Each launch starts off.
+export const internet = new InternetSwitch();
+export const door43 = new Door43Api({ allowed: () => internet.on });
+/** Whether the internet is on, as the share and sign-in code asks for it. */
+const internetAllowed = async () => internet.on;
+/** D95: the answer to the open "Turn on the internet?" dialog — true for Turn on. */
 let pendingAsk = null;
-/** D88: a permitted task that continues in a dialog (Share, Source texts)
- * stays open until that dialog closes — { kind, modals, release }. */
-let dialogTasks = [];
+/** The gate check in progress, shared by every step that starts meanwhile, so
+ * two quick presses read the gate once. */
+let gateCheck = null;
 /** D88: the argument an action passes itself when internetTask runs it, so
- * that only its own permitted call skips the dialog — never a click, and
- * never another task of the same kind. */
-const PERMITTED = Symbol('inside its permitted task');
-/** The dialogs a Share or an Upload changes continues in, and Source texts. */
+ * that only its own call inside the task skips the question — never a click,
+ * and never another task of the same kind. */
+const PERMITTED = Symbol('inside its internet task');
+/** The dialogs a Share or an Upload changes continues in. */
 const SHARE_MODALS = ['signIn', 'share'];
 /** #530: one Share or one Upload changes is a FLOW, from the click on the Home
  * card to the close of its dialogs. Its sign-in step and its dialogs carry the
- * same flow (`si.flow`, `sh.flow`). The flow owns the consent of that task:
- * the "Use the internet?" answer is recorded on the flow, never on whichever
- * dialog is open. So a step that ends after its flow closed changes nothing,
- * and a dialog opened later is another flow, which asks for itself.
- * { kind: 'share' | 'upload', consented, closed, dialog, attempt, release, authorizing };
- * `authorizing`: the question and gate check that are in progress, which
- * every step that starts meanwhile shares, so a flow asks once and holds
- * one consent. `dialog`: a sign-in step or a dialog was opened for it. `attempt`: the
- * Upload changes click that is waiting for its answer or its sign-in check,
- * or null. An attempt belongs to the review it was submitted in: Change, or
- * any step that takes the place of that review, ends the attempt, and the
- * flow and its consent go on. */
+ * same flow (`si.flow`, `sh.flow`). A step that ends after its flow closed
+ * changes nothing (D95 keeps this: the user can cancel the dialog while a step
+ * waits for the gate or for Door43).
+ * { kind: 'share' | 'upload', closed, dialog, attempt };
+ * `dialog`: a sign-in step or a dialog was opened for it. `attempt`: the
+ * Upload changes click that is waiting for its sign-in check, or null. An
+ * attempt belongs to the review it was submitted in: Change, or any step that
+ * takes the place of that review, ends the attempt, and the flow goes on. */
 let openShareFlow = null;
 /** Start a flow. Only one is open: a new one closes the one before it. */
 const startShareFlow = (kind) => {
   closeShareFlow();
-  openShareFlow = { kind, consented: false, closed: false, dialog: false, attempt: null, release: null, authorizing: null };
+  openShareFlow = { kind, closed: false, dialog: false, attempt: null };
   return openShareFlow;
 };
-/** Close a flow (the open one, when none is named): its consent ends, and its
- * late steps do nothing. */
+/** Close a flow (the open one, when none is named): its late steps do nothing. */
 function closeShareFlow(flow = openShareFlow) {
   if (!flow || flow.closed) return;
   if (openShareFlow === flow) openShareFlow = null;
   flow.closed = true;
-  flow.release?.();
-  flow.release = null;
 }
 /** #530: the sign-in call that is in flight, or null. One is sent at a time: a
  * cancelled sign-in drops its own token when it ends, and must not end after a
  * newer sign-in and drop that one. */
 let signInFlight = null;
-const SOURCES_MODALS = ['sources'];
 
 // The mode a view is, for a checkpoint message (#183). Views not listed keep their id.
 const MODE_NAME = { read: 'Understand', draft: 'Translate', check: 'Check', publish: 'Community Checking' };
@@ -458,9 +450,9 @@ const initial = () => ({
   checkableError: null, // catch-to-absence sweep: an identity-read outage, stated — never "no language checkable"
   preflightError: null, // catch-to-absence sweep: an identity-read outage on the Check preflight, stated
   gatewayError: null, // a failed gateway-change commit, shown in the dialogue
-  askInternet: true, // D88: "Ask before using the internet" — on until the stored preference says off
-  netAsk: null, // D88: { kind } of the open "Use the internet?" dialog, or null
-  netFailed: false, // D88: a permitted task stopped because the net gate did not turn on
+  internetOn: false, // D95: the app session's internet state, as the account button shows it; off at every launch
+  netAsk: null, // D95: { kind } of the open "Turn on the internet?" dialog, or null
+  netFailed: false, // D88: a step stopped because the net gate did not turn on
   accountError: null, // D88: an i18n key the account menu shows — a sign-out or a saved-sign-in check that failed
   projectPins: null, // the open project's resources.json (§5.3 v2 shape)
   projectPinsSeq: 0, // #412: bumped by a gateway change, so an older pins read never lands over it
@@ -3183,14 +3175,10 @@ export function AppProvider({ children }) {
     opsLog.recover(api)
       .catch((error) => console.error(`ops log: recovery failed: ${String(error?.message || error)}`))
       .finally(() => refreshProjects());
-    // D88: the net gate goes off at start; the first permitted task turns it
-    // on. The preference asks unless the settings say `askInternet: false`; a
-    // document that cannot be read keeps it on.
+    // D95: the internet is off at every launch, and nothing about it is
+    // stored. The net gate goes off at start; the first step after "Turn on
+    // internet" turns it on.
     void startGate(api);
-    api.getClientSettings(STORAGE_ID).then(
-      (settings) => dispatch({ type: 'set', patch: { askInternet: storedAsk(settings) } }),
-      () => {},
-    );
     // D86 point 8: a kept token is not resumed at start (no Door43 request);
     // the first action that needs Door43 resumes it (startShare). The keychain
     // read is local, and only says that a sign-in is kept (D86 point 7).
@@ -3251,7 +3239,7 @@ export function AppProvider({ children }) {
   // lastUsed, lastEdit and the ops records can never clobber each other and a
   // slow earlier write can never land after a later one. The ops log reports
   // its own failed writes (#374); these records are session-only on failure.
-  /** D88: close the "Use the internet?" dialog with its answer. */
+  /** D95: close the "Turn on the internet?" dialog with its answer. */
   function answerAsk(go) {
     const resolve = pendingAsk;
     pendingAsk = null;
@@ -3259,15 +3247,9 @@ export function AppProvider({ children }) {
     resolve?.(go);
   }
 
-  // D88: a permitted task that continued in a dialog closes with that dialog.
   // #530: a Share or Upload changes flow ends when another dialog takes its
   // place (closeModal ends it at once).
   useEffect(() => {
-    dialogTasks = dialogTasks.filter((task) => {
-      if (task.modals.includes(s.modal)) return true;
-      task.release();
-      return false;
-    });
     if (s.modal && !SHARE_MODALS.includes(s.modal)) closeShareFlow();
   }, [s.modal]);
 
@@ -3685,95 +3667,62 @@ export function AppProvider({ children }) {
         return checkable;
       },
 
-      /** D88: run one internet task the user asked for. With "Ask before using
-       * the internet" on, the "Use the internet?" dialog for `kind` opens first,
-       * and Cancel drops the task: nothing is sent. Then the net gate must read
-       * on (`gate: false` for a link the browser opens), or the task stops and
-       * says so. Only the same task — one whose dialog is still open — goes on
-       * without asking; another task of the same kind asks. `modals`: the
-       * dialogs the task continues in; it stays permitted until they close.
-       * Resolves to the task's result, or undefined when it did not run.
-       * A Share or an Upload changes is not such a task: its consent belongs
-       * to its flow (`flowStep`, #530). */
-      internetTask: async (kind, run, { modals = null, gate = true } = {}) => {
-        const continuing = dialogTasks.some((task) => task.kind === kind);
-        if (!continuing && !(await a.allowInternet(kind, gate))) return undefined;
-        return a.permitted(kind, run, continuing ? null : modals);
+      /** D95: run one step the user asked for that needs the internet. While
+       * the internet is off, the "Turn on the internet?" dialog for `kind`
+       * opens first, once for this press; Not now drops the step: nothing is
+       * sent. Then the net gate must read on (`gate: false` for a link the
+       * browser opens), or the step stops and says so. Resolves to the step's
+       * result, or undefined when it did not run. */
+      internetTask: async (kind, run, { gate = true } = {}) => {
+        if (!(await a.allowInternet(kind, gate))) return undefined;
+        return run();
       },
-      /** The question of one internet task, and the net gate. True when the
-       * task may run: the user said Continue (or does not want to be asked),
-       * and the gate reads on. Cancel, or a question that is open already,
-       * is false: nothing is sent. */
+      /** The question of one step, and the net gate. True when the step may
+       * run: the internet is on (the user turned it on now, or before), and the
+       * gate reads on. Not now, or a question that is open already, is false:
+       * nothing is sent. */
       allowInternet: async (kind, gate = true) => {
-        if (stateRef.current.askInternet) {
+        if (!internet.on) {
           if (pendingAsk) return false;
           const go = await new Promise((resolve) => {
             pendingAsk = resolve;
             dispatch({ type: 'set', patch: { netAsk: { kind }, netFailed: false } });
           });
           if (!go) return false;
+          a.setInternet(true);
         }
-        if (gate && !(await ensureGate(api))) {
+        if (!gate) return true;
+        gateCheck ??= ensureGate(api).finally(() => {
+          gateCheck = null;
+        });
+        if (!(await gateCheck)) {
           dispatch({ type: 'set', patch: { netFailed: true } });
           return false;
         }
         return true;
       },
-      /** A step of a permitted task: requests may leave while it runs — even
-       * after its dialog closes — and, with `modals`, while one of those
-       * dialogs stays open. */
-      permitted: async (kind, run, modals = null) => {
-        const release = consent.hold();
-        try {
-          return await run();
-        } finally {
-          release();
-          if (modals?.includes(stateRef.current.modal)) dialogTasks.push({ kind, modals, release: consent.hold() });
-        }
-      },
       /** #530: one step of a Share or Upload changes flow that uses the
-       * internet — the one place such a step starts. A closed flow runs
-       * nothing. A flow asks once (D88 point 2): the answer is recorded on the
-       * flow, and stays permitted until the flow closes. A step that is still
-       * running when its flow closes may finish its request, and must check
-       * `flow.closed` before it changes anything. Resolves to the step's
+       * internet. A closed flow runs nothing: the user can cancel its dialog
+       * while the step waits for the question or the gate. A step that is
+       * still running when its flow closes may finish its request, and must
+       * check `flow.closed` before it changes anything. Resolves to the step's
        * result, or undefined when it did not run. */
       flowStep: async (flow, run) => {
         if (flow.closed) return undefined;
-        if (!flow.consented && !(await a.authorizeFlow(flow))) return undefined;
-        if (flow.closed) return undefined;
-        return a.permitted(flow.kind, run);
+        return a.internetTask(flow.kind, () => (flow.closed ? undefined : run()));
       },
-      /** The consent of a flow: one question and one gate check, shared by
-       * every step that starts while they are in progress, and one hold for
-       * the flow. True when the flow is consented and still open. */
-      authorizeFlow: (flow) => {
-        if (!flow.authorizing) {
-          flow.authorizing = a.allowInternet(flow.kind).then((ok) => {
-            if (ok && !flow.closed && !flow.consented) {
-              flow.consented = true;
-              flow.release = consent.hold();
-            }
-            return flow.consented && !flow.closed;
-          }).finally(() => {
-            flow.authorizing = null;
-          });
-        }
-        return flow.authorizing;
-      },
-      /** The answer to the "Use the internet?" dialog. "Don't ask again" is
-       * stored only with Continue. */
-      confirmInternet: (dontAsk = false) => {
-        if (dontAsk) a.setAskInternet(false);
-        answerAsk(true);
-      },
+      /** "Turn on internet" in the dialog: on for the rest of the session, and
+       * the step that asked goes on. */
+      turnOnInternet: () => answerAsk(true),
+      /** "Not now": nothing is sent, and the user stays where they were. */
       cancelInternet: () => answerAsk(false),
       closeNetFailed: () => dispatch({ type: 'set', patch: { netFailed: false } }),
-      /** The account menu's switch. It starts no request and resumes no task;
-       * a store failure keeps the change for this session. */
-      setAskInternet: (ask) => {
-        dispatch({ type: 'set', patch: { askInternet: ask } });
-        settingsWriter((cs) => withAsk(cs, ask)).catch(() => {});
+      /** The one internet state, as the dialog and the account menu's switch
+       * set it. Nothing is stored. Off stops the next request at once; a
+       * request already sent finishes. It starts no request and resumes no step. */
+      setInternet: (on) => {
+        internet.on = on;
+        dispatch({ type: 'set', patch: { internetOn: on } });
       },
       /** A Door43 page the user chose, in the browser: an internet task with no
        * net gate, because the browser, not tC4, opens it. */
@@ -3806,9 +3755,9 @@ export function AppProvider({ children }) {
       /** Ask the platform for the org's repos and build the package rows for
        * ONE book. Coverage is the catalog's own `book_codes` — no TSV scan. */
       loadPackage: async (g, book) => {
-        // D88: reading the catalogue makes the platform call Door43, so it is
-        // the Source texts task; Cancel leaves the screen with its Continue.
-        const read = await a.internetTask('sources', () => a.readPackage(g, book), { modals: SOURCES_MODALS });
+        // D95: reading the catalogue makes the platform call Door43, so it is a
+        // step that needs the internet; Not now leaves the screen with its Continue.
+        const read = await a.internetTask('sources', () => a.readPackage(g, book));
         if (read === undefined) dispatch({ type: 'patchSrc', patch: { loading: false, rows: [], needsInternet: true } });
       },
       readPackage: async (g, book) => {
@@ -3968,8 +3917,8 @@ export function AppProvider({ children }) {
         const st = stateRef.current;
         const pins = st.projectPins;
         if (!pins?.languageSets) return null;
-        // D88: part of the Source texts task; it asks when no such task is open.
-        if (inside !== PERMITTED) return (await a.internetTask('sources', () => a.checkForUpdates(PERMITTED), { modals: SOURCES_MODALS })) ?? null;
+        // D95: a step that needs the internet; it asks while the internet is off.
+        if (inside !== PERMITTED) return (await a.internetTask('sources', () => a.checkForUpdates(PERMITTED))) ?? null;
         const offersFor = st.project?.repoPath ?? null;
         dispatch({ type: 'patchUpgrade', patch: { checking: true, error: null, offers: null, textOffers: null, offersFor } });
         try {
@@ -4013,9 +3962,9 @@ export function AppProvider({ children }) {
         const st = stateRef.current;
         const offer = st.upgrade.offers?.[rung];
         if (!offer?.upgrades.length) return null;
-        // D88: an offer can outlive the Source texts screen that found it, so
-        // its install is part of that task again, and asks when none is open.
-        if (inside !== PERMITTED) return (await a.internetTask('sources', () => a.upgradeSet(rung, PERMITTED), { modals: SOURCES_MODALS })) ?? null;
+        // D95: an offer can outlive the Source texts screen that found it; its
+        // install is a step that needs the internet, and asks while it is off.
+        if (inside !== PERMITTED) return (await a.internetTask('sources', () => a.upgradeSet(rung, PERMITTED))) ?? null;
         return a.applyOffer(offer);
       },
 
@@ -4076,9 +4025,9 @@ export function AppProvider({ children }) {
        * verified), then plan the pin move and — for an original-language
        * text — the alignments it marks invalid (D72), and open the
        * confirmation with that count. The pins move only in confirmUpgrade. */
-      /** D88: a text upgrade is part of the Source texts task; it asks when no such task is open. */
+      /** D95: a text upgrade is a step that needs the internet; it asks while the internet is off. */
       upgradeText: async (textRepoPath) =>
-        (await a.internetTask('sources', () => a.upgradeTextNow(textRepoPath), { modals: SOURCES_MODALS })) ?? null,
+        (await a.internetTask('sources', () => a.upgradeTextNow(textRepoPath))) ?? null,
       upgradeTextNow: async (textRepoPath) => {
         const store = storeRef.current;
         const st = stateRef.current;
@@ -5206,8 +5155,8 @@ export function AppProvider({ children }) {
         const src = stateRef.current.src;
         const chosen = src.rows.filter((r) => r.fixed || r.on);
         if (chosen.length === 0) return;
-        // D88: part of the Source texts task; it asks when no such task is open.
-        if (inside !== PERMITTED) return a.internetTask('sources', () => a.downloadPackage(PERMITTED), { modals: SOURCES_MODALS });
+        // D95: a step that needs the internet; it asks while the internet is off.
+        if (inside !== PERMITTED) return a.internetTask('sources', () => a.downloadPackage(PERMITTED));
         // M1 (adversarial round 13): the adoption finalizer runs AFTER long
         // downloads, and the modal stays closable meanwhile — bind the whole
         // operation to what was open when the user clicked Download.
@@ -5311,9 +5260,9 @@ export function AppProvider({ children }) {
       submitSignIn: async () => {
         const si = stateRef.current.si;
         if (!si || si.busy) return null;
-        // D88: in a Share or an Upload changes the sign-in is a step of that
-        // flow: the flow asks once, for whichever of its steps is sent first
-        // (#530). From the account menu it is a task of its own, and asks.
+        // #530: in a Share or an Upload changes the sign-in is a step of that
+        // flow, so a cancelled flow sends none. From the account menu it is a
+        // step of its own. Either asks while the internet is off (D95).
         if (si.flow) return (await a.flowStep(si.flow, () => a.signInNow())) ?? null;
         return (await a.internetTask('signIn', () => a.signInNow())) ?? null;
       },
@@ -5408,7 +5357,7 @@ export function AppProvider({ children }) {
         const error = { refused: 'account.savedRefused', unavailable: 'account.savedUnchecked' }[outcome];
         if (error) dispatch({ type: 'set', patch: { accountError: error } });
       }),
-      /** D86 point 8: resume a kept token, inside a permitted task only. A
+      /** D86 point 8: resume a kept token, while the internet is on only. A
        * refused one was forgotten, so the sign-in step asks the password again. */
       resumeKept: async () => {
         const keychain = desktopKeychain();
@@ -5422,16 +5371,17 @@ export function AppProvider({ children }) {
         if (kept !== undefined) dispatch({ type: 'set', patch: { door43Kept: kept } });
         return outcome;
       },
-      /** D88: the Home card's Share — one internet task, whatever it needs:
-       * the saved sign-in, a sign-in, the destinations and the reviewed upload.
+      /** The Home card's Share — the first step that needs the internet, so it
+       * asks while the internet is off (D95); then the saved sign-in, a
+       * sign-in, the destinations and the reviewed upload follow.
        * #530: Upload changes on a shared card opens its dialog and sends
-       * nothing; the task starts when the upload, or its sign-in, is sent. */
+       * nothing; its steps start when the upload, or its sign-in, is sent. */
       shareProject: (project) => {
         // The click starts the flow of this Share or Upload changes (#530).
         if (stateRef.current.remoteByProject[project.id]) return a.openUpload(project, startShareFlow('upload'));
         const flow = startShareFlow('share');
         // A flow that opened no dialog (Cancel on the question, or a failure
-        // before the first dialog) ends here, and its consent with it.
+        // before the first dialog) ends here.
         return a.flowStep(flow, () => a.startShare(project, flow)).finally(() => {
           if (!flow.dialog) closeShareFlow(flow);
         });
@@ -5455,9 +5405,9 @@ export function AppProvider({ children }) {
         });
       },
       /** #530: Upload changes, or Try again, in the upload dialog — a step of
-       * the upload's flow. The flow asks first (D88), unless its sign-in asked
-       * already. A saved sign-in resumes here; one that Door43 refuses goes to
-       * the sign-in step, and the dialog shows again after it. */
+       * the upload's flow. It asks while the internet is off (D95). A saved
+       * sign-in resumes here; one that Door43 refuses goes to the sign-in
+       * step, and the dialog shows again after it. */
       uploadChanges: async (project) => {
         const sh = stateRef.current.sh;
         if (stateRef.current.modal !== 'share' || sh?.project.id !== project.id || sh.busy) return null;
