@@ -106,7 +106,7 @@ test.describe('Ask for help: the Feedback dialog (#378)', () => {
     await dialog.getByLabel('Name (optional)').fill('Journey Tester');
     await dialog.getByLabel('Email (optional)').fill('journey@example.invalid');
     const shot = testInfo.outputPath('feedback-dialog.png');
-    await dialog.screenshot({ path: shot });
+    await page.screenshot({ path: shot, animations: 'disabled' });
     await testInfo.attach('feedback-dialog.png', { path: shot, contentType: 'image/png' });
     expect(requests.external()).toEqual([]);
 
