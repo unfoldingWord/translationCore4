@@ -87,9 +87,11 @@ async function scrolledArticle(page: Page, testInfo: TestInfo, name: string) {
   const shot = testInfo.outputPath(`${name}.png`);
   await page.screenshot({ path: shot, animations: 'disabled', clip: panel });
   await testInfo.attach(name, { path: shot, contentType: 'image/png' });
-  await page.getByTestId('helps-article-close').click();
-  await expect(article).toHaveCount(0);
-  return seen;
+  // A click at the recorded place: a click on the locator would scroll the button
+  // into view first, and so would pass with the button out of view.
+  await page.mouse.click((seen.close.left + seen.close.right) / 2, (seen.close.top + seen.close.bottom) / 2);
+  const closed = await expect(article).toHaveCount(0).then(() => true, () => false);
+  return { ...seen, closed };
 }
 
 // #329: a Home tile returns to where this client last worked; this journey opens
@@ -165,6 +167,7 @@ test.describe('J16 — read a passage with helps and record a user comment', () 
           expect(part.left).toBeGreaterThanOrEqual(seen.pane.left);
           expect(part.right).toBeLessThanOrEqual(seen.pane.right);
         }
+        expect(seen.closed).toBe(true);
       }
 
       const segmentsBefore = new Set(segmentFiles());
