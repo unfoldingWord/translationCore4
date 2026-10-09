@@ -37,11 +37,14 @@ const wordTitle = (held, pinAt, ok, w) => {
 
 /** What sits before a word: the held pin's ghost where it may land, then every
  * pin of a verse that begins here (the fixed first number as a plain
- * superscript; pins that share a word are one span). */
-function PinBefore({ i, first, pinsAt, held, hover, ok, drop, pick }) {
+ * superscript; pins that share a word are one span). A placed pin in hand
+ * stays drawn at its word, as a pin of the bank does (#598): the release of
+ * the click that picked it up lands on the pin, not on a word, and a second
+ * click on it puts it back. */
+function PinBefore({ i, first, pinsHere, held, hover, ok, drop, pick }) {
   return (
     <>
-      {hover === i && held != null && ok && (
+      {hover === i && held != null && ok && !pinsHere.includes(held) && (
         // The ghost shows where the held pin would land. It is positioned OUT of
         // the flow (the word's wrapper is the containing block): an in-flow ghost
         // shifted the text under the pointer on every hover, so a click aimed at
@@ -49,9 +52,9 @@ function PinBefore({ i, first, pinsAt, held, hover, ok, drop, pick }) {
         <VerseMarker n={held} state="dragging" onPickUp={() => drop(i)} onPointerUp={() => drop(i)} aria-hidden="true" tabIndex={-1}
           style={{ position: 'absolute', insetInlineEnd: '100%', top: '50%', transform: 'translateY(-60%)', zIndex: 1 }} />
       )}
-      {pinsAt.map((k) => (k === first
+      {pinsHere.map((k) => (k === first
         ? <sup key={k} title={t('draft.firstFixed', { n: first })} style={SUP}>{first}</sup>
-        : <VerseMarker key={k} n={k} state="idle" data-testid={`pin-${k}`} onPickUp={() => pick(k)} style={{ marginInlineEnd: '.12em' }} />))}
+        : <VerseMarker key={k} n={k} state={held === k ? 'dragging' : 'idle'} data-testid={`pin-${k}`} onPickUp={() => pick(k)} style={{ marginInlineEnd: '.12em' }} />))}
     </>
   );
 }
@@ -59,7 +62,8 @@ function PinBefore({ i, first, pinsAt, held, hover, ok, drop, pick }) {
 /** One word in Place mode: the pin (or ghost, or fixed number) before it, then
  * the word itself, a real control while a pin is in hand and may land here. */
 function PlaceWord({ w, i, keys, markers, held, hover, setHover, drop, pick, cancel, dir }) {
-  const pinsAt = keys.filter((k) => markers[k] === i && k !== held);
+  const pinsHere = keys.filter((k) => markers[k] === i);
+  const pinsAt = pinsHere.filter((k) => k !== held);
   const pinAt = pinsAt[pinsAt.length - 1];
   const ok = held != null && canDrop(markers, keys, held, i);
   const over = held != null ? () => setHover(i) : undefined;
@@ -69,7 +73,7 @@ function PlaceWord({ w, i, keys, markers, held, hover, setHover, drop, pick, can
   };
   return (
     <>
-      <PinBefore i={i} first={keys[0]} pinsAt={pinsAt} held={held} hover={hover} ok={ok} drop={drop} pick={pick} />
+      <PinBefore i={i} first={keys[0]} pinsHere={pinsHere} held={held} hover={hover} ok={ok} drop={drop} pick={pick} />
       <span
         dir={dir}
         role={ok ? 'button' : undefined}

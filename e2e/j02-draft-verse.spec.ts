@@ -212,6 +212,16 @@ test.describe('J2 — a translator drafts a verse', () => {
         await expect(page.getByTestId('place-words').getByRole('button', { name: 'Move where verse 10 begins' })).toBeVisible();
       });
 
+      await test.step('a placed number still moves by a mouse drag: 10 to "mostrando", then back to "no" (#598, D70.3)', async () => {
+        const words = page.getByTestId('place-words');
+        const pin = words.getByRole('button', { name: 'Move where verse 10 begins' });
+        await expect(words).toHaveText(/todo\s*10\s*no defraudando/);
+        await pin.dragTo(words.getByText('mostrando', { exact: true }));
+        await expect(words).toHaveText(/todo\s*no defraudando sino\s*10\s*mostrando/);
+        await pin.dragTo(words.getByText('no', { exact: true }));
+        await expect(words).toHaveText(/todo\s*10\s*no defraudando sino\s*mostrando/);
+      });
+
       await test.step('Save section writes through the scheduler', async () => {
         await page.getByRole('button', { name: 'Save section' }).click();
         await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 10_000 });
@@ -574,9 +584,9 @@ test.describe('J2 — a translator drafts a verse', () => {
   );
 
   test(
-    'break a verse span (Titus 2:11-12): drag verse 12 past text in Place mode, save — two verse lines again, verse 13 byte-identical (#63, D70)',
+    'break a verse span (Titus 2:11-12): move verse 12 past text with two clicks in Place mode, save — two verse lines again, verse 13 byte-identical (#63, #598, D70)',
     { tag: ['@inc5', '@J2'] },
-    async ({ page }) => {
+    async ({ page }, testInfo) => {
       // The 11–13 section: 11 and 12 become a span with 13 placed after it,
       // then the span is broken. Verse 13 is not touched by the break.
       const VERSE_11 = 'Porque la gracia de Dios se ha manifestado';
@@ -613,16 +623,30 @@ test.describe('J2 — a translator drafts a verse', () => {
       const pctWithSpan = (await titusRailPct(page).textContent()) ?? '';
       expect(pctWithSpan).toMatch(/^\d+%$/);
 
-      await test.step('reopen the section: the span opens as one line, its pins stacked; drag 12 onto its first word', async () => {
+      await test.step('reopen the section: the span opens as one line, its pins stacked; click 12, then click its first word', async () => {
         await page.getByRole('button', { name: 'Draft section 11–13' }).click();
         await expect(page.getByRole('textbox', { name: 'Section 11–13' })).toHaveValue(`11-12 ${VERSE_11} ${VERSE_12}\n13 ${VERSE_13}`);
         await page.getByRole('tab', { name: 'Place verse numbers' }).click();
-        // Verse 12's pin sits on the first word beside the fixed 11. A placed
-        // pin is picked up on pointerdown and dropped on pointerup (D70.3 is a
-        // drag), so the keyboard gesture picks it up here: Enter on the pin,
-        // then the word it begins at.
-        await page.getByTestId('place-words').getByRole('button', { name: 'Move where verse 12 begins' }).press('Enter');
-        await page.getByRole('button', { name: 'Begin verse 12 at enseñándonos' }).click();
+        // Verse 12's pin sits on the first word beside the fixed 11. Two mouse
+        // clicks move it, as for a number from the bank (#598): one on the
+        // pin, one on the word it begins at.
+        const pin = page.getByTestId('place-words').getByRole('button', { name: 'Move where verse 12 begins' });
+        const hint = page.getByTestId('pin-bank').getByText(/^Click the word where verse \d+ begins$/);
+        const target = page.getByRole('button', { name: 'Begin verse 12 at enseñándonos' });
+        await pin.click();
+        await expect(hint).toHaveText('Click the word where verse 12 begins');
+        await expect(target).toBeVisible();
+        // The run's artifact: the instruction while the number is in hand.
+        const hintPath = testInfo.outputPath('j02-placed-pin-in-hand.txt');
+        fs.writeFileSync(hintPath, `${(await hint.textContent()) ?? ''}\n`);
+        await testInfo.attach('j02-placed-pin-in-hand.txt', { path: hintPath, contentType: 'text/plain' });
+        // A second click on the number puts it back, as in the bank.
+        await pin.click();
+        await expect(hint).toHaveCount(0);
+        await expect(target).toHaveCount(0);
+        await pin.click();
+        await target.click();
+        await expect(hint).toHaveCount(0);
         await page.getByRole('button', { name: 'Save section' }).click();
         await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 10_000 });
       });
