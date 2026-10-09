@@ -100,7 +100,11 @@ export interface ArticleBlock {
 // `__` and `_` open and close only at a word edge, so `figs_metaphor` stays literal.
 const EDGE_BEFORE = '(?<![\\p{L}\\p{N}_])';
 const EDGE_AFTER = '(?![\\p{L}\\p{N}_])';
-const BOLD = new RegExp(`\\*\\*(?!\\s)(.+?)(?<!\\s)\\*\\*|${EDGE_BEFORE}__(?!\\s)(.+?)(?<!\\s)__${EDGE_AFTER}`, 'gu');
+const BOLD_ITALIC = /\*\*\*(?!\*)(.+?)(?<!\*)\*\*\*/gu;
+// The resources have marks with a space inside (`**nose **`, `__Israel __`) and `__`
+// after a story reference (`17:2__David…__`). These are bold too. A blank of
+// underscores to fill in (`________`) is not.
+const BOLD = new RegExp(`\\*\\*(?!\\*)(.+?)(?<!\\*)\\*\\*|(?<!\\p{L})__(?!_)(.+?)(?<!_)__`, 'gu');
 // The `*` of an `rc://*/…` link sits next to a `/`. It is a wildcard, not a mark.
 // Nor is an escaped `\*`.
 const ITALIC = new RegExp(`(?<![*\\\\])\\*(?![\\s*/])([^*]+?)(?<![\\s/])\\*(?!\\*)|${EDGE_BEFORE}_(?![\\s_])([^_]+?)(?<!\\s)_${EDGE_AFTER}`, 'gu');
@@ -145,7 +149,8 @@ export const renderArticleBlocks = (markdown: string): ArticleBlock[] => {
       // readable prose rather than text pocked with double spaces.
       .replace(/\s+/g, ' ')
       .trim();
-    const spans = splitSpans({ text: plain }, BOLD, { bold: true })
+    const spans = splitSpans({ text: plain }, BOLD_ITALIC, { bold: true, italic: true })
+      .flatMap((span) => splitSpans(span, BOLD, { bold: true }))
       .flatMap((span) => splitSpans(span, ITALIC, { italic: true }));
     return { text: spans.map((span) => span.text).join(''), spans };
   };

@@ -199,6 +199,8 @@ test.describe('J16 — read a passage with helps and record a user comment', () 
       expect(academyMarks.quoteBlocks).toBeGreaterThan(0);
       expect(academyMarks.nestedQuoteBlocks).toBeGreaterThan(0);
       expect(academyMarks.bold.length).toBeGreaterThan(0);
+      expect(academyMarks.quoteIndentPx).toBeGreaterThan(0);
+      expect(academyMarks.boldWeight).toBeGreaterThanOrEqual(600);
       expect(wordsMarks.title).toMatch(/faith/i);
       expect(wordsMarks.bold.length).toBeGreaterThan(0);
       for (const seen of [academyMarks, wordsMarks]) {

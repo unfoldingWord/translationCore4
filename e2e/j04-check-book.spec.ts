@@ -628,6 +628,8 @@ test.describe('J4 — a checker works a book', () => {
       expect(words.bold.length).toBeGreaterThan(0);
       expect(academy.quoteBlocks).toBeGreaterThan(0);
       expect(academy.bold.length).toBeGreaterThan(0);
+      expect(academy.quoteIndentPx).toBeGreaterThan(0);
+      expect(academy.boldWeight).toBeGreaterThanOrEqual(600);
       for (const seen of [words, academy]) {
         expect(seen.linesThatStartWithQuoteMark).toEqual([]);
         expect(seen.doubleUnderscores).toBe(0);
