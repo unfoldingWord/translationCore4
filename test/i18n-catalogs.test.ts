@@ -1,4 +1,4 @@
-// #522 — the four installed UI catalogs, and the per-key English fallback.
+// #522, #622 — the installed UI catalogs, and the per-key English fallback.
 //
 // Ways this can fail, written before the code (AGENTS.md "How to test" 3):
 //   1. a target catalog lacks a key that English has           → the app shows English for it, silently
@@ -18,7 +18,7 @@ const path = process.getBuiltinModule('node:path');
 const DIR = path.resolve(process.cwd(), 'src', 'i18n');
 const read = (file: string): Record<string, unknown> => JSON.parse(fs.readFileSync(path.join(DIR, file), 'utf8'));
 const en = read('en.json') as Record<string, string>;
-const TARGETS = ['es-419', 'fr', 'hi'] as const;
+const TARGETS = ['es-419', 'fr', 'hi', 'pt-BR', 'id', 'uk', 'ru', 'vi'] as const;
 const targets = Object.fromEntries(TARGETS.map((id) => [id, read(`${id}.json`)])) as Record<(typeof TARGETS)[number], Record<string, unknown>>;
 
 const placeholders = (s: string): string[] => [...s.matchAll(/\{[A-Za-z0-9_]+\}/g)].map((m) => m[0]).sort();
@@ -32,12 +32,22 @@ const SHARED = (value: string): boolean => {
     || /^(translationCore ?4?|Scripture Burrito( \(\.zip\))?|Open Bible Stories|unfoldingWord (Literal|Simplified) Text)$/.test(value.trim());
 };
 
-describe('#522 — the installed UI catalogs', () => {
+describe('#522, #622 — the installed UI catalogs', () => {
   afterEach(() => setLocale(DEFAULT_LOCALE));
 
-  it('the registry names exactly the four decided locales, each with a catalog', () => {
-    expect(LOCALES.map((l) => l.id)).toEqual(['en', 'es-419', 'fr', 'hi']);
-    expect(LOCALES.map((l) => l.label)).toEqual(['English', 'Español (Latinoamérica)', 'Français', 'हिन्दी']);
+  it('the registry names exactly the nine decided locales, each with a catalog', () => {
+    expect(LOCALES.map((l) => l.id)).toEqual(['en', 'es-419', 'fr', 'hi', 'pt-BR', 'id', 'uk', 'ru', 'vi']);
+    expect(LOCALES.map((l) => l.label)).toEqual([
+      'English',
+      'Español (Latinoamérica)',
+      'Français',
+      'हिन्दी',
+      'Português (Brasil)',
+      'Bahasa Indonesia',
+      'Українська',
+      'Русский',
+      'Tiếng Việt',
+    ]);
     for (const { id } of LOCALES) expect(isLocale(id), id).toBe(true);
     expect(Object.keys(_catalogs).sort()).toEqual([...LOCALES.map((l) => l.id)].sort());
   });
