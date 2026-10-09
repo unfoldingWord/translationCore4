@@ -286,7 +286,7 @@ export default function Home() {
         {s.lastEdit && projects && <ResumeCard edit={s.lastEdit} projects={projects} />}
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '0 0 14px' }}>
-          <Overline as="h2" style={{ letterSpacing: '.12em', margin: 0 }}>{t('home.projects')}</Overline>
+          <Overline as="h2" style={{ letterSpacing: 'var(--tracking-section)', margin: 0 }}>{t('home.projects')}</Overline>
           <div style={{ flex: 1 }} />
           <Button onClick={actions.openAddProject} data-testid="add-project">+ {t('home.addProject')}</Button>
         </div>

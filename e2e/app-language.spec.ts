@@ -20,12 +20,15 @@
 //   f  startup, the menu, the preview, Cancel and Apply make zero external requests;
 //      the keyboard opens the dialog, picks a language, applies, and the focus returns to
 //      the account trigger
+//   g  #612: in Hindi no uppercase label that shows Devanagari is letter-spaced (the Home
+//      section label, the Report a problem field labels); every other language keeps the
+//      tracking of English
 // The shared recorder (helpers/externalRequests.ts) writes each request log, and the
 // screenshots, into the test's output folder (and attaches them).
 import fs from 'node:fs';
 import path from 'node:path';
 import { test, expect } from './helpers/test';
-import type { Page, TestInfo } from '@playwright/test';
+import type { Locator, Page, TestInfo } from '@playwright/test';
 import { RIG_CLIENT_SETTINGS, SEEDED_PROJECT, readClientSettingsDoc, resetClientSettings, resetPlaces, resetSeededChecking } from './helpers/rig';
 import { dropOrigin, gateOff } from './helpers/door43Share';
 import { recordExternal } from './helpers/externalRequests';
@@ -427,5 +430,86 @@ test.describe('#522 — App language in the account menu', () => {
     await expectLanguage(page, LAST);
     expect(external.external()).toEqual([]);
     await external.save(testInfo);
+  });
+
+  // ---- g · #612: Hindi labels carry no uppercase letter spacing ----
+  // Devanagari has no capitals, and the letter spacing of the uppercase labels breaks its
+  // headline stroke. The control comes first: in English the same labels are tracked.
+  test('g. #612: in Hindi no uppercase label that shows Devanagari is letter-spaced; every other language keeps the tracking', TAG, async ({ page }, testInfo) => {
+    const px = async (loc: Locator): Promise<number> => {
+      const v = await loc.evaluate((el) => getComputedStyle(el).letterSpacing);
+      return v === 'normal' ? 0 : parseFloat(v);
+    };
+    const homeLabel = (id: string): Locator => page.getByRole('heading', { level: 2, name: BY_ID[id]['home.projects'], exact: true });
+    const report = page.getByTestId('feedback');
+    const FIELDS = ['feedback.message', 'feedback.name', 'feedback.email'];
+    const fieldLabels = async (id: string): Promise<Record<string, number>> => {
+      await openMenu(page);
+      await page.getByTestId('account-report').click();
+      await expect(report).toBeVisible();
+      await expect(panel(page)).toHaveCount(0);
+      const out: Record<string, number> = {};
+      for (const f of FIELDS) {
+        const label = report.locator('label').filter({ hasText: BY_ID[id][f] });
+        await expect(label).toHaveText(BY_ID[id][f]);
+        out[f] = await px(label);
+      }
+      return out;
+    };
+    // Each visible element that is styled uppercase and holds Devanagari text of its own.
+    const devanagariUppercase = (): Promise<Array<{ text: string; letterSpacing: string }>> => page.evaluate(() => {
+      const out: Array<{ text: string; letterSpacing: string }> = [];
+      for (const el of Array.from(document.querySelectorAll<HTMLElement>('body *'))) {
+        const own = Array.from(el.childNodes).filter((n) => n.nodeType === 3).map((n) => n.textContent ?? '').join('').trim();
+        if (!/[ऀ-ॿ]/.test(own) || !el.getClientRects().length) continue;
+        const cs = getComputedStyle(el);
+        if (cs.textTransform === 'uppercase') out.push({ text: own, letterSpacing: cs.letterSpacing });
+      }
+      return out;
+    });
+
+    await page.goto('/');
+    await expectLanguage(page, 'en');
+    // The control: English labels are tracked.
+    const measured: Record<string, unknown> = {};
+    const enHome = await px(homeLabel('en'));
+    expect(enHome).toBeGreaterThan(0);
+    const enFields = await fieldLabels('en');
+    for (const f of FIELDS) expect(enFields[f], `en ${f}`).toBeGreaterThan(0);
+    await report.getByTestId('feedback-cancel').click();
+    measured.en = { home: enHome, ...enFields };
+    // Every other language but Hindi keeps the English tracking.
+    await openDialog(page);
+    for (const { id } of LOCALES.filter((l) => l.id !== 'en' && l.id !== 'hi')) {
+      await choose(page, id);
+      await expectLanguage(page, id);
+      const home = await px(homeLabel(id));
+      expect(home, `${id}: Home section label`).toBe(enHome);
+      measured[id] = { home };
+    }
+    // Hindi, applied.
+    await choose(page, 'hi');
+    const written = page.waitForResponse((r) => isSettingsWrite(r.url(), r.request().method()));
+    await apply(page).click();
+    await written;
+    await expect(dialog(page)).toHaveCount(0);
+    await expectLanguage(page, 'hi');
+    const hiHome = await px(homeLabel('hi'));
+    const onHome = await devanagariUppercase();
+    const hiFields = await fieldLabels('hi');
+    const onReport = await devanagariUppercase();
+    measured.hi = { home: hiHome, ...hiFields, uppercase: onReport };
+    // The dialog fades in: the picture is of its final state.
+    const picture = testInfo.outputPath('feedback-hi.png');
+    await page.screenshot({ path: picture, animations: 'disabled' });
+    await testInfo.attach('feedback-hi', { path: picture, contentType: 'image/png' });
+    const file = testInfo.outputPath('label-tracking.json');
+    fs.writeFileSync(file, `${JSON.stringify(measured, null, 2)}\n`);
+    await testInfo.attach('label-tracking', { path: file, contentType: 'application/json' });
+    expect(hiHome, 'hi: Home section label').toBe(0);
+    for (const f of FIELDS) expect(hiFields[f], `hi ${f}`).toBe(0);
+    expect(onHome.length).toBeGreaterThan(0);
+    expect(onReport.length).toBeGreaterThan(onHome.length);
+    for (const el of [...onHome, ...onReport]) expect(['normal', '0px'], `hi: "${el.text}"`).toContain(el.letterSpacing);
   });
 });

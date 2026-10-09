@@ -212,7 +212,7 @@ function ToolCard({ tool, pre, label, progress, titleOf }) {
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, ...PICKER_TITLE }}>
         <span>{t(`check.tool.${tool}`)}</span>
         {!ready && (
-          <span style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-heavy)', letterSpacing: '.06em', textTransform: 'uppercase', color: tone.fg }}>
+          <span style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-heavy)', letterSpacing: 'var(--tracking-status)', textTransform: 'uppercase', color: tone.fg }}>
             {t(`check.state.${pre.state}`)}
           </span>
         )}

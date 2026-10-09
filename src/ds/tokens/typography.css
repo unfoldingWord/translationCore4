@@ -115,7 +115,19 @@
 
   /* Uppercase letterspacing. Not on the curve above — caps have no descenders to
      crowd and want air at any size. */
+  --tracking-status:   .06em; /* @kind font */
   --tracking-label:    .1em; /* @kind font */
+  --tracking-section:  .12em; /* @kind font */
   --tracking-overline: .13em; /* @kind font */
   --tracking-eyebrow:  .22em; /* @kind font */
+}
+
+/* Devanagari has no capitals, so uppercase does nothing there, and the letterspacing
+   breaks the headline stroke between letters (#612). */
+html:lang(hi) {
+  --tracking-status:   0;
+  --tracking-label:    0;
+  --tracking-section:  0;
+  --tracking-overline: 0;
+  --tracking-eyebrow:  0;
 }

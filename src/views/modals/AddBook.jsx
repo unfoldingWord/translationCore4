@@ -17,7 +17,7 @@ const NT = ALL_CODES.slice(39);
 function BookGrid({ ab, actions, codes, title }) {
   return (
     <div style={{ marginTop: 10 }}>
-      <Overline as="div" style={{ letterSpacing: '.1em', margin: '8px 0 6px' }}>{title}</Overline>
+      <Overline as="div" style={{ letterSpacing: 'var(--tracking-label)', margin: '8px 0 6px' }}>{title}</Overline>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(118px,1fr))', gap: 6 }}>
         {codes.map((code) => {
           const on = !!ab.books[code];
