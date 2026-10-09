@@ -418,7 +418,7 @@
   "draft.beginAt": "Empezar el versículo {n} en {w}",
   "draft.joinAt": "Unir el versículo {n} al versículo {m} en {w}",
   "draft.occupied": "El versículo {n} ya empieza aquí",
-  "draft.cannotPass": "El versículo {n} no puede sobrepasar a otro número de versículo",
+  "draft.cannotPass": "El versículo {n} no puede sobrepasar otro número de versículo",
   "draft.firstFixed": "El versículo {n} empieza la sección y está fijo",
   "draft.editingBelow": "Editando abajo",
   "draft.saveSection": "Guardar sección",

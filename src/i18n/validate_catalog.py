@@ -4,6 +4,7 @@
 Usage: python3 validate_catalog.py en.json es-419.json
 Uses only the Python standard library; does not modify either file.
 Checks structure and protected syntax, not translation quality.
+A manual check: CI runs test/i18n-catalogs.test.ts, which is the merge gate.
 """
 
 import json

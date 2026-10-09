@@ -1,4 +1,4 @@
-// #522 — the four installed UI catalogs, and the per-key English fallback.
+// #522, #622 — the installed UI catalogs, and the per-key English fallback.
 //
 // Ways this can fail, written before the code (AGENTS.md "How to test" 3):
 //   1. a target catalog lacks a key that English has           → the app shows English for it, silently
