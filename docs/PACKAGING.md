@@ -151,10 +151,11 @@ On macOS the window has no title bar. The app header is the top of the window.
   `data-title-bar="hidden"` on the page on macOS. With that mark, `src/ui.css`
   makes the header move the window, keeps each header control clickable, and
   keeps 88px at the left of the header for the traffic lights.
-- **Layers:** a dialog, drawer or panel (`Layer`, with `data-layer-placement`
-  on its scrim) does not move the window, also where it covers the header.
-  Chromium finds the drag area by position, not by the element on top, so the
-  scrim is no-drag. A full-height side panel (`start`, `end`) starts below the
+- **Layers:** a dialog, drawer, panel or popover (`Layer`, with
+  `data-layer-placement` on its scrim, or on the panel of an anchored popover)
+  does not move the window, also where it covers the header. Chromium finds
+  the drag area by position, not by the element on top, so these elements are
+  no-drag. A full-height side panel (`start`, `end`) starts below the
   header, so no control of the panel is under the traffic lights.
 - **Window controls:** the traffic lights (close, minimize, zoom) stay, at the
   vertical center of the 56px header. The Window menu does not change.

@@ -312,6 +312,7 @@ export function Layer({
     <div ref={panelRef} role={role} tabIndex={-1}
       aria-modal={role === 'dialog' || role === 'alertdialog' ? 'true' : undefined}
       aria-label={label} aria-labelledby={labelledBy}
+      data-layer-placement={anchored ? placement : undefined} /* tC4 local (#214): an anchored layer has no scrim */
       data-side={anchored && pos ? pos.side : undefined}
       onClick={e => e.stopPropagation()}
       style={{
