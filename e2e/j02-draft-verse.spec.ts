@@ -212,13 +212,26 @@ test.describe('J2 — a translator drafts a verse', () => {
         await expect(page.getByTestId('place-words').getByRole('button', { name: 'Move where verse 10 begins' })).toBeVisible();
       });
 
-      await test.step('a placed number still moves by a mouse drag: 10 to "mostrando", then back to "no" (#598, D70.3)', async () => {
+      await test.step('the placed 10 moves with two mouse clicks while the bank is empty, then back with a mouse drag (#598, D70.3)', async () => {
         const words = page.getByTestId('place-words');
         const pin = words.getByRole('button', { name: 'Move where verse 10 begins' });
+        const hint = page.getByTestId('pin-bank').getByText(/^Click the word where verse \d+ begins$/);
         await expect(words).toHaveText(/todo\s*10\s*no defraudando/);
-        await pin.dragTo(words.getByText('mostrando', { exact: true }));
+        // The instruction appears in the bank on the pick-up and can push the
+        // words down under the pointer: the release of this click must not
+        // place the number on the word that arrives there.
+        await pin.click();
+        await expect(hint).toHaveText('Click the word where verse 10 begins');
+        await expect(words).toHaveText(/todo\s*10\s*no defraudando/);
+        await page.getByRole('button', { name: 'Begin verse 10 at mostrando' }).click();
+        await expect(hint).toHaveCount(0);
         await expect(words).toHaveText(/todo\s*no defraudando sino\s*10\s*mostrando/);
         await pin.dragTo(words.getByText('no', { exact: true }));
+        await expect(words).toHaveText(/todo\s*10\s*no defraudando sino\s*mostrando/);
+        // A double click on the number does not move it: the second click
+        // lands where the first one pressed, on the number or on the word that
+        // arrived there.
+        await pin.dblclick();
         await expect(words).toHaveText(/todo\s*10\s*no defraudando sino\s*mostrando/);
       });
 
@@ -658,6 +671,10 @@ test.describe('J2 — a translator drafts a verse', () => {
         await expect
           .poll(() => readIngredient(SEEDED_PROJECT, BOOK_IPATH).toString('utf8'), { timeout: 10_000 })
           .toBe(expected);
+        // The run's artifact: the stored book after the two clicks.
+        const usfmPath = testInfo.outputPath('j02-click-move-TIT.usfm');
+        fs.writeFileSync(usfmPath, readIngredient(SEEDED_PROJECT, BOOK_IPATH));
+        await testInfo.attach('j02-click-move-TIT.usfm', { path: usfmPath, contentType: 'text/plain' });
       });
 
       await test.step('the drafted percentage is the same with the span and with the two verses apart (#572)', async () => {
