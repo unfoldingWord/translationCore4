@@ -75,6 +75,7 @@ const state = {
   book: 'TIT',
   chapter: 1,
   rail: false,
+  helps: true,
   helpsTab: 'notes',
   sourceTab: 'ult',
   sourcePanes: ['ult', 'ust'], // round 37: chips render from the project's pane ids

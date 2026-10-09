@@ -18,9 +18,9 @@ import { useApp } from '../state.jsx';
 import { Badge, Button, Callout, IconButton, Overline } from '../ds/index.js';
 import { t } from '../i18n';
 import { resolveObsSetSlot } from '../data/resolve';
-import { RailIcon, HelpsIcon } from './PanelIcons.jsx';
+import { RailIcon } from './PanelIcons.jsx';
 import StoryRail, { isFrameDrafted } from './StoryRail.jsx';
-import { HelpsPanel, HelpsWidenButton } from './HelpsPanel.jsx';
+import { HelpsPanel, HelpsToggleButton } from './HelpsPanel.jsx';
 import { CELL, DraftPill, EditingCard, hair } from './draftChrome.jsx';
 
 /** A rail frame button brings its unit into view, as a chapter button brings its chapter. */
@@ -233,8 +233,7 @@ export default function StoryDraft() {
           <IconButton title={t('storyDraft.toggleRail')} data-testid="toggle-story-rail" onClick={actions.toggleRail}><RailIcon /></IconButton>
           <h2 style={{ fontSize: 'var(--fs-title)', letterSpacing: 'var(--track-17)', margin: 0 }}>{t('storyDraft.storyNumber', { n: story.number })}</h2>
           <div style={{ flex: 1 }} />
-          <HelpsWidenButton shown={s.helps} />
-          <IconButton title={t('draft.toggleHelps')} data-testid="toggle-story-helps" onClick={actions.toggleHelps}><HelpsIcon /></IconButton>
+          <HelpsToggleButton />
         </div>
         <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
           <StoryNotices source={s.storySource} imageNote={s.storyImageNote} onInstall={actions.openSources} />
@@ -258,7 +257,7 @@ export default function StoryDraft() {
           </div>
         </div>
       </main>
-      {s.helps && <HelpsPanel chapter={story.number} comments story focusFrame={focused.frame} />}
+      <HelpsPanel chapter={story.number} comments story focusFrame={focused.frame} />
     </div>
   );
 }

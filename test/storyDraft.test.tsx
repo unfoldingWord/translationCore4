@@ -96,7 +96,7 @@ describe('OBS story draft surface', () => {
     render(<StoryDraft />);
     fireEvent.click(screen.getByTestId('toggle-story-rail'));
     expect(actions.toggleRail).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByTestId('toggle-story-helps'));
+    fireEvent.click(screen.getByTestId('toggle-helps'));
     expect(actions.toggleHelps).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('Story 1');
     expect(screen.getByTestId('source-tab-obs').textContent).toBe('OBS');

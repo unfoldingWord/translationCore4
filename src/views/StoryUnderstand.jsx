@@ -11,7 +11,7 @@ import { useApp } from '../state.jsx';
 import { t } from '../i18n';
 import StoryRail from './StoryRail.jsx';
 import { ComprehensionBox } from './Understand.jsx';
-import { HelpsPanel, HelpsWidenButton } from './HelpsPanel.jsx';
+import { HelpsPanel, HelpsToggleButton } from './HelpsPanel.jsx';
 import { Callout, IconButton, Overline, StatusDot } from '../ds/index.js';
 import { RailIcon } from './PanelIcons.jsx';
 
@@ -98,7 +98,7 @@ export default function StoryUnderstand() {
           <IconButton title={t('draft.toggleRail')} onClick={actions.toggleRail}><RailIcon /></IconButton>
           <h2 style={{ fontSize: 'var(--fs-title)', letterSpacing: 'var(--track-17)', margin: 0, flex: 'none' }}>{t('storyDraft.storyNumber', { n: story.number })}</h2>
           <span style={{ fontSize: 'var(--fs-caption-lg)', letterSpacing: 'var(--track-12-5)', color: 'var(--text-tertiary)', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t('understand.storyNote')}</span>
-          <HelpsWidenButton />
+          <HelpsToggleButton />
         </div>
         <div style={{ flex: 1, overflow: 'auto', minHeight: 0, background: 'var(--surface-app)' }}>
           <div style={{ maxWidth: 'var(--measure-read)', margin: '0 auto', padding: '22px 26px 60px' }}>

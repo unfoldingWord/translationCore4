@@ -19,6 +19,7 @@ import { keyCarries } from './SourceVerse.jsx';
 import { gatewayQuote, tokenizeVerse } from '../data/sourceHighlight';
 import { Button, Callout, HelpCard, IconButton, Overline, Switcher } from '../ds/index.js';
 import { inFocus } from './helpsFocus.js';
+import { HelpsIcon } from './PanelIcons.jsx';
 
 // The leading verse number of a chapter key — span keys ("17-18") are real
 // USFM verse bridges (see usfm/indexer.ts) and MUST NOT be dropped.
@@ -447,25 +448,61 @@ const tabOptions = (u, comments, story = false) => [
   ...(comments ? [{ value: 'comments', label: t('helps.comments') }] : []),
 ];
 
-/** The widen/restore toggle for the helps pane (#234). It lives in the view
- * toolbars, not the pane's tab strip, so the strip keeps its full width
- * (#225 already clips the last tab at the default width). `shown` gates it
- * where the pane itself is toggleable (Translate hides it with the pane). */
-export function HelpsWidenButton({ shown = true }) {
-  const { s, actions } = useApp();
-  if (!shown) return null;
+/** The show/hide button for the helps panel (#602). Every screen with the
+ * panel shows this same button; the panel's state is one app value, `helps`. */
+export function HelpsToggleButton() {
+  const { actions } = useApp();
   return (
-    <IconButton data-testid="helps-widen" title={s.helpsWide ? t('helps.restore') : t('helps.widen')} onClick={actions.toggleHelpsWide}>
-      {s.helpsWide ? '⇥' : '⇤'}
-    </IconButton>
+    <IconButton data-testid="toggle-helps" title={t('draft.toggleHelps')} onClick={actions.toggleHelps}><HelpsIcon /></IconButton>
+  );
+}
+
+// #602: the limits of a dragged helps panel width, in px.
+const HELPS_MIN = 280;
+const HELPS_MAX = 720;
+const clampHelps = (w) => Math.round(Math.min(HELPS_MAX, Math.max(HELPS_MIN, w)));
+
+/** The divider on the panel's start edge (#602): a drag resizes the panel.
+ * The drag writes the width to the DOM only; the release stores it once in
+ * app state (`helpsWidth`), so the screen does not re-render on each move. */
+function HelpsDivider({ panel }) {
+  const { actions } = useApp();
+  const drag = React.useRef(null);
+  // The panel's far edge stays put, so the width is the pointer's distance from it.
+  const widthAt = (x) => {
+    const r = panel.current.getBoundingClientRect();
+    return clampHelps(getComputedStyle(panel.current).direction === 'rtl' ? x - r.left : r.right - x);
+  };
+  const end = () => {
+    const width = drag.current?.width;
+    drag.current = null;
+    if (width) actions.setHelpsWidth(width);
+  };
+  return (
+    <div role="separator" aria-orientation="vertical" aria-label={t('helps.resize')} data-testid="helps-divider"
+      onPointerDown={(e) => {
+        if (e.button !== 0) return;
+        e.preventDefault(); // no text selection in the editing pane during the drag
+        e.currentTarget.setPointerCapture?.(e.pointerId);
+        drag.current = { width: null };
+      }}
+      onPointerMove={(e) => {
+        if (!drag.current) return;
+        drag.current.width = widthAt(e.clientX);
+        panel.current.style.width = `${drag.current.width}px`;
+      }}
+      onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end}
+      style={{ position: 'absolute', insetBlock: 0, insetInlineStart: -3, width: 6, cursor: 'col-resize', touchAction: 'none', zIndex: 3 }} />
   );
 }
 
 /** `story`: the panel serves a story (#331): `chapter` is the story number, the
  * items' references read as chapter and verse, the strip has no simplified tab,
- * and `focusFrame` marks the frame in focus and scrolls its first card into view. */
+ * and `focusFrame` marks the frame in focus and scrolls its first card into view.
+ * The panel renders nothing while the user hides it (`helps`, #602). */
 export function HelpsPanel({ chapter, focusVerses = null, comments = false, story = false, focusFrame = null }) {
   const { s, actions } = useApp();
+  const panel = React.useRef(null);
   const u = s.understand;
   const tab = shownTab(s.helpsTab, comments, story);
   // F3 focus wiring: hover is transient, click toggles the sticky focus.
@@ -482,8 +519,10 @@ export function HelpsPanel({ chapter, focusVerses = null, comments = false, stor
     if (!story || focusFrame == null || !listRef.current) return;
     listRef.current.querySelector(`[data-frame="${focusFrame}"]`)?.scrollIntoView?.({ block: 'start' });
   }, [story, focusFrame, tab, loading]);
+  if (!s.helps) return null;
   return (
-    <aside data-testid="helps-panel" style={{ width: s.helpsWide ? 'var(--helps-width-wide)' : 'var(--helps-width)', flex: 'none', background: 'var(--surface-panel)', borderInlineStart: 'var(--stroke-hair) solid var(--border)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+    <aside ref={panel} data-testid="helps-panel" style={{ position: 'relative', width: s.helpsWidth ? `${s.helpsWidth}px` : 'var(--helps-width)', flex: 'none', background: 'var(--surface-panel)', borderInlineStart: 'var(--stroke-hair) solid var(--border)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <HelpsDivider panel={panel} />
       <Switcher indicator="underline" value={tab} onChange={actions.setHelpsTab} options={tabOptions(u, comments, story)} />
       <div ref={listRef} style={{ flex: 1, overflow: 'auto', padding: 16, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
         {/* Loading and a failed load are their OWN states — never rendered as
