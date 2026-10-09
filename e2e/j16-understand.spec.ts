@@ -95,6 +95,28 @@ async function scrolledArticle(page: Page, testInfo: TestInfo, name: string) {
   return { ...seen, closed };
 }
 
+/** #621: the verse numbers of the open simplified-text tab and of the focused unit of
+ * the passage, each with its computed style, and the tab's text without its numbers. */
+async function simplifiedTab(page: Page) {
+  const numbers = (testId: string) =>
+    page.locator(`[data-testid${testId}] sup`).evaluateAll((sups) =>
+      sups.map((sup) => {
+        const style = getComputedStyle(sup);
+        return { n: sup.textContent ?? '', verticalAlign: style.verticalAlign, fontSize: style.fontSize };
+      }),
+    );
+  const text = await page.getByTestId('understand-simplified').locator('p').evaluate((p) => {
+    const copy = p.cloneNode(true) as HTMLElement;
+    copy.querySelectorAll('sup').forEach((sup) => sup.remove());
+    return copy.textContent ?? '';
+  });
+  return {
+    tab: await numbers('="understand-simplified"'),
+    passage: await numbers('^="understand-unit-"][data-focused="true"'),
+    text,
+  };
+}
+
 // #329: a Home tile returns to where this client last worked; this journey opens
 // books from their tiles and states its own start (Translate, chapter 1).
 test.beforeEach(() => {
@@ -146,6 +168,48 @@ test.describe('J16 — read a passage with helps and record a user comment', () 
       });
       await test.step('a drag of the divider widens the panel; hide and show keep the width', async () => {
         await proveHelpsDragAndToggle(page, testInfo, 'understand');
+      });
+
+      // #621: the simplified-text tab shows each verse number as a superscript, with the
+      // style of the passage's verse numbers. The tab shows the verses of the unit in focus.
+      await test.step('the simplified-text tab shows its verse numbers as superscript', async () => {
+        const helpsTab = page.getByTestId('helps-panel').getByRole('tab', { name: 'UST', exact: true });
+        await helpsTab.click();
+        await page.getByRole('tab', { name: 'Section', exact: true }).click();
+        await expect(page.getByTestId('understand-simplified').locator('sup').nth(1)).toBeVisible();
+        const section = await simplifiedTab(page);
+        const panel = (await page.getByTestId('helps-panel').boundingBox())!;
+        const shot = testInfo.outputPath('simplified-tab-section.png');
+        await page.screenshot({ path: shot, animations: 'disabled', clip: panel });
+        await testInfo.attach('simplified-tab-section', { path: shot, contentType: 'image/png' });
+        await page.getByRole('tab', { name: 'Verse', exact: true }).click();
+        await expect(page.getByTestId('understand-simplified').locator('sup')).toHaveCount(1);
+        const verse = await simplifiedTab(page);
+        // The tab follows the focus: a click on the second verse shows that verse only.
+        await page.getByTestId('understand-unit-v2').click();
+        await expect(page.getByTestId('understand-simplified').locator('sup')).toHaveText(['2']);
+        const secondVerse = await simplifiedTab(page);
+        await page.getByTestId('understand-unit-v1').click();
+        await expect(page.getByTestId('understand-simplified').locator('sup')).toHaveText(['1']);
+        const seen = testInfo.outputPath('simplified-tab.json');
+        fs.writeFileSync(seen, `${JSON.stringify({ label: await helpsTab.textContent(), section, verse, secondVerse }, null, 2)}\n`);
+        await testInfo.attach('simplified-tab', { path: seen, contentType: 'application/json' });
+
+        expect(section.tab.length).toBeGreaterThan(1);
+        expect(verse.tab.map((v) => v.n)).toEqual(['1']);
+        expect(secondVerse.tab.map((v) => v.n)).toEqual(['2']);
+        expect(secondVerse.text).not.toBe(verse.text);
+        for (const shown of [section, verse, secondVerse]) {
+          // One superscript number for each verse of the unit in focus, with the passage's style.
+          expect(shown.tab).toEqual(shown.passage);
+          for (const number of shown.tab) {
+            expect(number.verticalAlign).toBe('super');
+            expect(number.fontSize).toBe('11px');
+          }
+          // No verse number is left in the text at normal size.
+          for (const number of shown.tab) expect(` ${shown.text}`).not.toContain(` ${number.n} `);
+          expect(shown.text.trim()).not.toBe('');
+        }
       });
 
       await page.getByRole('tab', { name: 'Notes', exact: true }).click();

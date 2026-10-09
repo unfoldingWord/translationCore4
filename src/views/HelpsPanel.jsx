@@ -278,27 +278,35 @@ function QuestionsTab({ slot, questions, focusVerses, cardFocus }) {
   </>;
 }
 
-const simplifiedChapterText = (simplified, sourceRefs, chapter, focusVerses) => {
+/** The verses the simplified tab shows, each `{ n, text }`: `n` is the verse key,
+ * or the mapped source reference (`chapter:verse`) on a cross-frame project. */
+const simplifiedVerses = (simplified, sourceRefs, chapter, focusVerses) => {
   const mapped = sourceRefs?.[String(chapter)];
-  const verses = mapped
+  return mapped
     ? mapped
         .filter((r) => !r.unmapped && !r.crossBook && inFocus({ chapter, verse: r.pv }, focusVerses))
-        .map((r) => `${r.c}:${r.v} ${verseText(simplified.chapters?.[String(r.c)]?.[String(r.v)])}`)
+        .map((r) => ({ n: `${r.c}:${r.v}`, text: verseText(simplified.chapters?.[String(r.c)]?.[String(r.v)]) }))
     : Object.entries(simplified.chapters?.[String(chapter)] ?? {})
         .filter(([k]) => /^\d/.test(k) && inFocus({ chapter, verse: k }, focusVerses))
         .sort(([a], [b]) => leadingNum(a) - leadingNum(b))
-        .map(([k, v]) => `${k} ${verseText(v)}`);
-  return verses.join(' ') || t(focusVerses != null ? 'understand.noneInFocus' : 'understand.noneForChapter');
+        .map(([k, v]) => ({ n: k, text: verseText(v) }));
 };
+
+// The verse-number style of the main passage (Understand, Translate), #621.
+const SUP = { fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', marginInlineEnd: 3, verticalAlign: 'super' };
 
 function SimplifiedTab({ slot, sourceRefs, chapter, focusVerses }) {
   if (slot?.state !== 'ready') return <><SlotBanners slot={slot} /><SlotState slot={slot} /></>;
+  const verses = simplifiedVerses(slot, sourceRefs, chapter, focusVerses);
   return (<>
     <SlotBanners slot={slot} />
     <div style={{ border: 'var(--stroke) solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 16, background: 'var(--surface-app)' }} data-testid="understand-simplified">
       <Overline>{t('understand.simplifiedTitle')}</Overline>
       <p style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse)', lineHeight: 'var(--lh-verse)', color: 'var(--text-scripture)', margin: '10px 0 0' }}>
-        {simplifiedChapterText(slot, sourceRefs, chapter, focusVerses)}
+        {verses.length === 0
+          ? t(focusVerses != null ? 'understand.noneInFocus' : 'understand.noneForChapter')
+          // Two project verses can read the same source reference, so the key is the position.
+          : verses.map((v, i) => <React.Fragment key={i}><sup style={SUP}>{v.n}</sup>{v.text}{' '}</React.Fragment>)}
       </p>
     </div>
   </>);

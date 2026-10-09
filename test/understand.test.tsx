@@ -105,6 +105,7 @@ vi.mock('../src/state.jsx', () => ({
 }));
 
 import Understand from '../src/views/Understand.jsx';
+import { HelpsPanel } from '../src/views/HelpsPanel.jsx';
 
 // The fake buffer stands in for the note scheduler (module state in the app,
 // but per-test here): clear it after cleanup() so tests never inherit drafts.
@@ -963,6 +964,58 @@ describe('#104 fidelity — the focused-unit model (Codex review of #140)', () =
       expect(units[1].querySelectorAll('p').length).toBe(1);
     } finally {
       (srcChapters['1'] as Record<string, unknown>)['2'] = saved;
+    }
+  });
+});
+
+// #621: the simplified-text tab of a cross-frame project shows each mapped source
+// reference as a superscript label. No journey reaches a cross-frame project (D81).
+// The ways this can fail, written before the code:
+//  1. a mapped row has no label;
+//  2. a label shows "undefined";
+//  3. an unmapped row or a cross-book row shows a label;
+//  4. two project verses that read the SAME source reference: a label is lost,
+//     or the two rows share one React key;
+//  5. a label is also in the text at normal size;
+//  6. a mapped row whose verse is not in the simplified text shows "undefined",
+//     or loses its label.
+describe('#621 — the simplified-text tab shows each reference as a superscript label', () => {
+  beforeEach(() => { cleanup(); calls.length = 0; });
+
+  it('a cross-frame chapter: one superscript label for each mapped row, none for an unmapped or cross-book row', () => {
+    const savedU = state.understand;
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      state.helpsTab = 'simplified';
+      state.understand = {
+        ...savedU,
+        simplified: { state: 'ready', rung: 'primary', chapters: srcChapters },
+        // Project chapter 2 reads source chapter 1. Project verses 1 and 2 read the same source verse.
+        sourceRefs: { '2': [
+          { c: 1, v: '1', pc: 2, pv: '1' },
+          { c: 1, v: '1', pc: 2, pv: '2' },
+          { c: 1, v: '2', pc: 2, pv: '3' },
+          // The simplified text holds verse 4 only inside the bridge "4-5": this row has no text.
+          { c: 1, v: '4', pc: 2, pv: '4' },
+          { unmapped: '2:99' },
+          { crossBook: '2:4', to: 'NEH 1:1' },
+        ] },
+      } as never;
+      // Translate with no verse in edit: the tab shows the whole chapter.
+      render(<HelpsPanel chapter={2} comments />);
+      const tab = screen.getByTestId('understand-simplified');
+      const labels = [...tab.querySelectorAll('sup')];
+      expect(labels.map((l) => l.textContent)).toEqual(['1:1', '1:1', '1:2', '1:4']);
+      for (const l of labels) expect((l as HTMLElement).style.verticalAlign).toBe('super');
+      const text = tab.cloneNode(true) as HTMLElement;
+      text.querySelectorAll('sup').forEach((l) => l.remove());
+      expect(text.textContent).toContain('In the beginning was the Word. In the beginning was the Word. He was with God.');
+      expect(text.textContent).not.toMatch(/\d+:\d+|undefined/);
+      expect(errors.mock.calls.filter((c) => /same key/.test(String(c[0])))).toEqual([]);
+    } finally {
+      errors.mockRestore();
+      state.understand = savedU;
+      state.helpsTab = 'notes';
     }
   });
 });
