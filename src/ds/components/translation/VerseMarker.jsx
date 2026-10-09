@@ -12,12 +12,12 @@ const FS = { 1: 250, 2: 205, 3: 160 };
  *  boundary is being moved; a settled verse number is a tertiary superscript again.
  *  Default 32px gives a 24x32 target: WCAG 2.5.8 AA, and no larger, because the pin sits
  *  inline among words that are click targets themselves. */
-export function VerseMarker({ n, size = 32, state = 'idle', onPickUp, style, ...rest }) {
+export function VerseMarker({ n, size = 32, state = 'idle', onPickUp, label = 'Move where verse ' + n + ' begins', style, ...rest }) {
   const dragging = state === 'dragging';
   const w = Math.round(size * 0.741);
   const digits = String(n).length;
   return (
-    <span role="button" tabIndex={0} aria-label={'Move where verse ' + n + ' begins'}
+    <span role="button" tabIndex={0} aria-label={label}
       onPointerDown={e => { e.preventDefault(); onPickUp && onPickUp(e); }}
       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPickUp && onPickUp(e); } }}
       style={{ display: 'inline-flex', width: w, height: size, verticalAlign: 'text-bottom',

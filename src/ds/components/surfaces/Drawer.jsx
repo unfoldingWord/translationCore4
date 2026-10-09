@@ -13,8 +13,9 @@ import { Action } from '../primitives/Action.jsx';
 
 /** End-edge slide-over panel for reference content.
  * tC4 local: `open` defaults to true (the app mounts the drawer only while it
- * is open); extra props (e.g. data-testid) land on the scrim, as before. */
-export function Drawer({ open = true, eyebrow, title, width, onClose, children, ...rest }) {
+ * is open); extra props (e.g. data-testid) land on the scrim, as before.
+ * tC4 local (issue #614): `closeLabel` localizes the close button. */
+export function Drawer({ open = true, eyebrow, title, width, onClose, closeLabel = 'Close', children, ...rest }) {
   /* It now actually slides: Layer reads --dur-panel, which existed in
      tokens/motion.css and nothing had ever read. The old component appeared. */
   return (
@@ -31,7 +32,7 @@ export function Drawer({ open = true, eyebrow, title, width, onClose, children, 
             <Text role="h2">{title}</Text>
           </Stack>
           {onClose ? <Action weight="soft" iconOnly shape="square" size="sm" tone="neutral"
-            title="Close" onClick={onClose} style={{ borderRadius: 'var(--radius-pill)' }}>✕</Action> : null}
+            title={closeLabel} onClick={onClose} style={{ borderRadius: 'var(--radius-pill)' }}>✕</Action> : null}
         </Stack>
         <Stack direction="column" gap={14} style={{ padding: 24, flex: 1, overflow: 'auto' }}>{children}</Stack>
       </Surface>
