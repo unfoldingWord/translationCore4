@@ -317,7 +317,7 @@ function ArticleBody({ article }) {
  * documented purpose); the article prose inherits the document direction. */
 function AcademyDrawer({ article, cat, onClose }) {
   return (
-    <Drawer data-testid="academy-drawer" width="var(--drawer-width)" onClose={onClose}
+    <Drawer data-testid="academy-drawer" width="var(--drawer-width)" onClose={onClose} closeLabel={t('common.close')}
       eyebrow={t('check.academyEyebrow', { cat })}
       title={article?.found?.title ?? t('check.academyFallback')}>
       <ArticleBody article={article} />

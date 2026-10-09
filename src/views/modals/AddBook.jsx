@@ -124,7 +124,7 @@ export default function AddBook() {
               <>
                 <Select id="ab-book" label={t('addBook.book')} value={ab.book}
                   onChange={(e) => actions.patchAb({ book: e.target.value })}
-                  searchPlaceholder={t('addBook.findBook')} noMatchesLabel={t('addBook.noMatches')}
+                  searchPlaceholder={t('addBook.findBook')} noMatchesLabel={t('addBook.noMatches')} clearLabel={t('common.clear')}
                   options={ALL_CODES.map((code) => {
                     const already = (ab.existing || []).includes(code);
                     return {

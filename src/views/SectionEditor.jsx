@@ -55,7 +55,7 @@ function PinBefore({ i, first, pinsHere, held, hover, ok, drop, pick }) {
       )}
       {pinsHere.map((k) => (k === first
         ? <sup key={k} title={t('draft.firstFixed', { n: first })} style={SUP}>{first}</sup>
-        : <VerseMarker key={k} n={k} state={held === k ? 'dragging' : 'idle'} data-testid={`pin-${k}`} onPickUp={() => pick(k)} style={{ marginInlineEnd: '.12em' }} />))}
+        : <VerseMarker key={k} n={k} label={t('draft.moveVerse', { n: k })} state={held === k ? 'dragging' : 'idle'} data-testid={`pin-${k}`} onPickUp={() => pick(k)} style={{ marginInlineEnd: '.12em' }} />))}
     </>
   );
 }
@@ -119,7 +119,7 @@ function PlaceView({ keys, words, markers, setMarkers, dir, editType }) {
         <span style={{ fontSize: 'var(--fs-label)', letterSpacing: 'var(--tracking-overline)', textTransform: 'uppercase', fontWeight: 'var(--fw-heavy)', color: 'var(--tc-warn-text-2)', flex: 'none' }}>{t('draft.toPlace')}</span>
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, flexWrap: 'wrap', minHeight: 32 }}>
           {bank.map((k) => (
-            <VerseMarker key={k} n={k} data-testid={`pin-${k}`} state={held === k ? 'dragging' : 'idle'} onPickUp={() => pick(k)} />
+            <VerseMarker key={k} n={k} label={t('draft.moveVerse', { n: k })} data-testid={`pin-${k}`} state={held === k ? 'dragging' : 'idle'} onPickUp={() => pick(k)} />
           ))}
           {bank.length === 0 && words.length > 0 && (
             <span style={{ fontStyle: 'italic', fontSize: 'var(--fs-ui-sm)', color: 'var(--text-tertiary)' }}>{t('draft.bankEmpty')}</span>

@@ -72,7 +72,7 @@ export function Row({ opt, id, selected, highlighted, onChoose, onHighlight }) {
 }
 
 function Dropdown({ options, value, onChange, disabled: disabledProp,
-  searchPlaceholder, noMatchesLabel = 'No matches', ...rest }) {
+  searchPlaceholder, noMatchesLabel = 'No matches', clearLabel, ...rest }) {
   const f = useField() || {};
   const disabled = disabledProp != null ? disabledProp : f.disabled;
   const buttonRef = React.useRef(null);
@@ -263,7 +263,7 @@ function Dropdown({ options, value, onChange, disabled: disabledProp,
                 {/* Not inside the field's context: the search input takes no id
                     from it (the id is the field button's) and has its own name. */}
                 <FieldContext.Provider value={null}>
-                <SearchField value={query} placeholder={searchPlaceholder} aria-label={searchPlaceholder}
+                <SearchField value={query} placeholder={searchPlaceholder} aria-label={searchPlaceholder} clearLabel={clearLabel}
                   aria-controls={listId} aria-activedescendant={active}
                   onChange={(e) => { setQuery(e.target.value); setHi(0); }}
                   onClear={() => {
@@ -314,8 +314,8 @@ function Dropdown({ options, value, onChange, disabled: disabledProp,
  * An option may carry `disabled`, `code` (trailing code on the field and the
  * row), `meta` (small trailing text on the row), `badge` (a neutral pill on
  * the row) and `group` (a sticky header label). Lists of 10 or more options
- * open with a search field; `searchPlaceholder` and `noMatchesLabel` localize
- * it. `onChange` receives `{ target: { value } }`, as the native shim did. */
+ * open with a search field; `searchPlaceholder`, `noMatchesLabel` and
+ * `clearLabel` localize it. `onChange` receives `{ target: { value } }`, as the native shim did. */
 export function Select({ label, options = [], hint, id, style, ...rest }) {
   return (
     <Field label={label} hint={hint} id={id} style={style}>

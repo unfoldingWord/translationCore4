@@ -75,6 +75,12 @@ in the file:
   more options open with a search field (`searchPlaceholder`,
   `noMatchesLabel`); `onChange` still receives `{ target: { value } }`.
 - `OptionCard`: new `recommendedLabel` (i18n for the Recommended badge).
+- `Drawer`: new `closeLabel`; `Toast`: new `dismissLabel`; `SearchField` and
+  `Select`: new `clearLabel`; `VerseMarker` and `Breadcrumb`: new `label`
+  (issue #614). Each is the i18n for a `title` or `aria-label` that was an
+  English literal. The English text stays as the default of the prop. The
+  repository's lint refuses a literal in `title`, `aria-label`, `placeholder`
+  and `alt` of a component here.
 - `SuggestField`: new (issue #492) — a text field with a list of suggestions
   under it, for the Language name field of New Bible and New Open Bible
   Stories. The typed text is the value; a suggestion is an offer, and

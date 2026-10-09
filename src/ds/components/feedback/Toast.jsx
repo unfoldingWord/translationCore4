@@ -15,8 +15,9 @@ import { Action } from '../primitives/Action.jsx';
    policy and is not here; the product's policy is written in the readme. */
 const TONE = { success: 'valid', info: 'accent', warn: 'warn', error: 'invalid' };
 
-/** Transient confirmation. States what happened, in the past tense. */
-export function Toast({ tone = 'success', message, action, actionLabel, onDismiss, style, ...rest }) {
+/** Transient confirmation. States what happened, in the past tense.
+ * tC4 local (issue #614): `dismissLabel` localizes the dismiss button. */
+export function Toast({ tone = 'success', message, action, actionLabel, onDismiss, dismissLabel = 'Dismiss', style, ...rest }) {
   const t = TONE[tone] || 'valid';
   return (
     <Surface tone={t} fill="card" border="line" radius="lg" elevation="hover" style={style} {...rest}>
@@ -26,7 +27,7 @@ export function Toast({ tone = 'success', message, action, actionLabel, onDismis
           background: 'var(--tone)', flex: 'none' }} />
         <Text role="ui" style={{ flex: 1 }}>{message}</Text>
         {action ? <Action weight="text" size="sm" tone={t} onClick={action}>{actionLabel}</Action> : null}
-        {onDismiss ? <Action weight="text" tone="neutral" iconOnly title="Dismiss" size="sm"
+        {onDismiss ? <Action weight="text" tone="neutral" iconOnly title={dismissLabel} size="sm"
           onClick={onDismiss} style={{ width: 20, height: 20, minWidth: 20 }}>✕</Action> : null}
       </Stack>
     </Surface>

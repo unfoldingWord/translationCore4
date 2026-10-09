@@ -91,7 +91,7 @@ function GatewayStep({ s, g, src, isCheckable, isCurrent, actions }) {
 
           <Select id="src-book" label={t('sources.book')} value={src.book}
             onChange={(e) => actions.setSourceBook(e.target.value)}
-            searchPlaceholder={t('addBook.findBook')} noMatchesLabel={t('addBook.noMatches')}
+            searchPlaceholder={t('addBook.findBook')} noMatchesLabel={t('addBook.noMatches')} clearLabel={t('common.clear')}
             options={Object.keys(BOOK_NAMES).map((code, i) => ({
               value: code, label: bookName(code), code,
               meta: t('addBook.chaptersShort', { n: BOOK_CHAPTERS[code] ?? '?' }),

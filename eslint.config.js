@@ -82,6 +82,34 @@ export default [
     rules: { complexity: ['error', { max: 15 }] },
   },
 
+  // #614: a label that the user reads or hears comes from the catalog. The rule
+  // above ignores props, so this one names the four attributes that hold language:
+  // a view passes t(), and a design-system component takes the text as a prop
+  // (an English default in the parameter list is the package's own fallback).
+  // 'translationCore' is the product name; it is never translated.
+  {
+    files: ['src/views/**/*.jsx', 'src/App.jsx', 'src/ds/components/**/*.jsx'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        ...[
+          '> Literal',
+          '> JSXExpressionContainer > Literal',
+          '> JSXExpressionContainer > BinaryExpression[operator="+"] > Literal',
+          '> JSXExpressionContainer > BinaryExpression > BinaryExpression[operator="+"] > Literal',
+          '> JSXExpressionContainer > ConditionalExpression > Literal',
+        ].map((tail) => ({
+          selector: `JSXAttribute[name.name=/^(title|aria-label|placeholder|alt)$/] ${tail}[value=/^(?!translationCore$).*[A-Za-z]{2}/]`,
+          message: 'Take this label from the catalog with t(), or from a prop in src/ds (#614).',
+        })),
+        {
+          selector: 'JSXAttribute[name.name=/^(title|aria-label|placeholder|alt)$/] > JSXExpressionContainer > TemplateLiteral > TemplateElement[value.raw=/[A-Za-z]{2}/]',
+          message: 'Take this label from the catalog with t(), or from a prop in src/ds (#614).',
+        },
+      ],
+    },
+  },
+
   // Prettier last: disables stylistic rules that would fight the formatter.
   prettier,
 ];
