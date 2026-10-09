@@ -6,6 +6,7 @@ import type { Page, Route } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { verifyAllJournaledProjects } from './helpers/journal';
+import { proveHelpsDragAndToggle, proveHelpsToolbar } from './helpers/helps';
 import {
   SEEDED_PROJECT,
   TC4_ROOT,
@@ -107,6 +108,14 @@ test.describe('J16 — read a passage with helps and record a user comment', () 
       await page.getByTestId('source-tab-ust').click();
       await expect(page.getByTestId('understand-source-name')).toBeVisible();
       await expect(page.getByTestId('understand-source-name')).not.toHaveText(sourceNameBefore ?? '');
+
+      // #602: Understand has the same show/hide button and divider as Translate (J2).
+      await test.step('the toolbar has one show/hide button and no widen button', async () => {
+        await proveHelpsToolbar(page, testInfo, 'understand');
+      });
+      await test.step('a drag of the divider widens the panel; hide and show keep the width', async () => {
+        await proveHelpsDragAndToggle(page, testInfo, 'understand');
+      });
 
       await page.getByRole('tab', { name: 'Notes', exact: true }).click();
       await page.getByTestId('note-expand').first().click();

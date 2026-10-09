@@ -392,7 +392,7 @@ const initial = () => ({
   saveState: 'saved', // saved | dirty | saving | error
   rail: true,
   helps: true,
-  helpsWide: false, // #234: the user widened the helps panel; not persisted
+  helpsWidth: null, // #602: the dragged helps panel width in px (null = --helps-width); not persisted
   helpsTab: 'notes',
   // Helps-card focus (epic #104 fidelity, F3): the hovered and the clicked
   // card, each { verse, quote, occurrence, id } — the mockup's
@@ -6533,7 +6533,7 @@ export function AppProvider({ children }) {
       },
       toggleRail: () => dispatch({ type: 'toggle', key: 'rail' }),
       toggleHelps: () => dispatch({ type: 'toggle', key: 'helps' }),
-      toggleHelpsWide: () => dispatch({ type: 'toggle', key: 'helpsWide' }),
+      setHelpsWidth: (helpsWidth) => dispatch({ type: 'set', patch: { helpsWidth } }),
       setHelpsTab: (helpsTab) => dispatch({ type: 'set', patch: { helpsTab } }),
       // F3: hover is transient; click toggles the sticky focus (mockup
       // hoverNote/activeNote). Payload: { verse, quote, occurrence, id }|null.

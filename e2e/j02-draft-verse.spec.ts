@@ -13,6 +13,7 @@ import { verifyAllJournaledProjects } from './helpers/journal';
 import { QA_SERVER, USER, dropOrigin, git } from './helpers/door43Share';
 import { recordExternal } from './helpers/externalRequests';
 import { captureDownload } from './helpers/export';
+import { proveHelpsDragAndToggle, proveHelpsToolbar } from './helpers/helps';
 import { lane } from './lane.mjs';
 import {
   SEEDED_PROJECT,
@@ -1037,7 +1038,7 @@ test.describe('J2 — a translator drafts a verse', () => {
   );
 
   test(
-    'widen the helps panel (#234): the toggle widens the pane past the default, drafting still saves, and Check still opens',
+    'resize the helps panel (#602): a drag of the divider resizes the panel, one show/hide button and no widen button, drafting still saves, and Check still opens',
     { tag: ['@inc9', '@J2'] },
     async ({ page }, testInfo) => {
       const WIDE_DRAFT = 'Nuestra gente debe aprender a dedicarse a hacer el bien.';
@@ -1046,37 +1047,15 @@ test.describe('J2 — a translator drafts a verse', () => {
       await page.getByTestId('project-_local_/_local_/sample_burrito').getByRole('button', { name: /Titus/ }).click();
       await page.getByRole('button', { name: '3', exact: true }).click();
 
-      const helps = page.getByTestId('helps-panel');
-      const paneWidth = async () => (await helps.boundingBox())!.width;
-      await expect(helps).toBeVisible();
-      const defaultWidth = await paneWidth();
-
-      await test.step('the toggle widens the pane past the default width (AC1)', async () => {
-        await page.getByTestId('helps-widen').click();
-        await expect.poll(paneWidth).toBeGreaterThan(defaultWidth + 100);
-        // The same control now offers the way back.
-        await expect(page.getByTestId('helps-widen')).toHaveAttribute('title', 'Restore the helps panel width');
+      await test.step('the toolbar has one show/hide button and no widen button', async () => {
+        await proveHelpsToolbar(page, testInfo, 'translate');
       });
 
-      await test.step('a second click restores the default width; a third widens again', async () => {
-        await page.getByTestId('helps-widen').click();
-        await expect.poll(paneWidth).toBe(defaultWidth);
-        await page.getByTestId('helps-widen').click();
-        await expect.poll(paneWidth).toBeGreaterThan(defaultWidth + 100);
+      await test.step('a drag of the divider widens the panel; hide and show keep the width', async () => {
+        await proveHelpsDragAndToggle(page, testInfo, 'translate');
       });
 
-      await test.step('the artifact records both widths and the widened pane (AC2)', async () => {
-        // The widths come from the design tokens, so this file holds the same
-        // bytes every run at a given commit.
-        const textPath = testInfo.outputPath('helps-widths.txt');
-        fs.writeFileSync(textPath, `default=${defaultWidth}\nwidened=${await paneWidth()}\n`);
-        await testInfo.attach('helps-widths.txt', { path: textPath, contentType: 'text/plain' });
-        const shotPath = testInfo.outputPath('helps-widened.png');
-        await helps.screenshot({ path: shotPath });
-        await testInfo.attach('helps-widened.png', { path: shotPath, contentType: 'image/png' });
-      });
-
-      await test.step('drafting still works with the pane widened (AC3)', async () => {
+      await test.step('drafting still works after the resize', async () => {
         await page.getByRole('tab', { name: 'Verse', exact: true }).click();
         await page.getByRole('button', { name: 'Start this verse' }).first().click();
         const editor = page.getByRole('textbox', { name: /Verse/ });
@@ -1088,7 +1067,7 @@ test.describe('J2 — a translator drafts a verse', () => {
           .toContain(WIDE_DRAFT);
       });
 
-      await test.step('Check still opens with the pane widened (AC3)', async () => {
+      await test.step('Check still opens after the resize', async () => {
         await page.getByRole('tab', { name: 'Check', exact: true }).click();
         await page.getByTestId('open-translationNotes').click();
         await expect(page.getByTestId('check-progress')).toBeVisible();

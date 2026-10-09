@@ -46,6 +46,7 @@ const SOURCE = { number: 1, title: 'The Creation', frames: [{ image: '', text: '
 
 const state: Record<string, unknown> = {
   view: 'read',
+  helps: true,
   helpsTab: 'notes',
   helpsActive: null,
   sources: {},
