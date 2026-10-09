@@ -976,7 +976,9 @@ describe('#104 fidelity — the focused-unit model (Codex review of #140)', () =
 //  3. an unmapped row or a cross-book row shows a label;
 //  4. two project verses that read the SAME source reference: a label is lost,
 //     or the two rows share one React key;
-//  5. a label is also in the text at normal size.
+//  5. a label is also in the text at normal size;
+//  6. a mapped row whose verse is not in the simplified text shows "undefined",
+//     or loses its label.
 describe('#621 — the simplified-text tab shows each reference as a superscript label', () => {
   beforeEach(() => { cleanup(); calls.length = 0; });
 
@@ -993,6 +995,8 @@ describe('#621 — the simplified-text tab shows each reference as a superscript
           { c: 1, v: '1', pc: 2, pv: '1' },
           { c: 1, v: '1', pc: 2, pv: '2' },
           { c: 1, v: '2', pc: 2, pv: '3' },
+          // The simplified text holds verse 4 only inside the bridge "4-5": this row has no text.
+          { c: 1, v: '4', pc: 2, pv: '4' },
           { unmapped: '2:99' },
           { crossBook: '2:4', to: 'NEH 1:1' },
         ] },
@@ -1001,7 +1005,7 @@ describe('#621 — the simplified-text tab shows each reference as a superscript
       render(<HelpsPanel chapter={2} comments />);
       const tab = screen.getByTestId('understand-simplified');
       const labels = [...tab.querySelectorAll('sup')];
-      expect(labels.map((l) => l.textContent)).toEqual(['1:1', '1:1', '1:2']);
+      expect(labels.map((l) => l.textContent)).toEqual(['1:1', '1:1', '1:2', '1:4']);
       for (const l of labels) expect((l as HTMLElement).style.verticalAlign).toBe('super');
       const text = tab.cloneNode(true) as HTMLElement;
       text.querySelectorAll('sup').forEach((l) => l.remove());

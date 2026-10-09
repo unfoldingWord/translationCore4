@@ -185,13 +185,21 @@ test.describe('J16 — read a passage with helps and record a user comment', () 
         await page.getByRole('tab', { name: 'Verse', exact: true }).click();
         await expect(page.getByTestId('understand-simplified').locator('sup')).toHaveCount(1);
         const verse = await simplifiedTab(page);
+        // The tab follows the focus: a click on the second verse shows that verse only.
+        await page.getByTestId('understand-unit-v2').click();
+        await expect(page.getByTestId('understand-simplified').locator('sup')).toHaveText(['2']);
+        const secondVerse = await simplifiedTab(page);
+        await page.getByTestId('understand-unit-v1').click();
+        await expect(page.getByTestId('understand-simplified').locator('sup')).toHaveText(['1']);
         const seen = testInfo.outputPath('simplified-tab.json');
-        fs.writeFileSync(seen, `${JSON.stringify({ label: await helpsTab.textContent(), section, verse }, null, 2)}\n`);
+        fs.writeFileSync(seen, `${JSON.stringify({ label: await helpsTab.textContent(), section, verse, secondVerse }, null, 2)}\n`);
         await testInfo.attach('simplified-tab', { path: seen, contentType: 'application/json' });
 
         expect(section.tab.length).toBeGreaterThan(1);
         expect(verse.tab.map((v) => v.n)).toEqual(['1']);
-        for (const shown of [section, verse]) {
+        expect(secondVerse.tab.map((v) => v.n)).toEqual(['2']);
+        expect(secondVerse.text).not.toBe(verse.text);
+        for (const shown of [section, verse, secondVerse]) {
           // One superscript number for each verse of the unit in focus, with the passage's style.
           expect(shown.tab).toEqual(shown.passage);
           for (const number of shown.tab) {
@@ -199,7 +207,7 @@ test.describe('J16 — read a passage with helps and record a user comment', () 
             expect(number.fontSize).toBe('11px');
           }
           // No verse number is left in the text at normal size.
-          expect(shown.text).not.toMatch(/\d/);
+          for (const number of shown.tab) expect(` ${shown.text}`).not.toContain(` ${number.n} `);
           expect(shown.text.trim()).not.toBe('');
         }
       });
