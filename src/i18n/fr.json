@@ -47,6 +47,7 @@
   "language.title": "Langue de l’application",
   "language.hint": "Choisissez la langue des menus et des boîtes de dialogue.",
   "language.field": "Langue",
+  "language.find": "Chercher une langue",
   "language.apply": "Appliquer",
   "language.cancel": "Annuler",
   "language.saveFailed": "La langue de l’application n’a pas pu être enregistrée. Réessayez.",

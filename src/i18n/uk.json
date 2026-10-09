@@ -47,6 +47,7 @@
   "language.title": "Мова інтерфейсу",
   "language.hint": "Виберіть мову для меню та діалогових вікон.",
   "language.field": "Мова",
+  "language.find": "Знайти мову",
   "language.apply": "Застосувати",
   "language.cancel": "Скасувати",
   "language.saveFailed": "Не вдалося зберегти мову інтерфейсу. Спробуйте знову.",

@@ -47,6 +47,7 @@
   "language.title": "Ngôn ngữ ứng dụng",
   "language.hint": "Chọn ngôn ngữ cho menu và hộp thoại.",
   "language.field": "Ngôn ngữ",
+  "language.find": "Tìm ngôn ngữ",
   "language.apply": "Áp dụng",
   "language.cancel": "Hủy",
   "language.saveFailed": "Không thể lưu ngôn ngữ ứng dụng. Thử lại.",

@@ -47,6 +47,7 @@
   "language.title": "Idioma do aplicativo",
   "language.hint": "Escolha o idioma dos menus e caixas de diálogo.",
   "language.field": "Idioma",
+  "language.find": "Localizar um idioma",
   "language.apply": "Aplicar",
   "language.cancel": "Cancelar",
   "language.saveFailed": "Não foi possível salvar o idioma do aplicativo. Tente novamente.",

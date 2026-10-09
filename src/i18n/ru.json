@@ -47,6 +47,7 @@
   "language.title": "Язык приложения",
   "language.hint": "Выберите язык для меню и диалоговых окон.",
   "language.field": "Язык",
+  "language.find": "Найти язык",
   "language.apply": "Применить",
   "language.cancel": "Отмена",
   "language.saveFailed": "Не удалось сохранить язык приложения. Попробуйте снова.",
