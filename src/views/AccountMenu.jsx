@@ -76,6 +76,8 @@ export default function AccountMenu() {
   const [about, setAbout] = useState(null);
   // #522: the App language dialog is open.
   const [language, setLanguage] = useState(false);
+  // #519: the Help and guides panel is open.
+  const [help, setHelp] = useState(false);
   const ref = useRef(null);
   const user = s.door43User;
   const saved = !user && s.door43Kept;
@@ -136,7 +138,9 @@ export default function AccountMenu() {
           <Row testId="account-internet" role="menuitemcheckbox" checked={online} title={t('account.internet')}
             sub={t(online ? 'account.internetOn' : 'account.internetOff')} end={<Switch on={online} />}
             onClick={() => actions.setInternet(!online)} />
-          {/* #522: the app language, below the internet switch and before About. */}
+          {/* #519: the help pages of this build, below the internet switch. */}
+          <Row testId="account-help" title={t('account.help')} onClick={choose(() => setHelp(true))} />
+          {/* #522: the app language, below Help and guides and before About. */}
           <Row testId="account-language" title={t('account.language')} sub={LOCALES.find((l) => l.id === s.appLocale)?.label}
             onClick={choose(() => setLanguage(true))} />
           {/* #521: the Feedback dialog of #378; opening it sends nothing. */}
@@ -156,6 +160,12 @@ export default function AccountMenu() {
           ref.current?.querySelector('button')?.focus();
         }} />
       </span>}
+      {help && <span data-on="light" style={{ display: 'contents' }}>
+        <HelpPanel openLink={(url) => actions.openDoor43Page('helpLink', url)} onClose={() => {
+          setHelp(false);
+          ref.current?.querySelector('button')?.focus();
+        }} />
+      </span>}
       {about && <span data-on="light" style={{ display: 'contents' }}>
         {about === 'license'
           ? <LicenseDialog onClose={() => setAbout('back')} />
@@ -165,6 +175,58 @@ export default function AccountMenu() {
           }} />}
       </span>}
     </>
+  );
+}
+
+/** #519: the help pages of this build (`public/help/`, from the tc-website commit that
+ * scripts/fetch-help.mjs pins), in a same-origin frame that fills the window. A new
+ * window would open in the system browser and skip the internet switch, so the pages
+ * stay here. A link to another origin does not open in the frame: it is the internet
+ * task `helpLink`, which opens the browser. Escape in the frame closes the panel too. */
+function HelpPanel({ openLink, onClose }) {
+  const frame = useRef(null);
+  // Each page is a new document in the frame. Watch each one before it is first
+  // painted, so no click can reach an unwatched link: the frame's load event waits for
+  // every image. A same-origin frame shares this window's event loop, so a check on
+  // every animation frame runs before the new page's first paint.
+  useEffect(() => {
+    let seen = null;
+    let tick = 0;
+    const watch = () => {
+      tick = requestAnimationFrame(watch);
+      const doc = frame.current?.contentDocument;
+      if (!doc || doc === seen) return;
+      seen = doc;
+      const onLink = (e) => {
+        const a = e.target.closest?.('a[href]');
+        if (!a) return;
+        const url = new URL(a.href);
+        if (url.origin === window.location.origin) return;
+        e.preventDefault();
+        if (/^https?:$/.test(url.protocol)) openLink(url.href);
+      };
+      doc.addEventListener('click', onLink, true);
+      doc.addEventListener('auxclick', onLink, true);
+      doc.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') onClose();
+      });
+    };
+    watch();
+    return () => cancelAnimationFrame(tick);
+  }, []); // on mount only: openLink and onClose call a stable action and setters
+  return (
+    <Layer open level="overlay" placement="end" role="dialog" label={t('account.help')} dismiss="escape" trapFocus lockScroll
+      onDismiss={onClose} style={{ width: '100vw' }} data-testid="help-panel">
+      <Surface fill="card" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>
+          <strong style={{ flex: 1, fontSize: 'var(--fs-ui)', color: 'var(--text-body)' }}>{t('account.help')}</strong>
+          <Action weight="soft" iconOnly shape="square" size="sm" tone="neutral" title={t('common.close')} aria-label={t('common.close')}
+            onClick={onClose} data-testid="help-close" style={{ borderRadius: 'var(--radius-pill)' }}>✕</Action>
+        </div>
+        <iframe ref={frame} title={t('account.help')} src={`${import.meta.env.BASE_URL}help/index.html`} tabIndex={0}
+          data-testid="help-frame" style={{ flex: 1, width: '100%', border: 0 }} />
+      </Surface>
+    </Layer>
   );
 }
 

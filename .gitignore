@@ -27,3 +27,6 @@ dev-env/upstream/
 
 # react-grab-annotate output (dev-only bug reports)
 .react-grab/
+
+# #519: the help pages; scripts/fetch-help.mjs copies them from the pinned tc-website commit.
+public/help/

@@ -2203,7 +2203,10 @@ kept most of the product work and ruled on the order, the gates and the cut rule
    repository and puts `tc-help/` into the install. Help opens the pages offline and sends zero
    requests. If the pages are not published by 2026-10-09, the menu item stays hidden and #519
    moves to 4.0.1. The online site (#476) is a parallel track and does not block the release.
-   D88 point 1 stands.
+   D88 point 1 stands. [amended 2026-10-09 — owner, #519] The pages were published, so the
+   menu item ships. Help and guides opens the pages inside tC4, in a full-window panel with a
+   same-origin frame, not in a new window. A link to another origin runs as an internet task
+   (D95) and opens in the system browser. The pin is `cdfdf9b`, in `scripts/fetch-help.mjs`.
 10. **Report a problem (#521, closes the open points of #378).** tC4 uses the tC3 mechanism:
     SendGrid with the token and address in `TC_HELP_DESK_TOKEN` and `TC_HELP_DESK_EMAIL`, put
     into the app at build time [VERIFIED — unfoldingWord/translationCore

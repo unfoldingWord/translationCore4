@@ -196,7 +196,11 @@ Steps, in order:
 
 1. Syntax-check the tracked Electron entry point and run the desktop contract
    tests (`package-preflight` in CI).
-2. Build the tC4 client (`npm run build` → `dist/`).
+2. Build the tC4 client (`npm run build` → `dist/`). The `prebuild` step
+   (`scripts/fetch-help.mjs`) first copies the help pages, `tc-help/` of the
+   pinned `unfoldingWord/tc-website` commit, to `public/help/` (#519). The
+   build needs the network for this step, except when `public/help/` already
+   holds that commit.
 3. Build the pinned server (`dev-env/server`, pankosmia-web 0.18.15, rev
    `a83725b` — D27, D90).
 4. Clone read-only inputs: the desktop template (pinned rev), `resource-core`,
@@ -731,6 +735,7 @@ procedure's subject.
 | desktop-app-template | `4cb7576` | `scripts/package-desktop.zsh` |
 | resource-core | `54802be780af18ab02e426dd59014bc6adb158af` | `scripts/package-desktop.zsh` |
 | webfonts-core | `eb52ccdad6806b5729ea8b45b1c59c793ffa32c3` | `scripts/package-desktop.zsh` |
+| tc-website (`tc-help/`, the help pages, #519) | `cdfdf9b7d534e7574beb3fcf44678973cdc5f9d7` | `scripts/fetch-help.mjs` |
 | puppeteer-core / @puppeteer/browsers | `24.43.1` / `2.13.1`, exact; lockfile ships in the artifact (`electron/package-lock.json`) | `scripts/package-desktop.zsh` |
 | en_ult | v91, sha `35d215957f3203fd2e2fac5702ce14902d417f9d` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
 | en_ust | v91, sha `85f274a74245cb418f85266e1a5b524bc3e91e9c` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
