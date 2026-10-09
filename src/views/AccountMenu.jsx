@@ -281,7 +281,7 @@ function LicenseDialog({ onClose }) {
   );
 }
 
-/** #522: App language. One select of the four installed catalogs, Apply and
+/** #522: App language. One select of the installed catalogs (LOCALES), Apply and
  * Cancel. A selection previews the language across the whole app, this dialog
  * included; Apply saves it on this computer and closes after the write has
  * succeeded; Cancel, Escape, the close button and the scrim restore the applied

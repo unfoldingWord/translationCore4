@@ -1,9 +1,9 @@
-// #522: App language in the account menu (D88, #514). Four catalogs ship with the app;
+// #522: App language in the account menu (D88, #514). The catalogs in LOCALES ship with the app (#622);
 // a selection previews across the whole app; Apply saves on this computer through the
 // per-client settings document; every dismissal restores the applied language.
 //
 // What the journeys prove, against the real client and the rig:
-//   a  the menu row, the dialog, and the four-language preview before Apply: a known
+//   a  the menu row, the dialog, and the preview of every installed language before Apply: a known
 //      catalog-backed label (the Home heading) and the dialog's own labels follow each
 //      selection; Cancel restores English and nothing is stored
 //   b  Apply saves `appLocale`, closes after the write, and a fresh session starts in
@@ -30,6 +30,7 @@ import { RIG_CLIENT_SETTINGS, SEEDED_PROJECT, readClientSettingsDoc, resetClient
 import { dropOrigin, gateOff } from './helpers/door43Share';
 import { recordExternal } from './helpers/externalRequests';
 import { TC4_ROOT } from './helpers/root';
+import { LOCALES } from '../src/i18n/locales.js';
 
 const TAG = { tag: ['@app-language'] };
 const SEEDED_ID = `_local_/_local_/${SEEDED_PROJECT}`;
@@ -37,12 +38,15 @@ const SEEDED_ID = `_local_/_local_/${SEEDED_PROJECT}`;
 // The expected strings come from the shipped catalogs, never from memory.
 const catalog = (id: string): Record<string, string> =>
   JSON.parse(fs.readFileSync(path.join(TC4_ROOT, 'src', 'i18n', `${id}.json`), 'utf8'));
-const EN = catalog('en');
-const ES = catalog('es-419');
-const FR = catalog('fr');
-const HI = catalog('hi');
-const BY_ID: Record<string, Record<string, string>> = { en: EN, 'es-419': ES, fr: FR, hi: HI };
-const LABEL: Record<string, string> = { en: 'English', 'es-419': 'Español (Latinoamérica)', fr: 'Français', hi: 'हिन्दी' };
+// The picker's languages, labels and order come from the registry the app uses.
+const BY_ID: Record<string, Record<string, string>> = Object.fromEntries(LOCALES.map((l) => [l.id, catalog(l.id)]));
+const LABEL: Record<string, string> = Object.fromEntries(LOCALES.map((l) => [l.id, l.label]));
+const EN = BY_ID.en;
+const ES = BY_ID['es-419'];
+const FR = BY_ID.fr;
+const HI = BY_ID.hi;
+const LAST = LOCALES[LOCALES.length - 1].id;
+const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const trigger = (page: Page) => page.getByTestId('account-menu');
 const panel = (page: Page) => page.getByTestId('account-menu-panel');
@@ -119,16 +123,16 @@ test.describe('#522 — App language in the account menu', () => {
     await row(page).click();
     await expect(dialog(page)).toBeVisible();
     await expect(select(page)).toContainText('English');
-    // The picker offers exactly the four installed catalogs, native names, in order.
+    // The picker offers exactly the installed catalogs, native names, in order.
     await select(page).click();
     // The selected row carries the tick glyph before its label.
-    await expect(page.getByRole('option')).toHaveText([/English$/, /^Español \(Latinoamérica\)$/, /^Français$/, /^हिन्दी$/]);
+    await expect(page.getByRole('option')).toHaveText(LOCALES.map((l, i) => new RegExp(`${i === 0 ? '' : '^'}${escapeRe(l.label)}$`)));
     await expect(page.getByRole('option', { selected: true })).toContainText('English');
     await page.keyboard.press('Escape');
     await expect(dialog(page)).toBeVisible();
     // Apply is disabled while the choice is the applied one.
     await expect(apply(page)).toBeDisabled();
-    for (const id of ['es-419', 'fr', 'hi'] as const) {
+    for (const { id } of LOCALES.filter((l) => l.id !== 'en')) {
       await choose(page, id);
       await expectLanguage(page, id);
       await expect(apply(page)).toBeEnabled();
@@ -175,6 +179,23 @@ test.describe('#522 — App language in the account menu', () => {
     await cancel(page).click();
     expect(external.external()).toEqual([]);
     await external.save(testInfo);
+  });
+
+  // #622, criterion 5: each language added by #622 applies, and a fresh session starts in it.
+  test('b2. each language added by #622 applies and survives a restart', TAG, async ({ page }, testInfo) => {
+    await page.goto('/');
+    for (const id of ['pt-BR', 'id', 'uk', 'ru', 'vi']) {
+      await openDialog(page);
+      await choose(page, id);
+      const written = page.waitForResponse((r) => isSettingsWrite(r.url(), r.request().method()));
+      await apply(page).click();
+      await written;
+      await expect(dialog(page)).toHaveCount(0);
+      expect(storedLocale(), `${id}: saved`).toBe(id);
+      await page.reload();
+      await expectLanguage(page, id);
+      await shot(page, testInfo, `restart-${id}`);
+    }
   });
 
   // ---- c · each cancellation path, from an applied non-English language ----
@@ -373,7 +394,7 @@ test.describe('#522 — App language in the account menu', () => {
     await expect(dialog(page)).toHaveCount(0);
     await expectLanguage(page, 'en');
     await expect.poll(focused).toBe('account-menu');
-    // Open again from the keyboard, choose Hindi, Tab to Apply, Enter.
+    // Open again from the keyboard, choose the last language, Tab to Apply, Enter.
     await page.keyboard.press('Enter');
     await expect.poll(focused).toBe('account-sign-in');
     await page.keyboard.press('End');
@@ -389,18 +410,21 @@ test.describe('#522 — App language in the account menu', () => {
     await page.keyboard.press('ArrowDown');
     await page.keyboard.press('End');
     await page.keyboard.press('Enter');
-    await expect(select(page)).toContainText(LABEL.hi);
-    await expectLanguage(page, 'hi');
+    await expect(select(page)).toContainText(LABEL[LAST]);
+    await expectLanguage(page, LAST);
     await page.keyboard.press('Tab');
     await expect.poll(focused).toBe('language-cancel');
     await page.keyboard.press('Tab');
     await expect.poll(focused).toBe('language-apply');
     await page.keyboard.press('Enter');
     await expect(dialog(page)).toHaveCount(0);
-    await expectLanguage(page, 'hi');
-    await expect.poll(storedLocale).toBe('hi');
+    await expectLanguage(page, LAST);
+    await expect.poll(storedLocale).toBe(LAST);
     await expect.poll(focused).toBe('account-menu');
-    await shot(page, testInfo, 'keyboard-applied-hi');
+    await shot(page, testInfo, `keyboard-applied-${LAST}`);
+    // A fresh session starts in the language applied from the keyboard (#622, criterion 5).
+    await page.reload();
+    await expectLanguage(page, LAST);
     expect(external.external()).toEqual([]);
     await external.save(testInfo);
   });
