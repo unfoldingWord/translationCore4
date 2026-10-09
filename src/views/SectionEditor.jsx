@@ -5,11 +5,12 @@
 // nothing is written until Save, which sends each verse through editVerse
 // (state.saveSection). The pure rules live in sectionDraft.js. Pins that share
 // a word form a verse span (#63, D70.3): the save then goes through one
-// structural action instead of the per-verse splice.
+// structural action instead of the per-verse splice. A save that leaves the
+// section with no words asks first (#600): every verse returns to the stub.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../state.jsx';
 import { t } from '../i18n';
-import { Button, Overline, Switcher, VerseMarker } from '../ds/index.js';
+import { Button, Modal, Overline, Switcher, VerseMarker } from '../ds/index.js';
 import { EditingCard } from './draftChrome.jsx';
 import { canDrop, dropPin, expandKeys, indentLine, initialDraftText, parseDraft, sectionGroups, sectionKeys, sectionVerses, serializeDraft, spanEnd } from './sectionDraft.js';
 
@@ -179,11 +180,17 @@ export function SectionEditor({ chapter, keys, verses, span, dir, editType }) {
     setMode(next);
   };
   const draft = mode === 'place' ? placed : parseDraft(text, pins);
-  const canSave = draft.words.length > 0;
+  // No words: the save empties every verse of the section (#600). There is
+  // something to save only when a verse holds text now.
+  const empties = draft.words.length === 0;
+  const canSave = !empties || verses.some((v) => v.drafted);
+  const [asking, setAsking] = useState(false);
   const save = () => {
     if (!canSave) return;
     const groups = sectionGroups(draft.markers, pins, keys);
-    const formats = groupFormats(groups, draft.blocks);
+    // An emptied save changes the verse bodies only: the \p and \q lines
+    // between the verses stay, as when each verse is emptied alone.
+    const formats = empties ? {} : groupFormats(groups, draft.blocks);
     actions.saveSection(
       chapter,
       keys,
@@ -204,7 +211,7 @@ export function SectionEditor({ chapter, keys, verses, span, dir, editType }) {
         )}
       </>}
       footer={<>
-        <Button size="sm" disabled={!canSave} onClick={save}>{t('draft.saveSection')}</Button>
+        <Button size="sm" disabled={!canSave} onClick={empties ? () => setAsking(true) : save}>{t('draft.saveSection')}</Button>
         <Button variant="ghost" onClick={actions.blurVerse}
           style={{ color: 'var(--text-tertiary)', fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)' }}>
           {t('draft.cancelVerse')}
@@ -224,6 +231,18 @@ export function SectionEditor({ chapter, keys, verses, span, dir, editType }) {
         />
       ) : (
         <PlaceView keys={pins} words={placed.words} markers={placed.markers} setMarkers={(markers) => setPlaced({ ...placed, markers })} dir={dir} editType={editType} />
+      )}
+      {asking && (
+        <Modal data-testid="section-empty-confirm" width={460} title={t('draft.emptyTitle', { span })}
+          closeLabel={t('common.close')} onClose={() => setAsking(false)}
+          footer={<>
+            <Button variant="secondary" onClick={() => setAsking(false)}>{t('draft.emptyKeep')}</Button>
+            <Button onClick={save}>{t('draft.emptyConfirm')}</Button>
+          </>}>
+          <p style={{ fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', color: 'var(--text-secondary)', lineHeight: 'var(--lh-body)', margin: 0 }}>
+            {t('draft.emptyBody')}
+          </p>
+        </Modal>
       )}
     </EditingCard>
   );
