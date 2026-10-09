@@ -16,8 +16,6 @@ import { canDrop, dropPin, expandKeys, indentLine, initialDraftText, parseDraft,
 
 const SUP = { fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', marginInlineEnd: 3, verticalAlign: 'super' };
 const WORD = { display: 'inline-block', borderRadius: 'var(--radius-xs)', padding: '0 .06em' };
-/** A release nearer than this to the press on a pin ends a click, not a drag (px). */
-const DRAG_MIN = 4;
 
 /** Formats for preceding keys from non-first groups (#54). */
 const groupFormats = (groups, blocks) => {
@@ -40,9 +38,11 @@ const wordTitle = (held, pinAt, ok, w) => {
 /** What sits before a word: the held pin's ghost where it may land, then every
  * pin of a verse that begins here (the fixed first number as a plain
  * superscript; pins that share a word are one span). A placed pin in hand
- * stays drawn at its word, as a pin of the bank does (#598): the text does
- * not close up under the pointer, and a second click on it puts it back. */
-function PinBefore({ i, first, pinsHere, held, hover, ok, drop, release, pick }) {
+ * stays drawn at its word, as a pin of the bank does (#598): the release of
+ * the click that picked it up lands on the pin, not on a word, and a second
+ * click on it puts it back. The words must not move on a pick-up, or that
+ * release lands on a different word: see the instruction in PlaceView. */
+function PinBefore({ i, first, pinsHere, held, hover, ok, drop, pick }) {
   return (
     <>
       {hover === i && held != null && ok && !pinsHere.includes(held) && (
@@ -50,19 +50,19 @@ function PinBefore({ i, first, pinsHere, held, hover, ok, drop, release, pick })
         // the flow (the word's wrapper is the containing block): an in-flow ghost
         // shifted the text under the pointer on every hover, so a click aimed at
         // a word landed beside it. It takes the drop too (press or release).
-        <VerseMarker n={held} state="dragging" onPickUp={() => drop(i)} onPointerUp={(e) => release(i, e)} aria-hidden="true" tabIndex={-1}
+        <VerseMarker n={held} state="dragging" onPickUp={() => drop(i)} onPointerUp={() => drop(i)} aria-hidden="true" tabIndex={-1}
           style={{ position: 'absolute', insetInlineEnd: '100%', top: '50%', transform: 'translateY(-60%)', zIndex: 1 }} />
       )}
       {pinsHere.map((k) => (k === first
         ? <sup key={k} title={t('draft.firstFixed', { n: first })} style={SUP}>{first}</sup>
-        : <VerseMarker key={k} n={k} state={held === k ? 'dragging' : 'idle'} data-testid={`pin-${k}`} onPickUp={(e) => pick(k, e)} style={{ marginInlineEnd: '.12em' }} />))}
+        : <VerseMarker key={k} n={k} state={held === k ? 'dragging' : 'idle'} data-testid={`pin-${k}`} onPickUp={() => pick(k)} style={{ marginInlineEnd: '.12em' }} />))}
     </>
   );
 }
 
 /** One word in Place mode: the pin (or ghost, or fixed number) before it, then
  * the word itself, a real control while a pin is in hand and may land here. */
-function PlaceWord({ w, i, keys, markers, held, hover, setHover, drop, release, pick, cancel, dir }) {
+function PlaceWord({ w, i, keys, markers, held, hover, setHover, drop, pick, cancel, dir }) {
   const pinsHere = keys.filter((k) => markers[k] === i);
   const pinsAt = pinsHere.filter((k) => k !== held);
   const pinAt = pinsAt[pinsAt.length - 1];
@@ -74,7 +74,7 @@ function PlaceWord({ w, i, keys, markers, held, hover, setHover, drop, release, 
   };
   return (
     <>
-      <PinBefore i={i} first={keys[0]} pinsHere={pinsHere} held={held} hover={hover} ok={ok} drop={drop} release={release} pick={pick} />
+      <PinBefore i={i} first={keys[0]} pinsHere={pinsHere} held={held} hover={hover} ok={ok} drop={drop} pick={pick} />
       <span
         dir={dir}
         role={ok ? 'button' : undefined}
@@ -83,11 +83,11 @@ function PlaceWord({ w, i, keys, markers, held, hover, setHover, drop, release, 
         title={wordTitle(held, pinAt, ok, w)}
         onMouseEnter={over}
         onFocus={over}
-        onClick={ok ? (e) => release(i, e) : undefined}
+        onClick={ok ? () => drop(i) : undefined}
         // D70.3 is a drag: press the pin, move, release on the word. The pin's
-        // pointerdown picks it up, so the release here, after a move, places
-        // it; a plain click still places it too.
-        onPointerUp={ok ? (e) => release(i, e) : undefined}
+        // pointerdown picks it up, so the release here places it; a plain
+        // click still places it too.
+        onPointerUp={ok ? () => drop(i) : undefined}
         onKeyDown={held != null ? onKeyDown : undefined}
         style={{ ...WORD, cursor: held == null ? 'default' : ok ? 'copy' : 'not-allowed' }}>
         {w}
@@ -104,28 +104,13 @@ function PlaceView({ keys, words, markers, setMarkers, dir, editType }) {
   // takes the words back when its neighbour moves on, dropPin).
   const bank = keys.slice(1).filter((k) => markers[k] === undefined);
   // Pick a pin up (or put the held one back); Escape on a word also puts it back.
-  // Where the pointer went down on a pin. The pick-up can move the words under
-  // the pointer (the instruction appears in the bank), so a release that did
-  // not move from there ends a click and places nothing (#598). A release
-  // after a move is the drop of the drag (D70.3). A second click that did not
-  // move places nothing either: a double click must not move the number.
-  const press = useRef(null);
-  const pick = (k, e) => {
-    press.current = e.type === 'pointerdown' ? { x: e.clientX, y: e.clientY } : null;
-    setHeld((h) => (h === k ? null : k));
-    setHover(null);
-  };
+  const pick = (k) => { setHeld((h) => (h === k ? null : k)); setHover(null); };
   const cancel = () => { setHeld(null); setHover(null); };
   const drop = (i) => {
     if (held == null || !canDrop(markers, keys, held, i)) return;
     setMarkers(dropPin(markers, keys, held, i));
     setHeld(null);
     setHover(null);
-  };
-  const release = (i, e) => {
-    const p = press.current;
-    if (p && Math.hypot(e.clientX - p.x, e.clientY - p.y) < DRAG_MIN) return;
-    drop(i);
   };
   const preview = held != null && hover != null ? [hover, spanEnd(markers, hover, held, words.length)] : null;
   return (
@@ -134,15 +119,19 @@ function PlaceView({ keys, words, markers, setMarkers, dir, editType }) {
         <span style={{ fontSize: 'var(--fs-label)', letterSpacing: 'var(--tracking-overline)', textTransform: 'uppercase', fontWeight: 'var(--fw-heavy)', color: 'var(--tc-warn-text-2)', flex: 'none' }}>{t('draft.toPlace')}</span>
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, flexWrap: 'wrap', minHeight: 32 }}>
           {bank.map((k) => (
-            <VerseMarker key={k} n={k} data-testid={`pin-${k}`} state={held === k ? 'dragging' : 'idle'} onPickUp={(e) => pick(k, e)} />
+            <VerseMarker key={k} n={k} data-testid={`pin-${k}`} state={held === k ? 'dragging' : 'idle'} onPickUp={() => pick(k)} />
           ))}
           {bank.length === 0 && words.length > 0 && (
             <span style={{ fontStyle: 'italic', fontSize: 'var(--fs-ui-sm)', color: 'var(--text-tertiary)' }}>{t('draft.bankEmpty')}</span>
           )}
         </div>
-        <div style={{ flex: 1, minWidth: 0 }} />
-        <span style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', fontWeight: 'var(--fw-bold)', color: 'var(--tc-warn-text-2)', flex: 'none' }}>
-          {held != null ? t('draft.dropHint', { n: held }) : bank.length ? t('draft.pickHint') : ''}
+        {/* The instruction keeps its own row, as tall as its tallest text, in
+            every state: a row that came and went on a pick-up moved the words
+            under the pointer, and the click placed the number on the word that
+            arrived there (#598). */}
+        <span style={{ display: 'grid', flexBasis: '100%', textAlign: 'end', fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', fontWeight: 'var(--fw-bold)', color: 'var(--tc-warn-text-2)' }}>
+          <span style={{ gridArea: '1 / 1', visibility: held == null && bank.length ? 'visible' : 'hidden' }}>{t('draft.pickHint')}</span>
+          <span style={{ gridArea: '1 / 1', visibility: held != null ? 'visible' : 'hidden' }}>{t('draft.dropHint', { n: held ?? keys[keys.length - 1] })}</span>
         </span>
       </div>
       {words.length === 0 ? (
@@ -152,7 +141,7 @@ function PlaceView({ keys, words, markers, setMarkers, dir, editType }) {
           {words.map((w, i) => (
             <React.Fragment key={i}>
               <span style={{ position: 'relative', ...(preview && i >= preview[0] && i < preview[1] ? { background: 'var(--tc-highlight-soft)', borderRadius: 'var(--radius-xs)' } : {}) }}>
-                <PlaceWord w={w} i={i} keys={keys} markers={markers} held={held} hover={hover} setHover={setHover} drop={drop} release={release} pick={pick} cancel={cancel} dir={dir} />
+                <PlaceWord w={w} i={i} keys={keys} markers={markers} held={held} hover={hover} setHover={setHover} drop={drop} pick={pick} cancel={cancel} dir={dir} />
               </span>{' '}
             </React.Fragment>
           ))}
