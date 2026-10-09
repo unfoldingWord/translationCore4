@@ -237,7 +237,7 @@
   "importer.kind.fake.drop": "Lepaskan file fixture di sini, atau telusuri",
   "importer.kind.fake.hint": "Hanya server dev",
   "importer.files.one": "1 berkas",
-  "importer.files.many": "{n} file",
+  "importer.files.many": "{n} berkas",
   "importer.files.remove": "Hapus file",
   "importer.files.back": "← Pilih jenis lain",
   "importer.kind.back": "← Kembali",
