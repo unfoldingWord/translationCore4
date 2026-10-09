@@ -468,10 +468,10 @@ const clampHelps = (w) => Math.round(Math.min(HELPS_MAX, Math.max(HELPS_MIN, w))
 function HelpsDivider({ panel }) {
   const { actions } = useApp();
   const drag = React.useRef(null);
-  // The panel's far edge stays put, so the width is the pointer's distance from it.
+  // The width changes by the pointer's movement since the press, toward the editing pane.
   const widthAt = (x) => {
-    const r = panel.current.getBoundingClientRect();
-    return clampHelps(getComputedStyle(panel.current).direction === 'rtl' ? x - r.left : r.right - x);
+    const { startX, startWidth, rtl } = drag.current;
+    return clampHelps(startWidth + (rtl ? x - startX : startX - x));
   };
   const end = () => {
     const width = drag.current?.width;
@@ -484,7 +484,12 @@ function HelpsDivider({ panel }) {
         if (e.button !== 0) return;
         e.preventDefault(); // no text selection in the editing pane during the drag
         e.currentTarget.setPointerCapture?.(e.pointerId);
-        drag.current = { width: null };
+        drag.current = {
+          startX: e.clientX,
+          startWidth: panel.current.getBoundingClientRect().width,
+          rtl: getComputedStyle(panel.current).direction === 'rtl',
+          width: null,
+        };
       }}
       onPointerMove={(e) => {
         if (!drag.current) return;
