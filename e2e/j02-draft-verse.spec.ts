@@ -208,7 +208,9 @@ test.describe('J2 — a translator drafts a verse', () => {
         // The instruction while 10 waits in the bank and no number is in hand (#604).
         const idle = page.getByTestId('pin-bank').getByText('Click a verse number, then click the word that begins the verse.');
         await expect(idle).toBeVisible();
-        const idleText = (await idle.textContent()) ?? '';
+        // What the box shows, hidden text left out.
+        const shown = async () => (await page.getByTestId('pin-bank').innerText()).replace(/\s+/g, ' ').trim();
+        const idleText = await shown();
         await page.getByTestId('pin-bank').getByRole('button', { name: 'Move where verse 10 begins' }).click();
         await expect(idle).toBeHidden();
         await page.getByRole('button', { name: 'Begin verse 10 at no' }).click();
@@ -218,11 +220,11 @@ test.describe('J2 — a translator drafts a verse', () => {
         const empty = page.getByTestId('pin-bank').getByText('Every verse is placed. Click a verse number to move where its verse begins.');
         await expect(empty).toBeVisible();
         await expect(idle).toBeHidden();
-        // The run's artifact: the two instructions of the bank, as shown.
+        // The run's artifact: all that the bank shows in the two states.
         const bankPath = testInfo.outputPath('j02-place-instructions.txt');
         fs.writeFileSync(bankPath, [
           `10 waits in the bank: ${idleText}`,
-          `every verse is placed: ${(await empty.textContent()) ?? ''}`,
+          `every verse is placed: ${await shown()}`,
           '',
         ].join('\n'));
         await testInfo.attach('j02-place-instructions.txt', { path: bankPath, contentType: 'text/plain' });
