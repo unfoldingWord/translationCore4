@@ -6,6 +6,7 @@
 // §5.2 sidecar with its resolution record.
 import { test, expect } from './helpers/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
+import { articleMarks } from './helpers/articleMarks';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -595,7 +596,7 @@ test.describe('J4 — a checker works a book', () => {
   test(
     'the tW tool derives from the SAME repo the links came from and shows its article (D34, FR-15)',
     { tag: ['@inc2', '@J4'] },
-    async ({ page }) => {
+    async ({ page }, testInfo) => {
       writeProjectPins(SEEDED_PROJECT, PINS());
       const tsv = sideloadedIngredient('en_tw', 'TIT.tsv');
       const expected = tsv.split('\n').slice(1).filter((r) => r.trim()).length;
@@ -611,6 +612,31 @@ test.describe('J4 — a checker works a book', () => {
       await page.getByTestId('open-academy').click();
       await expect(page.getByTestId('article-panel')).toBeVisible();
       await expect(page.getByTestId('article-panel')).toContainText('payload/');
+
+      // #619: the Translation Words article shows its `__…__` words in bold, and the
+      // Translation Academy article of the first note shows its `>` lines as quote blocks.
+      const words = await articleMarks(page.getByTestId('article-panel'));
+      await page.getByTestId('academy-drawer').click({ position: { x: 10, y: 10 } });
+      await page.getByTestId('check-back').click();
+      await page.getByTestId('open-translationNotes').click();
+      await page.getByTestId('open-academy').click();
+      await expect(page.getByTestId('article-panel')).toContainText(/translate\/|checking\//);
+      const academy = await articleMarks(page.getByTestId('article-panel'));
+      const marks = testInfo.outputPath('check-article-marks.json');
+      fs.writeFileSync(marks, `${JSON.stringify({ words, academy }, null, 2)}\n`);
+      await testInfo.attach('check-article-marks', { path: marks, contentType: 'application/json' });
+      expect(words.bold.length).toBeGreaterThan(0);
+      expect(academy.quoteBlocks).toBeGreaterThan(0);
+      expect(academy.bold.length).toBeGreaterThan(0);
+      for (const seen of [words, academy]) {
+        expect(seen.linesThatStartWithQuoteMark).toEqual([]);
+        expect(seen.doubleUnderscores).toBe(0);
+        expect(seen.doubleAsterisks).toBe(0);
+      }
+      await page.getByTestId('article-panel').locator('blockquote').first().scrollIntoViewIfNeeded();
+      const shot = testInfo.outputPath('check-article-academy.png');
+      await page.screenshot({ path: shot, animations: 'disabled' });
+      await testInfo.attach('check-article-academy', { path: shot, contentType: 'image/png' });
     },
   );
 });

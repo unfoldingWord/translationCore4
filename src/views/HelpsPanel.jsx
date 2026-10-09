@@ -11,7 +11,7 @@
 // panes highlight through sourceHighlight.ts.
 import React from 'react';
 import { useApp } from '../state.jsx';
-import { renderArticleBlocks } from '../data/articles';
+import { renderArticleBlocks, takeSpans } from '../data/articles';
 import { t } from '../i18n';
 import { verseText } from './verseText.js';
 import { isSourceAbsent } from '../data/sourceState';
@@ -37,6 +37,25 @@ export const focusOf = (it) => ({
   quote: it.contextId.quote,
   occurrence: it.contextId.occurrence,
 });
+
+/** The text of one rendered block (#619): bold and italic runs are elements. */
+export function BlockText({ block }) {
+  return block.spans.map((s, i) => {
+    const italic = s.italic ? <em>{s.text}</em> : s.text;
+    return <React.Fragment key={i}>{s.bold ? <strong>{italic}</strong> : italic}</React.Fragment>;
+  });
+}
+
+/** A block inside a `>` quote (#619): one indented bar for each level. `flow-root`
+ * keeps the block's margin inside, so the bar of a quote of many lines has no gaps. */
+export function Quoted({ depth = 0, children }) {
+  if (depth <= 0) return children;
+  return (
+    <blockquote style={{ display: 'flow-root', margin: 0, paddingInlineStart: 12, borderInlineStart: '3px solid var(--border-strong)' }}>
+      <Quoted depth={depth - 1}>{children}</Quoted>
+    </blockquote>
+  );
+}
 
 export function ArticleView({ article, onClose, onRetry }) {
   if (!article) return null;
@@ -68,13 +87,15 @@ export function ArticleView({ article, onClose, onRetry }) {
       {!article.loading && article.found && (
         <div data-testid="understand-article">
           {renderArticleBlocks(article.found.body).map((b, i) => (
-            <p key={i} style={{
-              fontSize: b.kind === 'h' ? 'var(--fs-caption-lg)' : 'var(--fs-ui-sm)',
-              fontWeight: b.kind === 'h' ? 'var(--fw-heavy)' : 'var(--fw-regular)',
-              color: b.kind === 'h' ? 'var(--uw-ocean)' : 'var(--text-secondary)',
-              lineHeight: 'var(--lh-body)', margin: b.kind === 'h' ? '12px 0 4px' : '0 0 8px',
-              paddingInlineStart: b.kind === 'li' ? 14 : 0,
-            }}>{b.text}</p>
+            <Quoted key={i} depth={b.quote}>
+              <p style={{
+                fontSize: b.kind === 'h' ? 'var(--fs-caption-lg)' : 'var(--fs-ui-sm)',
+                fontWeight: b.kind === 'h' ? 'var(--fw-heavy)' : 'var(--fw-regular)',
+                color: b.kind === 'h' ? 'var(--uw-ocean)' : 'var(--text-secondary)',
+                lineHeight: 'var(--lh-body)', margin: b.kind === 'h' ? '12px 0 4px' : '0 0 8px',
+                paddingInlineStart: b.kind === 'li' ? 14 : 0,
+              }}><BlockText block={b} /></p>
+            </Quoted>
           ))}
         </div>
       )}
@@ -151,7 +172,8 @@ const PREVIEW_CHARS = 400;
  * source lands inside a token — 12 notes in the two vendored Titus fixtures cut
  * inside `[[rc://…]]` or a `[label](target)` link, leaving a dangling `[1 ` on
  * screen. After renderArticleBlocks the text carries no syntax at all, so a cut
- * here can only ever fall between words. */
+ * here can only ever fall between words. The spans are cut at the same place
+ * (#619), so a bold run keeps its style up to the cut. */
 function previewBlocks(blocks, limit) {
   const out = [];
   let used = 0;
@@ -168,7 +190,8 @@ function previewBlocks(blocks, limit) {
     // FIRST whole word would leave a fragment on screen ("… Prophecy delayed
     // Acc…", en_tn@v86 JON 4:intro), so stop before the block instead.
     if (!/\s/.test(slice)) break;
-    out.push({ ...b, text: `${slice.replace(/\s+\S*$/, '')}…` });
+    const cut = slice.replace(/\s+\S*$/, '');
+    out.push({ ...b, text: `${cut}…`, spans: [...takeSpans(b.spans, cut.length), { text: '…' }] });
     used = limit;
     break;
   }
@@ -176,7 +199,7 @@ function previewBlocks(blocks, limit) {
   // still has to say that something follows.
   const last = out[out.length - 1];
   if (last && out.length < blocks.length && !last.text.endsWith('…')) {
-    out[out.length - 1] = { ...last, text: `${last.text}…` };
+    out[out.length - 1] = { ...last, text: `${last.text}…`, spans: [...last.spans, { text: '…' }] };
   }
   return out;
 }
@@ -188,13 +211,15 @@ function NoteBlocks({ blocks }) {
   return (
     <>
       {blocks.map((b, i) => (
-        <span key={i} style={{
-          display: 'block',
-          fontWeight: b.kind === 'h' ? 'var(--fw-heavy)' : 'var(--fw-regular)',
-          color: b.kind === 'h' ? 'var(--uw-ocean)' : 'inherit',
-          margin: b.kind === 'h' ? '8px 0 2px' : '0 0 6px',
-          paddingInlineStart: b.kind === 'li' ? 14 : 0,
-        }}>{b.kind === 'li' ? `• ${b.text}` : b.text}</span>
+        <Quoted key={i} depth={b.quote}>
+          <span style={{
+            display: 'block',
+            fontWeight: b.kind === 'h' ? 'var(--fw-heavy)' : 'var(--fw-regular)',
+            color: b.kind === 'h' ? 'var(--uw-ocean)' : 'inherit',
+            margin: b.kind === 'h' ? '8px 0 2px' : '0 0 6px',
+            paddingInlineStart: b.kind === 'li' ? 14 : 0,
+          }}>{b.kind === 'li' ? '• ' : ''}<BlockText block={b} /></span>
+        </Quoted>
       ))}
     </>
   );

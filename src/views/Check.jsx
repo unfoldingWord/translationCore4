@@ -23,7 +23,7 @@ import { targetWords, selectionsFromTokens, tokenIndicesFromSelections } from '.
 import { tokenizeVerse, matchQuote, tokenizePlain, matchPlainQuote } from '../data/sourceHighlight';
 import { verseText } from './verseText.js';
 import { absenceMessageKey, isSourceAbsent } from '../data/sourceState';
-import { ExpandableNote, glTitleFor } from './HelpsPanel.jsx';
+import { BlockText, ExpandableNote, Quoted, glTitleFor } from './HelpsPanel.jsx';
 import { RAIL_FILTERS, RAIL_FILTER_ORDER, hasComment, isBookmarked, railCounts } from './checkFilters.js';
 import { t } from '../i18n';
 import { Button, Callout, Drawer, Overline, ProgressBar } from '../ds/index.js';
@@ -288,16 +288,22 @@ function ArticleBody({ article }) {
       {blocks.map((b, i) => {
         if (b.kind === 'h') {
           return (
-            <p key={i} style={{ fontSize: 'var(--fs-caption-lg)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)', margin: '12px 0 4px', letterSpacing: '.02em' }}>{b.text}</p>
+            <Quoted key={i} depth={b.quote}>
+              <p style={{ fontSize: 'var(--fs-caption-lg)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)', margin: '12px 0 4px', letterSpacing: '.02em' }}><BlockText block={b} /></p>
+            </Quoted>
           );
         }
         if (b.kind === 'li') {
           return (
-            <p key={i} style={{ fontSize: 'var(--fs-body)', color: 'var(--text-body)', lineHeight: 1.7, margin: '0 0 4px', paddingInlineStart: 14 }}>{b.text}</p>
+            <Quoted key={i} depth={b.quote}>
+              <p style={{ fontSize: 'var(--fs-body)', color: 'var(--text-body)', lineHeight: 1.7, margin: '0 0 4px', paddingInlineStart: 14 }}><BlockText block={b} /></p>
+            </Quoted>
           );
         }
         return (
-          <p key={i} style={{ fontSize: 'var(--fs-body)', color: 'var(--text-body)', lineHeight: 1.7, margin: '0 0 16px' }}>{b.text}</p>
+          <Quoted key={i} depth={b.quote}>
+            <p style={{ fontSize: 'var(--fs-body)', color: 'var(--text-body)', lineHeight: 1.7, margin: '0 0 16px' }}><BlockText block={b} /></p>
+          </Quoted>
         );
       })}
       <p style={{ fontSize: 'var(--fs-micro)', color: 'var(--text-tertiary)', ...mono, margin: '10px 0 0' }}>
