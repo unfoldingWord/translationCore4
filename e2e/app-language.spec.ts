@@ -372,6 +372,8 @@ test.describe('#522 — App language in the account menu', () => {
     await page.keyboard.press('ArrowDown');
     await expect.poll(focused).toBe('account-internet');
     await page.keyboard.press('ArrowDown');
+    await expect.poll(focused).toBe('account-help'); // Help and guides (#519)
+    await page.keyboard.press('ArrowDown');
     await expect.poll(focused).toBe('account-language');
     await page.keyboard.press('Enter');
     await expect(dialog(page)).toBeVisible();
