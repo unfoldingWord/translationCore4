@@ -334,9 +334,11 @@ export function Layer({
   const JUSTIFY = { center: 'center', start: 'flex-start', end: 'flex-end', 'bottom-start': 'flex-start', 'bottom-end': 'flex-end' };
   const bottom = placement === 'bottom-start' || placement === 'bottom-end';
   /* tC4 local: `scrimProps` lands extra attributes (a test id) on the scrim,
-     the way the pre-primitive Modal and Drawer spread their rest props. */
+     the way the pre-primitive Modal and Drawer spread their rest props.
+     tC4 local (#214): `data-layer-placement` lets src/ui.css keep a layer clear
+     of the macOS window controls and out of the header's drag area. */
   return portal(
-    <div {...scrimProps}
+    <div {...scrimProps} data-layer-placement={placement}
       /* React's root listener runs before the document listener that closes
          the inner layer, so the inner layer is still in outsideStack here. A
          press that will not close this layer keeps the focus where it is. */

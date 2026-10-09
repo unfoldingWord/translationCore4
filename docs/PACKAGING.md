@@ -145,11 +145,17 @@ On macOS the window has no title bar. The app header is the top of the window.
 - **Mechanism:** `scripts/package-desktop.zsh` patches the template window
   options in `electron/electronStartup.js`. On macOS only, it adds
   `titleBarStyle: 'hidden'` and `trafficLightPosition: { x: 20, y: 21 }`. The
-  patch refuses to run if the template window options changed shape.
+  patch refuses to run if the template window options changed shape, or if
+  the template already sets `frame` or `titleBarStyle`.
   `electron/preload.js` (`scripts/preload.cjs`) sets
   `data-title-bar="hidden"` on the page on macOS. With that mark, `src/ui.css`
   makes the header move the window, keeps each header control clickable, and
   keeps 88px at the left of the header for the traffic lights.
+- **Layers:** a dialog, drawer or panel (`Layer`, with `data-layer-placement`
+  on its scrim) does not move the window, also where it covers the header.
+  Chromium finds the drag area by position, not by the element on top, so the
+  scrim is no-drag. A full-height side panel (`start`, `end`) starts below the
+  header, so no control of the panel is under the traffic lights.
 - **Window controls:** the traffic lights (close, minimize, zoom) stay, at the
   vertical center of the 56px header. The Window menu does not change.
 - **Windows and Linux keep the native frame.** The template sets no `frame`

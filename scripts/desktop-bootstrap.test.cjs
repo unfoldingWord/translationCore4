@@ -621,6 +621,8 @@ test('#214: the macOS window has no title bar, and the page is marked on macOS o
   const changed = run(options.replace('autoHideMenuBar: false', 'autoHideMenuBar: true'));
   assert.match(changed.failed, /re-verify the #214 macOS title bar patch/);
   assert.equal(changed.text.includes('titleBarStyle'), false);
+  const framed = run(options.replace('show: false', 'show: false,\n        frame: false'));
+  assert.match(framed.failed, /re-verify the #214 macOS title bar patch/);
 
   const preload = fs.readFileSync(path.join(__dirname, 'preload.cjs'), 'utf8');
   const mark = (platform) => {

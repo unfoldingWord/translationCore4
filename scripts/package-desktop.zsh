@@ -346,14 +346,14 @@ console.log("stopServer() acts once per quit (#206)");
 # preload.js marks the page, so the header leaves room for the lights and moves
 # the window (src/ui.css). Windows and Linux keep the native frame: there,
 # titleBarStyle "hidden" also removes the window controls (docs/PACKAGING.md).
-# Refuse if the template window options changed shape.
+# Refuse if the template window options changed shape or already set the frame.
 node -e '
 const fs = require("fs");
 const p = process.argv[1];
 const s = fs.readFileSync(p, "utf8");
 const from = "        autoHideMenuBar: false,\n";
 const to = from + "        ...(process.platform === \x27darwin\x27 ? { titleBarStyle: \x27hidden\x27, trafficLightPosition: { x: 20, y: 21 } } : {}),\n";
-if (s.split(from).length !== 2 || s.split("new BrowserWindow({").length !== 2) {
+if (s.split(from).length !== 2 || s.split("new BrowserWindow({").length !== 2 || /titleBarStyle|frame:/.test(s)) {
   console.error("FATAL: the template window options changed — re-verify the #214 macOS title bar patch before building");
   process.exit(1);
 }
