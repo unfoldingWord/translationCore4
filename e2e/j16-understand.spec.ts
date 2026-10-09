@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { verifyAllJournaledProjects } from './helpers/journal';
 import { proveHelpsDragAndToggle, proveHelpsToolbar } from './helpers/helps';
+import { articleMarks } from './helpers/articleMarks';
 import {
   SEEDED_PROJECT,
   TC4_ROOT,
@@ -62,6 +63,12 @@ async function topBar(page: Page) {
     project: await box('project-switch'),
     indicator: await box('save-indicator'),
   };
+}
+
+/** #619: the title of the open helps article and the marks that it shows. */
+async function openArticleMarks(page: Page) {
+  const title = (await page.getByTestId('helps-article-title').textContent()) ?? '';
+  return { title, ...(await articleMarks(page.getByTestId('understand-article'))) };
 }
 
 /** #601: scroll the open helps article to its end, record where the title and the
@@ -218,14 +225,53 @@ test.describe('J16 — read a passage with helps and record a user comment', () 
 
       await page.getByRole('button', { name: 'Translation Academy →', exact: true }).first().click();
       await expect(page.getByTestId('understand-article')).toBeVisible({ timeout: 30_000 });
+      const academyMarks = await openArticleMarks(page);
 
       // #601: the title and the close button of a scrolled article stay in the pane,
       // for a Translation Academy article and for a Translation Words article.
       const academy = await scrolledArticle(page, testInfo, 'helps-article-academy-scrolled');
+      // #619: the long note of Titus 2:13 has `**…**` words. Expanded, it shows them in bold.
+      await page.getByTestId('understand-unit-v13').click();
+      const collapsed = page.locator('[data-testid="note-expand"][aria-expanded="false"]');
+      while (await collapsed.count()) await collapsed.first().click();
+      const noteMarks = await page.getByTestId('helps-panel').evaluate((panel) => {
+        const expanded = [...panel.querySelectorAll('[data-testid="note-expand"][aria-expanded="true"]')].map((b) => b.parentElement!);
+        const text = panel.textContent ?? '';
+        return {
+          expandedNotes: expanded.length,
+          expandedNoteBold: expanded.flatMap((note) => [...note.querySelectorAll('strong')].map((s) => s.textContent ?? '')),
+          doubleAsterisks: text.split('**').length - 1,
+          doubleUnderscores: text.split('__').length - 1,
+        };
+      });
+      // The first key term of Titus 2:1 has no `__` marks, so read "faith", in verse 2.
+      await page.getByTestId('understand-unit-v2').click();
       await page.getByRole('tab', { name: 'Words', exact: true }).click();
-      await page.getByRole('button', { name: 'Read the article →', exact: true }).first().click();
+      await page.getByTestId('helps-panel').locator('[data-frame]').filter({ has: page.getByText('faith', { exact: true }) })
+        .getByRole('button', { name: 'Read the article →', exact: true }).click();
       await expect(page.getByTestId('understand-article')).toBeVisible({ timeout: 30_000 });
+      const wordsMarks = await openArticleMarks(page);
       const words = await scrolledArticle(page, testInfo, 'helps-article-words-scrolled');
+      await page.getByTestId('understand-unit-v1').click();
+
+      // #619: quotes are indented blocks and marked words are bold; no mark shows as text.
+      const marks = testInfo.outputPath('helps-markdown-marks.json');
+      fs.writeFileSync(marks, `${JSON.stringify({ notes: noteMarks, academy: academyMarks, words: wordsMarks }, null, 2)}\n`);
+      await testInfo.attach('helps-markdown-marks', { path: marks, contentType: 'application/json' });
+      expect(noteMarks.expandedNoteBold.length).toBeGreaterThan(0);
+      expect(noteMarks.doubleAsterisks + noteMarks.doubleUnderscores).toBe(0);
+      expect(academyMarks.quoteBlocks).toBeGreaterThan(0);
+      expect(academyMarks.nestedQuoteBlocks).toBeGreaterThan(0);
+      expect(academyMarks.bold.length).toBeGreaterThan(0);
+      expect(academyMarks.quoteIndentPx).toBeGreaterThan(0);
+      expect(academyMarks.boldWeight).toBeGreaterThanOrEqual(600);
+      expect(wordsMarks.title).toMatch(/faith/i);
+      expect(wordsMarks.bold.length).toBeGreaterThan(0);
+      for (const seen of [academyMarks, wordsMarks]) {
+        expect(seen.linesThatStartWithQuoteMark).toEqual([]);
+        expect(seen.doubleUnderscores).toBe(0);
+        expect(seen.doubleAsterisks).toBe(0);
+      }
       const articles = testInfo.outputPath('helps-article-scrolled.json');
       fs.writeFileSync(articles, `${JSON.stringify({ academy, words }, null, 2)}\n`);
       await testInfo.attach('helps-article-scrolled', { path: articles, contentType: 'application/json' });
