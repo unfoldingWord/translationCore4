@@ -604,6 +604,8 @@ $line"
   fi
 done
 
+# #519: the help pages in the client build; scripts/fetch-help.mjs holds the pin.
+HELP_REV=$(<"$REPO/dist/help/.tc-website-rev")
 cat > "$APPDIR/BUILD-MANIFEST.json" <<MANIFEST
 {
   "artifact": "tC4-$VERSION-$OS-$ARCH-unsigned",
@@ -620,6 +622,7 @@ $BUNDLED_MANIFEST_ENTRIES
     "desktop_app_template": { "rev": "$TEMPLATE_REV" },
     "resource_core": { "rev": "$RESOURCE_CORE_REV" },
     "webfonts_core": { "rev": "$WEBFONTS_CORE_REV" },
+    "tc_website_help": { "rev": "$HELP_REV" },
     "puppeteer_core": { "version": "$PUPPETEER_CORE_VER" },
     "puppeteer_browsers": { "version": "$PUPPETEER_BROWSERS_VER" },
     "zip_js": { "version": "$ZIP_JS_VER" }

@@ -202,6 +202,8 @@ function HelpPanel({ openLink, onClose }) {
         if (!a) return;
         const url = new URL(a.href);
         if (url.origin === window.location.origin) return;
+        // auxclick is the middle button here; the right button opens a context menu, not the link.
+        if (e.type === 'auxclick' && e.button !== 1) return;
         e.preventDefault();
         if (/^https?:$/.test(url.protocol)) openLink(url.href);
       };
