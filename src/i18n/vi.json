@@ -98,7 +98,7 @@
   "refusal.actor.record-mismatch": "Hồ sơ của dự án về máy tính này ghi tên một máy tính khác. Điều này có thể xảy ra khi một thư mục dự án được sao chép thủ công. Hãy yêu cầu trợ giúp.",
   "refusal.ledger.unreadable": "Một bản ghi mà máy tính này lưu giữ về dự án đã bị hỏng. Các tệp dự án không bị thay đổi. Hãy yêu cầu trợ giúp.",
   "refusal.open.unexplained-divergence": "Một chương trình khác đã thay đổi các tệp được liệt kê ở trên, và ứng dụng không thể khớp các thay đổi. Không có gì bị ghi đè. Hãy hoàn tác thay đổi bên ngoài, hoặc yêu cầu trợ giúp.",
-  "refusal.open.story-divergence": "Một tệp câu chuyện đã thay đổi bên ngoài ứng dụng. Văn bản đã soạn thảo của bạn vẫn được lưu. Hãy khôi phục tệp, ví dụ từ thùng rác, sau đó mở lại dự án.",
+  "refusal.open.story-divergence": "Một tệp câu chuyện đã bị thay đổi bên ngoài ứng dụng. Ứng dụng không thể hợp nhất các thay đổi câu chuyện. Hãy hoàn tác thay đổi bên ngoài, sau đó mở lại dự án.",
   "refusal.story.base-missing": "Một tệp câu chuyện đã bị xóa bên ngoài ứng dụng. Văn bản đã soạn thảo của bạn vẫn được lưu. Hãy khôi phục tệp, ví dụ từ thùng rác, sau đó mở lại dự án.",
   "refusal.open.scope-unreadable": "Ứng dụng không thể đọc danh sách sách của dự án. Hãy mở lại dự án.",
   "refusal.seed.mismatch": "Ứng dụng không thể đọc chính xác các tệp của dự án này, vì vậy không lưu gì cả. Các mục được liệt kê ở trên cho thấy sự cố. Hãy yêu cầu trợ giúp.",
