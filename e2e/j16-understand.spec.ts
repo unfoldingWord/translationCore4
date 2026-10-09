@@ -2,7 +2,7 @@
 // docs/JOURNEYS.md J16 · built in Increment 4 (#104); proof in Increment 5 (#197)
 
 import { test, expect } from './helpers/test';
-import type { Page, Route } from '@playwright/test';
+import type { Page, Route, TestInfo } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { verifyAllJournaledProjects } from './helpers/journal';
@@ -64,6 +64,37 @@ async function topBar(page: Page) {
   };
 }
 
+/** #601: scroll the open helps article to its end, record where the title and the
+ * close button sit in the article pane, then close the article from there. */
+async function scrolledArticle(page: Page, testInfo: TestInfo, name: string) {
+  const article = page.getByTestId('understand-article');
+  await article.locator('p').last().evaluate((p) => p.scrollIntoView({ block: 'end' }));
+  const box = async (testId: string) => {
+    const b = await page.getByTestId(testId).boundingBox();
+    if (!b) throw new Error(`${testId} is not on the page`);
+    return { top: b.y, bottom: b.y + b.height, left: b.x, right: b.x + b.width };
+  };
+  const first = await article.locator('p').first().boundingBox();
+  const last = await article.locator('p').last().boundingBox();
+  const seen = {
+    title: (await page.getByTestId('helps-article-title').textContent()) ?? '',
+    pane: await box('helps-article-pane'),
+    titleBox: await box('helps-article-title'),
+    close: await box('helps-article-close'),
+    firstParagraphTop: first!.y,
+    lastParagraphBottom: last!.y + last!.height,
+  };
+  const panel = (await page.getByTestId('helps-panel').boundingBox())!;
+  const shot = testInfo.outputPath(`${name}.png`);
+  await page.screenshot({ path: shot, animations: 'disabled', clip: panel });
+  await testInfo.attach(name, { path: shot, contentType: 'image/png' });
+  // A click at the recorded place: a click on the locator would scroll the button
+  // into view first, and so would pass with the button out of view.
+  await page.mouse.click((seen.close.left + seen.close.right) / 2, (seen.close.top + seen.close.bottom) / 2);
+  const closed = await expect(article).toHaveCount(0).then(() => true, () => false);
+  return { ...seen, closed };
+}
+
 // #329: a Home tile returns to where this client last worked; this journey opens
 // books from their tiles and states its own start (Translate, chapter 1).
 test.beforeEach(() => {
@@ -123,6 +154,30 @@ test.describe('J16 — read a passage with helps and record a user comment', () 
 
       await page.getByRole('button', { name: 'Translation Academy →', exact: true }).first().click();
       await expect(page.getByTestId('understand-article')).toBeVisible({ timeout: 30_000 });
+
+      // #601: the title and the close button of a scrolled article stay in the pane,
+      // for a Translation Academy article and for a Translation Words article.
+      const academy = await scrolledArticle(page, testInfo, 'helps-article-academy-scrolled');
+      await page.getByRole('tab', { name: 'Words', exact: true }).click();
+      await page.getByRole('button', { name: 'Read the article →', exact: true }).first().click();
+      await expect(page.getByTestId('understand-article')).toBeVisible({ timeout: 30_000 });
+      const words = await scrolledArticle(page, testInfo, 'helps-article-words-scrolled');
+      const articles = testInfo.outputPath('helps-article-scrolled.json');
+      fs.writeFileSync(articles, `${JSON.stringify({ academy, words }, null, 2)}\n`);
+      await testInfo.attach('helps-article-scrolled', { path: articles, contentType: 'application/json' });
+      for (const seen of [academy, words]) {
+        expect(seen.title).not.toBe('');
+        // The article is scrolled: its start is above the pane and its end is inside it.
+        expect(seen.firstParagraphTop).toBeLessThan(seen.pane.top);
+        expect(seen.lastParagraphBottom).toBeLessThanOrEqual(seen.pane.bottom + 1);
+        for (const part of [seen.titleBox, seen.close]) {
+          expect(part.top).toBeGreaterThanOrEqual(seen.pane.top);
+          expect(part.bottom).toBeLessThanOrEqual(seen.pane.bottom);
+          expect(part.left).toBeGreaterThanOrEqual(seen.pane.left);
+          expect(part.right).toBeLessThanOrEqual(seen.pane.right);
+        }
+        expect(seen.closed).toBe(true);
+      }
 
       const segmentsBefore = new Set(segmentFiles());
       const comment = 'Pablo le dice a Tito qué enseñar (J16).';

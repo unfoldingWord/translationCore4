@@ -41,13 +41,17 @@ export const focusOf = (it) => ({
 export function ArticleView({ article, onClose, onRetry }) {
   if (!article) return null;
   return (
-    <div style={{ borderTop: 'var(--stroke-hair) solid var(--border-hair)', padding: 16, overflow: 'auto', maxHeight: '45%', flex: 'none', background: '#fff' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-        <span style={{ flex: 1, fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)' }}>
+    // #601: the header row is outside the scroll area, so the title and the close
+    // button stay in view while the article scrolls. Its band marks where the
+    // cards stop and the article starts.
+    <div data-testid="helps-article-pane" style={{ borderTop: 'var(--stroke) solid var(--border-strong)', maxHeight: '45%', flex: 'none', display: 'flex', flexDirection: 'column', background: '#fff' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', flex: 'none', background: 'var(--surface-muted)', borderBottom: 'var(--stroke-hair) solid var(--border-hair)' }}>
+        <span data-testid="helps-article-title" style={{ flex: 1, fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)' }}>
           {article.loading ? t('check.articleLoading') : article.found?.title ?? ''}
         </span>
-        <IconButton size={26} title={t('common.close')} onClick={onClose}>✕</IconButton>
+        <IconButton data-testid="helps-article-close" size={26} title={t('common.close')} onClick={onClose}>✕</IconButton>
       </div>
+      <div style={{ flex: '1 1 auto', minHeight: 0, overflow: 'auto', padding: 16 }}>
       {!article.loading && article.error && (
         // Round 35: a failed read is a stated, retryable error — never a
         // false "this article does not exist" claim (D30).
@@ -74,6 +78,7 @@ export function ArticleView({ article, onClose, onRetry }) {
           ))}
         </div>
       )}
+      </div>
     </div>
   );
 }
