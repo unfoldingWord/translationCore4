@@ -594,3 +594,50 @@ test('#378: the help-desk send is answered by the main process; a build with no 
   assert.match(recipe, /tc4-helpdesk\.json/);
 });
 
+
+// #214: the recipe patch gives the macOS window no title bar, and refuses a
+// template whose window options changed shape; the preload marks the page on
+// macOS only, for the header rules in src/ui.css.
+test('#214: the macOS window has no title bar, and the page is marked on macOS only', (t) => {
+  const patch = recipe.split('# #214:')[1].split("node -e '")[1].split("\n' \"$(npath")[0];
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tc4-titlebar-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const startup = path.join(dir, 'electronStartup.js');
+  const options = '    const win = new BrowserWindow({\n        width: 1024,\n        autoHideMenuBar: false,\n        show: false,\n    });\n';
+  const run = (text) => {
+    fs.writeFileSync(startup, text);
+    try {
+      return { out: execFileSync(process.execPath, ['-e', patch, startup], { encoding: 'utf8', stdio: 'pipe' }), text: fs.readFileSync(startup, 'utf8') };
+    } catch (error) {
+      return { failed: error.stderr, text: fs.readFileSync(startup, 'utf8') };
+    }
+  };
+  const patched = run(options);
+  assert.match(patched.out, /no title bar \(#214\)/);
+  const win = vm.runInNewContext(`(${patched.text.trim().replace('const win = new BrowserWindow(', '').replace(/\);$/, '')})`, { process: { platform: 'darwin' } });
+  assert.deepEqual(JSON.parse(JSON.stringify(win)), { width: 1024, autoHideMenuBar: false, titleBarStyle: 'hidden', trafficLightPosition: { x: 20, y: 21 }, show: false });
+  const other = vm.runInNewContext(`(${patched.text.trim().replace('const win = new BrowserWindow(', '').replace(/\);$/, '')})`, { process: { platform: 'win32' } });
+  assert.deepEqual(JSON.parse(JSON.stringify(other)), { width: 1024, autoHideMenuBar: false, show: false });
+  const changed = run(options.replace('autoHideMenuBar: false', 'autoHideMenuBar: true'));
+  assert.match(changed.failed, /re-verify the #214 macOS title bar patch/);
+  assert.equal(changed.text.includes('titleBarStyle'), false);
+  const framed = run(options.replace('show: false', 'show: false,\n        frame: false'));
+  assert.match(framed.failed, /re-verify the #214 macOS title bar patch/);
+
+  const preload = fs.readFileSync(path.join(__dirname, 'preload.cjs'), 'utf8');
+  const mark = (platform) => {
+    const listeners = {};
+    const document = { documentElement: { dataset: {} } };
+    vm.runInNewContext(preload, {
+      require: () => ({ contextBridge: { exposeInMainWorld() {} }, ipcRenderer: {} }),
+      process: { platform },
+      document,
+      window: { addEventListener: (name, listener) => { listeners[name] = listener; } },
+    });
+    listeners.DOMContentLoaded?.();
+    return document.documentElement.dataset.titleBar;
+  };
+  assert.equal(mark('darwin'), 'hidden');
+  assert.equal(mark('win32'), undefined);
+  assert.equal(mark('linux'), undefined);
+});

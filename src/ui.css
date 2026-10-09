@@ -3,3 +3,19 @@
    base.css. */
 html,body,#root{margin:0;padding:0;height:100%;}
 button{font-family:inherit;}
+
+/* #214: the macOS desktop window has no title bar; scripts/preload.cjs sets the
+   mark. The app header moves the window, and its left side (also in an RTL
+   project) leaves room for the traffic lights. Each control in the header stays
+   clickable: the brand (the first item of the first column) and every button,
+   tab, link and field. A layer (dialog, drawer, panel) covers the header:
+   Chromium finds the drag area by position, not by what is on top, so the
+   layer is no-drag; a full-height side panel starts below the header, so the
+   traffic lights are over the scrim only, and the scrim takes the presses on
+   the header (also when it has no color). !important: these are inline
+   styles. */
+html[data-title-bar="hidden"] header{-webkit-app-region:drag;padding-left:88px !important;}
+html[data-title-bar="hidden"] header > :first-child > :first-child,
+html[data-title-bar="hidden"] header :is(button,a,input,select,textarea,[role="tab"],[role="button"],[tabindex]),
+html[data-title-bar="hidden"] [data-layer-placement]{-webkit-app-region:no-drag;}
+html[data-title-bar="hidden"] :is([data-layer-placement="start"],[data-layer-placement="end"]){padding-top:var(--header-height) !important;pointer-events:auto !important;}

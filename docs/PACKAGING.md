@@ -138,6 +138,39 @@ and that enforcement is a packaging/shell responsibility. Facts, measured
   the local server port, or the dev rig, is outside it; the server binds
   127.0.0.1 and the port is not user-visible in normal use.
 
+## The window frame (#214)
+
+On macOS the window has no title bar. The app header is the top of the window.
+
+- **Mechanism:** `scripts/package-desktop.zsh` patches the template window
+  options in `electron/electronStartup.js`. On macOS only, it adds
+  `titleBarStyle: 'hidden'` and `trafficLightPosition: { x: 20, y: 21 }`. The
+  patch refuses to run if the template window options changed shape, or if
+  the template already sets `frame` or `titleBarStyle`.
+  `electron/preload.js` (`scripts/preload.cjs`) sets
+  `data-title-bar="hidden"` on the page on macOS. With that mark, `src/ui.css`
+  makes the header move the window, keeps each header control clickable, and
+  keeps 88px at the left of the header for the traffic lights.
+- **Layers:** a dialog, drawer, panel or popover (`Layer`, with
+  `data-layer-placement` on its scrim, or on the panel of an anchored popover)
+  does not move the window, also where it covers the header. Chromium finds
+  the drag area by position, not by the element on top, so these elements are
+  no-drag. A full-height side panel (`start`, `end`) starts below the
+  header, so no control of the panel is under the traffic lights.
+- **Window controls:** the traffic lights (close, minimize, zoom) stay, at the
+  vertical center of the 56px header. The Window menu does not change.
+- **Windows and Linux keep the native frame.** The template sets no `frame`
+  and no `titleBarStyle`, so Electron's default native title bar applies on all
+  three systems. On Windows and Linux, the application menu (Edit, View,
+  Window) is the top menu of the window [VERIFIED — desktop-app-template
+  4cb7576 `buildResources/electron/electronStartup.js` `createWindow()`;
+  electron v37.1.0 `docs/api/menu.md`, 2026-10-09]. On Windows and Linux,
+  `titleBarStyle: 'hidden'` removes the window controls, unless
+  `titleBarOverlay` draws them [VERIFIED — electron v37.1.0
+  `docs/api/structures/base-window-options.md`, 2026-10-09]. That overlay is
+  a different option with its own header layout, so the macOS change does not
+  apply to these systems. The patch and the mark act on `darwin` only.
+
 ## The Door43 server for account and write calls (#120)
 
 Owner ruling, 2026-09-25. The build chooses the Door43 server for account and

@@ -54,6 +54,11 @@ in the file:
   same innermost rule as Escape. That press is cancelled, so the focus stays
   where it is. Before, a press on a dialog's scrim with a dropdown open closed
   the dropdown and the dialog.
+- `primitives/Layer` (#214): the scrim, or the panel of an anchored layer
+  (it has no scrim), carries `data-layer-placement`. On
+  macOS the desktop window has no title bar, and `src/ui.css` uses this
+  attribute: a layer does not move the window, and a full-height side panel
+  starts below the header, clear of the window controls.
 - `Modal`: `open` defaults to true (the app mounts a modal only while it is
   open); new `closeLabel` (i18n for the ✕ button); `zIndex` is accepted for
   the old call sites and ignored (Layer stacks by nesting depth, then DOM

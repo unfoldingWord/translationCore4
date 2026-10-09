@@ -19,6 +19,15 @@
 // packaged, and it calls none of them.
 const { contextBridge, ipcRenderer } = require('electron');
 
+// #214: on macOS the window has no title bar (the titleBarStyle patch in
+// scripts/package-desktop.zsh). This mark lets src/ui.css make the app header
+// the place that moves the window, with room for the traffic lights.
+if (process.platform === 'darwin') {
+  window.addEventListener('DOMContentLoaded', () => {
+    document.documentElement.dataset.titleBar = 'hidden';
+  });
+}
+
 contextBridge.exposeInMainWorld('electronAPI', {
   setCanClose: (canClose) => ipcRenderer.send('setCanClose', canClose),
 });

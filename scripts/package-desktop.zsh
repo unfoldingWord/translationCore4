@@ -341,6 +341,25 @@ if (![from, "app.on(\x27before-quit\x27", "app.on(\x27will-quit\x27"].every(once
 fs.writeFileSync(p, s.replace(from, to));
 console.log("stopServer() acts once per quit (#206)");
 ' "$(npath "$PACK/electron/electronStartup.js")"
+# #214: on macOS the window has no title bar. The app header is the top of the
+# window, and the traffic lights stay, at the vertical center of the 56px header.
+# preload.js marks the page, so the header leaves room for the lights and moves
+# the window (src/ui.css). Windows and Linux keep the native frame: there,
+# titleBarStyle "hidden" also removes the window controls (docs/PACKAGING.md).
+# Refuse if the template window options changed shape or already set the frame.
+node -e '
+const fs = require("fs");
+const p = process.argv[1];
+const s = fs.readFileSync(p, "utf8");
+const from = "        autoHideMenuBar: false,\n";
+const to = from + "        ...(process.platform === \x27darwin\x27 ? { titleBarStyle: \x27hidden\x27, trafficLightPosition: { x: 20, y: 21 } } : {}),\n";
+if (s.split(from).length !== 2 || s.split("new BrowserWindow({").length !== 2 || /titleBarStyle|frame:/.test(s)) {
+  console.error("FATAL: the template window options changed — re-verify the #214 macOS title bar patch before building");
+  process.exit(1);
+}
+fs.writeFileSync(p, s.replace(from, to));
+console.log("the macOS window has no title bar (#214)");
+' "$(npath "$PACK/electron/electronStartup.js")"
 cp "$REPO/scripts/preload.cjs" "$PACK/electron/preload.js"
 node --check "$(npath "$PACK/electron/preload.js")"
 node -e "
