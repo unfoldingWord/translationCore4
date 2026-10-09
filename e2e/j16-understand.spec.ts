@@ -82,6 +82,8 @@ test.describe('J16 — read a passage with helps and record a user comment', () 
       // The switch to Understand below is the checkpoint that commits these pins. With
       // no place a tile opens in Understand (D87), so the open starts from a Translate place.
       writePlace(SEEDED_PROJECT, 'TIT', { mode: 'draft', chapter: 1 });
+      // #615: the reset keeps git history, so an earlier journey's checkpoint can be HEAD.
+      const commitsAtStart = commitCount(SEEDED_PROJECT);
 
       await page.goto('/');
       await page
@@ -95,7 +97,9 @@ test.describe('J16 — read a passage with helps and record a user comment', () 
       await page.getByRole('tab', { name: 'Verse', exact: true }).click();
       await expect(page.getByTestId('helps-loading')).toHaveCount(0);
       await expect
-        .poll(() => lastCommitMessage(SEEDED_PROJECT), { timeout: 30_000 })
+        .poll(() => (commitCount(SEEDED_PROJECT) > commitsAtStart ? lastCommitMessage(SEEDED_PROJECT) : ''), {
+          timeout: 30_000,
+        })
         .toMatch(/^Checkpoint, leaving Translate: /);
       const commitsBefore = commitCount(SEEDED_PROJECT);
 
