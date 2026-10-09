@@ -182,7 +182,7 @@ test.describe('J2 — a translator drafts a verse', () => {
   test(
     'draft a two-verse section (Titus 2:9–10): type it straight through, place verse 10, save — the bytes and one text.verse.set per verse land on disk (#141, J2 revised)',
     { tag: ['@inc5', '@J2'] },
-    async ({ page }) => {
+    async ({ page }, testInfo) => {
       // ULT chunks Titus 2 at 1, 3, 6, 9, 11, 14, 15 (\ts\* markers in the
       // sideloaded en_ult TIT.usfm), so 9–10 is a two-verse section no sibling
       // test touches. Verse 10 is placed at "no".
@@ -210,6 +210,54 @@ test.describe('J2 — a translator drafts a verse', () => {
         // Placed: the bank is empty and the pin sits in the text before "no".
         await expect(page.getByTestId('pin-bank').getByRole('button', { name: /Move where verse/ })).toHaveCount(0);
         await expect(page.getByTestId('place-words').getByRole('button', { name: 'Move where verse 10 begins' })).toBeVisible();
+      });
+
+      await test.step('the placed 10 moves with two mouse clicks while the bank is empty, then back with a mouse drag (#598, D70.3)', async () => {
+        const words = page.getByTestId('place-words');
+        const pin = words.getByRole('button', { name: 'Move where verse 10 begins' });
+        const hint = page.getByTestId('pin-bank').getByText(/^Click the word where verse \d+ begins$/);
+        await expect(words).toHaveText(/todo\s*10\s*no defraudando/);
+        // The words do not move when the number is picked up: the instruction
+        // has its place in the bank before it shows. So the release of this
+        // click stays on the number, and no other word arrives under it.
+        // Positions are from the card's corner: the page may scroll on a click.
+        const boxes = async () => {
+          const card = (await page.getByTestId('section-editor').boundingBox())!;
+          const at = async (l: typeof pin) => {
+            const box = (await l.boundingBox())!;
+            return { x: box.x - card.x, y: box.y - card.y };
+          };
+          return JSON.stringify([await at(pin), await at(words.getByText('mostrando', { exact: true }))]);
+        };
+        const before = await boxes();
+        await expect(hint).toBeHidden();
+        await pin.click();
+        await expect(hint).toBeVisible();
+        await expect(hint).toHaveText('Click the word where verse 10 begins');
+        const inHand = await boxes();
+        expect(inHand).toBe(before);
+        await expect(words).toHaveText(/todo\s*10\s*no defraudando/);
+        await page.getByRole('button', { name: 'Begin verse 10 at mostrando' }).click();
+        await expect(hint).toBeHidden();
+        await expect(words).toHaveText(/todo\s*no defraudando sino\s*10\s*mostrando/);
+        const moved = (await words.textContent()) ?? '';
+        await pin.dragTo(words.getByText('no', { exact: true }));
+        await expect(words).toHaveText(/todo\s*10\s*no defraudando sino\s*mostrando/);
+        // A double click on the number picks it up and puts it back.
+        await pin.dblclick();
+        await expect(hint).toBeHidden();
+        await expect(words).toHaveText(/todo\s*10\s*no defraudando sino\s*mostrando/);
+        // The run's artifact: the positions before and after the pick-up, and
+        // the words after each move.
+        const movePath = testInfo.outputPath('j02-click-move-placed-pin.txt');
+        fs.writeFileSync(movePath, [
+          `pin and "mostrando" before the pick-up: ${before}`,
+          `pin and "mostrando" with the number in hand: ${inHand}`,
+          `after the click on "mostrando": ${moved}`,
+          `after the drag back and the double click: ${(await words.textContent()) ?? ''}`,
+          '',
+        ].join('\n'));
+        await testInfo.attach('j02-click-move-placed-pin.txt', { path: movePath, contentType: 'text/plain' });
       });
 
       await test.step('Save section writes through the scheduler', async () => {
@@ -574,9 +622,9 @@ test.describe('J2 — a translator drafts a verse', () => {
   );
 
   test(
-    'break a verse span (Titus 2:11-12): drag verse 12 past text in Place mode, save — two verse lines again, verse 13 byte-identical (#63, D70)',
+    'break a verse span (Titus 2:11-12): move verse 12 past text with two clicks in Place mode, save — two verse lines again, verse 13 byte-identical (#63, #598, D70)',
     { tag: ['@inc5', '@J2'] },
-    async ({ page }) => {
+    async ({ page }, testInfo) => {
       // The 11–13 section: 11 and 12 become a span with 13 placed after it,
       // then the span is broken. Verse 13 is not touched by the break.
       const VERSE_11 = 'Porque la gracia de Dios se ha manifestado';
@@ -613,16 +661,31 @@ test.describe('J2 — a translator drafts a verse', () => {
       const pctWithSpan = (await titusRailPct(page).textContent()) ?? '';
       expect(pctWithSpan).toMatch(/^\d+%$/);
 
-      await test.step('reopen the section: the span opens as one line, its pins stacked; drag 12 onto its first word', async () => {
+      await test.step('reopen the section: the span opens as one line, its pins stacked; click 12, then click its first word', async () => {
         await page.getByRole('button', { name: 'Draft section 11–13' }).click();
         await expect(page.getByRole('textbox', { name: 'Section 11–13' })).toHaveValue(`11-12 ${VERSE_11} ${VERSE_12}\n13 ${VERSE_13}`);
         await page.getByRole('tab', { name: 'Place verse numbers' }).click();
-        // Verse 12's pin sits on the first word beside the fixed 11. A placed
-        // pin is picked up on pointerdown and dropped on pointerup (D70.3 is a
-        // drag), so the keyboard gesture picks it up here: Enter on the pin,
-        // then the word it begins at.
-        await page.getByTestId('place-words').getByRole('button', { name: 'Move where verse 12 begins' }).press('Enter');
-        await page.getByRole('button', { name: 'Begin verse 12 at enseñándonos' }).click();
+        // Verse 12's pin sits on the first word beside the fixed 11. Two mouse
+        // clicks move it, as for a number from the bank (#598): one on the
+        // pin, one on the word it begins at.
+        const pin = page.getByTestId('place-words').getByRole('button', { name: 'Move where verse 12 begins' });
+        const hint = page.getByTestId('pin-bank').getByText(/^Click the word where verse \d+ begins$/);
+        const target = page.getByRole('button', { name: 'Begin verse 12 at enseñándonos' });
+        await pin.click();
+        await expect(hint).toBeVisible();
+        await expect(hint).toHaveText('Click the word where verse 12 begins');
+        await expect(target).toBeVisible();
+        // The run's artifact: the instruction while the number is in hand.
+        const hintPath = testInfo.outputPath('j02-placed-pin-in-hand.txt');
+        fs.writeFileSync(hintPath, `${(await hint.textContent()) ?? ''}\n`);
+        await testInfo.attach('j02-placed-pin-in-hand.txt', { path: hintPath, contentType: 'text/plain' });
+        // A second click on the number puts it back, as in the bank.
+        await pin.click();
+        await expect(hint).toBeHidden();
+        await expect(target).toHaveCount(0);
+        await pin.click();
+        await target.click();
+        await expect(hint).toBeHidden();
         await page.getByRole('button', { name: 'Save section' }).click();
         await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 10_000 });
       });
@@ -634,6 +697,10 @@ test.describe('J2 — a translator drafts a verse', () => {
         await expect
           .poll(() => readIngredient(SEEDED_PROJECT, BOOK_IPATH).toString('utf8'), { timeout: 10_000 })
           .toBe(expected);
+        // The run's artifact: the stored book after the two clicks.
+        const usfmPath = testInfo.outputPath('j02-click-move-TIT.usfm');
+        fs.writeFileSync(usfmPath, readIngredient(SEEDED_PROJECT, BOOK_IPATH));
+        await testInfo.attach('j02-click-move-TIT.usfm', { path: usfmPath, contentType: 'text/plain' });
       });
 
       await test.step('the drafted percentage is the same with the span and with the two verses apart (#572)', async () => {
@@ -696,7 +763,8 @@ test.describe('J2 — a translator drafts a verse', () => {
         await sectionButton.click();
         await page.getByRole('tab', { name: 'Place verse numbers' }).click();
         await page.getByTestId('place-words').getByRole('button', { name: `Move where verse ${next} begins` }).press('Enter');
-        await page.getByRole('button', { name: `Join verse ${next} to verse ${a} at Vino`, exact: true }).click();
+        // The keyboard gesture, whole: Enter on the number, Enter on the word.
+        await page.getByRole('button', { name: `Join verse ${next} to verse ${a} at Vino`, exact: true }).press('Enter');
         await page.getByRole('button', { name: 'Save section' }).click();
         await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 10_000 });
       });
