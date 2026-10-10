@@ -112,10 +112,48 @@
   --track-32:  -.025em; /* @kind font */
   --track-38:  -.026em; /* @kind font */
   --track-64:  -.026em; /* @kind font */
+  /* Not on the curve: the block heading of a helps article. */
+  --track-helps: .02em; /* @kind font */
 
   /* Uppercase letterspacing. Not on the curve above — caps have no descenders to
      crowd and want air at any size. */
+  --tracking-status:   .06em; /* @kind font */
   --tracking-label:    .1em; /* @kind font */
+  --tracking-section:  .12em; /* @kind font */
   --tracking-overline: .13em; /* @kind font */
   --tracking-eyebrow:  .22em; /* @kind font */
+}
+
+/* Devanagari has no capitals, so uppercase does nothing there, and letterspacing
+   breaks the headline stroke between letters. The optical curve is drawn for the
+   Latin face, so Hindi takes none of it either (#612). */
+html:lang(hi) {
+  --track-9: 0;
+  --track-10: 0;
+  --track-11: 0;
+  --track-11-5: 0;
+  --track-12: 0;
+  --track-12-5: 0;
+  --track-13: 0;
+  --track-13-5: 0;
+  --track-14: 0;
+  --track-14-5: 0;
+  --track-15: 0;
+  --track-15-5: 0;
+  --track-16: 0;
+  --track-17: 0;
+  --track-17-5: 0;
+  --track-19: 0;
+  --track-19-5: 0;
+  --track-20: 0;
+  --track-22: 0;
+  --track-32: 0;
+  --track-38: 0;
+  --track-64: 0;
+  --track-helps: 0;
+  --tracking-status:   0;
+  --tracking-label:    0;
+  --tracking-section:  0;
+  --tracking-overline: 0;
+  --tracking-eyebrow:  0;
 }

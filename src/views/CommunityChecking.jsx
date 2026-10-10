@@ -139,7 +139,7 @@ function StoryCommunityChecking({ pageSetup, updatePageSetup }) {
         <h2 style={{ fontSize: 'var(--fs-title-sm)', letterSpacing: 'var(--track-16)', margin: 0 }}>{t('cc.title')}</h2>
         <ExportMenu pageSetup={pageSetup} />
         <div style={SETUP_BOX}>
-          <Overline style={{ letterSpacing: '.12em' }}>{t('cc.pageSetup')}</Overline>
+          <Overline style={{ letterSpacing: 'var(--tracking-section)' }}>{t('cc.pageSetup')}</Overline>
           <div style={SETUP_LIST}>
             <PageSetupChoiceRow label={t('cc.layout')} labelId="cc-layout-label"
               options={[{ value: 'above', label: t('cc.layoutAbove') }, { value: 'wrapped', label: t('cc.layoutWrapped') }]}
@@ -192,7 +192,7 @@ export default function CommunityChecking() {
         <h2 style={{ fontSize: 'var(--fs-title-sm)', letterSpacing: 'var(--track-16)', margin: 0 }}>{t('cc.title')}</h2>
         <ExportMenu pageSetup={pageSetup} />
         <div style={SETUP_BOX}>
-          <Overline style={{ letterSpacing: '.12em' }}>{t('cc.pageSetup')}</Overline>
+          <Overline style={{ letterSpacing: 'var(--tracking-section)' }}>{t('cc.pageSetup')}</Overline>
           <div style={SETUP_LIST}>
             <PageSetupChoiceRow label={t('cc.columns')} labelId="cc-columns-label"
               options={[{ value: 1, label: '1' }, { value: 2, label: '2' }]}

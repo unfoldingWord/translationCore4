@@ -212,7 +212,7 @@ function ToolCard({ tool, pre, label, progress, titleOf }) {
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, ...PICKER_TITLE }}>
         <span>{t(`check.tool.${tool}`)}</span>
         {!ready && (
-          <span style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-heavy)', letterSpacing: '.06em', textTransform: 'uppercase', color: tone.fg }}>
+          <span style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-heavy)', letterSpacing: 'var(--tracking-status)', textTransform: 'uppercase', color: tone.fg }}>
             {t(`check.state.${pre.state}`)}
           </span>
         )}
@@ -289,7 +289,7 @@ function ArticleBody({ article }) {
         if (b.kind === 'h') {
           return (
             <Quoted key={i} depth={b.quote}>
-              <p style={{ fontSize: 'var(--fs-caption-lg)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)', margin: '12px 0 4px', letterSpacing: '.02em' }}><BlockText block={b} /></p>
+              <p style={{ fontSize: 'var(--fs-caption-lg)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)', margin: '12px 0 4px', letterSpacing: 'var(--track-helps)' }}><BlockText block={b} /></p>
             </Quoted>
           );
         }
