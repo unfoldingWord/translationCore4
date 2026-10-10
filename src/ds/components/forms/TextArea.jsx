@@ -8,10 +8,12 @@ import React from 'react';
 import { Field } from '../primitives/Field.jsx';
 import { Input } from '../primitives/Input.jsx';
 
-/** Multi-line entry for translator comments and draft text. */
-export function TextArea({ label, variant = 'ui', dir, rows = 3, style, ...rest }) {
+/** Multi-line entry for translator comments and draft text.
+ * tC4 local: an `id` goes to the Field, so the label's htmlFor reaches the
+ * control (accessibility + getByLabel tests). */
+export function TextArea({ label, variant = 'ui', dir, rows = 3, id, style, ...rest }) {
   return (
-    <Field label={label} style={style}>
+    <Field label={label} id={id} style={style}>
       <Input as="textarea" variant={variant} dir={dir} rows={rows} {...rest} />
     </Field>
   );

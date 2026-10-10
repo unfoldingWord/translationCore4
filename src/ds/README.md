@@ -69,7 +69,7 @@ in the file:
 - `AppHeader`: three columns, the two side ones equal, so `center` stays in the
   center of the bar; a project name that does not fit is cut with an ellipsis
   (issue #599).
-- `TextField` / `Select`: the `id` prop goes to the `Field`, so the label's
+- `TextField` / `Select` / `TextArea`: the `id` prop goes to the `Field`, so the label's
   `htmlFor` reaches the control (accessibility + `getByLabel` tests).
 - `Select`: rewritten as a select-only combobox (issue #446, owner decisions
   2026-09-27) — a 36px combobox button that opens a listbox in an anchored

@@ -16,16 +16,20 @@
 //   g  with no desktop bridge, Send says that sending works only in the desktop app, asks
 //      nothing, and keeps the message
 //   h  Report a problem in the account menu (#521) starts a new report over that kept one
+//   i  #634: in every installed language, the Message, Name and Email boxes have the name
+//      of their labels; a click on the Message label puts the cursor in its box
 // Each run writes the payloads that reached the fake bridge and the request log into the
 // test's output folder (and attaches them).
 import fs from 'node:fs';
 import path from 'node:path';
 import { test, expect } from './helpers/test';
 import type { Page, TestInfo } from '@playwright/test';
-import { SEEDED_PROJECT, resetClientSettings, resetSeededChecking, rigRepo } from './helpers/rig';
+import { RIG_CLIENT_SETTINGS, SEEDED_PROJECT, readClientSettingsDoc, resetClientSettings, resetSeededChecking, rigRepo } from './helpers/rig';
 import { recordExternal } from './helpers/externalRequests';
 import { fakeFeedbackBridge } from './helpers/feedbackBridge';
 import { verifyAllJournaledProjects } from './helpers/journal';
+import { TC4_ROOT } from './helpers/root';
+import { LOCALES } from '../src/i18n/locales.js';
 
 const TAG = { tag: ['@feedback', '@inc9'] };
 const OUTSIDE_FILE = path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking', 'custom', 'notes.json');
@@ -58,6 +62,7 @@ test.describe('Ask for help: the Feedback dialog (#378)', () => {
   });
   test.afterEach(() => {
     fs.rmSync(OUTSIDE_FILE, { force: true });
+    resetClientSettings();
   });
 
   test('a refused open asks for help; the report goes to the bridge once, as shown (#378)', TAG, async ({ page, context }, testInfo) => {
@@ -167,6 +172,46 @@ test.describe('Ask for help: the Feedback dialog (#378)', () => {
     await expect(dialog).toHaveCount(0);
     expect(requests.external()).toEqual([]);
     await requests.save(testInfo, 'feedback-requests-no-bridge');
+  });
+
+  // i · #634: a label is the name of its box. The labels come from the shipped catalogs.
+  test('in every installed language, each box of Report a problem has the name of its label; a click on Message puts the cursor in its box (#634)', TAG, async ({ page }, testInfo) => {
+    const dialog = page.getByTestId('feedback');
+    const FIELDS = ['feedback.message', 'feedback.name', 'feedback.email'];
+    const wiring: Record<string, Record<string, { label: string; labelFor: string | null; boxId: string | null }>> = {};
+    for (const { id } of LOCALES) {
+      const catalog: Record<string, string> = JSON.parse(fs.readFileSync(path.join(TC4_ROOT, 'src', 'i18n', `${id}.json`), 'utf8'));
+      // The language as the Apply of a previous session left it (#522).
+      fs.writeFileSync(RIG_CLIENT_SETTINGS, JSON.stringify({ ...(readClientSettingsDoc() ?? {}), appLocale: id }));
+      await page.goto('/');
+      await expect.poll(() => page.evaluate(() => document.documentElement.lang)).toBe(id);
+      await page.getByTestId('account-menu').click();
+      await page.getByTestId('account-report').click();
+      await expect(dialog).toBeVisible();
+      // The control: a label that the dialog does not have finds no box.
+      await expect(dialog.getByLabel('No such label (#634)', { exact: true })).toHaveCount(0);
+      wiring[id] = {};
+      for (const key of FIELDS) {
+        const box = dialog.getByLabel(catalog[key], { exact: true });
+        await expect(box, `${id}: ${key}`).toHaveCount(1);
+        await expect(box, `${id}: ${key}`).toHaveRole('textbox');
+        await expect(box, `${id}: ${key}`).toHaveAccessibleName(catalog[key]);
+        const label = dialog.locator('label').filter({ hasText: catalog[key] });
+        wiring[id][key] = { label: catalog[key], labelFor: await label.getAttribute('for'), boxId: await box.getAttribute('id') };
+      }
+      // The Message label names the Message box, and a click on it moves the cursor there.
+      const message = dialog.getByLabel(catalog['feedback.message'], { exact: true });
+      await expect(message).toHaveAttribute('data-testid', 'feedback-message');
+      await dialog.getByLabel(catalog['feedback.name'], { exact: true }).focus();
+      await expect(message).not.toBeFocused();
+      await dialog.locator('label').filter({ hasText: catalog['feedback.message'] }).click();
+      await expect(message, `${id}: focus after a click on the label`).toBeFocused();
+      await page.keyboard.type(`Typed after a click on the label (${id}).`);
+      await expect(message).toHaveValue(`Typed after a click on the label (${id}).`);
+      await dialog.getByTestId('feedback-cancel').click();
+      await expect(dialog).toHaveCount(0);
+    }
+    await save(testInfo, 'feedback-labels.json', wiring);
   });
 });
 
