@@ -21,7 +21,7 @@
 // screenshots, into the test's output folder (and attaches them).
 import { test, expect } from './helpers/test';
 import fs from 'node:fs';
-import type { BrowserContext, Page, TestInfo } from '@playwright/test';
+import type { BrowserContext, Locator, Page, TestInfo } from '@playwright/test';
 import { SEEDED_PROJECT, resetClientSettings, resetPlaces, resetSeededChecking } from './helpers/rig';
 import { gateOff, turnOnInternet } from './helpers/door43Share';
 import { CLIENT_HOST, recordExternal } from './helpers/externalRequests';
@@ -196,12 +196,12 @@ test.describe('#519 Help and guides', () => {
   });
 
   test('f. Ctrl, Shift, Command and middle clicks on a link to another help page open no window; the frame shows the page', TAG, async ({ page, context }, testInfo) => {
-    const gestures = [
+    const gestures: { name: string; options: Parameters<Locator['click']>[0] }[] = [
       { name: 'ctrl', options: { modifiers: ['Control'] } },
       { name: 'shift', options: { modifiers: ['Shift'] } },
       { name: 'command', options: { modifiers: ['Meta'] } },
       { name: 'middle', options: { button: 'middle' } },
-    ] as const;
+    ];
     // A modifier click opens a window with no opener, which fires no `popup`; the context sees every new page.
     let popups = 0;
     context.on('page', () => { popups += 1; });
