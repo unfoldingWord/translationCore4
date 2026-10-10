@@ -17,7 +17,8 @@
 //      nothing, and keeps the message
 //   h  Report a problem in the account menu (#521) starts a new report over that kept one
 //   i  #634: in every installed language, the Message, Name and Email boxes have the name
-//      of their labels; a click on the Message label puts the cursor in its box
+//      of their labels; a click on the Message label puts the cursor in its box. Case b
+//      checks the Message label on the banner's path
 // Each run writes the payloads that reached the fake bridge and the request log into the
 // test's output folder (and attaches them).
 import fs from 'node:fs';
@@ -82,6 +83,8 @@ test.describe('Ask for help: the Feedback dialog (#378)', () => {
     await expect(dialog.getByRole('combobox', { name: 'Category' })).toContainText('Bug Report');
     const message = dialog.getByTestId('feedback-message');
     await expect(message).toHaveValue(new RegExp(`^Refusal code: ${CODE.replace('.', '\\.')}\\n\\n`));
+    // #634: opened from the banner, the Message box has the name of its label too.
+    await expect(dialog.getByLabel('Message', { exact: true })).toHaveAttribute('data-testid', 'feedback-message');
     expect(diagnosis).toContain((await message.inputValue()).split('\n\n')[1].slice(0, 60));
     await expect(dialog).toContainText('Without an email, the help desk cannot answer you.');
     const attachment = (await dialog.getByTestId('feedback-attachment').textContent()) ?? '';
@@ -178,7 +181,7 @@ test.describe('Ask for help: the Feedback dialog (#378)', () => {
   test('in every installed language, each box of Report a problem has the name of its label; a click on Message puts the cursor in its box (#634)', TAG, async ({ page }, testInfo) => {
     const dialog = page.getByTestId('feedback');
     const FIELDS = ['feedback.message', 'feedback.name', 'feedback.email'];
-    const wiring: Record<string, Record<string, { label: string; labelFor: string | null; boxId: string | null }>> = {};
+    const wiring: Record<string, Record<string, { label: string; labelFor: string | null; boxId: string | null; aria: string }>> = {};
     for (const { id } of LOCALES) {
       const catalog: Record<string, string> = JSON.parse(fs.readFileSync(path.join(TC4_ROOT, 'src', 'i18n', `${id}.json`), 'utf8'));
       // The language as the Apply of a previous session left it (#522).
@@ -197,7 +200,7 @@ test.describe('Ask for help: the Feedback dialog (#378)', () => {
         await expect(box, `${id}: ${key}`).toHaveRole('textbox');
         await expect(box, `${id}: ${key}`).toHaveAccessibleName(catalog[key]);
         const label = dialog.locator('label').filter({ hasText: catalog[key] });
-        wiring[id][key] = { label: catalog[key], labelFor: await label.getAttribute('for'), boxId: await box.getAttribute('id') };
+        wiring[id][key] = { label: catalog[key], labelFor: await label.getAttribute('for'), boxId: await box.getAttribute('id'), aria: await box.ariaSnapshot() };
       }
       // The Message label names the Message box, and a click on it moves the cursor there.
       const message = dialog.getByLabel(catalog['feedback.message'], { exact: true });
