@@ -51,7 +51,8 @@ same file names. Use the sha256 to tell them apart.
 The two files were downloaded on the host with
 `gh api repos/unfoldingWord/translationCore4/actions/artifacts/<id>/zip` and mapped
 read-only into the sandbox at `C:\in`. A PowerShell script ran inside the sandbox at
-logon. It started each step with `Start-Process -Wait -PassThru` and wrote the exit code
+logon: `docs/evidence/tools/windows-clean-machine-witness.ps1`, with the sandbox
+configuration `docs/evidence/tools/windows-clean-machine-witness.wsb`. It started each step with `Start-Process -Wait -PassThru` and wrote the exit code
 of each step to a log. `TEMP` and `TMP` were set to `C:\tmp`.
 
 Zip path:
@@ -137,7 +138,7 @@ projects yet. Select + Add a project to start.").
 - Below the title bar, the window shows the menu bar `Edit`, `View`, `Window`.
 - The app header is below the menu bar.
 
-The maintainer saw the window, and the picture of the screen shows the same. This agrees
+Elías Piñero (@eliaspinero) saw the window, and the picture of the screen shows the same. This agrees
 with "The window frame (#214)" in `docs/PACKAGING.md`: pull request #631 changed macOS
 only.
 

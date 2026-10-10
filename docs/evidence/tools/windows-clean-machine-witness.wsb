@@ -1,0 +1,25 @@
+<!-- Windows Sandbox configuration for windows-clean-machine-witness.ps1 (#546). Replace C:\tc4-witness with the folder on your host. -->
+<Configuration>
+  <Networking>Disable</Networking>
+  <MemoryInMB>8192</MemoryInMB>
+  <MappedFolders>
+    <MappedFolder>
+      <HostFolder>C:\tc4-witness\in</HostFolder>
+      <SandboxFolder>C:\in</SandboxFolder>
+      <ReadOnly>true</ReadOnly>
+    </MappedFolder>
+    <MappedFolder>
+      <HostFolder>C:\tc4-witness\kit</HostFolder>
+      <SandboxFolder>C:\kit</SandboxFolder>
+      <ReadOnly>true</ReadOnly>
+    </MappedFolder>
+    <MappedFolder>
+      <HostFolder>C:\tc4-witness\out</HostFolder>
+      <SandboxFolder>C:\out</SandboxFolder>
+      <ReadOnly>false</ReadOnly>
+    </MappedFolder>
+  </MappedFolders>
+  <LogonCommand>
+    <Command>cmd.exe /c start "tC4 rc2 witness" powershell.exe -NoProfile -ExecutionPolicy Bypass -NoExit -File C:\kit\witness.ps1</Command>
+  </LogonCommand>
+</Configuration>
