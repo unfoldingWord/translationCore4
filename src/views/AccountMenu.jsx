@@ -342,7 +342,8 @@ function AppLanguageDialog({ applied, actions, onClose }) {
       </>}>
       <p style={{ ...BODY, color: 'var(--text-body)' }}>{t('language.hint')}</p>
       <Select id="app-language" label={t('language.field')} value={preview} disabled={locked} data-testid="language-select"
-        onChange={(e) => select(e.target.value)} options={LOCALES.map((l) => ({ value: l.id, label: l.label }))} />
+        onChange={(e) => select(e.target.value)} options={LOCALES.map((l) => ({ value: l.id, label: l.label }))}
+        searchPlaceholder={t('language.find')} noMatchesLabel={t('addBook.noMatches')} clearLabel={t('common.clear')} />
       {error && <Callout tone="warn" role="alert" data-testid="language-error">{t('language.saveFailed')}</Callout>}
     </Modal>
   );

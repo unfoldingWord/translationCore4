@@ -15,14 +15,15 @@ const Magnifier = (
   </svg>
 );
 
-/** Search input with a leading magnifier and clear button. */
-export function SearchField({ value, onClear, placeholder = 'Search…', style, ...rest }) {
+/** Search input with a leading magnifier and clear button.
+ * tC4 local (issue #614): `clearLabel` localizes the clear button. */
+export function SearchField({ value, onClear, placeholder = 'Search…', clearLabel = 'Clear', style, ...rest }) {
   /* This was TextField plus two slots. Moving the slots onto Input gave them to
      every other field in the system and removed the reason for the component. */
   return (
     <Input value={value} placeholder={placeholder} leading={Magnifier} style={style}
       trailing={value && onClear
-        ? <Action weight="text" tone="neutral" iconOnly title="Clear" size="sm"
+        ? <Action weight="text" tone="neutral" iconOnly title={clearLabel} size="sm"
             onClick={onClear} style={{ width: 20, height: 20, minWidth: 20 }}>✕</Action>
         : null}
       {...rest} />

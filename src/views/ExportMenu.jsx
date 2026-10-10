@@ -59,7 +59,7 @@ export default function ExportMenu({ pageSetup }) {
         items={producers.map((producer) => ({ label: t(producer.label, undefined, producer.label), disabled: running, onClick: () => run(producer) }))}
       />
       {/* The side panel is narrower than the toast's 300px minimum width. */}
-      {notice && <Toast tone={notice.tone} message={notice.message} onDismiss={() => setNotice(null)} data-testid="export-toast" style={{ marginTop: 10, '--toast-w-min': '0px' }} />}
+      {notice && <Toast tone={notice.tone} message={notice.message} onDismiss={() => setNotice(null)} dismissLabel={t('common.dismiss')} data-testid="export-toast" style={{ marginTop: 10, '--toast-w-min': '0px' }} />}
       {failure && <Callout tone="warn" data-testid="export-failure" style={{ marginTop: 10 }}>{failure}</Callout>}
     </div>
   );

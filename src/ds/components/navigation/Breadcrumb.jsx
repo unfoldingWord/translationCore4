@@ -9,10 +9,11 @@ import { Stack } from '../primitives/Stack.jsx';
 import { Text } from '../primitives/Text.jsx';
 import { Action } from '../primitives/Action.jsx';
 
-/** Ancestry trail: Bible · Book · Chapter · Tool. */
-export function Breadcrumb({ items = [], style, ...rest }) {
+/** Ancestry trail: Bible · Book · Chapter · Tool.
+ * tC4 local (issue #614): `label` localizes the name of the trail. */
+export function Breadcrumb({ items = [], label = 'Breadcrumb', style, ...rest }) {
   return (
-    <Stack as="nav" direction="row" gap={7} align="center" wrap aria-label="Breadcrumb" style={style} {...rest}>
+    <Stack as="nav" direction="row" gap={7} align="center" wrap aria-label={label} style={style} {...rest}>
       {items.map((it, i) => (
         <React.Fragment key={i}>
           {i ? <Text role="caption" tone="faint" aria-hidden="true">·</Text> : null}
