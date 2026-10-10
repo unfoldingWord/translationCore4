@@ -20,9 +20,8 @@
 //   f  startup, the menu, the preview, Cancel and Apply make zero external requests;
 //      the keyboard opens the dialog, picks a language, applies, and the focus returns to
 //      the account trigger
-//   g  #612: in Hindi no uppercase label that shows Devanagari is letter-spaced (the Home
-//      section label, the Report a problem field labels); every other language keeps the
-//      tracking of English
+//   g  #612: in Hindi no element that shows Devanagari is letter-spaced (Home and the
+//      Report a problem dialog); every other language keeps the tracking of English
 // The shared recorder (helpers/externalRequests.ts) writes each request log, and the
 // screenshots, into the test's output folder (and attaches them).
 import fs from 'node:fs';
@@ -432,10 +431,10 @@ test.describe('#522 — App language in the account menu', () => {
     await external.save(testInfo);
   });
 
-  // ---- g · #612: Hindi labels carry no uppercase letter spacing ----
+  // ---- g · #612: Hindi text carries no letter spacing ----
   // Devanagari has no capitals, and the letter spacing of the uppercase labels breaks its
   // headline stroke. The control comes first: in English the same labels are tracked.
-  test('g. #612: in Hindi no uppercase label that shows Devanagari is letter-spaced; every other language keeps the tracking', TAG, async ({ page }, testInfo) => {
+  test('g. #612: in Hindi no element that shows Devanagari is letter-spaced; every other language keeps the tracking', TAG, async ({ page }, testInfo) => {
     const px = async (loc: Locator): Promise<number> => {
       const v = await loc.evaluate((el) => getComputedStyle(el).letterSpacing);
       return v === 'normal' ? 0 : parseFloat(v);
@@ -456,14 +455,14 @@ test.describe('#522 — App language in the account menu', () => {
       }
       return out;
     };
-    // Each visible element that is styled uppercase and holds Devanagari text of its own.
-    const devanagariUppercase = (): Promise<Array<{ text: string; letterSpacing: string }>> => page.evaluate(() => {
-      const out: Array<{ text: string; letterSpacing: string }> = [];
+    // Each visible element that holds Devanagari text of its own.
+    const devanagari = (): Promise<Array<{ text: string; uppercase: boolean; letterSpacing: string }>> => page.evaluate(() => {
+      const out: Array<{ text: string; uppercase: boolean; letterSpacing: string }> = [];
       for (const el of Array.from(document.querySelectorAll<HTMLElement>('body *'))) {
         const own = Array.from(el.childNodes).filter((n) => n.nodeType === 3).map((n) => n.textContent ?? '').join('').trim();
         if (!/[ऀ-ॿ]/.test(own) || !el.getClientRects().length) continue;
         const cs = getComputedStyle(el);
-        if (cs.textTransform === 'uppercase') out.push({ text: own, letterSpacing: cs.letterSpacing });
+        out.push({ text: own, uppercase: cs.textTransform === 'uppercase', letterSpacing: cs.letterSpacing });
       }
       return out;
     });
@@ -495,10 +494,10 @@ test.describe('#522 — App language in the account menu', () => {
     await expect(dialog(page)).toHaveCount(0);
     await expectLanguage(page, 'hi');
     const hiHome = await px(homeLabel('hi'));
-    const onHome = await devanagariUppercase();
+    const onHome = await devanagari();
     const hiFields = await fieldLabels('hi');
-    const onReport = await devanagariUppercase();
-    measured.hi = { home: hiHome, ...hiFields, uppercase: onReport };
+    const onReport = await devanagari();
+    measured.hi = { home: hiHome, ...hiFields, devanagari: onReport };
     // The dialog fades in: the picture is of its final state.
     const picture = testInfo.outputPath('feedback-hi.png');
     await page.screenshot({ path: picture, animations: 'disabled' });
@@ -508,7 +507,8 @@ test.describe('#522 — App language in the account menu', () => {
     await testInfo.attach('label-tracking', { path: file, contentType: 'application/json' });
     expect(hiHome, 'hi: Home section label').toBe(0);
     for (const f of FIELDS) expect(hiFields[f], `hi ${f}`).toBe(0);
-    expect(onHome.length).toBeGreaterThan(0);
+    expect(onHome.filter((el) => el.uppercase).length).toBeGreaterThan(0);
+    expect(onHome.filter((el) => !el.uppercase).length).toBeGreaterThan(0);
     expect(onReport.length).toBeGreaterThan(onHome.length);
     for (const el of [...onHome, ...onReport]) expect(['normal', '0px'], `hi: "${el.text}"`).toContain(el.letterSpacing);
   });

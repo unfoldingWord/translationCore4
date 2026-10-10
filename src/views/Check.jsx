@@ -289,7 +289,7 @@ function ArticleBody({ article }) {
         if (b.kind === 'h') {
           return (
             <Quoted key={i} depth={b.quote}>
-              <p style={{ fontSize: 'var(--fs-caption-lg)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)', margin: '12px 0 4px', letterSpacing: '.02em' }}><BlockText block={b} /></p>
+              <p style={{ fontSize: 'var(--fs-caption-lg)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)', margin: '12px 0 4px', letterSpacing: 'var(--track-helps)' }}><BlockText block={b} /></p>
             </Quoted>
           );
         }
