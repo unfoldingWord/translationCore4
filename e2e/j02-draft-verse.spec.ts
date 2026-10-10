@@ -205,11 +205,29 @@ test.describe('J2 — a translator drafts a verse', () => {
         await page.getByRole('tab', { name: 'Place verse numbers' }).click();
         // Verse 9 begins the section and is fixed: no pin for it in the bank.
         await expect(page.getByTestId('pin-bank').getByRole('button', { name: 'Move where verse 9 begins' })).toHaveCount(0);
+        // The instruction while 10 waits in the bank and no number is in hand (#604).
+        const idle = page.getByTestId('pin-bank').getByText('Click a verse number, then click the word that begins the verse.');
+        await expect(idle).toBeVisible();
+        // What the box shows, hidden text left out.
+        const shown = async () => (await page.getByTestId('pin-bank').innerText()).replace(/\s+/g, ' ').trim();
+        const idleText = await shown();
         await page.getByTestId('pin-bank').getByRole('button', { name: 'Move where verse 10 begins' }).click();
+        await expect(idle).toBeHidden();
         await page.getByRole('button', { name: 'Begin verse 10 at no' }).click();
         // Placed: the bank is empty and the pin sits in the text before "no".
         await expect(page.getByTestId('pin-bank').getByRole('button', { name: /Move where verse/ })).toHaveCount(0);
         await expect(page.getByTestId('place-words').getByRole('button', { name: 'Move where verse 10 begins' })).toBeVisible();
+        const empty = page.getByTestId('pin-bank').getByText('Every verse is placed. Click a verse number to move where its verse begins.');
+        await expect(empty).toBeVisible();
+        await expect(idle).toBeHidden();
+        // The run's artifact: all that the bank shows in the two states.
+        const bankPath = testInfo.outputPath('j02-place-instructions.txt');
+        fs.writeFileSync(bankPath, [
+          `10 waits in the bank: ${idleText}`,
+          `every verse is placed: ${await shown()}`,
+          '',
+        ].join('\n'));
+        await testInfo.attach('j02-place-instructions.txt', { path: bankPath, contentType: 'text/plain' });
       });
 
       await test.step('the placed 10 moves with two mouse clicks while the bank is empty, then back with a mouse drag (#598, D70.3)', async () => {
