@@ -201,9 +201,16 @@ function HelpPanel({ openLink, onClose }) {
         const a = e.target.closest?.('a[href]');
         if (!a) return;
         const url = new URL(a.href);
-        if (url.origin === window.location.origin) return;
         // auxclick is the middle button here; the right button opens a context menu, not the link.
         if (e.type === 'auxclick' && e.button !== 1) return;
+        if (url.origin === window.location.origin) {
+          // #632: Ctrl, Shift, Command and the middle button ask for a new window, which the
+          // desktop app opens in the system browser. Load the page here, as a plain click does.
+          if (e.type === 'click' && !(e.ctrlKey || e.shiftKey || e.metaKey)) return;
+          e.preventDefault();
+          doc.location.assign(url.href);
+          return;
+        }
         e.preventDefault();
         if (/^https?:$/.test(url.protocol)) openLink(url.href);
       };

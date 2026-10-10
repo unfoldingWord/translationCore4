@@ -14,9 +14,13 @@
 //      the desktop app), not the frame
 //   e  the close button, Escape in the panel and Escape in the frame close it; the focus
 //      returns to the account menu button
+//   f  (#632) Ctrl+click, Shift+click, Command+click and a middle-click on a link to another
+//      help page open no new window (the system browser in the desktop app); the frame shows
+//      the page, as after a plain click
 // The shared recorder (helpers/externalRequests.ts) writes each request log, and the
 // screenshots, into the test's output folder (and attaches them).
 import { test, expect } from './helpers/test';
+import fs from 'node:fs';
 import type { BrowserContext, Page, TestInfo } from '@playwright/test';
 import { SEEDED_PROJECT, resetClientSettings, resetPlaces, resetSeededChecking } from './helpers/rig';
 import { gateOff, turnOnInternet } from './helpers/door43Share';
@@ -189,5 +193,43 @@ test.describe('#519 Help and guides', () => {
     await frame(page).locator('#q').click();
     await page.keyboard.press('Escape');
     await expectClosed(page);
+  });
+
+  test('f. Ctrl, Shift, Command and middle clicks on a link to another help page open no window; the frame shows the page', TAG, async ({ page, context }, testInfo) => {
+    const gestures = [
+      { name: 'ctrl', options: { modifiers: ['Control'] } },
+      { name: 'shift', options: { modifiers: ['Shift'] } },
+      { name: 'command', options: { modifiers: ['Meta'] } },
+      { name: 'middle', options: { button: 'middle' } },
+    ] as const;
+    // A modifier click opens a window with no opener, which fires no `popup`; the context sees every new page.
+    let popups = 0;
+    context.on('page', () => { popups += 1; });
+    const helpUrl = () => page.frames().find((f) => f.url().includes('/help/'))?.url() ?? '';
+    const rows: { gesture: string; popups: number; frameUrl: string }[] = [];
+    try {
+      for (const { name, options } of gestures) {
+        const before = popups;
+        await page.goto('/');
+        await openHelp(page);
+        await frame(page).locator('summary > a[href="section-getting-started.html"]').click(options);
+        await page.waitForTimeout(500);
+        rows.push({ gesture: name, popups: popups - before, frameUrl: helpUrl() });
+        await expect(helpPanel(page)).toBeVisible();
+        // On macOS, Ctrl+click is a right-click: the browser sends contextmenu, not click, so the
+        // link opens nothing and the frame stays. Command+click is the macOS new-window gesture.
+        const [file, h1] = name === 'ctrl' && process.platform === 'darwin'
+          ? ['index.html', 'translationCore 4 Help'] : ['section-getting-started.html', 'Getting started'];
+        await expect.poll(() => helpUrl().endsWith(`/help/${file}`)).toBe(true);
+        await expect(frame(page).getByRole('heading', { level: 1 })).toHaveText(h1);
+        await shot(page, testInfo, `gesture-${name}`);
+      }
+    } finally {
+      const out = testInfo.outputPath('gestures.json');
+      fs.writeFileSync(out, `${JSON.stringify(rows, null, 2)}\n`);
+      await testInfo.attach('gestures', { path: out, contentType: 'application/json' });
+    }
+    expect(rows.map((r) => r.gesture)).toEqual(['ctrl', 'shift', 'command', 'middle']);
+    expect(rows.filter((r) => r.popups > 0)).toEqual([]);
   });
 });
