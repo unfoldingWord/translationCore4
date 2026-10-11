@@ -164,7 +164,9 @@ On macOS the window has no title bar. The app header is the top of the window.
   three systems. On Windows and Linux, the application menu (Edit, View,
   Window) is the top menu of the window [VERIFIED — desktop-app-template
   4cb7576 `buildResources/electron/electronStartup.js` `createWindow()`;
-  electron v37.1.0 `docs/api/menu.md`, 2026-10-09]. On Windows and Linux,
+  electron v37.1.0 `docs/api/menu.md`, 2026-10-09]. The installed Windows app
+  shows that title bar and that menu [VERIFIED —
+  `evidence/windows-clean-machine-546-2026-10-09.md`]. On Windows and Linux,
   `titleBarStyle: 'hidden'` removes the window controls, unless
   `titleBarOverlay` draws them [VERIFIED — electron v37.1.0
   `docs/api/structures/base-window-options.md`, 2026-10-09]. That overlay is
