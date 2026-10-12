@@ -201,7 +201,12 @@ of the window. Linux keeps the native frame.
   `buildResources/electron/electronStartup.js` `createWindow()`, 2026-10-12];
   the recipe leaves it. Before #639, the installed Windows app showed the
   native title bar and that menu row [VERIFIED —
-  `evidence/windows-clean-machine-546-2026-10-09.md`].
+  `evidence/windows-clean-machine-546-2026-10-09.md`]. With #639, a cold
+  launch on a clean Windows 11 machine shows no title bar and no menu row,
+  also not on Alt; each control, the header drag and double-click, and the
+  Zoom, Developer Tools and Reload shortcuts work [VERIFIED —
+  `evidence/windows-title-bar-639-2026-10-12.md`, artifact of run
+  38272852412 at ab168ae].
 - **Linux keeps the native frame.** The patch and the mark act on `darwin` and
   `win32` only. Hiding the Linux frame is
   [#642](https://github.com/unfoldingWord/translationCore4/issues/642).
