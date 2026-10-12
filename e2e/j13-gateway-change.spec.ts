@@ -1162,6 +1162,44 @@ test('editing the open draft while preview waits keeps the carried count exact @
   }
 });
 
+// #641: on a packaged build, 5 of 35 opens left the Checking language row on
+// "Looking for the packages on this computer…". The isolated proof of the lost
+// update is test/settingsOpen.test.ts (the two reads settle before one render);
+// this case is the regression evidence the issue asks for: 30 opens, each
+// after a page load (the client starts again, the rig stays), each settling,
+// with the click-to-settle time of each open attached.
+test('Project settings settles its Checking language row on each of 30 opens @inc9 @J13', async ({ page }, testInfo) => {
+  test.setTimeout(180_000);
+  writeProjectPins(SEEDED_PROJECT, EN());
+  const opens: Array<{ open: number; ms: number }> = [];
+  for (let i = 1; i <= 30; i++) {
+    await page.goto('/');
+    const settings = page.getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`).getByRole('button', { name: 'Settings' });
+    await expect(settings).toBeVisible();
+    const t0 = Date.now();
+    await settings.click();
+    const dialog = page.getByRole('dialog');
+    // Settled: the current language is stated, the loading text is gone, and
+    // the form's own read finished (Save enables only on `loaded`).
+    await expect(dialog.getByTestId('settings-gateway-current')).toContainText('English');
+    await expect(dialog.getByRole('button', { name: 'Save changes' })).toBeEnabled();
+    await expect(dialog.getByText('Looking for the packages on this computer…')).toHaveCount(0);
+    await expect(dialog.getByTestId('settings-gateway-error')).toHaveCount(0);
+    // The seeded project has no settings.json: the form shows the defaults.
+    await expect(dialog.getByRole('combobox', { name: 'Script font', exact: true })).toContainText('Noto Sans (default)');
+    opens.push({ open: i, ms: Date.now() - t0 });
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+  }
+  const times = opens.map((o) => o.ms);
+  const record = { project: SEEDED_PROJECT, opens, maxMs: Math.max(...times), meanMs: Math.round(times.reduce((a, b) => a + b, 0) / times.length) };
+  const artifactPath = testInfo.outputPath('j13-settings-settle.json');
+  fs.writeFileSync(artifactPath, `${JSON.stringify(record, null, 2)}\n`);
+  await testInfo.attach('j13-settings-settle.json', { path: artifactPath, contentType: 'application/json' });
+  console.log(`J13 settings-settle: 30 opens · click-to-settle max ${record.maxMs} ms · mean ${record.meanMs} ms`);
+  expect(opens).toHaveLength(30);
+});
+
 // Issue #62 teardown: after this journey's mutations, every journaled local
 // project must be a verified byte-for-byte materialization of its journal.
 test.afterAll(async () => {
