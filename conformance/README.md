@@ -17,10 +17,10 @@ npm run generate   # rebuilds JON stub (incl. the 2:9-10 verse-span fixture), al
 npm run validate   # the Phase-1 suite (BURRITO-SPEC §7); the three groups are below
 ```
 
-`npm run validate` runs <!-- manifest: conformance:validate passed -->50 checks in four
+`npm run validate` runs <!-- manifest: conformance:validate passed -->51 checks in four
 groups:
 
-- **Stage-1 (<!-- manifest: conformance:validate summary[Stage-1] -->38):** SB schema,
+- **Stage-1 (<!-- manifest: conformance:validate summary[Stage-1] -->39):** SB schema,
   ingredient integrity, versification (vrs.json presence/shape/scope coverage), scope
   grammar ([] + range arrays, negative controls), targetBible shape, alignment round-trip +
   staleness guard, selections validity + invalidation, decision-shape lint incl. triage
