@@ -406,8 +406,9 @@ test.describe('J12 — a facilitator upgrades the pinned resources', () => {
         expect(pin.sha).toBe(servedRevision(repo));
         expect(pin.flavor).toBeTruthy();
       }
-      // en_twl (D96, #644) has no newer release in the mocked DCS: its pin stays.
-      expect(pins.languageSets.primary.translationWordsLinks).toEqual(pinForSideloaded('en_twl', SEEDED_TAG));
+      // en_twl (D96, #644) has no newer release in the mocked DCS: its identity stays
+      // (the open adds D41 `books`, so this is a match on the pin, not on bytes).
+      expect(pins.languageSets.primary.translationWordsLinks).toMatchObject(pinForSideloaded('en_twl', SEEDED_TAG));
       // Case 4: the other set's pins and every text ingredient are byte-identical.
       expect(JSON.stringify(pins.languageSets.fallback)).toBe(fallbackBefore);
       expect(JSON.stringify((pins as { resources?: unknown }).resources ?? null)).toBe(groupsBefore); // the text pins (original language) too

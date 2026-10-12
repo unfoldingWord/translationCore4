@@ -181,13 +181,14 @@ route on `git.door43.org`). The journey runs offline and does not move when Door
 again. It needs no cache entry beyond the seeded ones.
 
 The guided fix screen's proof (`e2e/guided-fix.spec.ts`, issue #9) needs two releases the
-rig lacks: `en_tn` v88 (the fetch case) and `en_tw` v90 (the re-pin and sideload cases).
+rig lacks: `en_tn` v88 (the fetch case) and `en_twl` v90 (the re-pin and sideload cases; the
+twl pin drives the tW tool, D96).
 Cache them once, through the app's own fetch path (the sha is the commit the DCS tags API
 names for the tag):
 
 ```bash
 zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_tn v88 c3be6e4f2d279327249ef5b14bf5d5c8b7549e35
-zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_tw v90 014524aebf4f997c123777e952856d24e3b246d2
+zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_twl v90 5429bf17520c4c0bc1be7f4454c36adaeed75485
 ```
 
 Without them the guided fix cases skip and say so.
@@ -258,7 +259,7 @@ MSYS2 zsh window of the [Windows](#windows) section.
    zsh dev-env/scripts/cache-resource.zsh uW/obs_images_360 "" 7146d5b504f6b63b9e11f7dc0b18c594d0ae179d
    # The releases that the guided fix serves (not seeded)
    zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_tn v88 c3be6e4f2d279327249ef5b14bf5d5c8b7549e35
-   zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_tw v90 014524aebf4f997c123777e952856d24e3b246d2
+   zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_twl v90 5429bf17520c4c0bc1be7f4454c36adaeed75485
    ```
 
    The cache is gitignored. Do this step once; the entries stay when the rig reseeds.

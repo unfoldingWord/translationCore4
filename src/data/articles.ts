@@ -1,8 +1,8 @@
 // articles.ts — read the help article behind one check item (C2.5).
 //
 // Two shapes, both read from the INSTALLED burrito (never the network):
-//   * tW: `payload/<category>/<slug>.md` inside `<lang>_tw` — the same repo the
-//     TWL links came from (D34), and the links point at exactly this path.
+//   * tW: `payload/<category>/<slug>.md` inside `<lang>_tw` (the `translationWords`
+//     pin, D96); the TWL links (`<lang>_twl`) point at exactly this path.
 //   * tA: `<section>/<slug>/01.md` + `title.md` inside `<lang>_ta`. The section
 //     is not carried on the check item, so it is probed in order.
 //

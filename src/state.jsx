@@ -5128,8 +5128,8 @@ export function AppProvider({ children }) {
       },
 
       /** C2.5 — the help article behind the active item, read from the
-       * INSTALLED burrito. tW articles live in the same repo the links came
-       * from (D34); a tN item's groupId is a tA module slug. A module the
+       * INSTALLED burrito. tW articles live in the `translationWords` pin
+       * (D96); a tN item's groupId is a tA module slug. A module the
        * pinned tA release does not carry reports absence rather than
        * rendering an empty panel. */
       // `session` is passed explicitly by callers that have just dispatched:

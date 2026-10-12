@@ -5,13 +5,13 @@
 // (docs/JOURNEYS.md), proven here against the rig with the disk as ground truth.
 //
 // Fixture: the rig seeds the English helps at the shipped release (v91 since
-// #504); the project pins a release of one repo that the rig lacks (en_tw v90,
+// #504); the project pins a release of one repo that the rig lacks (en_twl v90,
 // en_tn v88 — older releases, cached: dev-env/README.md, "J12"). Door43 is a
 // Playwright route serving the cached real export. The cases run in this order
 // on purpose — an install stays on the rig until the next reseed:
-//   1. re-pin  (en_tw v90 missing, offline → the installed v91)
+//   1. re-pin  (en_twl v90 missing, offline → the installed v91; D96: the twl pin drives the tW tool)
 //   2. fetch   (en_tn v88 missing, online → downloaded through the sha gate)
-//   3. sideload (en_tw v90 still missing → the installed v91 file is refused, the v90 file installs)
+//   3. sideload (en_twl v90 still missing → the installed v91 file is refused, the v90 file installs)
 import { test, expect } from './helpers/test';
 import type { Page, BrowserContext } from '@playwright/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
@@ -50,7 +50,7 @@ function cachedRevision(repo: string, tag: string): string {
 }
 
 /** A pin of `repo` at `tag` — a release the rig does not hold, from the cached export's own metadata. */
-const missingPin = (repo: 'en_tn' | 'en_tw', tag: string) => {
+const missingPin = (repo: 'en_tn' | 'en_twl', tag: string) => {
   const base = pinForSideloaded(repo, SEEDED_TAG);
   return { ...base, version: tag, sha: cachedRevision(repo, tag) };
 };
@@ -75,7 +75,7 @@ async function mockDcs(context: BrowserContext, repo: string, tag: string) {
   });
 }
 
-const NEEDED: Array<[string, string]> = [['en_tn', 'v88'], ['en_tw', 'v90'], ['en_tw', SEEDED_TAG]];
+const NEEDED: Array<[string, string]> = [['en_tn', 'v88'], ['en_twl', 'v90'], ['en_twl', SEEDED_TAG]];
 
 // D95: the internet is off at every page load, and nothing is stored. Download is the first
 // step of its page load that needs the internet, so it asks to turn the internet on.
@@ -90,7 +90,7 @@ const installDir = (repo: string) => sideloadedRepo(`unfoldingword--${repo}`);
 
 test.beforeEach(async () => {
   resetSeededChecking();
-  test.skip(!NEEDED.every(([r, tag]) => fs.existsSync(zipPath(r, tag))), `en_tn v88 / en_tw v90+${SEEDED_TAG} are not cached under dev-env/resources-cache — see dev-env/README.md, "J12"`);
+  test.skip(!NEEDED.every(([r, tag]) => fs.existsSync(zipPath(r, tag))), `en_tn v88 / en_twl v90+${SEEDED_TAG} are not cached under dev-env/resources-cache — see dev-env/README.md, "J12"`);
 });
 
 // #329: a Home tile returns to where this client last worked; this journey opens
@@ -106,9 +106,9 @@ test.describe('#9 — the guided fix screen for a pinned resource this computer 
     async ({ page }, testInfo) => {
       const requests = recordExternal(page);
       const pins = PINS();
-      const missing = missingPin('en_tw', 'v90');
-      writeProjectPins(SEEDED_PROJECT, { ...pins, tw: missing });
-      const installed = pins.tw;
+      const missing = missingPin('en_twl', 'v90');
+      writeProjectPins(SEEDED_PROJECT, { ...pins, twl: missing });
+      const installed = pinForSideloaded('en_twl', SEEDED_TAG);
 
       await openCheck(page);
       const card = page.getByTestId('preflight-translationWords');
@@ -137,22 +137,21 @@ test.describe('#9 — the guided fix screen for a pinned resource this computer 
       const confirm = page.getByTestId('upgrade-confirm');
       await expect(confirm).toBeVisible({ timeout: 30_000 });
       await expect(confirm).toHaveAttribute('data-kind', 'repin');
-      await expect(confirm.getByTestId('upgrade-moves')).toContainText(`en_tw: v90 → ${SEEDED_TAG}`);
+      await expect(confirm.getByTestId('upgrade-moves')).toContainText(`en_twl: v90 → ${SEEDED_TAG}`);
       expect((readProjectPins(SEEDED_PROJECT).languageSets.primary.translationWordsLinks as { sha: string }).sha).toBe(missing.sha);
       await confirm.getByTestId('upgrade-apply').click();
       await expect(confirm).toHaveCount(0);
 
-      // Both tW slots of the primary rung moved to the installed identity. The
+      // The twl slot of the primary rung moved to the installed identity; the
+      // articles pin (en_tw, D96) is another repo and does not move. The
       // fallback rung (which the fixture also pinned at v90) is not touched: a
       // re-pin moves the rung the tool resolves through, nothing else.
       const after = readProjectPins(SEEDED_PROJECT);
-      for (const slot of ['translationWordsLinks', 'translationWords'] as const) {
-        expect((after.languageSets.primary[slot] as { sha: string; version: string }).sha).toBe(installed.sha);
-        expect((after.languageSets.primary[slot] as { sha: string; version: string }).version).toBe(SEEDED_TAG);
-      }
+      expect(after.languageSets.primary.translationWordsLinks).toMatchObject({ sha: installed.sha, version: SEEDED_TAG });
+      expect((after.languageSets.primary.translationWords as { sha: string }).sha).toBe(pins.tw.sha);
       expect((after.languageSets.fallback.translationWordsLinks as { sha: string }).sha).toBe(missing.sha);
       await expect(card).toHaveAttribute('data-state', 'ready');
-      expect(fs.existsSync(installDir('en_tw'))).toBe(false); // nothing was downloaded
+      expect(fs.existsSync(installDir('en_twl'))).toBe(false); // nothing was downloaded
     },
   );
 
@@ -195,9 +194,9 @@ test.describe('#9 — the guided fix screen for a pinned resource this computer 
     { tag: ['@inc6', '@J4'] },
     async ({ page }) => {
       test.setTimeout(180_000);
-      const missing = missingPin('en_tw', 'v90');
-      writeProjectPins(SEEDED_PROJECT, { ...PINS(), tw: missing });
-      expect(fs.existsSync(installDir('en_tw'))).toBe(false);
+      const missing = missingPin('en_twl', 'v90');
+      writeProjectPins(SEEDED_PROJECT, { ...PINS(), twl: missing });
+      expect(fs.existsSync(installDir('en_twl'))).toBe(false);
 
       await openCheck(page);
       const card = page.getByTestId('preflight-translationWords');
@@ -206,19 +205,19 @@ test.describe('#9 — the guided fix screen for a pinned resource this computer 
       const screen = page.getByTestId('guided-fix');
 
       // Wrong commit: the installed release's export for a v90 pin — refused before any install.
-      await screen.getByTestId('fix-sideload-file').setInputFiles(zipPath('en_tw', SEEDED_TAG));
+      await screen.getByTestId('fix-sideload-file').setInputFiles(zipPath('en_twl', SEEDED_TAG));
       const error = screen.getByTestId('fix-error');
       await expect(error).toBeVisible({ timeout: 60_000 });
       await expect(error).toContainText('not installed');
       await expect(error).toContainText(missing.sha.slice(0, 12));
-      expect(fs.existsSync(installDir('en_tw'))).toBe(false);
+      expect(fs.existsSync(installDir('en_twl'))).toBe(false);
       await expect(card).toHaveAttribute('data-state', 'fetch');
 
       // The pinned commit's export installs.
-      await screen.getByTestId('fix-sideload-file').setInputFiles(zipPath('en_tw', 'v90'));
+      await screen.getByTestId('fix-sideload-file').setInputFiles(zipPath('en_twl', 'v90'));
       await expect(screen).toHaveCount(0, { timeout: 150_000 });
       await expect(card).toHaveAttribute('data-state', 'ready');
-      const meta = JSON.parse(fs.readFileSync(path.join(installDir('en_tw'), 'metadata.json'), 'utf8')) as { identification: { primary: { dcs: Record<string, { revision: string }> } } };
+      const meta = JSON.parse(fs.readFileSync(path.join(installDir('en_twl'), 'metadata.json'), 'utf8')) as { identification: { primary: { dcs: Record<string, { revision: string }> } } };
       expect(Object.values(meta.identification.primary.dcs)[0].revision).toBe(missing.sha);
       // The other tool was never blocked (D30.5).
       await expect(page.getByTestId('preflight-translationNotes')).toHaveAttribute('data-state', 'ready');
