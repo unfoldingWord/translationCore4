@@ -138,40 +138,65 @@ and that enforcement is a packaging/shell responsibility. Facts, measured
   the local server port, or the dev rig, is outside it; the server binds
   127.0.0.1 and the port is not user-visible in normal use.
 
-## The window frame (#214)
+## The window frame (#214, #639)
 
-On macOS the window has no title bar. The app header is the top of the window.
+On macOS and on Windows the window has no title bar. The app header is the top
+of the window. Linux keeps the native frame.
 
 - **Mechanism:** `scripts/package-desktop.zsh` patches the template window
-  options in `electron/electronStartup.js`. On macOS only, it adds
-  `titleBarStyle: 'hidden'` and `trafficLightPosition: { x: 20, y: 21 }`. The
+  options in `electron/electronStartup.js`, in one patch with a spread per
+  system. On macOS it adds `titleBarStyle: 'hidden'` and
+  `trafficLightPosition: { x: 20, y: 21 }`. On Windows it adds
+  `titleBarStyle: 'hidden'` and
+  `titleBarOverlay: { color: '#014263', symbolColor: '#FFFFFF', height: 56 }`:
+  the header's color (`--uw-ocean`) and height (`--header-height`). The
   patch refuses to run if the template window options changed shape, or if
   the template already sets `frame` or `titleBarStyle`.
-  `electron/preload.js` (`scripts/preload.cjs`) sets
-  `data-title-bar="hidden"` on the page on macOS. With that mark, `src/ui.css`
-  makes the header move the window, keeps each header control clickable, and
-  keeps 88px at the left of the header for the traffic lights.
+  `electron/preload.js` (`scripts/preload.cjs`) marks the page:
+  `data-title-bar="hidden"` on macOS, `data-title-bar="overlay"` on Windows,
+  no mark on Linux. With a mark, `src/ui.css` makes the header move the
+  window and keeps each header control clickable. The room for the window
+  controls is physical, because an RTL project mirrors the page and not the
+  window: `hidden` keeps 88px at the left of the header for the traffic
+  lights; `overlay` keeps the right of the header free for the controls
+  overlay, with the width that the Window Controls Overlay environment
+  reports (`env(titlebar-area-x)`, `env(titlebar-area-width)`), so it
+  follows the zoom and the maximized state, plus the header's 16px gutter
+  [VERIFIED — electron v37.1.0 `docs/tutorial/custom-title-bar.md`, "Window
+  Controls Overlay" section, 2026-10-12].
 - **Layers:** a dialog, drawer, panel or popover (`Layer`, with
   `data-layer-placement` on its scrim, or on the panel of an anchored popover)
   does not move the window, also where it covers the header. Chromium finds
   the drag area by position, not by the element on top, so these elements are
   no-drag. A full-height side panel (`start`, `end`) starts below the
-  header, so no control of the panel is under the traffic lights.
-- **Window controls:** the traffic lights (close, minimize, zoom) stay, at the
-  vertical center of the 56px header. The Window menu does not change.
-- **Windows and Linux keep the native frame.** The template sets no `frame`
-  and no `titleBarStyle`, so Electron's default native title bar applies on all
-  three systems. On Windows and Linux, the application menu (Edit, View,
-  Window) is the top menu of the window [VERIFIED — desktop-app-template
-  4cb7576 `buildResources/electron/electronStartup.js` `createWindow()`;
-  electron v37.1.0 `docs/api/menu.md`, 2026-10-09]. The installed Windows app
-  shows that title bar and that menu [VERIFIED —
-  `evidence/windows-clean-machine-546-2026-10-09.md`]. On Windows and Linux,
-  `titleBarStyle: 'hidden'` removes the window controls, unless
-  `titleBarOverlay` draws them [VERIFIED — electron v37.1.0
-  `docs/api/structures/base-window-options.md`, 2026-10-09]. That overlay is
-  a different option with its own header layout, so the macOS change does not
-  apply to these systems. The patch and the mark act on `darwin` only.
+  header, so no control of the panel is under the window controls.
+- **Window controls, macOS:** the traffic lights (close, minimize, zoom) stay,
+  at the vertical center of the 56px header. The Window menu does not change.
+- **Window controls, Windows:** `titleBarOverlay` draws minimize, maximize and
+  close at the right, 56px tall, in the header color, white symbols. Without
+  it, `titleBarStyle: 'hidden'` leaves no window controls on Windows and
+  Linux [VERIFIED — electron v37.1.0
+  `docs/api/structures/base-window-options.md`, `titleBarStyle` and
+  `titleBarOverlay`, 2026-10-12].
+- **The menu row, Windows:** the application menu (Edit, View, Window) stays
+  set, so the #435 Reload guard of the recipe still passes and every shortcut
+  (Ctrl+R, Ctrl+Shift+R, Ctrl+Shift+I, Ctrl+0, zoom) keeps working. The menu
+  bar never shows, also not on Alt, and no `setMenuBarVisibility` call is
+  needed: `titleBarStyle: 'hidden'` makes the window frameless
+  (`shell/browser/native_window_views.cc` lines 253-254), `RootView::SetMenu`
+  registers the accelerators and returns before it builds a menu bar for a
+  frameless window (`shell/browser/ui/views/root_view.cc` lines 53-57), and
+  `RootView::SetMenuBarVisibility` does nothing while there is no menu bar
+  (`root_view.cc` lines 82-84) [VERIFIED — electron v37.1.0 source read at tag
+  `v37.1.0`, 2026-10-12]. The template sets `autoHideMenuBar: false`
+  [VERIFIED — desktop-app-template 4cb7576
+  `buildResources/electron/electronStartup.js` `createWindow()`, 2026-10-12];
+  the recipe leaves it. Before #639, the installed Windows app showed the
+  native title bar and that menu row [VERIFIED —
+  `evidence/windows-clean-machine-546-2026-10-09.md`].
+- **Linux keeps the native frame.** The patch and the mark act on `darwin` and
+  `win32` only. Hiding the Linux frame is
+  [#642](https://github.com/unfoldingWord/translationCore4/issues/642).
 
 ## The Door43 server for account and write calls (#120)
 

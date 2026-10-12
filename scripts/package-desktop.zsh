@@ -341,24 +341,32 @@ if (![from, "app.on(\x27before-quit\x27", "app.on(\x27will-quit\x27"].every(once
 fs.writeFileSync(p, s.replace(from, to));
 console.log("stopServer() acts once per quit (#206)");
 ' "$(npath "$PACK/electron/electronStartup.js")"
-# #214: on macOS the window has no title bar. The app header is the top of the
-# window, and the traffic lights stay, at the vertical center of the 56px header.
-# preload.js marks the page, so the header leaves room for the lights and moves
-# the window (src/ui.css). Windows and Linux keep the native frame: there,
-# titleBarStyle "hidden" also removes the window controls (docs/PACKAGING.md).
+# #214, #639: on macOS and Windows the window has no title bar. The app header
+# is the top of the window. On macOS the traffic lights stay, at the vertical
+# center of the 56px header. On Windows titleBarOverlay draws the window
+# controls at the right, 56px tall, in the header color (--uw-ocean, white
+# symbols); without it, titleBarStyle "hidden" leaves no controls there. The
+# hidden title bar also makes the window frameless, and Electron never builds
+# the menu bar of a frameless window, also not on Alt, while the application
+# menu stays set and its shortcuts (#435 Reload) keep working — so no
+# setMenuBarVisibility call (docs/PACKAGING.md). preload.js marks the page per
+# system, so the header leaves room for the controls and moves the window
+# (src/ui.css). Linux keeps the native frame (#642).
 # Refuse if the template window options changed shape or already set the frame.
 node -e '
 const fs = require("fs");
 const p = process.argv[1];
 const s = fs.readFileSync(p, "utf8");
 const from = "        autoHideMenuBar: false,\n";
-const to = from + "        ...(process.platform === \x27darwin\x27 ? { titleBarStyle: \x27hidden\x27, trafficLightPosition: { x: 20, y: 21 } } : {}),\n";
+const to = from
+  + "        ...(process.platform === \x27darwin\x27 ? { titleBarStyle: \x27hidden\x27, trafficLightPosition: { x: 20, y: 21 } } : {}),\n"
+  + "        ...(process.platform === \x27win32\x27 ? { titleBarStyle: \x27hidden\x27, titleBarOverlay: { color: \x27#014263\x27, symbolColor: \x27#FFFFFF\x27, height: 56 } } : {}),\n";
 if (s.split(from).length !== 2 || s.split("new BrowserWindow({").length !== 2 || /titleBarStyle|frame:/.test(s)) {
   console.error("FATAL: the template window options changed — re-verify the #214 macOS title bar patch before building");
   process.exit(1);
 }
 fs.writeFileSync(p, s.replace(from, to));
-console.log("the macOS window has no title bar (#214)");
+console.log("the macOS window has no title bar (#214); the Windows window has no title bar and no menu row (#639)");
 ' "$(npath "$PACK/electron/electronStartup.js")"
 cp "$REPO/scripts/preload.cjs" "$PACK/electron/preload.js"
 node --check "$(npath "$PACK/electron/preload.js")"

@@ -4,18 +4,24 @@
 html,body,#root{margin:0;padding:0;height:100%;}
 button{font-family:inherit;}
 
-/* #214: the macOS desktop window has no title bar; scripts/preload.cjs sets the
-   mark. The app header moves the window, and its left side (also in an RTL
-   project) leaves room for the traffic lights. Each control in the header stays
-   clickable: the brand (the first item of the first column) and every button,
-   tab, link and field. A layer (dialog, drawer, panel) covers the header:
-   Chromium finds the drag area by position, not by what is on top, so the
-   layer is no-drag; a full-height side panel starts below the header, so the
-   traffic lights are over the scrim only, and the scrim takes the presses on
-   the header (also when it has no color). !important: these are inline
-   styles. */
-html[data-title-bar="hidden"] header{-webkit-app-region:drag;padding-left:88px !important;}
-html[data-title-bar="hidden"] header > :first-child > :first-child,
-html[data-title-bar="hidden"] header :is(button,a,input,select,textarea,[role="tab"],[role="button"],[tabindex]),
-html[data-title-bar="hidden"] [data-layer-placement]{-webkit-app-region:no-drag;}
-html[data-title-bar="hidden"] :is([data-layer-placement="start"],[data-layer-placement="end"]){padding-top:var(--header-height) !important;pointer-events:auto !important;}
+/* #214, #639: the macOS and Windows desktop windows have no title bar;
+   scripts/preload.cjs sets the mark. The app header moves the window and leaves
+   room for the window controls. Each control in the header stays clickable: the
+   brand (the first item of the first column) and every button, tab, link and
+   field. A layer (dialog, drawer, panel) covers the header: Chromium finds the
+   drag area by position, not by what is on top, so the layer is no-drag; a
+   full-height side panel starts below the header, so the window controls are
+   over the scrim only, and the scrim takes the presses on the header (also when
+   it has no color). !important: these are inline styles.
+   The room is physical, not logical: an RTL project mirrors the page, not the
+   window. "hidden" (macOS): 88px at the left for the traffic lights. "overlay"
+   (Windows): the controls overlay at the right; its width comes from the
+   Window Controls Overlay environment, so it follows the zoom and the
+   maximized state, plus the header's own 16px gutter. */
+html[data-title-bar] header{-webkit-app-region:drag;}
+html[data-title-bar="hidden"] header{padding-left:88px !important;}
+html[data-title-bar="overlay"] header{padding-right:calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 16px) !important;}
+html[data-title-bar] header > :first-child > :first-child,
+html[data-title-bar] header :is(button,a,input,select,textarea,[role="tab"],[role="button"],[tabindex]),
+html[data-title-bar] [data-layer-placement]{-webkit-app-region:no-drag;}
+html[data-title-bar] :is([data-layer-placement="start"],[data-layer-placement="end"]){padding-top:var(--header-height) !important;pointer-events:auto !important;}
