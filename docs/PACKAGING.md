@@ -158,12 +158,20 @@ of the window. Linux keeps the native frame.
   window and keeps each header control clickable. The room for the window
   controls is physical, because an RTL project mirrors the page and not the
   window: `hidden` keeps 88px at the left of the header for the traffic
-  lights; `overlay` keeps the right of the header free for the controls
-  overlay, with the width that the Window Controls Overlay environment
-  reports (`env(titlebar-area-x)`, `env(titlebar-area-width)`), so it
-  follows the zoom and the maximized state, plus the header's 16px gutter
+  lights; `overlay` pads both sides of the header from the title bar area
+  that the Window Controls Overlay environment reports
+  (`env(titlebar-area-x)`, `env(titlebar-area-width)`: the part of the top
+  strip that the controls leave free), plus the header's 16px gutter. So the
+  room follows the zoom, the maximized state, and the side the system draws
+  the controls on: Electron mirrors the area under an RTL system language
+  (`shell/browser/ui/views/win_frame_view.cc` line 279, `GetMirroredRect`)
   [VERIFIED — electron v37.1.0 `docs/tutorial/custom-title-bar.md`, "Window
-  Controls Overlay" section, 2026-10-12].
+  Controls Overlay" section, and source at tag `v37.1.0`, 2026-10-12]. At the
+  900px minimum window width this leaves 208px per side column instead of
+  277px; the save-error label of the header already wraps at that width on
+  every system, and with the overlay the French label overflows the right
+  column by 27px [VERIFIED — measured in the dev client at 900px with a
+  simulated 154px overlay, 2026-10-12].
 - **Layers:** a dialog, drawer, panel or popover (`Layer`, with
   `data-layer-placement` on its scrim, or on the panel of an anchored popover)
   does not move the window, also where it covers the header. Chromium finds

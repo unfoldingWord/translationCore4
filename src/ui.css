@@ -15,12 +15,15 @@ button{font-family:inherit;}
    it has no color). !important: these are inline styles.
    The room is physical, not logical: an RTL project mirrors the page, not the
    window. "hidden" (macOS): 88px at the left for the traffic lights. "overlay"
-   (Windows): the controls overlay at the right; its width comes from the
-   Window Controls Overlay environment, so it follows the zoom and the
-   maximized state, plus the header's own 16px gutter. */
+   (Windows): the controls overlay, normally at the right; both paddings come
+   from the Window Controls Overlay environment (the title bar area is the
+   part of the top strip that the controls leave free), so the room follows the
+   zoom, the maximized state and the side the system draws the controls on
+   (Electron mirrors the area under an RTL system language), plus the header's
+   own 16px gutter. */
 html[data-title-bar] header{-webkit-app-region:drag;}
 html[data-title-bar="hidden"] header{padding-left:88px !important;}
-html[data-title-bar="overlay"] header{padding-right:calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 16px) !important;}
+html[data-title-bar="overlay"] header{padding-left:calc(env(titlebar-area-x, 0px) + 16px) !important;padding-right:calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 16px) !important;}
 html[data-title-bar] header > :first-child > :first-child,
 html[data-title-bar] header :is(button,a,input,select,textarea,[role="tab"],[role="button"],[tabindex]),
 html[data-title-bar] [data-layer-placement]{-webkit-app-region:no-drag;}

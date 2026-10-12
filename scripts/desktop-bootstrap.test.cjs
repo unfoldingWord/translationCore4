@@ -622,10 +622,10 @@ test('#214, #639: the macOS and Windows windows have no title bar, Linux keeps i
   assert.deepEqual(optionsOn('win32'), { width: 1024, autoHideMenuBar: false, titleBarStyle: 'hidden', titleBarOverlay: { color: '#014263', symbolColor: '#FFFFFF', height: 56 }, show: false });
   assert.deepEqual(optionsOn('linux'), { width: 1024, autoHideMenuBar: false, show: false });
   const changed = run(options.replace('autoHideMenuBar: false', 'autoHideMenuBar: true'));
-  assert.match(changed.failed, /re-verify the #214 macOS title bar patch/);
+  assert.match(changed.failed, /re-verify the #214\/#639 title bar patch/);
   assert.equal(changed.text.includes('titleBarStyle'), false);
   const framed = run(options.replace('show: false', 'show: false,\n        frame: false'));
-  assert.match(framed.failed, /re-verify the #214 macOS title bar patch/);
+  assert.match(framed.failed, /re-verify the #214\/#639 title bar patch/);
 
   const preload = fs.readFileSync(path.join(__dirname, 'preload.cjs'), 'utf8');
   const mark = (platform) => {

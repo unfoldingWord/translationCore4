@@ -362,7 +362,7 @@ const to = from
   + "        ...(process.platform === \x27darwin\x27 ? { titleBarStyle: \x27hidden\x27, trafficLightPosition: { x: 20, y: 21 } } : {}),\n"
   + "        ...(process.platform === \x27win32\x27 ? { titleBarStyle: \x27hidden\x27, titleBarOverlay: { color: \x27#014263\x27, symbolColor: \x27#FFFFFF\x27, height: 56 } } : {}),\n";
 if (s.split(from).length !== 2 || s.split("new BrowserWindow({").length !== 2 || /titleBarStyle|frame:/.test(s)) {
-  console.error("FATAL: the template window options changed — re-verify the #214 macOS title bar patch before building");
+  console.error("FATAL: the template window options changed — re-verify the #214/#639 title bar patch before building");
   process.exit(1);
 }
 fs.writeFileSync(p, s.replace(from, to));
