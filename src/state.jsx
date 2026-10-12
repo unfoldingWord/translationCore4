@@ -40,6 +40,7 @@ import {
   referenceParts,
   scopeRangesFor,
   textKeyOf,
+  twArticlesOf,
 } from './data/derive';
 import { readTwArticle, readTaArticle } from './data/articles';
 import { revalidateAgainstDraft, resolutionWarning } from './data/revalidate';
@@ -810,6 +811,24 @@ async function readHelpArticle(apiClient, kind, set, category, slug) {
   return null;
 }
 
+/** §4.2 (#643): the articles the tw pin of ONE language set carries — the set
+ * that resolved the (tool, book) — read from the pin's own metadata.json
+ * ingredient list. Fallback is per book, never per article, so the caller
+ * passes the resolving set and nothing else. A failed read PROPAGATES to the
+ * caller's stated error (D30): an empty or absent set would hide every item,
+ * or let a hidden row through, by transport luck. A set without a tw pin is
+ * not a complete §5.3 set, and an installed tw burrito lists its articles
+ * [VERIFIED — live rig pankosmia-web 0.18.15 (a83725b), 2026-10-12: 953 on
+ * en_tw v91]; a table with none is a rewrite hazard (PLATFORM-NOTES #48),
+ * not a resource without articles. Both refuse rather than hide everything. */
+async function readTwArticles(apiClient, set) {
+  const pin = set?.translationWords;
+  if (!pin) throw new Error('the language set that resolves this book has no translationWords pin');
+  const articles = twArticlesOf(await apiClient.getMetadataRaw(resolveReadPath(pin)));
+  if (articles.size === 0) throw new Error(`the pinned translationWords resource ${pin.repoPath} lists no article`);
+  return articles;
+}
+
 /** An OBS project's draft percentage (D74): frames with a non-empty paragraph
  * over the fixed frame total of the fifty stories, read through the story
  * parser; the title (frame 0) is not a frame. Any drafted frame shows as at
@@ -905,13 +924,18 @@ async function gatewayChangePlan({ consequences, next, coverage, installed, stor
   for (const entry of consequences.affected) {
     if (blockedSet.has(keyOf(entry))) continue;
     const resolution = resolveToolBook(next, entry.tool, entry.book, coverage);
-    if (!resolution.pin || !isPinLocal(installed, resolution.pin)) {
+    // §4.2 (#643): a tW list derives against the resolving set's tw pin too,
+    // so that pin must be local as well, or the book is blocked like one
+    // whose links are not.
+    const set = resolution.rung ? next.languageSets?.[resolution.rung] : null;
+    const twPin = entry.tool === 'translationWords' ? set?.translationWords : null;
+    if (!resolution.pin || !isPinLocal(installed, resolution.pin) || (twPin && !isPinLocal(installed, twPin))) {
       blocked.push({ tool: entry.tool, book: entry.book });
       blockedSet.add(keyOf(entry));
       continue;
     }
     const source = stored.find((candidate) => candidate.tool === entry.tool && candidate.book === entry.book);
-    const derived = await actions.deriveItemsFor(entry.tool, entry.book, resolution.pin);
+    const derived = await actions.deriveItemsFor(entry.tool, entry.book, resolution.pin, set);
     const carried = carryOverDecisions(source.file, derived, resolutionRecord(resolution));
     // #580: "carried over" is what the check screen will show — the same merge
     // and draft revalidation completedCheckSession runs, then the one counting
@@ -1186,6 +1210,11 @@ async function deriveCheckItems({ apiClient, actions, st, tool, book, pre }) {
   if (frame.state !== 'ready')
     return { session: emptyCheckSession(tool, book, pre.resolution, `versification-${frame.state}`), frame };
   const scopeRanges = scopeRangesFor(st.projectScope ?? {}, book.toUpperCase());
+  // §4.2 (#643): the tw articles of the set that resolved this (tool, book).
+  const twArticles =
+    tool === 'translationWords'
+      ? await readTwArticles(apiClient, st.projectPins?.languageSets?.[pre.resolution.rung])
+      : undefined;
   const result = await deriveForProject({
     tsv,
     tool,
@@ -1194,6 +1223,7 @@ async function deriveCheckItems({ apiClient, actions, st, tool, book, pre }) {
     to: frame.name,
     schemes: frame.schemes,
     scopeRanges,
+    twArticles,
   });
   const dropped = result.unplaceable.length
     ? {
@@ -2816,6 +2846,10 @@ async function loadUnderstandSlot({
   if (tsv === null || tsv.startsWith('{"is_good":false'))
     return { state: 'missing', pin: resolved.pin, rung: resolved.rung };
   if (frame.state !== 'ready') return { state: `versification-${frame.state}` };
+  // §4.2 (#643): the tW rows read like the check list — against the tw pin of
+  // the set that resolved the links; a failed read is this slot's stated error.
+  const twArticles =
+    tool === 'translationWords' ? await readTwArticles(apiClient, sets[resolved.rung]) : undefined;
   const { items, unplaceable } = await deriveForProject({
     tsv,
     tool,
@@ -2824,6 +2858,7 @@ async function loadUnderstandSlot({
     to: frame.name,
     schemes: frame.schemes,
     scopeRanges,
+    twArticles,
     ...deriveOpts,
   });
   return {
@@ -4418,8 +4453,10 @@ export function AppProvider({ children }) {
 
       /** Derive one book's check list from a given pin. Returns [] when the
        * pinned resource says nothing about the book — a designed state (C2.9),
-       * not an error. Derived lists are disposable and never stored (§4.2). */
-      deriveItemsFor: async (tool, book, pin) => {
+       * not an error. Derived lists are disposable and never stored (§4.2).
+       * `set` is the language set the pin resolved from: a tW list derives
+       * against its tw pin's articles (§4.2, #643). */
+      deriveItemsFor: async (tool, book, pin, set) => {
         const localRepo = resolveReadPath(pin);
         let tsv;
         // Catch-to-absence sweep (D30): [] means the resource CONFIRMS it
@@ -4455,6 +4492,7 @@ export function AppProvider({ children }) {
           );
         }
         const to = frame.name;
+        const twArticles = tool === 'translationWords' ? await readTwArticles(api, set) : undefined;
         const { items } = await deriveForProject({
           tsv,
           tool,
@@ -4462,6 +4500,7 @@ export function AppProvider({ children }) {
           from: RESOURCE_FRAME,
           to,
           schemes: frame.schemes,
+          twArticles,
           scopeRanges: ranges,
         });
         return items;
@@ -5845,8 +5884,10 @@ export function AppProvider({ children }) {
               if (!isNotFoundError(error)) throw error;
             }
             // A new project is in the eng frame, the frame of the whole suite: nothing maps.
+            // §4.2 (#643): the tW list derives against the base set's tw pin.
+            const twArticles = tool === 'translationWords' && tsv ? await readTwArticles(api, base.languageSets.primary) : undefined;
             derived[`${tool}/${book}`] = tsv && !tsv.startsWith('{"is_good":false')
-              ? (await deriveForProject({ tsv, tool, bookId: book.toLowerCase(), from: RESOURCE_FRAME, to: RESOURCE_FRAME, schemes: {} })).items
+              ? (await deriveForProject({ tsv, tool, bookId: book.toLowerCase(), from: RESOURCE_FRAME, to: RESOURCE_FRAME, schemes: {}, twArticles })).items
               : [];
           }
           const { carried, invalidated } = applyVersions(bundle, base, versions.found, derived);
