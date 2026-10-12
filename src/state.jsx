@@ -6207,7 +6207,11 @@ export function AppProvider({ children }) {
       saveSettings: async () => {
         const f = stateRef.current.st;
         if (f.busy) return;
-        a.patchSt({ busy: true, error: null });
+        // #641: the writes name their project, and the close checks it: the
+        // user can Cancel and open another project's Settings while this
+        // save runs, and its failure or its close must not land there.
+        const patchSt = (patch) => dispatch({ type: 'patchSt', repoPath: f.repoPath, patch });
+        patchSt({ busy: true, error: null });
         // #412: Settings also opens inside a project. The open project's own
         // store writes then, never a second store over the same journal.
         const open = stateRef.current.project?.id === f.repoPath ? storeRef.current : null;
@@ -6230,9 +6234,9 @@ export function AppProvider({ children }) {
           if (open && stateRef.current.project?.id === f.repoPath)
             dispatch({ type: 'set', patch: { project: { ...stateRef.current.project, scriptDirection: f.dir, textFont: f.font } } });
           await refreshProjects();
-          a.closeModal();
+          if (stateRef.current.st?.repoPath === f.repoPath) a.closeModal();
         } catch (e) {
-          a.patchSt({ busy: false, error: e?.reason || e?.message || t('wizard.error') });
+          patchSt({ busy: false, error: e?.reason || e?.message || t('wizard.error') });
         } finally {
           if (!open) store.dispose(); // #94: a throwaway store's fold worker
         }

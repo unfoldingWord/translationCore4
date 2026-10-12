@@ -23,9 +23,9 @@
 //   7. The project does not open: the form states the error, Save stays
 //      disabled, and the row leaves its loading text (no lookup ran).
 //
-// No render between the completions is modelled as a `stateRef` that is set
-// once, after the open, and never again (the pattern of #475 in
-// homeObsCard.test.tsx). The reducer is the real one.
+// The reducer is the real one, driven directly: no render happens between
+// the completions, so each write must merge into the reducer's own state to
+// survive (the pattern of #475 in homeObsCard.test.tsx).
 import { describe, expect, it } from 'vitest';
 import { __performOpenSettingsForTests as openSettings, __reducerForTests as reducer, SCRIPT_FONTS } from '../src/state.jsx';
 
@@ -46,16 +46,10 @@ const FILE_B = { textDirection: 'ltr', textFont: SCRIPT_FONTS[1], languageName: 
 
 type Reads = { settings: Deferred<unknown>; resources: Deferred<unknown>; context: Deferred<unknown> };
 
-/** A harness: the real reducer, a `stateRef` frozen after the open, and one
- * project's reads under the test's control. */
+/** A harness: the real reducer and one project's reads under the test's control. */
 function harness() {
   let state: Record<string, unknown> = { modal: null, st: null, gatewayError: null };
-  const stateRef: { current: Record<string, unknown> } = { current: state };
-  let renders = 0;
-  const dispatch = (action: unknown) => {
-    state = reducer(state, action);
-    if (renders === 0) { stateRef.current = state; renders = 1; } // one render: the open paints
-  };
+  const dispatch = (action: unknown) => { state = reducer(state, action); };
   const reads = new Map<string, Reads>();
   const open = (project: typeof A, openError?: Error) => {
     const r: Reads = { settings: deferred(), resources: deferred(), context: deferred() };

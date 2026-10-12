@@ -35,6 +35,7 @@ import {
   TC4_ROOT,
 } from './helpers/rig';
 import { gateOff, turnOnInternet } from './helpers/door43Share';
+import { pickOption } from './helpers/dropdown';
 import { createObsProject, RIG_API } from './helpers/story';
 
 // The configured org, NOT the one the export records: es-419's sb-zip exports
@@ -1167,10 +1168,21 @@ test('editing the open draft while preview waits keeps the carried count exact @
 // update is test/settingsOpen.test.ts (the two reads settle before one render);
 // this case is the regression evidence the issue asks for: 30 opens, each
 // after a page load (the client starts again, the rig stays), each settling,
-// with the click-to-settle time of each open attached.
-test('Project settings settles its Checking language row on each of 30 opens @inc9 @J13', async ({ page }, testInfo) => {
+// with the click-to-settle time of each open attached. The last open also
+// saves a direction and a font (criterion 2): the file on the rig and the form
+// after a reload show them, and the defaults are saved back.
+const settingsFile = (repo: string) => path.join(rigRepo(repo), 'ingredients', 'checking', 'settings.json');
+const readSettingsFile = (repo: string): Record<string, unknown> => JSON.parse(fs.readFileSync(settingsFile(repo), 'utf8'));
+test('Project settings settles its Checking language row on each of 30 opens, and the last open saves @inc9 @J13', async ({ page }, testInfo) => {
   test.setTimeout(180_000);
   writeProjectPins(SEEDED_PROJECT, EN());
+  // A broken earlier run may have left a saved direction or font: start from the defaults.
+  if (fs.existsSync(settingsFile(SEEDED_PROJECT))) {
+    const saved = readSettingsFile(SEEDED_PROJECT);
+    delete saved.textDirection;
+    delete saved.textFont;
+    fs.writeFileSync(settingsFile(SEEDED_PROJECT), `${JSON.stringify(saved, null, 2)}\n`);
+  }
   const opens: Array<{ open: number; ms: number }> = [];
   for (let i = 1; i <= 30; i++) {
     await page.goto('/');
@@ -1185,14 +1197,38 @@ test('Project settings settles its Checking language row on each of 30 opens @in
     await expect(dialog.getByRole('button', { name: 'Save changes' })).toBeEnabled();
     await expect(dialog.getByText('Looking for the packages on this computer…')).toHaveCount(0);
     await expect(dialog.getByTestId('settings-gateway-error')).toHaveCount(0);
-    // The seeded project has no settings.json: the form shows the defaults.
+    // No direction or font is saved: the form shows the defaults.
     await expect(dialog.getByRole('combobox', { name: 'Script font', exact: true })).toContainText('Noto Sans (default)');
     opens.push({ open: i, ms: Date.now() - t0 });
-    await dialog.getByRole('button', { name: 'Cancel' }).click();
-    await expect(page.getByRole('dialog')).toHaveCount(0);
+    if (i < 30) {
+      await dialog.getByRole('button', { name: 'Cancel' }).click();
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+    }
   }
+  // Criterion 2: the form that settled saves what the user chose.
+  const font = page.getByRole('combobox', { name: 'Script font', exact: true });
+  await page.getByRole('button', { name: 'Right to left' }).click();
+  await pickOption(page, font, 'Charis SIL');
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect.poll(() => readSettingsFile(SEEDED_PROJECT).textDirection, { timeout: 10_000 }).toBe('rtl');
+  const saved = readSettingsFile(SEEDED_PROJECT);
+  expect(saved.textFont).toBe('Charis SIL');
+  await page.reload();
+  await page.getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`).getByRole('button', { name: 'Settings' }).click();
+  await expect(page.getByRole('button', { name: 'Right to left' })).toHaveAttribute('data-selected', 'true');
+  await expect(font).toContainText('Charis SIL');
+  // Back to the defaults through the same save, so the next run starts clean.
+  await page.getByRole('button', { name: 'Left to right' }).click();
+  await pickOption(page, font, 'Noto Sans (default)');
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect.poll(() => readSettingsFile(SEEDED_PROJECT).textDirection, { timeout: 10_000 }).toBe('ltr');
   const times = opens.map((o) => o.ms);
-  const record = { project: SEEDED_PROJECT, opens, maxMs: Math.max(...times), meanMs: Math.round(times.reduce((a, b) => a + b, 0) / times.length) };
+  const record = {
+    project: SEEDED_PROJECT, opens, maxMs: Math.max(...times), meanMs: Math.round(times.reduce((a, b) => a + b, 0) / times.length),
+    saved: { textDirection: saved.textDirection, textFont: saved.textFont },
+  };
   const artifactPath = testInfo.outputPath('j13-settings-settle.json');
   fs.writeFileSync(artifactPath, `${JSON.stringify(record, null, 2)}\n`);
   await testInfo.attach('j13-settings-settle.json', { path: artifactPath, contentType: 'application/json' });
