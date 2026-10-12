@@ -694,7 +694,7 @@ function setShared(state, a) {
   return { ...state, remoteByProject: { ...state.remoteByProject, [a.id]: a.shared } };
 }
 
-const CHECK_SESSION_CASES = { patchCheckSession, checkDecisionSaved, refreshCheckDraft, pickerToolEntry, alignSaveState, checkSaveState, patchUpgrade, setProgress, setShared };
+const CHECK_SESSION_CASES = { patchCheckSession, checkDecisionSaved, refreshCheckDraft, pickerToolEntry, alignSaveState, checkSaveState, patchUpgrade, setProgress, setShared, patchSt: patchSettingsForm };
 
 function setSourceEntry(state, a) {
   if (a.value === undefined || a.value === null) {
@@ -716,6 +716,17 @@ function setProgress(state, a) {
     return { ...state, progressByProject: next };
   }
   return { ...state, progressByProject: { ...state.progressByProject, [a.id]: a.progress } };
+}
+
+// #641: atomic merge into the Project settings form. The settings read and the
+// gateway lookup can complete before one render, and a read-modify-write
+// through a stale snapshot put "loading" back over the finished lookup (same
+// hazard class as setSource). The form is the only safe base. A completion for
+// a closed form, or for another project's form, updates nothing.
+function patchSettingsForm(state, a) {
+  if (!state.st || (a.repoPath && state.st.repoPath !== a.repoPath)) return state;
+  const gw = a.gw ? { gw: { ...state.st.gw, ...a.gw } } : null;
+  return { ...state, st: { ...state.st, ...a.patch, ...gw } };
 }
 
 function reducer(state, a) {
@@ -2446,6 +2457,77 @@ async function performLoadProgress(ctx) {
 
 /** Test hook: #475 — two loads that finish before one render keep both entries. */
 export const __performLoadProgressForTests = performLoadProgress;
+
+/** Project settings (Increment 1: direction + font are editable via
+ * settings.json; name/language/code display-only — metadata is not writable
+ * over HTTP, D28 addendum). Two reads run together: the settings file and the
+ * gateway-language lookup (#412). */
+async function performOpenSettings({ project, dispatch, openReader, resolutionContext }) {
+  dispatch({
+    type: 'set',
+    patch: {
+      modal: 'settings',
+      st: {
+        repoPath: project.id,
+        projName: project.name,
+        name: project.name,
+        langName: '',
+        code: project.languageTag,
+        dir: project.scriptDirection === 'rtl' ? 'rtl' : 'ltr',
+        font: SCRIPT_FONTS[0],
+        bookCount: (project.bookCodes || []).length,
+        flavor: project.flavor,
+        busy: false,
+        loaded: false,
+        error: null,
+        gw: { loading: true, pins: null, options: [], error: null },
+      },
+      gatewayError: null,
+    },
+  });
+  // Each write names its project: a read that finishes after Settings closed,
+  // or after another project's Settings opened, lands nowhere (reducer).
+  const patchSt = (patch) => dispatch({ type: 'patchSt', repoPath: project.id, patch });
+  let reader = null;
+  try {
+    reader = await openReader(project.id);
+    loadSettingsGateways({ project, reader, dispatch, resolutionContext });
+    const settings = (await reader.readSettings()) || {};
+    patchSt({
+      dir: settings.textDirection === 'rtl' ? 'rtl' : 'ltr',
+      font: settings.textFont || SCRIPT_FONTS[0],
+      langName: settings.languageName || '',
+      loaded: true,
+    });
+  } catch (error) {
+    // Catch-to-absence sweep (D30, writable variant): claiming
+    // loaded:true over hard-coded defaults let Save WRITE those
+    // defaults over the project's real direction/font (an RTL project
+    // silently became LTR). State the failure; Save stays disabled
+    // while unloaded.
+    patchSt({ loaded: false, error: String(error?.message || error) });
+    // The project did not open: the lookup never started, so its row ends here.
+    if (!reader) dispatch({ type: 'patchSt', repoPath: project.id, gw: { loading: false } });
+  }
+}
+
+/** #412: the gateway-language packages the Settings card offers
+ * (gatewaysCoveringProject), read from disk only, so it works offline. */
+async function loadSettingsGateways({ project, reader, dispatch, resolutionContext }) {
+  const kind = project.flavor === 'textStories' ? 'obs' : 'bible';
+  const setGw = (gw) => dispatch({ type: 'patchSt', repoPath: project.id, gw });
+  try {
+    const [pins, { installed, coverage, resolutionError }] = await Promise.all([reader.readResources(), resolutionContext()]);
+    if (resolutionError) throw new Error(resolutionError);
+    const options = gatewaysCoveringProject(installed, coverage, project.bookCodes || [], kind);
+    setGw({ loading: false, pins, options, error: null });
+  } catch (error) {
+    setGw({ loading: false, error: String(error?.message || error) });
+  }
+}
+
+/** Test hook: #641 — the two reads of Project settings settle before one render. */
+export const __performOpenSettingsForTests = performOpenSettings;
 
 function loadOrigPane({ store, origPin, code, seq, openSeqRef, stateRef, dispatch, testament }) {
   if (stateRef?.current?.sources?.orig) {
@@ -6077,68 +6159,17 @@ export function AppProvider({ children }) {
       // ---- Project settings modal (Increment 1: direction + font are
       //      editable via settings.json; name/language/code display-only —
       //      metadata is not writable over HTTP, D28 addendum) ----
-      openSettings: async (project) => {
-        dispatch({
-          type: 'set',
-          patch: {
-            modal: 'settings',
-            st: {
-              repoPath: project.id,
-              projName: project.name,
-              name: project.name,
-              langName: '',
-              code: project.languageTag,
-              dir: project.scriptDirection === 'rtl' ? 'rtl' : 'ltr',
-              font: SCRIPT_FONTS[0],
-              bookCount: (project.bookCodes || []).length,
-              flavor: project.flavor,
-              busy: false,
-              loaded: false,
-              error: null,
-              gw: { loading: true, pins: null, options: [], error: null },
-            },
-            gatewayError: null,
-          },
-        });
-        try {
+      openSettings: (project) => performOpenSettings({
+        project,
+        dispatch,
+        openReader: async (repoPath) => {
           const reader = new ProjectReader({ api });
-          await reader.open(project.id);
-          a.loadSettingsGateways(project, reader);
-          const settings = (await reader.readSettings()) || {};
-          a.patchSt({
-            dir: settings.textDirection === 'rtl' ? 'rtl' : 'ltr',
-            font: settings.textFont || SCRIPT_FONTS[0],
-            langName: settings.languageName || '',
-            loaded: true,
-          });
-        } catch (error) {
-          // Catch-to-absence sweep (D30, writable variant): claiming
-          // loaded:true over hard-coded defaults let Save WRITE those
-          // defaults over the project's real direction/font (an RTL project
-          // silently became LTR). State the failure; Save stays disabled
-          // while unloaded.
-          a.patchSt({ loaded: false, error: String(error?.message || error) });
-        }
-      },
-      patchSt: (patch) =>
-        dispatch({ type: 'set', patch: { st: { ...stateRef.current.st, ...patch } } }),
-
-      /** #412: the gateway-language packages the Settings card offers
-       * (gatewaysCoveringProject), read from disk only, so it works offline. */
-      loadSettingsGateways: async (project, reader) => {
-        const kind = project.flavor === 'textStories' ? 'obs' : 'bible';
-        const setGw = (gw) => {
-          if (stateRef.current.st?.repoPath === project.id) a.patchSt({ gw: { ...stateRef.current.st.gw, ...gw } });
-        };
-        try {
-          const [pins, { installed, coverage, resolutionError }] = await Promise.all([reader.readResources(), a.resolutionContext()]);
-          if (resolutionError) throw new Error(resolutionError);
-          const options = gatewaysCoveringProject(installed, coverage, project.bookCodes || [], kind);
-          setGw({ loading: false, pins, options, error: null });
-        } catch (error) {
-          setGw({ loading: false, error: String(error?.message || error) });
-        }
-      },
+          await reader.open(repoPath);
+          return reader;
+        },
+        resolutionContext: a.resolutionContext,
+      }),
+      patchSt: (patch) => dispatch({ type: 'patchSt', patch }),
 
       /** #412: choose the project's gateway package from Settings. The change is
        * the J13 one: the consequence dialogue opens over Settings, and nothing of
@@ -6176,7 +6207,11 @@ export function AppProvider({ children }) {
       saveSettings: async () => {
         const f = stateRef.current.st;
         if (f.busy) return;
-        a.patchSt({ busy: true, error: null });
+        // #641: the writes name their project, and the close checks it: the
+        // user can Cancel and open another project's Settings while this
+        // save runs, and its failure or its close must not land there.
+        const patchSt = (patch) => dispatch({ type: 'patchSt', repoPath: f.repoPath, patch });
+        patchSt({ busy: true, error: null });
         // #412: Settings also opens inside a project. The open project's own
         // store writes then, never a second store over the same journal.
         const open = stateRef.current.project?.id === f.repoPath ? storeRef.current : null;
@@ -6199,9 +6234,9 @@ export function AppProvider({ children }) {
           if (open && stateRef.current.project?.id === f.repoPath)
             dispatch({ type: 'set', patch: { project: { ...stateRef.current.project, scriptDirection: f.dir, textFont: f.font } } });
           await refreshProjects();
-          a.closeModal();
+          if (stateRef.current.st?.repoPath === f.repoPath) a.closeModal();
         } catch (e) {
-          a.patchSt({ busy: false, error: e?.reason || e?.message || t('wizard.error') });
+          patchSt({ busy: false, error: e?.reason || e?.message || t('wizard.error') });
         } finally {
           if (!open) store.dispose(); // #94: a throwaway store's fold worker
         }
