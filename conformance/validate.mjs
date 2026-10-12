@@ -332,7 +332,7 @@ const verseText = bookJson.chapters['1']['1'].verseObjects.filter(vo => vo.type 
   } };
   const twArticles = new Set(Object.keys(twMetadata.ingredients)
     .map(k => /(?:^|\/)payload\/([^/]+)\/([^/]+)\.md$/.exec(k)).filter(Boolean).map(m => `${m[1]}/${m[2]}`));
-  const articleOf = item => `${item.contextId.category ?? item.category}/${item.contextId.groupId}`;
+  const articleOf = item => `${item.category}/${item.contextId.groupId}`;
   const withCategory = derived.map(item => ({ ...item, category: 'kt' }));
   const gated = withCategory.filter(item => twArticles.has(articleOf(item)));
   const hiddenDecision = { ...withCategory.find(item => item.contextId.checkId === 'x7k2'),
