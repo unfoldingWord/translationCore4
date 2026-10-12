@@ -42,6 +42,7 @@ import { createObsProject, RIG_API } from './helpers/story';
 const ES_ORG = 'es-419_gl';
 const EN = () => ({
   tn: pinForSideloaded('en_tn', 'v91'),
+  twl: pinForSideloaded('en_twl', 'v91'),
   tw: pinForSideloaded('en_tw', 'v91'),
   ta: pinForSideloaded('en_ta', 'v91'),
 });

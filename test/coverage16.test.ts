@@ -38,7 +38,8 @@ const pin = (repoPath: string, extra: Partial<ResourcePin> = {}): ResourcePin =>
 const ES_TN = 'git.door43.org/es-419_gl/es-419_tn';
 const ES_TWL = 'git.door43.org/es-419_gl/es-419_tw';
 const EN_TN = 'git.door43.org/unfoldingWord/en_tn';
-const EN_TWL = 'git.door43.org/unfoldingWord/en_tw';
+const EN_TW = 'git.door43.org/unfoldingWord/en_tw';
+const EN_TWL = 'git.door43.org/unfoldingWord/en_twl';
 
 const resources = (primary: Partial<Record<string, ResourcePin>> = {}): ResourcesFile =>
   ({
@@ -55,7 +56,7 @@ const resources = (primary: Partial<Record<string, ResourcePin>> = {}): Resource
         gatewayLanguage: { languageId: 'en', owner: 'unfoldingWord' },
         translationNotes: pin(EN_TN, { books: ['TIT', 'JON', 'MRK'] }),
         translationWordsLinks: pin(EN_TWL, { books: ['TIT', 'JON', 'MRK'] }),
-        translationWords: pin(EN_TWL, { books: ['TIT', 'JON', 'MRK'] }),
+        translationWords: pin(EN_TW, { books: ['BIBLE'] }),
         translationAcademy: pin('git.door43.org/unfoldingWord/en_ta'),
       },
     },
@@ -184,10 +185,11 @@ describe('backfillCoverage — retires the ambiguity for old pins (owner ruling 
     // Asserted on the SPECIFIC pin rather than on `changed`: other slots in the
     // fixture legitimately have no coverage and will be filled from the same
     // local map, so `changed` is true for reasons unrelated to this invariant.
-    // Both tW slots carry the recorded pin: per D34 the tW tool pins and fetches
-    // `<lang>_tw` only, so translationWords and translationWordsLinks name the
-    // SAME repo at the same sha — and therefore share a pinKey. Overriding just
-    // one would leave the other fillable and put that shared key in `filled`.
+    // Both tW slots carry the recorded pin: this gateway set is in the
+    // one-repo form (legal until #646), so translationWords and
+    // translationWordsLinks name the SAME repo at the same sha — and therefore
+    // share a pinKey. Overriding just one would leave the other fillable and
+    // put that shared key in `filled`.
     const recorded = pin(ES_TWL, { books: ['TIT', 'JON'] });
     const res = resources({ translationWordsLinks: recorded, translationWords: recorded });
     const out = backfillCoverage(res, { [pinKey(recorded)]: ['TIT'] }); // local knows LESS

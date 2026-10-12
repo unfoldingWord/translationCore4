@@ -510,7 +510,11 @@ export const languageSetFromInstalled = (
   const byName = (name: string) =>
     preferredNamedPin(ofOrg, name);
   const tn = byName(`${gateway.id}_tn`);
-  const tw = byName(`${gateway.id}_tw`); // D34: one repo serves both tW slots
+  const tw = byName(`${gateway.id}_tw`);
+  // D96 (#644): the TWL check lists come from `<lang>_twl` at its own release.
+  // A gateway whose `_twl` is not installed keeps the one-repo form (`_tw` in
+  // both slots) until #646 makes that form illegal.
+  const twl = byName(`${gateway.id}_twl`) ?? tw;
   const ta = byName(`${gateway.id}_ta`);
   const obs = byName(`${gateway.id}_obs`);
   const obsTn = byName(`${gateway.id}_obs-tn`);
@@ -531,7 +535,7 @@ export const languageSetFromInstalled = (
     translationWords: tw,
     translationAcademy: ta,
   } as LanguageSet;
-  if (kind === 'bible') result.translationWordsLinks = tw!;
+  if (kind === 'bible') result.translationWordsLinks = twl!;
   const addPin = (slot: OptionalSetPinSlot | 'translationNotes', pin?: ResourcePin) => {
     if (pin) (result as unknown as Record<string, ResourcePin>)[slot] = pin;
   };

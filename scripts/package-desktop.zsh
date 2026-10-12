@@ -123,9 +123,9 @@ PUPPETEER_CORE_VER="24.43.1"       # template package.json: ^24.43.1
 PUPPETEER_BROWSERS_VER="2.13.1"    # template package.json: ^2.13.1
 ZIP_JS_VER="2.18.2"                # root package.json and package-lock.json
 
-# Bundled English suite (#163, D70, #288). Fourteen repos pinned from src/data/installedSuite.js,
-# as `<owner>/<repo>:<tag>:<sha>`. en_tw serves both translationWords and
-# translationWordsLinks (D34). The two lexicons (#218, D71) are the `uW`-org
+# Bundled English suite (#163, D70, #288, #644). Fifteen repos pinned from src/data/installedSuite.js,
+# as `<owner>/<repo>:<tag>:<sha>`. en_twl serves translationWordsLinks and en_tw
+# serves translationWords (D96). The two lexicons (#218, D71) are the `uW`-org
 # burritos: no tag exists, so the tag field is empty and the cache fetches the
 # commit archive by sha. The store segment is `<owner lowercased>--<repo>`
 # (src/data/installed.ts localRepoPathFromRepoPath).
@@ -139,6 +139,7 @@ BUNDLED_RESOURCES=(
   "unfoldingWord/el-x-koine_ugnt:v0.34:fc95b2b8aad08bb65ab54628ab685413a1139e97"
   "unfoldingWord/hbo_uhb:v3.0.0:74022f0fed012a3ef169886f595dd98e7b200543"
   "unfoldingWord/en_tn:v91:e586762e330f482a60c52aedd1c7b3a2f155df8a"
+  "unfoldingWord/en_twl:v91:7cbb3419f79780ce84b92ad7d42bd476cc5d8a64"
   "unfoldingWord/en_tw:v91:ff5b3852c27c3a0d01b109e482eb26047dcd20e2"
   "unfoldingWord/en_ta:v91:ce9a1bb9431317ca888e8c1f9620caa7f5fe45fd"
   "unfoldingWord/en_tq:v91:8be02772584ff5a5fea893a392b4f019e3efcc77"
@@ -241,7 +242,7 @@ if [ ! -e "$EL_UNPACKED" ]; then
   unzip -qq -o "$BUILD/$ELECTRONITE_ZIP" -d "$BUILD/electronite"
 fi
 
-echo "== fetching bundled English and OBS suite (14 repos, #163, #218, #288)"
+echo "== fetching bundled English and OBS suite (15 repos, #163, #218, #288, #644)"
 for entry in "${BUNDLED_RESOURCES[@]}"; do
   bundled_fields "$entry"
   zsh "$REPO/dev-env/scripts/cache-resource.zsh" "$owner/$repo" "$tag" "$sha"

@@ -232,4 +232,42 @@ test('manifest mismatch and malformed settings fail without losing existing reco
   assert.equal(fs.readFileSync(f.settings, 'utf8'), '{');
 });
 
+// #644 (D96 ruling 5): the install ignores, and never strips, the TWL TSVs an
+// `en_tw` export carries and the articles an `en_twl` export carries. Both
+// bundled folders land byte-for-byte, metadata.json included.
+function twFixture(repo, version, destination, slice) {
+  const source = path.join(root, 'test/fixtures/resources', `${repo}@${version}`);
+  const metadata = JSON.parse(fs.readFileSync(path.join(source, 'metadata.json')));
+  metadata.ingredients = Object.fromEntries(Object.entries(slice).map(([ipath]) => [`ingredients/${ipath}`, metadata.ingredients[`ingredients/${ipath}`]]));
+  metadata.type.flavorType.currentScope = { TIT: [] };
+  fs.writeFileSync(path.join(destination, 'metadata.json'), JSON.stringify(metadata));
+  for (const [ipath, file] of Object.entries(slice)) {
+    fs.mkdirSync(path.dirname(path.join(destination, 'ingredients', ipath)), { recursive: true });
+    fs.copyFileSync(path.join(source, file), path.join(destination, 'ingredients', ipath));
+  }
+  const [identity, revision] = Object.entries(metadata.identification.primary.dcs)[0];
+  return { repoPath: `git.door43.org/${identity}`, sha: revision.revision, version, flavor: 'parascriptural/x-bcvarticles' };
+}
+
+test('bundled en_tw (with its TSVs) and en_twl install unchanged: files and metadata.json match the bundle (#644)', (t) => {
+  const f = fixture(t);
+  fs.rmSync(f.source, { recursive: true });
+  const tw = path.join(f.options.resourcesDir, 'resources/unfoldingword--en_tw');
+  const twl = path.join(f.options.resourcesDir, 'resources/unfoldingword--en_twl');
+  fs.mkdirSync(tw, { recursive: true });
+  fs.mkdirSync(twl, { recursive: true });
+  const twPin = twFixture('en_tw', 'v87', tw, { 'TIT.tsv': 'TIT.tsv', 'payload/kt/god.md': 'payload-kt-god.md' });
+  const twlPin = twFixture('en_twl', 'v86', twl, { 'TIT.tsv': 'TIT.tsv' });
+  assert.notEqual(files(tw)['ingredients/TIT.tsv'], files(twl)['ingredients/TIT.tsv'], 'the two TSVs differ');
+  fs.writeFileSync(path.join(f.options.resourcesDir, 'BUILD-MANIFEST.json'), JSON.stringify({ bundled_resources: [twPin, twlPin] }));
+  bootstrap(f.options);
+  const twKey = `_local_/_sideloaded_/unfoldingword--en_tw--${twPin.sha}`;
+  const twlKey = `_local_/_sideloaded_/unfoldingword--en_twl--${twlPin.sha}`;
+  assert.deepEqual(settingsAt(f).installedResources[twKey], twPin);
+  assert.deepEqual(settingsAt(f).installedResources[twlKey], twlPin);
+  const installed = (key) => { const all = files(path.join(f.store, key)); delete all['.tc4-bundled-identity.json']; return all; };
+  assert.deepEqual(installed(twKey), files(tw)); // the tw export's TIT.tsv is still there
+  assert.deepEqual(installed(twlKey), files(twl));
+});
+
 module.exports = { exportFixture };

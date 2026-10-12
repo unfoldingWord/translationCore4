@@ -233,13 +233,16 @@ export function writeProjectPins(
     tn: { repoPath: string; version: string; sha?: string; flavor: string };
     tw: { repoPath: string; version: string; sha?: string; flavor: string };
     ta: { repoPath: string; version: string; sha?: string; flavor: string };
+    /** The TWL check lists (D96, #644). Defaults to the seeded en_twl. */
+    twl?: { repoPath: string; version: string; sha?: string; flavor: string };
   },
   opts: { dropOriginalLanguage?: boolean } = {},
 ): void {
+  const twl = pins.twl ?? pinForSideloaded('en_twl', 'v91');
   const newSet = (): Record<string, unknown> => ({
     gatewayLanguage: { languageId: 'en', owner: 'unfoldingWord' },
     translationNotes: pins.tn,
-    translationWordsLinks: pins.tw, // D34: one repo serves both tW slots
+    translationWordsLinks: twl,
     translationWords: pins.tw,
     translationAcademy: pins.ta,
   });

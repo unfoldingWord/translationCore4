@@ -2527,3 +2527,41 @@ precondition), `docs/ARCHITECTURE.md` (the net gate row, the share and internet 
 7, and the internet line of the cross-cutting list), `docs/PACKAGING.md` (step 9a of the offline
 run) and `CONTEXT.md` (the terms for the internet state and the account menu). The decision
 follows issue #559.
+
+
+## D96 (2026-10-12, project-owner rulings) **The English suite pins `en_twl` for the TWL check lists and `en_tw` for the articles: two pins, each at its own release and commit. Amends D34.** [issue #644; evidence in issue #640; part of epic #648]
+
+Context. D34 pinned `<lang>_tw` for both tW slots, because the `en_tw` sb-zip export carries
+the TWL TSVs and the articles. D34 assumed that the export depends only on the `en_tw` tag.
+That assumption is false [VERIFIED — live fetches from git.door43.org, 2026-10-12; issue #640]:
+the `en_tw` repository has no TSV files. DCS builds `/sb/v91.zip` on each request and adds the
+TWL TSVs from `en_twl` `master`, not from the `en_twl` `v91` release. Two results: tC4 shipped
+TWL for 7 books that no `en_twl` release contains (1CH, 2CH, ECC, EZK, ISA, JER, NUM; the
+`en_twl` `v91` release has 59 books, the export has 66), and two builds with the same pin can
+have different TWL rows.
+
+1. **Two pins.** The §5.3 two-pin form of D32 returns. `translationWordsLinks` pins a `_twl`
+   repository at its own release and SHA. `translationWords` pins `<lang>_tw` at its own
+   release and SHA. The bundled English set pins `en_twl` `v91`
+   (`7cbb3419f79780ce84b92ad7d42bd476cc5d8a64`) and `en_tw` `v91`
+   (`ff5b3852c27c3a0d01b109e482eb26047dcd20e2`) [VERIFIED 2026-10-12 —
+   `dev-env/scripts/cache-resource.zsh` with the expected sha; the export declares revision
+   `7cbb3419…`, 59 book TSVs, flavor `parascriptural/x-bcvarticles`].
+2. **No pairing rule.** The rule holds even if Door43 fixes the export. Each pin names its
+   own exact commit (D58).
+3. **Released books only.** The 7 books above have no tW check until `en_twl` releases them.
+4. **No migration.** Only developers have installs. Old projects are recreated, not re-pinned.
+5. **Ignore, do not strip.** A reader ignores the TWL TSVs that a `<lang>_tw` export carries
+   and the articles that a `_twl` export carries. tC4 does not change a downloaded resource
+   (D32). A test enforces that no TWL read uses the tw pin.
+
+The one-repo form (both slots name `<lang>_tw`) stays legal for gateway-language sets, so a
+gateway whose `_twl` is not installed keeps working. Issue #646 makes that form illegal,
+defines the gateway sets, and corrects the tC3 import, which still writes one tW version to
+both slots. Issue #643 hides items with no article.
+
+Where it lands: `docs/BURRITO-SPEC.md` §5.3 (version 1.20), `src/data/installedSuite.js`
+(`EN_TWL`), `src/data/installed.ts` (`languageSetFromInstalled` prefers `<lang>_twl`),
+`scripts/package-desktop.zsh` (`BUNDLED_RESOURCES`), `docs/PACKAGING.md`, the rig seed
+(`dev-env/scripts/seed.zsh`, `write-install-records.mjs`, `dev-env/README.md`), and the tests
+`test/twlPin.test.ts`, `test/installed.test.ts` and `scripts/desktop-resources.test.cjs`.

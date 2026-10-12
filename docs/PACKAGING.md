@@ -815,6 +815,7 @@ procedure's subject.
 | el-x-koine_ugnt | v0.34, sha `fc95b2b8aad08bb65ab54628ab685413a1139e97` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
 | hbo_uhb | v3.0.0, sha `74022f0fed012a3ef169886f595dd98e7b200543` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
 | en_tn | v91, sha `e586762e330f482a60c52aedd1c7b3a2f155df8a` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
+| en_twl (#644, D96) | v91, sha `7cbb3419f79780ce84b92ad7d42bd476cc5d8a64` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
 | en_tw | v91, sha `ff5b3852c27c3a0d01b109e482eb26047dcd20e2` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
 | en_ta | v91, sha `ce9a1bb9431317ca888e8c1f9620caa7f5fe45fd` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
 | en_tq | v91, sha `8be02772584ff5a5fea893a392b4f019e3efcc77` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
@@ -828,11 +829,11 @@ procedure's subject.
 
 Every artifact carries `BUILD-MANIFEST.json` at its root with the same data. A sha-only pin has `"version": null` there.
 
-The eight `unfoldingWord` repos are fetched as the DCS sb-zip export `/sb/<tag>.zip`. The two lexicons come from the `uW` org on DCS (D71): those repos have no tag and no sb-zip export (`/sb/` answers 404), so the build fetches the Gitea commit archive `archive/<sha>.zip` and verifies the sha Gitea records in the zip's archive comment against the pin. Both paths run through the app's own fetch code (`src/data/resourceFetch.ts` `downloadPin`), called by `dev-env/scripts/cache-resource.zsh`.
+The nine `unfoldingWord` repos are fetched as the DCS sb-zip export `/sb/<tag>.zip`. The two lexicons come from the `uW` org on DCS (D71): those repos have no tag and no sb-zip export (`/sb/` answers 404), so the build fetches the Gitea commit archive `archive/<sha>.zip` and verifies the sha Gitea records in the zip's archive comment against the pin. Both paths run through the app's own fetch code (`src/data/resourceFetch.ts` `downloadPin`), called by `dev-env/scripts/cache-resource.zsh`.
 
-## Bundled English suite (#163, #218, #504)
+## Bundled English suite (#163, #218, #504, #644)
 
-Per D70, D75 (and its #331 amendment), #163, #218 and #288, the desktop artifact bundles fifteen repos: the ten-resource English Bible suite, `en_obs`, `en_obs-tn`, `en_obs-twl`, `en_obs-tq`, and `uW/obs_images_360`. Translation Words and Translation Academy are shared by Bible and OBS sets. The unpacker stages normal resources at `<APPDIR>/resources/<owner lowercased>--<repo>/` and the untagged default image pack at `uw--obs_images_360--7146d5b504f6`.
+Per D70, D75 (and its #331 amendment), #163, #218, #288 and #644 (D96), the desktop artifact bundles sixteen repos: the eleven-resource English Bible suite, `en_obs`, `en_obs-tn`, `en_obs-twl`, `en_obs-tq`, and `uW/obs_images_360`. Translation Words and Translation Academy are shared by Bible and OBS sets. The unpacker stages normal resources at `<APPDIR>/resources/<owner lowercased>--<repo>/` and the untagged default image pack at `uw--obs_images_360--7146d5b504f6`.
 
 At each packaged start (#528), the shared bootstrap checks `BUILD-MANIFEST.json`
 against the bundled metadata's repo, full SHA and factual flavor, and verifies
@@ -860,7 +861,7 @@ install-record writes. Debug uses the same policy in its separate store.
 
 ### The release tags and the weekly check (#504)
 
-The build ships the English suite at the latest release at build time (owner stance, 2026-07-12). Since 2026-10-01 the pins are `en_ult`, `en_ust`, `en_tn`, `en_tw`, `en_ta` and `en_tq` at **v91** (released 2026-09-26). `hbo_uhb` is at **v3.0.0** (released 2026-08-14). The manifests of `en_tn` v91 and `en_ult` v91 declare this Hebrew Bible. `el-x-koine_ugnt` v0.34 and the four Open Bible Stories resources were already the latest releases. The table above gives each tag and its commit.
+The build ships the English suite at the latest release at build time (owner stance, 2026-07-12). Since 2026-10-01 the pins are `en_ult`, `en_ust`, `en_tn`, `en_tw`, `en_ta` and `en_tq` at **v91** (released 2026-09-26). Since 2026-10-12 (#644, D96) `en_twl` is pinned at **v91** too, for the TWL check lists; `en_tw` serves the articles only. `hbo_uhb` is at **v3.0.0** (released 2026-08-14). The manifests of `en_tn` v91 and `en_ult` v91 declare this Hebrew Bible. `el-x-koine_ugnt` v0.34 and the four Open Bible Stories resources were already the latest releases. The table above gives each tag and its commit.
 
 The pins stay fixed in the build (owner decision, 2026-10-01). A scheduled check reports when a pin falls behind:
 

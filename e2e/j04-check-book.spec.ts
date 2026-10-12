@@ -594,11 +594,11 @@ test.describe('J4 — a checker works a book', () => {
   );
 
   test(
-    'the tW tool derives from the SAME repo the links came from and shows its article (D34, FR-15)',
+    'the tW tool derives its list from the en_twl pin and shows the article from the en_tw pin (D96, FR-15)',
     { tag: ['@inc2', '@J4'] },
     async ({ page }, testInfo) => {
-      writeProjectPins(SEEDED_PROJECT, PINS());
-      const tsv = sideloadedIngredient('en_tw', 'TIT.tsv');
+      writeProjectPins(SEEDED_PROJECT, { ...PINS(), twl: pinForSideloaded('en_twl', 'v91') });
+      const tsv = sideloadedIngredient('en_twl', 'TIT.tsv');
       const expected = tsv.split('\n').slice(1).filter((r) => r.trim()).length;
 
       await openCheck(page);
@@ -606,9 +606,9 @@ test.describe('J4 — a checker works a book', () => {
       await expect(page.getByTestId('check-progress')).toHaveText(
         new RegExp(`\\d+ of ${expected} resolved`),
       );
-      // The article comes out of the very same burrito (payload/…), proving the
-      // one-pin-per-language rule end to end. Since F1 it sits behind the
-      // Academy drawer.
+      // The article comes out of the en_tw burrito (payload/…): two pins, one
+      // for the links and one for the articles (D96). Since F1 it sits behind
+      // the Academy drawer.
       await page.getByTestId('open-academy').click();
       await expect(page.getByTestId('article-panel')).toBeVisible();
       await expect(page.getByTestId('article-panel')).toContainText('payload/');

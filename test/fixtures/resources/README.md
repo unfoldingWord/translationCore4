@@ -16,6 +16,7 @@ fact that these are one-book slices of the full export.
 |---|---|---|---|
 | `en_tn@v86/` | `git.door43.org/unfoldingWord/en_tn/sb/v86.zip` | `c354b8ae66a23c485bf6f38fd35bd8f7ef81e4e5` | fallback `translationNotes` |
 | `en_twl@v86/` | `git.door43.org/unfoldingWord/en_twl/sb/v86.zip` | `570e76d0024c847689e48a20e2ac1a1d2c6eb6e3` | fallback `translationWordsLinks` |
+| `en_twl@v91/` | `git.door43.org/unfoldingWord/en_twl/sb/v91.zip` (fetched 2026-10-12 through `dev-env/scripts/cache-resource.zsh`; `metadata.json` only, no slice — its `ingredients` list the 59 book TSVs the release contains; issue #644, D96) | `7cbb3419f79780ce84b92ad7d42bd476cc5d8a64` | fallback `translationWordsLinks` (the shipped pin) |
 | `es-419_tn@v66/` | `git.door43.org/Es-419_gl/es-419_tn/sb/v66.zip` | `22f3d0c61e2ab4701cb869547de9c3c43da07208` | primary `translationNotes` |
 | `en_ta@v86/` | `git.door43.org/unfoldingWord/en_ta/sb/v86.zip` | `c7caddfb474efd713f36b35a3ffc927866c7b180` | fallback `translationAcademy` |
 | `en_obs-tn@v13/` | `git.door43.org/unfoldingWord/en_obs-tn/sb/v13.zip` (fetched 2026-09-17 through `dev-env/scripts/cache-resource.zsh`) | `e86138ea13f619f09f7a6dcaa60592716d407fe4` | fallback `obs-tn` (§10.6) |
