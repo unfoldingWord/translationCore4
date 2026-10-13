@@ -90,8 +90,9 @@ const installedFor = (file: ResourcesFile) => {
 };
 
 describe('D97 ruling 6 — the Check preflight never offers tW from an old-form pin', () => {
-  const preflightFor = async (file: ResourcesFile) => {
-    const { installed, coverage } = installedFor(file);
+  const preflightFor = async (file: ResourcesFile, installedOverride?: Record<string, ResourcePin>) => {
+    const { installed: all, coverage } = installedFor(file);
+    const installed = installedOverride ?? all;
     let state: Record<string, unknown> = {};
     const dispatch = (action: unknown) => { state = reducer(state, action as never); };
     await performRunPreflight({
@@ -99,8 +100,12 @@ describe('D97 ruling 6 — the Check preflight never offers tW from an old-form 
       dispatch,
       actions: { resolutionContext: async () => ({ installed, coverage, resolutionError: null }) },
     });
-    return state.preflight as Record<string, { state: string; resolution: { pin: ResourcePin | null } | null }>;
+    return state.preflight as Record<string, { state: string; resolution: { pin: ResourcePin | null } | null; needs: ResourcePin | null }>;
   };
+  // Slice 2 (#646): the tw pin must be local too. With the tw pins NOT installed, a legal
+  // project is a fetch whose `needs` is the tw pin; an old-form project is still 'old-twl'.
+  const withoutTw = (file: ResourcesFile) =>
+    Object.fromEntries(Object.entries(installedFor(file).installed).filter(([k]) => !/_tw$/.test(k)));
 
   it("an old-form project: tW is 'old-twl' with no resolution; tN is still ready", async () => {
     const pre = await preflightFor(OLD_BOTH);
@@ -113,11 +118,23 @@ describe('D97 ruling 6 — the Check preflight never offers tW from an old-form 
     expect(pre.translationWords.state).toBe('ready');
     expect(pre.translationWords.resolution?.pin?.repoPath).toBe('git.door43.org/es-419_gl/es-419_twl');
   });
+  it("old form AND the tw pin not installed: 'old-twl' wins — never a download of the tw pin", async () => {
+    const pre = await preflightFor(OLD_BOTH, withoutTw(OLD_BOTH));
+    expect(pre.translationWords.state).toBe('old-twl');
+    expect(pre.translationWords.needs).toBeNull();
+    expect(pre.translationWords.resolution).toBeNull();
+  });
+  it('control: the two-repo form with the tw pin not installed is a fetch that needs the tw pin (slice 2)', async () => {
+    const pre = await preflightFor(SAMPLE, withoutTw(SAMPLE));
+    expect(pre.translationWords.state).toBe('fetch');
+    expect(pre.translationWords.needs?.repoPath).toBe('git.door43.org/es-419_gl/es-419_tw');
+  });
 });
 
 describe('D97 ruling 6 — Understand reads no TWL TSV from an old-form pin', () => {
-  const load = async (file: ResourcesFile) => {
-    const { installed, coverage } = installedFor(file);
+  const load = async (file: ResourcesFile, installedOverride?: Record<string, ResourcePin>) => {
+    const { installed: all, coverage } = installedFor(file);
+    const installed = installedOverride ?? all;
     setInstalledCache(installed);
     // Each repo answers the header row of its own TSV (test/fixtures/resources/en_twl@v86/TIT.tsv,
     // en_tn@v91/TIT.tsv): a read that parses and derives to nothing.
@@ -158,6 +175,13 @@ describe('D97 ruling 6 — Understand reads no TWL TSV from an old-form pin', ()
     const { final, tsvReads } = await load(SAMPLE);
     expect(final.words.state).toBe('ready');
     expect(tsvReads).toContain(twlLocal(SAMPLE));
+  });
+  it("old form AND the tw pin not installed: still 'old-twl', no TSV read of either twl pin, never a fetch", async () => {
+    const notInstalledTw = Object.fromEntries(Object.entries(installedFor(OLD_BOTH).installed).filter(([k]) => !/_tw$/.test(k)));
+    const { final, tsvReads } = await load(OLD_BOTH, notInstalledTw);
+    expect(final.words.state).toBe('old-twl');
+    expect(tsvReads).not.toContain(twlLocal(OLD_BOTH));
+    expect(tsvReads).not.toContain(localRepoPathFromRepoPath(OLD_BOTH.languageSets.fallback.translationWordsLinks.repoPath));
   });
 });
 
