@@ -49,9 +49,9 @@
         "flavor": "parascriptural/x-bcvnotes"
       },
       "translationWordsLinks": {
-        "repoPath": "git.door43.org/unfoldingWord/en_tw",
+        "repoPath": "git.door43.org/unfoldingWord/en_twl",
         "version": "v91",
-        "sha": "ff5b3852c27c3a0d01b109e482eb26047dcd20e2",
+        "sha": "7cbb3419f79780ce84b92ad7d42bd476cc5d8a64",
         "flavor": "parascriptural/x-bcvarticles"
       },
       "translationWords": {
