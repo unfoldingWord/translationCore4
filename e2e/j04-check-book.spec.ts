@@ -22,6 +22,7 @@ import {
 
 const PINS = () => ({
   tn: pinForSideloaded('en_tn', 'v91'),
+  twl: pinForSideloaded('en_twl', 'v91'),
   tw: pinForSideloaded('en_tw', 'v91'),
   ta: pinForSideloaded('en_ta', 'v91'),
 });
@@ -460,10 +461,11 @@ test.describe('J4 — a checker works a book', () => {
         sha: String(n).repeat(40).slice(0, 40),
         flavor: name.endsWith('_ta') ? 'peripheral/x-peripheralArticles' : name.endsWith('_tn') ? 'parascriptural/x-bcvnotes' : 'parascriptural/x-bcvarticles',
       });
-      const setFor = (gw: { languageId: string; owner: string }, tn: unknown, tw: unknown, ta: unknown) => ({
+      // Two pins (D96/D97 ruling 6): the twl slot names a `_twl` repository.
+      const setFor = (gw: { languageId: string; owner: string }, tn: unknown, twl: unknown, tw: unknown, ta: unknown) => ({
         gatewayLanguage: gw,
         translationNotes: tn,
-        translationWordsLinks: tw,
+        translationWordsLinks: twl,
         translationWords: tw,
         translationAcademy: ta,
       });
@@ -473,10 +475,11 @@ test.describe('J4 — a checker works a book', () => {
           primary: setFor(
             { languageId: 'fr', owner: 'unfoldingWord' },
             frPin('fr_tn', 1),
+            frPin('fr_twl', 4),
             frPin('fr_tw', 2),
             frPin('fr_ta', 3),
           ),
-          fallback: setFor({ languageId: 'en', owner: 'unfoldingWord' }, en.tn, en.tw, en.ta),
+          fallback: setFor({ languageId: 'en', owner: 'unfoldingWord' }, en.tn, en.twl, en.tw, en.ta),
         },
         // Projection form only: empty groups are omitted (D56 seedability).
       };

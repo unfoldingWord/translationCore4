@@ -193,6 +193,20 @@ export const resolveSetSlot = (
   return { rung: null, pin: null, usedFallback: false };
 };
 
+/** D97 ruling 6 (§5.3, issue #646): the `translationWordsLinks` pin MUST name a
+ * repository whose name ends in `_twl`. A pin in the one-repo form (`<lang>_tw`
+ * in the twl slot) was written by a pre-release build: the app reads no TWL
+ * from it, and the project must be created again. Returns the first such pin
+ * over the ladder, or null. An absent slot is not the old form (that is
+ * `unpinned`). The test is the harness's own (conformance/validate.mjs). */
+export const oldTwlPin = (resources: ResourcesFile | null | undefined): ResourcePin | null => {
+  for (const rung of LADDER) {
+    const pin = resources?.languageSets?.[rung]?.translationWordsLinks;
+    if (pin && !(typeof pin.repoPath === 'string' && /_twl$/.test(pin.repoPath))) return pin;
+  }
+  return null;
+};
+
 /** The §5.2 `resource` record for a resolved (tool, book) — what the decision
  * file stores so a later reader knows which resource produced its checks.
  * Identity is (repoPath + sha), D58; the version label rides along when the
@@ -230,7 +244,8 @@ export type PreflightState =
   | 'fetch' // pinned version absent + online -> fetch it (sb-zip + SHA)
   | 'unavailable' // pinned version absent + offline -> first-class unavailable
   | 'unpinned' // no resources.json / no pin for this tool at all
-  | 'not-covered'; // pins exist, but neither rung covers this book
+  | 'not-covered' // pins exist, but neither rung covers this book
+  | 'old-twl'; // D97 ruling 6: the twl pin is the pre-release one-repo form — never read; the project must be created again
 
 export interface Preflight {
   tool: Tool;

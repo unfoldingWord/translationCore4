@@ -30,7 +30,7 @@ import { GATEWAYS, gatewayKey, gatewayDisplayName, DCS_HOST, orgForRepoName } fr
 import { fetchAndInstallPin, latestReleaseTag, identifyExistingInstall, releaseCommitSha, rezip, unwrapExport, verifySideload } from './data/resourceFetch';
 import { isNotFoundError } from './data/serverApi';
 import { readInstalled, recordInstalled, coverageFromLocal, languageSetFromInstalled, gatewayBiblesFromInstalled, mergeOptionalPins, isPinLocal, unsatisfiedProjectPinFor, pinsPreferringInstalled, localRepoPathFromRepoPath, installedPathFor, discoverOnDisk, flavorOfMetadata } from './data/installed';
-import { OBS_TOOL_SLOT, TOOL_SLOT, coverageFor, preflightObsTool, preflightToolBook, recordMatchesResolution, resolutionRecord, resolveObsSetSlot, resolveToolBook, resolveSetSlot, samePath } from './data/resolve';
+import { OBS_TOOL_SLOT, TOOL_SLOT, coverageFor, oldTwlPin, preflightObsTool, preflightToolBook, recordMatchesResolution, resolutionRecord, resolveObsSetSlot, resolveToolBook, resolveSetSlot, samePath } from './data/resolve';
 import {
   deriveForProject,
   deriveObsItems,
@@ -483,6 +483,7 @@ const initial = () => ({
   projectPinsSeq: 0, // #412: bumped by a gateway change, so an older pins read never lands over it
   projectPinsLoaded: false, // round 33: distinguishes pins LOADING (understand waits) from pins legally ABSENT (understand proceeds, slots unpinned)
   projectPinsError: null, // round 34: a REJECTED pins read — stated and retryable, never a false absence claim
+  projectPinsOldTwl: null, // D97 ruling 6 (#646): the pre-release one-repo twl pin of the open project, or null — tW reads nothing from it; the project must be created again
   sourcePanes: null, // round 37: the open project's §5.3 extraScripture pane ids — null while the pins load, [] when the project legally has none
   preflight: null, // { [tool]: Preflight } for the open book (C2.2)
   gatewayPreview: null, // a proposed gateway change awaiting confirmation
@@ -2141,6 +2142,7 @@ async function performProjectOpen(ctx, repoPath, bookCode, view = 'read') {
         projectPins: null,
         projectPinsLoaded: false,
         projectPinsError: null,
+        projectPinsOldTwl: null,
         // #434: the tool verdicts carry the previous project's resolved pins.
         preflight: null,
         preflightError: null,
@@ -2747,7 +2749,11 @@ function loadProjectPins({ store, repoPath, storeRef, stateRef, actions, dispatc
   const settled = read
     .then(async (pins) => {
       if (!stillCurrent()) return;
-      dispatch({ type: 'set', patch: { projectPins: pins, projectPinsLoaded: true, projectPinsError: null } });
+      // D97 ruling 6 (#646): a twl pin that does not name a `_twl` repository
+      // (either rung; an OBS project's fallback set too) was written by a
+      // pre-release build. It is stated with the pins and never read: the
+      // preflight and the Understand Words slot answer 'old-twl' instead.
+      dispatch({ type: 'set', patch: { projectPins: pins, projectPinsLoaded: true, projectPinsError: null, projectPinsOldTwl: oldTwlPin(pins) } });
       // Round 37: the source panes are pin-driven — resolve them now that
       // the pins are known (openBook deferred while they were loading). The
       // document is handed over DIRECTLY: the dispatch above has not
@@ -2912,6 +2918,8 @@ async function loadUnderstandSlot({
   tool,
   deriveOpts = {},
 }) {
+  // D97 ruling 6 (#646): the pre-release one-repo twl pin is never read.
+  if (slot === 'translationWordsLinks' && st.projectPinsOldTwl) return { state: 'old-twl' };
   const resolved = resolveSetSlot(st.projectPins, slot, book, coverage);
   const unavailable = unavailableHelpSlot(st, resolved, sets, slot, installed);
   if (unavailable) return unavailable;
@@ -3197,7 +3205,12 @@ async function performRunPreflight({ stateRef, dispatch, actions }) {
       ? preflightObsTool(st.projectPins, tool, {
           isLocal: (pin) => isPinLocal(installed, pin), online,
         })
-      : preflightToolBook(st.projectPins, tool, st.book, {
+      // D97 ruling 6 (#646): tW never resolves through the pre-release
+      // one-repo twl pin — no session, no picker derivation. (An OBS project
+      // reads `obs-twl`, another pin; its message is the picker's callout.)
+      : tool === 'translationWords' && st.projectPinsOldTwl
+        ? { tool, book: st.book, state: 'old-twl', resolution: null, needs: null }
+        : preflightToolBook(st.projectPins, tool, st.book, {
           coverage,
           isLocal: (pin) => isPinLocal(installed, pin),
           online,
@@ -6533,7 +6546,7 @@ export function AppProvider({ children }) {
         const store = storeRef.current;
         const repoPath = stateRef.current.project?.repoPath;
         if (!store || !repoPath) return;
-        dispatch({ type: 'set', patch: { projectPinsError: null } });
+        dispatch({ type: 'set', patch: { projectPinsError: null, projectPinsOldTwl: null } });
         loadProjectPins({ store, repoPath, storeRef, stateRef, actions: a, dispatch });
       },
 
@@ -6772,7 +6785,7 @@ export function AppProvider({ children }) {
         alignSessionSeq++;
         dispatch({
           type: 'set',
-          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, storyNumbers: [], storyNumber: null, story: null, sourceStory: null, storyImages: {}, storyImageNote: null, storyLoading: false, storyError: null, storySource: null, saveState: 'saved', noteSaveState: 'saved', alignSaveState: 'saved', checkSaveState: 'saved', storySaveState: 'saved', storySaveError: null, commitError: null, projectPins: null, projectPinsLoaded: false, projectPinsError: null, preflight: null, preflightError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null, aligning: false, alignSession: null, alignVerse: null, alignIndex: null, alignSuggest: { status: 'off', verses: 0, boosted: false, error: null }, pickerProgress: null, toolPos: {}, upgrade: UPGRADE_IDLE },
+          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, storyNumbers: [], storyNumber: null, story: null, sourceStory: null, storyImages: {}, storyImageNote: null, storyLoading: false, storyError: null, storySource: null, saveState: 'saved', noteSaveState: 'saved', alignSaveState: 'saved', checkSaveState: 'saved', storySaveState: 'saved', storySaveError: null, commitError: null, projectPins: null, projectPinsLoaded: false, projectPinsError: null, projectPinsOldTwl: null, preflight: null, preflightError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null, aligning: false, alignSession: null, alignVerse: null, alignIndex: null, alignSuggest: { status: 'off', verses: 0, boosted: false, error: null }, pickerProgress: null, toolPos: {}, upgrade: UPGRADE_IDLE },
         });
         refreshProjects(); // re-order: the project just left goes to the top
         if (leaving && leavingStore) startLeaveCheckpoint({ store: leavingStore, repoPath: leaving.repoPath, stateRef, dispatch });

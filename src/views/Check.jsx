@@ -67,6 +67,7 @@ const TONE = {
   unavailable: { bg: 'var(--surface-warm)', border: 'rgba(229,157,51,.4)', fg: 'var(--tc-warn-text)' },
   unpinned: { bg: 'var(--surface-app)', border: 'var(--border-input)', fg: 'var(--text-secondary)' },
   'not-covered': { bg: 'var(--surface-app)', border: 'var(--border-input)', fg: 'var(--text-secondary)' },
+  'old-twl': { bg: 'var(--surface-warm)', border: 'rgba(229,157,51,.4)', fg: 'var(--tc-warn-text)' },
 };
 
 /** The not-ready half of a tool card: which resource the tool wants, and the
@@ -242,6 +243,19 @@ function ToolCard({ tool, pre, label, progress, titleOf }) {
  * because the pinned PRIMARY is not on this computer. That is not silent —
  * say which primary is missing and offer to download it. The card still
  * opens (state 'ready'); the fallback never blocks. */
+/** D97 ruling 6 (#646): the project's twl pin comes from a pre-release build
+ * (its repository name does not end in `_twl`). Stated once for the whole
+ * picker — an OBS project has no tW card for this pin — and there is no
+ * in-app fix: the project is created again. Nothing while the pin is legal. */
+function OldTwlNotice({ pin }) {
+  if (!pin) return null;
+  return (
+    <Callout tone="warn" role="alert" data-testid="pins-old-twl" style={{ marginBottom: 16, overflowWrap: 'anywhere' }}>
+      {t('check.oldTwl')} {pin.repoPath}
+    </Callout>
+  );
+}
+
 function FallbackWarning({ tool, missing }) {
   const { actions } = useApp();
   return (
@@ -1396,6 +1410,7 @@ export default function Check() {
             </Button>
           </Callout>
         )}
+        <OldTwlNotice pin={s.projectPinsOldTwl} />
 
         {pre === null && !s.preflightError && (
           <p style={{ fontSize: 'var(--fs-ui)', color: 'var(--text-tertiary)' }}>{t('check.checking')}</p>
