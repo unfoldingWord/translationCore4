@@ -345,12 +345,6 @@ describe('#675 the sync core', () => {
     expect(factsOf(report).names).toEqual({ [A]: 'fixture-translator-a', [B]: 'fixture-translator-b', [C]: 'fixture-translator-c' });
   });
 
-  it('#680 facts.actors: every actor of the synced journal, sorted', async () => {
-    const { report } = await run();
-    expect(report.ok).toBe(true);
-    expect(factsOf(report).actors).toEqual([A, B, C]);
-  });
-
   it('report passes assertReport', async () => {
     const ok = await run();
     expect(assertReport(ok.report)).toBe(ok.report);

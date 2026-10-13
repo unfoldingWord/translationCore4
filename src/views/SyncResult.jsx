@@ -3,7 +3,8 @@
 // changes teammates made (`received`), the conflicts where the newest version
 // won (`newestWins`), and the verse conflicts (`textConflicts`), with a link to
 // the review (#679) when there is one. A refused sync shows the one message of
-// its code. #680: the teammates who sent changes, each by actorLabel. The owner's mockup (2026-10-13, "HomeConflicts"): a white toast at
+// its code. #680: the teammates who sent changes, each by actorLabel over the
+// team that the read after the sync folds (`team`, syncTeam). The owner's mockup (2026-10-13, "HomeConflicts"): a white toast at
 // the bottom of Home, a dot, one line, an Ocean link, and a dismiss button.
 import React from 'react';
 import { t } from '../i18n';
@@ -63,16 +64,23 @@ function Counts({ counts }) {
 }
 
 /** #680: the teammates who sent changes (`received`), each by the label the
- * review gives them: the Door43 name of `facts.names`, else "Teammate n" over
- * `facts.actors`. `received` holds teammates only, so no "Mine" shows here;
- * `me` is null because the sync writes this translator's name first, and a
- * named actor takes no number. Nothing for no teammate. */
-function From({ facts = {} }) {
+ * review gives them, over the same `team` ({ me?, names, actors }): the open
+ * store's readTeam(), else the read-only fold of Home's conflict count, both
+ * read after the sync. Its `names` are the fold's, as `facts.names` are.
+ * `received` holds teammates only, so no "Mine" shows here. The reader's team
+ * has no `me`: the sync writes this translator's name first, and a named actor
+ * takes no number, so the numbers are the review's. Nothing for no teammate,
+ * and nothing when the read after the sync failed (no team). */
+function From({ facts = {}, team }) {
   const senders = Object.keys(facts.received ?? {}).sort();
-  if (!senders.length) return null;
-  const labels = senders.map((a) => actorLabel(a, facts.names, null, facts.actors));
+  if (!senders.length || !team) return null;
+  const labels = senders.map((a) => actorLabel(a, team.names, team.me ?? null, team.actors));
   return <span data-testid="sync-received-from" style={NOTE}>{t('syncResult.from', { names: labels.join(' · ') })}</span>;
 }
+
+/** #680: the team the result labels by — the open store's (`s.team`, with
+ * `me`) when the synced project is open, else Home's read-only one. */
+export const syncTeam = (s, repoPath) => (s.project?.id === repoPath ? s.team : s.teamByProject?.[repoPath]) ?? null;
 
 /** A count sentence under the line, or nothing for 0. */
 function Note({ testId, n, one, many }) {
@@ -85,8 +93,10 @@ function Link({ testId, onClick, label, show }) {
   return <button type="button" data-testid={testId} onClick={onClick} style={LINK}>{label}</button>;
 }
 
-/** `result`: { repoPath, name, report, missingPins } (state `syncResult`). */
-export default function SyncResult({ result, onReview, onDownload, onDismiss }) {
+/** `result`: { repoPath, name, report, missingPins } (state `syncResult`).
+ * `team`: the synced project's team (syncTeam), or null.
+ * @param {{ result: any, team?: { me?: string | null, names: Record<string, string>, actors: string[] } | null, onReview: any, onDownload: any, onDismiss: any }} props */
+export default function SyncResult({ result, team = null, onReview, onDownload, onDismiss }) {
   const { report } = result;
   const ok = report.ok === true;
   const counts = syncCounts(report.facts);
@@ -105,7 +115,7 @@ export default function SyncResult({ result, onReview, onDownload, onDismiss }) 
             <span data-testid="sync-message">{syncErrorText(report)}</span>
           </span>
         )}
-        {ok && <From facts={report.facts} />}
+        {ok && <From facts={report.facts} team={team} />}
         <Note testId="sync-restored" n={restored} one="syncResult.restoredOne" many="syncResult.restoredMany" />
         <Note testId="sync-missing-pins" n={missingPins} one="syncResult.missingPinsOne" many="syncResult.missingPinsMany" />
       </div>

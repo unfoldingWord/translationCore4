@@ -119,8 +119,6 @@ const kindOf = (key) => key.slice(0, key.indexOf('|'));
  *     newestWins:    [{ key, kind, winner }] — each other fork, kept on its newest head
  *                    (`winner`, a ts), that the fold of `mine.journal` alone did not have
  *     names:         { [actor]: username } — the folded Door43 usernames (R-8.5.25)
- *     actors:        string[] — every actor id of the synced journal, sorted: the order the
- *                    "Teammate n" labels number by (src/views/actorLabel.js, #680)
  */
 export const syncCore = async ({ remote, mine, resolve, files }) => {
   const startedAt = new Date().toISOString();
@@ -241,5 +239,5 @@ const syncOrRefuse = async ({ remote, mine, resolve, files }) => {
     .filter((f) => kindOf(f.key) !== 'text' && !hadBefore.has(forkId(f)))
     .map((f) => ({ key: f.key, kind: kindOf(f.key), winner: f.provisional }));
 
-  return { write, remove, facts: { carried, restored, received, textConflicts, newestWins, names: { ...out.names }, actors: [...new Set(union.map((e) => e.actor))].sort() } };
+  return { write, remove, facts: { carried, restored, received, textConflicts, newestWins, names: { ...out.names } } };
 };

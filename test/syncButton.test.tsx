@@ -40,7 +40,7 @@ const freshState = () => ({
 vi.mock('../src/state.jsx', () => ({ useApp: () => ({ s: state, actions }), door43: { server: 'https://qa.door43.org' } }));
 
 import { ProjectCard, ObsProjectCard } from '../src/views/Home.jsx';
-import SyncResult, { SYNC_REFUSALS, syncCounts } from '../src/views/SyncResult.jsx';
+import SyncResult, { SYNC_REFUSALS, syncCounts, syncTeam } from '../src/views/SyncResult.jsx';
 import { InternetDialog } from '../src/views/AccountMenu.jsx';
 import ShareDialog from '../src/views/modals/ShareDialog.jsx';
 import { actorLabel } from '../src/views/actorLabel.js';
@@ -58,7 +58,6 @@ const okSync = (facts: Record<string, unknown> = {}) =>
     ],
     newestWins: [{ key: 'check|translationWords|TIT|1', kind: 'check', winner: '5' }],
     names: {},
-    actors: ['a', 'b', 'b0000000000000aa', 'c', 'c0000000000000bb'],
     tries: 1,
     repoPath: BIBLE.id,
     ...facts,
@@ -276,23 +275,44 @@ describe('#678 — the first share', () => {
 });
 
 describe('#680 — the result names each teammate through actorLabel', () => {
-  const ACTORS = ['a0000000000000aa', 'b0000000000000aa', 'c0000000000000bb', 'd0000000000000dd'];
+  // received: b0… and c0…; a0… is this translator; d0… sent nothing this sync and has no name
+  const team = { names: { a0000000000000aa: 'facilitator', c0000000000000bb: 'maria' }, actors: ['a0000000000000aa', 'b0000000000000aa', 'c0000000000000bb', 'd0000000000000dd'] };
 
   it('a named teammate shows the Door43 name; an unnamed one the "Teammate n" the review gives', () => {
-    // a0… is this translator (named by the sync); d0… sent nothing this sync and has no name
-    const names = { a0000000000000aa: 'facilitator', c0000000000000bb: 'maria' };
-    render(<SyncResult result={result(okSync({ names, actors: ACTORS }))} onReview={vi.fn()} onDownload={vi.fn()} onDismiss={vi.fn()} />);
-    const review = (actor: string) => actorLabel(actor, names, 'a0000000000000aa', ACTORS);
+    render(<SyncResult result={result(okSync())} team={team} onReview={vi.fn()} onDownload={vi.fn()} onDismiss={vi.fn()} />);
+    const review = (actor: string) => actorLabel(actor, team.names, 'a0000000000000aa', team.actors);
     expect(review('b0000000000000aa')).toBe(t('conflicts.teammate', { n: 1 }));
     expect(screen.getByTestId('sync-received-from').textContent)
       .toBe(t('syncResult.from', { names: [review('b0000000000000aa'), 'maria'].join(' · ') }));
   });
 
-  it('no teammate change: no names line; a refused sync: no names line', () => {
-    render(<SyncResult result={result(okSync({ received: {}, actors: ACTORS }))} onReview={vi.fn()} onDownload={vi.fn()} onDismiss={vi.fn()} />);
+  it('no names line with no teammate change, with no team (the read after the sync failed), or for a refused sync', () => {
+    render(<SyncResult result={result(okSync({ received: {} }))} team={team} onReview={vi.fn()} onDownload={vi.fn()} onDismiss={vi.fn()} />);
     expect(screen.queryByTestId('sync-received-from')).toBeNull();
     cleanup();
-    render(<SyncResult result={result(refused('sync.offline'))} onReview={vi.fn()} onDownload={vi.fn()} onDismiss={vi.fn()} />);
+    render(<SyncResult result={result(okSync())} onReview={vi.fn()} onDownload={vi.fn()} onDismiss={vi.fn()} />);
     expect(screen.queryByTestId('sync-received-from')).toBeNull();
+    expect(screen.getByTestId('sync-count-received').getAttribute('data-count')).toBe('5');
+    cleanup();
+    render(<SyncResult result={result(refused('sync.offline'))} team={team} onReview={vi.fn()} onDownload={vi.fn()} onDismiss={vi.fn()} />);
+    expect(screen.queryByTestId('sync-received-from')).toBeNull();
+  });
+
+  it('syncTeam: the open store\'s team when the synced project is open, else Home\'s read-only one', () => {
+    const open = { me: 'a0000000000000aa', ...team };
+    const other = { names: {}, actors: ['x'] };
+    expect(syncTeam({ project: { id: BIBLE.id }, team: open, teamByProject: { [BIBLE.id]: other } }, BIBLE.id)).toBe(open);
+    expect(syncTeam({ project: null, team: null, teamByProject: { [BIBLE.id]: other } }, BIBLE.id)).toBe(other);
+    expect(syncTeam({ project: { id: 'another' }, team: open, teamByProject: {} }, BIBLE.id)).toBeNull();
+  });
+
+  it('Home hands the toast the team of the synced project', async () => {
+    Object.assign(state, { projects: [], lastEdit: null, bookError: null, commitError: null, importToast: null, project: null, team: null });
+    state.syncResult = result(okSync());
+    state.teamByProject = { [BIBLE.id]: team };
+    Object.assign(actions, { dismissSyncResult: vi.fn(), syncDownload: vi.fn(), openAddProject: vi.fn(), refreshProjects: vi.fn() });
+    const { default: Home } = await import('../src/views/Home.jsx');
+    render(<Home />);
+    expect(screen.getByTestId('sync-received-from').textContent).toContain('maria');
   });
 });
