@@ -11,6 +11,7 @@ import {
   fetchAndInstallPin,
   releaseCommitSha,
   tagForCommitSha,
+  dcsReleases,
 } from '../src/data/resourceFetch';
 import type { FetchPin } from '../src/data/resourceFetch';
 import type { ResourcePin } from '../src/data/burritoStore';
@@ -411,5 +412,42 @@ describe('sha-only pin with no tag — the Gitea commit archive (D71, #218)', ()
         .rejects.toThrow(/SHA mismatch|cannot be verified/);
       expect(installed).toEqual([]);
     }
+  });
+});
+
+describe('DCS release listings walk pages the same way (D97 ruling 8, #646: the tC3 import dates a tw release)', () => {
+  /** A page-aware releases API fake, in the shape DCS lists [VERIFIED —
+   * git.door43.org releases API, 2026-10-13: `tag_name`, `created_at`;
+   * `?limit=50&page=2` of en_tw gave the 10 releases after the first 50]. */
+  const pagedReleasesFetch = (all: Array<{ tag_name: string; created_at: string }>, opts: { status?: number; failOnPage?: number } = {}) => {
+    const requests: string[] = [];
+    const fetchFn = (async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      requests.push(url.pathname + url.search);
+      if (opts.status) return { ok: false, status: opts.status, json: async () => ({}) };
+      const page = Number(url.searchParams.get('page') ?? '1');
+      if (opts.failOnPage === page) return { ok: false, status: 502, json: async () => [] };
+      const limit = Math.min(Number(url.searchParams.get('limit') ?? '50'), 50);
+      return { ok: true, json: async () => all.slice((page - 1) * limit, page * limit) };
+    }) as unknown as typeof fetch;
+    return { fetchFn, requests };
+  };
+  const many = Array.from({ length: 60 }, (_, i) => ({ tag_name: `v${60 - i}`, created_at: `2026-01-${String(1 + (i % 28)).padStart(2, '0')}T00:00:00Z` }));
+
+  it('lists every release across pages as {version, createdAt}, in listing order', async () => {
+    const { fetchFn, requests } = pagedReleasesFetch(many);
+    const listed = await dcsReleases('git.door43.org/unfoldingWord/en_tw', fetchFn);
+    expect(listed).toHaveLength(60);
+    expect(listed![0]).toEqual({ version: 'v60', createdAt: '2026-01-01T00:00:00Z' });
+    expect(listed![59]).toEqual({ version: 'v1', createdAt: many[59].created_at });
+    expect(requests[0]).toBe('/api/v1/repos/unfoldingWord/en_tw/releases?limit=50&page=1');
+    // 60 at 50/page: page 1 full, page 2 short ends the walk
+    expect(requests).toHaveLength(2);
+  });
+
+  it('a 404 is conclusive (null: no such repository); an empty listing is []; a server error propagates', async () => {
+    expect(await dcsReleases('git.door43.org/ar_gt/ar_twl', pagedReleasesFetch([], { status: 404 }).fetchFn)).toBeNull();
+    expect(await dcsReleases('git.door43.org/ar_gt/ar_tw', pagedReleasesFetch([]).fetchFn)).toEqual([]);
+    await expect(dcsReleases('git.door43.org/unfoldingWord/en_tw', pagedReleasesFetch(many, { failOnPage: 2 }).fetchFn)).rejects.toThrow(/HTTP 502/);
   });
 });

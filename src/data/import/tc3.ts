@@ -15,13 +15,17 @@
 //   that hold user data, as §5.2 records.
 // - Resource versions: `manifest.json` `externalResources`. A version is never
 //   stored without its sha (D58): the review step resolves each one (D82), and
-//   `applyVersions` writes the pins.
+//   `applyVersions` writes the pins. tC3 records one tW version; its TWL pin
+//   is the `<lang>_twl` release closest in date (D97 ruling 8).
 import { t } from '../../i18n';
 import { normalizeOccurrences, type WithOccurrences } from '../align/occurrences';
 import type { DecisionFile, ResourcePin, ResourcesFile } from '../burritoStore';
 import { carryOverDecisions } from '../carryOver';
 import type { CheckItem } from '../derive';
+import { GATEWAYS } from '../gateways';
+import { INSTALLED_SUITE } from '../installedSuite';
 import { decompose, verseTextMd5 } from '../journal/runtime';
+import type { DcsRelease } from '../resourceFetch';
 import { usfmjs } from '../vendor';
 import type { AlignmentRecord, DecisionRecord, ImportBundle, ImportFile, ImportParser, VersionRequest } from './types';
 
@@ -315,15 +319,64 @@ export const TC3_PARSER: ImportParser = {
   parse,
 };
 
-/** Where a version request's pin lives in §5.3. tW pins its links and its
- * articles from the one `<lang>_tw` repository (D34). */
-const SLOT_PATHS: Record<VersionRequest['slot'], string[]> = {
+/** The slots a lookup can pin: the request slots, and the TWL pin that the tW
+ * version derives (D97 ruling 8; never a request, tC3 records no TWL version). */
+type FoundSlot = VersionRequest['slot'] | 'translationWordsLinks';
+type FoundPin = { repoPath: string; version: string; sha: string };
+export type FoundVersions = Partial<Record<FoundSlot, FoundPin>>;
+
+/** Where a found pin lives in §5.3. The tW tool has two pins (D96, D97 ruling
+ * 6): the articles from `<lang>_tw`, the check lists from `<lang>_twl`. */
+const SLOT_PATHS: Record<FoundSlot, string[]> = {
   translationNotes: ['languageSets.primary.translationNotes'],
-  translationWords: ['languageSets.primary.translationWordsLinks', 'languageSets.primary.translationWords'],
+  translationWords: ['languageSets.primary.translationWords'],
+  translationWordsLinks: ['languageSets.primary.translationWordsLinks'],
   'originalLanguage.nt': ['resources.originalLanguage.nt'],
   'originalLanguage.ot': ['resources.originalLanguage.ot'],
 };
 const TOOL_PIN: Record<Tool, string> = { translationNotes: 'translationNotes', translationWords: 'translationWordsLinks' };
+
+/** The gateway entry of a `<lang>_tw` pin, by organization and language: the
+ * organization decides whether a `_twl` repository exists (D97 ruling 7). */
+const gatewayOfTw = (repoPath: string) => {
+  const m = /\/([^/]+)\/([^/]+)_tw$/.exec(repoPath);
+  return m ? GATEWAYS.find((g) => g.org.toLowerCase() === m[1].toLowerCase() && g.id === m[2]) : undefined;
+};
+const isSha = (sha: unknown): sha is string => typeof sha === 'string' && /^[0-9a-f]{40}$/.test(sha);
+/** A lookup of a repo's releases: the list, null when DCS confirms that the
+ * repo has no such listing, or undefined when DCS did not answer. */
+export type ReleaseLookup = (repoPath: string) => Promise<DcsRelease[] | null | undefined>;
+
+/** D97 ruling 8: the TWL pin that goes with a found `<lang>_tw` version. A
+ * gateway with no `_twl` repository (`hasTwl: false`) takes the bundled
+ * `en_twl` (ruling 7), with no lookup. Otherwise the `<lang>_twl` release whose
+ * date is closest to the tw release's date; a tw release with no date, the
+ * latest `_twl` release. Each candidate's tag is resolved to its sha, closest
+ * first. Null when no `_twl` release can be pinned, or DCS did not answer:
+ * then the tw slot is unresolved too, so that the one-repo form (ruling 6) and
+ * the ruling 7 form for a gateway that publishes `_twl` are never written. */
+async function twlFor(
+  tw: FoundPin,
+  lookup: (repoPath: string, version: string) => Promise<string | null | undefined>,
+  releases: ReleaseLookup,
+): Promise<FoundPin | null> {
+  if (!tw.repoPath.endsWith('_tw')) return null;
+  if (gatewayOfTw(tw.repoPath)?.hasTwl === false) {
+    const { repoPath, version, sha } = INSTALLED_SUITE.languageSets.fallback.translationWordsLinks;
+    return { repoPath, version, sha };
+  }
+  const twlRepo = `${tw.repoPath}l`;
+  const [twReleases, twlReleases] = await Promise.all([releases(tw.repoPath), releases(twlRepo)]);
+  if (twReleases === undefined || !twlReleases) return null;
+  const twAt = Date.parse(twReleases?.find((r) => r.version === tw.version)?.createdAt ?? '');
+  const distance = (r: DcsRelease) => (Number.isNaN(twAt) ? -Date.parse(r.createdAt) : Math.abs(Date.parse(r.createdAt) - twAt));
+  for (const r of [...twlReleases].sort((a, b) => distance(a) - distance(b))) {
+    const sha = await lookup(twlRepo, r.version);
+    if (sha === undefined) return null;
+    if (isSha(sha)) return { repoPath: twlRepo, version: r.version, sha };
+  }
+  return null;
+}
 
 /** The pins a set of lookups found: one per slot. A slot's candidates are
  * tried newest first, so books that name different original-language versions
@@ -332,12 +385,15 @@ const TOOL_PIN: Record<Tool, string> = { translationNotes: 'translationNotes', t
  * so the user takes the installed versions and every book carries over (D82
  * point 2). `lookup` gives the sha of a tag, null when DCS has no such tag,
  * or undefined when DCS did not answer: then the slot stays unresolved, so an
- * older candidate is never pinned in place of one that was not checked. */
+ * older candidate is never pinned in place of one that was not checked.
+ * `releases` lists a repo's releases with their dates, for the TWL pin that a
+ * found tW version derives (`twlFor`); without it the tW slot stays unresolved. */
 export async function resolveVersions(
   requests: VersionRequest[],
   lookup: (repoPath: string, version: string) => Promise<string | null | undefined>,
-): Promise<Partial<Record<VersionRequest['slot'], { repoPath: string; version: string; sha: string }>>> {
-  const out: Awaited<ReturnType<typeof resolveVersions>> = {};
+  releases: ReleaseLookup = async () => undefined,
+): Promise<FoundVersions> {
+  const out: FoundVersions = {};
   const bySlot = new Map<VersionRequest['slot'], VersionRequest['candidates']>();
   for (const r of requests) bySlot.set(r.slot, [...(bySlot.get(r.slot) ?? []), ...r.candidates]);
   const newest = (a: { version: string }, b: { version: string }) => b.version.localeCompare(a.version, undefined, { numeric: true });
@@ -350,22 +406,28 @@ export async function resolveVersions(
       seen.add(`${c.repoPath}@${c.version}`);
       const sha = await lookup(c.repoPath, c.version);
       if (sha === undefined) break;
-      if (sha && /^[0-9a-f]{40}$/.test(sha)) {
+      if (isSha(sha)) {
         out[slot] = { ...c, sha };
         break;
       }
     }
   }
+  // The tW tool's two pins resolve together or not at all (D97 ruling 8).
+  if (out.translationWords) {
+    const twl = await twlFor(out.translationWords, lookup, releases);
+    if (twl) out.translationWordsLinks = twl;
+    else delete out.translationWords;
+  }
   return out;
 }
 
 /** The slots that have no pin in `found`: the review page offers "Use installed versions" for them. */
-export const unresolvedSlots = (requests: VersionRequest[], found: Awaited<ReturnType<typeof resolveVersions>>) =>
+export const unresolvedSlots = (requests: VersionRequest[], found: FoundVersions) =>
   [...new Set(requests.map((r) => r.slot))].filter((slot) => !found[slot]);
 
 /** The (tool, book) decision files that move to an installed pin: they need a
  * derived check list for the carry-over. */
-export const carryOverNeeds = (bundle: ImportBundle, found: Awaited<ReturnType<typeof resolveVersions>>) =>
+export const carryOverNeeds = (bundle: ImportBundle, found: FoundVersions) =>
   TOOLS.flatMap((tool) => (found[tool] ? [] : bundle.books.filter((b) => bundle.sidecars?.[`checking/${tool}/${b.code}.json`]).map((b) => ({ tool, book: b.code }))));
 
 /** Lay the resolved versions over `base` (the pins a new project gets) and give
@@ -376,13 +438,13 @@ export const carryOverNeeds = (bundle: ImportBundle, found: Awaited<ReturnType<t
 export function applyVersions(
   bundle: ImportBundle,
   base: ResourcesFile,
-  found: Awaited<ReturnType<typeof resolveVersions>>,
+  found: FoundVersions,
   derived: Record<string, CheckItem[]> = {},
 ): { bundle: ImportBundle; carried: number; invalidated: number } {
   const resources = JSON.parse(JSON.stringify(base)) as ResourcesFile & Record<string, unknown>;
   const flavors = { ...Object.fromEntries(Object.entries(resources.languageSets.primary).map(([k, v]) => [k, (v as ResourcePin).flavor])) } as Record<string, string>;
   for (const [slot, pin] of Object.entries(found)) {
-    for (const at of SLOT_PATHS[slot as VersionRequest['slot']]) {
+    for (const at of SLOT_PATHS[slot as FoundSlot]) {
       const keys = at.split('.');
       let node = resources as Record<string, unknown>;
       for (const k of keys.slice(0, -1)) node = (node[k] ??= {}) as Record<string, unknown>;
@@ -390,12 +452,17 @@ export function applyVersions(
       const flavor = (node[last] as ResourcePin | undefined)?.flavor ?? flavors[last] ?? 'scripture/textTranslation';
       node[last] = { repoPath: pin!.repoPath, version: pin!.version, sha: pin!.sha, flavor };
     }
-    // D41: the books tC3 checked against this commit are in it — a fact about
-    // the commit, so the ladder asks for this pin (fetch, or the guided fix)
-    // and does not fall back to English. A later local read widens it (D61).
-    const tool = TOOLS.find((x) => x === slot);
-    const books = tool ? bundle.books.map((b) => b.code).filter((code) => bundle.sidecars?.[`checking/${tool}/${code}.json`]) : [];
-    if (books.length) (resources.languageSets.primary as unknown as Record<string, ResourcePin & { books?: string[] }>)[TOOL_PIN[tool!]].books = books;
+  }
+  // D41: the books tC3 checked against this commit are in it — a fact about
+  // the commit, so the ladder asks for this pin (fetch, or the guided fix)
+  // and does not fall back to English. A later local read widens it (D61).
+  // The tW books go on the `_twl` pin that was looked up for the tw version;
+  // the bundled `en_twl` of a ruling 7 gateway was not, so it gets no claim.
+  for (const tool of TOOLS) {
+    const pin = found[tool];
+    if (!pin || (tool === 'translationWords' && gatewayOfTw(pin.repoPath)?.hasTwl === false)) continue;
+    const books = bundle.books.map((b) => b.code).filter((code) => bundle.sidecars?.[`checking/${tool}/${code}.json`]);
+    if (books.length) (resources.languageSets.primary as unknown as Record<string, ResourcePin & { books?: string[] }>)[TOOL_PIN[tool]].books = books;
   }
   if (bundle.gateway && (found.translationNotes || found.translationWords))
     resources.languageSets.primary = { ...resources.languageSets.primary, gatewayLanguage: bundle.gateway } as typeof resources.languageSets.primary;

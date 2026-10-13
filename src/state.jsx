@@ -27,7 +27,7 @@ import { seedBookFromSource } from './data/seed';
 import { SOURCE_MISSING, SOURCE_NOT_INSTALLED, isSourceAbsent } from './data/sourceState';
 import { BOOK_NAMES, bookName } from './data/bookNames';
 import { GATEWAYS, gatewayKey, gatewayDisplayName, DCS_HOST, orgForRepoName } from './data/gateways';
-import { fetchAndInstallPin, latestReleaseTag, identifyExistingInstall, releaseCommitSha, rezip, unwrapExport, verifySideload } from './data/resourceFetch';
+import { dcsReleases, fetchAndInstallPin, latestReleaseTag, identifyExistingInstall, releaseCommitSha, rezip, unwrapExport, verifySideload } from './data/resourceFetch';
 import { isNotFoundError } from './data/serverApi';
 import { readInstalled, recordInstalled, coverageFromLocal, languageSetFromInstalled, gatewayBiblesFromInstalled, mergeOptionalPins, isPinLocal, unsatisfiedProjectPinFor, pinsPreferringInstalled, localRepoPathFromRepoPath, installedPathFor, discoverOnDisk, flavorOfMetadata } from './data/installed';
 import { OBS_TOOL_SLOT, TOOL_SLOT, coverageFor, oldTwlPin, preflightObsTool, preflightToolBook, recordMatchesResolution, resolutionRecord, resolveObsSetSlot, resolveToolBook, resolveSetSlot, samePath } from './data/resolve';
@@ -5959,7 +5959,13 @@ export function AppProvider({ children }) {
         // A lookup DCS did not answer leaves its slot unresolved; the other slots'
         // shas stay. Such a failure offers the lookup again.
         let unanswered = false;
-        const found = await resolveVersions(bundle.versions, (repoPath, version) => releaseCommitSha(repoPath, version).catch(() => ((unanswered = true), undefined)));
+        const notAnswered = () => ((unanswered = true), undefined);
+        // D97 ruling 8: the tW version's TWL pin is dated by the releases listing.
+        const found = await resolveVersions(
+          bundle.versions,
+          (repoPath, version) => releaseCommitSha(repoPath, version).catch(notAnswered),
+          (repoPath) => dcsReleases(repoPath).catch(notAnswered),
+        );
         const offline = unanswered;
         // The user may have gone back or started another review meanwhile: a result
         // belongs only to the review of the bundle it was looked up for.
