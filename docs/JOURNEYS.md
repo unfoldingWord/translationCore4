@@ -307,12 +307,16 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 - Actor: translator. Activity: Translate.
 - Precondition: the project has a verse-text conflict. Two translators changed the same verse
   from the same base, and a sync put the two versions in one journal (epic #24).
-- Steps: on Home, the project card shows "N conflicts · Review" and each book tile shows its
-  count · click the card button (or, in Translate, click the marker on a verse or the toolbar
-  button "N conflicts · Review") · the review shows one verse at a time: "Conflict n of m", the
-  ULT verse when Translate has it for that book, and each version with its owner and date,
-  newest first · click one version: the other versions fade · click "Keep this version" ·
-  click Previous or Next to go to the other conflicts · click "Back to …" at any time to leave.
+- Steps:
+  1. On Home, find the project card. It shows "N conflicts · Review". Each book tile shows its count.
+  2. Click "N conflicts · Review" on the card. In Translate, you can also click the marker on a verse.
+     You can also click the toolbar button "N conflicts · Review".
+  3. The review shows one verse at a time. It shows "Conflict n of m" and each version, newest first.
+     Each version shows its owner and its date. The ULT verse shows when Translate has it for that book.
+  4. Click one version. The other versions fade.
+  5. Click "Keep this version".
+  6. Click Previous or Next to go to the other conflicts.
+  7. To leave the review, click "Back to …". You can leave at any time.
 - End state: for each kept verse, one `text.verse.set` segment of this actor. Its `supersedes`
   names every version of the verse (R-8.3.5). The fold shows no conflict for the verse, and the
   other versions stay in `retained[]` with reason `superseded` (R-8.3.6). The verse shows the

@@ -2193,7 +2193,14 @@ async function performProjectOpen(ctx, repoPath, bookCode, view = 'read') {
     // every dispatch to the originating store instance and repo path.
     const pinsReady = loadProjectPins({ store, repoPath, storeRef, stateRef, actions, dispatch });
     // #679: the conflicts of the fold this open just made (Translate markers, Home count).
-    adoptConflicts({ store, repoPath, dispatch });
+    // A selector failure never blocks the open: the count is then unknown (D30).
+    try {
+      adoptConflicts({ store, repoPath, dispatch });
+    } catch (e) {
+      console.error(`verse conflicts of ${repoPath} could not be read: ${failureText(e)}`);
+      dispatch({ type: 'set', patch: { verseConflicts: [], team: null } });
+      dispatch({ type: 'setConflicts', id: repoPath, counts: null });
+    }
     // B12 — warm the install resolver BEFORE any book/source read, so
     // resolveReadPath's installedCache is populated on a cold open.
     await actions.resolutionContext().catch(() => {});
@@ -2469,10 +2476,12 @@ async function performLoadConflicts({ project, stateRef, dispatch, conflictsGen,
 }
 
 /** #679 "Keep this version": every pending save is on disk first, then the
- * store writes the one resolving verse edit. The open book is read again, so
- * Translate shows the kept text and the next save starts from it. Returns
- * false when a save failed (the save indicator shows it) or the write failed
- * (the review shows it). */
+ * store writes the one resolving verse edit. The open book is then installed
+ * from the store's fold, so Translate shows the kept text and the next save
+ * starts from it — never from the text before the keep, which a later save
+ * would write back over the kept version. Returns false when a save failed
+ * (the save indicator shows it) or the keep was not written (the review shows
+ * it). */
 async function performKeepVersion(ctx, key, keptTs) {
   const { storeRef, stateRef, saveRefs, dispatch, conflictsGen } = ctx;
   if (!(await drainSchedulers(saveRefs))) return false;
@@ -2483,9 +2492,15 @@ async function performKeepVersion(ctx, key, keptTs) {
   try {
     await store.resolveVerse(key, keptTs);
   } catch (e) {
-    if (storeRef.current === store && stateRef.current.conflictReview)
-      dispatch({ type: 'set', patch: { conflictReview: { ...stateRef.current.conflictReview, error: failureText(e) } } });
-    return false;
+    // The store publishes before it regenerates the derived files, so a
+    // failure can come after the keep is in the journal. The fold decides.
+    if (storeRef.current !== store) return false;
+    if (store.readVerseConflicts().some((c) => c.key === key)) {
+      if (stateRef.current.conflictReview)
+        dispatch({ type: 'set', patch: { conflictReview: { ...stateRef.current.conflictReview, error: failureText(e) } } });
+      return false;
+    }
+    console.warn(`keepVersion(${key}): kept, but the store reported: ${failureText(e)}`);
   }
   if (storeRef.current !== store) return true;
   conflictsGen.set(repoPath, (conflictsGen.get(repoPath) || 0) + 1);
@@ -2495,23 +2510,30 @@ async function performKeepVersion(ctx, key, keptTs) {
     const next = left[Math.min(Math.max(position, 0), left.length - 1)];
     dispatch({ type: 'set', patch: { conflictReview: { key: next?.key ?? key, error: null } } });
   }
-  await reloadKeptBook(ctx, store, parseVerseKey(key).book);
+  installKeptBook(ctx, store, parseVerseKey(key).book);
   return true;
 }
 
-/** After a keep: the open book, when it holds the kept verse, is read again. */
-async function reloadKeptBook({ storeRef, stateRef, schedulerRef, rawRef, dispatch }, store, book) {
+/** After a keep: the open book, when it holds the kept verse, takes the text
+ * the fold projects — from memory, in one synchronous step for rawRef, the
+ * scheduler and bookRaw. If that cannot happen, the book is unloaded: Translate
+ * shows its load error and no edit can start from the text before the keep. */
+function installKeptBook({ stateRef, schedulerRef, rawRef, dispatch }, store, book) {
   if (stateRef.current.book !== book) return;
   try {
-    const { usfm: raw } = await store.readBook(book);
-    if (storeRef.current === store && stateRef.current.book === book) {
-      rawRef.current = raw;
-      schedulerRef.current?.loadBook(book, raw);
-      dispatch({ type: 'set', patch: { bookRaw: raw } });
-    }
+    const raw = store.projectedBook(book);
+    if (raw === null) throw new Error(`the fold projects no ${book}`);
+    schedulerRef.current?.loadBook(book, raw);
+    rawRef.current = raw;
+    dispatch({ type: 'set', patch: { bookRaw: raw } });
   } catch (e) {
-    // The verse is kept (the journal holds it); the open book shows the read failure, as openBook does.
-    if (storeRef.current === store) dispatch({ type: 'set', patch: { bookError: failureText(e) } });
+    rawRef.current = null;
+    try {
+      schedulerRef.current?.unloadBook(book);
+    } catch {
+      // A dirty buffer cannot be here (the drain ran, and the review has no editor).
+    }
+    dispatch({ type: 'set', patch: { bookRaw: null, bookError: failureText(e) } });
   }
 }
 

@@ -2262,6 +2262,13 @@ export class JournalingStore implements BurritoStore {
     return verseConflicts(this.foldNow(), this.events);
   }
 
+  /** The text of `book` as the current fold projects it (#679): the bytes its
+   * regenerated USFM file holds, from memory, with no HTTP read that can fail.
+   * Null when the fold projects no such book. */
+  projectedBook(book: string): string | null {
+    return this.foldNow().books[book.toUpperCase()]?.usfm ?? null;
+  }
+
   /** The team as the fold knows it (#679): each actor's recorded Door43 name
    * (`FoldOutput.names`, #674) and every actor id of the event set, sorted —
    * the order the "Teammate n" labels number by (actorLabel). */

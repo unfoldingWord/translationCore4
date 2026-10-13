@@ -430,6 +430,20 @@ describe('2026-08-28 adversarial round 25 regression — concurrent project open
     expect(dispatched.some((d) => d.type === '__loadUnderstand')).toBe(true);
     expect(sched.getState()).toBe('saved');
   });
+
+  it('#679: a verse-conflict read that throws does not block the open; the count becomes unknown', async () => {
+    const { ctx, dispatched, openedBooks } = openCtx();
+    const storeB = { ...fakeStore(async (repoPath) => ({ repoPath, name: 'B', scriptDirection: 'ltr', bookCodes: ['TIT'] })), readVerseConflicts: () => { throw new Error('fork head missing'); } };
+    ctx.makeStore = (() => storeB) as never;
+    const { __performProjectOpenForTests: open } = await import('../src/state.jsx');
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await open(ctx, 'repo/B', 'TIT');
+    expect(openedBooks).toEqual(['TIT']);
+    expect(dispatched.some((d) => (d.patch as { bookError?: string } | undefined)?.bookError)).toBe(false);
+    expect(dispatched).toContainEqual({ type: 'setConflicts', id: 'repo/B', counts: null });
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('fork head missing'));
+    error.mockRestore();
+  });
 });
 
 describe('2026-08-31-round hardening: the reconcile gate lives INSIDE the scheduler', () => {
