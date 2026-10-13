@@ -2510,31 +2510,58 @@ async function performKeepVersion(ctx, key, keptTs) {
     const next = left[Math.min(Math.max(position, 0), left.length - 1)];
     dispatch({ type: 'set', patch: { conflictReview: { key: next?.key ?? key, error: null } } });
   }
-  installKeptBook(ctx, store, parseVerseKey(key).book);
+  installKeptBook(ctx, store, key);
   return true;
 }
 
-/** After a keep: the open book, when it holds the kept verse, takes the text
- * the fold projects — from memory, in one synchronous step for rawRef, the
- * scheduler and bookRaw. If that cannot happen, the book is unloaded: Translate
- * shows its load error and no edit can start from the text before the keep. */
-function installKeptBook({ stateRef, schedulerRef, rawRef, dispatch }, store, book) {
-  if (stateRef.current.book !== book) return;
+/** After a keep: the book of the kept verse — open, or held by the verse
+ * scheduler — takes the text the fold projects, from memory, in one
+ * synchronous step for rawRef, the scheduler and bookRaw. If that cannot
+ * happen, the book is unloaded: Translate shows its load error and no edit can
+ * start from the text before the keep. */
+function installKeptBook({ stateRef, schedulerRef, rawRef, dispatch }, store, key) {
+  const { book, chapter, verse } = parseVerseKey(key);
+  const sched = schedulerRef.current;
+  const open = stateRef.current.book === book;
+  if (!open && sched?.bookText(book) == null) return;
   try {
     const raw = store.projectedBook(book);
     if (raw === null) throw new Error(`the fold projects no ${book}`);
-    schedulerRef.current?.loadBook(book, raw);
-    rawRef.current = raw;
-    dispatch({ type: 'set', patch: { bookRaw: raw } });
-  } catch (e) {
-    rawRef.current = null;
-    try {
-      schedulerRef.current?.unloadBook(book);
-    } catch {
-      // A dirty buffer cannot be here (the drain ran, and the review has no editor).
+    let text = raw;
+    if (sched?.isDirty(book)) {
+      // Unsaved edits of OTHER verses stay; the kept verse takes the fold's
+      // text. The buffer moves onto the new base, so its next save carries
+      // the kept version, never the one it replaced.
+      text = spliceVerse(sched.bookText(book), chapter, verse, verseBody(raw, chapter, verse) ?? '');
+      sched.rebaseBook(book, raw, text);
+    } else {
+      sched?.loadBook(book, raw);
     }
-    dispatch({ type: 'set', patch: { bookRaw: null, bookError: failureText(e) } });
+    if (open) {
+      rawRef.current = text;
+      dispatch({ type: 'set', patch: { bookRaw: text } });
+    }
+  } catch (e) {
+    keptBookNotInstalled({ stateRef, schedulerRef, rawRef, dispatch }, book, open, e);
   }
+}
+
+/** The kept text could not be installed: the book is unloaded, so no edit
+ * starts from the text before the keep. A buffer that cannot be unloaded (a
+ * write in flight, or a failed write retained) is never ignored: the review
+ * and the console say so. */
+function keptBookNotInstalled({ stateRef, schedulerRef, rawRef, dispatch }, book, open, error) {
+  let text = failureText(error);
+  if (open) rawRef.current = null;
+  try {
+    schedulerRef.current?.unloadBook(book);
+  } catch (unload) {
+    text = `${text} ${failureText(unload)}`;
+  }
+  console.error(`keepVersion: the kept text of ${book} was not installed: ${text}`);
+  if (open) dispatch({ type: 'set', patch: { bookRaw: null, bookError: text } });
+  const review = stateRef.current.conflictReview;
+  if (review) dispatch({ type: 'set', patch: { conflictReview: { ...review, error: text } } });
 }
 
 /** Test hooks (#679): the Home count read and the keep action run on the fake rig. */
@@ -3426,6 +3453,10 @@ export function AppProvider({ children }) {
   // stateRef follows the render, so two quick clicks could both pass it.
   const gatewayBusyRef = useRef(false);
   const openSeqRef = useRef(0); // openBook sequence token (review finding M2)
+  // #679: the keep in flight. Every exit from the review waits for it, so no
+  // editor can show the book text from before the keep (review finding B1).
+  const keepPendingRef = useRef(null);
+  const keepSettled = () => keepPendingRef.current?.catch(() => {});
   const understandSeqRef = useRef(0); // loadUnderstand sequence token (2026-08-27 Codex review)
   // D65 (round-22 checkpoint): the comprehension-note SaveScheduler and the
   // registry mapping each note key to its write target. The scheduler's
@@ -3848,6 +3879,7 @@ export function AppProvider({ children }) {
     };
     const a = {
       go: async (view) => {
+        await keepSettled(); // #679
         // B1/D65: navigation is flush-and-go (owner ruling 2026-08-28), and a
         // FAILED write holds navigation (FR-32). #100: every scheduler — an
         // alignment or decision made before the switch is on disk before the
@@ -6474,17 +6506,26 @@ export function AppProvider({ children }) {
       },
 
       /** Previous / Next in the review. */
-      showConflict: (key) => {
+      showConflict: async (key) => {
+        await keepSettled();
         if (!stateRef.current.conflictReview) return;
         dispatch({ type: 'set', patch: { conflictReview: { key, error: null } } });
       },
 
       /** Leave the review. The conflicts that are open stay listed. */
-      closeConflictReview: () => dispatch({ type: 'set', patch: { conflictReview: null } }),
+      closeConflictReview: async () => {
+        await keepSettled();
+        dispatch({ type: 'set', patch: { conflictReview: null } });
+      },
 
       /** "Keep this version": the kept head `keptTs` replaces every version of `key`. */
-      keepVersion: (key, keptTs) =>
-        performKeepVersion({ storeRef, stateRef, schedulerRef, rawRef, saveRefs, dispatch, conflictsGen }, key, keptTs),
+      keepVersion: (key, keptTs) => {
+        const run = performKeepVersion({ storeRef, stateRef, schedulerRef, rawRef, saveRefs, dispatch, conflictsGen }, key, keptTs);
+        keepPendingRef.current = run;
+        return run.finally(() => {
+          if (keepPendingRef.current === run) keepPendingRef.current = null;
+        });
+      },
 
       /** #329: the frame in focus on the story screens; the place record follows it. */
       setStoryFrame: (frame) => {
@@ -6598,6 +6639,7 @@ export function AppProvider({ children }) {
       },
 
       openBook: async (code) => {
+        await keepSettled(); // #679
         // F2/D65/round 34: a book switch is a navigation like any other —
         // bring BOTH schedulers to rest in the re-checking loop (a note
         // staged while the verse drain awaited is caught by the next pass,
@@ -6935,6 +6977,7 @@ export function AppProvider({ children }) {
       retrySave: () =>
         Promise.all(saveRefs.map((ref) => (ref.current?.getFailure() ? ref.current.retry() : Promise.resolve()))),
       backToProjects: async () => {
+        await keepSettled(); // #679
         // Never navigate away from unsaved work or a visible failure (FR-32).
         // EVERY blocker is checked BEFORE anything is disposed (C3,
         // adversarial round 3): a refused exit must leave the project fully

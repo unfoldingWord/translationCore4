@@ -219,6 +219,18 @@ describe('#679 the conflict review', () => {
     expect(position()).toEqual([1, 2]);
   });
 
+  it('while a keep is in flight, Back, Previous, Next and Keep are off', () => {
+    review(teamEvents(), 'text|TIT|1:2');
+    actions.keepVersion.mockReturnValueOnce(new Promise(() => {})); // never settles
+    render(<ConflictReview />);
+    fireEvent.click(versionCards()[0]);
+    fireEvent.click(screen.getByTestId('conflict-keep'));
+    for (const id of ['conflict-back', 'conflict-previous', 'conflict-next', 'conflict-keep'])
+      expect(screen.getByTestId(id), id).toHaveProperty('disabled', true);
+    fireEvent.click(screen.getByTestId('conflict-back'));
+    expect(actions.closeConflictReview).not.toHaveBeenCalled();
+  });
+
   it('leaving keeps conflicts listed: Back closes the review and changes nothing', () => {
     const conflicts = review(teamEvents(), 'text|TIT|1:2');
     render(<ConflictReview />);

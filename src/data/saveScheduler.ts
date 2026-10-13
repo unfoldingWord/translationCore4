@@ -98,10 +98,24 @@ export class SaveScheduler {
   /** Forget a clean book (#679): a later edit of it throws "book not loaded"
    * until loadBook installs new text. Refused over unsaved work, as loadBook is. */
   unloadBook(book: string): void {
-    if (this.writing > 0 || this.isDirty(book))
+    if (this.writing > 0 || this.isDirty(book) || this.failure?.book === book)
       throw new Error(`SaveScheduler: refusing to unload "${book}" over unsaved work (drain() first)`);
     this.current.delete(book);
     this.persisted.delete(book);
+    this.reverted.delete(book);
+    this.notify();
+  }
+
+  /** Move a book onto a new stored base (#679, "Keep this version"): the
+   * stored text is now `persistedRaw`, and the unsaved text becomes
+   * `currentRaw` — the caller's edits replayed onto that base. A dirty buffer
+   * then saves the new text, never the old base. Refused while a write is in
+   * flight or a failed write is retained: that snapshot holds the old base. */
+  rebaseBook(book: string, persistedRaw: string, currentRaw: string): void {
+    if (this.writing > 0 || this.failure)
+      throw new Error(`SaveScheduler: refusing to rebase "${book}" while a write is in flight or failed`);
+    this.persisted.set(book, persistedRaw);
+    this.current.set(book, currentRaw);
     this.reverted.delete(book);
     this.notify();
   }

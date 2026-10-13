@@ -56,7 +56,7 @@ const conflicted = async () => {
   forgetProjectQueues();
   const store = new JournalingStore({ api, kv, now: () => clock.advance(29) });
   await store.open(REPO);
-  return { api, files, store };
+  return { api, files, store, own };
 };
 
 /** A dispatch that runs the real reducer, so the test reads the state the app would. */
@@ -95,7 +95,7 @@ describe('#679 "Keep this version"', () => {
     const rawRef = { current: 'stale' };
     const { box, dispatch } = recorder({ project: { repoPath: REPO }, book: 'TIT', conflictReview: { key: KEY, error: null }, conflictsByProject: { [REPO]: { TIT: 1 } }, verseConflicts: [conflict] });
     const stateRef = { get current() { return box.state; } };
-    const ok = await keepVersion({ storeRef: { current: store }, stateRef, schedulerRef: { current: { loadBook } }, rawRef, saveRefs: [], dispatch, conflictsGen: new Map() }, KEY, mine.ts);
+    const ok = await keepVersion({ storeRef: { current: store }, stateRef, schedulerRef: { current: { loadBook, isDirty: () => false, bookText: () => 'clean' } }, rawRef, saveRefs: [], dispatch, conflictsGen: new Map() }, KEY, mine.ts);
     expect(ok).toBe(true);
     expect(resolve).toHaveBeenCalledWith(KEY, mine.ts);
     expect(box.state.verseConflicts).toEqual([]);
@@ -188,5 +188,56 @@ describe('#679 a keep cannot be undone by the next save', () => {
     await editVerseTwo(scheduler);
     expect(store.readVerseConflicts()).toEqual([]);
     expect(await keptText(store)).toContain('\\v 1 Pablo, siervo de Dios (mío).');
+  });
+});
+
+// Re-review finding (2026-10-13): an edit can reach the verse scheduler while
+// resolveVerse is in flight. Its buffer was built on the text before the keep;
+// installing the kept text must move that buffer onto the new base, never drop
+// the edit, and never let the old text of the kept verse be saved.
+describe('#679 an edit made while the keep is in flight', () => {
+  it('keeps both: the kept version stays in the fold and the journal, and the other verse edit is saved', async () => {
+    const { store, own } = await conflicted();
+    const [conflict] = store.readVerseConflicts();
+    const mine = conflict.versions.find((v) => v.actor === store.actorId)!;
+    const { usfm } = await store.readBook('TIT');
+    const manual = { setTimeout: () => 0, clearTimeout: () => {} };
+    const scheduler = new SaveScheduler({ writeBook: (book, whole) => store.writeBook(book, whole), splice: spliceVerse, clock: manual });
+    scheduler.loadBook('TIT', usfm);
+    const rawRef = { current: usfm as string | null };
+    const { box, dispatch } = recorder({ project: { repoPath: REPO }, book: 'TIT', bookRaw: usfm, conflictReview: { key: KEY, error: null }, conflictsByProject: {}, verseConflicts: [conflict] });
+    const stateRef = { get current() { return box.state; } };
+    const keep = keepVersion({ storeRef: { current: store }, stateRef, schedulerRef: { current: scheduler }, rawRef, saveRefs: [], dispatch, conflictsGen: new Map() }, KEY, mine.ts);
+    // Before resolveVerse settles: an edit of verse 2 on the buffer from before the keep.
+    scheduler.markDirty('TIT', 1, '2', 'editado durante el keep');
+    expect(await keep).toBe(true);
+    expect(await scheduler.drain()).toBe(true);
+    expect(store.readVerseConflicts()).toEqual([]);
+    const disk = (await store.readBook('TIT')).usfm;
+    expect(disk).toContain('\\v 1 Pablo, siervo de Dios (mío).');
+    expect(disk).toContain('\\v 2 editado durante el keep');
+    // The journal's last event for the kept verse carries the kept text.
+    const last = (await own()).filter((e) => e.op === 'text.verse.set' && e.chapter === '1' && e.verse === '1').sort((a, b) => (a.ts < b.ts ? -1 : 1)).at(-1)!;
+    expect(last.text).toBe(mine.text);
+    expect(box.state.conflictReview).toEqual({ key: KEY, error: null });
+  });
+});
+
+describe('#679 SaveScheduler.unloadBook and rebaseBook refuse a retained failed write', () => {
+  it('a failed write of the book is kept: unload and rebase throw, the buffer stays', async () => {
+    const manual = { setTimeout: () => 0, clearTimeout: () => {} };
+    const scheduler = new SaveScheduler({ writeBook: async () => { throw new Error('disk full'); }, splice: spliceVerse, clock: manual });
+    scheduler.loadBook('TIT', TIT_USFM);
+    scheduler.markDirty('TIT', 1, '2', 'nuevo');
+    await scheduler.flushOnBlur();
+    expect(scheduler.getState()).toBe('error');
+    expect(() => scheduler.unloadBook('TIT')).toThrow(/unsaved work/);
+    expect(() => scheduler.rebaseBook('TIT', TIT_USFM, TIT_USFM)).toThrow(/in flight or failed/);
+    expect(scheduler.bookText('TIT')).toContain('nuevo');
+    // The buffer edited back to the stored text is clean, but the failed write is still retained:
+    // a retry() would write its snapshot, so the book still cannot be unloaded.
+    scheduler.markDirty('TIT', 1, '2', '___');
+    expect(scheduler.isDirty('TIT')).toBe(false);
+    expect(() => scheduler.unloadBook('TIT')).toThrow(/unsaved work/);
   });
 });

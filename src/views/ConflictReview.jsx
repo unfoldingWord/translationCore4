@@ -83,19 +83,20 @@ function VersionCard({ version, owner, label, date, selected, faded, type, dir, 
   );
 }
 
-/** "Conflict n of m", Previous and Next. A step off either end of the list is off. */
-function Navigator({ conflicts, index, onShow }) {
+/** "Conflict n of m", Previous and Next. A step off either end of the list is
+ * off, and so is every step while a keep is in flight. */
+function Navigator({ conflicts, index, onShow, busy }) {
   return (
     <>
       <span aria-live="polite" data-testid="conflict-position" data-n={index + 1} data-m={conflicts.length}
         style={{ fontSize: 'var(--fs-ui-sm)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-slate)' }}>
         {t('conflicts.position', { n: index + 1, m: conflicts.length })}
       </span>
-      <Button variant="secondary" size="sm" data-testid="conflict-previous" disabled={index === 0}
+      <Button variant="secondary" size="sm" data-testid="conflict-previous" disabled={busy || index === 0}
         onClick={() => onShow(conflicts[index - 1].key)} style={{ padding: '0 16px 0 12px' }}>
         <Icon d={['M15 18l-6-6 6-6']} />{t('conflicts.previous')}
       </Button>
-      <Button variant="secondary" size="sm" data-testid="conflict-next" disabled={index === conflicts.length - 1}
+      <Button variant="secondary" size="sm" data-testid="conflict-next" disabled={busy || index === conflicts.length - 1}
         onClick={() => onShow(conflicts[index + 1].key)} style={{ padding: '0 12px 0 16px' }}>
         {t('conflicts.next')}<Icon d={['M9 18l6-6-6-6']} />
       </Button>
@@ -159,14 +160,14 @@ export default function ConflictReview() {
   return (
     <main data-testid="conflict-review" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: 'var(--surface-app)' }}>
       <div style={{ height: 53, flex: 'none', boxSizing: 'border-box', display: 'flex', alignItems: 'center', gap: 14, padding: '0 24px', background: 'var(--surface-card)', borderBottom: 'var(--stroke-hair) solid var(--border)' }}>
-        <Button variant="ghost" data-testid="conflict-back" onClick={actions.closeConflictReview}
+        <Button variant="ghost" data-testid="conflict-back" disabled={busy} onClick={actions.closeConflictReview}
           style={{ padding: 0, height: 'auto', fontSize: 'var(--fs-ui-sm)' }}>
           <Icon d={['M19 12H5', 'M12 19l-7-7 7-7']} size={16} width={2} />{back}
         </Button>
         <span aria-hidden="true" style={{ width: 1, height: 22, background: 'var(--border)' }} />
         <h1 style={{ margin: 0, fontSize: 'var(--fs-title)', letterSpacing: 'var(--track-17)', fontWeight: 'var(--fw-heavy)', color: 'var(--text-heading)' }}>{t('conflicts.title')}</h1>
         <span style={{ flex: 1 }} />
-        {conflict && <Navigator conflicts={conflicts} index={index} onShow={actions.showConflict} />}
+        {conflict && <Navigator conflicts={conflicts} index={index} onShow={actions.showConflict} busy={busy} />}
       </div>
 
       <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '22px 24px' }}>
