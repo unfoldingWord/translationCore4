@@ -81,7 +81,9 @@ function ToolNeeds({ pre }) {
   // is absent; only the citation names what the checks will actually derive
   // from, so this is the one ready state that must still print it.
   if (pre.state === 'ready' && !pre.unavailablePrimary) return null;
-  const pin = pre.resolution?.pin || pre.needs;
+  // The citation names the pin that is missing (#646: for tW that can be the
+  // resolving set's tw pin, not the twl pin it resolved on), else the resolved one.
+  const pin = pre.needs || pre.resolution?.pin;
   const rung = pre.resolution?.rung;
 
   return (

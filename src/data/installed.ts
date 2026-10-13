@@ -495,13 +495,12 @@ export const gatewayBiblesFromInstalled = (
  * version tag is an optional display label and gates nothing. */
 export const languageSetFromInstalled = (
   installed: InstalledMap,
-  gateway: { id: string; org: string },
+  gateway: { id: string; org: string; hasTwl?: boolean },
   kind: 'bible' | 'obs' = 'bible',
 ): LanguageSet | null => {
   const org = gateway.org.toLowerCase();
-  const ofOrg = Object.values(installed)
-    .filter((p) => p.repoPath.toLowerCase().includes(`/${org}/`))
-    .filter((p) => !!p.sha && !!p.flavor);
+  const identified = Object.values(installed).filter((p) => !!p.sha && !!p.flavor);
+  const ofOrg = identified.filter((p) => p.repoPath.toLowerCase().includes(`/${org}/`));
   // EVERY slot matches by the FULL `<languageId>_<suffix>` repo name, never
   // the bare suffix: a multi-language org (translationCore-Create-BCS holds
   // hi_*, bn_*, gu_*, …) would otherwise assemble a MIXED-language set —
@@ -511,16 +510,22 @@ export const languageSetFromInstalled = (
     preferredNamedPin(ofOrg, name);
   const tn = byName(`${gateway.id}_tn`);
   const tw = byName(`${gateway.id}_tw`);
-  // D96 (#644): the TWL check lists come from `<lang>_twl` at its own release.
-  // A gateway whose `_twl` is not installed keeps the one-repo form (`_tw` in
-  // both slots) until #646 makes that form illegal.
-  const twl = byName(`${gateway.id}_twl`) ?? tw;
+  // D96/D97 (#644, #646): the TWL check lists come from `<lang>_twl` at its
+  // own release, and the twl slot MUST name a `_twl` repository (ruling 6):
+  // a gateway whose `_twl` is not installed has an INCOMPLETE set, never the
+  // one-repo form. Ruling 7: an organization that publishes no `_twl` at all
+  // (`hasTwl: false` in gateways.ts — per organization, not "not installed")
+  // pins the bundled English `en_twl` with its own `<lang>_tw`; `en_twl` is
+  // looked up outside the org filter, and the bundled identity is preferred.
+  const twl = gateway.hasTwl === false
+    ? preferredNamedPin(identified, 'en_twl')
+    : byName(`${gateway.id}_twl`);
   const ta = byName(`${gateway.id}_ta`);
   const obs = byName(`${gateway.id}_obs`);
   const obsTn = byName(`${gateway.id}_obs-tn`);
   const obsTwl = byName(`${gateway.id}_obs-twl`);
   const obsTq = byName(`${gateway.id}_obs-tq`);
-  const required = kind === 'bible' ? [tn, tw, ta] : [obs, obsTn, obsTwl, tw, ta];
+  const required = kind === 'bible' ? [tn, twl, tw, ta] : [obs, obsTn, obsTwl, tw, ta];
   if (required.some((pin) => !pin)) return null;
   // §5.3 1.10 OPTIONAL slots (D64): included only when installed — a set
   // without them is still complete, so their absence never blocks the set.

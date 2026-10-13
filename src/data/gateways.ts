@@ -31,8 +31,11 @@ export interface Gateway {
   /** Release tags current at the 2026-08-03 catalog query — a freshness note,
    * NOT a pin. Real pins come from the live catalog when the user downloads. */
   seen: { tn: string; tw: string; ta: string };
-  /** Whether the owner also publishes a standalone TWL repo. Informational:
-   * under D34 tC4 fetches `<lang>_tw`, whose export carries the links anyway. */
+  /** Whether the owner publishes a `<lang>_twl` repo. Functional (D97 ruling
+   * 7, #646): a `false` owner's language set pins the bundled English `en_twl`
+   * with its own `<lang>_tw`; a `true` owner's set is incomplete until its
+   * `_twl` is installed. [VERIFIED 2026-10-12 — live DCS queries in #646: every
+   * entry matches; `ar_gt/ar_twl` answers HTTP 404.] */
   hasTwl: boolean;
   /** Whether the owner publishes an aligned Bible (literal/simplified text). */
   hasBible: boolean;

@@ -237,7 +237,9 @@ export interface Preflight {
   book: string;
   state: PreflightState;
   resolution: Resolution | null;
-  /** The pin the app must fetch when `state === 'fetch'`. */
+  /** The pin this machine lacks: what the app must fetch when `state ===
+   * 'fetch'`, and what the fix screen names when `state === 'unavailable'`
+   * (#646: for tW this can be the resolving set's tw pin). Null otherwise. */
   needs: ResourcePin | null;
   /** B20 (D-warned-fallback): set when the session opened against the FALLBACK
    * rung only because the pinned PRIMARY resource is not installed. The session
@@ -305,6 +307,25 @@ const warnedUnavailablePrimary = (
   return opts.isLocal(primaryPin) ? null : primaryPin;
 };
 
+/** The pin a resolved (tool, book) still lacks on this machine, or null.
+ * #646 (D97, slice 2): the tW tool reads two pins of the RESOLVING set — the
+ * twl pin it resolved on (the check list) and that set's tw pin (the articles,
+ * and the §4.2 article gate of #643). Resolution stays keyed to the twl pin
+ * (D30: articles never drive it); readiness needs both. A tw pin this machine
+ * lacks is the same "not installed" state as a missing twl pin, and it is the
+ * pin the fix screen must fetch. */
+const missingPinOf = (
+  resources: ResourcesFile,
+  tool: Tool,
+  resolution: Resolution,
+  isLocal: (pin: ResourcePin) => boolean,
+): ResourcePin | null => {
+  if (!resolution.pin || !resolution.rung) return null;
+  if (!isLocal(resolution.pin)) return resolution.pin;
+  const twPin = tool === 'translationWords' ? resources.languageSets[resolution.rung]?.translationWords : undefined;
+  return twPin && !isLocal(twPin) ? twPin : null;
+};
+
 /** Decide what opening this (tool, book) requires. `isLocal` answers "is this
  * exact pinned version present on this machine?" — the caller supplies it from
  * the platform's local repo list. */
@@ -319,7 +340,8 @@ export const preflightToolBook = (
 
   const resolution = resolveToolBook(resources, tool, book, opts.coverage);
   if (resolution.pin) {
-    const state = availabilityState(resolution.pin, opts);
+    const missing = missingPinOf(resources, tool, resolution, opts.isLocal);
+    const state = missing ? availabilityState(missing, opts) : 'ready';
     // B20 (warned fallback), NARROWED by issue #16 / D41.
     //
     // Before per-pin coverage, a fallback resolution was always ambiguous:
@@ -344,7 +366,7 @@ export const preflightToolBook = (
       book,
       state,
       resolution,
-      needs: state === 'fetch' ? resolution.pin : null,
+      needs: missing,
       unavailablePrimary,
     };
   }

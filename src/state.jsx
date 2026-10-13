@@ -195,6 +195,11 @@ const ROLE_BY_FLAVOR = {
   textTranslation: { k: 'text', name: 'sources.roleText', bookScoped: true, fixed: true },
 };
 const ROLE_BY_SUFFIX = {
+  // D96/D97 (#644, #646): the tW tool has two pins, so a gateway download
+  // fetches `<lang>_twl` (the per-book check lists, at its own release) and
+  // `<lang>_tw` (the articles) as two rows. The twl row is book-scoped: the
+  // catalog's `book_codes` say which books the `_twl` release contains.
+  _twl: { k: 'wordLinks', name: 'sources.roleWordLinks', bookScoped: true },
   _tw: { k: 'words', name: 'sources.roleWords', bookScoped: false },
   _ta: { k: 'academy', name: 'sources.roleAcademy', bookScoped: false },
   // tq rides on the suffix as well as the flavor: the RC catalog's flavor
@@ -204,18 +209,18 @@ const ROLE_BY_SUFFIX = {
   _tq: { k: 'questions', name: 'sources.roleQuestions', bookScoped: true },
 };
 
-/** The role a catalog repo plays, or null when tC4 does not use it.
- * `<lang>_twl` is deliberately NOT offered: under D34 the tW pin is
- * `<lang>_tw`, whose export already carries the links. */
+/** The role a catalog repo plays, or null when tC4 does not use it. A Bible
+ * package offers `<lang>_twl` (ROLE_BY_SUFFIX); an OBS package reads its word
+ * links from `<lang>_obs-twl` instead. */
 const roleOf = (repo, kind = 'bible') => {
   const name = repo.name || '';
   if (kind === 'obs') {
     if (/_obs$/.test(name)) return { k: 'obs', name: 'sources.roleObsText', bookScoped: false, fixed: true };
     if (/_obs-tn$/.test(name)) return { k: 'obs-notes', name: 'sources.roleNotes', bookScoped: false };
-    if (/_obs-twl$/.test(name)) return { k: 'obs-words', name: 'sources.roleWords', bookScoped: false };
+    if (/_obs-twl$/.test(name)) return { k: 'obs-words', name: 'sources.roleWordLinks', bookScoped: false };
     if (repo.flavor === 'x-obsimages') return { k: 'obs-images', name: 'sources.roleObsImages', bookScoped: false };
     if (/_tq$|_tn$|_twl$|_(?:ust|gst)$/.test(name) || repo.flavor === 'textTranslation') return null;
-  } else if (/_twl$/.test(name) || /_obs(?:-|$)/.test(name)) return null;
+  } else if (/_obs(?:-|$)/.test(name)) return null;
   for (const [suffix, role] of Object.entries(ROLE_BY_SUFFIX)) {
     if (name.endsWith(suffix)) return role;
   }
@@ -1371,11 +1376,14 @@ const projectPathOf = (st) => st.project?.repoPath ?? null;
 
 /** #9: which rung pins `pin` in `slot` (D58 identity), or null. */
 function rungPinning(resources, slot, pin) {
+  // D97 (#646): a pin that both rungs carry (the ruling 7 form pins `en_twl`
+  // on both) resolves to the first rung of the ladder, primary.
   return LADDER.find((rung) => {
     const p = resources?.languageSets?.[rung]?.[slot];
     return !!p && samePath(p.repoPath, pin.repoPath) && p.sha === pin.sha;
   }) ?? null;
 }
+export const __rungPinningForTests = rungPinning;
 
 /** Why a previewed upgrade may not be applied now, as the slice patch to
  * dispatch — or null when it may. The preview was planned against ONE
@@ -4349,7 +4357,9 @@ export function AppProvider({ children }) {
             .find((p) => !isPinLocal(installed, p))
           ?? null;
         if (!pin) return;
-        const rung = rungPinning(st.projectPins, slot, pin) ?? 'primary';
+        // #646: for tW the missing pin can be the resolving set's tw pin, which
+        // the tool's slot does not pin — it lives on the rung that resolved.
+        const rung = rungPinning(st.projectPins, slot, pin) ?? pre.resolution?.rung ?? 'primary';
         // The re-pin candidates: installed copies of the SAME repo at another
         // commit (D58 identity). An identity-read outage is stated, not "none".
         // One dispatch: the slice must exist before any patchFix can land.

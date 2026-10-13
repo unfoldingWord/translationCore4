@@ -25,7 +25,7 @@ if (!work) {
   process.exit(2);
 }
 
-const ES_419 = ['es-419_tn', 'es-419_tw', 'es-419_ta', 'es-419_glt', 'es-419_gst', 'es-419_obs', 'es-419_obs-tn', 'es-419_obs-twl'];
+const ES_419 = ['es-419_tn', 'es-419_twl', 'es-419_tw', 'es-419_ta', 'es-419_glt', 'es-419_gst', 'es-419_obs', 'es-419_obs-tn', 'es-419_obs-twl'];
 const ORG = Object.fromEntries(ES_419.map((name) => [name, 'es-419_gl']));
 const VERSIONS = {
   // The English suite at the tags seed.zsh sideloads (the shipped pins, src/data/installedSuite.js — #504).
@@ -38,6 +38,8 @@ const VERSIONS = {
   en_tq: 'v91',
   'el-x-koine_ugnt': 'v0.34',
   'es-419_tn': 'v66',
+  // D97 (#646): the Spanish set pins es-419_twl at its own release (v18 goes with es-419_tw v37).
+  'es-419_twl': 'v18',
   'es-419_tw': 'v37',
   'es-419_ta': 'v4',
   // #412: the Spanish Bibles and OBS package. Their exports name another org, so

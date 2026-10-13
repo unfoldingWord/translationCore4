@@ -143,10 +143,12 @@ describe('the resolver now tells the two cases apart', () => {
     const res = resources({
       translationWordsLinks: pin(ES_TWL, { books: ['TIT', 'JON'] }),
     });
-    const en = res.languageSets.fallback.translationWordsLinks;
+    // Both English pins are local: #646 makes the resolving set's tw pin a
+    // readiness input too, and this case is about the warning, not about it.
+    const en = res.languageSets.fallback;
     const pre = preflightToolBook(res, 'translationWords', 'MRK', {
       coverage: {},
-      isLocal: isLocal([en]),
+      isLocal: isLocal([en.translationWordsLinks, en.translationWords]),
       online: true,
     });
     expect(pre.resolution?.rung).toBe('fallback');

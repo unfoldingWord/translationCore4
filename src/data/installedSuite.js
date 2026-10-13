@@ -12,6 +12,8 @@
 // scripts/package-desktop.zsh and the copies docs/PACKAGING.md names.
 // D96 (2026-10-12, #644, amends D34): two pins for the tW tool. The TWL check
 // lists come from `en_twl` at its own release; the articles come from `en_tw`.
+// D97 (#646): every gateway set has the same two-repository form; an
+// organization with no `_twl` repository pins this `en_twl` with its own tw.
 // The `en_tw` export also carries TWL TSVs, but DCS builds them from `en_twl`
 // master, not from a release, so they are ignored (never stripped). The sha
 // is the commit the DCS tags API names for the v91 tag, equal to the revision
