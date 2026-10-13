@@ -821,6 +821,17 @@ test.describe('#522 — App language in the account menu', () => {
     const share = page.getByRole('button', { name: BY_ID.ar['home.share'], exact: true }).first();
     seen.mixed = { faces: await faces(page, share), direction: await share.evaluate((el) => getComputedStyle(el).direction) };
     await shot(page, testInfo, 'arabic-face-home');
+    // A placeholder is interface text too, also in a field that is in the scripture face.
+    await openTitus(page);
+    const noteField = page.getByPlaceholder(BY_ID.ar['understand.commentsPlaceholder']).first();
+    await expect(noteField).toBeVisible();
+    seen.placeholder = {
+      asked: await noteField.evaluate((el) => getComputedStyle(el, '::placeholder').fontFamily),
+      faces: await faces(page, noteField),
+    };
+    await shot(page, testInfo, 'arabic-face-placeholder');
+    await page.getByTestId('project-switch').click();
+    await expectLanguage(page, 'ar');
     // The names of Pashto, Sindhi and Kurdish, from the language list the app ships.
     const names = JSON.parse(fs.readFileSync(path.join(TC4_ROOT, 'src', 'data', 'langnames.json'), 'utf8')) as Array<{ lc: string; ln: string; ang: string }>;
     await page.getByTestId('add-project').click();
@@ -852,6 +863,9 @@ test.describe('#522 — App language in the account menu', () => {
     expect(families(mixed.faces)).toEqual(['Mulish', ARABIC]);
     expect(mixed.faces.every((f) => f.bundled)).toBe(true);
     expect(mixed.direction).toBe('rtl');
+    const placeholder = seen.placeholder as { asked: string; faces: Face[] };
+    expect(placeholder.asked).toContain(ARABIC);
+    expect(families(placeholder.faces.filter((f) => f.family !== 'Mulish'))).toEqual([ARABIC]);
     // No tofu box: the bundled Arabic face paints the Arabic letters of each name itself (a
     // letter is one glyph or more). A name in Arabic script only has no other face. The
     // Sindhi name has a Devanagari part too, which the system paints.

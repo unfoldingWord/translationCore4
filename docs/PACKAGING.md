@@ -775,8 +775,8 @@ between runs; it does not replace the run.
 | 9b | From alpha.7 (Increment 7, D74): on Home, `+ Add a project` › `New Open Bible Stories`: name, language, `Create stories →`. Open the story 1 tile: story 1 opens in `Understand`. Mode tab `Translate`: story 1 shows with the gateway text on the left. `Draft frame 1`, type, click outside the card. `Understand`; select frame 1. `Check` › Translation Notes › `Start checking`; pick one item; `✓ Mark valid`. | The gateway frame text and the picture of frame 1 show from the bundled `en_obs` and picture pack with the network off. The frame marker for frame 1 turns drafted. Understand lists the notes and word links of frame 1. The check item is decided. A missing picture or gateway story is a new finding: file its issue. |
 | 10 | Quit the app. Turn the network on again. | |
 
-Look at the screen fonts during the run. With the network off, the interface shows Mulish,
-and scripture shows Charis SIL, Noto Serif (Greek), Noto Serif Hebrew and Amiri (Arabic).
+Look at the screen fonts during the run. With the network off, the interface shows Mulish
+(Noto Sans Arabic for Arabic script), and scripture shows Charis SIL, Noto Serif (Greek), Noto Serif Hebrew and Amiri (Arabic).
 A system font in their place is a new finding: file its issue.
 
 ### Record the run
