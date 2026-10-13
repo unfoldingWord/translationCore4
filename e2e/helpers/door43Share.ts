@@ -87,6 +87,26 @@ export const git = (cwd: string, ...args: string[]): string =>
 /** The local project's `HEAD`. */
 export const head = (repo: string): string => git(rigRepo(repo), 'rev-parse', 'HEAD');
 
+/** Delete a local project on the rig, if it is there. */
+export async function deleteRigProject(repo: string): Promise<void> {
+  await fetch(`${RIG_API}/git/delete/_local_/_local_/${repo}`, { method: 'POST' });
+}
+
+/** #678: a shared Bible card reads "Sync with Door43", so the upload dialog (#530) is
+ * proved on an OBS card, which keeps "Upload changes" (round 1 syncs Bible projects
+ * only, D98). A new, unshared OBS project `repo` on the rig, made the way J11 test 11
+ * makes one; an earlier one of the same name is deleted first. Load Home after it. */
+export async function makeObsProject(repo: string): Promise<string> {
+  await deleteRigProject(repo);
+  const created = await fetch(`${RIG_API}/git/new-obs-resource`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content_name: `Historias ${repo}`, content_abbr: repo, content_language_code: 'es', branch_name: null }),
+  });
+  expect(created.ok, await created.text().catch(() => '')).toBe(true);
+  return `_local_/_local_/${repo}`;
+}
+
 /** Unshare: drop the `origin` remote (the one record of a share, D84 point 1). */
 export const dropOrigin = (repo: string): void => {
   try {
