@@ -804,7 +804,7 @@ function CheckMarks({ item, idx, onBookmark, onComment }) {
       {open && (
         <div data-testid="comment-editor" style={{ marginTop: 12, background: 'var(--surface-card)', border: 'var(--stroke) solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '14px 16px' }}>
           <Overline tone="accent">{t('check.comment.title')}</Overline>
-          <textarea data-testid="comment-text" rows={3} value={draft} onChange={(e) => setDraft(e.target.value)}
+          <textarea data-testid="comment-text" rows={3} dir="auto" value={draft} onChange={(e) => setDraft(e.target.value)}
             placeholder={t('check.comment.placeholder')}
             style={{ width: '100%', boxSizing: 'border-box', marginTop: 8, border: 'var(--stroke) solid var(--border-input)', borderRadius: 'var(--radius-md)', padding: '10px 12px', fontFamily: 'inherit', fontSize: 'var(--fs-ui-md)', lineHeight: 'var(--lh-body)', color: 'var(--text-body)', background: 'var(--surface-app)', resize: 'vertical' }} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
