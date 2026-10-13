@@ -114,6 +114,7 @@
   "refusal.segment.bad-path": "La aplicación se detuvo para proteger tu proyecto. Es un problema de la aplicación. Pide ayuda.",
   "refusal.segment.differs-from-accepted": "La aplicación se detuvo para proteger tu proyecto. Es un problema de la aplicación. Pide ayuda.",
   "refusal.outbox.different-action": "La aplicación se detuvo para proteger tu proyecto. Es un problema de la aplicación. Pide ayuda.",
+  "refusal.actor.name-already-set": "La aplicación se detuvo para proteger tu proyecto. Es un problema de la aplicación. Pide ayuda.",
   "refusal.checkpoint.unsafe-path": "La aplicación se detuvo para proteger tu proyecto. Es un problema de la aplicación. Pide ayuda.",
   "refusal.checkpoint.too-deep": "La aplicación se detuvo para proteger tu proyecto. Es un problema de la aplicación. Pide ayuda.",
   "refusal.export.checkpoint-failed": "La aplicación no pudo guardar un punto de control antes de exportar, así que no exportó nada. Tu trabajo está guardado. Intenta exportar de nuevo.",

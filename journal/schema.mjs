@@ -568,5 +568,7 @@ export const validateAction = (events) => {
     const err = validateEvent(e);
     if (err) return `event-schema: ${err}`;
   }
+  // R-8.5.26 (D98): a name is set once — one action never carries two name events
+  if (events.filter((e) => e.op === 'actor.name.set').length > 1) return 'name-twice: an action carries more than one actor.name.set (§8.5 R-8.5.26)';
   return null;
 };

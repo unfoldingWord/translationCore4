@@ -2631,7 +2631,7 @@ samples and `sample-burrito-obs/.../resources.json`, `conformance/validate-journ
 (the tW resource fixture), `conformance/generate.mjs` and `conformance/README.md`, and
 `test/export/relationships.test.ts`.
 
-## D98 (2026-10-13, project-owner rulings) **Team sync round 1: three or more translators sync one Bible project through one public Door43 repository, on its `main` branch, with one button. Eight guarantees bind it. The project may hold each translator's Door43 username. Amends D85 point 1. Sets aside, for round 1, the publication branches and the integrator (D16, D67(1), D67(4b)) and the legibility gate (D67(2)).** [owner rulings of 2026-10-13 in epic #24, "Decided for round 1"; issue #674; the owner's design notes of the same day]
+## D98 (2026-10-13, project-owner rulings) **Team sync round 1: three or more translators sync one Bible project through one public Door43 repository, on its `main` branch, with one button. Eight guarantees bind it. The project may hold each translator's Door43 username. Amends D85 points 1 and 2, and D67(3) (its planned ids R-8.7.7–R-8.7.12 now name the round-1 rules). Sets aside, for round 1, the publication branches and the integrator (D16, D67(1), D67(4b)) and the legibility gate (D67(2)).** [owner rulings of 2026-10-13 in epic #24, "Decided for round 1"; issue #674; the owner's design notes of the same day]
 
 Context. Each change is already one sealed file in the translator's own journal folder, and two
 translators never write the same file (R-8.1.16). The fold already combines journals: different
@@ -2660,7 +2660,8 @@ this computer does not have, rebuilds, and pushes [VERIFIED — `journal/fold.mj
    #158 and #159 are closed. For round 1 this sets aside the per-actor publication branch of
    D16 and D67(1), the integrator of D67(4b), and the order rule of D67(2). The rule ids
    `R-8.7.7`–`R-8.7.12` that D67(3) planned for the long-term protocol are now the round-1
-   rules; a later round gives its own rules new ids.
+   rules. The long-term plan marks its rules `R-LT-1` to `R-LT-6` until a later round gives
+   them new ids.
 8. **Check results and alignments: the newest wins.** Only verse text goes to the conflict
    review. Each other fork keeps its newest head, and the sync result counts it once.
 

@@ -4981,16 +4981,22 @@ const sameRegister = (a, b) => {
       JSON.stringify({ fromJournals, theSet, resolutionIn, diverged, code }));
   }
 
-  // [G3] R-8.7.10 — metadata.json is the server's: the fixture fold carries no overlay; one overlay is the refusal condition
+  // [G3] R-8.7.10 — metadata.json is the server's. What this check proves: the projection set
+  // minus the one server-owned file is the eight journal-derived files, and the overlay that the
+  // refusal keys on is visible in FoldOutput (absent over the fixture, present after one event).
+  // It does NOT prove that a sync refuses or never writes metadata.json — the sync core does
+  // that, with the code sync.metadata-overlay, and #675 proves it.
   {
     const noOverlay = Object.keys(out.projectMeta).length === 0 && out.projectMetaRemoved.length === 0;
     const syncWrites = Object.keys(withoutMetadata(derived));
+    const serverOwned = Object.keys(derived).filter((k) => !syncWrites.includes(k));
     const overlayEv = { v: 1, op: 'project.meta.set', actor: ACTORS.b, ts: '2026-10-13T11:00:00.000Z|0000|translator-b', base: null, path: 'identification.name.en', value: 'Tito (equipo)' };
     const withOverlay = fold([...union, overlayEv]);
     const overlayCaught = Object.keys(withOverlay.projectMeta).length === 1 &&
       derivedProjections(withOverlay, { baseMetadata, resolutions })['metadata.json'] !== derived['metadata.json'];
-    check('[G3] JC-35: metadata.json belongs to the server — the fixture fold carries no project.meta.set overlay, so a sync writes the derived set without metadata.json; one overlay event makes the fold carry an overlay that only a metadata.json write could show, which is the refusal condition (sync.metadata-overlay, as checkpoint.metadata-unwritable) [covers R-8.7.10]',
-      noOverlay && !syncWrites.includes('metadata.json') && syncWrites.length === 8 && overlayCaught && REFUSAL_CODES['sync.metadata-overlay'] === 'R-8.7.10',
+    check('[G3] JC-35: metadata.json belongs to the server — the projection set holds exactly one server-owned file, metadata.json, beside the eight journal-derived files a sync may write; the fixture fold carries no project.meta.set overlay, and one overlay event makes FoldOutput carry the overlay that the refusal (sync.metadata-overlay, #675) keys on and that changes only metadata.json [covers R-8.7.10]',
+      noOverlay && JSON.stringify(serverOwned) === JSON.stringify(['metadata.json']) && syncWrites.length === 8 && overlayCaught &&
+      Object.keys(withoutMetadata(derivedProjections(withOverlay, { baseMetadata, resolutions }))).every((k) => derivedProjections(withOverlay, { baseMetadata, resolutions })[k] === derived[k]),
       JSON.stringify({ noOverlay, writes: syncWrites.length, overlayCaught }));
   }
 
@@ -5040,11 +5046,12 @@ const sameRegister = (a, b) => {
     const refusals = [
       validateEvent({ ...a, v: 1 }), validateEvent({ ...a, v: 2 }), // v: 3 only
       validateEvent({ ...a, username: '-fixture' }), validateEvent({ ...a, username: 'x'.repeat(41) }), validateEvent({ ...a, username: 'fixture translator' }),
+      validateEvent({ ...a, username: 'a..b' }), validateEvent({ ...a, username: 'a-' }), // Door43's negative pattern
       validateEvent({ ...a, base: union[0].ts }), // not a register event (union[0] is the earliest event, so the base is legal by §8.3)
     ];
     const v3Named = /v: 3/.test(refusals[0] || '') && /v: 3/.test(refusals[1] || '') &&
-      refusals.slice(2, 5).every((r) => /Door43 username/.test(r || '')) && /base: null/.test(refusals[5] || '');
-    check('JC-35: name action — a valid name passes: the three fixture names are v: 3 actor.name.set events that pass the schema, and the fold returns names (actor → Door43 username) for A, B and C; a v: 1 or v: 2 name, a username outside the Door43 grammar, and a name with a base are refused [covers R-8.5.25 R-8.5.1]',
+      refusals.slice(2, 7).every((r) => /Door43 username/.test(r || '')) && /base: null/.test(refusals[7] || '');
+    check('JC-35: name action — a valid name passes: the three fixture names are v: 3 actor.name.set events that pass the schema, and the fold returns names (actor → Door43 username) for A, B and C; a v: 1 or v: 2 name, a username outside the Door43 rule (a leading dash, 41 characters, a space, a doubled dot `a..b`, a trailing dash `a-`), and a name with a base are refused [covers R-8.5.25 R-8.5.1]',
       allValid && folded && v3Named && refusals.every((r) => r !== null), JSON.stringify({ allValid, folded, refusals: refusals.map((r) => (r || 'ACCEPTED').slice(0, 30)) }));
 
     // a name under another actor: B's name event in A's directory, or B's username stamped with A's actor
@@ -5064,11 +5071,32 @@ const sameRegister = (a, b) => {
     const repeat = { ...a, ts: '2026-10-13T12:00:01.000Z|0000|translator-a' }; // the same username again
     const twice = fold([second, repeat, ...union]); // read order is not ts order
     const permuted = fold([...union].reverse().concat([repeat, second]));
-    check('JC-35: name action — a second name by the same actor is refused: the first name by ts binds, a later different name and a later identical name are each reported in namesRejected and never applied, the fold does not refuse, and read order does not matter; the writer\'s code is actor.name-already-set [covers R-8.5.26]',
+    check('JC-35: name action — a second name by the same actor is refused: the first name by ts binds, a later different name and a later identical name are each reported in namesRejected and never applied, the fold does not refuse, and read order does not matter (a teammate\'s file that another writer sealed) [covers R-8.5.26]',
       twice.names[ACTORS.a] === USERNAMES[ACTORS.a] && JSON.stringify(twice.namesRejected) === JSON.stringify([second.ts, repeat.ts]) &&
-      deepEq(twice.names, permuted.names) && deepEq(twice.namesRejected, permuted.namesRejected) && twice.names[ACTORS.b] === USERNAMES[ACTORS.b] &&
-      REFUSAL_CODES['actor.name-already-set'] === 'R-8.5.26',
+      deepEq(twice.names, permuted.names) && deepEq(twice.namesRejected, permuted.namesRejected) && twice.names[ACTORS.b] === USERNAMES[ACTORS.b],
       JSON.stringify({ names: twice.names, rejected: twice.namesRejected }));
+
+    // the WRITER refuses a second name of its own actor, and one action never carries two
+    const wdir = tmp();
+    const aDir = actorDirFor(wdir, ACTORS.a);
+    let firstOk = false; try { writeActionSegment(aDir, [a]); firstOk = true; } catch { /* reported below */ }
+    let retryOk = false; try { writeActionSegment(aDir, [a]); retryOk = true; } catch { /* reported below */ } // R-8.1.5 idempotent retry
+    let secondCode = null; try { writeActionSegment(aDir, [second]); } catch (e) { secondCode = e.code; }
+    const secondAbsent = !fs.existsSync(path.join(aDir, 'segments', segmentName(second.ts)));
+    const pair = [a, { ...a, ts: '2026-10-13T09:00:00.000Z|0001|translator-a', username: 'fixture-renamed' }];
+    const pairErr = validateAction(pair);
+    let pairSealed = true; try { sealAction(pair); } catch { pairSealed = false; }
+    check('JC-35: name action — the writer refuses a second name of its own actor: a first name seals, the same bytes seal again (idempotent), a later name in the same actor directory is refused with the code actor.name-already-set and writes no file, and an action with two name events fails the schema and does not seal [covers R-8.5.26]',
+      firstOk && retryOk && secondCode === 'actor.name-already-set' && secondAbsent && /name-twice/.test(pairErr || '') && !pairSealed,
+      JSON.stringify({ firstOk, retryOk, secondCode, secondAbsent, pairErr: (pairErr || '').slice(0, 30), pairSealed }));
+
+    // 41f302a: `names` is null-prototype — an actor slug the grammar allows, `constructor`,
+    // folds to its own name, and an absent one reads as absent
+    const ctor = { v: 3, op: 'actor.name.set', actor: 'constructor', ts: '2026-10-13T09:30:00.000Z|0000|constructor', base: null, username: 'fixture-ctor' };
+    const withCtor = fold([...union, ctor]);
+    check('JC-35: name action — names is a null-prototype map: the allowed actor slug `constructor` folds to its own username, and without that event names.constructor is absent (not Object.prototype.constructor) [covers R-8.5.25]',
+      withCtor.names.constructor === 'fixture-ctor' && out.names.constructor === undefined && !Object.hasOwn(out.names, 'constructor') && Object.keys(withCtor.names).length === 4,
+      JSON.stringify({ with: withCtor.names.constructor, without: typeof out.names.constructor }));
   }
 }
 

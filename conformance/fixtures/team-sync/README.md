@@ -37,6 +37,9 @@ Find a case by its name in `cases.json`.
 | `invalid-file` | A segment of C whose body does not match its `sha256`. | The one validator refuses it (`checksum`). A sync that meets it refuses (G2). |
 | `changed-own-file` | A different valid action at the path of A's own Titus 1:1 segment. | A sync that meets it on Door43 refuses and changes nothing (G1). |
 
+Not yet a case: an alignment set two ways (a non-text fork on an `align|` key). The sync core
+(#675) adds it here first, with its test.
+
 ## How to use a case
 
 - To model Door43 `main`, copy `journals/` and remove the files that a translator has not

@@ -114,6 +114,7 @@
   "refusal.segment.bad-path": "The app stopped to protect your project. This is a problem in the app. Ask for help.",
   "refusal.segment.differs-from-accepted": "The app stopped to protect your project. This is a problem in the app. Ask for help.",
   "refusal.outbox.different-action": "The app stopped to protect your project. This is a problem in the app. Ask for help.",
+  "refusal.actor.name-already-set": "The app stopped to protect your project. This is a problem in the app. Ask for help.",
   "refusal.checkpoint.unsafe-path": "The app stopped to protect your project. This is a problem in the app. Ask for help.",
   "refusal.checkpoint.too-deep": "The app stopped to protect your project. This is a problem in the app. Ask for help.",
   "refusal.export.checkpoint-failed": "The app could not save a checkpoint before the export, so it exported nothing. Your work is saved. Try the export again.",

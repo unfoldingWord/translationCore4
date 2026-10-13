@@ -114,6 +114,7 @@
   "refusal.segment.bad-path": "O aplicativo foi interrompido para proteger seu projeto. Este é um problema no aplicativo. Peça ajuda.",
   "refusal.segment.differs-from-accepted": "O aplicativo foi interrompido para proteger seu projeto. Este é um problema no aplicativo. Peça ajuda.",
   "refusal.outbox.different-action": "O aplicativo foi interrompido para proteger seu projeto. Este é um problema no aplicativo. Peça ajuda.",
+  "refusal.actor.name-already-set": "O aplicativo foi interrompido para proteger seu projeto. Este é um problema no aplicativo. Peça ajuda.",
   "refusal.checkpoint.unsafe-path": "O aplicativo foi interrompido para proteger seu projeto. Este é um problema no aplicativo. Peça ajuda.",
   "refusal.checkpoint.too-deep": "O aplicativo foi interrompido para proteger seu projeto. Este é um problema no aplicativo. Peça ajuda.",
   "refusal.export.checkpoint-failed": "O aplicativo não pôde salvar um ponto de controle antes da exportação, portanto nada foi exportado. Seu trabalho está salvo. Tente exportar novamente.",
