@@ -5,10 +5,13 @@
 // Ground truth is the bare remote's `main`, the rig's disk and the verifier,
 // never the Report alone.
 //
-// Rig-gated like the other *.integration suites: skipped with a message when
-// the rig is not reachable. The rig is the one `lane()` names (TC4_RIG_PORT).
-// `RIG_REPOS` overrides the repos directory, else this repository's own
-// dev-env/state/work/repos (#396).
+// It runs ONLY on a rig that the caller names: `RIG_API` (which `npm run prove`
+// sets, with `RIG_REPOS`, after it checks that the rig is pristine) or
+// `TC4_RIG_PORT`. With neither, it skips: the default lane can be another
+// session's rig. The repos directory is `RIG_REPOS`, else this worktree's
+// dev-env/state/work/repos (#396); the suite stops before it writes to disk if
+// the project it made on the rig is not in that directory. The rig's net state
+// is put back at the end.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ServerApi } from '../../src/data/serverApi';
 import { JournalingStore, forgetProjectQueues } from '../../src/data/journal/journalingStore';
@@ -27,12 +30,13 @@ const path = process.getBuiltinModule('node:path');
 const { pathToFileURL } = process.getBuiltinModule('node:url');
 const { execFileSync } = process.getBuiltinModule('node:child_process');
 
-const BASE = lane().rigApi;
+const NAMED = Boolean(process.env.RIG_API || process.env.TC4_RIG_PORT);
+const BASE = process.env.RIG_API || lane().rigApi;
 const REPOS = process.env.RIG_REPOS || path.resolve(process.cwd(), 'dev-env/state/work/repos');
 const TOKEN = 'tok-rig-sync-676';
 const SESSION = { username: 'facilitator', token: TOKEN };
 
-const rigUp = await (async (): Promise<boolean> => {
+const rigUp = NAMED && await (async (): Promise<boolean> => {
   try {
     const response = await fetch(`${BASE}/version`, { signal: AbortSignal.timeout(3_000) });
     return response.ok;
@@ -40,7 +44,10 @@ const rigUp = await (async (): Promise<boolean> => {
     return false;
   }
 })();
-if (!rigUp) console.warn(`[syncRig.integration] pankosmia rig not reachable at ${BASE} — the live-rig suite is skipped (start the rig to run it).`);
+if (!rigUp)
+  console.warn(NAMED
+    ? `[syncRig.integration] pankosmia rig not reachable at ${BASE} — the live-rig suite is skipped (start the rig to run it).`
+    : '[syncRig.integration] no rig named (set TC4_RIG_PORT, or run it from npm run prove) — the live-rig suite is skipped.');
 
 const git = (cwd: string, ...args: string[]): string => execFileSync('git', args, { cwd, stdio: 'pipe' }).toString().trim();
 
@@ -64,6 +71,7 @@ describe.skipIf(!rigUp)('#676 one full sync against the live rig and the #673 st
   const dir = (repoPath: string) => path.join(REPOS, ...repoPath.split('/'));
   let actor = '';
   let teammatePath = '';
+  let netWas: boolean | null = null;
 
   beforeAll(async () => {
     forgetSharedClocks();
@@ -73,6 +81,7 @@ describe.skipIf(!rigUp)('#676 one full sync against the live rig and the #673 st
     bare = path.join(tmp, ORG, `${ABBR}.git`);
     fs.mkdirSync(path.dirname(bare), { recursive: true });
     execFileSync('git', ['init', '-q', '--bare', '-b', 'main', bare]);
+    netWas = await api.getNetEnabled();
     await api.enableNet();
 
     // this translator's project: TIT 1:1 drafted and checkpointed, then shared to the bare remote
@@ -81,6 +90,9 @@ describe.skipIf(!rigUp)('#676 one full sync against the live rig and the #673 st
     await store.addBook({ book_code: 'TIT', book_title: 'Tito', book_abbr: 'TIT', add_cv: true, initialUsfm: usfm('Pablo.') });
     await store.commit('first (tC4)');
     actor = store.actorId;
+    // REPOS must be the directory of THIS rig before anything is written to disk
+    if (!fs.existsSync(path.join(dir(REPO), 'metadata.json')))
+      throw new Error(`${REPOS} is not the repos directory of the rig at ${BASE}; set RIG_REPOS`);
     const url = pathToFileURL(bare).href;
     await api.addRemote(REPO, 'origin', url);
     await api.push(REPO, 'origin', SESSION.username, SESSION.token);
@@ -106,7 +118,7 @@ describe.skipIf(!rigUp)('#676 one full sync against the live rig and the #673 st
   }, 120_000);
 
   afterAll(async () => {
-    await api.disableNet().catch(() => {});
+    if (netWas === false) await api.disableNet().catch(() => {});
     // `list-local-repos` skips _local_/_archive_/, so each path is deleted by name
     for (const repoPath of [REPO, PATHS.scratch, PATHS.previous, MIRROR, FIXED]) await api.deleteRepo(repoPath).catch(() => {});
     if (tmp) fs.rmSync(tmp, { recursive: true, force: true });

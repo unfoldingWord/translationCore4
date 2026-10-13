@@ -520,7 +520,20 @@ export class JournalingStore implements BurritoStore {
   }
 
   private queue<T>(fn: () => Promise<T>): Promise<T> {
-    return inProjectQueue(this.mustRepo(), fn);
+    const repoPath = this.mustRepo();
+    return inProjectQueue(repoPath, () => {
+      this.refusePendingSwap(repoPath);
+      return fn();
+    });
+  }
+
+  /** #676 (G8): a sync whose swap did not finish leaves its ops record open;
+   * until `recover()` finishes it at the next start, the project takes no open
+   * and no edit. Checked inside the project queue, so a sync that is running
+   * finishes first. */
+  private refusePendingSwap(repoPath: string): void {
+    if (this.ops?.isOpen?.('sync', repoPath))
+      throw new Refusal('sync.swap-pending', `the sync of ${repoPath} did not finish; restart the app to finish it`, { repoPath });
   }
 
   // ---- raw read delegation ---------------------------------------------------
@@ -1233,6 +1246,7 @@ export class JournalingStore implements BurritoStore {
     startedAt: string,
     phases: Report[],
   ): Promise<ProjectSummary> {
+    await inProjectQueue(repoPath, async () => this.refusePendingSwap(repoPath)); // #676, before any write
     const summary = await this.raw.open(repoPath); // binds raw + setCurrentProject
     this.boundRepoPath = repoPath;
     this.journal = new JournalStore({ api: this.api, repoPath, kv: this.kv, now: this.now });

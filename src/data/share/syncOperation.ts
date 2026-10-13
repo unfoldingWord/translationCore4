@@ -49,6 +49,7 @@ import {
   type OpsHandle,
   type OpsRecorder,
   type SwapPaths,
+  type SwapPhase,
 } from '../journal/opsLog';
 import type { ServerApi } from '../serverApi';
 import { resolutionRecord, resolveToolBook, type Coverage, type Tool } from '../resolve';
@@ -169,7 +170,8 @@ export async function cloneProject(
   // installed resource. A path that is there already refuses.
   if ((await api.listLocalRepos()).includes(clonePath))
     throw new Refusal('sync.clone-path-exists', `the clone path ${clonePath} already holds a folder`, { clonePath });
-  await beforeClone?.(clonePath);
+  if ((await beforeClone?.(clonePath)) === false)
+    throw new Error('the ops log did not save the clone phase; nothing was cloned');
   try {
     await api.cloneRepo(source.host, source.org, source.repo);
   } catch (error) {
@@ -215,10 +217,29 @@ async function ownEventsOf(files: Map<string, string>, actor: string): Promise<J
   return events;
 }
 
-/** Sync one project with Door43 `main` and return its Report (`op: 'sync'`). */
+/** Sync one project with Door43 `main` and return its Report (`op: 'sync'`).
+ *
+ * Contract for the caller (#678): after an ok sync the caller MUST open the
+ * project again. The open `JournalingStore` holds the fold and `.git` of the
+ * old folder, and saves that it queued during the sync run on that stale
+ * store. A `sync.swap-pending` Report means the swap did not finish: the
+ * project then takes no open, no edit and no sync until the next start of the
+ * app finishes it. */
 export async function sync(deps: SyncDeps, request: SyncRequest): Promise<Report> {
-  return inProjectQueue(request.repoPath, async () => {
-    const record = await deps.ops?.begin('sync', { repoPath: request.repoPath });
+  const { repoPath, session } = request;
+  // Not signed in: refused before any request, the ops-log write included.
+  if (!session?.username || !session.token) {
+    const at = new Date().toISOString();
+    return failedReport('sync', at, at, new Refusal('sync.auth-failed', 'sign in to Door43 first'), { repoPath });
+  }
+  return inProjectQueue(repoPath, async () => {
+    // G8: one sync record per project. An open one is a swap that did not finish.
+    if (deps.ops?.isOpen?.('sync', repoPath)) {
+      const at = new Date().toISOString();
+      return failedReport('sync', at, at,
+        new Refusal('sync.swap-pending', `the sync of ${repoPath} did not finish; restart the app to finish it`), { repoPath });
+    }
+    const record = await deps.ops?.begin('sync', { repoPath });
     const { report, open } = await syncRecorded(deps, request, record);
     // A swap that stopped leaves its record open, so the next start finishes it (G8).
     if (!open) await record?.close(report);
@@ -363,11 +384,30 @@ async function syncRecorded(
   }
 
   // 7. the swap (G8): every phase is in the ops log before its step
+  let phase = null as SwapPhase | null;
+  const swapNote = (next: SwapPhase): Promise<boolean> => {
+    phase = next;
+    return note({ phase: next });
+  };
   try {
-    await runSwap(api, paths, 'swap.copy-previous', (phase) => note({ phase }));
+    await runSwap(api, paths, 'swap.copy-previous', swapNote);
   } catch (error) {
-    const refusal = new Refusal('sync.move-failed', 'the swap stopped; the next start of the app finishes it', failureOf(error));
-    return { ...failed(refusal, { tries: facts.tries }), open: true };
+    // A server failure (not a kill) in this run. Going forward later is valid only
+    // when nothing can change the live project meanwhile (opsLog.ts header).
+    if (phase === null || phase === 'swap.copy-previous') {
+      // the live project is still whole at its path: go back now
+      await deleteIfPresent(api, paths.previous).catch(() => {});
+      await deleteIfPresent(api, paths.scratch).catch(() => {});
+      const refusal = new Refusal('sync.move-failed', 'the swap stopped before the project changed; the project is as it was', failureOf(error));
+      return failed(refusal, { tries: facts.tries, phase });
+    }
+    // the live path was touched: run the rest of the swap once more
+    try {
+      await runSwap(api, paths, phase, swapNote);
+    } catch (again) {
+      const refusal = new Refusal('sync.swap-pending', 'the swap did not finish; the next start of the app finishes it', failureOf(again));
+      return { ...failed(refusal, { tries: facts.tries, phase }), open: true };
+    }
   }
 
   // 8. live

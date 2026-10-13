@@ -79,11 +79,12 @@ export const REFUSAL_CODES = Object.freeze({
   'sync.not-shared': null, // the project has no `origin` on the Door43 server: share it first
   'sync.clone-path-exists': null, // the fixed clone path `<host>/<org>/<repo>` already holds a folder
   'sync.clone-failed': null, // Door43 main did not clone
-  'sync.move-failed': null, // a copy or a delete of a repository failed
+  'sync.move-failed': null, // a copy or a delete of a repository failed; the project did not change
   'sync.verify-failed': null, // the copy on disk is not the fold of its journal; nothing was pushed
   'sync.non-fast-forward': null, // (G4) Door43 main moved during three tries; never a force push
   'sync.no-write-access': null, // Door43 refused the push: no write access
   'sync.push-failed': null, // any other push failure
+  'sync.swap-pending': null, // (G8) a swap did not finish; no open, edit or sync of the project until the next start finishes it
 });
 
 export const isRefusalCode = (code) => typeof code === 'string' && Object.hasOwn(REFUSAL_CODES, code);

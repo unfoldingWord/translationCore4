@@ -33,8 +33,18 @@
 //                        cleared. Recovery: nothing. The next open replays any entry
 //                        that is left: its bytes are at its path, so the replay
 //                        clears it ('already-published').
-// From swap.copy-previous on, the scratch copy is pushed and complete, so a
-// recovery always goes forward. Each swap step is safe to run again when the
+// The rule for the direction: a recovery goes forward ONLY when nothing can
+// have changed the live project since the phase was saved. The sync holds the
+// project's queue for its whole run, so in the same run that is true. A server
+// failure in the swap is handled in that run (syncOperation.ts): at
+// swap.copy-previous the live project is still whole, so the sync goes back now
+// (it deletes the scratch and previous copies and closes its record failed); at a
+// later phase it runs the rest of the swap once more. Only when that also fails
+// does the record stay open, and then the project cannot open, take an edit or
+// start a sync (`sync.swap-pending`) until `recover()` at the next start. So a
+// record that is open at the next start belongs to a run that was killed, or to a
+// project that no one could change; going forward then uses the scratch copy,
+// which is pushed and complete. Each swap step is safe to run again when the
 // step after it has not run: it first deletes the target that a stopped copy
 // can leave in part. Two kill sweeps in test/sync/syncOperation.test.ts prove
 // this: a kill after each server call, and a kill inside each one (the server
@@ -42,7 +52,7 @@
 // its step, like the sync.
 import { Refusal, failedReport, okReport, type Report } from './runtime';
 import { isNotFoundError } from '../serverApi';
-import type { KvStore } from './identity';
+import { idbKvStore, type KvStore } from './identity';
 
 export type OpsOp = Report['op'];
 
@@ -110,6 +120,8 @@ export interface OpsHandle {
 /** What an operation needs to write its record. */
 export interface OpsRecorder {
   begin(op: OpsOp, facts?: Record<string, unknown>): Promise<OpsHandle>;
+  /** True while a record of `op` for `repoPath` is open (#676: an unfinished sync swap). */
+  isOpen?(op: OpsOp, repoPath: string): boolean;
 }
 
 /** A failed ops write: which record, and why. */
@@ -123,6 +135,8 @@ export interface OpsLogInit {
   read: () => Promise<SettingsDoc>;
   update: SettingsWriter;
   now?: () => number;
+  /** The installation store, where a recovered sync records its previous copy. Default: the shared IndexedDB store. */
+  kv?: KvStore;
 }
 
 /** What recovery needs from the platform. */
@@ -224,6 +238,13 @@ export class OpsLog implements OpsRecorder {
     this.read = init.read;
     this.update = init.update;
     this.now = init.now ?? (() => Date.now());
+    this.kv = init.kv ?? null;
+  }
+
+  private readonly kv: KvStore | null;
+
+  isOpen(op: OpsOp, repoPath: string): boolean {
+    return this.entries.some((e) => e.op === op && !e.report && e.facts.repoPath === repoPath);
   }
 
   subscribe(listener: () => void): () => void {
@@ -249,7 +270,15 @@ export class OpsLog implements OpsRecorder {
     for (const entry of opsEntriesOf(doc)) {
       // A record this session began is running, not interrupted.
       if (entry.report || this.entries.some((e) => e.id === entry.id)) continue;
-      resolved.push({ ...entry, report: await this.resolve(entry, api) });
+      // One record that cannot be resolved never stops the others: it stays
+      // open (a sync swap then blocks its project) and is reported.
+      try {
+        resolved.push({ ...entry, report: await this.resolve(entry, api) });
+      } catch (error) {
+        const failure = { id: entry.id, op: entry.op, error: `recovery failed: ${String((error as Error)?.message ?? error)}` };
+        this.errors = [...this.errors, failure];
+        console.error(`ops log: the ${entry.op} record was not recovered: ${failure.error}`);
+      }
     }
     if (resolved.length) await this.update((latest) => withEntries(latest, resolved));
     this.entries = withEntries(doc, resolved)[OPS_KEY] as OpsEntry[];
@@ -291,6 +320,8 @@ export class OpsLog implements OpsRecorder {
         await this.update((doc) => withEntries(doc, [saved]));
         return true;
       });
+      // the next successful checkpoint deletes the previous copy, as after a sync that ran to its end
+      await (this.kv ?? idbKvStore()).set(previousCopyKey(repoPath), paths.previous);
       return okReport('sync', entry.startedAt, endedAt, { ...facts, phase: 'live', finishedSwap: true });
     }
     if (phase === 'live') return okReport('sync', entry.startedAt, endedAt, facts);
