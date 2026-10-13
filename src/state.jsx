@@ -6126,6 +6126,8 @@ export function AppProvider({ children }) {
           }
           if (report.code === 'sync.auth-failed') {
             // Door43 refused the token: forget it, so the next press asks for the password (#467).
+            // [PENDING — owner run, #673 steps 3 and 4]: the shell maps a push answer to
+            // sync.auth-failed by its 401 status as best known (refusalForPush).
             await door43SignOut(desktopKeychain() ?? undefined).catch(() => {});
             dispatch({ type: 'set', patch: { door43User: null, door43Kept: false, door43NotKept: false } });
           }
