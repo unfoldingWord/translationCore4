@@ -58,6 +58,7 @@ const okSync = (facts: Record<string, unknown> = {}) =>
     ],
     newestWins: [{ key: 'check|translationWords|TIT|1', kind: 'check', winner: '5' }],
     names: {},
+    actors: ['a', 'b', 'b0000000000000aa', 'c', 'c0000000000000bb'],
     tries: 1,
     repoPath: BIBLE.id,
     ...facts,
