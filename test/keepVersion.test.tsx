@@ -101,6 +101,23 @@ describe('#679 "Keep this version"', () => {
     expect(rawRef.current).toContain('\\v 1 Pablo, siervo de Dios (mío).');
     expect(loadBook).toHaveBeenCalledWith('TIT', rawRef.current);
     expect(box.state.bookRaw).toBe(rawRef.current);
+    // No conflict is left: the review stays open on the kept key and shows that none is open.
+    expect(box.state.conflictReview).toEqual({ key: KEY, error: null });
+  });
+
+  it('the review moves to the conflict after the kept one', async () => {
+    const { store } = await conflicted();
+    const [conflict] = store.readVerseConflicts();
+    // A list as the review shows it: the kept conflict between two others that stay open.
+    const other = (key: string) => ({ key, book: 'TIT', chapter: '1', verse: key.slice(-1), versions: [] }) as never;
+    const [before, after] = [other('text|TIT|1:0'), other('text|TIT|1:9')];
+    const { box, dispatch } = recorder({ project: { repoPath: REPO }, book: 'JON', conflictReview: { key: KEY, error: null }, conflictsByProject: {}, verseConflicts: [before, conflict, after] });
+    const stateRef = { get current() { return box.state; } };
+    // The store's fold after the keep lists the two others (stand-ins: the rig project has one conflict).
+    vi.spyOn(store, 'readVerseConflicts').mockReturnValue([before, after]);
+    const mine = conflict.versions.find((v) => v.actor === store.actorId)!;
+    await keepVersion({ storeRef: { current: store }, stateRef, schedulerRef: { current: null }, rawRef: { current: null }, saveRefs: [], dispatch, conflictsGen: new Map() }, KEY, mine.ts);
+    expect(box.state.conflictReview).toEqual({ key: 'text|TIT|1:9', error: null });
   });
 
   it('a refused keep shows its error in the review and changes nothing', async () => {

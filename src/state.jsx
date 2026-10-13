@@ -2474,11 +2474,12 @@ async function performLoadConflicts({ project, stateRef, dispatch, conflictsGen,
  * false when a save failed (the save indicator shows it) or the write failed
  * (the review shows it). */
 async function performKeepVersion(ctx, key, keptTs) {
-  const { storeRef, stateRef, schedulerRef, rawRef, saveRefs, dispatch, conflictsGen } = ctx;
+  const { storeRef, stateRef, saveRefs, dispatch, conflictsGen } = ctx;
   if (!(await drainSchedulers(saveRefs))) return false;
   const store = storeRef.current;
   const repoPath = stateRef.current.project?.repoPath;
   if (!store || !repoPath) return false;
+  const position = (stateRef.current.verseConflicts ?? []).findIndex((c) => c.key === key);
   try {
     await store.resolveVerse(key, keptTs);
   } catch (e) {
@@ -2488,19 +2489,30 @@ async function performKeepVersion(ctx, key, keptTs) {
   }
   if (storeRef.current !== store) return true;
   conflictsGen.set(repoPath, (conflictsGen.get(repoPath) || 0) + 1);
-  const { book } = parseVerseKey(key);
-  if (stateRef.current.book === book) {
+  const left = adoptConflicts({ store, repoPath, dispatch });
+  // The review stays at the same place in the list: the conflict after the kept one.
+  if (stateRef.current.conflictReview) {
+    const next = left[Math.min(Math.max(position, 0), left.length - 1)];
+    dispatch({ type: 'set', patch: { conflictReview: { key: next?.key ?? key, error: null } } });
+  }
+  await reloadKeptBook(ctx, store, parseVerseKey(key).book);
+  return true;
+}
+
+/** After a keep: the open book, when it holds the kept verse, is read again. */
+async function reloadKeptBook({ storeRef, stateRef, schedulerRef, rawRef, dispatch }, store, book) {
+  if (stateRef.current.book !== book) return;
+  try {
     const { usfm: raw } = await store.readBook(book);
     if (storeRef.current === store && stateRef.current.book === book) {
       rawRef.current = raw;
       schedulerRef.current?.loadBook(book, raw);
       dispatch({ type: 'set', patch: { bookRaw: raw } });
     }
+  } catch (e) {
+    // The verse is kept (the journal holds it); the open book shows the read failure, as openBook does.
+    if (storeRef.current === store) dispatch({ type: 'set', patch: { bookError: failureText(e) } });
   }
-  adoptConflicts({ store, repoPath, dispatch });
-  const review = stateRef.current.conflictReview;
-  if (review) dispatch({ type: 'set', patch: { conflictReview: { ...review, error: null } } });
-  return true;
 }
 
 /** Test hooks (#679): the Home count read and the keep action run on the fake rig. */
