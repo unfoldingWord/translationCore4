@@ -8,7 +8,7 @@
 // files of an older checkpoint (with a stale TIT.usfm and a forged translationWords
 // resource record), and the base metadata.json. A's journal holds A's own files.
 import { describe, expect, it } from 'vitest';
-import { derivedProjections, fold, syncCore, type FoldOutput, type SyncFacts, type SyncFileLayer } from '../../src/data/journal/runtime';
+import { classifyDivergence, derivedProjections, fold, syncCore, type FoldOutput, type SyncFacts, type SyncFileLayer } from '../../src/data/journal/runtime';
 import * as seal from '../../src/data/journal/seal';
 import { assertReport } from '../../journal/report.mjs';
 
@@ -109,11 +109,42 @@ describe('#675 the sync core', () => {
     expect(control.report.ok).toBe(true);
     expect(control.write.has(ipathOf(chg.own))).toBe(false); // already there, not carried
     remote.set(ipathOf(chg.own), readFix(chg.path)); // a different valid action at A's own 1:1 path
-    const { write, report } = await run(remote);
+    const { write, remove, report } = await run(remote);
     expect(refused(report)).toEqual([false, 'sync.own-file-differs']);
     expect(report.rule).toBe('R-8.7.7');
     expect((report.facts.refusal as { paths: string[] }).paths).toEqual([ipathOf(chg.own)]);
     expect(write.size).toBe(0);
+    expect(remove).toEqual([]);
+  });
+
+  it('[G1] carries a teammate file that Door43 main lost', async () => {
+    const bSeg: string = idx.cases['different-verses'].segments[1]; // B's TIT 1:2 change
+    const bText = String(refFiles.validateSegment(readFix(bSeg)).events[0].text).trim();
+    const remote = door43();
+    remote.delete(ipathOf(bSeg)); // Door43 main lost it
+    const mine = mineA();
+    mine.journal.set(ipathOf(bSeg), readFix(bSeg)); // this computer holds it
+    const { write, report } = await run(remote, mine);
+    expect(report.ok).toBe(true);
+    expect(write.get(ipathOf(bSeg))).toBe(readFix(bSeg));
+    expect(factsOf(report).restored).toBe(1);
+    expect(write.get('TIT.usfm')).toContain(bText);
+    // negative control: without it on this computer, it is not in the result
+    const control = await run(remote, mineA());
+    expect(control.report.ok).toBe(true);
+    expect(control.write.has(ipathOf(bSeg))).toBe(false);
+    expect(factsOf(control.report).restored).toBe(0);
+    expect(control.write.get('TIT.usfm')).not.toContain(bText);
+    // a teammate file in two different forms is refused (R-8.1.5)
+    const other = door43();
+    const bEvent = refFiles.validateSegment(readFix(bSeg)).events[0];
+    other.set(ipathOf(bSeg), refFiles.sealAction([{ ...bEvent, text: 'otra forma del versículo 2,\n' }])); // valid, same path, other bytes
+    const held = mineA();
+    held.journal.set(ipathOf(bSeg), readFix(bSeg));
+    const twoForms = await run(other, held);
+    expect(refused(twoForms.report)).toEqual([false, 'segment.differs-from-accepted']);
+    expect(twoForms.write.size).toBe(0);
+    expect(twoForms.remove).toEqual([]);
   });
 
   it('[G2] refuses an invalid file', async () => {
@@ -122,19 +153,63 @@ describe('#675 the sync core', () => {
     const remote = door43();
     remote.set(ipathOf(inv.path), readFix(inv.path)); // C's segment whose body fails its sha256
     remote.set(`checking/journal/${B}/segments/old.jsonl`, '{}\n'); // not a journal file (R-8.1.10)
-    const { write, report } = await run(remote);
+    const { write, remove, report } = await run(remote);
     expect(refused(report)).toEqual([false, 'sync.incoming-invalid']);
     expect(report.rule).toBe('R-8.7.8');
     const failures = (report.facts.refusal as { failures: Array<{ path: string; reason: string }> }).failures;
     expect(failures.map((f) => f.path).sort()).toEqual([`checking/journal/${B}/segments/old.jsonl`, ipathOf(inv.path)].sort());
     expect(failures.find((f) => f.path === ipathOf(inv.path))?.reason).toBe('checksum');
     expect(write.size).toBe(0);
+    expect(remove).toEqual([]);
     // ONE invalid file is enough to refuse the whole sync
     const onlyOne = door43();
     onlyOne.set(ipathOf(inv.path), readFix(inv.path));
     const single = await run(onlyOne);
     expect(refused(single.report)).toEqual([false, 'sync.incoming-invalid']);
     expect(single.write.size).toBe(0);
+    expect(single.remove).toEqual([]);
+  });
+
+  it('[G2] refuses a foreign actor.json, a misnamed segment and a segment in another actor folder', async () => {
+    const bSeg: string = idx.cases['different-verses'].segments[1]; // B's TIT 1:2 change
+    const cases: Array<[string, string, string, RegExp]> = [
+      // C's folder holds an actor.json that names A (R-8.1.13)
+      ['foreign actor.json', `checking/journal/${C}/actor.json`, readFix(idx.actors[A].actor), /^actor-mismatch/],
+      // B's segment under a name that is not its first ts (R-8.1.2)
+      ['misnamed segment', `checking/journal/${B}/segments/2026-10-13T10_59_00.000Z,0000,translator-b.action.json`, readFix(bSeg), /^segment-misnamed/],
+      // B's segment in C's folder (R-8.1.12)
+      ['segment in another actor folder', `checking/journal/${C}/segments/${path.basename(bSeg)}`, readFix(bSeg), /^actor-mismatch:translator-b$/],
+    ];
+    for (const [name, p, bytes, reason] of cases) {
+      const remote = door43();
+      remote.set(p, bytes);
+      const { write, remove, report } = await run(remote);
+      expect(refused(report), name).toEqual([false, 'sync.incoming-invalid']);
+      const failures = (report.facts.refusal as { failures: Array<{ path: string; reason: string }> }).failures;
+      expect(failures.map((f) => f.path), name).toEqual([p]);
+      expect(failures[0].reason, name).toMatch(reason);
+      expect(write.size, name).toBe(0);
+      expect(remove, name).toEqual([]);
+    }
+  });
+
+  it('[G3] removes a derived file the fold no longer projects', async () => {
+    const remote = door43();
+    const rut = fs.readFileSync(path.join(SAMPLE, 'ingredients/JON.usfm'), 'utf8').replace('\\id JON', '\\id RUT');
+    remote.set('RUT.usfm', rut); // a book the fold does not hold (for example, removed by a teammate)
+    const { write, remove, report } = await run(remote);
+    expect(report.ok).toBe(true);
+    expect(remove).toEqual(['RUT.usfm']);
+    const derivedOf = (files: Map<string, string>) =>
+      Object.fromEntries([...files].filter(([p]) => !isJournal(p) && p !== 'metadata.json'));
+    const applied = new Map([...remote, ...write]);
+    for (const p of remove) applied.delete(p);
+    expect(classifyDivergence(derivedOf(applied), expected).diverged).toEqual([]);
+    // negative control: without the remove, the stale book diverges
+    expect(classifyDivergence(derivedOf(new Map([...remote, ...write])), expected).diverged).toEqual(['RUT.usfm']);
+    // a clean copy removes nothing; no journal file and no metadata.json is ever removed
+    expect((await run()).remove).toEqual([]);
+    expect(remove.some((p) => isJournal(p) || p === 'metadata.json')).toBe(false);
   });
 
   it('[G3] rebuilds with resolve', async () => {
@@ -176,6 +251,7 @@ describe('#675 the sync core', () => {
     const one = await run(obs);
     expect(refused(one.report)).toEqual([false, 'sync.obs-unsupported']);
     expect(one.write.size).toBe(0);
+    expect(one.remove).toEqual([]);
 
     // B shared one project.meta.set: the fold carries an overlay that only metadata.json could show
     const overlayEvent = { v: 1, op: 'project.meta.set', actor: B, ts: '2026-10-13T11:00:00.000Z|0000|translator-b', base: null, path: 'identification.name.en', value: 'Tito (equipo)' };
@@ -189,6 +265,7 @@ describe('#675 the sync core', () => {
     expect(refused(two.report)).toEqual([false, 'sync.metadata-overlay']);
     expect(two.report.rule).toBe('R-8.7.10');
     expect(two.write.size).toBe(0);
+    expect(two.remove).toEqual([]);
   });
 
   it('[G6] same journals same files', async () => {

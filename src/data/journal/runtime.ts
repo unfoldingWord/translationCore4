@@ -17,6 +17,7 @@ import {
   derivedProjections as derivedProjectionsRef,
   classifyDivergence as classifyDivergenceRef,
   isUnjournaledIngredient as isUnjournaledIngredientRef,
+  isRemovableDerivedClass as isRemovableDerivedClassRef,
   projectAlignments as projectAlignmentsRef,
   projectResources as projectResourcesRef,
   projectSettings as projectSettingsRef,
@@ -165,6 +166,9 @@ export const classifyDivergence = classifyDivergenceRef as (
 /** §8.5: a tolerated unjournaled ingredient class (ingredients/audio/). */
 export const isUnjournaledIngredient = isUnjournaledIngredientRef as (ipath: string) => boolean;
 
+/** A derived path class whose projection can disappear (books, alignment and decision sidecars). */
+export const isRemovableDerivedClass = isRemovableDerivedClassRef as (ipath: string) => boolean;
+
 export const projectAlignments = projectAlignmentsRef as (foldOut: FoldOutput, book: string) => string;
 export const projectResources = projectResourcesRef as (pins: FoldOutput['pins']) => string;
 export const projectSettings = projectSettingsRef as (settings: FoldOutput['settings']) => string;
@@ -294,6 +298,8 @@ export interface SyncTextConflict {
 /** The facts of an ok sync Report. */
 export interface SyncFacts extends Record<string, unknown> {
   carried: number;
+  /** teammate journal files this computer held and Door43 main lacked, carried back */
+  restored: number;
   received: Record<string, number>;
   textConflicts: SyncTextConflict[];
   newestWins: Array<{ key: string; kind: string; winner: string }>;
@@ -306,10 +312,11 @@ export interface SyncFileLayer {
   segmentName(ts: string): string;
 }
 /** The sync core: Door43 main + this computer's journal → the files to write + one
- * Report (`op: 'sync'`). Pure; a refusal returns an empty `write`. */
+ * Report (`op: 'sync'`). Pure; a refusal returns an empty `write` and `remove`.
+ * `remove`: the derived files on Door43 main that the fold no longer projects, sorted. */
 export const syncCore = syncCoreRef as (input: {
   remote: Map<string, string>;
   mine: { actor: string; journal: Map<string, string>; outbox: Map<string, string> };
   resolve: (tool: string, book: string, pins: FoldOutput['pins']) => Record<string, unknown>;
   files: SyncFileLayer;
-}) => Promise<{ write: Map<string, string>; report: Report }>;
+}) => Promise<{ write: Map<string, string>; remove: string[]; report: Report }>;
