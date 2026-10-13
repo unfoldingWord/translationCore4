@@ -402,6 +402,7 @@
   "draft.loading": "Завантаження книги…",
   "draft.loadError": "Не вдалося завантажити книгу.",
   "draft.books": "Книги",
+  "draft.bookPercentTitle": "Перекладено {n}% віршів цієї книги",
   "draft.toggleRail": "Перемкнути список книг",
   "draft.toggleHelps": "Перемкнути панель матеріалів",
   "draft.editVerse": "Редагувати цей вірш",

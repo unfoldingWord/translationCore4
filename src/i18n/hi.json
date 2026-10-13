@@ -402,6 +402,7 @@
   "draft.loading": "पुस्तक लोड हो रही है…",
   "draft.loadError": "पुस्तक लोड नहीं हो सकी।",
   "draft.books": "पुस्तकें",
+  "draft.bookPercentTitle": "इस पुस्तक के {n}% पदों का मसौदा तैयार है",
   "draft.toggleRail": "पुस्तक सूची दिखाएँ/छिपाएँ",
   "draft.toggleHelps": "सहायता पैनल दिखाएँ/छिपाएँ",
   "draft.editVerse": "यह पद संपादित करें",

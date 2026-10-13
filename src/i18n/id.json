@@ -402,6 +402,7 @@
   "draft.loading": "Memuat kitab…",
   "draft.loadError": "Kitab tidak dapat dimuat.",
   "draft.books": "Kitab",
+  "draft.bookPercentTitle": "{n}% ayat kitab ini sudah didraf",
   "draft.toggleRail": "Beralih daftar kitab",
   "draft.toggleHelps": "Beralih panel bantuan",
   "draft.editVerse": "Edit ayat ini",

@@ -402,6 +402,7 @@
   "draft.loading": "Cargando libro…",
   "draft.loadError": "No se pudo cargar el libro.",
   "draft.books": "Libros",
+  "draft.bookPercentTitle": "El {n}% de los versículos de este libro está redactado",
   "draft.toggleRail": "Mostrar u ocultar la lista de libros",
   "draft.toggleHelps": "Mostrar u ocultar el panel de ayudas",
   "draft.editVerse": "Editar este versículo",
