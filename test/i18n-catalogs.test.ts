@@ -50,6 +50,8 @@ describe('#522, #622 — the installed UI catalogs', () => {
       'العربية',
     ]);
     for (const { id } of LOCALES) expect(isLocale(id), id).toBe(true);
+    // #657: the interface direction of each language; Arabic is the one that reads right to left.
+    expect(LOCALES.filter((l) => l.dir !== 'ltr').map((l) => [l.id, l.dir])).toEqual([['ar', 'rtl']]);
     expect(Object.keys(_catalogs).sort()).toEqual([...LOCALES.map((l) => l.id)].sort());
   });
 

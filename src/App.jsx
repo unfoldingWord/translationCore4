@@ -117,11 +117,8 @@ function TopBar() {
 
 export default function App() {
   const { s } = useApp();
-  const appDir = s.project && s.view !== 'home'
-    ? (s.project.scriptDirection === 'rtl' ? 'rtl' : 'ltr')
-    : 'ltr';
   return (
-    <div dir={appDir} style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%', background: 'var(--surface-app)', color: 'var(--text-body)', fontFamily: 'var(--font-ui)', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%', background: 'var(--surface-app)', color: 'var(--text-body)', fontFamily: 'var(--font-ui)', overflow: 'hidden' }}>
       <TopBar />
       <ViewBoundary key={`${s.view}:${s.project?.repoPath ?? ''}`}>
         <MainView state={s} />
