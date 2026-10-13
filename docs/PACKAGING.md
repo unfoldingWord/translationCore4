@@ -6,9 +6,10 @@ single-layer download. Issue #181 added Windows x64 (Increment 5). Issue #243
 adds the unsigned Mac installer and app icons (Increment 5.5). Issue #44 retains
 signing, notarization, and the remaining platform installer work.
 [decided 2026-09-10 — owner clarification on #243]
-D89 point 4 supersedes the signing part of that ruling. v4.0.0 ships macOS unsigned and not notarized. Windows is signed only if the #456
-credential works in CI by 2026-10-08; if not, Windows ships unsigned. Linux stays
-an unsigned zip. [decided 2026-10-03 — D89 point 4]
+D89 point 4 supersedes the signing part of that ruling. v4.0.0 ships macOS unsigned and not notarized. Linux stays
+an unsigned zip. [decided 2026-10-03 — D89 point 4] Windows v4.0.0 ships signed:
+signing is a release gate, because an unsigned build can start with no window and
+no warning (see Signing). [decided 2026-10-13 — D98, overrules D89 point 4 for Windows]
 
 ## What the pipeline does
 
@@ -538,6 +539,10 @@ Get-AuthenticodeSignature .\tC4-<version>-windows-x64.exe | Format-List Status,S
 ```
 
 ### Signing (#456)
+
+Why: an unsigned build can start with no window and no warning on a machine with
+Windows Security **App & browser control** on and Smart App Control off
+(`docs/evidence/windows-unsigned-silent-start-2026-10-13.md`, D98).
 
 The build signs with Azure Artifact Signing. It signs only on a manual run
 (**Run workflow** on `package-desktop`), and only when the repository variable

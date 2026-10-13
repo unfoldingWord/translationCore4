@@ -2183,7 +2183,8 @@ kept most of the product work and ruled on the order, the gates and the cut rule
    Windows signing is #456. Its credential must work in CI by 2026-10-08. If it does not, rc.2
    and v4.0.0 ship Windows unsigned with the documented SmartScreen steps. #456 then moves to
    4.0.1.
-   Linux stays an unsigned zip.
+   Linux stays an unsigned zip. [superseded by D98, 2026-10-13 — Windows v4.0.0 ships signed;
+   signing is a release gate and is not deferred to 4.0.1]
 5. **Witnesses.** A clean-machine witness of the Windows installer is a gate for rc.2. The clean
    macOS witness is not a gate for rc.2.
 6. **The server pin.** #461 moves the pin from pankosmia-web 0.18.5 to 0.18.14 first, with a
@@ -2626,3 +2627,40 @@ Where slice 1 lands: `docs/BURRITO-SPEC.md` §5.2 and §5.3 (version 1.22),
 samples and `sample-burrito-obs/.../resources.json`, `conformance/validate-journal.mjs`
 (the tW resource fixture), `conformance/generate.mjs` and `conformance/README.md`, and
 `test/export/relationships.test.ts`.
+
+## D98 (2026-10-13, project-owner rulings) **Windows v4.0.0 ships signed. Signing is a release gate: an unsigned Windows build can start with no window and no warning. Overrules D89 point 4 for Windows.** [owner rulings on #456, 2026-10-13; evidence in `docs/evidence/windows-unsigned-silent-start-2026-10-13.md`]
+
+Context. D89 point 4 let Windows ship unsigned if the #456 credential did not work in CI by
+2026-10-08. That date passed with no signed build. On 2026-10-13 the owner found that an
+unsigned build can fail silently: on a machine with Windows Security **App & browser
+control** on and **Smart App Control** off, the shortcut starts translationCore4, Task
+Manager shows it running, and no window and no warning appear [VERIFIED — owner observation,
+2026-10-13]. The documented SmartScreen steps cannot help a user who sees nothing. Signing two
+Electronite graphics DLLs by hand removed the failure on that machine.
+
+1. **Windows v4.0.0 ships signed.** Signing is a release gate. Under D89, a gate that is not
+   green moves the date. #456 stays in Increment 9 and does not move to 4.0.1. macOS and
+   Linux are unchanged from D89 point 4: macOS is unsigned and not notarized, and Linux is an
+   unsigned zip.
+2. **Route and publisher (#456 Q1, Q3).** The build signs with Azure Artifact Signing:
+   account `unfoldingWordSigning`, certificate profile `uw-public-prod`, endpoint
+   `https://eus.codesigning.azure.net/`. The publisher is
+   `CN=unfoldingWord, O=unfoldingWord, L=Orlando, S=Florida, C=US`.
+3. **What is signed.** Every `.exe`, `.dll` and `.node` file that the build ships with no
+   signature, the installer, and its uninstaller. A file that Microsoft or another publisher
+   signed keeps its signature.
+4. **Which builds are signed (#456 Q4).** Manual (`workflow_dispatch`) runs of
+   `package-desktop` only. Merges to `main` and pull requests build unsigned. The v4.0.0
+   Windows artifacts MUST come from a signed manual run.
+5. **Names (#456 Q5).** A signed artifact drops `-unsigned`:
+   `tC4-<version>-windows-x64.exe` and `tC4-<version>-windows-x64.zip`. An unsigned
+   artifact keeps the suffix. `BUILD-MANIFEST.json` records `"signed"`.
+
+Open [FLAG: not yet ruled]: the CI credential (an Entra app registration with the Signer role,
+by client secret or GitHub OIDC), and whether v4.0.0 comes from a signed rc.3 or from one signed
+rebuild of rc.2. #546 says that v4.0.0 promotes the rc.2 artifact without a new build, and the
+rc.2 Windows artifacts are unsigned.
+
+Where it lands: `scripts/sign-windows.ps1`, `scripts/package-desktop.zsh`, `scripts/tc4.iss`,
+`.github/workflows/package-desktop.yml` (the signing values and the `smoke-windows-x64`
+signature check), `docs/PACKAGING.md` (Signing), and `scripts/README-windows.txt`.
