@@ -6,6 +6,7 @@ import StoryDraft from './views/StoryDraft.jsx';
 import StoryUnderstand from './views/StoryUnderstand.jsx';
 import Check from './views/Check.jsx';
 import AddProject from './views/modals/AddProject.jsx';
+import OpenFromDoor43 from './views/modals/OpenFromDoor43.jsx';
 import NewBible from './views/modals/NewBible.jsx';
 import NewObs from './views/modals/NewObs.jsx';
 import AddBook from './views/modals/AddBook.jsx';
@@ -131,6 +132,7 @@ export default function App() {
       <NewObs />
       <AddBook />
       <Import />
+      <OpenFromDoor43 />
       <ProjectSettings />
       <SourceTexts />
       <GatewayChange />

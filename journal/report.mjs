@@ -86,6 +86,10 @@ export const REFUSAL_CODES = Object.freeze({
   'sync.push-failed': null, // any other push failure
   'opslog.not-loaded': null, // (G8) the ops log did not load at this start: no project opens, takes an edit or syncs until it loads
   'sync.swap-pending': null, // (G8) a swap did not finish; no open, edit or sync of the project until the next start finishes it
+  // Open a project from Door43 (src/data/share/syncOperation.ts, #677). Its other refusals are the
+  // sync codes above: sync.offline, the clone codes, sync.obs-unsupported and (G2) sync.incoming-invalid.
+  'open-door43.name-exists': null, // a project with the chosen name is on this computer already; nothing was written
+  'open-door43.no-journal': null, // the repository holds no tC4 journal, so it is not a tC4 project (an import, #365); nothing was written
 });
 
 export const isRefusalCode = (code) => typeof code === 'string' && Object.hasOwn(REFUSAL_CODES, code);
@@ -96,7 +100,7 @@ export const isRefusalCode = (code) => typeof code === 'string' && Object.hasOwn
 // classified, what checkpoint wrote, ...); `startedAt`/`endedAt` are ISO-8601
 // UTC. A failed Report MAY carry a code (a refusal) or none (any other error);
 // its `rule` is the table's binding for that code and is absent for an app rule.
-export const REPORT_OPS = Object.freeze(['open', 'checkpoint', 'seed', 'reconcile', 'pin-complete', 'export', 'import', 'share', 'sync']);
+export const REPORT_OPS = Object.freeze(['open', 'checkpoint', 'seed', 'reconcile', 'pin-complete', 'export', 'import', 'share', 'sync', 'open-door43']);
 
 const REPORT_KEYS = new Set(['op', 'ok', 'code', 'rule', 'facts', 'startedAt', 'endedAt']);
 const isObj = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);
