@@ -63,7 +63,12 @@ const englishOnly = (twl: ResourcePin, tw: ResourcePin): ResourcesFile => {
 const rigWithBoth = () => {
   const rig = journalingRig();
   rig.createRepo(localPath(TWL_V86), { 'TIT.tsv': TWL_TSV, 'payload/kt/god.md': TWL_ARTICLE });
-  rig.createRepo(localPath(TW_V87), { 'TIT.tsv': TW_TSV, 'payload/kt/god.md': TW_ARTICLE });
+  // #643 keeps a row only when the tw pin lists its article. The fake tw repo
+  // lists every article either TIT list links, so no row is hidden and the
+  // count (188 vs 182) still shows which TSV was read.
+  const twArticles = Object.fromEntries([...`${TWL_TSV}\n${TW_TSV}`.matchAll(/payload\/\w+\/[\w-]+\.md/g)]
+    .map(([key]) => [key, '# stub\n']));
+  rig.createRepo(localPath(TW_V87), { ...twArticles, 'TIT.tsv': TW_TSV, 'payload/kt/god.md': TW_ARTICLE });
   const readsSeen: Array<{ repo: string; ipath: string }> = [];
   const fetchFn: typeof rig.fetchFn = async (input, init) => {
     const url = new URL(String(input));
