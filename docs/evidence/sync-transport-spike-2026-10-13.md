@@ -15,10 +15,13 @@ under `/api`. The citation for every claim here is
 `[VERIFIED — pankosmia-web 0.18.15 (a83725b, 2026-10-13)]`, with the surface named in the claim.
 
 **How to read the pastes.** `>` is the request. The next line is the body of the reply. `< HTTP`
-is the status. The pastes are exact, with two edits only: `<repo_dir>` replaces
-`/Users/birch/Development/wt/issue-673/dev-env/state/work/repos`, and `<tmp>` replaces the
-session scratch directory. The rig starts offline (PLATFORM-NOTES #45), so each run below
-starts with `POST /api/net/enable`, unless the run is an offline control.
+is the status. Every request line and every reply body is exact, with two edits only:
+`<repo_dir>` replaces `/Users/birch/Development/wt/issue-673/dev-env/state/work/repos`, and
+`<tmp>` replaces the session scratch directory. Lines that start with `==`, and lines in
+parentheses, are notes. They give the git commands and results in short. Run 6 shortens one
+reply, and says so. The run numbers follow the topic, not the time. No claim depends on the
+order. The rig starts offline (PLATFORM-NOTES #45), so `POST /api/net/enable` comes first,
+unless the run is an offline control.
 
 **Setup of the stand-in remote.** A bare repository `<tmp>/door43.git` (`git init --bare -b main`),
 with `main` at `048fcd1`, pushed from a clone of the seeded `_local_/_local_/sample_burrito`.
@@ -383,6 +386,7 @@ call "/git/remote/add/$S?remote_name=noaccess&remote_url=https://qa.door43.org/$
 push noaccess "$T"
 # 5. a bad token (401)
 push origin not-a-token
+# If a push times out, check that GET $P/version answers before you go on.
 # 6. the clone path exists: clone twice, with no move between, then clear the path
 call "/git/clone-repo/$R"; call "/git/clone-repo/$R"; call "/git/delete/$R"
 # After steps 2 to 5, record: git ls-remote https://qa.door43.org/$U/tc4-sync-spike main
@@ -393,10 +397,11 @@ qa.door43.org (see "Dry run of the owner commands" below).
 
 ### Dry run of the owner commands
 
-The three functions and steps 2 to 6 ran unchanged on the spike rig, with these changes only:
+The three functions and steps 2 to 5 ran unchanged on the spike rig, with these changes only:
 `R=door43.test/$U/tc4-sync-spike`; step 1 used the stand-in clone (copy of the mirror, then
 `pull-repo`); before step 3 a git push to the bare remote moved `main`; step 4 used
-`https://localhost/o/r`. The replies, in short:
+`https://localhost/o/r`. Step 6 put a copy of the mirror at the fixed path, then called
+`clone-repo` once and `delete` once. The replies, in short:
 
 | Step | Reply on the rig |
 |---|---|
@@ -425,6 +430,8 @@ When the replies are in, fill the two `[PENDING — owner run]` rows of the refu
 
 ## What this spike did not prove
 
+- A clone by the server's own `clone-repo`, followed by the move and the push. Run 2 cloned
+  with the git command, and run 6 used the stand-in. Owner steps 1 and 2 prove this chain.
 - Any HTTPS reply: 401, 403, the non-fast-forward text over HTTPS, and the panic without
   credentials. The libgit2 non-fast-forward check is client-side, so the text is expected to be
   the same over HTTPS (PLATFORM-NOTES #46). The owner run confirms it.
