@@ -222,11 +222,11 @@ MSYS2 zsh window of the [Windows](#windows) section.
    zsh dev-env/scripts/setup-from-pins.zsh
    ```
 
-3. Cache the 23 resources that the journeys need. Each command downloads one pinned
+3. Cache the 24 resources that the journeys need. Each command downloads one pinned
    release from Door43 through the app's own fetch path, and fails if the commit is not
-   the one given. `seed.zsh` sideloads the first 21 and writes an install record
+   the one given. `seed.zsh` sideloads the first 22 and writes an install record
    (decision D57) for each of them except the English OBS rows and the picture pack,
-   which seed without a record — 16 records in all. The last two are releases the rig
+   which seed without a record — 17 records in all. The last two are releases the rig
    lacks, which the guided fix serves as a mocked Door43:
 
    ```bash
@@ -244,6 +244,8 @@ MSYS2 zsh window of the [Windows](#windows) section.
    zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_tq v91 8be02772584ff5a5fea893a392b4f019e3efcc77
    zsh dev-env/scripts/cache-resource.zsh unfoldingWord/el-x-koine_ugnt v0.34 fc95b2b8aad08bb65ab54628ab685413a1139e97
    zsh dev-env/scripts/cache-resource.zsh Es-419_gl/es-419_tn v66 22f3d0c61e2ab4701cb869547de9c3c43da07208
+   # D97 (#646): the Spanish set pins es-419_twl at its own release.
+   zsh dev-env/scripts/cache-resource.zsh Es-419_gl/es-419_twl v18 c2d9547ec95e40c2ba085c597b127c94733feb8a
    zsh dev-env/scripts/cache-resource.zsh Es-419_gl/es-419_tw v37 7586f4ff1f0483ea40a4a68e5e1f33158e08c208
    zsh dev-env/scripts/cache-resource.zsh Es-419_gl/es-419_ta v4 26606b578c37cc2c0ee09bb7b9a291860ff59444
    zsh dev-env/scripts/cache-resource.zsh Es-419_gl/es-419_glt v42 3f9bf7e8806f2e310601d723eb201334fe3be1ab

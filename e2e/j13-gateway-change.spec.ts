@@ -53,7 +53,7 @@ const EN_KEY = 'en::unfoldingWord';
 // The Spanish Bible-set pins and the installed repository each must equal.
 const ES_SLOTS: Record<string, string> = {
   translationNotes: 'es-419_tn',
-  translationWordsLinks: 'es-419_tw',
+  translationWordsLinks: 'es-419_twl', // D97 (#646): the twl pin names a `_twl` repository
   translationWords: 'es-419_tw',
   translationAcademy: 'es-419_ta',
   simplifiedText: 'es-419_gst',
@@ -213,6 +213,7 @@ test.describe('J13 — the rig really holds two gateway-language suites', () => 
     async () => {
       for (const [name, version] of [
         ['es-419_tn', 'v66'],
+        ['es-419_twl', 'v18'],
         ['es-419_tw', 'v37'],
         ['es-419_ta', 'v4'],
       ] as const) {
