@@ -513,12 +513,18 @@ const verseText = bookJson.chapters['1']['1'].verseObjects.filter(vo => vo.type 
     translationWords: { repoPath: 'git.door43.org/ar_gt/ar_tw', version: 'v3', sha: '0ff22d80c6bca067554128c5b5e793ca0965eccb', flavor: 'parascriptural/x-bcvarticles' },
     translationAcademy: { repoPath: 'git.door43.org/ar_gt/ar_ta', version: 'v3.3', sha: 'f8246f627584fb76cd62266cd839e3c042821aa1', flavor: 'peripheral/x-peripheralArticles' },
   };
-  check('resources: §5.3 the translationWordsLinks pin names a `_twl` repository on both rungs (D97 ruling 6); the one-repo form (`<lang>_tw` in the twl slot) refuses; the ruling 7 form (en_twl with ar_gt/ar_tw) accepts',
+  // D97 ruling 6 also binds the OBS project's fallback set (§5.3, §10.6): the OBS sample's
+  // fallback twl pin is read here, and its one-repo form refuses on this rule alone. The OBS
+  // primary set carries no Bible twl slot and is not asserted.
+  const obsFallback = json(path.join(path.resolve(process.env.OBS_BURRITO || './sample-burrito-obs'), 'ingredients', 'checking/resources.json')).languageSets?.fallback;
+  const obsOneRepo = { ...obsFallback, translationWordsLinks: { ...obsFallback?.translationWords } };
+  check('resources: §5.3 the translationWordsLinks pin names a `_twl` repository on both rungs (D97 ruling 6); the one-repo form (`<lang>_tw` in the twl slot) refuses; the ruling 7 form (en_twl with ar_gt/ar_tw) accepts; the OBS sample\'s fallback twl pin too, its one-repo form refuses',
     twlSlotOk(ls.primary) && twlSlotOk(ls.fallback) &&
     !twlSlotOk(oneRepoForm) && setOk(oneRepoForm) &&          // the old form fails ONLY on the new rule
     twlSlotOk(ruling7Set) && setOk(ruling7Set) &&
-    ruling7Set.translationWordsLinks.repoPath.endsWith('/en_twl') && ruling7Set.translationWords.repoPath.endsWith('/ar_tw'),
-    `primary twl=${ls.primary.translationWordsLinks.repoPath}, fallback twl=${ls.fallback.translationWordsLinks.repoPath}; one-repo form refused; ruling 7 set accepted`);
+    ruling7Set.translationWordsLinks.repoPath.endsWith('/en_twl') && ruling7Set.translationWords.repoPath.endsWith('/ar_tw') &&
+    twlSlotOk(obsFallback) && !twlSlotOk(obsOneRepo) && !!setOk(obsOneRepo),
+    `primary twl=${ls.primary.translationWordsLinks.repoPath}, fallback twl=${ls.fallback.translationWordsLinks.repoPath}; one-repo form refused; ruling 7 set accepted; OBS fallback twl=${obsFallback?.translationWordsLinks?.repoPath}, its one-repo form refused`);
 
   // §5.3 per-pin book coverage (D41 — issue #16). OPTIONAL and additive, so a pin
   // without `books` is conformant; when present it MUST be an array of uppercase
