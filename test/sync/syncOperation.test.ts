@@ -429,6 +429,24 @@ describe('#676 crash recovery of the sync (G8)', () => {
     console.log(`[G8] kill sweep inside the calls: ${kills} kill cases, ${partial} with a part folder at the kill`);
   });
 
+  it('[G8] a server failure in the swap stops with sync.move-failed, keeps the record open, and the next start finishes it', async () => {
+    const w = await world({ outbox: true });
+    const before = w.own();
+    const staged = new Map([...w.kv.map].filter(([key]) => key.startsWith('outbox:')));
+    // the copy of the scratch copy to the project path fails once: the project folder is absent
+    w.rig.failOn(({ route }) => route.includes('/git/copy/_local_/_archive_/tc4-sync--prueba'), 1);
+    const report = await sync(w.deps(), { repoPath: REPO, session: SESSION });
+    expect([report.ok, report.code]).toEqual([false, 'sync.move-failed']);
+    expect(w.rig.repos.has(REPO)).toBe(false);
+    const [open] = opsEntriesOf(w.settings.get()).filter((e) => e.op === 'sync');
+    expect(open.report).toBeUndefined();
+    expect(open.facts.phase).toBe('swap.copy-live');
+    const stored = { read: async () => structuredClone(w.settings.get()), write: async (d: Record<string, unknown>) => { Object.assign(w.settings.get(), d); } };
+    const [entry] = await restart(w, stored);
+    expect(entry.report).toMatchObject({ op: 'sync', ok: true, facts: { finishedSwap: true } });
+    await expectOneProjectWithOwnWork(w, before, staged);
+  });
+
   it('[G8] a kill after the push and before the swap leaves the project as it was', async () => {
     const { w, before, staged, killed } = await killAfter(1, (route) => route.includes('/git/push/'));
     expect(killed).toBe(true);
