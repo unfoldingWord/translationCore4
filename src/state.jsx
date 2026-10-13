@@ -63,6 +63,7 @@ import { InternetSwitch, ensureGate, startGate } from './data/internet';
 import { currentSession, hasKeptToken, resumeKeptSession, signIn as door43SignIn, signOut as door43SignOut } from './data/share/session';
 import { desktopKeychain } from './data/share/keychain';
 import { share as door43Share, repositoryOf } from './data/share/shareOperation';
+import { standInCloneRepo, sync as door43Sync } from './data/share/syncOperation';
 import { organizationChoices } from './data/share/recommend';
 import { applyVersions, carryOverNeeds, resolveVersions, unresolvedSlots } from './data/import/tc3';
 import { PARSERS } from './data/import/parsers';
@@ -513,6 +514,11 @@ const initial = () => ({
   // #679: the open verse-text conflicts per project, folded from its journal:
   // repoPath -> { CODE: count } in canonical order, or null when unknown (D30).
   conflictsByProject: {},
+  // #678: the project whose "Sync with Door43" runs (repoPath), or null; one
+  // sync runs at a time. `syncResult`: the result of the last sync, which Home
+  // shows: { repoPath, name, report, missingPins }. Never stored.
+  syncing: null,
+  syncResult: null,
   // #679: the open project's verse-text conflicts (readVerseConflicts), the
   // team that owns their versions ({ me, names, actors }), and the review:
   // { key, error } while the conflict review shows, else null.
@@ -1831,6 +1837,25 @@ function retryOwedCheckpoint({ store, storeRef, stateRef, dispatch }, repoPath) 
  * already open again. Only the latest failure is remembered: an earlier
  * project's pending work is durable in its journal and commits at its own
  * next checkpoint. */
+/** #678 (D88 point 6): how many pins of the project at `repoPath` name a
+ * version that this computer does not have. Read from the project's pin file
+ * after a sync, never stored. 0 when it cannot be read. */
+async function missingPinCount(repoPath, actions) {
+  try {
+    const reader = new ProjectReader({ api });
+    await reader.open(repoPath);
+    const resources = await reader.readResources();
+    const { installed } = await actions.resolutionContext();
+    const pins = [
+      ...Object.values(resources?.languageSets ?? {}).flatMap((set) => Object.values(set ?? {})),
+      ...Object.values(resources?.resources?.originalLanguage ?? {}),
+    ].filter((pin) => pin && typeof pin === 'object' && pin.repoPath && pin.sha);
+    return pins.filter((pin) => !isPinLocal(installed, pin)).length;
+  } catch {
+    return 0;
+  }
+}
+
 function startLeaveCheckpoint({ store, repoPath, stateRef, dispatch }) {
   const run = checkpointCommit(store, 'leaving the project')
     .then(() => {
@@ -5948,6 +5973,8 @@ export function AppProvider({ children }) {
           a.openSignIn(project, false, flow);
           return;
         }
+        // #678: a sync needs no dialog; it runs now.
+        if (flow.kind === 'sync') return a.syncRun(project, flow);
         // "Not shared" in the cache can be a read still running, a failed read,
         // or a create whose push failed: read `origin` again before the
         // first-share dialog, so a shared project never asks again (#362 AC 2, 7).
@@ -6030,6 +6057,87 @@ export function AppProvider({ children }) {
         a.patchSh(report.ok ? { step: 'done', busy: false, report } : { step: review, busy: false, error });
         return report;
       },
+      // ---- Sync with Door43 (#678; layer 4 of epic #24). The operation is
+      //      src/data/share/syncOperation.ts; the result shows on Home. ----
+      /** The Home card's "Sync with Door43" (a shared Bible project). Only this
+       * press starts a sync: nothing syncs at start or while idle (D88 point 5).
+       * While the internet is off it asks first (D95); Not now sends nothing.
+       * No sign-in: the sign-in step comes first, and the sync runs after it. */
+      syncProject: (project) => {
+        if (stateRef.current.syncing) return undefined;
+        const flow = startShareFlow('sync');
+        return a.flowStep(flow, () => a.startShare(project, flow)).finally(() => {
+          if (!flow.dialog) closeShareFlow(flow);
+        });
+      },
+      /** Run one sync of `project` and show its result. After an ok sync the
+       * project is read again: the Home caches of the project are dropped, and
+       * an open store of the project opens again (the sync() contract). */
+      syncRun: async (project, flow) => {
+        const session = currentSession();
+        if (!session || stateRef.current.syncing) return null;
+        // The sign-in step of this sync closes: the sync shows its result on Home.
+        if (stateRef.current.modal === 'signIn' && stateRef.current.si?.flow === flow)
+          dispatch({ type: 'set', patch: { modal: null, si: null } });
+        closeShareFlow(flow);
+        const repoPath = project.id;
+        dispatch({ type: 'set', patch: { syncing: repoPath, syncResult: null } });
+        let report;
+        try {
+          // The checkpoint of a project the user just left goes first.
+          await leaveCheckpoints.get(repoPath);
+          const { coverage } = await a.resolutionContext();
+          const dev = import.meta.env.DEV === true;
+          const syncApi = Object.assign(Object.create(api), { getNetEnabled: internetAllowed });
+          // A `file://` origin is the rig's stand-in for Door43 (#673); only a
+          // development build accepts one, and only it clones from the mirror.
+          if (dev) {
+            const standIn = standInCloneRepo(api);
+            syncApi.cloneRepo = (host, org, repo) => (host === 'file' ? standIn(host, org, repo) : api.cloneRepo(host, org, repo));
+          }
+          report = await door43Sync(
+            { api: syncApi, door43Server: door43.server, coverage, ops: opsLog, allowFileRemote: dev },
+            { repoPath, session },
+          );
+        } catch (e) {
+          report = { op: 'sync', ok: false, facts: { error: String(e?.reason || e?.message || e) } };
+        }
+        let missingPins = 0;
+        if (report.ok) {
+          await a.afterSync(project);
+          missingPins = await missingPinCount(repoPath, a);
+        } else if (report.code === 'sync.auth-failed') {
+          // Door43 refused the token: forget it, so the next press asks for the password (#467).
+          await door43SignOut(desktopKeychain() ?? undefined).catch(() => {});
+          dispatch({ type: 'set', patch: { door43User: null, door43Kept: false, door43NotKept: false } });
+        }
+        dispatch({ type: 'set', patch: { syncing: null, syncResult: { repoPath, name: project.name, report, missingPins } } });
+        return report;
+      },
+      /** After an ok sync: the project on disk is a new folder. Home reads its
+       * progress and its conflicts again, and an open store of it opens again. */
+      afterSync: async (project) => {
+        const repoPath = project.id;
+        conflictsGen.set(repoPath, (conflictsGen.get(repoPath) || 0) + 1);
+        const conflicts = { ...stateRef.current.conflictsByProject };
+        delete conflicts[repoPath];
+        dispatch({ type: 'set', patch: { conflictsByProject: conflicts } });
+        invalidateProgress(repoPath);
+        const st = stateRef.current;
+        if (st.project?.id === repoPath) await a.openProject(repoPath, st.book ?? undefined, st.view);
+        await Promise.all([a.loadConflicts(project), a.loadProgress(project)]);
+      },
+      dismissSyncResult: () => dispatch({ type: 'set', patch: { syncResult: null } }),
+      /** D88 point 6: a version the synced pins name that this computer does
+       * not have. The project opens, and the Source texts screen offers its
+       * Download (the "Manage source texts" path of Settings). */
+      syncDownload: async (repoPath) => {
+        dispatch({ type: 'set', patch: { syncResult: null } });
+        await a.openProject(repoPath);
+        if (stateRef.current.project?.id !== repoPath) return;
+        await a.openSources();
+      },
+
       /** Copy link (D84 point 5): the repository URL to the clipboard. */
       shareCopyLink: async () => {
         const url = stateRef.current.sh?.report?.facts.url;

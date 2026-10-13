@@ -134,6 +134,8 @@ function DoneStep({ sh, actions }) {
       {/* D84 point 5: "Others can read it on Door43." — receive stays Phase 2, so nothing about opening it in the app. */}
       <Text role="body" data-testid="share-done-text"><span role="status">{t(sh.mode === 'upload' ? 'uploadDialog.doneText' : 'shareDialog.doneText')}</span></Text>
       <Text role="strong" data-testid="share-url" style={{ overflowWrap: 'anywhere' }}>{url}</Text>
+      {/* #678 (epic #24): the project owner gives teammates write access on Door43; tC4 does not manage it. */}
+      {sh.mode !== 'upload' && <Text role="body" data-testid="share-team-access">{t('shareDialog.teamAccess')}</Text>}
       <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
         <Button variant="secondary" size="sm" onClick={actions.shareCopyLink} data-testid="share-copy">
           {sh.copied ? t('shareDialog.copied') : t('shareDialog.copyLink')}
