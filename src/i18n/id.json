@@ -953,7 +953,7 @@
   "home.bookConflictsMany": "{n} konflik",
   "home.sync": "Sinkronkan dengan Door43",
   "home.syncing": "Menyinkronkan…",
-  "net.ask.sync": "masuk ke Door43 jika diperlukan, menerima perubahan tim Anda dari Door43, dan mengirim perubahan proyek ini ke Door43.",
+  "net.ask.sync": "masuk ke Door43 jika diperlukan dan menyinkronkan proyek ini dengan Door43.",
   "syncResult.done": "Tersinkron dengan Door43",
   "syncResult.receivedOne": "1 perubahan dari tim",
   "syncResult.receivedMany": "{n} perubahan dari tim",

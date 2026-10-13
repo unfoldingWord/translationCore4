@@ -6111,21 +6111,28 @@ export function AppProvider({ children }) {
         } catch (e) {
           report = { op: 'sync', ok: false, facts: { error: String(e?.reason || e?.message || e) } };
         }
-        let missingPins = 0;
+        // The result shows, and the button comes back, whatever the reads after the sync did.
+        const missingPins = await a.afterSyncReport(project, report, pinsBefore);
+        dispatch({ type: 'set', patch: { syncing: null, syncResult: { repoPath, name: project.name, report, missingPins } } });
+        return report;
+      },
+      /** The steps after one sync. Resolves to the D88 point 6 count; never rejects:
+       * the sync itself is done, and a failed read shows at the next read of the card. */
+      afterSyncReport: async (project, report, pinsBefore) => {
         try {
           if (report.ok) {
             await a.afterSync(project);
-            missingPins = await missingPinCount(repoPath, pinsBefore, a);
-          } else if (report.code === 'sync.auth-failed') {
+            return await missingPinCount(project.id, pinsBefore, a);
+          }
+          if (report.code === 'sync.auth-failed') {
             // Door43 refused the token: forget it, so the next press asks for the password (#467).
             await door43SignOut(desktopKeychain() ?? undefined).catch(() => {});
             dispatch({ type: 'set', patch: { door43User: null, door43Kept: false, door43NotKept: false } });
           }
-        } finally {
-          // The result shows, and the button comes back, whatever the reads after the sync did.
-          dispatch({ type: 'set', patch: { syncing: null, syncResult: { repoPath, name: project.name, report, missingPins } } });
+        } catch (e) {
+          console.error(`sync: the read after the sync failed: ${String(e?.message || e)}`);
         }
-        return report;
+        return 0;
       },
       /** After an ok sync: the project on disk is a new folder. Home reads its
        * progress and its conflicts again, and an open store of it opens again. */

@@ -953,7 +953,7 @@
   "home.bookConflictsMany": "Конфликты: {n}",
   "home.sync": "Синхронизировать с Door43",
   "home.syncing": "Синхронизация…",
-  "net.ask.sync": "войти в Door43 при необходимости, получить из Door43 изменения вашей команды и отправить в Door43 изменения этого проекта.",
+  "net.ask.sync": "войти в Door43 при необходимости и синхронизировать этот проект с Door43.",
   "syncResult.done": "Синхронизировано с Door43",
   "syncResult.receivedOne": "Изменения от команды: 1",
   "syncResult.receivedMany": "Изменения от команды: {n}",
