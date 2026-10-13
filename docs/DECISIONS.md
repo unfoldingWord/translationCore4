@@ -2655,11 +2655,13 @@ Electronite graphics DLLs by hand removed the failure on that machine.
 5. **Names (#456 Q5).** A signed artifact drops `-unsigned`:
    `tC4-<version>-windows-x64.exe` and `tC4-<version>-windows-x64.zip`. An unsigned
    artifact keeps the suffix. `BUILD-MANIFEST.json` records `"signed"`.
+6. **Release path.** rc.2 ships Windows unsigned. A signed rc.3 follows, and v4.0.0
+   promotes the rc.3 artifacts. [decided 2026-10-13 — owner, on #456; rc.2 tags when the
+   Arabic work is ready]
 
 Open [FLAG: not yet ruled]: the CI credential (an Entra app registration with the Signer role,
-by client secret or GitHub OIDC), and whether v4.0.0 comes from a signed rc.3 or from one signed
-rebuild of rc.2. #546 says that v4.0.0 promotes the rc.2 artifact without a new build, and the
-rc.2 Windows artifacts are unsigned.
+by client secret or GitHub OIDC). Ruling 6 changes #546, which says that v4.0.0 promotes the
+rc.2 artifact without a new build.
 
 Where it lands: `scripts/sign-windows.ps1`, `scripts/package-desktop.zsh`, `scripts/tc4.iss`,
 `.github/workflows/package-desktop.yml` (the signing values and the `smoke-windows-x64`
