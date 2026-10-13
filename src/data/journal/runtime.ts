@@ -44,7 +44,7 @@ import {
   refusalCodeOf as refusalCodeOfRef,
   reportError as reportErrorRef,
 } from '../../../journal/report.mjs';
-import { syncCore as syncCoreRef } from '../../../journal/sync.mjs';
+import { checkJournalFile as checkJournalFileRef, syncCore as syncCoreRef } from '../../../journal/sync.mjs';
 import type { JournalEvent } from './seal';
 import type { Story } from '../burritoStore';
 
@@ -137,6 +137,13 @@ export const isStoryReference = isStoryReferenceRef as (reference: unknown) => b
 /** R-10.5.1: the literal in the book position of a story identity key (`obs`). */
 export const STORY_BOOK_ID = STORY_BOOK_ID_REF as string;
 /** §10.5: the book position of the story decision sidecar, `checking/<toolId>/OBS.json`. */
+/** G2 (R-8.7.8): check ONE journal file by its ingredient path with the one validator,
+ * as the sync core does for each incoming file. The open from Door43 (#677) reads it. */
+export const checkJournalFile = checkJournalFileRef as (
+  files: SyncFileLayer,
+  ipath: string,
+  bytes: string,
+) => Promise<{ ok: true; actor: string; events: unknown[] } | { ok: false; actor?: string; kind: string; reason: string }>;
 export const STORY_FILE = STORY_FILE_REF as string;
 /** The inverse of storyIpath: the story number of a `content/NN.md` path, else null. */
 export const storyNumberOf = (ipath: string): number | null => {

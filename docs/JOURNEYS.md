@@ -44,7 +44,7 @@ Owner of increment numbers: the GitHub milestones, mirrored in `docs/ROADMAP.md`
 | J14 | — | — | retired: isolation is a MUST NOT row on J1 and J2 | retired | `e2e/j14-join-isolation.spec.ts` stays |
 | J15 | — | — | retired: slow open is a quality requirement on opening a project | retired | `e2e/j15-slow-open.spec.ts` stays, cited by a FR |
 | J16 | translator | Understand | Read a passage with helps and record a user comment | shipped alpha.5 | `e2e/j16-understand.spec.ts` |
-| J17 | translator | Exchange | Receive a project and continue offline | Phase 2 | none |
+| J17 | translator | Exchange | Open a shared project from Door43 on another computer | built (2026-10-13, #677; epic #24) | `e2e/j17-open-from-door43.spec.ts` (`@J17`, on the rig against the #673 stand-in) |
 | J18 | translator | Translate | Keep one version of a verse in conflict | Phase 2 (review screen built, #679; the journey proof comes with #681) | none |
 | J19 | consultant | Check | Record findings on a translation | Phase 2 | none |
 | J20 | facilitator | Start | Create an OBS project | shipped alpha.7 (#287; D74) | `e2e/j20-obs-create.spec.ts` |
@@ -296,11 +296,34 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 - Term: the user-facing word is "user comment". The journal op stays `note.add` (BURRITO-SPEC §8.5).
 - Proof: `e2e/j16-understand.spec.ts` (#117 adds the non-eng frame axis). Owner: built Increment 4 (#104); proof Increment 5 (#197).
 
-### J17 and J19 (Phase 2)
+### J17 Open a shared project from Door43 on another computer
 
-- J17 translator receives a project and continues offline.
+- Actor: translator. Activity: Exchange.
+- Precondition: a teammate shared a Bible project to a public Door43 repository (J11). This
+  computer does not have the project.
+- Steps:
+  1. On Home, click "+ Add a project". Then click "Open a project from Door43".
+  2. Type the Door43 repository as `owner/repository`, or paste its link. The project name is the
+     repository name. You can change the name.
+  3. Click "Open project". When the internet is off, tC4 asks to turn it on (D95). "Not now" stops
+     the step, and tC4 sends nothing.
+  4. tC4 gets a full copy of Door43 `main` and checks each journal file. Then the new card shows on
+     Home.
+- End state: one new git repository at `_local_/_local_/<name>`. Its files and its `HEAD` are the
+  same as Door43 `main`, and its `origin` is the Door43 repository. The project has a new actor id,
+  because identity is per path (D53(c)). Its card shows "Sync with Door43" (#678). The first sync
+  needs no other step.
+- MUST NOT: write anything when one journal file on Door43 fails the validator (G2,
+  `sync.incoming-invalid`), when the name is in use (`open-door43.name-exists`), or when the
+  repository holds an OBS project (`sync.obs-unsupported`, D98). Round 1 has no branch choice and
+  no private repository (epic #24).
+- Proof: `e2e/j17-open-from-door43.spec.ts` (`@J17`), on the rig against the #673 stand-in. The
+  refusals and the internet question: `test/sync/openFromDoor43.test.ts`. Owner: built (#677).
+
+### J19 (Phase 2)
+
 - J19 consultant records findings without drafting.
-- End states: defined when the §8 sync operations ratify (issue #22).
+- End state: defined when the §8 sync operations ratify (issue #22).
 
 ### J18 Keep one version of a verse in conflict
 

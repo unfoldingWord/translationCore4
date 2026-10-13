@@ -35,7 +35,7 @@
 // are [PENDING — owner run, #673 steps 3 and 4]. `refusalForPush` maps them by
 // the HTTP status in the reason text, as best known.
 import { checkpointMessage } from '../checkpoint';
-import { Refusal, failedReport, okReport, projectResources, syncCore, type Report } from '../journal/runtime';
+import { Refusal, checkJournalFile, failedReport, isObsMetadata, okReport, projectResources, syncCore, type Report } from '../journal/runtime';
 import { JournalStore, readJournalZipOf } from '../journal/journalStore';
 import { inProjectQueue } from '../journal/journalingStore';
 import { idbKvStore, type KvStore } from '../journal/identity';
@@ -52,7 +52,7 @@ import {
   type SwapPaths,
   type SwapPhase,
 } from '../journal/opsLog';
-import type { ServerApi } from '../serverApi';
+import { assertRepoPath, type ServerApi } from '../serverApi';
 import { resolutionRecord, resolveToolBook, type Coverage, type Tool } from '../resolve';
 import type { ResourcesFile } from '../burritoStore';
 import { NO_CONSENT } from '../internet';
@@ -184,6 +184,107 @@ export async function cloneProject(
     await deleteIfPresent(api, clonePath).catch(() => {});
     throw new Refusal('sync.move-failed', `the clone did not move to ${repoPath}`, { clonePath, ...failureOf(error) });
   }
+}
+
+// ---- Open a project from Door43 (#677; layer 4 of epic #24) -----------------
+// A translator on another computer starts from the same project: a full copy of
+// Door43 `main` by `cloneProject`, into a scratch path that Home never lists
+// (`_local_/_archive_/`). Every journal file of the copy passes the one validator
+// (G2); then one move puts it at `_local_/_local_/<name>`, the only place the app
+// lists projects. A refusal deletes the scratch copy: nothing is written. The new
+// path gives a new actor id (identity.ts), and the clone keeps `origin`, so the
+// card reads "Sync with Door43" (#678: the shared state is `origin`, D84 point 1).
+// Out of scope: private repositories, a branch choice, OBS projects (D98).
+
+const APP_ORG = '_local_/_local_';
+
+/** The Door43 repository the dialog's field names: `owner/repo` on the Door43
+ * server, or a link to a repository on it. A `file://` link (the rig stand-in)
+ * only when `allowFileRemote`. Null for anything else. */
+export const openSourceOf = (input: string, door43Server: string, allowFileRemote = false): CloneSource | null => {
+  const text = input.trim().replace(/\/+$/, '');
+  if (/^[^/\s:]+\/[^/\s:]+$/.test(text)) return cloneSourceOf(`${new URL(door43Server).origin}/${text}`);
+  return remoteAllowed(text, door43Server, allowFileRemote) ? cloneSourceOf(text, allowFileRemote) : null;
+};
+
+/** The project path of a name, or null when the name is not a folder name of
+ * letters, numbers, hyphens and underscores (the field's hint says so). */
+export const openRepoPathOf = (name: string): string | null => {
+  if (!/^[A-Za-z0-9_-]+$/.test(name.trim())) return null;
+  const repoPath = `${APP_ORG}/${name.trim()}`;
+  try {
+    assertRepoPath(repoPath);
+    return repoPath;
+  } catch {
+    return null;
+  }
+};
+
+/** Is `repoPath` in the listing already? Compared without case: the disk of
+ * macOS and Windows holds one folder for two names that differ only in case. */
+export const repoPathInUse = (listing: string[], repoPath: string): boolean =>
+  listing.some((p) => p.toLowerCase() === repoPath.toLowerCase());
+
+export interface OpenDeps {
+  /** The platform. The caller passes `getNetEnabled` as the D95 barrier, and on
+   * the rig a `cloneRepo` from `standInCloneRepo`, as for the sync. */
+  api: ServerApi;
+}
+
+/** The order of the dialog's "Open project": the name check is local and comes
+ * first; then `ask` (the D95 question: the caller passes its `internetTask('open', …)`)
+ * runs the open after a yes. Not now answers undefined, and nothing is sent or written. */
+export async function openFromDoor43Asking(
+  deps: OpenDeps & { ask: (run: () => Promise<{ repoPath: string }>) => Promise<{ repoPath: string } | undefined> },
+  request: { source: CloneSource; name: string },
+): Promise<{ repoPath: string } | undefined> {
+  const repoPath = openRepoPathOf(request.name);
+  if (repoPath && repoPathInUse(await deps.api.listLocalRepos(), repoPath))
+    throw new Refusal('open-door43.name-exists', `a project at ${repoPath} is on this computer already`, { repoPath });
+  return deps.ask(() => openFromDoor43(deps, request));
+}
+
+/** Open a project from Door43: put a full copy of `source` at
+ * `_local_/_local_/<name>` and answer its path. Throws a Refusal, and then
+ * nothing is written: `open-door43.name-exists` (checked first, before the internet),
+ * `sync.offline`, the `cloneProject` codes, `sync.obs-unsupported`, or
+ * `sync.incoming-invalid` (G2, with each failing path in `failures`). */
+export async function openFromDoor43(deps: OpenDeps, request: { source: CloneSource; name: string }): Promise<{ repoPath: string }> {
+  const { api } = deps;
+  const repoPath = openRepoPathOf(request.name);
+  if (!repoPath) throw new Error(`the project name ${JSON.stringify(request.name)} is not a folder name`);
+  if (repoPathInUse(await api.listLocalRepos(), repoPath))
+    throw new Refusal('open-door43.name-exists', `a project at ${repoPath} is on this computer already`, { repoPath });
+  if (!(await api.getNetEnabled())) throw new Refusal('sync.offline', NO_CONSENT);
+  const scratch = `_local_/_archive_/tc4-open--${repoPath.split('/')[2]}`;
+  await deleteIfPresent(api, scratch);
+  await cloneProject(api, request.source, scratch);
+  try {
+    // D98: Bible projects only
+    if (isObsMetadata(await api.getMetadataRaw(scratch)))
+      throw new Refusal('sync.obs-unsupported', 'only Bible projects open from Door43 (D98)', { repoPath });
+    // G2: every journal file passes the one validator, or nothing is written
+    const journal = await readFiles(api, scratch, (p) => p.startsWith(JOURNAL_PREFIX), false);
+    const failures: Array<{ path: string; reason: string }> = [];
+    for (const [ipath, bytes] of journal) {
+      const verdict = await checkJournalFile({ validateSegment, validateActorDoc, segmentName }, ipath, bytes);
+      if (!verdict.ok) failures.push({ path: ipath, reason: verdict.reason });
+    }
+    if (failures.length)
+      throw new Refusal('sync.incoming-invalid', `${failures.length} journal file(s) on Door43 fail the validator`, { failures });
+    // the one move; a project made at this path meanwhile refuses with the name code
+    if (repoPathInUse(await api.listLocalRepos(), repoPath))
+      throw new Refusal('open-door43.name-exists', `a project at ${repoPath} is on this computer already`, { repoPath });
+    try {
+      await api.copyRepo(scratch, repoPath, true);
+    } catch (error) {
+      throw new Refusal('sync.move-failed', `the copy did not move to ${repoPath}`, { repoPath, ...failureOf(error) });
+    }
+  } catch (error) {
+    await deleteIfPresent(api, scratch).catch(() => {});
+    throw error;
+  }
+  return { repoPath };
 }
 
 /** The `resolve` the core reads: the §5.2 resource record of one (tool, book),

@@ -86,6 +86,9 @@ export const REFUSAL_CODES = Object.freeze({
   'sync.push-failed': null, // any other push failure
   'opslog.not-loaded': null, // (G8) the ops log did not load at this start: no project opens, takes an edit or syncs until it loads
   'sync.swap-pending': null, // (G8) a swap did not finish; no open, edit or sync of the project until the next start finishes it
+  // Open a project from Door43 (src/data/share/syncOperation.ts, #677). Its other refusals are the
+  // sync codes above: sync.offline, the clone codes, sync.obs-unsupported and (G2) sync.incoming-invalid.
+  'open-door43.name-exists': null, // a project with the chosen name is on this computer already; nothing was written
 });
 
 export const isRefusalCode = (code) => typeof code === 'string' && Object.hasOwn(REFUSAL_CODES, code);
