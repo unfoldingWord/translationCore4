@@ -32,6 +32,7 @@ const VERSIONS = {
   en_ult: 'v91',
   en_ust: 'v91',
   en_tn: 'v91',
+  en_twl: 'v91',
   en_tw: 'v91',
   en_ta: 'v91',
   en_tq: 'v91',

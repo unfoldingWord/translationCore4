@@ -181,13 +181,14 @@ route on `git.door43.org`). The journey runs offline and does not move when Door
 again. It needs no cache entry beyond the seeded ones.
 
 The guided fix screen's proof (`e2e/guided-fix.spec.ts`, issue #9) needs two releases the
-rig lacks: `en_tn` v88 (the fetch case) and `en_tw` v90 (the re-pin and sideload cases).
+rig lacks: `en_tn` v88 (the fetch case) and `en_twl` v90 (the re-pin and sideload cases; the
+twl pin drives the tW tool, D96).
 Cache them once, through the app's own fetch path (the sha is the commit the DCS tags API
 names for the tag):
 
 ```bash
 zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_tn v88 c3be6e4f2d279327249ef5b14bf5d5c8b7549e35
-zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_tw v90 014524aebf4f997c123777e952856d24e3b246d2
+zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_twl v90 5429bf17520c4c0bc1be7f4454c36adaeed75485
 ```
 
 Without them the guided fix cases skip and say so.
@@ -221,11 +222,11 @@ MSYS2 zsh window of the [Windows](#windows) section.
    zsh dev-env/scripts/setup-from-pins.zsh
    ```
 
-3. Cache the 22 resources that the journeys need. Each command downloads one pinned
+3. Cache the 23 resources that the journeys need. Each command downloads one pinned
    release from Door43 through the app's own fetch path, and fails if the commit is not
-   the one given. `seed.zsh` sideloads the first 20 and writes an install record
+   the one given. `seed.zsh` sideloads the first 21 and writes an install record
    (decision D57) for each of them except the English OBS rows and the picture pack,
-   which seed without a record — 15 records in all. The last two are releases the rig
+   which seed without a record — 16 records in all. The last two are releases the rig
    lacks, which the guided fix serves as a mocked Door43:
 
    ```bash
@@ -237,6 +238,7 @@ MSYS2 zsh window of the [Windows](#windows) section.
    zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_ult v91 35d215957f3203fd2e2fac5702ce14902d417f9d
    zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_ust v91 85f274a74245cb418f85266e1a5b524bc3e91e9c
    zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_tn v91 e586762e330f482a60c52aedd1c7b3a2f155df8a
+   zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_twl v91 7cbb3419f79780ce84b92ad7d42bd476cc5d8a64
    zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_tw v91 ff5b3852c27c3a0d01b109e482eb26047dcd20e2
    zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_ta v91 ce9a1bb9431317ca888e8c1f9620caa7f5fe45fd
    zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_tq v91 8be02772584ff5a5fea893a392b4f019e3efcc77
@@ -257,7 +259,7 @@ MSYS2 zsh window of the [Windows](#windows) section.
    zsh dev-env/scripts/cache-resource.zsh uW/obs_images_360 "" 7146d5b504f6b63b9e11f7dc0b18c594d0ae179d
    # The releases that the guided fix serves (not seeded)
    zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_tn v88 c3be6e4f2d279327249ef5b14bf5d5c8b7549e35
-   zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_tw v90 014524aebf4f997c123777e952856d24e3b246d2
+   zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_twl v90 5429bf17520c4c0bc1be7f4454c36adaeed75485
    ```
 
    The cache is gitignored. Do this step once; the entries stay when the rig reseeds.

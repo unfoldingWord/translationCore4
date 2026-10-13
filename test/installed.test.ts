@@ -44,6 +44,7 @@ const pin = (repo: string, version: string, sha?: string): ResourcePin => ({
 // Owner-qualified, lowercased local identity (B9): `<owner>--<repo>`.
 const INSTALLED: InstalledMap = {
   '_local_/_sideloaded_/unfoldingword--en_tn': pin('unfoldingWord/en_tn', 'v89'),
+  '_local_/_sideloaded_/unfoldingword--en_twl': pin('unfoldingWord/en_twl', 'v89'),
   '_local_/_sideloaded_/unfoldingword--en_tw': pin('unfoldingWord/en_tw', 'v89'),
   '_local_/_sideloaded_/unfoldingword--en_ta': pin('unfoldingWord/en_ta', 'v89'),
   '_local_/_sideloaded_/es-419_gl--es-419_tn': pin('es-419_gl/es-419_tn', 'v66'),
@@ -113,13 +114,23 @@ describe('pin identity is (repoPath, sha) — a different commit is not this pin
 });
 
 describe('a language set is written only when the suite is COMPLETE (§5.3)', () => {
-  it('builds primary from the installed pins, with both tW slots on <lang>_tw (D34)', () => {
+  it('builds the English set with translationWordsLinks on en_twl and translationWords on en_tw (#644, D96)', () => {
+    // The "back to English" path: a gateway change back to English builds
+    // the set from what is installed, and must not put en_tw in the twl slot.
     const set = languageSetFromInstalled(INSTALLED, { id: 'en', org: 'unfoldingWord' });
     expect(set).not.toBeNull();
     expect(set?.gatewayLanguage).toEqual({ languageId: 'en', owner: 'unfoldingWord' });
+    expect(set?.translationWordsLinks).toEqual(INSTALLED['_local_/_sideloaded_/unfoldingword--en_twl']);
+    expect(set?.translationWords).toEqual(INSTALLED['_local_/_sideloaded_/unfoldingword--en_tw']);
+    expect(set?.translationNotes.version).toBe('v89');
+  });
+
+  it('with no <lang>_twl installed the set keeps the one-repo form (the fallback #646 removes)', () => {
+    const withoutTwl = Object.fromEntries(Object.entries(INSTALLED).filter(([key]) => !key.endsWith('--en_twl')));
+    const set = languageSetFromInstalled(withoutTwl, { id: 'en', org: 'unfoldingWord' });
+    expect(set).not.toBeNull();
     expect(set?.translationWordsLinks).toEqual(set?.translationWords);
     expect(set?.translationWords.repoPath).toMatch(/_tw$/);
-    expect(set?.translationNotes.version).toBe('v89');
   });
 
   it('REFUSES a partial suite — es-419 has notes installed but no words/academy', () => {
