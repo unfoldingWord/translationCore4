@@ -562,11 +562,11 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       expect(logs.filter((line) => line.includes(token))).toEqual([]);
 
       // The card now (test 2): the "On Door43" badge beside the name, "Shared at" and the
-      // repository path on the meta line, and Upload changes (D86 point 6).
+      // repository path on the meta line, and Sync with Door43 (D86 point 6; #678).
       await expect(page.getByTestId(`share-card-${SEEDED_ID}`)).toHaveAttribute('data-shared', '1');
       await expect(page.getByTestId(`share-badge-${SEEDED_ID}`)).toHaveText('On Door43');
       await expect(page.getByTestId(`share-state-${SEEDED_ID}`)).toHaveText(`Shared at qa.door43.org/${USER.username}/${SEEDED_PROJECT}`);
-      await expect(page.getByTestId(`share-${SEEDED_ID}`)).toHaveText('Upload changes');
+      await expect(page.getByTestId(`share-${SEEDED_ID}`)).toHaveText('Sync with Door43');
 
       // Community Checking has no Share action.
       await card.getByRole('button', { name: /Titus/ }).click();
