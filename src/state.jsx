@@ -2514,6 +2514,17 @@ async function performKeepVersion(ctx, key, keptTs) {
   return true;
 }
 
+/** #679 (one read path): the book text the editor and its save buffer start
+ * from — the store's fold projection, the text every save diffs against. Never
+ * the derived file on disk: a failed regeneration can leave that file behind
+ * the journal, and a save from it would undo a kept version. In memory, so no
+ * slower than the HTTP read it replaces. Throws when the fold has no such book. */
+export function editorBookText(store, code) {
+  const raw = store.projectedBook(code);
+  if (raw === null) throw new Error(`the project's journal holds no ${code}`);
+  return raw;
+}
+
 /** After a keep: the book of the kept verse — open, or held by the verse
  * scheduler — takes the text the fold projects, from memory, in one
  * synchronous step for rawRef, the scheduler and bookRaw. If that cannot
@@ -2525,8 +2536,7 @@ function installKeptBook({ stateRef, schedulerRef, rawRef, dispatch }, store, ke
   const open = stateRef.current.book === book;
   if (!open && sched?.bookText(book) == null) return;
   try {
-    const raw = store.projectedBook(book);
-    if (raw === null) throw new Error(`the fold projects no ${book}`);
+    const raw = editorBookText(store, book);
     let text = raw;
     if (sched?.isDirty(book)) {
       // Unsaved edits of OTHER verses stay; the kept verse takes the fold's
@@ -6661,7 +6671,7 @@ export function AppProvider({ children }) {
         dispatch({ type: 'set', patch: { book: code, chapter: 1, bookRaw: null, bookError: null, sources: {}, editing: null, helpsHover: null, helpsActive: null, pickerProgress: null, ...(closeCheck ? { checkTool: null, checkSession: null } : {}) } });
         let raw;
         try {
-          ({ usfm: raw } = await store.readBook(code));
+          raw = editorBookText(store, code); // #679: the fold, never the disk file
         } catch (e) {
           if (seq === openSeqRef.current) {
             dispatch({ type: 'set', patch: { bookError: e?.reason || e?.message || String(e) } });

@@ -12,7 +12,7 @@ import { sealAction, segmentName, validateSegment, type JournalEvent } from '../
 import { journalingRig, memKv, tickingNow } from './helpers/journalingRig';
 import { SaveScheduler } from '../src/data/saveScheduler';
 import { spliceVerse } from '../src/data/usfm/splice';
-import { __performKeepVersionForTests as keepVersion, __performLoadConflictsForTests as loadConflicts, __reducerForTests as reducer } from '../src/state.jsx';
+import { editorBookText, __performKeepVersionForTests as keepVersion, __performLoadConflictsForTests as loadConflicts, __reducerForTests as reducer } from '../src/state.jsx';
 
 const REPO = '_local_/_local_/prueba';
 const TIT_USFM = ['\\id TIT prueba', '\\h Tito', '\\mt Tito', '\\c 1', '\\p', '\\v 1 Pablo, siervo de Dios.', '\\v 2 ___', ''].join('\n');
@@ -239,5 +239,70 @@ describe('#679 SaveScheduler.unloadBook and rebaseBook refuse a retained failed 
     scheduler.markDirty('TIT', 1, '2', '___');
     expect(scheduler.isDirty('TIT')).toBe(false);
     expect(() => scheduler.unloadBook('TIT')).toThrow(/unsaved work/);
+  });
+});
+
+// Third review (2026-10-13): after a keep whose regeneration failed, the USFM
+// file on disk still holds the replaced text. A book opened later must take
+// its text from the fold (editorBookText, the read path of openBook), or its
+// next save diffs that old text against the fold and undoes the keep.
+describe('#679 a book opened after a keep starts from the fold, not the disk file', () => {
+  const failConvergeOnce = (store: JournalingStore) =>
+    vi.spyOn(store as unknown as { installAndConverge: () => Promise<void> }, 'installAndConverge').mockRejectedValueOnce(new Error('converge failed'));
+  /** openBook's load, an edit of verse 2, and the save. */
+  const openEditSave = async (store: JournalingStore) => {
+    const manual = { setTimeout: () => 0, clearTimeout: () => {} };
+    const scheduler = new SaveScheduler({ writeBook: (book, whole) => store.writeBook(book, whole), splice: spliceVerse, clock: manual });
+    scheduler.loadBook('TIT', await editorBookText(store, 'TIT'));
+    scheduler.markDirty('TIT', 1, '2', 'editado después');
+    expect(await scheduler.drain()).toBe(true);
+  };
+  const assertKept = async (store: JournalingStore, own: () => Promise<JournalEvent[]>, kept: string) => {
+    expect(store.readVerseConflicts()).toEqual([]);
+    const last = (await own()).filter((e) => e.op === 'text.verse.set' && e.chapter === '1' && e.verse === '1').sort((a, b) => (a.ts < b.ts ? -1 : 1)).at(-1)!;
+    expect(last.text).toBe(kept);
+    const disk = (await store.readBook('TIT')).usfm; // after the save's own regeneration
+    expect(disk).toContain('\\v 1 Pablo, siervo de Dios (mío).');
+    expect(disk).toContain('\\v 2 editado después');
+  };
+
+  it('normal case: the fold projection is byte-identical to the regenerated file', async () => {
+    const { store } = await conflicted();
+    expect(await editorBookText(store, 'TIT')).toBe((await store.readBook('TIT')).usfm);
+    await expect(async () => editorBookText(store, 'JON')).rejects.toThrow(/JON/);
+  });
+
+  it('(a) keep in a book that is not open, regeneration fails; then open it, edit, save: the keep survives', async () => {
+    const { store, own } = await conflicted();
+    const [conflict] = store.readVerseConflicts();
+    const mine = conflict.versions.find((v) => v.actor === store.actorId)!;
+    failConvergeOnce(store);
+    const { box, dispatch } = recorder({ project: { repoPath: REPO }, book: null, conflictReview: { key: KEY, error: null }, conflictsByProject: {}, verseConflicts: [conflict] });
+    const stateRef = { get current() { return box.state; } };
+    expect(await keepVersion({ storeRef: { current: store }, stateRef, schedulerRef: { current: null }, rawRef: { current: null }, saveRefs: [], dispatch, conflictsGen: new Map() }, KEY, mine.ts)).toBe(true);
+    expect((await store.readBook('TIT')).usfm).toContain('(suyo)'); // positive control: the disk file is stale
+    await openEditSave(store);
+    await assertKept(store, own, mine.text);
+  });
+
+  it('(b) keep in the open book, regeneration fails; switch book and back, edit, save: the keep survives', async () => {
+    const { store, own } = await conflicted();
+    const [conflict] = store.readVerseConflicts();
+    const mine = conflict.versions.find((v) => v.actor === store.actorId)!;
+    const first = await (async () => {
+      const manual = { setTimeout: () => 0, clearTimeout: () => {} };
+      const s = new SaveScheduler({ writeBook: (book, whole) => store.writeBook(book, whole), splice: spliceVerse, clock: manual });
+      s.loadBook('TIT', await editorBookText(store, 'TIT'));
+      return s;
+    })();
+    failConvergeOnce(store);
+    const { box, dispatch } = recorder({ project: { repoPath: REPO }, book: 'TIT', conflictReview: { key: KEY, error: null }, conflictsByProject: {}, verseConflicts: [conflict] });
+    const stateRef = { get current() { return box.state; } };
+    expect(await keepVersion({ storeRef: { current: store }, stateRef, schedulerRef: { current: first }, rawRef: { current: null }, saveRefs: [], dispatch, conflictsGen: new Map() }, KEY, mine.ts)).toBe(true);
+    expect(first.bookText('TIT')).toContain('(mío)'); // the open book took the kept text
+    expect((await store.readBook('TIT')).usfm).toContain('(suyo)'); // the disk file is stale
+    // Switch away and back: openBook loads TIT again.
+    await openEditSave(store);
+    await assertKept(store, own, mine.text);
   });
 });
