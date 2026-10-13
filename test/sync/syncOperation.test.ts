@@ -78,6 +78,7 @@ async function world(opts: { outbox?: boolean } = {}): Promise<World> {
   store.dispose();
   const settings = settingsDoc();
   const ops = appStart(settings);
+  await ops.recover(api);
   const own = () => new Map([...rig.repos.get(REPO)!.files].filter(([p]) => p.startsWith(`checking/journal/${actor}/`)));
   const deps = (over = api): SyncDeps => ({ api: over, kv, door43Server: 'https://qa.door43.org', coverage: {}, ops, now: () => clock.advance(17) });
   return { rig, kv, api, settings, deps, ops, actor, own };
@@ -555,13 +556,73 @@ describe('#676 crash recovery of the sync (G8)', () => {
     const w = await world();
     await w.ops.begin('sync', { repoPath: REPO, phase: 'swap.copy-live' });
     await w.ops.begin('export', { repoPath: REPO });
-    const throwing = { listLocalRepos: async () => [], deleteRepo: async () => {}, copyRepo: async () => { throw new Error('copy refused'); } };
+    const throwing = { listLocalRepos: async () => [], listPaths: async () => [], deleteRepo: async () => {}, copyRepo: async () => { throw new Error('copy refused'); } };
     const stored = storedOf(w);
     const next = new OpsLog({ read: stored.read, update: serialSettingsWriter(stored.read, stored.write), kv: w.kv });
     const resolved = await next.recover(throwing);
     expect(resolved.map((e) => e.op)).toEqual(['export']);
     expect(next.errors.map((e) => e.op)).toEqual(['sync']);
     expect(opsEntriesOf(w.settings.get()).filter((e) => e.op === 'sync' && !e.report)).toHaveLength(1);
+  });
+
+  it('[G1][G8] killed after swap.copy-previous; the next start cannot load the ops log; the translator works; the third start goes back and keeps that work', async () => {
+    const { w, killed } = await killAfter(1, (route) => route.startsWith('/api/git/copy/_local_/_local_/prueba'));
+    expect(killed).toBe(true);
+    const stored = storedOf(w);
+    // second start: the first read of the ops log fails, so recover() fails
+    forgetSharedClocks();
+    forgetProjectQueues();
+    let failOnce = true;
+    const flaky = async () => {
+      if (failOnce) {
+        failOnce = false;
+        throw new Error('client-settings not ready');
+      }
+      return stored.read();
+    };
+    const ops2 = new OpsLog({ read: flaky, update: serialSettingsWriter(stored.read, stored.write), kv: w.kv });
+    await expect(ops2.recover(w.api)).rejects.toThrow();
+    // a sync is refused until the log loads; the translator can still open and save
+    const refused = await sync({ ...w.deps(), ops: ops2 }, { repoPath: REPO, session: SESSION });
+    expect([refused.ok, refused.code]).toEqual([false, 'sync.swap-pending']);
+    const store = new JournalingStore({ api: w.api, kv: w.kv, ops: ops2 });
+    await store.open(REPO);
+    await store.writeBook('TIT', usfm('Pablo.', lateWork));
+    await store.commit('work after the failed start (tC4)');
+    store.dispose();
+    // third start: the live project changed after the swap began, so recovery goes back
+    const [entry] = await restart(w, stored);
+    expect(entry.report).toMatchObject({ op: 'sync', ok: false, code: 'sync.move-failed', facts: { wentBack: true } });
+    const live = w.rig.repos.get(REPO)!.files;
+    expect(live.get('TIT.usfm')).toContain(lateWork);
+    expect([...live].some(([p, b]) => p.startsWith(`checking/journal/${w.actor}/segments/`) && b.includes(lateWork))).toBe(true);
+    expect(w.rig.repos.has(PATHS.scratch)).toBe(false);
+    expect(await w.kv.get(previousCopyKey(REPO))).toBeUndefined();
+    // the next save keeps the work in the live project
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const after = new JournalingStore({ api: w.api, kv: w.kv });
+    await after.open(REPO);
+    await after.commit('next save (tC4)');
+    after.dispose();
+    expect(w.rig.repos.get(REPO)!.files.get('TIT.usfm')).toContain(lateWork);
+  });
+
+  it('[G8] killed after swap.copy-previous, the live project unchanged: the next start goes forward (control)', async () => {
+    const { w, before, staged, killed } = await killAfter(1, (route) => route.startsWith('/api/git/copy/_local_/_local_/prueba'));
+    expect(killed).toBe(true);
+    const [entry] = await restart(w, storedOf(w));
+    expect(entry.report).toMatchObject({ op: 'sync', ok: true, facts: { finishedSwap: true } });
+    await expectOneProjectWithOwnWork(w, before, staged);
+  });
+
+  it('a sync is refused until the ops log has loaded at this start', async () => {
+    const w = await world();
+    const fresh = appStart(settingsDoc());
+    const requests = w.rig.log.length;
+    const report = await sync({ ...w.deps(), ops: fresh }, { repoPath: REPO, session: SESSION });
+    expect([report.ok, report.code]).toEqual([false, 'sync.swap-pending']);
+    expect(w.rig.log.length).toBe(requests);
   });
 
   it('[G8] a kill after the push and before the swap leaves the project as it was', async () => {

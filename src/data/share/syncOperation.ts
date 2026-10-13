@@ -43,6 +43,7 @@ import { segmentName, validateActorDoc, validateSegment, type JournalEvent } fro
 import { verifyProjectAgainstJournal } from '../journal/verify';
 import {
   deleteIfPresent,
+  lastSegmentName,
   previousCopyKey,
   runSwap,
   syncPathsOf,
@@ -233,8 +234,9 @@ export async function sync(deps: SyncDeps, request: SyncRequest): Promise<Report
     return failedReport('sync', at, at, new Refusal('sync.auth-failed', 'sign in to Door43 first'), { repoPath });
   }
   return inProjectQueue(repoPath, async () => {
-    // G8: one sync record per project. An open one is a swap that did not finish.
-    if (deps.ops?.isOpen?.('sync', repoPath)) {
+    // G8: one sync record per project. An open one is a swap that did not finish,
+    // and a log that did not load at this start can hide one.
+    if (deps.ops?.recovered === false || deps.ops?.isOpen?.('sync', repoPath)) {
       const at = new Date().toISOString();
       return failedReport('sync', at, at,
         new Refusal('sync.swap-pending', `the sync of ${repoPath} did not finish; restart the app to finish it`), { repoPath });
@@ -383,18 +385,20 @@ async function syncRecorded(
     }
   }
 
-  // 7. the swap (G8): every phase is in the ops log before its step
-  let phase = null as SwapPhase | null;
+  // 7. the swap (G8): every phase is in the ops log before its step. The first
+  // phase also saves the live mark, which recovery reads (opsLog.ts header).
+  const liveMark = lastSegmentName(await api.listPaths(repoPath));
+  let phase: SwapPhase = 'swap.copy-previous';
   const swapNote = (next: SwapPhase): Promise<boolean> => {
     phase = next;
-    return note({ phase: next });
+    return note(next === 'swap.copy-previous' ? { phase: next, liveMark } : { phase: next });
   };
   try {
     await runSwap(api, paths, 'swap.copy-previous', swapNote);
   } catch (error) {
     // A server failure (not a kill) in this run. Going forward later is valid only
     // when nothing can change the live project meanwhile (opsLog.ts header).
-    if (phase === null || phase === 'swap.copy-previous') {
+    if (phase === 'swap.copy-previous') {
       // the live project is still whole at its path: go back now
       await deleteIfPresent(api, paths.previous).catch(() => {});
       await deleteIfPresent(api, paths.scratch).catch(() => {});

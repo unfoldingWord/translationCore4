@@ -41,10 +41,21 @@
 // (it deletes the scratch and previous copies and closes its record failed); at a
 // later phase it runs the rest of the swap once more. Only when that also fails
 // does the record stay open, and then the project cannot open, take an edit or
-// start a sync (`sync.swap-pending`) until `recover()` at the next start. So a
-// record that is open at the next start belongs to a run that was killed, or to a
-// project that no one could change; going forward then uses the scratch copy,
-// which is pushed and complete. Each swap step is safe to run again when the
+// start a sync (`sync.swap-pending`) until `recover()` at the next start.
+// A start where `recover()` fails to load the log cannot see an open record, so
+// the translator can open and change the project then. Two rules close that gap:
+//   - no sync starts until `recover()` loads the log at this start
+//     (`sync.swap-pending`, syncOperation.ts);
+//   - the live mark: at swap.copy-previous the sync saves `liveMark`, the greatest
+//     journal segment name in the live project. Each change writes a new segment,
+//     and its name is greater than every segment that the writer saw (R-8.2.4); a
+//     part delete only removes names. At swap.copy-previous or
+//     swap.delete-project, when the live project is there and holds a greater
+//     name, someone changed it after the swap began: recovery goes back (it
+//     deletes the scratch copy, keeps the live project, and closes the record
+//     failed, `sync.move-failed`). Otherwise it goes forward with the scratch
+//     copy, which is pushed and complete.
+// Each swap step is safe to run again when the
 // step after it has not run: it first deletes the target that a stopped copy
 // can leave in part. Two kill sweeps in test/sync/syncOperation.test.ts prove
 // this: a kill after each server call, and a kill inside each one (the server
@@ -122,6 +133,8 @@ export interface OpsRecorder {
   begin(op: OpsOp, facts?: Record<string, unknown>): Promise<OpsHandle>;
   /** True while a record of `op` for `repoPath` is open (#676: an unfinished sync swap). */
   isOpen?(op: OpsOp, repoPath: string): boolean;
+  /** False until `recover()` loads the log at this start (#676: no sync before it). */
+  readonly recovered?: boolean;
 }
 
 /** A failed ops write: which record, and why. */
@@ -144,7 +157,18 @@ export interface OpsRecoveryApi {
   listLocalRepos(): Promise<string[]>;
   deleteRepo(repoPath: string): Promise<void>;
   copyRepo(src: string, target: string, deleteSrc?: boolean): Promise<void>;
+  listPaths(repoPath: string): Promise<string[]>;
 }
+
+/** The live mark (module header): the greatest journal segment name in a path listing, or ''. */
+export const lastSegmentName = (paths: string[]): string => {
+  let last = '';
+  for (const path of paths) {
+    const parts = path.split('/');
+    if (parts.length === 5 && parts[0] === 'checking' && parts[1] === 'journal' && parts[3] === 'segments' && parts[4] > last) last = parts[4];
+  }
+  return last;
+};
 
 // ---- the sync swap (issue #676, G8) -------------------------------------------
 
@@ -242,6 +266,8 @@ export class OpsLog implements OpsRecorder {
   }
 
   private readonly kv: KvStore | null;
+  /** True after `recover()` loaded the log at this start. */
+  recovered = false;
 
   isOpen(op: OpsOp, repoPath: string): boolean {
     return this.entries.some((e) => e.op === op && !e.report && e.facts.repoPath === repoPath);
@@ -282,6 +308,7 @@ export class OpsLog implements OpsRecorder {
     }
     if (resolved.length) await this.update((latest) => withEntries(latest, resolved));
     this.entries = withEntries(doc, resolved)[OPS_KEY] as OpsEntry[];
+    this.recovered = true;
     this.notify();
     return resolved;
   }
@@ -313,6 +340,18 @@ export class OpsLog implements OpsRecorder {
     if (typeof repoPath !== 'string')
       return failedReport('sync', entry.startedAt, endedAt, new Error('the sync was interrupted before it named its project'), facts);
     const paths = syncPathsOf(repoPath);
+    if ((phase === 'swap.copy-previous' || phase === 'swap.delete-project') && typeof entry.facts.liveMark === 'string'
+      && (await api.listLocalRepos()).includes(repoPath)
+      && lastSegmentName(await api.listPaths(repoPath)) > entry.facts.liveMark) {
+      // the live project changed after the swap began: go back and keep it
+      await deleteIfPresent(api, paths.scratch);
+      // at swap.delete-project the previous copy may hold files that a part delete
+      // removed from the live project, so it stays (and no checkpoint deletes it)
+      if (phase === 'swap.copy-previous') await deleteIfPresent(api, paths.previous);
+      return failedReport('sync', entry.startedAt, endedAt,
+        new Refusal('sync.move-failed', 'the project changed after the swap began; the sync went back and kept the project'),
+        { ...facts, wentBack: true });
+    }
     if (isSwapPhase(phase)) {
       let saved = entry;
       await runSwap(api, paths, phase, async (next) => {

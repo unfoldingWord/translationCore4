@@ -83,6 +83,7 @@ describe.skipIf(!rigUp)('#676 one full sync against the live rig and the #673 st
     execFileSync('git', ['init', '-q', '--bare', '-b', 'main', bare]);
     netWas = await api.getNetEnabled();
     await api.enableNet();
+    await ops.recover(api); // as the app does at each start
 
     // this translator's project: TIT 1:1 drafted and checkpointed, then shared to the bare remote
     const store = new JournalingStore({ api, kv });
