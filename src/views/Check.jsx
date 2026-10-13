@@ -10,9 +10,11 @@
 //                   an error, and it never blocks drafting or other books
 //   unpinned      — the project has no pins for this tool yet
 //   not-covered   — pins are local, but neither rung covers this book
+//   old-twl       — the twl pin is the pre-release one-repo form (D97 ruling
+//                   6): never read; the project must be created again
 import React from 'react';
 import { useApp } from '../state.jsx';
-import { TOOL_SLOT } from '../data/resolve';
+import { TOOL_SLOT, oldTwlPin } from '../data/resolve';
 import { isDecided, locatorOf, referenceParts, textKeyOf } from '../data/derive';
 import { STORY_FILE } from '../data/journal/runtime';
 import { bookName } from '../data/bookNames';
@@ -67,6 +69,7 @@ const TONE = {
   unavailable: { bg: 'var(--surface-warm)', border: 'rgba(229,157,51,.4)', fg: 'var(--tc-warn-text)' },
   unpinned: { bg: 'var(--surface-app)', border: 'var(--border-input)', fg: 'var(--text-secondary)' },
   'not-covered': { bg: 'var(--surface-app)', border: 'var(--border-input)', fg: 'var(--text-secondary)' },
+  'old-twl': { bg: 'var(--surface-warm)', border: 'rgba(229,157,51,.4)', fg: 'var(--tc-warn-text)' },
 };
 
 /** The not-ready half of a tool card: which resource the tool wants, and the
@@ -237,6 +240,19 @@ function ToolCard({ tool, pre, label, progress, titleOf }) {
         </>
       )}
     </div>
+  );
+}
+
+/** D97 ruling 6 (#646): the project's twl pin comes from a pre-release build
+ * (its repository name does not end in `_twl`). Stated once for the whole
+ * picker — an OBS project has no tW card for this pin — and there is no
+ * in-app fix: the project is created again. Nothing while the pin is legal. */
+function OldTwlNotice({ pin }) {
+  if (!pin) return null;
+  return (
+    <Callout tone="warn" role="alert" data-testid="pins-old-twl" style={{ marginBottom: 16, overflowWrap: 'anywhere' }}>
+      {t('check.oldTwl')} {pin.repoPath}
+    </Callout>
   );
 }
 
@@ -1398,6 +1414,7 @@ export default function Check() {
             </Button>
           </Callout>
         )}
+        <OldTwlNotice pin={oldTwlPin(s.projectPins)} />
 
         {pre === null && !s.preflightError && (
           <p style={{ fontSize: 'var(--fs-ui)', color: 'var(--text-tertiary)' }}>{t('check.checking')}</p>

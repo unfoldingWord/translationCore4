@@ -30,7 +30,7 @@ import { GATEWAYS, gatewayKey, gatewayDisplayName, DCS_HOST, orgForRepoName } fr
 import { fetchAndInstallPin, latestReleaseTag, identifyExistingInstall, releaseCommitSha, rezip, unwrapExport, verifySideload } from './data/resourceFetch';
 import { isNotFoundError } from './data/serverApi';
 import { readInstalled, recordInstalled, coverageFromLocal, languageSetFromInstalled, gatewayBiblesFromInstalled, mergeOptionalPins, isPinLocal, unsatisfiedProjectPinFor, pinsPreferringInstalled, localRepoPathFromRepoPath, installedPathFor, discoverOnDisk, flavorOfMetadata } from './data/installed';
-import { OBS_TOOL_SLOT, TOOL_SLOT, coverageFor, preflightObsTool, preflightToolBook, recordMatchesResolution, resolutionRecord, resolveObsSetSlot, resolveToolBook, resolveSetSlot, samePath } from './data/resolve';
+import { OBS_TOOL_SLOT, TOOL_SLOT, coverageFor, oldTwlPin, preflightObsTool, preflightToolBook, recordMatchesResolution, resolutionRecord, resolveObsSetSlot, resolveToolBook, resolveSetSlot, samePath } from './data/resolve';
 import {
   deriveForProject,
   deriveObsItems,
@@ -2755,6 +2755,13 @@ function loadProjectPins({ store, repoPath, storeRef, stateRef, actions, dispatc
   const settled = read
     .then(async (pins) => {
       if (!stillCurrent()) return;
+      // D97 ruling 6 (#646): a twl pin that does not name a `_twl` repository
+      // (either rung; an OBS project's fallback set too) was written by a
+      // pre-release build. The document lands as read; every reader of the
+      // twl slot asks `oldTwlPin(projectPins)` first (the preflight, the
+      // Understand Words slot, the Check picker) and answers 'old-twl'
+      // without a read. Not stored: a gateway change and an upgrade replace
+      // `projectPins` without this read, and a stored verdict would go stale.
       dispatch({ type: 'set', patch: { projectPins: pins, projectPinsLoaded: true, projectPinsError: null } });
       // Round 37: the source panes are pin-driven — resolve them now that
       // the pins are known (openBook deferred while they were loading). The
@@ -2920,6 +2927,8 @@ async function loadUnderstandSlot({
   tool,
   deriveOpts = {},
 }) {
+  // D97 ruling 6 (#646): the pre-release one-repo twl pin is never read.
+  if (slot === 'translationWordsLinks' && oldTwlPin(st.projectPins)) return { state: 'old-twl' };
   const resolved = resolveSetSlot(st.projectPins, slot, book, coverage);
   const unavailable = unavailableHelpSlot(st, resolved, sets, slot, installed);
   if (unavailable) return unavailable;
@@ -3205,7 +3214,12 @@ async function performRunPreflight({ stateRef, dispatch, actions }) {
       ? preflightObsTool(st.projectPins, tool, {
           isLocal: (pin) => isPinLocal(installed, pin), online,
         })
-      : preflightToolBook(st.projectPins, tool, st.book, {
+      // D97 ruling 6 (#646): tW never resolves through the pre-release
+      // one-repo twl pin — no session, no picker derivation. (An OBS project
+      // reads `obs-twl`, another pin; its message is the picker's callout.)
+      : tool === 'translationWords' && oldTwlPin(st.projectPins)
+        ? { tool, book: st.book, state: 'old-twl', resolution: null, needs: null }
+        : preflightToolBook(st.projectPins, tool, st.book, {
           coverage,
           isLocal: (pin) => isPinLocal(installed, pin),
           online,
@@ -3223,7 +3237,9 @@ async function waitForToolPreflightReady(runPreflight, stateRef, tool, ms = 20_0
   const deadline = Date.now() + ms;
   while (Date.now() < deadline) {
     await runPreflight();
-    if (stateRef.current.preflight?.[tool]?.state === 'ready') return true;
+    const state = stateRef.current.preflight?.[tool]?.state;
+    if (state === 'ready') return true;
+    if (state === 'old-twl') return false; // D97 ruling 6: a clear no, not "not yet" — the pins will not change here
     await new Promise((r) => setTimeout(r, 100));
   }
   return stateRef.current.preflight?.[tool]?.state === 'ready';

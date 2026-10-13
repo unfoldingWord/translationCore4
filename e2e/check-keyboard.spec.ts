@@ -29,6 +29,7 @@ import { verifyAllJournaledProjects } from './helpers/journal';
 
 const PINS = () => ({
   tn: pinForSideloaded('en_tn', 'v91'),
+  twl: pinForSideloaded('en_twl', 'v91'),
   tw: pinForSideloaded('en_tw', 'v91'),
   ta: pinForSideloaded('en_ta', 'v91'),
 });
@@ -114,10 +115,11 @@ const frPin = (name: string, n: number) => ({
  * carries a fetch button for its missing primary. */
 function writeFallbackPins(): void {
   const en = PINS();
-  const setFor = (gw: { languageId: string; owner: string }, tn: unknown, tw: unknown, ta: unknown) => ({
+  // Two pins (D96/D97 ruling 6): the twl slot names a `_twl` repository.
+  const setFor = (gw: { languageId: string; owner: string }, tn: unknown, twl: unknown, tw: unknown, ta: unknown) => ({
     gatewayLanguage: gw,
     translationNotes: tn,
-    translationWordsLinks: tw,
+    translationWordsLinks: twl,
     translationWords: tw,
     translationAcademy: ta,
   });
@@ -126,8 +128,8 @@ function writeFallbackPins(): void {
   const file: Record<string, unknown> = {
     schemaVersion: 2,
     languageSets: {
-      primary: setFor({ languageId: 'fr', owner: 'unfoldingWord' }, frPin('fr_tn', 1), frPin('fr_tw', 2), frPin('fr_ta', 3)),
-      fallback: setFor({ languageId: 'en', owner: 'unfoldingWord' }, en.tn, en.tw, en.ta),
+      primary: setFor({ languageId: 'fr', owner: 'unfoldingWord' }, frPin('fr_tn', 1), frPin('fr_twl', 4), frPin('fr_tw', 2), frPin('fr_ta', 3)),
+      fallback: setFor({ languageId: 'en', owner: 'unfoldingWord' }, en.tn, en.twl, en.tw, en.ta),
     },
   };
   // The writeProjectPins carry-forward rule: keep every top-level field this
