@@ -483,8 +483,9 @@ On a failure the job uploads `dist-desktop/smoke-*.log` as
 ## Windows x64 (#181)
 
 The `windows-x64` job runs the same script on `windows-2025`, under MSYS2's
-`zsh`. Only the host-specific steps differ. Nothing is signed. Windows signing
-is #456 (D89 point 4). Issue #242 adds the Windows installer.
+`zsh`. Only the host-specific steps differ. A manual run signs the build (#456,
+see Signing below); every other run builds unsigned. Issue #242 adds the
+Windows installer.
 
 ### Artifact layout
 
@@ -500,12 +501,13 @@ the debug variant). That folder holds:
 | `lib\`, `resources\` | clients, app resources, templates, webfonts; the bundled English suite (#163) |
 | `Rocket.toml`, `LICENSE`, `licenses\`, `THIRD-PARTY-NOTICES.md`, `BUILD-MANIFEST.json` | the same as macOS and Linux |
 | `smoke-installed.ps1`, `smoke-api.cjs`, `smoke-journal.cjs` | post-install proof using PowerShell and the bundled runtime; the latter is the bundled production `JournalingStore` lifecycle |
-| `icon.ico`, `README.txt` | tC4 icon and unsigned pilot instructions |
+| `icon.ico`, `README.txt` | tC4 icon and pilot instructions |
 
 ### Install and launch
 
 The production build emits `tC4-<version>-windows-x64-unsigned.exe` and the
-portable zip. The installer uses the same tested staged payload, excluding the
+portable zip. A signed build emits `tC4-<version>-windows-x64.exe` and
+`tC4-<version>-windows-x64.zip` (see Signing below). The installer uses the same tested staged payload, excluding the
 batch launcher and POSIX smoke script. Debug builds remain portable zips.
 
 1. Download the `.exe` installer from the workflow run and open it.
@@ -517,11 +519,68 @@ batch launcher and POSIX smoke script. Debug builds remain portable zips.
    directly without a batch console. To keep it on the taskbar, use Windows'
    **Pin to taskbar** command.
 
-The app is unsigned. If Windows shows **Windows protected your PC**, select
-**More info**, then **Run anyway**, if available and you trust the source.
-Organizational policy may block this route. Record actual prompts in the pilot
-witness; a fixed warning count is not promised. The interactive Windows 11
-witness remains pending (see `docs/evidence/windows-installer-242.md`).
+A signed build names the publisher on the Artifact Signing certificate (#456
+Q3). SmartScreen can still show
+**Windows protected your PC** while the publisher builds reputation. Then
+**More info** shows the publisher name, and **Run anyway** continues. An
+unsigned build shows **Unknown publisher**. Organizational policy may block
+unsigned applications. Record actual prompts in the pilot witness; a fixed
+warning count is not promised. The interactive Windows 11 witness remains
+pending (see `docs/evidence/windows-installer-242.md`).
+
+To check a signature, open the installer's **Properties → Digital Signatures**,
+or run this in PowerShell:
+
+```powershell
+Get-AuthenticodeSignature .\tC4-<version>-windows-x64.exe | Format-List Status,SignerCertificate,TimeStamperCertificate
+```
+
+### Signing (#456)
+
+The build signs with Azure Artifact Signing. It signs only on a manual run
+(**Run workflow** on `package-desktop`), and only when the repository variable
+`AZURE_SIGNING_ENDPOINT` is set. Every other run builds unsigned. A pull request
+gets no secrets, so it always builds unsigned.
+
+What a signed run does:
+
+1. Before step 1, `scripts/sign-windows.ps1 -Setup` downloads two pinned NuGet
+   packages, checks their SHA-256, and writes `metadata.json`. The packages are
+   `Microsoft.Windows.SDK.BuildTools` 10.0.26100.4188 (for `signtool.exe`) and
+   `Microsoft.ArtifactSigning.Client` 1.0.128 (the signtool dlib).
+2. After `brand-windows.mjs` changes `electron.exe`, the script signs every
+   `.exe`, `.dll` and `.node` file in the staged folder that has no signature.
+   It does not sign over a valid signature, so the Microsoft runtime DLLs keep
+   Microsoft's signature. Any other signature status stops the build.
+3. The manifest then hashes the signed `server.exe`, and the smoke test runs the
+   signed files.
+4. Inno Setup signs the installer and its uninstaller through the same script
+   (`SignTool=tc4sign`, `SignedUninstaller=yes`).
+5. The artifacts drop `-unsigned` from their names, and `BUILD-MANIFEST.json`
+   records `"signed": true`.
+6. `smoke-windows-x64` fails if the installer, or any installed `.exe`, `.dll`
+   or `.node` file, is not `Valid`. It also fails if the manifest and the file
+   name do not agree.
+
+Every signature carries an RFC 3161 timestamp from
+`http://timestamp.acs.microsoft.com`. An Artifact Signing certificate is valid
+for three days, so a signature without a timestamp stops being valid.
+
+The credential is an Entra app registration that has the **Artifact Signing
+Certificate Profile Signer** role on the certificate profile. Set these values
+in the repository settings:
+
+| Name | Kind | Value |
+|---|---|---|
+| `AZURE_SIGNING_ENDPOINT` | variable | the regional endpoint of the signing account, for example `https://eus.codesigning.azure.net` |
+| `AZURE_SIGNING_ACCOUNT` | variable | the Artifact Signing account name |
+| `AZURE_SIGNING_PROFILE` | variable | the certificate profile name |
+| `AZURE_TENANT_ID` | secret | the Entra tenant ID |
+| `AZURE_CLIENT_ID` | secret | the app registration's client ID |
+| `AZURE_CLIENT_SECRET` | secret | the app registration's client secret |
+
+The endpoint must match the region of the account. A wrong region gives a 403
+error. A client secret expires. Record its expiry date when you create it.
 
 Portable fallback: extract the zip once and run `start-tc4.cmd`. The installed
 and portable production copies use the same store. Close one before opening
@@ -608,9 +667,10 @@ checks reinstall/uninstall preserve a project that it wrote through the app.
 
 ### Known limits
 
-- **Unsigned.** Windows signing is #456 (D89 point 4). Security prompts and icon appearance still
-  need a browser-download witness on Windows 11. The earlier Windows 10 zip
-  witness does not prove this installer.
+- **Signed on manual runs only.** Merges to `main` and pull requests build
+  unsigned (#456). A signed build still needs a browser-download witness on
+  Windows 11 for its security prompts and icon appearance. The earlier Windows
+  10 zip witness does not prove this installer.
 - **CI is Windows Server 2025.** The installed-app job uses a fresh runner and
   profile, validates shortcuts and project persistence, and removes developer
   tools from PATH. It does not represent every DLL/runtime configuration of a
