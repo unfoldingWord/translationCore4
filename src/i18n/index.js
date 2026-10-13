@@ -3,12 +3,13 @@
 // so a later switch to platform i18n (/api/i18n, pankosmia i18nContext) is a
 // resolver swap, not a call-site rewrite.
 //
-// #522, #622: the catalogs in LOCALES ship with the app, and the active one is a small external
+// #522, #622, #649: the catalogs in LOCALES ship with the app, and the active one is a small external
 // store. `setLocale` notifies its listeners, and `useLocale` subscribes a React
 // tree to it, so a preview and a rollback refresh every visible string without
 // a reload, a remount or a locale-based key. `t(key, vars, fallback)` stays for
 // every caller, React or not.
 import { useSyncExternalStore } from 'react';
+import ar from './ar.json';
 import en from './en.json';
 import es419 from './es-419.json';
 import fr from './fr.json';
@@ -22,7 +23,7 @@ import vi from './vi.json';
 export { LOCALES } from './locales.js';
 export const DEFAULT_LOCALE = 'en';
 
-const catalogs = { en, 'es-419': es419, fr, hi, 'pt-BR': ptBR, id, uk, ru, vi };
+const catalogs = { en, 'es-419': es419, fr, hi, 'pt-BR': ptBR, id, uk, ru, vi, ar };
 let current = DEFAULT_LOCALE;
 const listeners = new Set();
 // The document's lang is the displayed locale from the first paint (index.html
