@@ -23,6 +23,7 @@ export default function BookRail() {
           <RailGroup key={code} active={active}>
             <BookTile layout="row" active={active} name={bookName(code)}
               percent={pct ?? 0} meta={pct != null ? `${pct}%` : ''}
+              metaTitle={pct != null ? t('draft.bookPercentTitle', { n: pct }) : undefined}
               onClick={() => actions.openBook(code)} />
             {active && (
               <RailNumbers>

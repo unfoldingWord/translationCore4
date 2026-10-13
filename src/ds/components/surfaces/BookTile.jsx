@@ -11,7 +11,7 @@ import { Text } from '../primitives/Text.jsx';
 import { Progress } from '../primitives/Progress.jsx';
 
 /** Book button with its drafting progress. */
-export function BookTile({ name, percent = 0, meta, layout = 'tile', active, onClick, style, ...rest }) {
+export function BookTile({ name, percent = 0, meta, metaTitle, layout = 'tile', active, onClick, style, ...rest }) {
   const row = layout === 'row';
   return (
     <Surface as="button" tone="accent" interactive={row ? 'row' : 'choice'} selected={active}
@@ -20,7 +20,7 @@ export function BookTile({ name, percent = 0, meta, layout = 'tile', active, onC
                textAlign: 'start', cursor: 'pointer', font: 'inherit', ...style }} {...rest}>
       <Stack direction="row" gap={6} justify="between" align="baseline" style={{ marginBottom: row ? 7 : 8 }}>
         <Text role="ui" truncate style={{ fontSize: row ? 'var(--fs-ui-md)' : 'var(--fs-ui)' }}>{name}</Text>
-        <Text role="labelNum">{meta != null ? meta : percent + '%'}</Text>
+        <Text role="labelNum" title={metaTitle}>{meta != null ? meta : percent + '%'}</Text>
       </Stack>
       <Progress value={percent} height={row ? 5 : 4} />
     </Surface>
