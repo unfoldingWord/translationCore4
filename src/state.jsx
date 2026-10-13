@@ -3229,7 +3229,9 @@ async function waitForToolPreflightReady(runPreflight, stateRef, tool, ms = 20_0
   const deadline = Date.now() + ms;
   while (Date.now() < deadline) {
     await runPreflight();
-    if (stateRef.current.preflight?.[tool]?.state === 'ready') return true;
+    const state = stateRef.current.preflight?.[tool]?.state;
+    if (state === 'ready') return true;
+    if (state === 'old-twl') return false; // D97 ruling 6: a clear no, not "not yet" — the pins will not change here
     await new Promise((r) => setTimeout(r, 100));
   }
   return stateRef.current.preflight?.[tool]?.state === 'ready';
