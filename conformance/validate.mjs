@@ -495,6 +495,31 @@ const verseText = bookJson.chapters['1']['1'].verseObjects.filter(vo => vo.type 
     twoSets && indep && shaOk,
     `primary=${ls?.primary?.gatewayLanguage?.languageId}, fallback=${ls?.fallback?.gatewayLanguage?.languageId}; sha grammar + negative controls checked`);
 
+  // §5.3 ruling 6 (D97, issue #646): the `translationWordsLinks` pin MUST name a repository
+  // whose name ends in `_twl`. The one-repo form (the slot names `<lang>_tw`) is not legal:
+  // DCS builds the TWL TSVs of a `<lang>_tw` export from `<lang>_twl` master, not from a
+  // release (D96). Ruling 7: a gateway organization with no `_twl` repository pins the
+  // bundled `en_twl` with its own `<lang>_tw` — the only set that mixes two languages.
+  // Fixtures: the sample (two-repository form, both rungs); the pre-#646 one-repo form of
+  // the sample's primary set (refuses); an `ar_gt` set in the ruling 7 form (accepts;
+  // pins [VERIFIED — git.door43.org tags API, 2026-10-12]: ar_tn v3.2, ar_tw v3, ar_ta v3.3;
+  // `ar_gt/ar_twl` answers HTTP 404).
+  const twlSlotOk = s => typeof s?.translationWordsLinks?.repoPath === 'string' && /_twl$/.test(s.translationWordsLinks.repoPath);
+  const oneRepoForm = { ...ls.primary, translationWordsLinks: { ...ls.primary.translationWords } };
+  const ruling7Set = {
+    gatewayLanguage: { languageId: 'ar', owner: 'ar_gt' },
+    translationNotes: { repoPath: 'git.door43.org/ar_gt/ar_tn', version: 'v3.2', sha: '2833c35c934bb3595e4a421510b8ac78420b09cc', flavor: 'parascriptural/x-bcvnotes' },
+    translationWordsLinks: { ...ls.fallback.translationWordsLinks },
+    translationWords: { repoPath: 'git.door43.org/ar_gt/ar_tw', version: 'v3', sha: '0ff22d80c6bca067554128c5b5e793ca0965eccb', flavor: 'parascriptural/x-bcvarticles' },
+    translationAcademy: { repoPath: 'git.door43.org/ar_gt/ar_ta', version: 'v3.3', sha: 'f8246f627584fb76cd62266cd839e3c042821aa1', flavor: 'peripheral/x-peripheralArticles' },
+  };
+  check('resources: §5.3 the translationWordsLinks pin names a `_twl` repository on both rungs (D97 ruling 6); the one-repo form (`<lang>_tw` in the twl slot) refuses; the ruling 7 form (en_twl with ar_gt/ar_tw) accepts',
+    twlSlotOk(ls.primary) && twlSlotOk(ls.fallback) &&
+    !twlSlotOk(oneRepoForm) && setOk(oneRepoForm) &&          // the old form fails ONLY on the new rule
+    twlSlotOk(ruling7Set) && setOk(ruling7Set) &&
+    ruling7Set.translationWordsLinks.repoPath.endsWith('/en_twl') && ruling7Set.translationWords.repoPath.endsWith('/ar_tw'),
+    `primary twl=${ls.primary.translationWordsLinks.repoPath}, fallback twl=${ls.fallback.translationWordsLinks.repoPath}; one-repo form refused; ruling 7 set accepted`);
+
   // §5.3 per-pin book coverage (D41 — issue #16). OPTIONAL and additive, so a pin
   // without `books` is conformant; when present it MUST be an array of uppercase
   // 3-character book codes. The point of the field is that it stays true when the
@@ -548,28 +573,39 @@ const verseText = bookJson.chapters['1']['1'].verseObjects.filter(vo => vo.type 
 
   // §5.2 resolution records (D17; D30 constraint 1): each per-(tool, book) decision file
   // records the resource its check list derived from — tN: the tn pin; tW: the twl pin —
-  // and that record MUST equal exactly one rung's pin. Ladder (D30 constraint 2): the
+  // and that record MUST equal a rung's pin. Ladder (D30 constraint 2): the
   // automatic fallback is exactly primary → fallback, driven by book coverage.
+  // Equal pins (D97, issue #646): when the record's pin equals BOTH rungs' pins (the ruling 7
+  // form pins `en_twl` on both), it resolves to the first rung of the ladder, primary.
   const TOOL_SLOT = { translationWords: 'translationWordsLinks', translationNotes: 'translationNotes' };
+  const LADDER = ['primary', 'fallback'];
   // D58: the pin match is (repoPath + sha) — the sha is the identity; release
   // tags are not enforced upstream, so `version` is a display label only.
-  const rungOf = df => {
+  const rungOf = (df, sets = ls) => {
     const slot = TOOL_SLOT[df.tool];
-    const matches = ['primary', 'fallback'].filter(r =>
-      ls[r][slot].repoPath === df.resource.repoPath && ls[r][slot].sha === df.resource.sha);
-    return matches.length === 1 &&
-      (!('languageSet' in df.resource) || df.resource.languageSet === matches[0]) ? matches[0] : null;
+    const rung = LADDER.find(r =>
+      sets[r][slot].repoPath === df.resource.repoPath && sets[r][slot].sha === df.resource.sha) ?? null;
+    return rung && (!('languageSet' in df.resource) || df.resource.languageSet === rung) ? rung : null;
   };
   const dfW = json(ING('checking/translationWords/TIT.json'));
   const dfN = json(ING('checking/translationNotes/TIT.json'));
   const foreign = { tool: 'translationNotes', resource: { repoPath: 'git.door43.org/x/other_tn', sha: '0'.repeat(40) } };
+  // Equal-pins fixture: the ruling 7 `ar_gt` set (defined above) as the primary rung, so the
+  // twl pin of both rungs is the same `en_twl` repoPath + sha.
+  const equalSets = { primary: ruling7Set, fallback: ls.fallback };
+  const { repoPath: twlPath, sha: twlSha } = ls.fallback.translationWordsLinks;
+  const equalRec = { tool: 'translationWords', resource: { repoPath: twlPath, sha: twlSha } };
+  const equalRecPrimary = { tool: 'translationWords', resource: { repoPath: twlPath, sha: twlSha, languageSet: 'primary' } };
+  const equalRecFallback = { tool: 'translationWords', resource: { repoPath: twlPath, sha: twlSha, languageSet: 'fallback' } };
   const resolve = (coverage, book) => (coverage.primary.includes(book) ? 'primary' : 'fallback');
-  const cov = { primary: ['TIT', 'JON', 'RUT', '3JN'] };   // es-419 tag coverage (evidence 2026-07-31)
-  check('resolution: §5.2 files record the resolved (tool, book) resource matching exactly one rung; two-rung coverage ladder primary→fallback (D17/D30)',
+  const cov = { primary: ['TIT', 'JON', 'RUT', '3JN'] };   // es-419_twl v18 tag coverage (evidence 2026-07-31; tree read again 2026-10-12)
+  check('resolution: §5.2 files record the resolved (tool, book) resource matching a rung; a pin equal to both rungs resolves to primary (D97); two-rung coverage ladder primary→fallback (D17/D30)',
     rungOf(dfW) === 'primary' && rungOf(dfN) === 'primary' && rungOf(foreign) === null &&
+    rungOf(equalRec, equalSets) === 'primary' && rungOf(equalRecPrimary, equalSets) === 'primary' &&
+    rungOf(equalRecFallback, equalSets) === null &&          // `languageSet` MUST agree with the resolved rung
     resolve(cov, 'TIT') === 'primary' && resolve(cov, 'HEB') === 'fallback' &&
-    Object.keys(ls).every(r => ['primary', 'fallback'].includes(r)),
-    `tW→${rungOf(dfW)}, tN→${rungOf(dfN)}; foreign record rejected; HEB (uncovered) → fallback`);
+    Object.keys(ls).every(r => LADDER.includes(r)),
+    `tW→${rungOf(dfW)}, tN→${rungOf(dfN)}; foreign record rejected; equal pins→${rungOf(equalRec, equalSets)}, equal pins+languageSet fallback→${rungOf(equalRecFallback, equalSets)}; HEB (uncovered) → fallback`);
   // §5.3 extraScripture (normative since 1.5-draft — D10/OPEN-QUESTIONS #13; D58 re-based
   // identity): gateway source pins for the source panes. Entry shape {id, repoPath, sha,
   // flavor} with sha REQUIRED (40 lowercase hex — the pin's identity) and `version` an

@@ -73,10 +73,13 @@ repos directory). Do not run them on a clean clone.
 ## Notes on the sample's pins (formerly a `note` field inside resources.json)
 
 Two-language-set resource pinning (D17/D30, BURRITO-SPEC §5.3). Path-authoritative;
-metadata.json `relationships` mirrors these pins. The tW slots both name `<lang>_tw`:
-its sb-zip export carries the TWL link TSVs and the payload articles together (D34).
+metadata.json `relationships` mirrors these pins. The tW tool has two pins (D96, D97):
+`translationWordsLinks` names `<lang>_twl` (`es-419_twl` v18, `en_twl` v91) and
+`translationWords` names `<lang>_tw`, each at its own release. A `translationWordsLinks`
+pin whose repository name does not end in `_twl` is not legal (D97 ruling 6).
 Pins verified: `docs/evidence/es419-suite-pins-2026-07-31.md` +
-`tw-twl-sbzip-combined-2026-08-03.md`. The field moved here because the §8.8 seed
+`tw-twl-sbzip-combined-2026-08-03.md`; the `_twl` tag commits were read again from the
+git.door43.org tags API on 2026-10-12. The field moved here because the §8.8 seed
 round-trip must reproduce resources.json from the §5.3 flatten, which carries pin
 slots only — an unknown top-level field refuses the seed instead of being dropped.
 The sample is REQUIRED to be seedable: its sidecar files carry records in the fold's

@@ -2565,3 +2565,63 @@ Where it lands: `docs/BURRITO-SPEC.md` §5.3 (version 1.20), `src/data/installed
 `scripts/package-desktop.zsh` (`BUNDLED_RESOURCES`), `docs/PACKAGING.md`, the rig seed
 (`dev-env/scripts/seed.zsh`, `write-install-records.mjs`, `dev-env/README.md`), and the tests
 `test/twlPin.test.ts`, `test/installed.test.ts` and `scripts/desktop-resources.test.cjs`.
+
+## D97 (2026-10-12, project-owner rulings) **The one-repo tW form is retired: the `translationWordsLinks` pin MUST name a `_twl` repository. A gateway with no `_twl` repository pins the bundled `en_twl` with its own `<lang>_tw`. A tC3 import pins the `<lang>_twl` release closest in date to its `<lang>_tw` release. Amends D34 and D17.** [issue #646, rulings 6–8 and the slicing comment of 2026-10-12; evidence in issue #640; part of epic #648]
+
+Context. D96 (#644) gave the bundled English set two pins. Gateway-language sets still used
+the one-repo form: the `translationWordsLinks` slot named `<lang>_tw`, whose DCS export takes
+the TWL TSVs from `<lang>_twl` `master`, not from a release [VERIFIED for `en_tw` — live
+fetches, 2026-10-12; issue #640. The same DCS export path serves every gateway]. Three
+gateway organizations publish no `_twl` repository: `ar_gt`, `Door43-Catalog` (`ml`,
+`ur-deva`) [VERIFIED — live DCS queries, 2026-10-12; all 19 entries of `src/data/gateways.ts`
+match their `hasTwl` value]. Rulings 1–5 of D96 apply here too.
+
+6. **The old form is not legal.** The `translationWordsLinks` slot MUST name a repository
+   whose name ends in `_twl`. BURRITO-SPEC §5.3 no longer says that both slots MAY name the
+   same repository. When tC4 opens a project whose TWL pin does not end in `_twl`, on either
+   rung, it MUST NOT read TWL from that pin. It shows a clear message: the project's TWL pin
+   comes from a pre-release build, and the project must be recreated. This also catches
+   projects that a pre-#646 build created with a gateway primary set or by tC3 import. An
+   OBS project's fallback set carries the same slot; the same rule applies.
+7. **A gateway with no `_twl` repository uses English TWL with its own tW.** Its language set
+   pins `translationWordsLinks` to the bundled English `en_twl` release and
+   `translationWords` to `<lang>_tw`. This is the only case where one set mixes two
+   languages (amends D17: a set is a coherent suite, with this one exception). It works
+   because a TWL row carries only original-language words and article links, with no
+   gateway-language text. What decides "no `_twl` repository" is the organization's
+   `hasTwl: false` entry in `src/data/gateways.ts`, per organization — not "not installed".
+   A gateway with `hasTwl: true` whose `_twl` is not installed has an incomplete set and
+   must download it; it never falls back to English TWL. Two Arabic organizations exist:
+   `BSOJ` (`hasTwl: true`) and `ar_gt` (`hasTwl: false`). With the §4.2 tw article gate
+   (D96's companion, issue #643), an `ar_gt` project shows only the English TWL rows whose
+   article exists in `ar_tw`.
+   *Equal pins on two rungs.* In a ruling 7 project, `primary.translationWordsLinks` and
+   `fallback.translationWordsLinks` are the same `en_twl` repoPath and sha. A §5.2 resolution
+   record whose pin equals both rungs resolves to `primary`, the first rung of the ladder.
+   The app already does this (`rungPinning` takes the first match in `LADDER`); the harness
+   `rungOf` now does the same.
+8. **tC3 import.** A tC3 project records only a tW version (`tWordsGateway`). For the TWL pin,
+   the import uses the `<lang>_twl` release with the release date closest to the recorded
+   `<lang>_tw` release date. If there is none, it uses the latest `<lang>_twl` release. For a
+   gateway with `hasTwl: false`, it pins the bundled `en_twl` per ruling 7.
+
+Delivery [decided 2026-10-12 — owner comment on #646]: four pull requests. Slice 1 is this
+decision, BURRITO-SPEC §5.2 and §5.3 (version 1.22), the harness check and the `rungOf`
+fix, and the reference samples in the two-repository form (`es-419_twl` v18
+`c2d9547ec95e40c2ba085c597b127c94733feb8a`, `en_twl` v91
+`7cbb3419f79780ce84b92ad7d42bd476cc5d8a64` [VERIFIED — git.door43.org tags API,
+2026-10-12]). Slice 2 is the set selector (`languageSetFromInstalled` drops the `?? tw`
+fallback and applies ruling 7), the `_twl` gateway download role, the rig seed and the e2e
+pin sites, and the added criterion that the resolving set's `translationWords` pin must be
+local for the tW tool to be ready. Slice 3 is the ruling 6 message in `loadProjectPins` and
+every locale. Slice 4 is the tC3 import (ruling 8). The packaged-run Verify steps go with
+the last slice. Until slice 2 merges, the app can still write the one-repo form for a
+gateway whose `_twl` is not installed; the harness refuses that form from this decision on.
+
+Where slice 1 lands: `docs/BURRITO-SPEC.md` §5.2 and §5.3 (version 1.22),
+`conformance/validate.mjs` (the ruling 6 check with the one-repo and ruling 7 fixtures;
+`rungOf` with the equal-pins fixture), `conformance/sample-burrito/ingredients/checking/`
+(`resources.json`, `translationWords/TIT.json`), the generated `metadata.json` of both
+samples and `sample-burrito-obs/.../resources.json`, `conformance/validate-journal.mjs`
+(the tW resource fixture), `conformance/generate.mjs` and `conformance/README.md`, and
+`test/export/relationships.test.ts`.

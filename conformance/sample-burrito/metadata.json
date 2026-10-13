@@ -108,10 +108,10 @@
     },
     "ingredients/checking/resources.json": {
       "checksum": {
-        "md5": "b38aef03bf730caaea1c971a2cbe1229"
+        "md5": "1566bca9b7c8d7a85042b7cad4e7486b"
       },
       "mimeType": "application/json",
-      "size": 5375,
+      "size": 6361,
       "role": "x-resource-links"
     },
     "ingredients/checking/settings.json": {
@@ -135,10 +135,10 @@
     },
     "ingredients/checking/translationWords/TIT.json": {
       "checksum": {
-        "md5": "9e53440e2f78a42c178da820fdd96051"
+        "md5": "6835ebf6d9a92f917dd6780f2350bfd4"
       },
       "mimeType": "application/json",
-      "size": 1912,
+      "size": 1913,
       "scope": {
         "TIT": []
       },
@@ -193,6 +193,12 @@
     {
       "relationType": "parascriptural",
       "flavor": "x-bcvarticles",
+      "id": "dcs::es-419_gl/es-419_twl",
+      "revision": "v18"
+    },
+    {
+      "relationType": "parascriptural",
+      "flavor": "x-bcvarticles",
       "id": "dcs::es-419_gl/es-419_tw",
       "revision": "v37"
     },
@@ -206,6 +212,12 @@
       "relationType": "parascriptural",
       "flavor": "x-bcvnotes",
       "id": "dcs::unfoldingWord/en_tn",
+      "revision": "v91"
+    },
+    {
+      "relationType": "parascriptural",
+      "flavor": "x-bcvarticles",
+      "id": "dcs::unfoldingWord/en_twl",
       "revision": "v91"
     },
     {

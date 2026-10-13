@@ -683,7 +683,7 @@ try {
     targetVerseMd5: verseTextMd5('un texto viejo que ya no existe\n'),
     sourceVersion: 'dcs::unfoldingWord/el-x-koine_ugnt@v0.33',
   };
-  const twResource = { repoPath: 'git.door43.org/es-419_gl/es-419_tw', version: 'v37', languageSet: 'primary' };
+  const twResource = { repoPath: 'git.door43.org/es-419_gl/es-419_twl', version: 'v18', languageSet: 'primary' }; // the twl pin (D96, D97)
   const decision = {
     contextId: { checkId: 't1g7', occurrenceNote: '', reference: { bookId: 'tit', chapter: 1, verse: 1 }, tool: 'translationWords', groupId: 'god', quote: 'Θεοῦ', quoteString: 'Θεοῦ', glQuote: '', occurrence: 1 },
     category: 'kt', selections: [{ text: 'Dios', occurrence: 1, occurrences: 1 }], comments: false, reminders: false,
