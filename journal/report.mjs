@@ -84,6 +84,7 @@ export const REFUSAL_CODES = Object.freeze({
   'sync.non-fast-forward': null, // (G4) Door43 main moved during three tries; never a force push
   'sync.no-write-access': null, // Door43 refused the push: no write access
   'sync.push-failed': null, // any other push failure
+  'opslog.not-loaded': null, // (G8) the ops log did not load at this start: no project opens, takes an edit or syncs until it loads
   'sync.swap-pending': null, // (G8) a swap did not finish; no open, edit or sync of the project until the next start finishes it
 });
 

@@ -236,7 +236,12 @@ export async function sync(deps: SyncDeps, request: SyncRequest): Promise<Report
   return inProjectQueue(repoPath, async () => {
     // G8: one sync record per project. An open one is a swap that did not finish,
     // and a log that did not load at this start can hide one.
-    if (deps.ops?.recovered === false || deps.ops?.isOpen?.('sync', repoPath)) {
+    if (deps.ops?.recovered === false) {
+      const at = new Date().toISOString();
+      return failedReport('sync', at, at,
+        new Refusal('opslog.not-loaded', 'the ops log did not load at this start; restart the app to sync'), { repoPath });
+    }
+    if (deps.ops?.isOpen?.('sync', repoPath)) {
       const at = new Date().toISOString();
       return failedReport('sync', at, at,
         new Refusal('sync.swap-pending', `the sync of ${repoPath} did not finish; restart the app to finish it`), { repoPath });

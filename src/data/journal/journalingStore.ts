@@ -529,9 +529,13 @@ export class JournalingStore implements BurritoStore {
 
   /** #676 (G8): a sync whose swap did not finish leaves its ops record open;
    * until `recover()` finishes it at the next start, the project takes no open
-   * and no edit. Checked inside the project queue, so a sync that is running
-   * finishes first. */
+   * and no edit. When the log did not load at this start, an open record cannot
+   * be seen, so NO project opens or takes an edit (an open writes too: it replays
+   * the outbox and installs derived files) until a start loads it. Checked inside
+   * the project queue, so a sync that is running finishes first. */
   private refusePendingSwap(repoPath: string): void {
+    if (this.ops?.recovered === false)
+      throw new Refusal('opslog.not-loaded', `the ops log did not load at this start; restart the app before you change ${repoPath}`, { repoPath });
     if (this.ops?.isOpen?.('sync', repoPath))
       throw new Refusal('sync.swap-pending', `the sync of ${repoPath} did not finish; restart the app to finish it`, { repoPath });
   }

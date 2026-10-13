@@ -91,6 +91,7 @@ describe('#374 each operation writes and closes an ops record', () => {
     const rig = journalingRig();
     const api = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: rig.fetchFn });
     const clock = tickingNow('2026-09-27T09:00:00.000Z');
+    await ops.recover(api); // the app recovers at each start before any store opens
     const store = new JournalingStore({ api, kv: memKv(), now: () => clock.advance(13), ops });
     await store.createProject({ content_name: 'Prueba', content_abbr: 'prueba', content_language_code: 'es', add_book: false, versification: 'eng' });
     await store.commit('Project created (tC4)');

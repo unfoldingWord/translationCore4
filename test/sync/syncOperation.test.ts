@@ -582,10 +582,14 @@ describe('#676 crash recovery of the sync (G8)', () => {
     };
     const ops2 = new OpsLog({ read: flaky, update: serialSettingsWriter(stored.read, stored.write), kv: w.kv });
     await expect(ops2.recover(w.api)).rejects.toThrow();
-    // a sync is refused until the log loads; the translator can still open and save
+    // until the log loads, no sync and no open or edit through the gated store
     const refused = await sync({ ...w.deps(), ops: ops2 }, { repoPath: REPO, session: SESSION });
-    expect([refused.ok, refused.code]).toEqual([false, 'sync.swap-pending']);
-    const store = new JournalingStore({ api: w.api, kv: w.kv, ops: ops2 });
+    expect([refused.ok, refused.code]).toEqual([false, 'opslog.not-loaded']);
+    const gated = new JournalingStore({ api: w.api, kv: w.kv, ops: ops2 });
+    await expect(gated.open(REPO)).rejects.toMatchObject({ code: 'opslog.not-loaded' });
+    gated.dispose();
+    // the live mark is the second guard: a writer the gate does not see changes the project
+    const store = new JournalingStore({ api: w.api, kv: w.kv });
     await store.open(REPO);
     await store.writeBook('TIT', usfm('Pablo.', lateWork));
     await store.commit('work after the failed start (tC4)');
@@ -608,6 +612,37 @@ describe('#676 crash recovery of the sync (G8)', () => {
     expect(w.rig.repos.get(REPO)!.files.get('TIT.usfm')).toContain(lateWork);
   });
 
+  it('[G1][G8] killed inside swap.copy-live; the next start cannot load the ops log: the part copy takes no open and no edit; the third start goes forward and nothing is lost', async () => {
+    const { w, before, staged, killed, cut } = await killAfter(1, (route) => route.startsWith('/api/git/copy/_local_/_archive_/tc4-sync--prueba'), true);
+    expect([killed, cut]).toEqual([true, true]);
+    expect(w.rig.repos.has(REPO)).toBe(true); // a part copy of the scratch copy is at the live path
+    const stored = storedOf(w);
+    forgetSharedClocks();
+    forgetProjectQueues();
+    let failOnce = true;
+    const flaky = async () => {
+      if (failOnce) {
+        failOnce = false;
+        throw new Error('client-settings not ready');
+      }
+      return stored.read();
+    };
+    const ops2 = new OpsLog({ read: flaky, update: serialSettingsWriter(stored.read, stored.write), kv: w.kv });
+    await expect(ops2.recover(w.api)).rejects.toThrow();
+    const writes = w.rig.writes.length;
+    const kv = new Map(w.kv.map);
+    const store = new JournalingStore({ api: w.api, kv: w.kv, ops: ops2 });
+    await expect(store.open(REPO).then(() => store.writeBook('TIT', usfm('Pablo.', lateWork)))).rejects.toMatchObject({ code: 'opslog.not-loaded' });
+    store.dispose();
+    // nothing was written: no file, no outbox entry
+    expect(w.rig.writes.length).toBe(writes);
+    expect(w.kv.map).toEqual(kv);
+    // third start: the log loads, and the swap goes forward over the part copy
+    const [entry] = await restart(w, stored);
+    expect(entry.report).toMatchObject({ op: 'sync', ok: true, facts: { finishedSwap: true } });
+    await expectOneProjectWithOwnWork(w, before, staged);
+  });
+
   it('[G8] killed after swap.copy-previous, the live project unchanged: the next start goes forward (control)', async () => {
     const { w, before, staged, killed } = await killAfter(1, (route) => route.startsWith('/api/git/copy/_local_/_local_/prueba'));
     expect(killed).toBe(true);
@@ -621,7 +656,7 @@ describe('#676 crash recovery of the sync (G8)', () => {
     const fresh = appStart(settingsDoc());
     const requests = w.rig.log.length;
     const report = await sync({ ...w.deps(), ops: fresh }, { repoPath: REPO, session: SESSION });
-    expect([report.ok, report.code]).toEqual([false, 'sync.swap-pending']);
+    expect([report.ok, report.code]).toEqual([false, 'opslog.not-loaded']);
     expect(w.rig.log.length).toBe(requests);
   });
 

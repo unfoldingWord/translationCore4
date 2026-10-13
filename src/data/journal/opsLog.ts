@@ -44,8 +44,10 @@
 // start a sync (`sync.swap-pending`) until `recover()` at the next start.
 // A start where `recover()` fails to load the log cannot see an open record, so
 // the translator can open and change the project then. Two rules close that gap:
-//   - no sync starts until `recover()` loads the log at this start
-//     (`sync.swap-pending`, syncOperation.ts);
+//   - no sync starts, and no project opens or takes an edit, until `recover()`
+//     loads the log at this start (`opslog.not-loaded`, syncOperation.ts and
+//     JournalingStore.refusePendingSwap). The app runs `recover()` once, at
+//     boot (state.jsx); a restart loads the log again;
 //   - the live mark: at swap.copy-previous the sync saves `liveMark`, the greatest
 //     journal segment name in the live project. Each change writes a new segment,
 //     and its name is greater than every segment that the writer saw (R-8.2.4); a

@@ -138,6 +138,7 @@
   "refusal.sync.non-fast-forward": "Vos coéquipiers ont envoyé des modifications à Door43 pendant votre synchronisation. Synchronisez de nouveau. Rien n’a changé.",
   "refusal.sync.no-write-access": "Door43 ne vous a pas permis d’envoyer des modifications à ce projet. Demandez au propriétaire du projet un accès en écriture. Rien n’a changé.",
   "refusal.sync.push-failed": "L’application n’a pas pu envoyer vos modifications à Door43. Synchronisez de nouveau. Si cela se reproduit, demandez de l’aide. Rien n’a changé.",
+  "refusal.opslog.not-loaded": "L’application n’a pas pu lire son registre du travail non terminé. Fermez l’application et ouvrez-la de nouveau. D’ici là, vous ne pouvez pas ouvrir, modifier ni synchroniser un projet.",
   "refusal.sync.swap-pending": "Une synchronisation de ce projet ne s’est pas terminée. Fermez l’application et ouvrez-la de nouveau. L’application termine alors la synchronisation. D’ici là, vous ne pouvez pas ouvrir ni modifier ce projet.",
   "home.book": "livre",
   "home.books": "livres",
