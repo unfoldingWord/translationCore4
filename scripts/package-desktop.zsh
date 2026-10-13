@@ -123,9 +123,9 @@ PUPPETEER_CORE_VER="24.43.1"       # template package.json: ^24.43.1
 PUPPETEER_BROWSERS_VER="2.13.1"    # template package.json: ^2.13.1
 ZIP_JS_VER="2.18.2"                # root package.json and package-lock.json
 
-# Bundled English suite (#163, D70, #288). Fourteen repos pinned from src/data/installedSuite.js,
-# as `<owner>/<repo>:<tag>:<sha>`. en_tw serves both translationWords and
-# translationWordsLinks (D34). The two lexicons (#218, D71) are the `uW`-org
+# Bundled English suite (#163, D70, #288, #644). Fifteen repos pinned from src/data/installedSuite.js,
+# as `<owner>/<repo>:<tag>:<sha>`. en_twl serves translationWordsLinks and en_tw
+# serves translationWords (D96). The two lexicons (#218, D71) are the `uW`-org
 # burritos: no tag exists, so the tag field is empty and the cache fetches the
 # commit archive by sha. The store segment is `<owner lowercased>--<repo>`
 # (src/data/installed.ts localRepoPathFromRepoPath).
@@ -139,6 +139,7 @@ BUNDLED_RESOURCES=(
   "unfoldingWord/el-x-koine_ugnt:v0.34:fc95b2b8aad08bb65ab54628ab685413a1139e97"
   "unfoldingWord/hbo_uhb:v3.0.0:74022f0fed012a3ef169886f595dd98e7b200543"
   "unfoldingWord/en_tn:v91:e586762e330f482a60c52aedd1c7b3a2f155df8a"
+  "unfoldingWord/en_twl:v91:7cbb3419f79780ce84b92ad7d42bd476cc5d8a64"
   "unfoldingWord/en_tw:v91:ff5b3852c27c3a0d01b109e482eb26047dcd20e2"
   "unfoldingWord/en_ta:v91:ce9a1bb9431317ca888e8c1f9620caa7f5fe45fd"
   "unfoldingWord/en_tq:v91:8be02772584ff5a5fea893a392b4f019e3efcc77"
@@ -241,7 +242,7 @@ if [ ! -e "$EL_UNPACKED" ]; then
   unzip -qq -o "$BUILD/$ELECTRONITE_ZIP" -d "$BUILD/electronite"
 fi
 
-echo "== fetching bundled English and OBS suite (14 repos, #163, #218, #288)"
+echo "== fetching bundled English and OBS suite (15 repos, #163, #218, #288, #644)"
 for entry in "${BUNDLED_RESOURCES[@]}"; do
   bundled_fields "$entry"
   zsh "$REPO/dev-env/scripts/cache-resource.zsh" "$owner/$repo" "$tag" "$sha"
@@ -341,24 +342,32 @@ if (![from, "app.on(\x27before-quit\x27", "app.on(\x27will-quit\x27"].every(once
 fs.writeFileSync(p, s.replace(from, to));
 console.log("stopServer() acts once per quit (#206)");
 ' "$(npath "$PACK/electron/electronStartup.js")"
-# #214: on macOS the window has no title bar. The app header is the top of the
-# window, and the traffic lights stay, at the vertical center of the 56px header.
-# preload.js marks the page, so the header leaves room for the lights and moves
-# the window (src/ui.css). Windows and Linux keep the native frame: there,
-# titleBarStyle "hidden" also removes the window controls (docs/PACKAGING.md).
+# #214, #639: on macOS and Windows the window has no title bar. The app header
+# is the top of the window. On macOS the traffic lights stay, at the vertical
+# center of the 56px header. On Windows titleBarOverlay draws the window
+# controls at the right, 56px tall, in the header color (--uw-ocean, white
+# symbols); without it, titleBarStyle "hidden" leaves no controls there. The
+# hidden title bar also makes the window frameless, and Electron never builds
+# the menu bar of a frameless window, also not on Alt, while the application
+# menu stays set and its shortcuts (#435 Reload) keep working — so no
+# setMenuBarVisibility call (docs/PACKAGING.md). preload.js marks the page per
+# system, so the header leaves room for the controls and moves the window
+# (src/ui.css). Linux keeps the native frame (#642).
 # Refuse if the template window options changed shape or already set the frame.
 node -e '
 const fs = require("fs");
 const p = process.argv[1];
 const s = fs.readFileSync(p, "utf8");
 const from = "        autoHideMenuBar: false,\n";
-const to = from + "        ...(process.platform === \x27darwin\x27 ? { titleBarStyle: \x27hidden\x27, trafficLightPosition: { x: 20, y: 21 } } : {}),\n";
+const to = from
+  + "        ...(process.platform === \x27darwin\x27 ? { titleBarStyle: \x27hidden\x27, trafficLightPosition: { x: 20, y: 21 } } : {}),\n"
+  + "        ...(process.platform === \x27win32\x27 ? { titleBarStyle: \x27hidden\x27, titleBarOverlay: { color: \x27#014263\x27, symbolColor: \x27#FFFFFF\x27, height: 56 } } : {}),\n";
 if (s.split(from).length !== 2 || s.split("new BrowserWindow({").length !== 2 || /titleBarStyle|frame:/.test(s)) {
-  console.error("FATAL: the template window options changed — re-verify the #214 macOS title bar patch before building");
+  console.error("FATAL: the template window options changed — re-verify the #214/#639 title bar patch before building");
   process.exit(1);
 }
 fs.writeFileSync(p, s.replace(from, to));
-console.log("the macOS window has no title bar (#214)");
+console.log("the macOS window has no title bar (#214); the Windows window has no title bar and no menu row (#639)");
 ' "$(npath "$PACK/electron/electronStartup.js")"
 cp "$REPO/scripts/preload.cjs" "$PACK/electron/preload.js"
 node --check "$(npath "$PACK/electron/preload.js")"

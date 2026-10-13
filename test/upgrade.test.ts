@@ -25,7 +25,7 @@ const pin = (repo: string, version: string, s: string, flavor = 'parascriptural/
 const EN: LanguageSet = {
   gatewayLanguage: { languageId: 'en', owner: 'unfoldingWord' },
   translationNotes: pin('en_tn', 'v89', 'a'),
-  translationWordsLinks: pin('en_tw', 'v89', 'b', 'parascriptural/x-bcvarticles'),
+  translationWordsLinks: pin('en_twl', 'v89', 'f', 'parascriptural/x-bcvarticles'),
   translationWords: pin('en_tw', 'v89', 'b', 'parascriptural/x-bcvarticles'),
   translationAcademy: pin('en_ta', 'v89', 'c', 'peripheral/x-peripheralArticles'),
   translationQuestions: pin('en_tq', 'v89', 'd', 'parascriptural/x-bcvquestions'),
@@ -74,13 +74,13 @@ describe('offerForSet — what differs from the pin is offered, by sha (D58)', (
     expect(offer.upgrades).toHaveLength(1);
   });
 
-  it('upgradedSet moves every slot that names the repo and leaves the others byte-identical', () => {
+  it('upgradedSet moves the slot that names the repo and leaves the others byte-identical', () => {
     const offer = offerForSet('primary', EN, {
       'git.door43.org/unfoldingWord/en_tw': release('v90', 'g'),
     });
     const next = upgradedSet(EN, offer);
-    expect(next.translationWordsLinks).toEqual({ repoPath: EN.translationWords.repoPath, version: 'v90', sha: sha('g'), flavor: 'parascriptural/x-bcvarticles' });
-    expect(next.translationWords).toBe(next.translationWordsLinks);
+    expect(next.translationWords).toEqual({ repoPath: EN.translationWords.repoPath, version: 'v90', sha: sha('g'), flavor: 'parascriptural/x-bcvarticles' });
+    expect(next.translationWordsLinks).toBe(EN.translationWordsLinks); // en_twl is its own pin (D96)
     expect(next.translationNotes).toBe(EN.translationNotes);
     expect(next.translationAcademy).toBe(EN.translationAcademy);
     expect(next.translationQuestions).toBe(EN.translationQuestions);

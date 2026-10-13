@@ -44,6 +44,7 @@ const pin = (repo: string, version: string, sha?: string): ResourcePin => ({
 // Owner-qualified, lowercased local identity (B9): `<owner>--<repo>`.
 const INSTALLED: InstalledMap = {
   '_local_/_sideloaded_/unfoldingword--en_tn': pin('unfoldingWord/en_tn', 'v89'),
+  '_local_/_sideloaded_/unfoldingword--en_twl': pin('unfoldingWord/en_twl', 'v89'),
   '_local_/_sideloaded_/unfoldingword--en_tw': pin('unfoldingWord/en_tw', 'v89'),
   '_local_/_sideloaded_/unfoldingword--en_ta': pin('unfoldingWord/en_ta', 'v89'),
   '_local_/_sideloaded_/es-419_gl--es-419_tn': pin('es-419_gl/es-419_tn', 'v66'),
@@ -113,13 +114,20 @@ describe('pin identity is (repoPath, sha) — a different commit is not this pin
 });
 
 describe('a language set is written only when the suite is COMPLETE (§5.3)', () => {
-  it('builds primary from the installed pins, with both tW slots on <lang>_tw (D34)', () => {
+  it('builds the English set with translationWordsLinks on en_twl and translationWords on en_tw (#644, D96)', () => {
+    // The "back to English" path: a gateway change back to English builds
+    // the set from what is installed, and must not put en_tw in the twl slot.
     const set = languageSetFromInstalled(INSTALLED, { id: 'en', org: 'unfoldingWord' });
     expect(set).not.toBeNull();
     expect(set?.gatewayLanguage).toEqual({ languageId: 'en', owner: 'unfoldingWord' });
-    expect(set?.translationWordsLinks).toEqual(set?.translationWords);
-    expect(set?.translationWords.repoPath).toMatch(/_tw$/);
+    expect(set?.translationWordsLinks).toEqual(INSTALLED['_local_/_sideloaded_/unfoldingword--en_twl']);
+    expect(set?.translationWords).toEqual(INSTALLED['_local_/_sideloaded_/unfoldingword--en_tw']);
     expect(set?.translationNotes.version).toBe('v89');
+  });
+
+  it('with no <lang>_twl installed the set is INCOMPLETE — the one-repo form is not legal (D97 ruling 6, #646)', () => {
+    const withoutTwl = Object.fromEntries(Object.entries(INSTALLED).filter(([key]) => !key.endsWith('--en_twl')));
+    expect(languageSetFromInstalled(withoutTwl, { id: 'en', org: 'unfoldingWord' })).toBeNull();
   });
 
   it('REFUSES a partial suite — es-419 has notes installed but no words/academy', () => {
@@ -348,11 +356,13 @@ describe('the whole point: a Spanish suite on disk resolves to a language set', 
   it('languageSetFromInstalled finds it ONLY because the org was corrected', async () => {
     const summaries = {
       '_local_/_sideloaded_/es-419_tn': { book_codes: ['TIT'] },
+      '_local_/_sideloaded_/es-419_twl': { book_codes: ['TIT'] },
       '_local_/_sideloaded_/es-419_tw': { book_codes: ['TIT'] },
       '_local_/_sideloaded_/es-419_ta': { book_codes: ['TRANSLATE'] },
     } as never;
     const api = metadataApi({
       '_local_/_sideloaded_/es-419_tn': 'Idiomas-Puentes/es-419_tn',
+      '_local_/_sideloaded_/es-419_twl': 'Idiomas-Puentes/es-419_twl',
       '_local_/_sideloaded_/es-419_tw': 'Idiomas-Puentes/es-419_tw',
       '_local_/_sideloaded_/es-419_ta': 'Idiomas-Puentes/es-419_ta',
     });
@@ -371,7 +381,7 @@ describe('the whole point: a Spanish suite on disk resolves to a language set', 
     expect(set?.translationNotes.sha).toMatch(/^[0-9a-f]{40}$/);
     expect(set?.translationNotes.version).toBeUndefined();
     expect(set?.translationWords.repoPath).toBe('git.door43.org/es-419_gl/es-419_tw');
-    expect(set?.translationWordsLinks.repoPath).toBe('git.door43.org/es-419_gl/es-419_tw'); // D34
+    expect(set?.translationWordsLinks.repoPath).toBe('git.door43.org/es-419_gl/es-419_twl'); // D97 (#646)
   });
 });
 

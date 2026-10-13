@@ -127,6 +127,7 @@ export function SlotState({ slot }) {
     unavailable: t('understand.helpUnavailable'),
     fetch: t('understand.helpFetch'),
     missing: t('understand.helpMissing'),
+    'old-twl': t('check.oldTwl'), // D97 ruling 6 (#646): the pre-release twl pin is never read
   };
   const text = map[state] ?? (state.startsWith('versification-') ? t(`check.empty.${state}.title`) : t('understand.helpNone'));
   return (

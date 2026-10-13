@@ -23,10 +23,11 @@ import { isEmptyAlignmentRecord } from './journal/journalingStore';
 import { releaseCommitSha } from './resourceFetch';
 import { samePath } from './resolve';
 
-/** The updatable resource slots of a language set, in display order. tW's two
- * slots name one repo (D34), so `reposOfSet` folds them. `simplifiedText` is the
- * language's simplified Bible — a gateway Bible, not a help resource — so it
- * is never offered here — textOffers offers it (#258). */
+/** The updatable resource slots of a language set, in display order. Every
+ * set pins `<lang>_twl` and `<lang>_tw` separately (D96, D97); `reposOfSet`
+ * still folds two slots that name one repo, so a set written before D97 reads.
+ * `simplifiedText` is the language's simplified Bible — a gateway Bible, not a
+ * help resource — so it is never offered here — textOffers offers it (#258). */
 export const SET_SLOTS = [
   'translationNotes',
   'translationWordsLinks',

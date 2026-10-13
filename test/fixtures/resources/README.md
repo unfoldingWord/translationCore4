@@ -16,11 +16,13 @@ fact that these are one-book slices of the full export.
 |---|---|---|---|
 | `en_tn@v86/` | `git.door43.org/unfoldingWord/en_tn/sb/v86.zip` | `c354b8ae66a23c485bf6f38fd35bd8f7ef81e4e5` | fallback `translationNotes` |
 | `en_twl@v86/` | `git.door43.org/unfoldingWord/en_twl/sb/v86.zip` | `570e76d0024c847689e48a20e2ac1a1d2c6eb6e3` | fallback `translationWordsLinks` |
+| `en_twl@v91/` | `git.door43.org/unfoldingWord/en_twl/sb/v91.zip` (fetched 2026-10-12 through `dev-env/scripts/cache-resource.zsh`; `metadata.json` only, no slice — its `ingredients` list the 59 book TSVs the release contains; issue #644, D96) | `7cbb3419f79780ce84b92ad7d42bd476cc5d8a64` | fallback `translationWordsLinks` (the shipped pin) |
 | `es-419_tn@v66/` | `git.door43.org/Es-419_gl/es-419_tn/sb/v66.zip` | `22f3d0c61e2ab4701cb869547de9c3c43da07208` | primary `translationNotes` |
 | `en_ta@v86/` | `git.door43.org/unfoldingWord/en_ta/sb/v86.zip` | `c7caddfb474efd713f36b35a3ffc927866c7b180` | fallback `translationAcademy` |
 | `en_obs-tn@v13/` | `git.door43.org/unfoldingWord/en_obs-tn/sb/v13.zip` (fetched 2026-09-17 through `dev-env/scripts/cache-resource.zsh`) | `e86138ea13f619f09f7a6dcaa60592716d407fe4` | fallback `obs-tn` (§10.6) |
 | `en_obs-twl@v3/` | `git.door43.org/unfoldingWord/en_obs-twl/sb/v3.zip` (fetched 2026-09-17, same path) | `44ebc9fafe8101665f985007d566f5036a2be85b` | fallback `obs-twl` (§10.6) |
 | `en_obs-tq@v10/` | `git.door43.org/unfoldingWord/en_obs-tq/sb/v10.zip` (fetched 2026-09-18, same path; the whole `OBS.tsv`, 672 rows) | `01b92fe8793d62cff3a2221f5174c768cbad3dc1` | fallback `obs-tq` (§10.6, R-10.6.3) |
+| `en_tw@v91/` | `git.door43.org/unfoldingWord/en_tw/sb/v91.zip` (copied 2026-10-12 from the rig cache `dev-env/resources-cache/en_tw-v91-unwrapped.zip`; the whole `2SA.tsv`, 3316 rows, and `TIT.tsv`, 182 rows, plus the export's `metadata.json`, 1021 ingredients) | `ff5b3852c27c3a0d01b109e482eb26047dcd20e2` | the shipped `translationWords` and `translationWordsLinks` pin (installedSuite.js); the §4.2 tw article gate (issue #643): `2SA.tsv` row `vwrw` links `kt/arcofthecovenant.md`, which the export does not carry |
 
 Slice contents (paths flattened, `ingredients/` prefix dropped, `/` → `-`):
 

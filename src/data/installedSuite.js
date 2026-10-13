@@ -10,14 +10,21 @@
 // The weekly pin check (.github/workflows/pin-check.yml) reports when a pin is
 // older than the latest Door43 release; change the pins together with
 // scripts/package-desktop.zsh and the copies docs/PACKAGING.md names.
-// D34 (2026-08-03): for the tW tool BOTH slots name `<lang>_tw`. That repo's
-// sb-zip export carries the per-book TWL link TSVs AND the payload articles, so
-// one pin and one fetch serve both tool inputs; `<lang>_twl` is never fetched.
+// D96 (2026-10-12, #644, amends D34): two pins for the tW tool. The TWL check
+// lists come from `en_twl` at its own release; the articles come from `en_tw`.
+// D97 (#646): every gateway set has the same two-repository form; an
+// organization with no `_twl` repository pins this `en_twl` with its own tw.
+// The `en_tw` export also carries TWL TSVs, but DCS builds them from `en_twl`
+// master, not from a release, so they are ignored (never stripped). The sha
+// is the commit the DCS tags API names for the v91 tag, equal to the revision
+// the /sb/v91.zip export declares [VERIFIED 2026-10-12 — cache-resource.zsh
+// with the expected sha; 59 book TSVs, no 1CH/2CH/ECC/EZK/ISA/JER/NUM].
+const EN_TWL = { repoPath: 'git.door43.org/unfoldingWord/en_twl', version: 'v91', sha: '7cbb3419f79780ce84b92ad7d42bd476cc5d8a64', flavor: 'parascriptural/x-bcvarticles' };
 const EN_TW = { repoPath: 'git.door43.org/unfoldingWord/en_tw', version: 'v91', sha: 'ff5b3852c27c3a0d01b109e482eb26047dcd20e2', flavor: 'parascriptural/x-bcvarticles' };
 export const EN_HELPS = {
   gatewayLanguage: { languageId: 'en', owner: 'unfoldingWord' },
   translationNotes: { repoPath: 'git.door43.org/unfoldingWord/en_tn', version: 'v91', sha: 'e586762e330f482a60c52aedd1c7b3a2f155df8a', flavor: 'parascriptural/x-bcvnotes' },
-  translationWordsLinks: { ...EN_TW },
+  translationWordsLinks: { ...EN_TWL },
   translationWords: { ...EN_TW },
   translationAcademy: { repoPath: 'git.door43.org/unfoldingWord/en_ta', version: 'v91', sha: 'ce9a1bb9431317ca888e8c1f9620caa7f5fe45fd', flavor: 'peripheral/x-peripheralArticles' },
   // §5.3 1.10 OPTIONAL slots (D64, #110). tq sha = the v91 tag commit, equal to

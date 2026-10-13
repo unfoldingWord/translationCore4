@@ -178,6 +178,30 @@ export const deriveTwlItems = (twlTsv: string, bookId: string): CheckItem<BibleR
     };
   });
 
+// ---------- the tw article gate (BURRITO-SPEC §4.2 — issue #643) ----------
+
+/** The articles a tw pin carries, as `<category>/<slug>` keys, read from its
+ * `metadata.json` ingredient list: every `payload/<category>/<slug>.md` entry.
+ * The key form on an installed pin is `ingredients/payload/kt/ark.md`
+ * [VERIFIED — live rig pankosmia-web 0.18.15 (a83725b), 2026-10-12, GET
+ * /burrito/metadata/raw on the sideloaded en_tw v91]; the match is on the
+ * suffix, so a key without the `ingredients/` prefix reads the same. */
+export const twArticlesOf = (metadata: { ingredients?: Record<string, unknown> }): Set<string> => {
+  const out = new Set<string>();
+  for (const key of Object.keys(metadata.ingredients ?? {})) {
+    const m = /(?:^|\/)payload\/([^/]+)\/([^/]+)\.md$/.exec(key);
+    if (m) out.add(`${m[1]}/${m[2]}`);
+  }
+  return out;
+};
+
+/** §4.2 (#643): a TWL row whose article the resolving set's tw pin does not
+ * carry derives no check item — not shown, not counted. The set is the pin's
+ * own list (twArticlesOf); the caller never substitutes another set's, because
+ * fallback is per (tool, book), never per article. */
+const withArticle = (items: CheckItem<BibleReference>[], twArticles: ReadonlySet<string>): CheckItem<BibleReference>[] =>
+  items.filter((item) => twArticles.has(`${item.category}/${item.contextId.groupId}`));
+
 // ---------- tN TSV → items (7 columns; real en_tn/es-419_tn shape) ----------
 
 /** The tC3 tN category map: thematic check category ← tA module slug.
@@ -635,12 +659,16 @@ export const deriveForProject = async (params: {
   /** tN only: keep rows without a SupportReference (the Understand screen's
    * read-only notes surface — see deriveTnItems). Checking never sets this. */
   keepPlainNotes?: boolean;
+  /** tW only (§4.2, #643): the articles the resolving set's tw pin carries
+   * (twArticlesOf). A row whose article is not in the set derives no item.
+   * Absent = no gate; the callers that derive a check list always pass it. */
+  twArticles?: ReadonlySet<string>;
 }): Promise<ProjectDeriveResult> => {
-  const { tsv, tool, bookId, from, to, schemes, saved = [], scopeRanges = [], keepPlainNotes = false } = params;
+  const { tsv, tool, bookId, from, to, schemes, saved = [], scopeRanges = [], keepPlainNotes = false, twArticles } = params;
   const derived =
     tool === 'translationNotes' ? deriveTnItems(tsv, bookId, { keepPlain: keepPlainNotes })
       : tool === 'translationQuestions' ? deriveTqItems(tsv, bookId)
-        : deriveTwlItems(tsv, bookId);
+        : twArticles ? withArticle(deriveTwlItems(tsv, bookId), twArticles) : deriveTwlItems(tsv, bookId);
 
   const items: CheckItem[] = [];
   const unplaceable: UnplaceableItem[] = [];

@@ -109,7 +109,7 @@ const PIN = (repo: string, version: string, flavor: string) => ({ sha: sha40(`${
 const RUNG = {
   gatewayLanguage: { languageId: 'en', owner: 'unfoldingWord' },
   translationNotes: PIN('en_tn', 'v86', 'parascriptural/x-bcvnotes'),
-  translationWordsLinks: PIN('en_tw', 'v87', 'parascriptural/x-bcvarticles'),
+  translationWordsLinks: PIN('en_twl', 'v86', 'parascriptural/x-bcvarticles'),
   translationWords: PIN('en_tw', 'v87', 'parascriptural/x-bcvarticles'),
   translationAcademy: PIN('en_ta', 'v86', 'peripheral/x-peripheralArticles'),
 };

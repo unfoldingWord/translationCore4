@@ -22,9 +22,11 @@ describe('relationshipsFromPins', () => {
       'dcs::unfoldingWord/en_ult',
       'dcs::unfoldingWord/en_ust',
       'dcs::es-419_gl/es-419_tn',
+      'dcs::es-419_gl/es-419_twl', // D96/D97: the twl and tw slots name distinct repositories
       'dcs::es-419_gl/es-419_tw',
       'dcs::es-419_gl/es-419_ta',
       'dcs::unfoldingWord/en_tn',
+      'dcs::unfoldingWord/en_twl',
       'dcs::unfoldingWord/en_tw',
       'dcs::unfoldingWord/en_ta',
       'dcs::unfoldingWord/en_tq',

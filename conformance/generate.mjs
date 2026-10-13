@@ -206,8 +206,9 @@ const metadata = {
   // Mirror of checking/resources.json (§5.3 schemaVersion 2, D17 two-set shape), derived by
   // the one shared function the Scripture Burrito export also calls (issue #359):
   // originals + extraScripture + both language sets (primary es-419, fallback en) + lexicons.
-  // DISTINCT repos only: under D34 the twl and tw slots name the SAME <lang>_tw repo (its
-  // sb-zip export carries links + articles), so each language contributes ONE tW row.
+  // DISTINCT repos only. Since D96/D97 (#644, #646) the twl slot names `<lang>_twl` and the
+  // tw slot names `<lang>_tw`, each at its own release, so each language contributes a
+  // twl row AND a tw row.
   relationships: relationshipsFromPins(JSON.parse(fs.readFileSync(ING('checking/resources.json'), 'utf8')))
 };
 fs.writeFileSync(path.join(BURRITO, 'metadata.json'), JSON.stringify(metadata, null, 2) + '\n');

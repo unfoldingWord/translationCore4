@@ -33,12 +33,15 @@ describe('packageRows — role assignment against the real catalog shape', () =>
 
   it('labels tW correctly even though the catalog gives it the tA flavor', () => {
     // The trap: both report x-peripheralArticles. Flavor alone mislabels tW.
-    expect(roleOf(rows, 'en_tw')).toBe('Translation Words + Links');
+    expect(roleOf(rows, 'en_tw')).toBe('Translation Words');
     expect(roleOf(rows, 'en_ta')).toBe('Translation Academy');
   });
 
-  it('never offers <lang>_twl — D34 pins <lang>_tw, whose export carries the links', () => {
-    expect(rows.some((r) => r.repo === 'en_twl')).toBe(false);
+  it('offers <lang>_twl as its own book-scoped row — the twl pin names a `_twl` repository (D96, D97; #646)', () => {
+    expect(roleOf(rows, 'en_twl')).toBe('Translation Word Links');
+    expect(rows.find((r) => r.repo === 'en_twl')?.fixed).toBe(false);
+    // Book-scoped: en_twl covers tit+jon only, so HEB must not offer it.
+    expect(rowsFor('HEB').some((r) => r.repo === 'en_twl')).toBe(false);
   });
 
   it('offers notes, questions and the source texts with the right roles', () => {

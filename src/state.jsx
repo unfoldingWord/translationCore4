@@ -27,10 +27,10 @@ import { seedBookFromSource } from './data/seed';
 import { SOURCE_MISSING, SOURCE_NOT_INSTALLED, isSourceAbsent } from './data/sourceState';
 import { BOOK_NAMES, bookName } from './data/bookNames';
 import { GATEWAYS, gatewayKey, gatewayDisplayName, DCS_HOST, orgForRepoName } from './data/gateways';
-import { fetchAndInstallPin, latestReleaseTag, identifyExistingInstall, releaseCommitSha, rezip, unwrapExport, verifySideload } from './data/resourceFetch';
+import { dcsReleases, fetchAndInstallPin, latestReleaseTag, identifyExistingInstall, releaseCommitSha, rezip, unwrapExport, verifySideload } from './data/resourceFetch';
 import { isNotFoundError } from './data/serverApi';
 import { readInstalled, recordInstalled, coverageFromLocal, languageSetFromInstalled, gatewayBiblesFromInstalled, mergeOptionalPins, isPinLocal, unsatisfiedProjectPinFor, pinsPreferringInstalled, localRepoPathFromRepoPath, installedPathFor, discoverOnDisk, flavorOfMetadata } from './data/installed';
-import { OBS_TOOL_SLOT, TOOL_SLOT, coverageFor, preflightObsTool, preflightToolBook, recordMatchesResolution, resolutionRecord, resolveObsSetSlot, resolveToolBook, resolveSetSlot, samePath } from './data/resolve';
+import { OBS_TOOL_SLOT, TOOL_SLOT, coverageFor, oldTwlPin, preflightObsTool, preflightToolBook, recordMatchesResolution, resolutionRecord, resolveObsSetSlot, resolveToolBook, resolveSetSlot, samePath } from './data/resolve';
 import {
   deriveForProject,
   deriveObsItems,
@@ -40,6 +40,7 @@ import {
   referenceParts,
   scopeRangesFor,
   textKeyOf,
+  twArticlesOf,
 } from './data/derive';
 import { readTwArticle, readTaArticle } from './data/articles';
 import { revalidateAgainstDraft, resolutionWarning } from './data/revalidate';
@@ -194,6 +195,11 @@ const ROLE_BY_FLAVOR = {
   textTranslation: { k: 'text', name: 'sources.roleText', bookScoped: true, fixed: true },
 };
 const ROLE_BY_SUFFIX = {
+  // D96/D97 (#644, #646): the tW tool has two pins, so a gateway download
+  // fetches `<lang>_twl` (the per-book check lists, at its own release) and
+  // `<lang>_tw` (the articles) as two rows. The twl row is book-scoped: the
+  // catalog's `book_codes` say which books the `_twl` release contains.
+  _twl: { k: 'wordLinks', name: 'sources.roleWordLinks', bookScoped: true },
   _tw: { k: 'words', name: 'sources.roleWords', bookScoped: false },
   _ta: { k: 'academy', name: 'sources.roleAcademy', bookScoped: false },
   // tq rides on the suffix as well as the flavor: the RC catalog's flavor
@@ -203,18 +209,18 @@ const ROLE_BY_SUFFIX = {
   _tq: { k: 'questions', name: 'sources.roleQuestions', bookScoped: true },
 };
 
-/** The role a catalog repo plays, or null when tC4 does not use it.
- * `<lang>_twl` is deliberately NOT offered: under D34 the tW pin is
- * `<lang>_tw`, whose export already carries the links. */
+/** The role a catalog repo plays, or null when tC4 does not use it. A Bible
+ * package offers `<lang>_twl` (ROLE_BY_SUFFIX); an OBS package reads its word
+ * links from `<lang>_obs-twl` instead. */
 const roleOf = (repo, kind = 'bible') => {
   const name = repo.name || '';
   if (kind === 'obs') {
     if (/_obs$/.test(name)) return { k: 'obs', name: 'sources.roleObsText', bookScoped: false, fixed: true };
     if (/_obs-tn$/.test(name)) return { k: 'obs-notes', name: 'sources.roleNotes', bookScoped: false };
-    if (/_obs-twl$/.test(name)) return { k: 'obs-words', name: 'sources.roleWords', bookScoped: false };
+    if (/_obs-twl$/.test(name)) return { k: 'obs-words', name: 'sources.roleWordLinks', bookScoped: false };
     if (repo.flavor === 'x-obsimages') return { k: 'obs-images', name: 'sources.roleObsImages', bookScoped: false };
     if (/_tq$|_tn$|_twl$|_(?:ust|gst)$/.test(name) || repo.flavor === 'textTranslation') return null;
-  } else if (/_twl$/.test(name) || /_obs(?:-|$)/.test(name)) return null;
+  } else if (/_obs(?:-|$)/.test(name)) return null;
   for (const [suffix, role] of Object.entries(ROLE_BY_SUFFIX)) {
     if (name.endsWith(suffix)) return role;
   }
@@ -694,7 +700,7 @@ function setShared(state, a) {
   return { ...state, remoteByProject: { ...state.remoteByProject, [a.id]: a.shared } };
 }
 
-const CHECK_SESSION_CASES = { patchCheckSession, checkDecisionSaved, refreshCheckDraft, pickerToolEntry, alignSaveState, checkSaveState, patchUpgrade, setProgress, setShared };
+const CHECK_SESSION_CASES = { patchCheckSession, checkDecisionSaved, refreshCheckDraft, pickerToolEntry, alignSaveState, checkSaveState, patchUpgrade, setProgress, setShared, patchSt: patchSettingsForm };
 
 function setSourceEntry(state, a) {
   if (a.value === undefined || a.value === null) {
@@ -716,6 +722,17 @@ function setProgress(state, a) {
     return { ...state, progressByProject: next };
   }
   return { ...state, progressByProject: { ...state.progressByProject, [a.id]: a.progress } };
+}
+
+// #641: atomic merge into the Project settings form. The settings read and the
+// gateway lookup can complete before one render, and a read-modify-write
+// through a stale snapshot put "loading" back over the finished lookup (same
+// hazard class as setSource). The form is the only safe base. A completion for
+// a closed form, or for another project's form, updates nothing.
+function patchSettingsForm(state, a) {
+  if (!state.st || (a.repoPath && state.st.repoPath !== a.repoPath)) return state;
+  const gw = a.gw ? { gw: { ...state.st.gw, ...a.gw } } : null;
+  return { ...state, st: { ...state.st, ...a.patch, ...gw } };
 }
 
 function reducer(state, a) {
@@ -808,6 +825,24 @@ async function readHelpArticle(apiClient, kind, set, category, slug) {
     throw error;
   }
   return null;
+}
+
+/** §4.2 (#643): the articles the tw pin of ONE language set carries — the set
+ * that resolved the (tool, book) — read from the pin's own metadata.json
+ * ingredient list. Fallback is per book, never per article, so the caller
+ * passes the resolving set and nothing else. A failed read PROPAGATES to the
+ * caller's stated error (D30): an empty or absent set would hide every item,
+ * or let a hidden row through, by transport luck. A set without a tw pin is
+ * not a complete §5.3 set, and an installed tw burrito lists its articles
+ * [VERIFIED — live rig pankosmia-web 0.18.15 (a83725b), 2026-10-12: 953 on
+ * en_tw v91]; a table with none is a rewrite hazard (PLATFORM-NOTES #48),
+ * not a resource without articles. Both refuse rather than hide everything. */
+async function readTwArticles(apiClient, set) {
+  const pin = set?.translationWords;
+  if (!pin) throw new Error('the language set that resolves this book has no translationWords pin');
+  const articles = twArticlesOf(await apiClient.getMetadataRaw(resolveReadPath(pin)));
+  if (articles.size === 0) throw new Error(`the pinned translationWords resource ${pin.repoPath} lists no article`);
+  return articles;
 }
 
 /** An OBS project's draft percentage (D74): frames with a non-empty paragraph
@@ -905,13 +940,18 @@ async function gatewayChangePlan({ consequences, next, coverage, installed, stor
   for (const entry of consequences.affected) {
     if (blockedSet.has(keyOf(entry))) continue;
     const resolution = resolveToolBook(next, entry.tool, entry.book, coverage);
-    if (!resolution.pin || !isPinLocal(installed, resolution.pin)) {
+    // §4.2 (#643): a tW list derives against the resolving set's tw pin too,
+    // so that pin must be local as well, or the book is blocked like one
+    // whose links are not.
+    const set = resolution.rung ? next.languageSets?.[resolution.rung] : null;
+    const twPin = entry.tool === 'translationWords' ? set?.translationWords : null;
+    if (!resolution.pin || !isPinLocal(installed, resolution.pin) || (twPin && !isPinLocal(installed, twPin))) {
       blocked.push({ tool: entry.tool, book: entry.book });
       blockedSet.add(keyOf(entry));
       continue;
     }
     const source = stored.find((candidate) => candidate.tool === entry.tool && candidate.book === entry.book);
-    const derived = await actions.deriveItemsFor(entry.tool, entry.book, resolution.pin);
+    const derived = await actions.deriveItemsFor(entry.tool, entry.book, resolution.pin, set);
     const carried = carryOverDecisions(source.file, derived, resolutionRecord(resolution));
     // #580: "carried over" is what the check screen will show — the same merge
     // and draft revalidation completedCheckSession runs, then the one counting
@@ -1186,6 +1226,11 @@ async function deriveCheckItems({ apiClient, actions, st, tool, book, pre }) {
   if (frame.state !== 'ready')
     return { session: emptyCheckSession(tool, book, pre.resolution, `versification-${frame.state}`), frame };
   const scopeRanges = scopeRangesFor(st.projectScope ?? {}, book.toUpperCase());
+  // §4.2 (#643): the tw articles of the set that resolved this (tool, book).
+  const twArticles =
+    tool === 'translationWords'
+      ? await readTwArticles(apiClient, st.projectPins?.languageSets?.[pre.resolution.rung])
+      : undefined;
   const result = await deriveForProject({
     tsv,
     tool,
@@ -1194,6 +1239,7 @@ async function deriveCheckItems({ apiClient, actions, st, tool, book, pre }) {
     to: frame.name,
     schemes: frame.schemes,
     scopeRanges,
+    twArticles,
   });
   const dropped = result.unplaceable.length
     ? {
@@ -1330,11 +1376,14 @@ const projectPathOf = (st) => st.project?.repoPath ?? null;
 
 /** #9: which rung pins `pin` in `slot` (D58 identity), or null. */
 function rungPinning(resources, slot, pin) {
+  // D97 (#646): a pin that both rungs carry (the ruling 7 form pins `en_twl`
+  // on both) resolves to the first rung of the ladder, primary.
   return LADDER.find((rung) => {
     const p = resources?.languageSets?.[rung]?.[slot];
     return !!p && samePath(p.repoPath, pin.repoPath) && p.sha === pin.sha;
   }) ?? null;
 }
+export const __rungPinningForTests = rungPinning;
 
 /** Why a previewed upgrade may not be applied now, as the slice patch to
  * dispatch — or null when it may. The preview was planned against ONE
@@ -2447,6 +2496,77 @@ async function performLoadProgress(ctx) {
 /** Test hook: #475 — two loads that finish before one render keep both entries. */
 export const __performLoadProgressForTests = performLoadProgress;
 
+/** Project settings (Increment 1: direction + font are editable via
+ * settings.json; name/language/code display-only — metadata is not writable
+ * over HTTP, D28 addendum). Two reads run together: the settings file and the
+ * gateway-language lookup (#412). */
+async function performOpenSettings({ project, dispatch, openReader, resolutionContext }) {
+  dispatch({
+    type: 'set',
+    patch: {
+      modal: 'settings',
+      st: {
+        repoPath: project.id,
+        projName: project.name,
+        name: project.name,
+        langName: '',
+        code: project.languageTag,
+        dir: project.scriptDirection === 'rtl' ? 'rtl' : 'ltr',
+        font: SCRIPT_FONTS[0],
+        bookCount: (project.bookCodes || []).length,
+        flavor: project.flavor,
+        busy: false,
+        loaded: false,
+        error: null,
+        gw: { loading: true, pins: null, options: [], error: null },
+      },
+      gatewayError: null,
+    },
+  });
+  // Each write names its project: a read that finishes after Settings closed,
+  // or after another project's Settings opened, lands nowhere (reducer).
+  const patchSt = (patch) => dispatch({ type: 'patchSt', repoPath: project.id, patch });
+  let reader = null;
+  try {
+    reader = await openReader(project.id);
+    loadSettingsGateways({ project, reader, dispatch, resolutionContext });
+    const settings = (await reader.readSettings()) || {};
+    patchSt({
+      dir: settings.textDirection === 'rtl' ? 'rtl' : 'ltr',
+      font: settings.textFont || SCRIPT_FONTS[0],
+      langName: settings.languageName || '',
+      loaded: true,
+    });
+  } catch (error) {
+    // Catch-to-absence sweep (D30, writable variant): claiming
+    // loaded:true over hard-coded defaults let Save WRITE those
+    // defaults over the project's real direction/font (an RTL project
+    // silently became LTR). State the failure; Save stays disabled
+    // while unloaded.
+    patchSt({ loaded: false, error: String(error?.message || error) });
+    // The project did not open: the lookup never started, so its row ends here.
+    if (!reader) dispatch({ type: 'patchSt', repoPath: project.id, gw: { loading: false } });
+  }
+}
+
+/** #412: the gateway-language packages the Settings card offers
+ * (gatewaysCoveringProject), read from disk only, so it works offline. */
+async function loadSettingsGateways({ project, reader, dispatch, resolutionContext }) {
+  const kind = project.flavor === 'textStories' ? 'obs' : 'bible';
+  const setGw = (gw) => dispatch({ type: 'patchSt', repoPath: project.id, gw });
+  try {
+    const [pins, { installed, coverage, resolutionError }] = await Promise.all([reader.readResources(), resolutionContext()]);
+    if (resolutionError) throw new Error(resolutionError);
+    const options = gatewaysCoveringProject(installed, coverage, project.bookCodes || [], kind);
+    setGw({ loading: false, pins, options, error: null });
+  } catch (error) {
+    setGw({ loading: false, error: String(error?.message || error) });
+  }
+}
+
+/** Test hook: #641 — the two reads of Project settings settle before one render. */
+export const __performOpenSettingsForTests = performOpenSettings;
+
 function loadOrigPane({ store, origPin, code, seq, openSeqRef, stateRef, dispatch, testament }) {
   if (stateRef?.current?.sources?.orig) {
     dispatch({ type: 'setSource', id: 'orig', value: undefined });
@@ -2635,6 +2755,13 @@ function loadProjectPins({ store, repoPath, storeRef, stateRef, actions, dispatc
   const settled = read
     .then(async (pins) => {
       if (!stillCurrent()) return;
+      // D97 ruling 6 (#646): a twl pin that does not name a `_twl` repository
+      // (either rung; an OBS project's fallback set too) was written by a
+      // pre-release build. The document lands as read; every reader of the
+      // twl slot asks `oldTwlPin(projectPins)` first (the preflight, the
+      // Understand Words slot, the Check picker) and answers 'old-twl'
+      // without a read. Not stored: a gateway change and an upgrade replace
+      // `projectPins` without this read, and a stored verdict would go stale.
       dispatch({ type: 'set', patch: { projectPins: pins, projectPinsLoaded: true, projectPinsError: null } });
       // Round 37: the source panes are pin-driven — resolve them now that
       // the pins are known (openBook deferred while they were loading). The
@@ -2800,6 +2927,8 @@ async function loadUnderstandSlot({
   tool,
   deriveOpts = {},
 }) {
+  // D97 ruling 6 (#646): the pre-release one-repo twl pin is never read.
+  if (slot === 'translationWordsLinks' && oldTwlPin(st.projectPins)) return { state: 'old-twl' };
   const resolved = resolveSetSlot(st.projectPins, slot, book, coverage);
   const unavailable = unavailableHelpSlot(st, resolved, sets, slot, installed);
   if (unavailable) return unavailable;
@@ -2816,6 +2945,10 @@ async function loadUnderstandSlot({
   if (tsv === null || tsv.startsWith('{"is_good":false'))
     return { state: 'missing', pin: resolved.pin, rung: resolved.rung };
   if (frame.state !== 'ready') return { state: `versification-${frame.state}` };
+  // §4.2 (#643): the tW rows read like the check list — against the tw pin of
+  // the set that resolved the links; a failed read is this slot's stated error.
+  const twArticles =
+    tool === 'translationWords' ? await readTwArticles(apiClient, sets[resolved.rung]) : undefined;
   const { items, unplaceable } = await deriveForProject({
     tsv,
     tool,
@@ -2824,6 +2957,7 @@ async function loadUnderstandSlot({
     to: frame.name,
     schemes: frame.schemes,
     scopeRanges,
+    twArticles,
     ...deriveOpts,
   });
   return {
@@ -3080,7 +3214,12 @@ async function performRunPreflight({ stateRef, dispatch, actions }) {
       ? preflightObsTool(st.projectPins, tool, {
           isLocal: (pin) => isPinLocal(installed, pin), online,
         })
-      : preflightToolBook(st.projectPins, tool, st.book, {
+      // D97 ruling 6 (#646): tW never resolves through the pre-release
+      // one-repo twl pin — no session, no picker derivation. (An OBS project
+      // reads `obs-twl`, another pin; its message is the picker's callout.)
+      : tool === 'translationWords' && oldTwlPin(st.projectPins)
+        ? { tool, book: st.book, state: 'old-twl', resolution: null, needs: null }
+        : preflightToolBook(st.projectPins, tool, st.book, {
           coverage,
           isLocal: (pin) => isPinLocal(installed, pin),
           online,
@@ -3098,7 +3237,9 @@ async function waitForToolPreflightReady(runPreflight, stateRef, tool, ms = 20_0
   const deadline = Date.now() + ms;
   while (Date.now() < deadline) {
     await runPreflight();
-    if (stateRef.current.preflight?.[tool]?.state === 'ready') return true;
+    const state = stateRef.current.preflight?.[tool]?.state;
+    if (state === 'ready') return true;
+    if (state === 'old-twl') return false; // D97 ruling 6: a clear no, not "not yet" — the pins will not change here
     await new Promise((r) => setTimeout(r, 100));
   }
   return stateRef.current.preflight?.[tool]?.state === 'ready';
@@ -4232,7 +4373,9 @@ export function AppProvider({ children }) {
             .find((p) => !isPinLocal(installed, p))
           ?? null;
         if (!pin) return;
-        const rung = rungPinning(st.projectPins, slot, pin) ?? 'primary';
+        // #646: for tW the missing pin can be the resolving set's tw pin, which
+        // the tool's slot does not pin — it lives on the rung that resolved.
+        const rung = rungPinning(st.projectPins, slot, pin) ?? pre.resolution?.rung ?? 'primary';
         // The re-pin candidates: installed copies of the SAME repo at another
         // commit (D58 identity). An identity-read outage is stated, not "none".
         // One dispatch: the slice must exist before any patchFix can land.
@@ -4418,8 +4561,10 @@ export function AppProvider({ children }) {
 
       /** Derive one book's check list from a given pin. Returns [] when the
        * pinned resource says nothing about the book — a designed state (C2.9),
-       * not an error. Derived lists are disposable and never stored (§4.2). */
-      deriveItemsFor: async (tool, book, pin) => {
+       * not an error. Derived lists are disposable and never stored (§4.2).
+       * `set` is the language set the pin resolved from: a tW list derives
+       * against its tw pin's articles (§4.2, #643). */
+      deriveItemsFor: async (tool, book, pin, set) => {
         const localRepo = resolveReadPath(pin);
         let tsv;
         // Catch-to-absence sweep (D30): [] means the resource CONFIRMS it
@@ -4455,6 +4600,7 @@ export function AppProvider({ children }) {
           );
         }
         const to = frame.name;
+        const twArticles = tool === 'translationWords' ? await readTwArticles(api, set) : undefined;
         const { items } = await deriveForProject({
           tsv,
           tool,
@@ -4462,6 +4608,7 @@ export function AppProvider({ children }) {
           from: RESOURCE_FRAME,
           to,
           schemes: frame.schemes,
+          twArticles,
           scopeRanges: ranges,
         });
         return items;
@@ -5128,8 +5275,8 @@ export function AppProvider({ children }) {
       },
 
       /** C2.5 — the help article behind the active item, read from the
-       * INSTALLED burrito. tW articles live in the same repo the links came
-       * from (D34); a tN item's groupId is a tA module slug. A module the
+       * INSTALLED burrito. tW articles live in the `translationWords` pin
+       * (D96); a tN item's groupId is a tA module slug. A module the
        * pinned tA release does not carry reports absence rather than
        * rendering an empty panel. */
       // `session` is passed explicitly by callers that have just dispatched:
@@ -5812,7 +5959,13 @@ export function AppProvider({ children }) {
         // A lookup DCS did not answer leaves its slot unresolved; the other slots'
         // shas stay. Such a failure offers the lookup again.
         let unanswered = false;
-        const found = await resolveVersions(bundle.versions, (repoPath, version) => releaseCommitSha(repoPath, version).catch(() => ((unanswered = true), undefined)));
+        const notAnswered = () => ((unanswered = true), undefined);
+        // D97 ruling 8: the tW version's TWL pin is dated by the releases listing.
+        const found = await resolveVersions(
+          bundle.versions,
+          (repoPath, version) => releaseCommitSha(repoPath, version).catch(notAnswered),
+          (repoPath) => dcsReleases(repoPath).catch(notAnswered),
+        );
         const offline = unanswered;
         // The user may have gone back or started another review meanwhile: a result
         // belongs only to the review of the bundle it was looked up for.
@@ -5845,8 +5998,10 @@ export function AppProvider({ children }) {
               if (!isNotFoundError(error)) throw error;
             }
             // A new project is in the eng frame, the frame of the whole suite: nothing maps.
+            // §4.2 (#643): the tW list derives against the base set's tw pin.
+            const twArticles = tool === 'translationWords' && tsv ? await readTwArticles(api, base.languageSets.primary) : undefined;
             derived[`${tool}/${book}`] = tsv && !tsv.startsWith('{"is_good":false')
-              ? (await deriveForProject({ tsv, tool, bookId: book.toLowerCase(), from: RESOURCE_FRAME, to: RESOURCE_FRAME, schemes: {} })).items
+              ? (await deriveForProject({ tsv, tool, bookId: book.toLowerCase(), from: RESOURCE_FRAME, to: RESOURCE_FRAME, schemes: {}, twArticles })).items
               : [];
           }
           const { carried, invalidated } = applyVersions(bundle, base, versions.found, derived);
@@ -6077,68 +6232,17 @@ export function AppProvider({ children }) {
       // ---- Project settings modal (Increment 1: direction + font are
       //      editable via settings.json; name/language/code display-only —
       //      metadata is not writable over HTTP, D28 addendum) ----
-      openSettings: async (project) => {
-        dispatch({
-          type: 'set',
-          patch: {
-            modal: 'settings',
-            st: {
-              repoPath: project.id,
-              projName: project.name,
-              name: project.name,
-              langName: '',
-              code: project.languageTag,
-              dir: project.scriptDirection === 'rtl' ? 'rtl' : 'ltr',
-              font: SCRIPT_FONTS[0],
-              bookCount: (project.bookCodes || []).length,
-              flavor: project.flavor,
-              busy: false,
-              loaded: false,
-              error: null,
-              gw: { loading: true, pins: null, options: [], error: null },
-            },
-            gatewayError: null,
-          },
-        });
-        try {
+      openSettings: (project) => performOpenSettings({
+        project,
+        dispatch,
+        openReader: async (repoPath) => {
           const reader = new ProjectReader({ api });
-          await reader.open(project.id);
-          a.loadSettingsGateways(project, reader);
-          const settings = (await reader.readSettings()) || {};
-          a.patchSt({
-            dir: settings.textDirection === 'rtl' ? 'rtl' : 'ltr',
-            font: settings.textFont || SCRIPT_FONTS[0],
-            langName: settings.languageName || '',
-            loaded: true,
-          });
-        } catch (error) {
-          // Catch-to-absence sweep (D30, writable variant): claiming
-          // loaded:true over hard-coded defaults let Save WRITE those
-          // defaults over the project's real direction/font (an RTL project
-          // silently became LTR). State the failure; Save stays disabled
-          // while unloaded.
-          a.patchSt({ loaded: false, error: String(error?.message || error) });
-        }
-      },
-      patchSt: (patch) =>
-        dispatch({ type: 'set', patch: { st: { ...stateRef.current.st, ...patch } } }),
-
-      /** #412: the gateway-language packages the Settings card offers
-       * (gatewaysCoveringProject), read from disk only, so it works offline. */
-      loadSettingsGateways: async (project, reader) => {
-        const kind = project.flavor === 'textStories' ? 'obs' : 'bible';
-        const setGw = (gw) => {
-          if (stateRef.current.st?.repoPath === project.id) a.patchSt({ gw: { ...stateRef.current.st.gw, ...gw } });
-        };
-        try {
-          const [pins, { installed, coverage, resolutionError }] = await Promise.all([reader.readResources(), a.resolutionContext()]);
-          if (resolutionError) throw new Error(resolutionError);
-          const options = gatewaysCoveringProject(installed, coverage, project.bookCodes || [], kind);
-          setGw({ loading: false, pins, options, error: null });
-        } catch (error) {
-          setGw({ loading: false, error: String(error?.message || error) });
-        }
-      },
+          await reader.open(repoPath);
+          return reader;
+        },
+        resolutionContext: a.resolutionContext,
+      }),
+      patchSt: (patch) => dispatch({ type: 'patchSt', patch }),
 
       /** #412: choose the project's gateway package from Settings. The change is
        * the J13 one: the consequence dialogue opens over Settings, and nothing of
@@ -6176,7 +6280,11 @@ export function AppProvider({ children }) {
       saveSettings: async () => {
         const f = stateRef.current.st;
         if (f.busy) return;
-        a.patchSt({ busy: true, error: null });
+        // #641: the writes name their project, and the close checks it: the
+        // user can Cancel and open another project's Settings while this
+        // save runs, and its failure or its close must not land there.
+        const patchSt = (patch) => dispatch({ type: 'patchSt', repoPath: f.repoPath, patch });
+        patchSt({ busy: true, error: null });
         // #412: Settings also opens inside a project. The open project's own
         // store writes then, never a second store over the same journal.
         const open = stateRef.current.project?.id === f.repoPath ? storeRef.current : null;
@@ -6199,9 +6307,9 @@ export function AppProvider({ children }) {
           if (open && stateRef.current.project?.id === f.repoPath)
             dispatch({ type: 'set', patch: { project: { ...stateRef.current.project, scriptDirection: f.dir, textFont: f.font } } });
           await refreshProjects();
-          a.closeModal();
+          if (stateRef.current.st?.repoPath === f.repoPath) a.closeModal();
         } catch (e) {
-          a.patchSt({ busy: false, error: e?.reason || e?.message || t('wizard.error') });
+          patchSt({ busy: false, error: e?.reason || e?.message || t('wizard.error') });
         } finally {
           if (!open) store.dispose(); // #94: a throwaway store's fold worker
         }

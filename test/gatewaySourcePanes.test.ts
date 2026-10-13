@@ -80,13 +80,17 @@ describe('gatewaysCoveringProject (owner Q2)', () => {
   const esPin = (name: string, version: string, sha: string, flavor: string): ResourcePin =>
     ({ repoPath: `git.door43.org/es-419_gl/${name}`, version, sha, flavor });
   const ES_TN = esPin('es-419_tn', 'v66', '22f3d0c61e2ab4701cb869547de9c3c43da07208', 'parascriptural/x-bcvnotes');
+  const ES_TWL = esPin('es-419_twl', 'v18', 'c2d9547ec95e40c2ba085c597b127c94733feb8a', 'parascriptural/x-bcvarticles');
   const ES_TW = esPin('es-419_tw', 'v37', '7586f4ff1f0483ea40a4a68e5e1f33158e08c208', 'parascriptural/x-bcvarticles');
   const ES_TA = esPin('es-419_ta', 'v4', '26606b578c37cc2c0ee09bb7b9a291860ff59444', 'peripheral/x-peripheralArticles');
+  // D97 (#646): a complete set pins `<lang>_twl` too.
   const installed = {
     '_local_/_sideloaded_/en_tn': EN_HELPS.translationNotes,
+    '_local_/_sideloaded_/en_twl': EN_HELPS.translationWordsLinks,
     '_local_/_sideloaded_/en_tw': EN_HELPS.translationWords,
     '_local_/_sideloaded_/en_ta': EN_HELPS.translationAcademy,
     '_local_/_sideloaded_/es-419_tn': ES_TN,
+    '_local_/_sideloaded_/es-419_twl': ES_TWL,
     '_local_/_sideloaded_/es-419_tw': ES_TW,
     '_local_/_sideloaded_/es-419_ta': ES_TA,
   } as never;
@@ -95,22 +99,22 @@ describe('gatewaysCoveringProject (owner Q2)', () => {
   it('lists a package that covers one of the project’s books, and not one that covers none', () => {
     const coverage = {
       [pinKey(EN_HELPS.translationNotes)]: ['TIT', 'PHM'],
-      [pinKey(EN_HELPS.translationWords)]: ['TIT', 'PHM'],
+      [pinKey(EN_HELPS.translationWordsLinks)]: ['TIT', 'PHM'],
       [pinKey(ES_TN)]: ['TIT'],
-      [pinKey(ES_TW)]: ['TIT'],
+      [pinKey(ES_TWL)]: ['TIT'],
     };
     expect(keys(gatewaysCoveringProject(installed, coverage, ['TIT', 'JON'], 'bible'))).toEqual(['en::unfoldingWord', 'es-419::es-419_gl']);
     expect(keys(gatewaysCoveringProject(installed, coverage, ['PHM'], 'bible'))).toEqual(['en::unfoldingWord']);
   });
 
   it('whole-collection coverage (§5.3 BIBLE) covers every book', () => {
-    const coverage = { [pinKey(ES_TN)]: ['TIT'], [pinKey(ES_TW)]: ['BIBLE'] };
+    const coverage = { [pinKey(ES_TN)]: ['TIT'], [pinKey(ES_TWL)]: ['BIBLE'] };
     expect(keys(gatewaysCoveringProject(installed, coverage, ['GEN'], 'bible'))).toContain('es-419::es-419_gl');
-    expect(keys(gatewaysCoveringProject(installed, { [pinKey(ES_TN)]: ['TIT'], [pinKey(ES_TW)]: ['TIT'] }, ['GEN'], 'bible'))).not.toContain('es-419::es-419_gl');
+    expect(keys(gatewaysCoveringProject(installed, { [pinKey(ES_TN)]: ['TIT'], [pinKey(ES_TWL)]: ['TIT'] }, ['GEN'], 'bible'))).not.toContain('es-419::es-419_gl');
   });
 
   it('the word links alone are coverage: a book the notes lack but the links carry lists the package', () => {
-    const coverage = { [pinKey(ES_TN)]: ['TIT'], [pinKey(ES_TW)]: ['TIT', 'PHM'] };
+    const coverage = { [pinKey(ES_TN)]: ['TIT'], [pinKey(ES_TWL)]: ['TIT', 'PHM'] };
     expect(keys(gatewaysCoveringProject(installed, coverage, ['PHM'], 'bible'))).toContain('es-419::es-419_gl');
   });
 

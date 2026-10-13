@@ -138,40 +138,78 @@ and that enforcement is a packaging/shell responsibility. Facts, measured
   the local server port, or the dev rig, is outside it; the server binds
   127.0.0.1 and the port is not user-visible in normal use.
 
-## The window frame (#214)
+## The window frame (#214, #639)
 
-On macOS the window has no title bar. The app header is the top of the window.
+On macOS and on Windows the window has no title bar. The app header is the top
+of the window. Linux keeps the native frame.
 
 - **Mechanism:** `scripts/package-desktop.zsh` patches the template window
-  options in `electron/electronStartup.js`. On macOS only, it adds
-  `titleBarStyle: 'hidden'` and `trafficLightPosition: { x: 20, y: 21 }`. The
+  options in `electron/electronStartup.js`, in one patch with a spread per
+  system. On macOS it adds `titleBarStyle: 'hidden'` and
+  `trafficLightPosition: { x: 20, y: 21 }`. On Windows it adds
+  `titleBarStyle: 'hidden'` and
+  `titleBarOverlay: { color: '#014263', symbolColor: '#FFFFFF', height: 56 }`:
+  the header's color (`--uw-ocean`) and height (`--header-height`). The
   patch refuses to run if the template window options changed shape, or if
   the template already sets `frame` or `titleBarStyle`.
-  `electron/preload.js` (`scripts/preload.cjs`) sets
-  `data-title-bar="hidden"` on the page on macOS. With that mark, `src/ui.css`
-  makes the header move the window, keeps each header control clickable, and
-  keeps 88px at the left of the header for the traffic lights.
+  `electron/preload.js` (`scripts/preload.cjs`) marks the page:
+  `data-title-bar="hidden"` on macOS, `data-title-bar="overlay"` on Windows,
+  no mark on Linux. With a mark, `src/ui.css` makes the header move the
+  window and keeps each header control clickable. The room for the window
+  controls is physical, because an RTL project mirrors the page and not the
+  window: `hidden` keeps 88px at the left of the header for the traffic
+  lights; `overlay` pads both sides of the header from the title bar area
+  that the Window Controls Overlay environment reports
+  (`env(titlebar-area-x)`, `env(titlebar-area-width)`: the part of the top
+  strip that the controls leave free), plus the header's 16px gutter. So the
+  room follows the zoom, the maximized state, and the side the system draws
+  the controls on: Electron mirrors the area under an RTL system language
+  (`shell/browser/ui/views/win_frame_view.cc` line 279, `GetMirroredRect`)
+  [VERIFIED — electron v37.1.0 `docs/tutorial/custom-title-bar.md`, "Window
+  Controls Overlay" section, and source at tag `v37.1.0`, 2026-10-12]. At the
+  900px minimum window width this leaves 208px per side column instead of
+  277px; the save-error label of the header already wraps at that width on
+  every system, and with the overlay the French label overflows the right
+  column by 27px [VERIFIED — measured in the dev client at 900px with a
+  simulated 154px overlay, 2026-10-12].
 - **Layers:** a dialog, drawer, panel or popover (`Layer`, with
   `data-layer-placement` on its scrim, or on the panel of an anchored popover)
   does not move the window, also where it covers the header. Chromium finds
   the drag area by position, not by the element on top, so these elements are
   no-drag. A full-height side panel (`start`, `end`) starts below the
-  header, so no control of the panel is under the traffic lights.
-- **Window controls:** the traffic lights (close, minimize, zoom) stay, at the
-  vertical center of the 56px header. The Window menu does not change.
-- **Windows and Linux keep the native frame.** The template sets no `frame`
-  and no `titleBarStyle`, so Electron's default native title bar applies on all
-  three systems. On Windows and Linux, the application menu (Edit, View,
-  Window) is the top menu of the window [VERIFIED — desktop-app-template
-  4cb7576 `buildResources/electron/electronStartup.js` `createWindow()`;
-  electron v37.1.0 `docs/api/menu.md`, 2026-10-09]. The installed Windows app
-  shows that title bar and that menu [VERIFIED —
-  `evidence/windows-clean-machine-546-2026-10-09.md`]. On Windows and Linux,
-  `titleBarStyle: 'hidden'` removes the window controls, unless
-  `titleBarOverlay` draws them [VERIFIED — electron v37.1.0
-  `docs/api/structures/base-window-options.md`, 2026-10-09]. That overlay is
-  a different option with its own header layout, so the macOS change does not
-  apply to these systems. The patch and the mark act on `darwin` only.
+  header, so no control of the panel is under the window controls.
+- **Window controls, macOS:** the traffic lights (close, minimize, zoom) stay,
+  at the vertical center of the 56px header. The Window menu does not change.
+- **Window controls, Windows:** `titleBarOverlay` draws minimize, maximize and
+  close at the right, 56px tall, in the header color, white symbols. Without
+  it, `titleBarStyle: 'hidden'` leaves no window controls on Windows and
+  Linux [VERIFIED — electron v37.1.0
+  `docs/api/structures/base-window-options.md`, `titleBarStyle` and
+  `titleBarOverlay`, 2026-10-12].
+- **The menu row, Windows:** the application menu (Edit, View, Window) stays
+  set, so the #435 Reload guard of the recipe still passes and every shortcut
+  (Ctrl+R, Ctrl+Shift+R, Ctrl+Shift+I, Ctrl+0, zoom) keeps working. The menu
+  bar never shows, also not on Alt, and no `setMenuBarVisibility` call is
+  needed: `titleBarStyle: 'hidden'` makes the window frameless
+  (`shell/browser/native_window_views.cc` lines 253-254), `RootView::SetMenu`
+  registers the accelerators and returns before it builds a menu bar for a
+  frameless window (`shell/browser/ui/views/root_view.cc` lines 53-57), and
+  `RootView::SetMenuBarVisibility` does nothing while there is no menu bar
+  (`root_view.cc` lines 82-84) [VERIFIED — electron v37.1.0 source read at tag
+  `v37.1.0`, 2026-10-12]. The template sets `autoHideMenuBar: false`
+  [VERIFIED — desktop-app-template 4cb7576
+  `buildResources/electron/electronStartup.js` `createWindow()`, 2026-10-12];
+  the recipe leaves it. Before #639, the installed Windows app showed the
+  native title bar and that menu row [VERIFIED —
+  `evidence/windows-clean-machine-546-2026-10-09.md`]. With #639, a cold
+  launch on a clean Windows 11 machine shows no title bar and no menu row,
+  also not on Alt; each control, the header drag and double-click, and the
+  Zoom, Developer Tools and Reload shortcuts work [VERIFIED —
+  `evidence/windows-title-bar-639-2026-10-12.md`, artifact of run
+  38272852412 at ab168ae].
+- **Linux keeps the native frame.** The patch and the mark act on `darwin` and
+  `win32` only. Hiding the Linux frame is
+  [#642](https://github.com/unfoldingWord/translationCore4/issues/642).
 
 ## The Door43 server for account and write calls (#120)
 
@@ -777,6 +815,7 @@ procedure's subject.
 | el-x-koine_ugnt | v0.34, sha `fc95b2b8aad08bb65ab54628ab685413a1139e97` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
 | hbo_uhb | v3.0.0, sha `74022f0fed012a3ef169886f595dd98e7b200543` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
 | en_tn | v91, sha `e586762e330f482a60c52aedd1c7b3a2f155df8a` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
+| en_twl (#644, D96) | v91, sha `7cbb3419f79780ce84b92ad7d42bd476cc5d8a64` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
 | en_tw | v91, sha `ff5b3852c27c3a0d01b109e482eb26047dcd20e2` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
 | en_ta | v91, sha `ce9a1bb9431317ca888e8c1f9620caa7f5fe45fd` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
 | en_tq | v91, sha `8be02772584ff5a5fea893a392b4f019e3efcc77` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
@@ -790,11 +829,11 @@ procedure's subject.
 
 Every artifact carries `BUILD-MANIFEST.json` at its root with the same data. A sha-only pin has `"version": null` there.
 
-The eight `unfoldingWord` repos are fetched as the DCS sb-zip export `/sb/<tag>.zip`. The two lexicons come from the `uW` org on DCS (D71): those repos have no tag and no sb-zip export (`/sb/` answers 404), so the build fetches the Gitea commit archive `archive/<sha>.zip` and verifies the sha Gitea records in the zip's archive comment against the pin. Both paths run through the app's own fetch code (`src/data/resourceFetch.ts` `downloadPin`), called by `dev-env/scripts/cache-resource.zsh`.
+The nine `unfoldingWord` repos are fetched as the DCS sb-zip export `/sb/<tag>.zip`. The two lexicons come from the `uW` org on DCS (D71): those repos have no tag and no sb-zip export (`/sb/` answers 404), so the build fetches the Gitea commit archive `archive/<sha>.zip` and verifies the sha Gitea records in the zip's archive comment against the pin. Both paths run through the app's own fetch code (`src/data/resourceFetch.ts` `downloadPin`), called by `dev-env/scripts/cache-resource.zsh`.
 
-## Bundled English suite (#163, #218, #504)
+## Bundled English suite (#163, #218, #504, #644)
 
-Per D70, D75 (and its #331 amendment), #163, #218 and #288, the desktop artifact bundles fifteen repos: the ten-resource English Bible suite, `en_obs`, `en_obs-tn`, `en_obs-twl`, `en_obs-tq`, and `uW/obs_images_360`. Translation Words and Translation Academy are shared by Bible and OBS sets. The unpacker stages normal resources at `<APPDIR>/resources/<owner lowercased>--<repo>/` and the untagged default image pack at `uw--obs_images_360--7146d5b504f6`.
+Per D70, D75 (and its #331 amendment), #163, #218, #288 and #644 (D96), the desktop artifact bundles sixteen repos: the eleven-resource English Bible suite, `en_obs`, `en_obs-tn`, `en_obs-twl`, `en_obs-tq`, and `uW/obs_images_360`. Translation Words and Translation Academy are shared by Bible and OBS sets. The unpacker stages normal resources at `<APPDIR>/resources/<owner lowercased>--<repo>/` and the untagged default image pack at `uw--obs_images_360--7146d5b504f6`.
 
 At each packaged start (#528), the shared bootstrap checks `BUILD-MANIFEST.json`
 against the bundled metadata's repo, full SHA and factual flavor, and verifies
@@ -810,7 +849,13 @@ path and a byte-identical verified tree. A distinct release is installed
 at `$HOME/pankosmia/tc4-projects/_local_/_sideloaded_/<owner lowercased>--<repo>--<full SHA>`.
 Copy staging is outside discovery, on the same filesystem, and published by a
 directory rename. A complete exact release already installed at a legacy,
-short-SHA or full-SHA path is reused at its actual path. The atomic
+short-SHA or full-SHA path is reused at its actual path. "Complete" is decided
+against the copy's own inventory, not the build's: a DCS export is complete when
+every ingredient in its own `metadata.json` is present with the declared size and
+checksum; an archive copy still needs the byte-identical receipt tree. The export's
+TWL rows follow `en_twl` `master` at fetch time, so two builds of one pin can ship
+different bytes, and the installed copy is kept as it is (#640, owner ruling
+2026-10-12). The atomic
 `client_settings/uw-tc4.json` merge preserves other install records and preferences;
 a failed record write aborts startup, and retry reuses the published resource.
 Abandoned staging is removed on retry. Older releases remain byte-for-byte,
@@ -822,7 +867,7 @@ install-record writes. Debug uses the same policy in its separate store.
 
 ### The release tags and the weekly check (#504)
 
-The build ships the English suite at the latest release at build time (owner stance, 2026-07-12). Since 2026-10-01 the pins are `en_ult`, `en_ust`, `en_tn`, `en_tw`, `en_ta` and `en_tq` at **v91** (released 2026-09-26). `hbo_uhb` is at **v3.0.0** (released 2026-08-14). The manifests of `en_tn` v91 and `en_ult` v91 declare this Hebrew Bible. `el-x-koine_ugnt` v0.34 and the four Open Bible Stories resources were already the latest releases. The table above gives each tag and its commit.
+The build ships the English suite at the latest release at build time (owner stance, 2026-07-12). Since 2026-10-01 the pins are `en_ult`, `en_ust`, `en_tn`, `en_tw`, `en_ta` and `en_tq` at **v91** (released 2026-09-26). Since 2026-10-12 (#644, D96) `en_twl` is pinned at **v91** too, for the TWL check lists; `en_tw` serves the articles only. `hbo_uhb` is at **v3.0.0** (released 2026-08-14). The manifests of `en_tn` v91 and `en_ult` v91 declare this Hebrew Bible. `el-x-koine_ugnt` v0.34 and the four Open Bible Stories resources were already the latest releases. The table above gives each tag and its commit.
 
 The pins stay fixed in the build (owner decision, 2026-10-01). A scheduled check reports when a pin falls behind:
 

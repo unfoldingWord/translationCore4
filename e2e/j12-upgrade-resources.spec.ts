@@ -399,13 +399,16 @@ test.describe('J12 — a facilitator upgrades the pinned resources', () => {
 
       // Case 2: the pins carry the new release's commit hash and version label (§5.3).
       const pins = readProjectPins(SEEDED_PROJECT);
-      for (const [slot, repo] of [['translationNotes', 'en_tn'], ['translationWordsLinks', 'en_tw'], ['translationWords', 'en_tw'], ['translationAcademy', 'en_ta']] as const) {
+      for (const [slot, repo] of [['translationNotes', 'en_tn'], ['translationWords', 'en_tw'], ['translationAcademy', 'en_ta']] as const) {
         const pin = pins.languageSets.primary[slot] as { repoPath: string; version: string; sha: string; flavor: string };
         expect(pin.repoPath).toBe(`git.door43.org/unfoldingWord/${repo}`);
         expect(pin.version).toBe(NEW_TAG);
         expect(pin.sha).toBe(servedRevision(repo));
         expect(pin.flavor).toBeTruthy();
       }
+      // en_twl (D96, #644) has no newer release in the mocked DCS: its identity stays
+      // (the open adds D41 `books`, so this is a match on the pin, not on bytes).
+      expect(pins.languageSets.primary.translationWordsLinks).toMatchObject(pinForSideloaded('en_twl', SEEDED_TAG));
       // Case 4: the other set's pins and every text ingredient are byte-identical.
       expect(JSON.stringify(pins.languageSets.fallback)).toBe(fallbackBefore);
       expect(JSON.stringify((pins as { resources?: unknown }).resources ?? null)).toBe(groupsBefore); // the text pins (original language) too

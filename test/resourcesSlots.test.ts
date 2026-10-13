@@ -70,6 +70,7 @@ describe('D64 — languageSetFromInstalled includes the optional slots only when
     a: rec('es-419_tn'),
     b: rec('es-419_tw'),
     c: rec('es-419_ta'),
+    twl: rec('es-419_twl'), // D97 (#646): the twl slot needs a `_twl` repo
   };
   const gw = { id: 'es-419', org: 'es-419_gl' };
 
@@ -82,7 +83,7 @@ describe('D64 — languageSetFromInstalled includes the optional slots only when
   it("a multi-language org never pins ANOTHER language's tq/gst (2026-08-27 review)", () => {
     const bcs = (repo: string) => ({ repoPath: `git.door43.org/translationCore-Create-BCS/${repo}`, sha: 'e'.repeat(40), flavor: 'x' });
     const installed = {
-      a: bcs('bn_tn'), b: bcs('bn_tw'), c: bcs('bn_ta'),
+      a: bcs('bn_tn'), b: bcs('bn_tw'), c: bcs('bn_ta'), g: bcs('bn_twl'),
       d: bcs('hi_tq'), e: bcs('hi_gst'), // the OTHER language's repos, same org
       f: bcs('bn_tq'),
     };
@@ -93,7 +94,7 @@ describe('D64 — languageSetFromInstalled includes the optional slots only when
 
   it('the REQUIRED slots refuse a mixed-language set too: a Hindi request over Bengali installs yields NO set (adversarial round 4)', () => {
     const bcs = (repo: string) => ({ repoPath: `git.door43.org/translationCore-Create-BCS/${repo}`, sha: 'e'.repeat(40), flavor: 'x' });
-    const installed = { a: bcs('bn_tn'), b: bcs('bn_tw'), c: bcs('bn_ta') };
+    const installed = { a: bcs('bn_tn'), b: bcs('bn_tw'), c: bcs('bn_ta'), d: bcs('bn_twl') };
     // Pre-fix this returned Bengali tN/tW/tA pins LABELED as a Hindi set.
     expect(languageSetFromInstalled(installed as never, { id: 'hi', org: 'translationCore-Create-BCS' })).toBeNull();
     // And the exact-name match still assembles the RIGHT language's set.
@@ -104,7 +105,7 @@ describe('D64 — languageSetFromInstalled includes the optional slots only when
   it('English `_ust` also satisfies the simplified slot', () => {
     const en = (repo: string) => ({ repoPath: `git.door43.org/unfoldingWord/${repo}`, sha: 'c'.repeat(40), flavor: 'x' });
     const s = languageSetFromInstalled(
-      { a: en('en_tn'), b: en('en_tw'), c: en('en_ta'), d: en('en_ust') } as never,
+      { a: en('en_tn'), b: en('en_tw'), c: en('en_ta'), d: en('en_ust'), e: en('en_twl') } as never,
       { id: 'en', org: 'unfoldingWord' },
     );
     expect(s?.simplifiedText?.repoPath).toContain('en_ust');

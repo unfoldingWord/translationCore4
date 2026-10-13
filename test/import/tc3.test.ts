@@ -13,6 +13,7 @@ import { runImport } from '../../src/data/import/shell';
 import { USFM_PARSER } from '../../src/data/import/usfm';
 import type { ImportBundle, ImportFile } from '../../src/data/import/types';
 import { INSTALLED_SUITE } from '../../src/data/installedSuite';
+import type { DcsRelease } from '../../src/data/resourceFetch';
 import { decompose, verseTextMd5 } from '../../src/data/journal/runtime';
 import { usfmjs } from '../../src/data/vendor';
 import { ServerApi } from '../../src/data/serverApi';
@@ -277,6 +278,108 @@ describe('#21 the tC3 parser', { timeout: 60_000 }, () => {
     // the same list the decisions came from: every one carries over
     const same = bundle.decisions!.map((d) => ({ ...d, selections: false, nothingToSelect: false, verseEdits: false, invalidated: false, comments: false, reminders: false }));
     expect(applyVersions(bundle, INSTALLED_SUITE as never, offline, { 'translationNotes/TIT': same as never }).carried).toBe(5);
+  });
+});
+
+// A tC3 project records one tW version (`tWordsGateway`). The TWL pin is the
+// `<lang>_twl` release closest in date to that tw release; no date, the latest
+// release; a gateway with no `_twl` repository (`hasTwl: false`), the bundled
+// `en_twl` (ruling 7). The one-repo form is never written (ruling 6).
+describe('#646 the tW version of a tC3 import pins its own _twl release (D97 ruling 8)', () => {
+  const EN_TW = 'git.door43.org/unfoldingWord/en_tw';
+  const EN_TWL = 'git.door43.org/unfoldingWord/en_twl';
+  const AR_TW = 'git.door43.org/ar_gt/ar_tw';
+  const AR_TWL = 'git.door43.org/ar_gt/ar_twl';
+  const EN_TW_V90 = '014524aebf4f997c123777e952856d24e3b246d2';
+  const EN_TWL_V91 = '7cbb3419f79780ce84b92ad7d42bd476cc5d8a64';
+  const EN_TWL_V90 = '5429bf17520c4c0bc1be7f4454c36adaeed75485';
+  const EN_TWL_V89 = '4bf5ba649b489a906d68f89477d83204b7c79b61';
+  const AR_TW_V3 = '0ff22d80c6bca067554128c5b5e793ca0965eccb';
+  /** The DCS tags and releases these cases name [VERIFIED — git.door43.org tags
+   * and releases APIs, 2026-10-13; `ar_gt/ar_twl` answers HTTP 404 as the control]. */
+  const TAGS: Record<string, string> = {
+    [`${EN_TW}@v90`]: EN_TW_V90,
+    [`${EN_TWL}@v91`]: EN_TWL_V91,
+    [`${EN_TWL}@v90`]: EN_TWL_V90,
+    [`${EN_TWL}@v89`]: EN_TWL_V89,
+    [`${AR_TW}@v3`]: AR_TW_V3,
+  };
+  const RELEASES: Record<string, DcsRelease[] | null> = {
+    [EN_TW]: [{ version: 'v91', createdAt: '2026-09-26T15:47:38Z' }, { version: 'v90', createdAt: '2026-08-14T20:41:43Z' }, { version: 'v89', createdAt: '2026-06-23T22:01:45Z' }],
+    [EN_TWL]: [{ version: 'v91', createdAt: '2026-09-26T15:47:29Z' }, { version: 'v90', createdAt: '2026-08-15T10:12:43Z' }, { version: 'v89', createdAt: '2026-06-23T22:01:33Z' }],
+    [AR_TW]: [{ version: 'v3', createdAt: '2024-03-02T17:11:47Z' }],
+    [AR_TWL]: null, // HTTP 404: no such repository
+  };
+  const tags = async (repoPath: string, version: string) => TAGS[`${repoPath}@${version}`] ?? null;
+  const releases = async (repoPath: string) => RELEASES[repoPath];
+  const twRequest = (repoPath: string, version: string) => [{ slot: 'translationWords' as const, book: 'TIT', candidates: [{ repoPath, version }] }];
+  /** One book with tW decisions and no other tool: the tw slot is the only version. */
+  const bundle: ImportBundle = {
+    kind: 'bible',
+    facts: { language: 'cfm', name: 'cfm_fbt' },
+    books: [{ code: 'TIT', usfm: '' }],
+    sidecars: { 'checking/translationWords/TIT.json': { schemaVersion: 1, tool: 'translationWords', book: 'TIT', decisions: [] } },
+    findings: [],
+  };
+  type Pins = { languageSets: Record<'primary' | 'fallback', Record<string, { repoPath: string; version?: string; sha: string; books?: string[] }>> };
+  const pinsOf = (found: Awaited<ReturnType<typeof resolveVersions>>, derived?: Record<string, never[]>) =>
+    sidecar<Pins>(applyVersions(bundle, INSTALLED_SUITE as never, found, derived).bundle, 'checking/resources.json').languageSets;
+
+  it('en_tw v90 (2026-08-14) pins en_twl v90 (2026-08-15), the release closest in date; the decisions record the _twl pin', async () => {
+    const requests = twRequest(EN_TW, 'v90');
+    const found = await resolveVersions(requests, tags, releases);
+    expect(found.translationWords).toEqual({ repoPath: EN_TW, version: 'v90', sha: EN_TW_V90 });
+    expect(found.translationWordsLinks).toEqual({ repoPath: EN_TWL, version: 'v90', sha: EN_TWL_V90 });
+    expect(unresolvedSlots(requests, found)).toEqual([]);
+    const { bundle: out } = applyVersions(bundle, INSTALLED_SUITE as never, found);
+    const { primary } = sidecar<Pins>(out, 'checking/resources.json').languageSets;
+    expect(primary.translationWords).toMatchObject({ repoPath: EN_TW, version: 'v90', sha: EN_TW_V90 });
+    expect(primary.translationWordsLinks).toMatchObject({ repoPath: EN_TWL, version: 'v90', sha: EN_TWL_V90, books: ['TIT'] });
+    expect(sidecar<{ resource: unknown }>(out, 'checking/translationWords/TIT.json').resource).toEqual({ repoPath: EN_TWL, version: 'v90', sha: EN_TWL_V90, languageSet: 'primary' });
+  });
+
+  it('a tw tag with no release date pins the latest _twl release', async () => {
+    const noTwDate = async (repoPath: string) => (repoPath === EN_TW ? [] : RELEASES[repoPath]);
+    const found = await resolveVersions(twRequest(EN_TW, 'v90'), tags, noTwDate);
+    expect(found.translationWordsLinks).toEqual({ repoPath: EN_TWL, version: 'v91', sha: EN_TWL_V91 });
+  });
+
+  it('a gateway with no _twl repository (ar_gt, hasTwl: false) pins the bundled en_twl and asks DCS for no _twl (ruling 7)', async () => {
+    const asked: string[] = [];
+    const found = await resolveVersions(twRequest(AR_TW, 'v3'), tags, async (repoPath) => (asked.push(repoPath), RELEASES[repoPath]));
+    expect(found.translationWords).toEqual({ repoPath: AR_TW, version: 'v3', sha: AR_TW_V3 });
+    const bundled = INSTALLED_SUITE.languageSets.fallback.translationWordsLinks;
+    expect(found.translationWordsLinks).toEqual({ repoPath: bundled.repoPath, version: bundled.version, sha: bundled.sha });
+    expect(asked).not.toContain(AR_TWL);
+    const { primary, fallback } = pinsOf(found);
+    expect(primary.translationWords).toMatchObject({ repoPath: AR_TW, version: 'v3', sha: AR_TW_V3 });
+    expect(primary.translationWordsLinks).toMatchObject({ repoPath: bundled.repoPath, sha: bundled.sha });
+    expect(primary.translationWordsLinks.repoPath).toBe(fallback.translationWordsLinks.repoPath);
+    // D41: the books tC3 checked are a fact about the commit it checked against, not about a pin that was never looked up
+    expect(primary.translationWordsLinks.books).toBeUndefined();
+  });
+
+  it('the tw slot stays unresolved, and the one-repo form is never written, when the _twl release cannot be pinned', async () => {
+    const requests = twRequest(EN_TW, 'v90');
+    // DCS did not answer the releases
+    const silent = await resolveVersions(requests, tags, async () => undefined);
+    expect(silent.translationWords).toBeUndefined();
+    expect(unresolvedSlots(requests, silent)).toEqual(['translationWords']);
+    // DCS confirms that a gateway which publishes _twl (hasTwl: true) has no _twl release
+    const none = await resolveVersions(requests, tags, async (repoPath) => (repoPath === EN_TWL ? [] : RELEASES[repoPath]));
+    expect(none.translationWords).toBeUndefined();
+    // no release lookup at all: unresolved, never a guess
+    const dflt = await resolveVersions(requests, tags);
+    expect(dflt.translationWords).toBeUndefined();
+    // the closest release names no commit: the next closest one is pinned (v91 is 43 days from the tw date, v89 is 52)
+    const noV90 = async (repoPath: string, version: string) => (repoPath === EN_TWL && version === 'v90' ? null : tags(repoPath, version));
+    expect((await resolveVersions(requests, noV90, releases)).translationWordsLinks).toEqual({ repoPath: EN_TWL, version: 'v91', sha: EN_TWL_V91 });
+    // whichever way, the stored twl slot names a _twl repository (ruling 6) and the decisions carry over to it
+    for (const found of [silent, none, dflt]) {
+      const { primary } = pinsOf(found, { 'translationWords/TIT': [] });
+      expect(primary.translationWordsLinks.repoPath).toMatch(/_twl$/);
+      expect(primary.translationWords.repoPath).toMatch(/_tw$/);
+    }
   });
 });
 

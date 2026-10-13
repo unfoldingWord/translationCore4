@@ -230,14 +230,13 @@ interface DcsTag {
  * "unidentified", never as evidence of absence). */
 const TAG_PAGE_LIMIT = 50;
 const TAG_PAGE_BOUND = 40; // sanity bound: 40 pages ~ 2000 tags, far beyond any real repo
-const findDcsTag = async (
-  repoPath: string,
-  match: (tag: DcsTag) => boolean,
-  fetchFn: typeof fetch,
-): Promise<DcsTag | null> => {
+/** The pages of one DCS repo listing (`tags`, `releases`), one array each,
+ * until the listing ends or the bound is reached. Yields nothing after a 404:
+ * the repo or the listing does not exist, which is conclusive. */
+async function* dcsPages<T>(repoPath: string, listing: string, fetchFn: typeof fetch): AsyncGenerator<T[], boolean> {
   const path = repoPath.replace(/^https?:\/\//, '');
   const slash = path.indexOf('/');
-  const base = `https://${path.slice(0, slash)}/api/v1/repos/${path.slice(slash + 1)}/tags`;
+  const base = `https://${path.slice(0, slash)}/api/v1/repos/${path.slice(slash + 1)}/${listing}`;
   let effectivePageSize: number | null = null;
   for (let page = 1; page <= TAG_PAGE_BOUND; page += 1) {
     // Catch-to-absence sweep (D30): null means DCS CONFIRMS no tag matches.
@@ -246,17 +245,52 @@ const findDcsTag = async (
     // an install both succeeded and contributes nothing.
     const response = await fetchFn(`${base}?limit=${TAG_PAGE_LIMIT}&page=${page}`);
     if (!response.ok) {
-      if (response.status === 404) return null; // the repo/listing does not exist — conclusive
-      throw new Error(`tags listing for ${repoPath} failed (HTTP ${response.status})`);
+      if (response.status === 404) return false; // the repo/listing does not exist — conclusive
+      throw new Error(`${listing} listing for ${repoPath} failed (HTTP ${response.status})`);
     }
-    const tags = (await response.json()) as DcsTag[];
-    if (!Array.isArray(tags) || tags.length === 0) return null; // the listing ended
+    const entries = (await response.json()) as T[];
+    if (!Array.isArray(entries) || entries.length === 0) return true; // the listing ended
+    yield entries;
+    effectivePageSize ??= entries.length;
+    if (entries.length < effectivePageSize) return true; // a short page is the last page
+  }
+  return true; // bound reached — refuse to walk forever; the caller reports "unidentified"
+}
+const findDcsTag = async (
+  repoPath: string,
+  match: (tag: DcsTag) => boolean,
+  fetchFn: typeof fetch,
+): Promise<DcsTag | null> => {
+  for await (const tags of dcsPages<DcsTag>(repoPath, 'tags', fetchFn)) {
     const hit = tags.find(match);
     if (hit) return hit;
-    effectivePageSize ??= tags.length;
-    if (tags.length < effectivePageSize) return null; // a short page is the last page
   }
-  return null; // bound reached — refuse to walk forever; the caller reports "unidentified"
+  return null;
+};
+
+/** One release of a DCS repo: its tag and when the release was created. */
+export interface DcsRelease {
+  version: string;
+  createdAt: string;
+}
+
+/** Every release the DCS releases API lists for a repo, newest first as DCS
+ * lists them, or null when the repo has no such listing (HTTP 404). The tags
+ * API carries no release date, so the tC3 import (D97 ruling 8) reads the
+ * `created_at` of the releases listing [VERIFIED shape — git.door43.org
+ * releases API, 2026-10-13: `tag_name`, `created_at`]. Walked page by page
+ * like the tags listing; a transport failure propagates. */
+export const dcsReleases = async (
+  repoPath: string,
+  fetchFn: typeof fetch = ((...a: Parameters<typeof fetch>) => fetch(...a)),
+): Promise<DcsRelease[] | null> => {
+  const out: DcsRelease[] = [];
+  const pages = dcsPages<{ tag_name?: string; created_at?: string }>(repoPath, 'releases', fetchFn);
+  for (;;) {
+    const next = await pages.next();
+    if (next.done) return next.value ? out : null;
+    for (const r of next.value) if (r.tag_name && r.created_at) out.push({ version: r.tag_name, createdAt: r.created_at });
+  }
 };
 
 /** Identify a resource that is ALREADY on disk but carries no install record —

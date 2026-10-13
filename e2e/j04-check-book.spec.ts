@@ -22,6 +22,7 @@ import {
 
 const PINS = () => ({
   tn: pinForSideloaded('en_tn', 'v91'),
+  twl: pinForSideloaded('en_twl', 'v91'),
   tw: pinForSideloaded('en_tw', 'v91'),
   ta: pinForSideloaded('en_ta', 'v91'),
 });
@@ -460,10 +461,11 @@ test.describe('J4 — a checker works a book', () => {
         sha: String(n).repeat(40).slice(0, 40),
         flavor: name.endsWith('_ta') ? 'peripheral/x-peripheralArticles' : name.endsWith('_tn') ? 'parascriptural/x-bcvnotes' : 'parascriptural/x-bcvarticles',
       });
-      const setFor = (gw: { languageId: string; owner: string }, tn: unknown, tw: unknown, ta: unknown) => ({
+      // Two pins (D96/D97 ruling 6): the twl slot names a `_twl` repository.
+      const setFor = (gw: { languageId: string; owner: string }, tn: unknown, twl: unknown, tw: unknown, ta: unknown) => ({
         gatewayLanguage: gw,
         translationNotes: tn,
-        translationWordsLinks: tw,
+        translationWordsLinks: twl,
         translationWords: tw,
         translationAcademy: ta,
       });
@@ -473,10 +475,11 @@ test.describe('J4 — a checker works a book', () => {
           primary: setFor(
             { languageId: 'fr', owner: 'unfoldingWord' },
             frPin('fr_tn', 1),
+            frPin('fr_twl', 4),
             frPin('fr_tw', 2),
             frPin('fr_ta', 3),
           ),
-          fallback: setFor({ languageId: 'en', owner: 'unfoldingWord' }, en.tn, en.tw, en.ta),
+          fallback: setFor({ languageId: 'en', owner: 'unfoldingWord' }, en.tn, en.twl, en.tw, en.ta),
         },
         // Projection form only: empty groups are omitted (D56 seedability).
       };
@@ -594,11 +597,11 @@ test.describe('J4 — a checker works a book', () => {
   );
 
   test(
-    'the tW tool derives from the SAME repo the links came from and shows its article (D34, FR-15)',
+    'the tW tool derives its list from the en_twl pin and shows the article from the en_tw pin (D96, FR-15)',
     { tag: ['@inc2', '@J4'] },
     async ({ page }, testInfo) => {
-      writeProjectPins(SEEDED_PROJECT, PINS());
-      const tsv = sideloadedIngredient('en_tw', 'TIT.tsv');
+      writeProjectPins(SEEDED_PROJECT, { ...PINS(), twl: pinForSideloaded('en_twl', 'v91') });
+      const tsv = sideloadedIngredient('en_twl', 'TIT.tsv');
       const expected = tsv.split('\n').slice(1).filter((r) => r.trim()).length;
 
       await openCheck(page);
@@ -606,9 +609,9 @@ test.describe('J4 — a checker works a book', () => {
       await expect(page.getByTestId('check-progress')).toHaveText(
         new RegExp(`\\d+ of ${expected} resolved`),
       );
-      // The article comes out of the very same burrito (payload/…), proving the
-      // one-pin-per-language rule end to end. Since F1 it sits behind the
-      // Academy drawer.
+      // The article comes out of the en_tw burrito (payload/…): two pins, one
+      // for the links and one for the articles (D96). Since F1 it sits behind
+      // the Academy drawer.
       await page.getByTestId('open-academy').click();
       await expect(page.getByTestId('article-panel')).toBeVisible();
       await expect(page.getByTestId('article-panel')).toContainText('payload/');

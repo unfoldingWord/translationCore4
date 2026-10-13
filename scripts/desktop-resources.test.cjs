@@ -220,6 +220,35 @@ test('incomplete or conflicting exact destination cannot be accepted or silently
   assert.equal(fs.existsSync(f.settings), false);
 });
 
+// #640 failure inventory: a DCS export's TWL rows follow en_twl master at fetch
+// time, so two builds of one pin can ship different ingredient bytes. An
+// installed copy that agrees with its own inventory is reused unchanged; one
+// that disagrees with its own inventory (line 211 test) still stops startup.
+test('#640: an installed export that drifted from the bundle but matches its own inventory is reused without writes', (t) => {
+  const f = fixture(t);
+  fs.cpSync(f.source, f.destination, { recursive: true });
+  // The older build's copy: one more TWL row, and an inventory that agrees with it.
+  const tsv = path.join(f.destination, 'ingredients/TIT.tsv');
+  fs.appendFileSync(tsv, 'TIT 3:16\tdrift\t\tdrift\t1\t./payload/kt/drift.md\tdrift\n');
+  const bytes = fs.readFileSync(tsv);
+  const metadataFile = path.join(f.destination, 'metadata.json');
+  const metadata = JSON.parse(fs.readFileSync(metadataFile, 'utf8'));
+  metadata.ingredients['ingredients/TIT.tsv'].size = bytes.length;
+  metadata.ingredients['ingredients/TIT.tsv'].checksum.md5 = createHash('md5').update(bytes).digest('hex');
+  fs.writeFileSync(metadataFile, JSON.stringify(metadata));
+  const before = files(f.destination);
+  assert.notDeepEqual(before, files(f.source), 'the installed copy must differ from the bundle');
+  bootstrap(f.options);
+  assert.deepEqual(settingsAt(f).installedResources[f.key], f.pin);
+  assert.deepEqual(files(f.destination), before, 'the installed copy keeps its bytes');
+  assert.deepEqual(fs.readdirSync(f.local), [path.basename(f.destination)], 'one folder per repository and SHA');
+  const homeBefore = files(f.options.home);
+  const mtime = fs.statSync(f.settings).mtimeMs;
+  bootstrap(f.options);
+  assert.deepEqual(files(f.options.home), homeBefore, 'the second launch writes nothing');
+  assert.equal(fs.statSync(f.settings).mtimeMs, mtime);
+});
+
 test('manifest mismatch and malformed settings fail without losing existing records', (t) => {
   const f = fixture(t);
   fs.writeFileSync(path.join(f.options.resourcesDir, 'BUILD-MANIFEST.json'), JSON.stringify({ bundled_resources: [{ ...f.pin, sha: exportFixture('v86', path.join(f.store, 'old')).sha }] }));
@@ -230,6 +259,44 @@ test('manifest mismatch and malformed settings fail without losing existing reco
   fs.writeFileSync(f.settings, '{');
   assert.throws(() => bootstrap(f.options), /JSON|settings/);
   assert.equal(fs.readFileSync(f.settings, 'utf8'), '{');
+});
+
+// #644 (D96 ruling 5): the install ignores, and never strips, the TWL TSVs an
+// `en_tw` export carries and the articles an `en_twl` export carries. Both
+// bundled folders land byte-for-byte, metadata.json included.
+function twFixture(repo, version, destination, slice) {
+  const source = path.join(root, 'test/fixtures/resources', `${repo}@${version}`);
+  const metadata = JSON.parse(fs.readFileSync(path.join(source, 'metadata.json')));
+  metadata.ingredients = Object.fromEntries(Object.entries(slice).map(([ipath]) => [`ingredients/${ipath}`, metadata.ingredients[`ingredients/${ipath}`]]));
+  metadata.type.flavorType.currentScope = { TIT: [] };
+  fs.writeFileSync(path.join(destination, 'metadata.json'), JSON.stringify(metadata));
+  for (const [ipath, file] of Object.entries(slice)) {
+    fs.mkdirSync(path.dirname(path.join(destination, 'ingredients', ipath)), { recursive: true });
+    fs.copyFileSync(path.join(source, file), path.join(destination, 'ingredients', ipath));
+  }
+  const [identity, revision] = Object.entries(metadata.identification.primary.dcs)[0];
+  return { repoPath: `git.door43.org/${identity}`, sha: revision.revision, version, flavor: 'parascriptural/x-bcvarticles' };
+}
+
+test('bundled en_tw (with its TSVs) and en_twl install unchanged: files and metadata.json match the bundle (#644)', (t) => {
+  const f = fixture(t);
+  fs.rmSync(f.source, { recursive: true });
+  const tw = path.join(f.options.resourcesDir, 'resources/unfoldingword--en_tw');
+  const twl = path.join(f.options.resourcesDir, 'resources/unfoldingword--en_twl');
+  fs.mkdirSync(tw, { recursive: true });
+  fs.mkdirSync(twl, { recursive: true });
+  const twPin = twFixture('en_tw', 'v87', tw, { 'TIT.tsv': 'TIT.tsv', 'payload/kt/god.md': 'payload-kt-god.md' });
+  const twlPin = twFixture('en_twl', 'v86', twl, { 'TIT.tsv': 'TIT.tsv' });
+  assert.notEqual(files(tw)['ingredients/TIT.tsv'], files(twl)['ingredients/TIT.tsv'], 'the two TSVs differ');
+  fs.writeFileSync(path.join(f.options.resourcesDir, 'BUILD-MANIFEST.json'), JSON.stringify({ bundled_resources: [twPin, twlPin] }));
+  bootstrap(f.options);
+  const twKey = `_local_/_sideloaded_/unfoldingword--en_tw--${twPin.sha}`;
+  const twlKey = `_local_/_sideloaded_/unfoldingword--en_twl--${twlPin.sha}`;
+  assert.deepEqual(settingsAt(f).installedResources[twKey], twPin);
+  assert.deepEqual(settingsAt(f).installedResources[twlKey], twlPin);
+  const installed = (key) => { const all = files(path.join(f.store, key)); delete all['.tc4-bundled-identity.json']; return all; };
+  assert.deepEqual(installed(twKey), files(tw)); // the tw export's TIT.tsv is still there
+  assert.deepEqual(installed(twlKey), files(twl));
 });
 
 module.exports = { exportFixture };
