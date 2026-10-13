@@ -402,6 +402,7 @@
   "draft.loading": "Loading book…",
   "draft.loadError": "The book could not be loaded.",
   "draft.books": "Books",
+  "draft.bookPercentTitle": "{n}% of this book's verses are drafted",
   "draft.toggleRail": "Toggle book list",
   "draft.toggleHelps": "Toggle helps panel",
   "draft.editVerse": "Edit this verse",

@@ -402,6 +402,7 @@
   "draft.loading": "Đang tải sách…",
   "draft.loadError": "Không thể tải sách.",
   "draft.books": "Sách",
+  "draft.bookPercentTitle": "Đã soạn nháp {n}% số câu của sách này",
   "draft.toggleRail": "Bật/tắt danh sách sách",
   "draft.toggleHelps": "Bật/tắt bảng trợ giúp",
   "draft.editVerse": "Chỉnh sửa câu này",

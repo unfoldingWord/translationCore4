@@ -74,6 +74,9 @@ const verseLine = (usfm: string, verse: number): { start: number; end: number } 
   return { start: span.start - `\\v ${verse} `.length, end: span.end };
 };
 
+/** The English catalog: the journey reads the app's own words from it. */
+const EN: Record<string, string> = JSON.parse(fs.readFileSync(path.join(TC4_ROOT, 'src', 'i18n', 'en.json'), 'utf8'));
+
 /** Titus's percent in its own rail row (every rail row may show one). */
 const titusRailPct = (page: Page) => page.locator('aside button', { hasText: 'Titus' }).first().getByText(/%$/);
 
@@ -956,7 +959,7 @@ test.describe('J2 — a translator drafts a verse', () => {
   test(
     'drafting an undrafted verse updates the progress display (FR-9)',
     { tag: ['@inc1', '@J2'] },
-    async ({ page }) => {
+    async ({ page }, testInfo) => {
       await page.goto('/');
       await page.getByTestId('project-_local_/_local_/sample_burrito').getByRole('button', { name: /Titus/ }).click();
       // Every rail row may show a percent now (design 2026-07-31) — read the
@@ -967,6 +970,16 @@ test.describe('J2 — a translator drafts a verse', () => {
           .first()
           .getByText(/%$/)
           .textContent();
+      // #603: the percent says what it is in its tooltip, in the catalog's words
+      // and with the row's own number.
+      const railPct = titusRailPct(page);
+      const tooltipOf = (pct: string) => EN['draft.bookPercentTitle'].replace('{n}', String(parseInt(pct, 10)));
+      const shown = async () => {
+        const pct = (await pctText()) || '';
+        await expect(railPct).toHaveAttribute('title', tooltipOf(pct));
+        return `${pct} title=${await railPct.getAttribute('title')}`;
+      };
+      const shownBefore = await shown();
       const before = parseInt((await pctText()) || '0', 10);
       await page.getByRole('button', { name: '3', exact: true }).click();
       await page.getByRole('tab', { name: 'Verse', exact: true }).click();
@@ -977,6 +990,10 @@ test.describe('J2 — a translator drafts a verse', () => {
       await expect
         .poll(async () => parseInt((await pctText()) || '0', 10))
         .toBeGreaterThan(before);
+      // The run's artifact: the row's percent and its tooltip in the two states.
+      const tooltipPath = testInfo.outputPath('books-percent-tooltip.txt');
+      fs.writeFileSync(tooltipPath, `before the draft=${shownBefore}\nafter the draft=${await shown()}\n`);
+      await testInfo.attach('books-percent-tooltip.txt', { path: tooltipPath, contentType: 'text/plain' });
       // The percent updates from in-memory state BEFORE the journal write
       // lands; without waiting for the real save (like every sibling test
       // does) the issue-#62 teardown verifier races the in-flight write and
