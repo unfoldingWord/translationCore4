@@ -687,6 +687,14 @@ test.describe('#522 — App language in the account menu', () => {
     const editorSeen = await textDirections(editor);
     await shot(page, testInfo, 'rtl-project-en');
     await page.getByTestId('section-editor').getByRole('button', { name: EN['draft.cancelVerse'], exact: true }).click();
+    // A drafted verse, for the alignment list below (the blur saves it).
+    const VERSE = 'بولس، عبد الله ورسول يسوع المسيح.';
+    await page.getByRole('tab', { name: 'Verse', exact: true }).click();
+    await page.getByRole('button', { name: 'Start this verse' }).first().click();
+    const verse = page.getByRole('textbox', { name: 'Verse 1' });
+    await verse.fill(VERSE);
+    await verse.blur();
+    await expect(page.getByTestId('draft-target-text').filter({ hasText: VERSE })).toBeVisible();
     // The note, shown in the Comments tab of the helps panel, reads as it was typed.
     await helps(page).getByRole('tab', { name: EN['helps.comments'], exact: true }).click();
     const shownNote = page.getByTestId('helps-comment').locator('p');
@@ -697,6 +705,8 @@ test.describe('#522 — App language in the account menu', () => {
       source: await textDirections(source),
       editor: editorSeen,
       note: await textDirections(shownNote),
+      // The project's name in the top bar.
+      name: await textDirections(page.getByTestId('project-switch').getByText('Equipo Rig — derecha a izquierda', { exact: true })),
     };
     // A check comment has no language of its own: it reads in the direction of what is typed.
     await page.getByRole('tab', { name: EN['nav.check'], exact: true }).click();
@@ -709,6 +719,12 @@ test.describe('#522 — App language in the account menu', () => {
     const arabic = await textDirections(comment);
     await comment.fill('');
     seen.checkComment = { latin, arabic };
+    // The alignment tool lists each drafted verse by its text, in the project's direction.
+    await page.getByTestId('check-back').click();
+    await page.getByTestId('open-align').click();
+    const row = page.getByTestId('align-verse-list').getByText(VERSE, { exact: true });
+    await expect(row).toBeVisible({ timeout: 20_000 });
+    seen.alignRow = await textDirections(row);
     const file = testInfo.outputPath('scripture-direction.json');
     fs.writeFileSync(file, `${JSON.stringify(seen, null, 2)}\n`);
     await testInfo.attach('scripture-direction', { path: file, contentType: 'application/json' });
@@ -717,7 +733,9 @@ test.describe('#522 — App language in the account menu', () => {
     expect(ltr.source.length).toBeGreaterThan(0);
     for (const el of [...ltr.source, ...ltr.target]) expect(el.direction).toBe('ltr');
     expect(ltr.editor).toEqual([{ dir: 'ltr', direction: 'ltr' }]);
-    const rtl = seen.enInterfaceRtlProject as { interface: unknown; account: string; source: Array<{ direction: string }>; editor: unknown; note: unknown };
+    const rtl = seen.enInterfaceRtlProject as { interface: unknown; account: string; source: Array<{ direction: string }>; editor: unknown; note: unknown; name: unknown };
+    expect(rtl.name).toEqual([{ dir: 'rtl', direction: 'rtl' }]);
+    expect(seen.alignRow).toEqual([{ dir: 'rtl', direction: 'rtl' }]);
     expect(rtl.interface).toEqual({ html: 'ltr', root: 'ltr' });
     expect(rtl.account).toBe('right');
     // The source is the English gateway text: it stays left to right.

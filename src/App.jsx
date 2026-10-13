@@ -25,6 +25,7 @@ import OpenProgress from './views/OpenProgress.jsx';
 import AccountMenu, { InternetDialog } from './views/AccountMenu.jsx';
 import { AppHeader, Switcher, StatusDot, Button, Callout } from './ds/index.js';
 import { t } from './i18n';
+import { projectDir } from './views/scriptStyle.js';
 
 /** Which failure the indicator's Retry button retries: a story/note save, a
  * checkpoint commit (#183), or the verse save. */
@@ -90,6 +91,7 @@ function TopBar() {
       logoSrc={`${import.meta.env.BASE_URL}assets/translationcore-logo.png`}
       projectInitials={p ? (p.name || '?').split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase() : undefined}
       projectName={p?.name}
+      projectNameDir={p ? projectDir(s) : undefined}
       projectMeta={p ? p.languageTag : undefined}
       switchTitle={t('app.switchProject')}
       onBrandClick={actions.backToProjects}

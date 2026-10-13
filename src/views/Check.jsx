@@ -28,6 +28,7 @@ import { absenceMessageKey, isSourceAbsent } from '../data/sourceState';
 import { BlockText, ExpandableNote, Quoted, glTitleFor } from './HelpsPanel.jsx';
 import { RAIL_FILTERS, RAIL_FILTER_ORDER, hasComment, isBookmarked, railCounts } from './checkFilters.js';
 import { t } from '../i18n';
+import { projectDir } from './scriptStyle.js';
 import { Button, Callout, Drawer, Overline, ProgressBar } from '../ds/index.js';
 
 const TOOLS = Object.keys(TOOL_SLOT);
@@ -1075,7 +1076,8 @@ function AlignRail({ index, activeRef, filter, setFilter, onSelect }) {
               <span style={{ fontSize: 'var(--fs-badge)', letterSpacing: 'var(--track-10)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
                 {it.ref}
               </span>
-              <span style={{ flex: 1, fontSize: 'var(--fs-ui-sm)', fontWeight: 'var(--fw-bold)', color: 'var(--text-body)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: undrafted ? 'italic' : 'normal' }}>
+              {/* #657: the verse is the project's text; the cut keeps its start. */}
+              <span dir={undrafted ? undefined : projectDir(s)} style={{ flex: 1, fontSize: 'var(--fs-ui-sm)', fontWeight: 'var(--fw-bold)', color: 'var(--text-body)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: undrafted ? 'italic' : 'normal' }}>
                 {undrafted ? t('align.notDraftedShort') : it.text}
               </span>
             </button>
