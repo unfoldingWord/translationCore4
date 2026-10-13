@@ -69,11 +69,12 @@ function Counts({ counts }) {
  * read after the sync. Its `names` are the fold's, as `facts.names` are.
  * `received` holds teammates only, so no "Mine" shows here. The reader's team
  * has no `me`: the sync writes this translator's name first, and a named actor
- * takes no number, so the numbers are the review's. Nothing for no teammate,
- * and nothing when the read after the sync failed (no team). */
-function From({ facts = {}, team }) {
+ * takes no number, so the numbers are the review's. Nothing for a refused
+ * sync, for no teammate, or when the read after the sync failed (no team). */
+function From({ ok, facts = {}, team }) {
+  if (!ok || !team) return null;
   const senders = Object.keys(facts.received ?? {}).sort();
-  if (!senders.length || !team) return null;
+  if (!senders.length) return null;
   const labels = senders.map((a) => actorLabel(a, team.names, team.me ?? null, team.actors));
   return <span data-testid="sync-received-from" style={NOTE}>{t('syncResult.from', { names: labels.join(' · ') })}</span>;
 }
@@ -115,7 +116,7 @@ export default function SyncResult({ result, team = null, onReview, onDownload, 
             <span data-testid="sync-message">{syncErrorText(report)}</span>
           </span>
         )}
-        {ok && <From facts={report.facts} team={team} />}
+        <From ok={ok} facts={report.facts} team={team} />
         <Note testId="sync-restored" n={restored} one="syncResult.restoredOne" many="syncResult.restoredMany" />
         <Note testId="sync-missing-pins" n={missingPins} one="syncResult.missingPinsOne" many="syncResult.missingPinsMany" />
       </div>
