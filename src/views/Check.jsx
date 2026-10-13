@@ -10,6 +10,8 @@
 //                   an error, and it never blocks drafting or other books
 //   unpinned      — the project has no pins for this tool yet
 //   not-covered   — pins are local, but neither rung covers this book
+//   old-twl       — the twl pin is the pre-release one-repo form (D97 ruling
+//                   6): never read; the project must be created again
 import React from 'react';
 import { useApp } from '../state.jsx';
 import { TOOL_SLOT, oldTwlPin } from '../data/resolve';
@@ -239,10 +241,6 @@ function ToolCard({ tool, pre, label, progress, titleOf }) {
   );
 }
 
-/** B20 warned fallback (D41): the resolver opened the installed fallback
- * because the pinned PRIMARY is not on this computer. That is not silent —
- * say which primary is missing and offer to download it. The card still
- * opens (state 'ready'); the fallback never blocks. */
 /** D97 ruling 6 (#646): the project's twl pin comes from a pre-release build
  * (its repository name does not end in `_twl`). Stated once for the whole
  * picker — an OBS project has no tW card for this pin — and there is no
@@ -256,6 +254,10 @@ function OldTwlNotice({ pin }) {
   );
 }
 
+/** B20 warned fallback (D41): the resolver opened the installed fallback
+ * because the pinned PRIMARY is not on this computer. That is not silent —
+ * say which primary is missing and offer to download it. The card still
+ * opens (state 'ready'); the fallback never blocks. */
 function FallbackWarning({ tool, missing }) {
   const { actions } = useApp();
   return (
