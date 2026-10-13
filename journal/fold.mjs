@@ -282,8 +282,9 @@ export const fold = (eventsIn) => {
   // §8.5 (R-8.5.25, R-8.5.26, D98): one first-value register PER ACTOR. Events run in ts
   // order, so the first name of an actor binds and every later one is surfaced, never
   // applied — and never a whole-fold refusal (a refusal after publish would make the
-  // journal unprojectable, the #485 lesson).
-  const names = {};
+  // journal unprojectable, the #485 lesson). Null-prototype: the slug grammar admits
+  // `constructor`, which must read as absent, not as Object.prototype.constructor.
+  const names = Object.create(null);
   const namesRejected = [];
 
   const consume = (key, headTs, structTs) => {
