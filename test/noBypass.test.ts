@@ -19,6 +19,10 @@
 //   repository through the platform's own primitive (create, remake, commit)
 //   before any journal exists, and deletes it when a step fails. The seed of
 //   its records goes through the boundary (JournalingStore.openImported).
+// - src/data/share/syncOperation.ts (#676, D98): the sync writes the sync core's
+//   output into its SCRATCH copy (a clone of Door43 main, never the live
+//   project), then checks that copy against its journal (verifyProjectAgainstJournal)
+//   before the swap. Every byte it writes is the fold of journal files.
 import { describe, expect, it } from 'vitest';
 
 // The app's vite-plugin-node-polyfills aliases node builtins to browser mocks
@@ -58,6 +62,7 @@ const RAW_MUTATION_WHITELIST = new Set([
   'src/data/journal/journalStore.ts', // the segment writer (#61)
   'src/data/import/shell.ts', // a new repository before its journal exists (#361)
   'src/data/journal/opsLog.ts', // finishes a killed import's rollback at the next start (#374)
+  'src/data/share/syncOperation.ts', // writes the sync core's output into the scratch copy, never the live project (#676)
 ]);
 
 /** Constructing the raw HttpStore hands out its whole mutation surface. */

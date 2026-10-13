@@ -72,6 +72,18 @@ export const REFUSAL_CODES = Object.freeze({
   'sync.metadata-overlay': 'R-8.7.10', // (G3) the fold carries a project.meta.set overlay; a sync never writes metadata.json
   'sync.obs-unsupported': null, // round 1 syncs Bible projects only (D98)
   'actor.name-already-set': 'R-8.5.26', // the actor already wrote its actor.name.set
+  // The sync shell (src/data/share/syncOperation.ts, #676): the transport refusals of the
+  // #673 contract (docs/evidence/sync-transport-spike-2026-10-13.md), all app rules.
+  'sync.auth-failed': null, // no Door43 username or token (checked before any request), or Door43 refused the token
+  'sync.offline': null, // the internet is off (D95)
+  'sync.not-shared': null, // the project has no `origin` on the Door43 server: share it first
+  'sync.clone-path-exists': null, // the fixed clone path `<host>/<org>/<repo>` already holds a folder
+  'sync.clone-failed': null, // Door43 main did not clone
+  'sync.move-failed': null, // a copy or a delete of a repository failed
+  'sync.verify-failed': null, // the copy on disk is not the fold of its journal; nothing was pushed
+  'sync.non-fast-forward': null, // (G4) Door43 main moved during three tries; never a force push
+  'sync.no-write-access': null, // Door43 refused the push: no write access
+  'sync.push-failed': null, // any other push failure
 });
 
 export const isRefusalCode = (code) => typeof code === 'string' && Object.hasOwn(REFUSAL_CODES, code);

@@ -529,6 +529,40 @@ export class ServerApi {
     await this.post(`/git/push/${encodeRepoPath(repoPath)}`, { remote, cred_type: 'https', username, pass_key: passKey });
   }
 
+  // ---- the sync transport (#673, #676): clone, move, pull ----------------------
+
+  /** POST /git/clone-repo/<host>/<org>/<repo>, with no `branch`: a FULL clone
+   * of `https://<host>/<org>/<repo>` (with `branch` the clone is shallow). The
+   * server always writes it to the fixed path `<host>/<org>/<repo>`; a
+   * non-empty folder there answers HTTP 400 `code=Exists (-4)`; offline answers
+   * HTTP 401 "offline mode". The clone sends no credentials, so only a public
+   * repository clones [VERIFIED — pankosmia-web 0.18.15 (a83725b, 2026-09-29),
+   * `clone_repo.rs`, read and run 2026-10-13; docs/evidence/sync-transport-spike-2026-10-13.md]. */
+  async cloneRepo(host: string, org: string, repo: string): Promise<void> {
+    await this.post(`/git/clone-repo/${encodeRepoPath(`${host}/${org}/${repo}`)}`);
+  }
+
+  /** POST /git/copy/<src>?target_path=<target>[&delete_src=true] — copy the
+   * whole folder (`.git` too); with `deleteSrc` the server then deletes the
+   * source. A copy and a delete, never one rename. The source must exist and the
+   * target must not; works offline [VERIFIED — pankosmia-web 0.18.15 (a83725b,
+   * 2026-09-29), `copy_repo.rs`, read and run 2026-10-13]. */
+  async copyRepo(src: string, target: string, deleteSrc = false): Promise<void> {
+    const query = `target_path=${encodeRepoPath(target)}${deleteSrc ? '&delete_src=true' : ''}`;
+    await this.post(`/git/copy/${encodeRepoPath(src)}?${query}`);
+  }
+
+  /** POST /git/pull-repo/<remote>/<repoPath> — fetch and merge `remote`. Used
+   * only by the rig stand-in for Door43 (#673 "The rig stand-in"); with a named
+   * remote the route has no network gate [VERIFIED — pankosmia-web 0.18.15
+   * (a83725b, 2026-09-29), `pull_repo.rs:91-94`, run 2026-10-13]. */
+  async pullRepo(remote: string, repoPath: string): Promise<void> {
+    if (!/^[A-Za-z0-9_-]+$/.test(remote)) {
+      throw new ServerApiError('/git/pull-repo', 0, `remote name may hold letters, digits, _ and - only: ${JSON.stringify(remote)}`);
+    }
+    await this.post(`/git/pull-repo/${encodeURIComponent(remote)}/${encodeRepoPath(repoPath)}`);
+  }
+
   /** POST /git/new-text-translation — stamps the template repo, writes
    * ingredients/vrs.json from `versification`, scaffolds the book from
    * maxVerses when add_book, and makes the initial commit (D25). */

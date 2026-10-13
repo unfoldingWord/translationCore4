@@ -58,10 +58,11 @@ describe('#156 the refusal-code table is closed and bound', () => {
     // Live = every code in the table except the kernels still to come (#41, #362, #203), the
     // export code no producer throws yet (export.unsupported-kind). The import shell (#361)
     // throws import.name-exists and import.write-failed; the reference writer throws
-    // actor.name-already-set (R-8.5.26); the sync core (#675) throws the four sync codes.
+    // actor.name-already-set (R-8.5.26); the sync core (#675) throws the four sync codes; the
+    // sync shell (#676) throws ten more.
     const reserved = /^(import\.damaged\.|share\.|export\.unsupported-kind$)/;
     const live = Object.keys(REFUSAL_CODES).filter((code) => !reserved.test(code));
-    expect(live.length).toBe(34);
+    expect(live.length).toBe(44);
     for (const code of live) expect(t(`refusal.${code}`, undefined, ''), code).not.toBe('');
   });
 

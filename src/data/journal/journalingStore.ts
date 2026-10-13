@@ -49,7 +49,7 @@ import { JournalStore } from './journalStore';
 import { idbKvStore, type KvStore } from './identity';
 import { sealAction, type JournalEvent } from './seal';
 import { defaultFoldRunner, type FoldRunner } from './foldRunner';
-import type { OpsRecorder } from './opsLog';
+import { deletePreviousCopy, type OpsRecorder } from './opsLog';
 import {
   applyStoryState,
   completePartialPins,
@@ -232,7 +232,9 @@ const spanMapping = (oldSlots: string[], newSlots: string[]): Array<{ from: stri
 // ---------------------------------------------------------------------------
 
 const projectQueues = new Map<string, Promise<unknown>>();
-const inProjectQueue = <T>(repoPath: string, fn: () => Promise<T>): Promise<T> => {
+/** Run `fn` after every queued mutation of `repoPath` settles. Exported for the
+ * sync (#676), which holds the project for its whole run, swap included. */
+export const inProjectQueue = <T>(repoPath: string, fn: () => Promise<T>): Promise<T> => {
   const prior = projectQueues.get(repoPath) ?? Promise.resolve();
   const run = prior.then(fn, fn);
   // A settled-either-way marker keeps the chain alive across rejections.
@@ -3077,6 +3079,9 @@ export class JournalingStore implements BurritoStore {
     try {
       const facts = await this.checkpoint(message);
       this.lastReport = okReport('checkpoint', startedAt, this.isoNow(), facts);
+      // #676: the live project saved, so the copy a sync swapped out can go.
+      await deletePreviousCopy(this.api, this.kv, this.mustRepo()).catch((error: unknown) =>
+        console.error(`sync: the previous copy was not deleted: ${String((error as Error)?.message ?? error)}`));
     } catch (error) {
       this.lastReport = failedReport('checkpoint', startedAt, this.isoNow(), error, { message });
       throw error;

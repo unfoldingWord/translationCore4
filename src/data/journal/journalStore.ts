@@ -110,6 +110,32 @@ const groupSegmentPaths = (paths: string[]): Map<string, string[]> => {
   return byActor;
 };
 
+/** Every file under `checking/journal/` of one repository in ONE zipped read
+ * (#423): full ipath -> text, or null when the route refuses (no journal
+ * directory yet) or the body does not unzip; the caller then falls back to the
+ * per-file reads, which are authoritative either way. The sync (#676) reads the
+ * project and its scratch copy with it too. */
+export const readJournalZipOf = async (api: ServerApi, repoPath: string): Promise<Map<string, string> | null> => {
+  let entries: Record<string, Uint8Array>;
+  try {
+    entries = unzipServerZip(await api.readIngredientZipped(repoPath, 'checking/journal'));
+  } catch {
+    return null;
+  }
+  const byIpath = new Map<string, string>();
+  for (const [name, bytes] of Object.entries(entries)) {
+    if (name.endsWith('/')) continue; // a directory entry is not a file
+    // The shared zipper has no filters, but /burrito/paths "skips hidden
+    // files/dirs and .bak files" (serverApi listPaths). Drop the SAME
+    // entries, or a stray <actor>/segments/.DS_Store that the per-file read
+    // never saw would land in `misnamed` and refuse an open that used to
+    // succeed (PR #469 review, Frank).
+    if (name.split('/').some((part) => part.startsWith('.')) || name.endsWith('.bak')) continue;
+    byIpath.set(`${JOURNAL_PREFIX}${name}`, strFromU8(bytes));
+  }
+  return byIpath;
+};
+
 export type ReplayOutcome =
   | 'republished' // path free or invalid — the EXACT staged bytes were written
   | 'already-published' // byte-identical segment on the path — stage cleared
@@ -216,25 +242,8 @@ export class JournalStore {
    * journal directory yet — every journal-less first open) or the body does
    * not unzip; the caller then falls back to the per-file reads, which are
    * authoritative either way. */
-  private async readJournalZip(): Promise<Map<string, string> | null> {
-    let entries: Record<string, Uint8Array>;
-    try {
-      entries = unzipServerZip(await this.api.readIngredientZipped(this.repoPath, 'checking/journal'));
-    } catch {
-      return null;
-    }
-    const byIpath = new Map<string, string>();
-    for (const [name, bytes] of Object.entries(entries)) {
-      if (name.endsWith('/')) continue; // a directory entry is not a file
-      // The shared zipper has no filters, but /burrito/paths "skips hidden
-      // files/dirs and .bak files" (serverApi listPaths). Drop the SAME
-      // entries, or a stray <actor>/segments/.DS_Store that the per-file read
-      // never saw would land in `misnamed` and refuse an open that used to
-      // succeed (PR #469 review, Frank).
-      if (name.split('/').some((part) => part.startsWith('.')) || name.endsWith('.bak')) continue;
-      byIpath.set(`${JOURNAL_PREFIX}${name}`, strFromU8(bytes));
-    }
-    return byIpath;
+  private readJournalZip(): Promise<Map<string, string> | null> {
+    return readJournalZipOf(this.api, this.repoPath);
   }
 
   /** Write one journal file. Segments and actor.json are write-once, so the
@@ -456,6 +465,88 @@ export class JournalStore {
     return this.mustBeRatcheted('issue a ts').issue();
   }
 
+  /** R-8.5.26 (D98): the ts of this actor's name action, or null. The writer
+   * knows its own journal: the published segments, the staged outbox, and
+   * `seen` (this actor's events from elsewhere, for example Door43 main). */
+  private async priorNameTs(seen: Iterable<JournalEvent> = []): Promise<string | null> {
+    const actorId = this.actorId;
+    const isName = (event: JournalEvent): boolean => event.op === 'actor.name.set' && event.actor === actorId;
+    for (const event of seen) if (isName(event)) return event.ts;
+    for (const segment of (await this.readOwnSegments()).segments) {
+      const name = segment.events.find(isName);
+      if (name) return name.ts;
+    }
+    for (const key of await this.kv.keys(this.outboxPrefix)) {
+      const staged = await this.kv.get(key);
+      if (staged === undefined) continue;
+      const verdict = await validateSegment(staged);
+      const name = verdict.ok ? verdict.events.find(isName) : undefined;
+      if (name) return name.ts;
+    }
+    return null;
+  }
+
+  /** R-8.5.26 (D98), the writer side, as in journal/files.mjs: an actor names
+   * itself once. A retry of the SAME name action (same ts) is not a second name:
+   * it goes on to the idempotent accept (R-8.1.5). */
+  private async refuseSecondName(events: JournalEvent[]): Promise<void> {
+    const name = events.find((event) => event.op === 'actor.name.set');
+    if (!name) return;
+    const prior = await this.priorNameTs();
+    if (prior !== null && prior !== name.ts)
+      throw new Refusal(
+        'actor.name-already-set',
+        `refuse to write: actor "${this.actorId}" already set its name at ${prior} — a name is set once (§8.5 R-8.5.26)`,
+        { actor: this.actorId, prior },
+      );
+  }
+
+  /** Seal this actor's name action (R-8.5.25, D98) WITHOUT writing it: `v: 3`,
+   * `base: null`, and the Door43 username only — never an email or a token. The
+   * sync (#676) carries the bytes into its copy, so a refused sync changes
+   * nothing. Refuses `actor.name-already-set` when the actor has a name already
+   * (R-8.5.26), in its journal or in `seen`. */
+  async sealName(username: string, seen: Iterable<JournalEvent> = []): Promise<{ ipath: string; bytes: string }> {
+    const actorId = this.actorId;
+    const clock = this.mustBeRatcheted('seal a name');
+    const seenEvents = [...seen];
+    for (const event of seenEvents) clock.ratchet(event.ts); // R-8.2.4: past every event it sees
+    const prior = await this.priorNameTs(seenEvents);
+    if (prior !== null)
+      throw new Refusal(
+        'actor.name-already-set',
+        `refuse to seal: actor "${actorId}" already set its name at ${prior} — a name is set once (§8.5 R-8.5.26)`,
+        { actor: actorId, prior },
+      );
+    const event: JournalEvent = { v: 3, op: 'actor.name.set', actor: actorId, ts: this.issueTs(), base: null, username };
+    const bytes = await sealAction([event]);
+    return { ipath: `${this.segmentsDir}/${segmentName(event.ts)}`, bytes };
+  }
+
+  /** This actor's staged outbox intents, by the segment path each publishes at:
+   * the sync's `mine.outbox` (#676). The bytes are as staged; the sync core
+   * validates them. A key whose ts is not an §8.2 ts keeps its raw name, so the
+   * core refuses it (`outbox.invalid`) and nothing is dropped in silence. */
+  async readOutbox(): Promise<Map<string, string>> {
+    const outbox = new Map<string, string>();
+    for (const key of (await this.kv.keys(this.outboxPrefix)).sort()) {
+      const staged = await this.kv.get(key);
+      if (staged === undefined) continue; // cleared concurrently
+      const ts = key.slice(this.outboxPrefix.length);
+      outbox.set(`${this.segmentsDir}/${isTs(ts) ? segmentName(ts) : ts}`, staged);
+    }
+    return outbox;
+  }
+
+  /** Clear the staged intents whose exact bytes a sync made live (#676: only
+   * after the swap). A key that now holds other bytes is kept. */
+  async clearCarried(carried: Map<string, string>): Promise<void> {
+    for (const [ipath, bytes] of carried) {
+      const key = `${this.outboxPrefix}${segmentTs(ipath.slice(this.segmentsDir.length + 1))}`;
+      if ((await this.kv.get(key)) === bytes) await this.kv.delete(key);
+    }
+  }
+
   /** List this actor's own published segments over HTTP. The platform's
    * GET /burrito/paths/<repoPath> walks the real ingredients/ tree (not the
    * indexed table), so segments written without update_ingredients appear
@@ -551,6 +642,7 @@ export class JournalStore {
         'segment.foreign-actor',
         `refuse to stage: event actor "${foreign.actor}" is not this store's actor "${actorId}" (R-8.1.12)`,
       );
+    await this.refuseSecondName(events); // R-8.5.26
     const stageKey = `${this.outboxPrefix}${events[0].ts}`;
     const staged = await this.kv.setIfAbsent(stageKey, sealed);
     if (staged !== sealed)
@@ -586,6 +678,7 @@ export class JournalStore {
     const ipath = `${this.segmentsDir}/${name}`;
     const pathErr = ipathError(ipath);
     if (pathErr) throw new Refusal('segment.bad-path', `segment ipath ${pathErr} — refuse to write (§2/§8.1)`);
+    await this.refuseSecondName(events); // R-8.5.26, before any intent is staged
 
     // STAGE the exact sealed bytes BEFORE the HTTP write (durable intent,
     // R-8.1.8): a crash between here and the accept replays the same bytes via

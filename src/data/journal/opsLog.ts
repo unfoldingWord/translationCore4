@@ -11,7 +11,38 @@
 // so they never enter a burrito. Every write goes through ONE serialized
 // read-modify-write writer, so an ops write and any other settings write can
 // never overwrite each other.
-import { Refusal, failedReport, type Report } from './runtime';
+//
+// The sync record (issue #676, G8) names its phase in `facts.phase`. The sync
+// writes the phase BEFORE the step that the phase names, so the saved phase is
+// the step that was running, or the step after it. Three folders take part:
+// the project `repoPath`, the `scratch` copy (built and pushed), and the
+// `previous` copy (`_local_/_archive_/`, so Home never lists either copy).
+// A copy is a copy and a delete on the server, never one rename (#673), so the
+// swap uses four separate calls. Each phase and its recovery rule:
+//   clone                the fixed clone path and the scratch copy are being made.
+//                        Recovery: delete both. The project did not change.
+//   sync, push           the scratch copy is complete; the project did not change.
+//                        Recovery: delete the scratch copy. (A push that Door43
+//                        accepted is not lost: own work is in the project and on
+//                        Door43, and the next sync gets it.)
+//   swap.copy-previous   copy the project to `previous`.       Recovery: resume here.
+//   swap.delete-project  delete the project.                   Recovery: resume here.
+//   swap.copy-live       copy `scratch` to the project path.   Recovery: resume here.
+//   swap.delete-scratch  delete `scratch`.                     Recovery: resume here.
+//   live                 the copy is live; the outbox entries it carried are being
+//                        cleared. Recovery: nothing. The next open replays any entry
+//                        that is left: its bytes are at its path, so the replay
+//                        clears it ('already-published').
+// From swap.copy-previous on, the scratch copy is pushed and complete, so a
+// recovery always goes forward. Each swap step is safe to run again when the
+// step after it has not run: it first deletes the target that a stopped copy
+// can leave in part. Two kill sweeps in test/sync/syncOperation.test.ts prove
+// this: a kill after each server call, and a kill inside each one (the server
+// stops with a part copy or a part delete). Recovery saves each phase before
+// its step, like the sync.
+import { Refusal, failedReport, okReport, type Report } from './runtime';
+import { isNotFoundError } from '../serverApi';
+import type { KvStore } from './identity';
 
 export type OpsOp = Report['op'];
 
@@ -98,7 +129,85 @@ export interface OpsLogInit {
 export interface OpsRecoveryApi {
   listLocalRepos(): Promise<string[]>;
   deleteRepo(repoPath: string): Promise<void>;
+  copyRepo(src: string, target: string, deleteSrc?: boolean): Promise<void>;
 }
+
+// ---- the sync swap (issue #676, G8) -------------------------------------------
+
+/** The swap phases, in order. See the module header for each recovery rule. */
+export const SWAP_PHASES = ['swap.copy-previous', 'swap.delete-project', 'swap.copy-live', 'swap.delete-scratch'] as const;
+export type SwapPhase = (typeof SWAP_PHASES)[number];
+export const isSwapPhase = (phase: unknown): phase is SwapPhase => SWAP_PHASES.includes(phase as SwapPhase);
+
+export interface SwapPaths {
+  repoPath: string;
+  scratch: string;
+  previous: string;
+}
+
+/** The scratch copy and the previous copy of a project. Under `_local_/_archive_/`,
+ * which `list-local-repos` and the summaries skip (#673), so Home never lists them. */
+export const syncPathsOf = (repoPath: string): SwapPaths => {
+  const name = repoPath.split('/')[2];
+  return { repoPath, scratch: `_local_/_archive_/tc4-sync--${name}`, previous: `_local_/_archive_/tc4-previous--${name}` };
+};
+
+/** Delete a repository; a repository that is not there is not an error. The
+ * platform answers a delete of a missing repository with HTTP 400 "could not
+ * delete repo: No such file or directory (os error 2)", which `isNotFound`
+ * matches [VERIFIED — pankosmia-web 0.18.15 (a83725b, 2026-09-29), rig
+ * 2026-10-13; docs/evidence/sync-transport-spike-2026-10-13.md run 7]. */
+export const deleteIfPresent = async (api: Pick<OpsRecoveryApi, 'deleteRepo'>, repoPath: string): Promise<void> => {
+  try {
+    await api.deleteRepo(repoPath);
+  } catch (error) {
+    if (!isNotFoundError(error)) throw error;
+  }
+};
+
+/** Run the swap from `from` to its end. `note` saves a phase BEFORE its step and
+ * answers whether it was saved; a phase that is not saved stops the swap before
+ * its step, so the saved phase never lags behind the folders. */
+export async function runSwap(
+  api: Pick<OpsRecoveryApi, 'deleteRepo' | 'copyRepo'>,
+  paths: SwapPaths,
+  from: SwapPhase,
+  note: (phase: SwapPhase) => Promise<boolean>,
+): Promise<void> {
+  const { repoPath, scratch, previous } = paths;
+  const steps: Record<SwapPhase, () => Promise<void>> = {
+    'swap.copy-previous': async () => {
+      await deleteIfPresent(api, previous);
+      await api.copyRepo(repoPath, previous);
+    },
+    'swap.delete-project': () => deleteIfPresent(api, repoPath),
+    'swap.copy-live': async () => {
+      await deleteIfPresent(api, repoPath);
+      await api.copyRepo(scratch, repoPath);
+    },
+    'swap.delete-scratch': () => deleteIfPresent(api, scratch),
+  };
+  for (const phase of SWAP_PHASES.slice(SWAP_PHASES.indexOf(from))) {
+    if (!(await note(phase))) throw new Error(`the ops log did not save the phase ${phase}; the swap stopped before it`);
+    await steps[phase]();
+  }
+}
+
+/** The installation-store key that names the previous copy of a project after a sync. */
+export const previousCopyKey = (repoPath: string): string => `sync-previous:${repoPath}`;
+
+/** Delete the previous copy that a sync left (issue #676), if there is one.
+ * The checkpoint calls this after each successful save of the live project. */
+export const deletePreviousCopy = async (
+  api: Pick<OpsRecoveryApi, 'deleteRepo'>,
+  kv: KvStore,
+  repoPath: string,
+): Promise<void> => {
+  const previous = await kv.get(previousCopyKey(repoPath));
+  if (previous === undefined) return;
+  await deleteIfPresent(api, previous);
+  await kv.delete(previousCopyKey(repoPath));
+};
 
 export class OpsLog implements OpsRecorder {
   /** The records this session knows, oldest first — including any whose write failed. */
@@ -163,8 +272,32 @@ export class OpsLog implements OpsRecorder {
     }
     if (entry.op === 'export')
       return failedReport('export', entry.startedAt, endedAt, new Error('the export was interrupted; no file was delivered'), facts);
+    if (entry.op === 'sync') return this.resolveSync(entry, api, endedAt);
     return failedReport(entry.op, entry.startedAt, endedAt,
       new Error(`the ${entry.op} was interrupted; the journal replays its staged actions at the next open of the project`), facts);
+  }
+
+  /** The recovery rule of an interrupted sync (module header, G8). */
+  private async resolveSync(entry: OpsEntry, api: OpsRecoveryApi, endedAt: string): Promise<Report> {
+    const facts = { ...entry.facts, interrupted: true };
+    const { phase, repoPath, clonePath } = entry.facts;
+    if (typeof repoPath !== 'string')
+      return failedReport('sync', entry.startedAt, endedAt, new Error('the sync was interrupted before it named its project'), facts);
+    const paths = syncPathsOf(repoPath);
+    if (isSwapPhase(phase)) {
+      let saved = entry;
+      await runSwap(api, paths, phase, async (next) => {
+        saved = { ...saved, facts: { ...saved.facts, phase: next } };
+        await this.update((doc) => withEntries(doc, [saved]));
+        return true;
+      });
+      return okReport('sync', entry.startedAt, endedAt, { ...facts, phase: 'live', finishedSwap: true });
+    }
+    if (phase === 'live') return okReport('sync', entry.startedAt, endedAt, facts);
+    if (phase === 'clone' && typeof clonePath === 'string') await deleteIfPresent(api, clonePath);
+    await deleteIfPresent(api, paths.scratch);
+    return failedReport('sync', entry.startedAt, endedAt,
+      new Error('the sync was interrupted before the swap; the project did not change'), { ...facts, rolledBack: true });
   }
 
   private current(id: string): OpsEntry {

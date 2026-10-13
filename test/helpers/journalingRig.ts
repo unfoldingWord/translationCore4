@@ -55,6 +55,19 @@ export interface RigProject {
   commits: string[];
   /** ipaths written since the last add-and-commit — what GET /git/status lists (#183). */
   dirty: Set<string>;
+  /** #676: the `origin` url, and the version of that fake remote this repository last cloned or pushed. */
+  origin?: string;
+  pulled?: number;
+}
+
+/** #676: a Door43 repository behind the git routes: `main` as files + metadata, and
+ * its version (a push that does not start from it is not a fast-forward). */
+export interface FakeRemote {
+  files: Map<string, string>;
+  meta: Record<string, unknown>;
+  version: number;
+  /** false: a push answers as Door43 does without write access ([PENDING — owner run, #673 step 4]). */
+  writable: boolean;
 }
 
 export interface FailureRule {
@@ -116,6 +129,37 @@ export const journalingRig = () => {
   const log: Array<{ method: string; route: string }> = [];
   const failures: FailureRule[] = [];
   const temps = new Map<string, Uint8Array>(); // POST /temp/bytes uploads, by uuid
+  // #676: the git transport — Door43 repositories by url, and the net gate
+  const remotes = new Map<string, FakeRemote>();
+  let netEnabled = true;
+  const setNet = (on: boolean): void => {
+    netEnabled = on;
+  };
+  const copyOf = (project: RigProject): RigProject => ({
+    files: new Map(project.files),
+    meta: structuredClone(project.meta),
+    commits: [...project.commits],
+    dirty: new Set(project.dirty),
+    origin: project.origin,
+    pulled: project.pulled,
+  });
+  /** Share `repoPath` to a fake Door43 repository at `url`: its `main` is the project now. */
+  const publish = (repoPath: string, url: string): FakeRemote => {
+    const project = repos.get(repoPath);
+    if (!project) throw new Error(`no such repo ${repoPath}`);
+    const remote: FakeRemote = { files: new Map(project.files), meta: structuredClone(project.meta), version: 1, writable: true };
+    remotes.set(url, remote);
+    project.origin = url;
+    project.pulled = 1;
+    return remote;
+  };
+  /** A teammate pushes to `url`: `main` moves on (with `mutate`'s change, if any). */
+  const teammatePush = (url: string, mutate?: (remote: FakeRemote) => void): void => {
+    const remote = remotes.get(url);
+    if (!remote) throw new Error(`no such remote ${url}`);
+    mutate?.(remote);
+    remote.version += 1;
+  };
   /** Whether new-obs-resource stamps from the tC4-served (fixed) template. */
   let obsTemplateFixed = true;
   const serveUnfixedObsTemplate = (): void => {
@@ -359,6 +403,64 @@ export const journalingRig = () => {
       return ok([...repos.keys()].sort());
     }
 
+    if (parts[1] === 'net' && parts[2] === 'status') {
+      return ok({ is_enabled: netEnabled });
+    }
+
+    // #676: the git transport of #673 (clone, copy, push) and the remotes
+    if (parts[1] === 'git' && parts[2] === 'remotes') {
+      const repo = repoAt(3);
+      maybeFail({ method, route, repo });
+      const project = repos.get(repo);
+      if (!project) return new Response(JSON.stringify({ is_good: false, reason: `Could not open repo: ${repo}` }), { status: 500 });
+      return ok({ is_good: true, payload: { remotes: project.origin ? [{ name: 'origin', url: project.origin }] : [] } });
+    }
+
+    if (parts[1] === 'git' && parts[2] === 'clone-repo') {
+      const repo = repoAt(3);
+      maybeFail({ method, route, repo });
+      if (!netEnabled) return new Response(JSON.stringify({ is_good: false, reason: 'offline mode' }), { status: 401 });
+      if (repos.has(repo))
+        return notFound(`could not clone repo: '${repo}' exists and is not an empty directory; class=Invalid (3); code=Exists (-4)`);
+      const url = `https://${repo}`;
+      const remote = remotes.get(url);
+      if (!remote) return notFound(`could not clone repo: unexpected http status code: 404; class=Http (34)`);
+      repos.set(repo, { files: new Map(remote.files), meta: structuredClone(remote.meta), commits: ['clone'], dirty: new Set(), origin: url, pulled: remote.version });
+      return ok();
+    }
+
+    if (parts[1] === 'git' && parts[2] === 'copy') {
+      const repo = repoAt(3);
+      const target = url.searchParams.get('target_path') ?? '';
+      maybeFail({ method, route, repo });
+      const project = repos.get(repo);
+      if (!project) return notFound('Source repo not found or not a directory');
+      if (repos.has(target)) return notFound('Target repo already exists');
+      repos.set(target, copyOf(project));
+      if (url.searchParams.get('delete_src') === 'true') repos.delete(repo);
+      return ok();
+    }
+
+    if (parts[1] === 'git' && parts[2] === 'push') {
+      const repo = repoAt(3);
+      maybeFail({ method, route, repo });
+      if (!netEnabled) return new Response(JSON.stringify({ is_good: false, reason: 'offline mode' }), { status: 401 });
+      const project = repos.get(repo);
+      if (!project) return new Response(JSON.stringify({ is_good: false, reason: `Could not open repo: ${repo}` }), { status: 500 });
+      const body = JSON.parse(String(init?.body)) as { remote: string };
+      const remote = body.remote === 'origin' && project.origin ? remotes.get(project.origin) : undefined;
+      if (!remote) return notFound(`Could not find remote ${body.remote}`);
+      const fail = (reason: string) => new Response(JSON.stringify({ is_good: false, reason }), { status: 500 });
+      if (!remote.writable) return fail('Could not push repo: unexpected http status code: 403; class=Http (34)');
+      if (project.pulled !== remote.version)
+        return fail('Could not push repo: cannot push because a reference that you are trying to update on the remote contains commits that are not present locally.; class=Reference (4); code=NotFastForward (-11)');
+      remote.files = new Map(project.files);
+      remote.meta = structuredClone(project.meta);
+      remote.version += 1;
+      project.pulled = remote.version;
+      return ok();
+    }
+
     if (parts[1] === 'git' && parts[2] === 'delete') {
       const repo = repoAt(3);
       repos.delete(repo);
@@ -398,7 +500,7 @@ export const journalingRig = () => {
     timestamp: 0,
   });
 
-  return { repos, writes, log, fetchFn, failOn, createRepo, serveUnfixedObsTemplate, refuseUnknownLanguages };
+  return { repos, writes, log, fetchFn, failOn, createRepo, serveUnfixedObsTemplate, refuseUnknownLanguages, remotes, publish, teammatePush, setNet };
 };
 
 export type JournalingRig = ReturnType<typeof journalingRig>;

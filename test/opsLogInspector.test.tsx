@@ -37,4 +37,21 @@ describe('#374 the dev Inspector', () => {
     expect(rows[2].textContent).toContain('rolled back');
     expect(screen.getByTestId('dev-inspector-errors').textContent).toContain('The checkpoint record was not saved: client-settings write refused');
   });
+
+  it('#676 shows a sync Report: the ok one and a refusal with its code', () => {
+    const synced = okReport('sync', at(7), at(9), { repoPath: '_local_/_local_/prueba', tries: 1, carried: 2, restored: 0, received: {}, textConflicts: [], newestWins: [], names: {} });
+    const refused = failedReport('sync', at(10), at(11), new Refusal('sync.no-write-access', 'x'), { repoPath: '_local_/_local_/prueba', tries: 1 });
+    const ops = {
+      entries: [
+        { id: 'd', op: 'sync', startedAt: at(7), facts: { repoPath: '_local_/_local_/prueba', phase: 'live' }, report: synced },
+        { id: 'e', op: 'sync', startedAt: at(10), facts: { repoPath: '_local_/_local_/prueba', phase: 'push' }, report: refused },
+      ],
+      errors: [],
+    };
+    render(<InspectorPanel ops={ops} />);
+    expect(JSON.parse(screen.getByTestId('dev-inspector-report').textContent ?? '')).toEqual(refused);
+    const rows = within(screen.getByTestId('dev-inspector-log')).getAllByRole('row');
+    expect(rows.map((r) => [r.getAttribute('data-op'), r.getAttribute('data-state')])).toEqual([['sync', 'failed'], ['sync', 'ok']]);
+    expect(rows[0].textContent).toContain('sync.no-write-access');
+  });
 });
