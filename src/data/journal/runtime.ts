@@ -304,6 +304,8 @@ export interface SyncFacts extends Record<string, unknown> {
   textConflicts: SyncTextConflict[];
   newestWins: Array<{ key: string; kind: string; winner: string }>;
   names: Record<string, string>;
+  /** every actor id of the synced journal, sorted: the "Teammate n" order (actorLabel, #680) */
+  actors: string[];
 }
 /** The one validator the core reads: journal/files.mjs (Node) or ./seal (the app). */
 export interface SyncFileLayer {

@@ -329,6 +329,19 @@ describe('#676 the name action (R-8.5.25, R-8.5.26)', () => {
     await expect(journal.sealName('otro')).rejects.toMatchObject({ code: 'actor.name-already-set' });
   });
 
+  it('#680 the result numbers teammates over the actors the review numbers over', async () => {
+    const w = await world();
+    const report = await sync(w.deps(), { repoPath: REPO, session: SESSION });
+    expect(report.ok).toBe(true);
+    forgetSharedClocks();
+    const store = new JournalingStore({ api: w.api, kv: w.kv });
+    await store.open(REPO);
+    const team = store.readTeam();
+    store.dispose();
+    expect(report.facts.actors).toEqual(team.actors);
+    expect(report.facts.names).toEqual(team.names);
+  });
+
   it('a refused sync writes no name', async () => {
     const w = await world();
     w.rig.remotes.get(URL_)!.writable = false;

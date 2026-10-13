@@ -1,6 +1,8 @@
-// The label of the person who owns a version (#679). #680 takes this function
-// over: its contract names `actorLabel(actor, names, me)` as the one label
-// function of the review and the sync result.
+// The label of the person who owns a version (#679, #680): the one label
+// function of the review (ConflictReview.jsx) and the sync result
+// (SyncResult.jsx). Both give it the same `actors`, so one teammate has one
+// number in both: the store's readTeam() and the sync's `report.facts.actors`
+// are the sorted actor ids of the same journal.
 import { t } from '../i18n';
 
 /** "Mine" for this installation's actor `me`; else the teammate's Door43 name

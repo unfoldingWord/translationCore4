@@ -43,6 +43,7 @@ import { ProjectCard, ObsProjectCard } from '../src/views/Home.jsx';
 import SyncResult, { SYNC_REFUSALS, syncCounts } from '../src/views/SyncResult.jsx';
 import { InternetDialog } from '../src/views/AccountMenu.jsx';
 import ShareDialog from '../src/views/modals/ShareDialog.jsx';
+import { actorLabel } from '../src/views/actorLabel.js';
 
 const AT = '2026-10-13T12:00:00.000Z';
 /** An ok sync Report: 3 + 2 teammate files, one non-text conflict, two verse conflicts, one restored file. */
@@ -270,5 +271,27 @@ describe('#678 — the first share', () => {
     render(<ShareDialog />);
     expect(screen.getByTestId('share-done')).toBeTruthy();
     expect(screen.queryByTestId('share-team-access')).toBeNull();
+  });
+});
+
+describe('#680 — the result names each teammate through actorLabel', () => {
+  const ACTORS = ['a0000000000000aa', 'b0000000000000aa', 'c0000000000000bb', 'd0000000000000dd'];
+
+  it('a named teammate shows the Door43 name; an unnamed one the "Teammate n" the review gives', () => {
+    // a0… is this translator (named by the sync); d0… sent nothing this sync and has no name
+    const names = { a0000000000000aa: 'facilitator', c0000000000000bb: 'maria' };
+    render(<SyncResult result={result(okSync({ names, actors: ACTORS }))} onReview={vi.fn()} onDownload={vi.fn()} onDismiss={vi.fn()} />);
+    const review = (actor: string) => actorLabel(actor, names, 'a0000000000000aa', ACTORS);
+    expect(review('b0000000000000aa')).toBe(t('conflicts.teammate', { n: 1 }));
+    expect(screen.getByTestId('sync-received-from').textContent)
+      .toBe(t('syncResult.from', { names: [review('b0000000000000aa'), 'maria'].join(' · ') }));
+  });
+
+  it('no teammate change: no names line; a refused sync: no names line', () => {
+    render(<SyncResult result={result(okSync({ received: {}, actors: ACTORS }))} onReview={vi.fn()} onDownload={vi.fn()} onDismiss={vi.fn()} />);
+    expect(screen.queryByTestId('sync-received-from')).toBeNull();
+    cleanup();
+    render(<SyncResult result={result(refused('sync.offline'))} onReview={vi.fn()} onDownload={vi.fn()} onDismiss={vi.fn()} />);
+    expect(screen.queryByTestId('sync-received-from')).toBeNull();
   });
 });

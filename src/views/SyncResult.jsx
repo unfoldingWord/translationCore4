@@ -3,10 +3,11 @@
 // changes teammates made (`received`), the conflicts where the newest version
 // won (`newestWins`), and the verse conflicts (`textConflicts`), with a link to
 // the review (#679) when there is one. A refused sync shows the one message of
-// its code. The owner's mockup (2026-10-13, "HomeConflicts"): a white toast at
+// its code. #680: the teammates who sent changes, each by actorLabel. The owner's mockup (2026-10-13, "HomeConflicts"): a white toast at
 // the bottom of Home, a dot, one line, an Ocean link, and a dismiss button.
 import React from 'react';
 import { t } from '../i18n';
+import { actorLabel } from './actorLabel.js';
 
 /** One message for each refusal code that a sync can return (journal/report.mjs). */
 export const SYNC_REFUSALS = {
@@ -61,6 +62,18 @@ function Counts({ counts }) {
   );
 }
 
+/** #680: the teammates who sent changes (`received`), each by the label the
+ * review gives them: the Door43 name of `facts.names`, else "Teammate n" over
+ * `facts.actors`. `received` holds teammates only, so no "Mine" shows here;
+ * `me` is null because the sync writes this translator's name first, and a
+ * named actor takes no number. Nothing for no teammate. */
+function From({ facts = {} }) {
+  const senders = Object.keys(facts.received ?? {}).sort();
+  if (!senders.length) return null;
+  const labels = senders.map((a) => actorLabel(a, facts.names, null, facts.actors));
+  return <span data-testid="sync-received-from" style={NOTE}>{t('syncResult.from', { names: labels.join(' · ') })}</span>;
+}
+
 /** A count sentence under the line, or nothing for 0. */
 function Note({ testId, n, one, many }) {
   if (!n) return null;
@@ -92,6 +105,7 @@ export default function SyncResult({ result, onReview, onDownload, onDismiss }) 
             <span data-testid="sync-message">{syncErrorText(report)}</span>
           </span>
         )}
+        {ok && <From facts={report.facts} />}
         <Note testId="sync-restored" n={restored} one="syncResult.restoredOne" many="syncResult.restoredMany" />
         <Note testId="sync-missing-pins" n={missingPins} one="syncResult.missingPinsOne" many="syncResult.missingPinsMany" />
       </div>
