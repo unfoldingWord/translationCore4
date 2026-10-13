@@ -136,7 +136,6 @@ export const storyIpath = storyIpathRef as (story: number) => string;
 export const isStoryReference = isStoryReferenceRef as (reference: unknown) => boolean;
 /** R-10.5.1: the literal in the book position of a story identity key (`obs`). */
 export const STORY_BOOK_ID = STORY_BOOK_ID_REF as string;
-/** §10.5: the book position of the story decision sidecar, `checking/<toolId>/OBS.json`. */
 /** G2 (R-8.7.8): check ONE journal file by its ingredient path with the one validator,
  * as the sync core does for each incoming file. The open from Door43 (#677) reads it. */
 export const checkJournalFile = checkJournalFileRef as (
@@ -144,6 +143,7 @@ export const checkJournalFile = checkJournalFileRef as (
   ipath: string,
   bytes: string,
 ) => Promise<{ ok: true; actor: string; events: unknown[] } | { ok: false; actor?: string; kind: string; reason: string }>;
+/** §10.5: the book position of the story decision sidecar, `checking/<toolId>/OBS.json`. */
 export const STORY_FILE = STORY_FILE_REF as string;
 /** The inverse of storyIpath: the story number of a `content/NN.md` path, else null. */
 export const storyNumberOf = (ipath: string): number | null => {

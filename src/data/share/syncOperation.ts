@@ -258,8 +258,8 @@ export async function openFromDoor43(deps: OpenDeps, request: { source: CloneSou
   if (!(await api.getNetEnabled())) throw new Refusal('sync.offline', NO_CONSENT);
   const scratch = `_local_/_archive_/tc4-open--${repoPath.split('/')[2]}`;
   await deleteIfPresent(api, scratch);
-  await cloneProject(api, request.source, scratch);
   try {
+    await cloneProject(api, request.source, scratch);
     // D98: Bible projects only
     if (isObsMetadata(await api.getMetadataRaw(scratch)))
       throw new Refusal('sync.obs-unsupported', 'only Bible projects open from Door43 (D98)', { repoPath });

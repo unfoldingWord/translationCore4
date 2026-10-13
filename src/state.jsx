@@ -6370,11 +6370,17 @@ export function AppProvider({ children }) {
             if (stateRef.current.od) a.patchOd({ busy: false });
             return;
           }
+          // The project exists now: a failed read after this shows on Home, never as a refusal.
           markUsed(opened.repoPath);
-          await refreshProjects();
-          // The card reads `origin` now, so it shows "Sync with Door43" (#678).
-          await a.loadShared({ id: opened.repoPath }, true);
-          a.closeModal();
+          try {
+            await refreshProjects();
+            // The card reads `origin` now, so it shows "Sync with Door43" (#678).
+            await a.loadShared({ id: opened.repoPath }, true);
+          } catch (e) {
+            console.error(`open from Door43: the read after the open failed: ${String(e?.message || e)}`);
+          }
+          // Close only this dialog: the user may have opened another one meanwhile.
+          if (stateRef.current.modal === 'openDoor43') a.closeModal();
           dispatch({ type: 'set', patch: { importToast: { key: 'openDoor43.done', name } } });
         } catch (e) {
           if (stateRef.current.od) a.patchOd({ busy: false, error: { code: refusalCodeOf(e), reason: String(e?.reason || e?.message || e) } });
