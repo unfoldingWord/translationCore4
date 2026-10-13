@@ -17,14 +17,14 @@ npm run generate   # rebuilds JON stub (incl. the 2:9-10 verse-span fixture), al
 npm run validate   # the Phase-1 suite (BURRITO-SPEC §7); the three groups are below
 ```
 
-`npm run validate` runs <!-- manifest: conformance:validate passed -->50 checks in four
+`npm run validate` runs <!-- manifest: conformance:validate passed -->51 checks in four
 groups:
 
-- **Stage-1 (<!-- manifest: conformance:validate summary[Stage-1] -->38):** SB schema,
+- **Stage-1 (<!-- manifest: conformance:validate summary[Stage-1] -->39):** SB schema,
   ingredient integrity, versification (vrs.json presence/shape/scope coverage), scope
   grammar ([] + range arrays, negative controls), targetBible shape, alignment round-trip +
   staleness guard, selections validity + invalidation, decision-shape lint incl. triage
-  status, derive+merge progress reconstruction incl. scope-filtered derive, cross-language
+  status, derive+merge progress reconstruction incl. scope-filtered derive and the tw article gate (§4.2, #643), cross-language
   re-attach (groupId tiebreak, ambiguity → review), multi-book scope, two-language-set
   resource pins (D17/D30), (tool, book) resolution records + two-rung coverage ladder,
   extraScripture source pins, zaln export, verse-span key semantics, the renumber outcome

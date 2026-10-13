@@ -319,6 +319,40 @@ const verseText = bookJson.chapters['1']['1'].verseObjects.filter(vo => vo.type 
     !refInScope(['15:1-22'], 15, '23-24') && refInScope(['15:1-22'], 15, '22-23') && refInScope(['15:1-22'], 15, '20-21'),
     `scope ["1:1"] → ${scoped.length}/${scopedRows.length} items; [] → ${wholeBook.length}/${scopedRows.length}`);
 
+  // The tw article gate (§4.2 — issue #643, owner ruling 2026-10-12): a TWL row whose
+  // article the resolving set's tw pin does not carry derives NO item — not shown, not
+  // counted. The pin's metadata.json ingredient list names every `payload/<category>/<slug>.md`
+  // it carries (the installed key form is `ingredients/payload/kt/ark.md`), so the gate reads
+  // that list and never another set's: fallback is per (tool, book) (§5.2/§5.3), never per
+  // article. A stored decision on a hidden row is carried over like any unplaceable one
+  // (D36): invalidated and kept. Miniature: the three rows above; the tw pin lacks `kt/jesus`.
+  const twMetadata = { ingredients: {
+    'ingredients/payload/kt/god.md': {}, 'ingredients/payload/kt/apostle.md': {},
+    'ingredients/payload/config.yaml': {}, 'ingredients/TIT.tsv': {},
+  } };
+  const twArticles = new Set(Object.keys(twMetadata.ingredients)
+    .map(k => /(?:^|\/)payload\/([^/]+)\/([^/]+)\.md$/.exec(k)).filter(Boolean).map(m => `${m[1]}/${m[2]}`));
+  const articleOf = item => `${item.category}/${item.contextId.groupId}`;
+  const withCategory = derived.map(item => ({ ...item, category: 'kt' }));
+  const gated = withCategory.filter(item => twArticles.has(articleOf(item)));
+  const hiddenDecision = { ...withCategory.find(item => item.contextId.checkId === 'x7k2'),
+    selections: [{ text: 'Jesus', occurrence: 1, occurrences: 1 }] };
+  const gatedCarry = (() => {
+    const onList = new Set(gated.map(item => key(item.contextId)));
+    return onList.has(key(hiddenDecision.contextId))
+      ? { kept: true, invalidated: false }
+      : { kept: true, invalidated: true, record: { ...hiddenDecision, invalidated: true, status: 'invalid' } };
+  })();
+  check('derive gate: a TWL row whose article the tw pin does not carry derives no item, and the progress total excludes it; a stored decision on it is invalidated and kept (§4.2, #643)',
+    twArticles.size === 2 && twArticles.has('kt/god') && !twArticles.has('kt/jesus') &&
+    withCategory.length === 3 && gated.length === 2 && !gated.some(item => item.contextId.checkId === 'x7k2') &&
+    gated.filter(i => i.selections !== false || i.nothingToSelect).length === 0 &&
+    gatedCarry.invalidated && gatedCarry.record.invalidated === true && gatedCarry.record.status === 'invalid' &&
+    JSON.stringify(gatedCarry.record.selections) === JSON.stringify(hiddenDecision.selections) &&
+    // negative control: with every article carried, nothing is hidden
+    withCategory.filter(item => new Set([...twArticles, 'kt/jesus']).has(articleOf(item))).length === 3,
+    `tw pin carries ${twArticles.size} articles → ${gated.length}/${withCategory.length} items; x7k2 (kt/jesus) hidden; its decision invalidated + kept`);
+
   // Cross-language re-attach (D17, §5.2): a resolution change swaps the TSV language, so
   // checkIds no longer match. Fallback key: (reference + original-language quote +
   // occurrence). That key is NOT unique (verified duplicate quote+occurrence rows in en_tn
