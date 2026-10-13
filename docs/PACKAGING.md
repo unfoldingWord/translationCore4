@@ -519,8 +519,10 @@ batch launcher and POSIX smoke script. Debug builds remain portable zips.
    directly without a batch console. To keep it on the taskbar, use Windows'
    **Pin to taskbar** command.
 
-A signed build names the publisher on the Artifact Signing certificate (#456
-Q3). SmartScreen can still show
+A signed build names **unfoldingWord** as the publisher. The certificate subject
+is `CN=unfoldingWord, O=unfoldingWord, L=Orlando, S=Florida, C=US` [VERIFIED —
+`Get-AuthenticodeSignature` on a `vulkan-1.dll` that the owner signed by hand
+with the `uw-public-prod` profile, 2026-10-13; #456 Q3]. SmartScreen can still show
 **Windows protected your PC** while the publisher builds reputation. Then
 **More info** shows the publisher name, and **Run anyway** continues. An
 unsigned build shows **Unknown publisher**. Organizational policy may block
@@ -560,7 +562,8 @@ What a signed run does:
    records `"signed": true`.
 6. `smoke-windows-x64` fails if the installer, or any installed `.exe`, `.dll`
    or `.node` file, is not `Valid`. It also fails if the manifest and the file
-   name do not agree.
+   name do not agree, or if the installer, `electron.exe`, `server.exe` or
+   `unins000.exe` has a signer subject other than the one above.
 
 Every signature carries an RFC 3161 timestamp from
 `http://timestamp.acs.microsoft.com`. An Artifact Signing certificate is valid

@@ -7,8 +7,8 @@ The installer creates a Start menu entry and offers a desktop shortcut.
 Open translationCore4 from Start after installation. To keep it on the taskbar,
 use Windows' Pin to taskbar command on the app.
 
-A signed build has no "-unsigned" in its file name. Its installer names the
-publisher. Windows can still show "Windows protected your PC" while the
+A signed build has no "-unsigned" in its file name. Its installer names
+unfoldingWord as the publisher. Windows can still show "Windows protected your PC" while the
 publisher builds reputation. Select More info to see the publisher, then
 Run anyway. An unsigned build shows "Unknown publisher", and your
 organization's policy can block it. To check a signature, open the installer's

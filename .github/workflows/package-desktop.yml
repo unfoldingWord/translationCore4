@@ -401,7 +401,13 @@ jobs:
           $bad = @(Get-ChildItem $env:TC4_INSTALL_DIR -Recurse -File | Where-Object { $_.Extension -in '.exe', '.dll', '.node' } |
             Get-AuthenticodeSignature | Where-Object Status -ne 'Valid')
           if ($bad.Count) { $bad | Format-Table Path, Status -AutoSize | Out-String -Width 300 | Write-Host; throw "$($bad.Count) installed file(s) are not Valid" }
-          Write-Host "ok every installed .exe, .dll and .node file is Valid; signer $($installer.SignerCertificate.Subject)"
+          # #456 Q3: the subject of the uw-public-prod certificate profile (owner, 2026-10-13).
+          $publisher = 'CN=unfoldingWord, O=unfoldingWord, L=Orlando, S=Florida, C=US'
+          foreach ($file in "$PWD\download\installer.exe", "$env:TC4_INSTALL_DIR\electronite\electron.exe", "$env:TC4_INSTALL_DIR\bin\server.exe", "$env:TC4_INSTALL_DIR\unins000.exe") {
+            $subject = (Get-AuthenticodeSignature -LiteralPath $file).SignerCertificate.Subject
+            if ($subject -cne $publisher) { throw "$file is signed by '$subject', not '$publisher'" }
+          }
+          Write-Host "ok every installed .exe, .dll and .node file is Valid; tC4's own files are signed by $publisher"
       - name: Installed app smoke with no development tools on PATH
         run: |
           $ErrorActionPreference = 'Stop'
