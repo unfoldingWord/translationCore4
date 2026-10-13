@@ -926,6 +926,8 @@ Measured locally on 2026-09-12 (macOS arm64, Node 22); the desktop artifact grow
   packaging workflow runs automatically on a push to `main` only, so run it by hand
   (`workflow_dispatch`) on the release branch. The tag rule of epic #59 still applies.
 - Stop cherry-picks to a release branch when the next minor release ships.
+- The repository ruleset "release branches" protects every `release/*` branch: a pull request
+  with one approval and the `verify` check, no force push, and no delete.
 
 ## Known limits (start of the pipeline, not the end)
 
