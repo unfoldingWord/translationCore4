@@ -311,6 +311,10 @@ describe('2026-08-28 adversarial round 25 regression — concurrent project open
     readResources: async () => null, // loadProjectPins: "no pins recorded"
     writeBook: async () => {},
     reconcileStaged: async () => {},
+    // #679: the open lists the fold's verse conflicts and their team.
+    actorId: 'fake-actor',
+    readVerseConflicts: () => [],
+    readTeam: () => ({ names: {}, actors: [] }),
   });
 
   it('the LATEST open exclusively owns the refs and the dispatched state — an earlier open resuming later assigns nothing', async () => {
@@ -425,6 +429,20 @@ describe('2026-08-28 adversarial round 25 regression — concurrent project open
     await sched.retry();
     expect(dispatched.some((d) => d.type === '__loadUnderstand')).toBe(true);
     expect(sched.getState()).toBe('saved');
+  });
+
+  it('#679: a verse-conflict read that throws does not block the open; the count becomes unknown', async () => {
+    const { ctx, dispatched, openedBooks } = openCtx();
+    const storeB = { ...fakeStore(async (repoPath) => ({ repoPath, name: 'B', scriptDirection: 'ltr', bookCodes: ['TIT'] })), readVerseConflicts: () => { throw new Error('fork head missing'); } };
+    ctx.makeStore = (() => storeB) as never;
+    const { __performProjectOpenForTests: open } = await import('../src/state.jsx');
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await open(ctx, 'repo/B', 'TIT');
+    expect(openedBooks).toEqual(['TIT']);
+    expect(dispatched.some((d) => (d.patch as { bookError?: string } | undefined)?.bookError)).toBe(false);
+    expect(dispatched).toContainEqual({ type: 'setConflicts', id: 'repo/B', counts: null });
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('fork head missing'));
+    error.mockRestore();
   });
 });
 

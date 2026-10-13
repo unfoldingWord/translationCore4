@@ -430,6 +430,21 @@ Two translators changed the same item from the same starting point. The specific
 to a person for review (G7).
 _Avoid_: merge conflict (git's word for a different thing)
 
+**Conflict review**:
+The screen where a translator looks at each verse-text conflict, one verse at a time (#679). It
+shows each version of the verse with its owner and date. It reads the fold
+(`src/data/journal/verseConflicts.ts`) and does not start a sync. The translator can stop the
+review at any time. The conflicts that stay open stay on the list.
+_Avoid_: merge screen, diff view
+
+**Keep a version**:
+The action that ends one verse-text conflict. The translator selects one version and confirms.
+The store then writes one verse edit with the text of that version (`resolveVerse`). The edit
+names all versions of the verse in `supersedes` (R-8.3.5). The fold then shows no conflict for
+the verse. The other versions stay in the history (`retained[]`, reason `superseded`, R-8.3.6).
+The next sync sends the edit to the team.
+_Avoid_: accept, merge, resolve (for the person's action), choose a winner
+
 **Outbox**:
 Changes saved on this computer that are not yet written into the project repository. A sync
 keeps each outbox entry (G1).
