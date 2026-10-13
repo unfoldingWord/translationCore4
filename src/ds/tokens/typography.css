@@ -126,8 +126,10 @@
 
 /* Devanagari has no capitals, so uppercase does nothing there, and letterspacing
    breaks the headline stroke between letters. The optical curve is drawn for the
-   Latin face, so Hindi takes none of it either (#612). */
-html:lang(hi) {
+   Latin face, so Hindi takes none of it either (#612). Arabic letters join, and
+   letterspacing breaks the joins, so Arabic takes none of it (#649). */
+html:lang(hi),
+html:lang(ar) {
   --track-9: 0;
   --track-10: 0;
   --track-11: 0;

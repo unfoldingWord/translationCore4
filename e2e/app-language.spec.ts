@@ -20,8 +20,8 @@
 //   f  startup, the menu, the preview, Cancel and Apply make zero external requests;
 //      the keyboard opens the dialog, picks a language, applies, and the focus returns to
 //      the account trigger
-//   g  #612: in Hindi no element that shows Devanagari is letter-spaced (Home and the
-//      Report a problem dialog); every other language keeps the tracking of English
+//   g  #612, #649: in Hindi and in Arabic no element that shows the script is letter-spaced
+//      (Home and the Report a problem dialog); every other language keeps the tracking of English
 // The shared recorder (helpers/externalRequests.ts) writes each request log, and the
 // screenshots, into the test's output folder (and attaches them).
 import fs from 'node:fs';
@@ -184,9 +184,9 @@ test.describe('#522 — App language in the account menu', () => {
   });
 
   // #622, criterion 5: each language added by #622 applies, and a fresh session starts in it.
-  test('b2. each language added by #622 applies and survives a restart', TAG, async ({ page }, testInfo) => {
+  test('b2. each language added by #622, and Arabic (#649), applies and survives a restart', TAG, async ({ page }, testInfo) => {
     await page.goto('/');
-    for (const id of ['pt-BR', 'id', 'uk', 'ru', 'vi']) {
+    for (const id of ['pt-BR', 'id', 'uk', 'ru', 'vi', 'ar']) {
       await openDialog(page);
       await choose(page, id);
       const written = page.waitForResponse((r) => isSettingsWrite(r.url(), r.request().method()));
@@ -431,10 +431,11 @@ test.describe('#522 — App language in the account menu', () => {
     await external.save(testInfo);
   });
 
-  // ---- g · #612: Hindi text carries no letter spacing ----
+  // ---- g · #612, #649: Hindi and Arabic text carry no letter spacing ----
   // Devanagari has no capitals, and the letter spacing of the uppercase labels breaks its
-  // headline stroke. The control comes first: in English the same labels are tracked.
-  test('g. #612: in Hindi no element that shows Devanagari is letter-spaced; every other language keeps the tracking', TAG, async ({ page }, testInfo) => {
+  // headline stroke. Arabic letters join, and letter spacing breaks the joins. The control
+  // comes first: in English the same labels are tracked.
+  test('g. #612, #649: in Hindi and in Arabic no element that shows the script is letter-spaced; every other language keeps the tracking', TAG, async ({ page }, testInfo) => {
     const px = async (loc: Locator): Promise<number> => {
       const v = await loc.evaluate((el) => getComputedStyle(el).letterSpacing);
       return v === 'normal' ? 0 : parseFloat(v);
@@ -455,17 +456,21 @@ test.describe('#522 — App language in the account menu', () => {
       }
       return out;
     };
-    // Each visible element that holds Devanagari text of its own.
-    const devanagari = (): Promise<Array<{ text: string; uppercase: boolean; letterSpacing: string }>> => page.evaluate(() => {
+    type Shown = { text: string; uppercase: boolean; letterSpacing: string };
+    // Each visible element that holds text of its own in the script (a Unicode block).
+    const inScript = (block: string): Promise<Shown[]> => page.evaluate((source) => {
+      const script = new RegExp(source);
       const out: Array<{ text: string; uppercase: boolean; letterSpacing: string }> = [];
       for (const el of Array.from(document.querySelectorAll<HTMLElement>('body *'))) {
         const own = Array.from(el.childNodes).filter((n) => n.nodeType === 3).map((n) => n.textContent ?? '').join('').trim();
-        if (!/[ऀ-ॿ]/.test(own) || !el.getClientRects().length) continue;
+        if (!script.test(own) || !el.getClientRects().length) continue;
         const cs = getComputedStyle(el);
         out.push({ text: own, uppercase: cs.textTransform === 'uppercase', letterSpacing: cs.letterSpacing });
       }
       return out;
-    });
+    }, block);
+    // The languages whose script takes no letter spacing: Devanagari, Arabic.
+    const UNTRACKED = [{ id: 'hi', block: '[\u0900-\u097F]' }, { id: 'ar', block: '[\u0600-\u06FF]' }];
 
     await page.goto('/');
     await expectLanguage(page, 'en');
@@ -477,39 +482,50 @@ test.describe('#522 — App language in the account menu', () => {
     for (const f of FIELDS) expect(enFields[f], `en ${f}`).toBeGreaterThan(0);
     await report.getByTestId('feedback-cancel').click();
     measured.en = { home: enHome, ...enFields };
-    // Every other language but Hindi keeps the English tracking.
+    // Every other language but Hindi and Arabic keeps the English tracking.
     await openDialog(page);
-    for (const { id } of LOCALES.filter((l) => l.id !== 'en' && l.id !== 'hi')) {
+    for (const { id } of LOCALES.filter((l) => l.id !== 'en' && !UNTRACKED.some((u) => u.id === l.id))) {
       await choose(page, id);
       await expectLanguage(page, id);
       const home = await px(homeLabel(id));
       expect(home, `${id}: Home section label`).toBe(enHome);
       measured[id] = { home };
     }
-    // Hindi, applied.
-    await choose(page, 'hi');
-    const written = page.waitForResponse((r) => isSettingsWrite(r.url(), r.request().method()));
-    await apply(page).click();
-    await written;
+    await cancel(page).click();
     await expect(dialog(page)).toHaveCount(0);
-    await expectLanguage(page, 'hi');
-    const hiHome = await px(homeLabel('hi'));
-    const onHome = await devanagari();
-    const hiFields = await fieldLabels('hi');
-    const onReport = await devanagari();
-    measured.hi = { home: hiHome, ...hiFields, devanagari: onReport };
-    // The dialog fades in: the picture is of its final state.
-    const picture = testInfo.outputPath('feedback-hi.png');
-    await page.screenshot({ path: picture, animations: 'disabled' });
-    await testInfo.attach('feedback-hi', { path: picture, contentType: 'image/png' });
+    // Hindi, then Arabic, each applied.
+    const seen: Array<{ id: string; home: number; fields: Record<string, number>; onHome: Shown[]; onReport: Shown[] }> = [];
+    for (const { id, block } of UNTRACKED) {
+      await openDialog(page);
+      await choose(page, id);
+      const written = page.waitForResponse((r) => isSettingsWrite(r.url(), r.request().method()));
+      await apply(page).click();
+      await written;
+      await expect(dialog(page)).toHaveCount(0);
+      await expectLanguage(page, id);
+      const home = await px(homeLabel(id));
+      const onHome = await inScript(block);
+      const fields = await fieldLabels(id);
+      const onReport = await inScript(block);
+      measured[id] = { home, ...fields, shown: onReport };
+      seen.push({ id, home, fields, onHome, onReport });
+      // The dialog fades in: the picture is of its final state.
+      const picture = testInfo.outputPath(`feedback-${id}.png`);
+      await page.screenshot({ path: picture, animations: 'disabled' });
+      await testInfo.attach(`feedback-${id}`, { path: picture, contentType: 'image/png' });
+      await report.getByTestId('feedback-cancel').click();
+      await expect(report).toHaveCount(0);
+    }
     const file = testInfo.outputPath('label-tracking.json');
     fs.writeFileSync(file, `${JSON.stringify(measured, null, 2)}\n`);
     await testInfo.attach('label-tracking', { path: file, contentType: 'application/json' });
-    expect(hiHome, 'hi: Home section label').toBe(0);
-    for (const f of FIELDS) expect(hiFields[f], `hi ${f}`).toBe(0);
-    expect(onHome.filter((el) => el.uppercase).length).toBeGreaterThan(0);
-    expect(onHome.filter((el) => !el.uppercase).length).toBeGreaterThan(0);
-    expect(onReport.length).toBeGreaterThan(onHome.length);
-    for (const el of [...onHome, ...onReport]) expect(['normal', '0px'], `hi: "${el.text}"`).toContain(el.letterSpacing);
+    for (const { id, home, fields, onHome, onReport } of seen) {
+      expect(home, `${id}: Home section label`).toBe(0);
+      for (const f of FIELDS) expect(fields[f], `${id} ${f}`).toBe(0);
+      expect(onHome.filter((el) => el.uppercase).length, id).toBeGreaterThan(0);
+      expect(onHome.filter((el) => !el.uppercase).length, id).toBeGreaterThan(0);
+      expect(onReport.length, id).toBeGreaterThan(onHome.length);
+      for (const el of [...onHome, ...onReport]) expect(['normal', '0px'], `${id}: "${el.text}"`).toContain(el.letterSpacing);
+    }
   });
 });
