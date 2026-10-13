@@ -12,16 +12,21 @@ transport contract for #676, #677 and #681.
 `clone_repo.rs`, `push.rs`, `copy_repo.rs`, `pull_repo.rs` and `list_local_repos.rs` have no
 change from a83725b to bf0a5d3 (`git diff --stat`, empty). All routes mount
 under `/api`. The citation for every claim here is
-`[VERIFIED — pankosmia-web 0.18.15 (a83725b, 2026-10-13)]`, with the surface named in the claim.
+`[VERIFIED — pankosmia-web 0.18.15 (a83725b, 2026-09-29), read and run 2026-10-13]`. The date in
+the brackets is the commit date of a83725b. Each claim names its surface. The answers table
+uses the short form `[VERIFIED — 0.18.15 (a83725b, 2026-09-29)]`.
 
 **How to read the pastes.** `>` is the request. The next line is the body of the reply. `< HTTP`
-is the status. Every request line and every reply body is exact, with two edits only:
-`<repo_dir>` replaces `/Users/birch/Development/wt/issue-673/dev-env/state/work/repos`, and
-`<tmp>` replaces the session scratch directory. Lines that start with `==`, and lines in
-parentheses, are notes. They give the git commands and results in short. Run 6 shortens one
-reply, and says so. The run numbers follow the topic, not the time. No claim depends on the
-order. The rig starts offline (PLATFORM-NOTES #45), so `POST /api/net/enable` comes first,
-unless the run is an offline control.
+is the status. Each request line is exact. Each reply body that is shown is exact. Two edits
+apply: `<repo_dir>` replaces `<worktree>/dev-env/state/work/repos`, and `<tmp>` replaces the
+session scratch directory. Lines that start with `==`, and lines in parentheses, are notes. They
+give the git commands and results in short. Some replies show the status only:
+`net/enable` and `net/disable` (each body was `{"is_good":true,"reason":"ok"}`), and the move and
+the commit in run 6 (each body was `{"is_good":true,"reason":"ok"}`). Run 6 also
+shortens the `list-local-repos` body, as its line says. The run numbers follow the topic, not
+the time. No claim depends on the order. The server starts offline (D95: each launch starts
+with the internet off), so `POST /api/net/enable` comes first, unless the run is an offline
+control.
 
 **Setup of the stand-in remote.** A bare repository `<tmp>/door43.git` (`git init --bare -b main`),
 with `main` at `048fcd1`, pushed from a clone of the seeded `_local_/_local_/sample_burrito`.
@@ -30,10 +35,10 @@ with `main` at `048fcd1`, pushed from a clone of the seeded `_local_/_local_/sam
 
 | Question | Answer | Evidence |
 |---|---|---|
-| Does a full clone, then a move, give a repository that a later push fast-forwards? | Yes. The moved repository keeps `.git`, all history and `origin`. A commit in it pushes as a fast-forward. | Runs 2 and 3 [VERIFIED — pankosmia-web 0.18.15 (a83725b, 2026-10-13), live rig, `file://` remote] |
-| Does push to a local repository on the rig work, and must it be bare? | Yes, over `file://`. It must be bare: a non-bare remote answers HTTP 500 `code=BareRepo (-8)` and does not move. | Runs 3 and 5 [VERIFIED — pankosmia-web 0.18.15 (a83725b, 2026-10-13), live rig] |
-| What happens when the clone path already exists? | A non-empty directory: HTTP 400 `code=Exists (-4)`, before any network call, and the directory does not change. An empty directory: the clone continues. | Run 1 [VERIFIED — pankosmia-web 0.18.15 (a83725b, 2026-10-13), live rig] |
-| What is the rig stand-in for Door43? | A bare `file://` repository for the push, and a never-committed mirror under `_local_/_archive_/` for the clone (copy, then `pull-repo`). | "The rig stand-in" below, run 6 [VERIFIED — pankosmia-web 0.18.15 (a83725b, 2026-10-13), live rig] |
+| Does a full clone, then a move, give a repository that a later push fast-forwards? | Yes, for a clone made by git (run 2) or by the stand-in (run 6). The moved repository keeps `.git`, all history and `origin`. A commit in it pushes as a fast-forward. The server's own `clone-repo` did not run, because the rig has no HTTPS server. Owner steps 1 and 2 prove that clone. | Runs 2, 3 and 6 [VERIFIED — 0.18.15 (a83725b, 2026-09-29)], live rig, `file://` remote |
+| Does push to a local repository on the rig work, and must it be bare? | Yes, over `file://`. It must be bare: a non-bare remote answers HTTP 500 `code=BareRepo (-8)` and does not move. | Runs 3 and 5 [VERIFIED — 0.18.15 (a83725b, 2026-09-29)], live rig |
+| What happens when the clone path already exists? | A non-empty directory: HTTP 400 `code=Exists (-4)`, before any network call, and the directory does not change. An empty directory: the clone continues. | Run 1 [VERIFIED — 0.18.15 (a83725b, 2026-09-29)], live rig |
+| What is the rig stand-in for Door43? | A bare `file://` repository for the push, and a never-committed mirror under `_local_/_archive_/` for the clone (copy, then `pull-repo`). | "The rig stand-in" below, run 6 [VERIFIED — 0.18.15 (a83725b, 2026-09-29)], live rig |
 
 ## The transport contract
 
@@ -46,8 +51,8 @@ Three server calls do the transport. A fourth call (`pull-repo`) occurs only in 
   `<repo_dir>/<host>/<org>/<repo>` (`:61-70`). The caller cannot choose the path.
 - A trailing `.git` on `<repo>` is removed from the local path only (`:54-59`).
 - With `?branch=<b>`, the clone is shallow (`depth(1)`, `:73-80`). Without it, the clone is full
-  (`Repository::clone`, `:106`). The sync needs history for a fast-forward, so it sends no `branch`.
-  [FLAG: that a push from a shallow clone fails is not tested here; the full clone avoids the question.]
+  (`Repository::clone`, `:106`). The contract sends no `branch`, so the clone is full.
+  [FLAG: a push from a shallow clone is not tested here.]
 - The full clone checks out the remote's default branch. The shell must read the branch name
   before it commits. [FLAG: inference from libgit2 `Repository::clone`; not run on the rig, because
   the rig has no HTTPS server.]
@@ -84,7 +89,7 @@ rule 2), beside the `share.*` family. Tests assert the code, never the text.
 |---|---|---|---|---|
 | clone, push | HTTP 401 `{"is_good":false,"reason":"offline mode"}` | status 401 and `offline mode` | `sync.offline` | runs 1, 4 and 7; `clone_repo.rs:30-32`, `push.rs:41-43` |
 | (before any call) | The session has no username or no token | client check | `sync.auth-failed` | `push.rs:83-86` panics without them |
-| push over HTTPS | Door43 refuses the token (401) | `[PENDING — owner run]` | `sync.auth-failed` | owner run, step 5 |
+| push over HTTPS | Door43 refuses the token (401) | `[PENDING — owner run]` | `sync.auth-failed` | owner run, step 3 |
 | push over HTTPS | No write access (403) | `[PENDING — owner run]` | `sync.no-write-access` | owner run, step 4 |
 | push | HTTP 500 `Could not push repo: cannot push because a reference that you are trying to update on the remote contains commits that are not present locally.; class=Reference (4); code=NotFastForward (-11)` | `NotFastForward` | `sync.non-fast-forward` (G4: start the sync again) | run 3 |
 | clone | HTTP 400 `could not clone repo: '<path>' exists and is not an empty directory; class=Invalid (3); code=Exists (-4)` | status 400 and `code=Exists (-4)` | `sync.clone-path-exists` | run 1 |
@@ -105,7 +110,7 @@ The rig has no HTTPS git server, and `clone-repo` accepts only `https://` (`clon
 The stand-in has two parts. [PROPOSED for #676, #677 and #681; each part is proven on the rig.]
 
 1. **The remote: a bare repository addressed by `file://`.** The test makes it with
-   `git init --bare -b main`, as `makeBareRemote` does (`e2e/helpers/door43Share.ts:155-170`).
+   `git init --bare -b main`, as `makeBareRemote` does (`e2e/helpers/door43Share.ts:167-184`).
    The URL comes from `pathToFileURL(bare).href`, never from a string prefix (the Windows rule
    in `door43Share.ts:192-196`). Push uses call 3 unchanged. The share code accepts a `file://`
    remote only with `allowFileRemote`, which only the development build sets (`src/state.jsx:5829`).
@@ -121,8 +126,20 @@ The stand-in has two parts. [PROPOSED for #676, #677 and #681; each part is prov
      `burrito2/summary_metadatas.rs:53-57`), so the mirror is not a project on Home. Run 6 shows
      this. tC4 does not use `_local_/_archive_/` for any other purpose (grep of `src`, `journal`,
      `scripts`, `e2e`).
-   - It plugs in behind `ShareTransport` (`src/data/share/shareOperation.ts:33-36`): a
-     development-only clone step, gated like `allowFileRemote`.
+   - The mirror name: `_local_/_archive_/<org>--<repo>` for the fixed path
+     `<host>/<org>/<repo>`. `--` keeps two repositories with one name apart. The path checks
+     refuse `..`, `/`, `~`, space and some other signs (`utils/paths.rs:19-31`), but not `-`.
+     Run 6 used the name `door43_mirror`. [PROPOSED]
+   - How it plugs in [PROPOSED]. Today `ShareTransport` is
+     `Pick<ServerApi, 'getNetEnabled' | 'listRemotes' | 'addRemote' | 'push'>`
+     (`src/data/share/shareOperation.ts:33-36`). #676 adds three `ServerApi` methods, one for
+     each route: `cloneRepo(host, org, repo)` (call 1), `copyRepo(src, target, deleteSrc)`
+     (call 2) and `pullRepo(remote, repoPath)`. The sync's transport type also picks
+     `cloneRepo` and `copyRepo`. On the rig, the development build gives a transport whose
+     `cloneRepo` is `copyRepo` from the mirror, then `pullRepo('origin', …)`. It is gated like
+     `allowFileRemote`. The route behavior under these methods is
+     [VERIFIED — 0.18.15 (a83725b, 2026-09-29)] (runs 2, 6 and 7). The method names and the
+     gate are a choice for #676.
 
 Limits of the stand-in:
 
@@ -359,17 +376,31 @@ Preparation:
    from the development build. The commit route rewrites `metadata.json` (PLATFORM-NOTES #48),
    so the repository must have one.
 2. Make a personal access token with repository write scope.
-3. Find a public repository `<other>/<repo>` where your account has no write access.
+3. Find a public repository `<other>/<repo>` that your account cannot write to. Do not use a
+   repository of your own, of an organization where you can write, or of a team that you are on.
+   On its Door43 page, make sure that you cannot edit a file.
 4. Start a rig: `cd <worktree> && TC4_RIG_PORT=19673 zsh dev-env/scripts/run.zsh`.
 5. In a second zsh shell, set `U=<owner>`, `T=<token>`, `O=<other>/<repo>` and
    `RD=<worktree>/dev-env/state/work/repos`, then paste the commands below.
    Do not put the token in a remote URL (PLATFORM-NOTES #40).
 
-Commands. Each call has `--max-time 120`, so that a credential loop cannot stop the run.
+Commands. Each call has `--max-time 120`, so that a credential loop cannot stop the run. The
+`call` function prints each request with `pass_key` replaced by `***`. No line prints the token,
+so you can paste the output into this record.
+
+The order matters. Steps 3 and 4 push while the local `main` is one commit ahead of Door43
+`main`, so a fast-forward is possible. Thus a refusal there comes from the sign-in or the
+access check, not from `NotFastForward`. Step 5 then pushes with the good token, and step 6
+makes the non-fast-forward case.
+
+How to read steps 3 and 4: a reply that holds `code=NotFastForward (-11)` comes from the libgit2
+ref check, not from Door43's access check. Then the probe failed: for step 4, choose another
+repository. An access refusal is expected to name the HTTP status (401 or 403) in the reason.
+Record the reason exactly as it comes.
 
 ```zsh
 P=http://localhost:19673/api; R=qa.door43.org/$U/tc4-sync-spike; S=_local_/_local_/sync_spike
-call() { print -r -- "> POST $1 ${2:-}"; curl -s --max-time 120 -w '\n< HTTP %{http_code}\n' -X POST -H 'Content-Type: application/json' ${2:+-d} ${2:+"$2"} "$P$1"; }
+call() { print -r -- "> POST $1 $(print -r -- "${2:-}" | sed -E 's/("pass_key":")[^"]*/\1***/')"; curl -s --max-time 120 -w '\n< HTTP %{http_code}\n' -X POST -H 'Content-Type: application/json' ${2:+-d} ${2:+"$2"} "$P$1"; }
 push() { call "/git/push/$S" "{\"remote\":\"$1\",\"cred_type\":\"https\",\"username\":\"$U\",\"pass_key\":\"$2\"}"; }
 commit() { call "/burrito/ingredient/raw/$S?ipath=ingredients/spike.txt&no_bak" "{\"payload\":\"$1\"}"; call "/git/add-and-commit/$S" "{\"commit_message\":\"$1\"}"; }
 call /net/enable
@@ -377,19 +408,21 @@ call /net/enable
 call "/git/clone-repo/$R"
 git -C "$RD/$R" rev-parse --is-shallow-repository --abbrev-ref HEAD
 call "/git/copy/$R?target_path=$S&delete_src=true"
-# 2. one commit, then a push that fast-forwards
+# 2. one commit, then a push that fast-forwards. Now the local main = Door43 main.
 commit "spike one"; push origin "$T"
-# 3. not a fast-forward. First edit one file on qa.door43.org in the web editor, on main. Then:
-commit "spike two"; push origin "$T"
+# 3. a bad token (401). First make the local main one commit ahead.
+commit "spike two"; push origin not-a-token
 # 4. no write access (403)
 call "/git/remote/add/$S?remote_name=noaccess&remote_url=https://qa.door43.org/$O"
 push noaccess "$T"
-# 5. a bad token (401)
-push origin not-a-token
+# 5. the good token: expect a fast-forward
+push origin "$T"
 # If a push times out, check that GET $P/version answers before you go on.
-# 6. the clone path exists: clone twice, with no move between, then clear the path
+# 6. not a fast-forward. First edit one file on qa.door43.org in the web editor, on main. Then:
+commit "spike three"; push origin "$T"
+# 7. the clone path exists: clone twice, with no move between, then clear the path
 call "/git/clone-repo/$R"; call "/git/clone-repo/$R"; call "/git/delete/$R"
-# After steps 2 to 5, record: git ls-remote https://qa.door43.org/$U/tc4-sync-spike main
+# After steps 2 to 6, record: git ls-remote https://qa.door43.org/$U/tc4-sync-spike main
 ```
 
 The shell syntax of these commands ran on the spike rig with a `file://` remote in place of
@@ -397,20 +430,24 @@ qa.door43.org (see "Dry run of the owner commands" below).
 
 ### Dry run of the owner commands
 
-The three functions and steps 2 to 5 ran unchanged on the spike rig, with these changes only:
-`R=door43.test/$U/tc4-sync-spike`; step 1 used the stand-in clone (copy of the mirror, then
-`pull-repo`); before step 3 a git push to the bare remote moved `main`; step 4 used
-`https://localhost/o/r`. Step 6 put a copy of the mirror at the fixed path, then called
+The three functions and steps 2 to 6 ran unchanged on the spike rig, with these changes only:
+`T=SECRET-TOKEN-VALUE`; `R=door43.test/$U/tc4-sync-spike`; step 1 used the stand-in clone (copy
+of the mirror, then `pull-repo`); step 4 used `https://localhost/o/r`; before step 6 a git push
+to the bare remote moved `main`. Step 7 put a copy of the mirror at the fixed path, then called
 `clone-repo` once and `delete` once. The replies, in short:
 
 | Step | Reply on the rig |
 |---|---|
 | 1 | copy 200, `pull-repo` 200 `fast-forward`; `false`, `main`; move 200 |
-| 2 | write 200, commit 200, push 200; bare `main` = `sync_spike` HEAD (`695c908`) |
-| 3 | push 500 `code=NotFastForward (-11)` |
+| 2 | write 200, commit 200, push 200; bare `main` = local HEAD (`2d1f0c7`) |
+| 3 | commit 200; push 200, because `file://` asks for no credentials. Over HTTPS this push is expected to fail, and step 5 then has the commit to push. |
 | 4 | remote add 200; push 500 `failed to connect to localhost: Connection refused` |
-| 5 | push 500 `code=NotFastForward (-11)` (`file://` asks for no credentials) |
-| 6 | clone-repo 400 `code=Exists (-4)`; delete 200 |
+| 5 | push 200; bare `main` = local HEAD (`8e0f7b1`) |
+| 6 | push 500 `code=NotFastForward (-11)` |
+| 7 | clone-repo 400 `code=Exists (-4)`; delete 200 |
+
+Every push line printed `"pass_key":"***"`. `grep -c SECRET-TOKEN-VALUE` on the whole output
+gave 0, and `grep -c not-a-token` gave 0.
 
 ### Replies
 
@@ -421,10 +458,11 @@ The three functions and steps 2 to 5 ran unchanged on the spike rig, with these 
 | 1 clone (full), shallow? | `[PENDING — owner run]` | |
 | 1 move | `[PENDING — owner run]` | |
 | 2 push, fast-forward | `[PENDING — owner run]` | |
-| 3 push, not a fast-forward (HTTPS) | `[PENDING — owner run]` | |
+| 3 push, bad token (HTTPS 401) | `[PENDING — owner run]` | |
 | 4 push, no write access (HTTPS 403) | `[PENDING — owner run]` | |
-| 5 push, bad token (HTTPS 401) | `[PENDING — owner run]` | |
-| 6 clone, path exists | `[PENDING — owner run]` | |
+| 5 push, good token, fast-forward | `[PENDING — owner run]` | |
+| 6 push, not a fast-forward (HTTPS) | `[PENDING — owner run]` | |
+| 7 clone, path exists | `[PENDING — owner run]` | |
 
 When the replies are in, fill the two `[PENDING — owner run]` rows of the refusal table above.
 
