@@ -25,7 +25,7 @@ import { makeClock } from '../journal/hlc.mjs';
 import { fold } from '../journal/fold.mjs';
 import { actorDirFor, readUnion, writeActionSegment } from '../journal/files.mjs';
 
-const TAG = { tag: ['@sync-button', '@J26'] };
+const TAG = { tag: ['@sync-button'] };
 const ID = `_local_/_local_/${SEEDED_PROJECT}`;
 const ORG = USER.username;
 const RUN = Date.now();

@@ -6112,15 +6112,19 @@ export function AppProvider({ children }) {
           report = { op: 'sync', ok: false, facts: { error: String(e?.reason || e?.message || e) } };
         }
         let missingPins = 0;
-        if (report.ok) {
-          await a.afterSync(project);
-          missingPins = await missingPinCount(repoPath, pinsBefore, a);
-        } else if (report.code === 'sync.auth-failed') {
-          // Door43 refused the token: forget it, so the next press asks for the password (#467).
-          await door43SignOut(desktopKeychain() ?? undefined).catch(() => {});
-          dispatch({ type: 'set', patch: { door43User: null, door43Kept: false, door43NotKept: false } });
+        try {
+          if (report.ok) {
+            await a.afterSync(project);
+            missingPins = await missingPinCount(repoPath, pinsBefore, a);
+          } else if (report.code === 'sync.auth-failed') {
+            // Door43 refused the token: forget it, so the next press asks for the password (#467).
+            await door43SignOut(desktopKeychain() ?? undefined).catch(() => {});
+            dispatch({ type: 'set', patch: { door43User: null, door43Kept: false, door43NotKept: false } });
+          }
+        } finally {
+          // The result shows, and the button comes back, whatever the reads after the sync did.
+          dispatch({ type: 'set', patch: { syncing: null, syncResult: { repoPath, name: project.name, report, missingPins } } });
         }
-        dispatch({ type: 'set', patch: { syncing: null, syncResult: { repoPath, name: project.name, report, missingPins } } });
         return report;
       },
       /** After an ok sync: the project on disk is a new folder. Home reads its
