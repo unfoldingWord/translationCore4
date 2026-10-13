@@ -68,6 +68,33 @@ describe('#679 the fold of a kept version', () => {
     expect(after.forks.map((f) => f.key)).toContain(CHECK.key);
   });
 
+  it('confirm supersedes all heads when the kept version is the provisional one (base and supersedes share a ts)', () => {
+    const events = union();
+    const before = fold(events);
+    const [headA, headB] = verseHeads();
+    expect(before.headsTs[VERSE.key]).toBe(headB.ts);
+    const resolving: JournalEvent = {
+      v: 1,
+      op: 'text.verse.set',
+      actor: 'translator-a',
+      ts: '2026-10-13T11:00:00.000Z|0000|translator-a',
+      base: headB.ts,
+      supersedes: [headA.ts, headB.ts],
+      book: 'TIT',
+      chapter: '1',
+      verse: '4',
+      text: headB.text,
+    };
+    const after = fold([...events, resolving]);
+    expect(after.forks.map((f) => f.key)).not.toContain(VERSE.key);
+    expect(after.supersedeRefused).toEqual([]);
+    expect(after.retained.filter((r) => r.key === VERSE.key)).toEqual([
+      { key: VERSE.key, ts: headA.ts, reason: 'superseded' },
+      { key: VERSE.key, ts: headB.ts, reason: 'superseded' },
+    ]);
+    expect(after.books.TIT.verses['1:4']).toBe(headB.text);
+  });
+
   it('negative control: an edit that supersedes only one head leaves a conflict on the verse', () => {
     const events = union();
     const before = fold(events);
