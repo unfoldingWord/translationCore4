@@ -279,6 +279,12 @@ export const fold = (eventsIn) => {
   };
   let vrs = null;                  // {name, bytes, ts} — immutable first-value register
   const vrsRejected = [];
+  // §8.5 (R-8.5.25, R-8.5.26, D98): one first-value register PER ACTOR. Events run in ts
+  // order, so the first name of an actor binds and every later one is surfaced, never
+  // applied — and never a whole-fold refusal (a refusal after publish would make the
+  // journal unprojectable, the #485 lesson).
+  const names = {};
+  const namesRejected = [];
 
   const consume = (key, headTs, structTs) => {
     const k = `${key}|${headTs}`;
@@ -422,6 +428,12 @@ export const fold = (eventsIn) => {
       // is a root, and a differing rootless add joins as a structural FORK head below
     }
     if (e.op === 'note.add') { notes.push(e); continue; }
+
+    if (e.op === 'actor.name.set') {
+      if (Object.hasOwn(names, e.actor)) namesRejected.push(e.ts);
+      else names[e.actor] = e.username;
+      continue;
+    }
 
     if (e.op === 'project.vrs.set') {
       // §8.5: immutable first-value register — first binds, identical repeat de-duplicates,
@@ -1027,6 +1039,7 @@ export const fold = (eventsIn) => {
     books, stories, decisions, alignments, pins, projectMeta, projectMetaRemoved, settings, notes: notesOut,
     forks, invalid, retained, autoMerged, scope,
     vrs: vrs ? { name: vrs.name, bytes: vrs.bytes } : null, vrsRejected,
+    names, namesRejected,
     pendingStructural, headsTs, supersedeRefused,
     // The RAW live-head sets (§8.6 step 3), exposed because §8.8 reconcile must build its
     // dispositions from the SAME set the fold computes its affected set from. Reconcile

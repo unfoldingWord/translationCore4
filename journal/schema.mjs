@@ -16,7 +16,7 @@ import {
   bookIdError, bookIdLowerError, toolIdError, verseSlotError, scopeError, dottedPathError,
   pinSlotError, pinEntryError, journaledTextError, jsonSafeNumberError, jsonRoundTripError,
   nfcError, nfcKeysError, toNfc, MAX_JSON_DEPTH, META_RESERVED_ROOTS, PIN_SLOT_RE,
-  isStoryReference, noteTargetKind, splitDecisionKey, STORY_BOOK_ID,
+  isStoryReference, noteTargetKind, splitDecisionKey, STORY_BOOK_ID, door43UsernameError,
 } from './grammar.mjs';
 import { storyNumberError, frameNumberError, frameTextError, titleTextError, refTextError } from './story.mjs';
 
@@ -344,6 +344,17 @@ const OPS = {
     : !isObj(e.seed) || !VRS_SEED_SOURCES.has(e.seed.source)
       ? `project.vrs.set outside a creation/seed segment — §8.5 allows it only with seed.source ∈ ${[...VRS_SEED_SOURCES].join('|')}`
     : null,
+  // §8.5 (R-8.5.25, D98) — the name action, `v: 3` only (R-8.5.1). Its key is the event's
+  // OWN actor (the envelope binds actor to ts, and R-8.1.12 binds the segment to its
+  // directory), so the payload names no actor. It is not a register event: no base chain,
+  // no generation, no supersedes.
+  'actor.name.set': (e) => {
+    const u = door43UsernameError(e.username); if (u) return `actor.name.set username ${u}`;
+    if (e.base !== undefined && e.base !== null) return 'actor.name.set must have base: null — it is not a register event (§8.5 R-8.5.25)';
+    if (e.generation !== undefined) return 'actor.name.set must not carry a generation stamp (§8.5 R-8.5.25)';
+    if (e.supersedes !== undefined) return 'actor.name.set must not carry supersedes — a name is set once (§8.5 R-8.5.26)';
+    return null;
+  },
 };
 
 // The schema's known-op set (R-8.5.1: there are no other ops in `v: 1`). Exported so the
@@ -378,6 +389,7 @@ export const PAYLOAD_FIELDS = {
   'project.meta.set': ['path', 'value', 'removed'],
   'settings.set': ['path', 'value', 'removed'],
   'project.vrs.set': ['name', 'bytes'],
+  'actor.name.set': ['username'],
 };
 
 // §8.5: the versification frame is set when the project comes into being — at creation,
@@ -391,6 +403,8 @@ const VRS_SEED_SOURCES = new Set(['creation', 'sidecar-migration', 'tc3-import']
 export const GENERATION_OPS = new Set(['align.verse.set', 'check.decision.set', 'note.add']);
 // §10 (D74): the two ops that exist only from envelope version 2 (R-8.5.1).
 export const V2_ONLY_OPS = new Set(['text.frame.set', 'text.story.ref.set']);
+// D98 (R-8.5.1, R-8.5.25): the one op that exists only from envelope version 3.
+export const V3_ONLY_OPS = new Set(['actor.name.set']);
 
 // ---------- I-4 (§8.5): ONE write chokepoint, and ONE list of what it may not touch ----
 // Invariant I-4 said "writers MUST normalize" and no writer did. The rule now has an
@@ -430,6 +444,7 @@ const IDENTITY_PATHS = {
   'project.meta.set': ['path'],
   'settings.set': ['path'],
   'project.vrs.set': ['name', 'bytes'],
+  'actor.name.set': ['username'],
 };
 // The envelope is identity in full: every field of it is either a ts, an actor slug or a
 // closed enum, so nothing in it is ever rewritten.
@@ -488,10 +503,12 @@ export const normalizeEvent = (e) => {
 // payload. Total over malformed input: a wrong-typed field is a clean rejection.
 export const validateEvent = (e) => {
   if (!isObj(e)) return 'event is not an object (event-shape)';
-  if (e.v !== 1 && e.v !== 2) return `unknown envelope version v=${e.v}`;
+  if (e.v !== 1 && e.v !== 2 && e.v !== 3) return `unknown envelope version v=${e.v}`;
   if (!OPS[e.op]) return `unrecognized op "${e.op}"`;
   // §10/R-8.5.1: the story vocabulary is `v: 2`. A `v: 1` reader never meets it.
   if (e.v === 1 && V2_ONLY_OPS.has(e.op)) return `${e.op} requires envelope version v: 2 (§10)`;
+  // D98/R-8.5.1: the name action is `v: 3`. A `v: 1` or `v: 2` reader never meets it.
+  if (e.v !== 3 && V3_ONLY_OPS.has(e.op)) return `${e.op} requires envelope version v: 3 (§8.5 R-8.5.25)`;
   const storyTarget = storyTargetOf(e);
   if (storyTarget && e.v === 1) return `${e.op} with a {story, frame} target requires envelope version v: 2 (§10)`;
   if (storyTarget && e.generation !== undefined) return `${e.op} with a {story, frame} target must not carry a generation stamp — stories have no book generations (§10)`;

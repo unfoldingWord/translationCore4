@@ -1,5 +1,24 @@
 # Team sync plan — epic #24
 
+## Round 1
+
+Round 1 is simpler than this plan, and it ships first (4.1.0). Three or more translators sync
+one Bible project with one public Door43 repository, on its `main` branch, with one button.
+It has no publication branches, no integrator and no legibility gate [decided 2026-10-13 —
+D98].
+
+- The work items, the layers and the order are in epic
+  [#24](https://github.com/unfoldingWord/translationCore4/issues/24).
+- The rulings and the guarantees G1–G8 are in [D98](../DECISIONS.md).
+- The normative rules are BURRITO-SPEC §8.7 (R-8.7.7–R-8.7.12) and the name action in §8.5
+  (R-8.5.25, R-8.5.26).
+- The shared fixture is
+  [`conformance/fixtures/team-sync/`](../../conformance/fixtures/team-sync/README.md).
+
+The rest of this document is the long-term plan of 2026-09-03. It stays the reference for later
+rounds. Its checks (JC-18–JC-20, transport T1–T4) stay as they are. Where it says that the S1
+change set uses the ids `R-8.7.7` to `R-8.7.12`, those ids now name the round-1 rules (D98).
+
 Status: [PROPOSED] plan, adopted as the shape of epic #24 by D67 (2026-09-02). Rules
 named here become normative only when the S1 change set lands them in
 `docs/BURRITO-SPEC.md` with their checks (§9). Written against `main` after the audit of

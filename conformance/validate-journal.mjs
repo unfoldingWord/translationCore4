@@ -26,6 +26,8 @@ import {
   projectResources, projectSettings, projectAlignments, projectMetadata, derivedProjections,
   classifyDivergence, isUnjournaledIngredient,
 } from '../journal/checkpoint.mjs';
+import { REFUSAL_CODES } from '../journal/report.mjs';
+import { buildTeamSyncFixture, sampleInputs, ACTORS, USERNAMES } from './fixtures/team-sync/generate.mjs';
 
 const require = createRequire(import.meta.url);
 const fc = require('fast-check');
@@ -208,8 +210,9 @@ const buildSeed = () => {
   check('JC-13: duplicate identical events are a no-op [covers R-8.2.5]', deepEq(fold([...seedEvts, forkA, forkA, forkA]), fold([...seedEvts, forkA])));
   let dupThrew = false; try { fold([...seedEvts, forkA, { ...forkA, text: 'otro\n' }]); } catch { dupThrew = true; }
   check('JC-13: same ts + different content refuses (corrupt union) [covers R-8.2.5]', dupThrew);
-  // v: 2 is the §10 story vocabulary (spec 1.14); the unknown version is 3
-  let vThrew = ''; try { fold([mkEvent({ op: 'text.verse.set', actor: 'x-actor', ts: t(0, 0, 'x-actor'), v: 3 })]); } catch (e) { vThrew = e.message; }
+  // v: 2 is the §10 story vocabulary (spec 1.14), v: 3 adds the name action (spec 1.23,
+  // D98); the unknown version is 4
+  let vThrew = ''; try { fold([mkEvent({ op: 'text.verse.set', actor: 'x-actor', ts: t(0, 0, 'x-actor'), v: 4 })]); } catch (e) { vThrew = e.message; }
   let opThrew = ''; try { fold([mkEvent({ op: 'text.verse.merge', actor: 'x-actor', ts: t(0, 0, 'x-actor') })]); } catch (e) { opThrew = e.message; }
   check('JC-14: unknown v / unknown op refuse with clear messages [covers R-8.3.9 R-8.4.5 R-8.5.1]', vThrew.includes('version') && opThrew.includes('unrecognized op'), `"${vThrew.slice(0, 40)}" / "${opThrew.slice(0, 40)}"`);
 }
@@ -222,8 +225,9 @@ const buildSeed = () => {
     'align.verse.set', 'check.decision.set', 'note.add', 'resource.pin.set',
     'project.vrs.set', 'project.meta.set', 'settings.set',
     'text.frame.set', 'text.story.ref.set', // §10 (D74), `v: 2`
+    'actor.name.set', // §8.5 (D98), `v: 3`
   ];
-  check('JC-14: the schema\'s known-op set EQUALS the §8.5 table — 12 `v: 1` ops + the 2 `v: 2` story ops (§10), set-equal, and no op matches /section/i (no section op in the vocabulary, §8.4a) [covers R-8.4.5 R-8.5.1]',
+  check('JC-14: the schema\'s known-op set EQUALS the §8.5 table — 12 `v: 1` ops + the 2 `v: 2` story ops (§10) + the 1 `v: 3` name op (D98), set-equal, and no op matches /section/i (no section op in the vocabulary, §8.4a) [covers R-8.4.5 R-8.5.1]',
     KNOWN_OPS.length === SPEC_OPS.length &&
     JSON.stringify([...KNOWN_OPS].sort()) === JSON.stringify([...SPEC_OPS].sort()) &&
     KNOWN_OPS.every((op) => !/section/i.test(op)),
@@ -4666,7 +4670,7 @@ const sameRegister = (a, b) => {
   }
 
   // JC-33e — version policy: every v: 1 op still validates at v: 1 and folds unchanged; the
-  // two story ops and the story targets are v: 2 only; v: 3 is unknown.
+  // two story ops and the story targets are v: 2 only; v: 4 is unknown (v: 3 adds the name action, D98).
   {
     const s = buildSeed();
     const before = fold(s.events);
@@ -4675,7 +4679,7 @@ const sameRegister = (a, b) => {
     const v2Ref = ev({ op: 'text.story.ref.set', actor: A, ts: t(2, 0, A), story: 1, text: 'x' });
     const v2ok = validateEvent(v2Frame) === null && validateEvent(v2Ref) === null;
     const v1Refuses = /v: 2/.test(validateEvent({ ...v2Frame, v: 1 }) || '') && /v: 2/.test(validateEvent({ ...v2Ref, v: 1 }) || '');
-    const v3Refuses = /version/.test(validateEvent({ ...v2Frame, v: 3 }) || '');
+    const v3Refuses = /version/.test(validateEvent({ ...v2Frame, v: 4 }) || '') && validateEvent({ ...v2Frame, v: 3 }) === null;
     // a v: 2 envelope on a v: 1 op is legal (v: 2 is a superset): a v: 2 verse edit based on
     // a v: 1 verse head continues that head without a fork and projects
     const skeleton = `\\id TIT\n\\c 1\n\\v 1 ${SLOT}1:1${SLOT}`;
@@ -4687,7 +4691,7 @@ const sameRegister = (a, b) => {
     // the union of a v: 1 seed and the v: 2 story events folds: books AND stories, side by side
     const union = fold([...s.events, v2Frame, v2Ref]);
     const sideBySide = union.books.TIT.usfm === s.books.TIT && union.stories[1].frames[1] === 'x' && union.stories[1].ref === 'x';
-    check('JC-33e: version policy — a v: 1 segment set folds exactly as before (books project, no story); the two story ops validate at v: 2 and REFUSE at v: 1 naming v: 2; v: 3 is an unknown version; a v: 2 envelope on a v: 1 op is legal (v: 2 is a superset) and continues its head without a fork; a union of v: 1 book events and v: 2 story events folds books and stories side by side [covers R-10.7.1 R-8.5.1]',
+    check('JC-33e: version policy — a v: 1 segment set folds exactly as before (books project, no story); the two story ops validate at v: 2 and REFUSE at v: 1 naming v: 2; v: 3 (the D98 superset) accepts them and v: 4 is an unknown version; a v: 2 envelope on a v: 1 op is legal (v: 2 is a superset) and continues its head without a fork; a union of v: 1 book events and v: 2 story events folds books and stories side by side [covers R-10.7.1 R-8.5.1]',
       v1Only && v2ok && v1Refuses && v3Refuses && superset && sideBySide);
   }
 }
@@ -4843,6 +4847,229 @@ const sameRegister = (a, b) => {
     .filter((f) => again[f] !== mirror[f]);
   check('JC-34e (old data): the fold of the renumber journal equals its checkpoint mirror — the regenerated USFM and §5.1/§5.2 sidecars, seeded again, fold to the same files byte for byte',
     mirrored.length === 0, mirrored.length ? `differ: ${mirrored.join(', ')}` : '5 files');
+}
+
+// ---------- JC-35: team sync round 1 (BURRITO-SPEC §8.7 R-8.7.7–R-8.7.12, §8.5 R-8.5.25–R-8.5.26; D98, issue #674) ----------
+// Every check reads the shared fixture `fixtures/team-sync/` (its README names each case) and
+// starts its name with the guarantee id it proves (epic #24: `git grep "\[G1\]"` lists the
+// proofs). The sync core is #675: these checks prove each rule on the reference functions it
+// names — the one validator, the immutable write, the fold and the checkpoint projection —
+// and each one carries a negative control that the rule must refuse or tell apart.
+{
+  const FIX = path.resolve('./fixtures/team-sync');
+  const JOURNALS = path.join(FIX, 'journals');
+  const idx = JSON.parse(fs.readFileSync(path.join(FIX, 'cases.json'), 'utf8'));
+  const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'tc4-team-sync-'));
+  const copyJournals = () => { const d = path.join(tmp(), 'journal'); fs.cpSync(JOURNALS, d, { recursive: true }); return d; };
+  const filesUnder = (root) => {
+    const out = {};
+    const walk = (dir) => { for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, ent.name);
+      if (ent.isDirectory()) walk(full); else out[path.relative(root, full).split(path.sep).join('/')] = fs.readFileSync(full, 'utf8');
+    } };
+    walk(root);
+    return out;
+  };
+  const s = sampleInputs();
+  const baseMetadata = s.baseMetadata;
+  const resolutions = { translationWords: { TIT: s.decisionFiles.translationWords.resource }, translationNotes: { TIT: s.decisionFiles.translationNotes.resource } };
+  const union = readUnion(JOURNALS); // throws on any invalid segment — the clean union is clean
+  const out = fold(union);
+  const derived = derivedProjections(out, { baseMetadata, resolutions });
+  const withoutMetadata = (p) => Object.fromEntries(Object.entries(p).filter(([k]) => k !== 'metadata.json'));
+
+  // the fixture itself: built by the reference writers, and a second build writes the same bytes
+  {
+    const again = tmp();
+    buildTeamSyncFixture(again);
+    const onDisk = filesUnder(FIX); const rebuilt = filesUnder(again);
+    delete onDisk['README.md']; delete onDisk['generate.mjs'];
+    const differ = [...new Set([...Object.keys(onDisk), ...Object.keys(rebuilt)])].filter((k) => onDisk[k] !== rebuilt[k]);
+    check('JC-35: the shared team-sync fixture is reproducible — a fresh build by its generator (the §8.8 seed + writeActionSegment) equals the committed files byte for byte',
+      differ.length === 0 && Object.keys(rebuilt).length > 0, differ.length ? `differ: ${differ.slice(0, 4).join(', ')}` : `${Object.keys(rebuilt).length} files`);
+  }
+
+  // [G2] R-8.7.8 — the intake walk over a journal root, with the ONE validator per file
+  const intakeProblems = (root) => {
+    const problems = [];
+    for (const ent of fs.readdirSync(root, { withFileTypes: true })) {
+      const where = path.join(root, ent.name);
+      if (!ent.isDirectory()) { problems.push({ path: where, reason: 'not-an-actor-directory' }); continue; }
+      let dir; try { dir = actorDirFor(root, ent.name); } catch { problems.push({ path: where, reason: 'actor-slug' }); continue; }
+      for (const f of fs.readdirSync(dir, { withFileTypes: true })) {
+        const fp = path.join(dir, f.name);
+        if (f.name === 'actor.json' && f.isFile()) { const r = validateActorDoc(fs.readFileSync(fp, 'utf8'), ent.name); if (!r.ok) problems.push({ path: fp, reason: r.reason }); continue; }
+        if (f.name !== 'segments' || !f.isDirectory()) { problems.push({ path: fp, reason: 'not-a-journal-file' }); continue; }
+        for (const sf of fs.readdirSync(fp)) if (!sf.endsWith('.action.json')) problems.push({ path: path.join(fp, sf), reason: 'not-a-segment (R-8.1.10)' });
+        readSegments(dir, (file, reason) => problems.push({ path: file, reason }));
+      }
+    }
+    return problems;
+  };
+  {
+    const clean = intakeProblems(JOURNALS);
+    const withInvalid = copyJournals();
+    const inv = idx.cases['invalid-file'];
+    const invTarget = path.join(withInvalid, inv.actor, 'segments', path.basename(inv.path));
+    fs.copyFileSync(path.join(FIX, inv.path), invTarget);
+    const invProblems = intakeProblems(withInvalid);
+    // negative controls: one flipped byte in a passing file, a stray non-segment file, a misfiled actor.json
+    const flipped = copyJournals();
+    const victim = path.join(flipped, idx.cases['different-verses'].segments[1].replace(/^journals\//, ''));
+    fs.writeFileSync(victim, fs.readFileSync(victim, 'utf8').replace('esperanza', 'esperanzo'));
+    const flippedProblems = intakeProblems(flipped);
+    const stray = copyJournals();
+    fs.writeFileSync(path.join(stray, ACTORS.b, 'segments', 'old.jsonl'), '{}\n');
+    fs.writeFileSync(path.join(stray, ACTORS.c, 'actor.json'), JSON.stringify({ schemaVersion: 1, actorId: ACTORS.a, createdAt: '2026-10-13T08:00:00.000Z' }));
+    const strayProblems = intakeProblems(stray);
+    check('[G2] JC-35: incoming journal files are checked — every file of the fixture passes the one validator (segments, names, actor.json); the invalid-file case is refused by its path (checksum), a flipped byte in a valid segment is refused, and a stray .jsonl and a foreign actor.json are refused [covers R-8.7.8]',
+      clean.length === 0 &&
+      invProblems.length === 1 && invProblems[0].path === invTarget && invProblems[0].reason === 'checksum' &&
+      flippedProblems.length === 1 && flippedProblems[0].path === victim &&
+      strayProblems.length === 2 && strayProblems.some((p) => /jsonl$/.test(p.path)) && strayProblems.some((p) => /^actor-mismatch/.test(p.reason)),
+      JSON.stringify({ clean: clean.length, inv: invProblems.map((p) => p.reason), flipped: flippedProblems.map((p) => p.reason), stray: strayProblems.map((p) => p.reason) }));
+  }
+
+  // [G1] R-8.7.7 — copying own files into a Door43 copy never overwrites a different file
+  {
+    const A = ACTORS.a;
+    const ownDir = actorDirFor(JOURNALS, A);
+    const ownFiles = fs.readdirSync(path.join(ownDir, 'segments')).sort().map((f) => ({ name: f, bytes: fs.readFileSync(path.join(ownDir, 'segments', f), 'utf8') }));
+    // Door43 main holds B, C, and only A's creation (A's later work is not shared yet)
+    const door43 = copyJournals();
+    const creation = path.basename(idx.cases.creation.segments[0]);
+    for (const f of ownFiles) if (f.name !== creation) fs.rmSync(path.join(door43, A, 'segments', f.name));
+    const copyIn = (root) => { for (const f of ownFiles) republishSegment(actorDirFor(root, A), f.bytes); };
+    copyIn(door43);
+    const kept = ownFiles.every((f) => fs.readFileSync(path.join(door43, A, 'segments', f.name), 'utf8') === f.bytes);
+    // changed-own-file: Door43 main holds a DIFFERENT valid action at A's own 1:1 path
+    const chg = idx.cases['changed-own-file'];
+    const changed = copyJournals();
+    const target = path.join(changed, A, 'segments', path.basename(chg.path));
+    const theirs = fs.readFileSync(path.join(FIX, chg.path), 'utf8');
+    fs.writeFileSync(target, theirs);
+    let refused = ''; try { copyIn(changed); } catch (e) { refused = e.message; }
+    const untouched = fs.readFileSync(target, 'utf8') === theirs;
+    const differs = theirs !== fs.readFileSync(path.join(FIX, chg.own), 'utf8') && validateSegment(theirs).ok;
+    check('[G1] JC-35: own work is never lost — copying A\'s own files into a Door43 copy keeps each one byte for byte, and an identical own file is accepted again; the changed-own-file case (a different valid action at an own path) is refused and its path is left as it was [covers R-8.7.7]',
+      kept && differs && /refuse to overwrite/.test(refused) && untouched, JSON.stringify({ kept, differs, refused: refused.slice(0, 60), untouched }));
+  }
+
+  // [G3] R-8.7.9 — every derived file is the projection of the fold; incoming derived bytes are no input
+  {
+    const verses = out.books.TIT.verses;
+    const textOf = (seg) => validateSegment(fs.readFileSync(path.join(FIX, seg), 'utf8')).events[0].text;
+    const dv = idx.cases['different-verses'].segments;
+    const fromJournals = verses['1:1'] === textOf(dv[0]) && verses['1:2'] === textOf(dv[1]) && verses['1:3'] === textOf(dv[2]);
+    const expectedSet = ['JON.usfm', 'TIT.usfm', 'checking/alignments/TIT.json', 'checking/resources.json', 'checking/settings.json',
+      'checking/translationNotes/TIT.json', 'checking/translationWords/TIT.json', 'metadata.json', 'vrs.json'];
+    const theSet = JSON.stringify(Object.keys(derived).sort()) === JSON.stringify(expectedSet);
+    // input (b): the resource record is the supplied resolution, never the incoming file's
+    const tw = JSON.parse(derived['checking/translationWords/TIT.json']);
+    const resolutionIn = deepEq(tw.resource, resolutions.translationWords.TIT);
+    // the incoming copy carries stale/forged derived bytes: the projection does not read them,
+    // and the comparison tells them apart (a copy that trusted them would differ)
+    const incoming = { ...derived, 'TIT.usfm': s.books.TIT,
+      'checking/translationWords/TIT.json': JSON.stringify({ ...tw, resource: { ...tw.resource, repoPath: 'forged/forged_twl' } }) };
+    const rebuilt = derivedProjections(fold(readUnion(JOURNALS)), { baseMetadata, resolutions });
+    const { diverged } = classifyDivergence(incoming, rebuilt);
+    const toldApart = JSON.stringify(diverged.sort()) === JSON.stringify(['TIT.usfm', 'checking/translationWords/TIT.json']) && deepEq(rebuilt, derived);
+    // negative control: input (b) is mandatory — without the (tool, book) record the projection refuses
+    let code = null; try { derivedProjections(out, { baseMetadata, resolutions: { translationNotes: resolutions.translationNotes } }); } catch (e) { code = e.code; }
+    check('[G3] JC-35: derived files are rebuilt, never trusted — the projection of the fold over the fixture is the complete R-8.7.1 set, carries A\'s, B\'s and C\'s verses, and takes each (tool, book) resource record from the supplied resolution; a stale TIT.usfm and a forged decision resource on Door43 are no input and are told apart; without the resolution record the projection refuses (checkpoint.incomplete-inputs) [covers R-8.7.9]',
+      fromJournals && theSet && resolutionIn && toldApart && code === 'checkpoint.incomplete-inputs',
+      JSON.stringify({ fromJournals, theSet, resolutionIn, diverged, code }));
+  }
+
+  // [G3] R-8.7.10 — metadata.json is the server's: the fixture fold carries no overlay; one overlay is the refusal condition
+  {
+    const noOverlay = Object.keys(out.projectMeta).length === 0 && out.projectMetaRemoved.length === 0;
+    const syncWrites = Object.keys(withoutMetadata(derived));
+    const overlayEv = { v: 1, op: 'project.meta.set', actor: ACTORS.b, ts: '2026-10-13T11:00:00.000Z|0000|translator-b', base: null, path: 'identification.name.en', value: 'Tito (equipo)' };
+    const withOverlay = fold([...union, overlayEv]);
+    const overlayCaught = Object.keys(withOverlay.projectMeta).length === 1 &&
+      derivedProjections(withOverlay, { baseMetadata, resolutions })['metadata.json'] !== derived['metadata.json'];
+    check('[G3] JC-35: metadata.json belongs to the server — the fixture fold carries no project.meta.set overlay, so a sync writes the derived set without metadata.json; one overlay event makes the fold carry an overlay that only a metadata.json write could show, which is the refusal condition (sync.metadata-overlay, as checkpoint.metadata-unwritable) [covers R-8.7.10]',
+      noOverlay && !syncWrites.includes('metadata.json') && syncWrites.length === 8 && overlayCaught && REFUSAL_CODES['sync.metadata-overlay'] === 'R-8.7.10',
+      JSON.stringify({ noOverlay, writes: syncWrites.length, overlayCaught }));
+  }
+
+  // [G6] R-8.7.11 — two computers with the same segment set write the same derived files
+  {
+    const project = (events) => withoutMetadata(derivedProjections(fold(events), { baseMetadata, resolutions }));
+    const one = project(readUnion(JOURNALS));
+    // computer 2 reads the actors in the other order, each journal backward, and A's journal twice
+    const byActor = Object.values(ACTORS).reverse().map((a) => readSegments(actorDirFor(JOURNALS, a)).reverse());
+    const two = project([...byActor.flat(), ...readSegments(actorDirFor(JOURNALS, ACTORS.a))]);
+    // negative control: computer 3 lacks C's check result (one segment)
+    const missing = path.basename(idx.cases['check-two-ways'].segments[1]);
+    const three = project(readUnion(JOURNALS).filter((e) => segmentName(e.ts) !== missing || e.actor !== ACTORS.c));
+    const same = Object.keys(one).length === 8 && Object.keys(one).every((k) => one[k] === two[k]) && Object.keys(two).length === 8;
+    const told = Object.keys(one).filter((k) => one[k] !== three[k]);
+    check('[G6] JC-35: the same journals give the same project — the fixture read in two orders (actors reversed, journals backward, one journal read twice) projects byte-identical derived files (metadata.json aside); a computer without C\'s check-result segment projects a different translationWords file [covers R-8.7.11]',
+      same && JSON.stringify(told) === JSON.stringify(['checking/translationWords/TIT.json']), JSON.stringify({ same, told }));
+  }
+
+  // [G7] R-8.7.12 — only the verse-text fork goes to a person; the non-text fork keeps the newest head
+  {
+    const vt = idx.cases['verse-two-ways']; const ct = idx.cases['check-two-ways'];
+    const forkOf = (o, key) => o.forks.find((f) => f.key === key);
+    const decOf = (o) => o.decisions.translationWords.find((d) => `dec|translationWords|${identityKeyOf(d.contextId)}` === ct.key);
+    const textForks = out.forks.filter((f) => f.key.startsWith('text|'));
+    const otherForks = out.forks.filter((f) => !f.key.startsWith('text|'));
+    const newestEach = out.forks.every((f) => f.provisional === [...f.heads].sort().at(-1));
+    const evOf = (seg) => validateSegment(fs.readFileSync(path.join(FIX, seg), 'utf8')).events[0];
+    const [bDec, cDec] = ct.segments.map(evOf);
+    const projected = forkOf(out, ct.key)?.provisional === ct.newest && decOf(out).status === cDec.decision.status &&
+      out.books.TIT.verses['1:4'] === evOf(vt.segments[1]).text && forkOf(out, vt.key)?.provisional === vt.newest;
+    // negative control: make B's check result the newer one — the projection follows the newest head
+    const bLater = { ...bDec, ts: '2026-10-13T10:22:00.000Z|0000|translator-b' };
+    const swapped = fold([...union.filter((e) => e.ts !== bDec.ts), bLater]);
+    const flips = forkOf(swapped, ct.key)?.provisional === bLater.ts && decOf(swapped).status === bDec.decision.status && bDec.decision.status !== cDec.decision.status;
+    check('[G7] JC-35: non-text conflict takes the newest head — over the fixture, the one verse-text fork (TIT 1:4) is the only fork for a person; the check-two-ways fork projects its provisional head, the highest ts (C, status todo); when B\'s result is made newer the projection follows it [covers R-8.7.12]',
+      textForks.length === 1 && textForks[0].key === vt.key && otherForks.length === 1 && otherForks[0].key === ct.key && newestEach && projected && flips,
+      JSON.stringify({ forks: out.forks.map((f) => f.key), projected, flips }));
+  }
+
+  // R-8.5.25 / R-8.5.26 — the name action
+  {
+    const nameEvents = idx.cases.names.segments.map((seg) => validateSegment(fs.readFileSync(path.join(FIX, seg), 'utf8')).events[0]);
+    const allValid = nameEvents.length === 3 && nameEvents.every((e) => e.op === 'actor.name.set' && e.v === 3 && validateEvent(e) === null);
+    const folded = deepEq(out.names, USERNAMES) && out.namesRejected.length === 0;
+    const a = nameEvents.find((e) => e.actor === ACTORS.a);
+    const refusals = [
+      validateEvent({ ...a, v: 1 }), validateEvent({ ...a, v: 2 }), // v: 3 only
+      validateEvent({ ...a, username: '-fixture' }), validateEvent({ ...a, username: 'x'.repeat(41) }), validateEvent({ ...a, username: 'fixture translator' }),
+      validateEvent({ ...a, base: union[0].ts }), // not a register event (union[0] is the earliest event, so the base is legal by §8.3)
+    ];
+    const v3Named = /v: 3/.test(refusals[0] || '') && /v: 3/.test(refusals[1] || '') &&
+      refusals.slice(2, 5).every((r) => /Door43 username/.test(r || '')) && /base: null/.test(refusals[5] || '');
+    check('JC-35: name action — a valid name passes: the three fixture names are v: 3 actor.name.set events that pass the schema, and the fold returns names (actor → Door43 username) for A, B and C; a v: 1 or v: 2 name, a username outside the Door43 grammar, and a name with a base are refused [covers R-8.5.25 R-8.5.1]',
+      allValid && folded && v3Named && refusals.every((r) => r !== null), JSON.stringify({ allValid, folded, refusals: refusals.map((r) => (r || 'ACCEPTED').slice(0, 30)) }));
+
+    // a name under another actor: B's name event in A's directory, or B's username stamped with A's actor
+    const b = nameEvents.find((e) => e.actor === ACTORS.b);
+    const dir = tmp();
+    let writeRefused = ''; try { writeActionSegment(actorDirFor(dir, ACTORS.a), [b]); } catch (e) { writeRefused = e.message; }
+    fs.mkdirSync(path.join(dir, ACTORS.a, 'segments'), { recursive: true });
+    fs.copyFileSync(path.join(FIX, idx.cases.names.segments[1]), path.join(dir, ACTORS.a, 'segments', path.basename(idx.cases.names.segments[1])));
+    const readReasons = []; const readBack = readSegments(actorDirFor(dir, ACTORS.a), (f, r) => readReasons.push(r));
+    const stamped = validateEvent({ ...b, actor: ACTORS.a });
+    check('JC-35: name action — a name under another actor is refused: the writer refuses to put B\'s name event in A\'s directory, the reader refuses B\'s name segment found there (actor-mismatch), and a name event whose actor is not its ts actor fails the schema [covers R-8.5.25]',
+      /actor binding/.test(writeRefused) && readBack.length === 0 && readReasons.length === 1 && /^actor-mismatch:translator-b$/.test(readReasons[0]) && /actor binding/.test(stamped || ''),
+      JSON.stringify({ writeRefused: writeRefused.slice(0, 50), readReasons, stamped: (stamped || '').slice(0, 50) }));
+
+    // a second name by the same actor: surfaced in namesRejected, never applied, never a fold refusal
+    const second = { ...a, ts: '2026-10-13T12:00:00.000Z|0000|translator-a', username: 'fixture-renamed' };
+    const repeat = { ...a, ts: '2026-10-13T12:00:01.000Z|0000|translator-a' }; // the same username again
+    const twice = fold([second, repeat, ...union]); // read order is not ts order
+    const permuted = fold([...union].reverse().concat([repeat, second]));
+    check('JC-35: name action — a second name by the same actor is refused: the first name by ts binds, a later different name and a later identical name are each reported in namesRejected and never applied, the fold does not refuse, and read order does not matter; the writer\'s code is actor.name-already-set [covers R-8.5.26]',
+      twice.names[ACTORS.a] === USERNAMES[ACTORS.a] && JSON.stringify(twice.namesRejected) === JSON.stringify([second.ts, repeat.ts]) &&
+      deepEq(twice.names, permuted.names) && deepEq(twice.namesRejected, permuted.namesRejected) && twice.names[ACTORS.b] === USERNAMES[ACTORS.b] &&
+      REFUSAL_CODES['actor.name-already-set'] === 'R-8.5.26',
+      JSON.stringify({ names: twice.names, rejected: twice.namesRejected }));
+  }
 }
 
 console.log(`\nJournal suite: ${pass} passed, ${fail} failed (fast-check seed ${SEED})`);

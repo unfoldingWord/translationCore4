@@ -63,6 +63,16 @@ export const tsError = (v) =>
 export const isActorSlug = (v) => isStr(v) && ACTOR_RE.test(v);
 export const actorSlugError = (v) =>
   isActorSlug(v) ? null : `"${v}" is not an §8.1 actor slug [a-z0-9-]{4,32}`;
+// §8.5 (R-8.5.25, D98): a Door43 username — the payload of `actor.name.set`. The positive
+// pattern and the length cap of Door43's own account form [VERIFIED — unfoldingWord/dcs
+// main 7005c81 (2026-10-13): modules/validation/helpers.go:32 `^[\da-zA-Z][-.\w]*$`,
+// services/forms/user_form.go:75 MaxSize(40)]. The negative pattern of :33 (no doubled or
+// trailing `-._`) is not applied: an older account can carry such a name, and Door43 still
+// shows it. ASCII only, so the value is NFC by construction.
+export const DOOR43_USERNAME_RE = /^[A-Za-z0-9][-.\w]*$/;
+export const door43UsernameError = (v) =>
+  isStr(v) && v.length <= 40 && DOOR43_USERNAME_RE.test(v) ? null
+  : `${JSON.stringify(v)} is not a Door43 username (^[A-Za-z0-9][-.\\w]*$, at most 40 characters — §8.5)`;
 export const isoInstantError = (v) =>
   isCalendarInstant(v) ? null : `"${v}" is not a fixed-width ISO-8601 UTC calendar instant (§8.2)`;
 
