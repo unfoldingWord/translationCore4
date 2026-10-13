@@ -186,6 +186,10 @@ esac
 # Windows signing (#456). The build signs when AZURE_SIGNING_ENDPOINT is set: the
 # workflow sets it on manual runs only. Without it the build is unsigned, and the
 # artifact names say -unsigned. scripts/sign-windows.ps1 holds the signing pins.
+# The client secret goes to the signing calls only, never to npm, cargo or the
+# smoke test: keep it in an unexported shell variable.
+SIGN_SECRET=${AZURE_CLIENT_SECRET:-}
+unset AZURE_CLIENT_SECRET
 SIGNED=false
 NAME_SUFFIX="-unsigned"
 if [ "$OS" = windows ] && [ -n "${AZURE_SIGNING_ENDPOINT:-}" ]; then
@@ -194,7 +198,7 @@ if [ "$OS" = windows ] && [ -n "${AZURE_SIGNING_ENDPOINT:-}" ]; then
 fi
 SIGN_TOOLS="$BUILD/signing"
 sign_windows() {
-  MSYS2_ARG_CONV_EXCL='*' powershell.exe -NoProfile -ExecutionPolicy Bypass \
+  AZURE_CLIENT_SECRET="$SIGN_SECRET" MSYS2_ARG_CONV_EXCL='*' powershell.exe -NoProfile -ExecutionPolicy Bypass \
     -File "$(cygpath -w "$REPO/scripts/sign-windows.ps1")" -ToolDir "$(cygpath -w "$SIGN_TOOLS")" "$@"
 }
 if [ "$SIGNED" = true ]; then
@@ -1092,7 +1096,7 @@ if [ "$OS" = windows ] && [ "$VARIANT" = production ] && [ "$MAKE_PKG" = true ];
   if [ "$SIGNED" = true ]; then
     ISCC_SIGN=(/DSign "/Stc4sign=powershell.exe -NoProfile -ExecutionPolicy Bypass -File \$q$(cygpath -w "$REPO/scripts/sign-windows.ps1")\$q -ToolDir \$q$(cygpath -w "$SIGN_TOOLS")\$q -Sign \$f")
   fi
-  MSYS2_ARG_CONV_EXCL='*' "$ISCC" "${ISCC_SIGN[@]}" "/DPayload=$(cygpath -w "$APPDIR")" "/DOutput=$(cygpath -w "$BUILD")" "/DVersion=$VERSION" "$(cygpath -w "$REPO/scripts/tc4.iss")"
+  AZURE_CLIENT_SECRET="$SIGN_SECRET" MSYS2_ARG_CONV_EXCL='*' "$ISCC" "${ISCC_SIGN[@]}" "/DPayload=$(cygpath -w "$APPDIR")" "/DOutput=$(cygpath -w "$BUILD")" "/DVersion=$VERSION" "$(cygpath -w "$REPO/scripts/tc4.iss")"
 fi
 
 echo "== 7/7 zip the artifact"

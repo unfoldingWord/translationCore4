@@ -564,7 +564,9 @@ What a signed run does:
 
 Every signature carries an RFC 3161 timestamp from
 `http://timestamp.acs.microsoft.com`. An Artifact Signing certificate is valid
-for three days, so a signature without a timestamp stops being valid.
+for three days, so a signature without a timestamp stops being valid
+[VERIFIED — Microsoft Learn, "Set up signing integrations to use Artifact
+Signing", page dated 2026-05-14, read 2026-10-13].
 
 The credential is an Entra app registration that has the **Artifact Signing
 Certificate Profile Signer** role on the certificate profile. Set these values
@@ -580,7 +582,12 @@ in the repository settings:
 | `AZURE_CLIENT_SECRET` | secret | the app registration's client secret |
 
 The endpoint must match the region of the account. A wrong region gives a 403
-error. A client secret expires. Record its expiry date when you create it.
+error [VERIFIED — same Microsoft Learn page, read 2026-10-13]. A client secret
+expires. Record its expiry date when you create it. The build gives the secret
+only to the signing calls, not to npm, cargo or the smoke test.
+
+If `AZURE_SIGNING_ENDPOINT` is set but another value is empty, a manual run
+fails at the start. It does not build unsigned.
 
 Portable fallback: extract the zip once and run `start-tc4.cmd`. The installed
 and portable production copies use the same store. Close one before opening

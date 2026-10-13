@@ -90,8 +90,13 @@ if ($Sign) {
   # Batches keep each signtool command line well under the Windows limit.
   for ($i = 0; $i -lt $toSign.Count; $i += 50) {
     $batch = @($toSign[$i..([Math]::Min($i + 49, $toSign.Count - 1))])
-    & $SignTool sign /v /fd SHA256 /tr $Timestamp /td SHA256 /dlib $Dlib /dmdf $Metadata @batch
-    if ($LASTEXITCODE -ne 0) { throw "signtool failed (exit $LASTEXITCODE)" }
+    # Windows PowerShell 5.1 turns native stderr into a terminating error under
+    # 'Stop' when output is redirected; the exit code decides instead.
+    $ErrorActionPreference = 'Continue'
+    & $SignTool sign /v /fd SHA256 /tr $Timestamp /td SHA256 /dlib $Dlib /dmdf $Metadata @batch 2>&1 | Write-Host
+    $exit = $LASTEXITCODE
+    $ErrorActionPreference = 'Stop'
+    if ($exit -ne 0) { throw "signtool failed (exit $exit)" }
   }
   foreach ($path in $toSign) {
     $sig = Get-AuthenticodeSignature -LiteralPath $path
