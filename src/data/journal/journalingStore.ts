@@ -49,6 +49,7 @@ import { JournalStore } from './journalStore';
 import { idbKvStore, type KvStore } from './identity';
 import { sealAction, type JournalEvent } from './seal';
 import { defaultFoldRunner, type FoldRunner } from './foldRunner';
+import { verseConflicts, type VerseConflict } from './verseConflicts';
 import type { OpsRecorder } from './opsLog';
 import {
   applyStoryState,
@@ -2252,6 +2253,43 @@ export class JournalingStore implements BurritoStore {
         });
       }
       await this.publishAndRegenerate(events, [bookIpath(code)]);
+    });
+  }
+
+  /** The verse-text conflicts of the open project (#679, G7), in canonical
+   * verse order — what the conflict review lists. */
+  readVerseConflicts(): VerseConflict[] {
+    return verseConflicts(this.foldNow(), this.events);
+  }
+
+  /** Keep one version of a verse in conflict (#679): ONE text.verse.set with
+   * the kept head's text whose `supersedes` names every head of the fork
+   * (R-8.3.5), so the fold shows no conflict and keeps the other versions in
+   * history (`retained[]`, reason `superseded`, R-8.3.6). `key` and `keptHead`
+   * come from readVerseConflicts(); anything else is a caller defect. */
+  async resolveVerse(key: string, keptHead: string): Promise<void> {
+    return this.queue(async () => {
+      await this.replayOwnStagedBeforeDiff(); // round-5 rule 1: REPLAY-BEFORE-DIFF
+      const journal = this.mustJournal();
+      const foldOut = await this.ensureFold();
+      const conflict = verseConflicts(foldOut, this.events).find((c) => c.key === key);
+      if (!conflict) throw new Error(`resolveVerse(${key}): the fold shows no verse-text conflict on this key`);
+      const kept = conflict.versions.find((v) => v.ts === keptHead);
+      if (!kept) throw new Error(`resolveVerse(${key}): ${keptHead} is not a head of this conflict`);
+      const event: JournalEvent = {
+        v: 1,
+        op: 'text.verse.set',
+        actor: journal.actorId,
+        ts: journal.issueTs(),
+        // the projected (provisional) head is the state this person reviewed
+        base: foldOut.headsTs[key],
+        supersedes: conflict.versions.map((v) => v.ts),
+        book: conflict.book,
+        chapter: conflict.chapter,
+        verse: conflict.verse,
+        text: kept.text,
+      };
+      await this.publishAndRegenerate([event], [bookIpath(conflict.book)]);
     });
   }
 
