@@ -20,6 +20,7 @@ import { gatewayQuote, tokenizeVerse } from '../data/sourceHighlight';
 import { Button, Callout, HelpCard, IconButton, Overline, Switcher } from '../ds/index.js';
 import { inFocus } from './helpsFocus.js';
 import { HelpsIcon } from './PanelIcons.jsx';
+import { projectDir } from './scriptStyle.js';
 
 // The leading verse number of a chapter key — span keys ("17-18") are real
 // USFM verse bridges (see usfm/indexer.ts) and MUST NOT be dropped.
@@ -339,6 +340,7 @@ function SimplifiedTab({ slot, sourceRefs, chapter, focusVerses }) {
 }
 
 function CommentsTab({ comprehension, chapter, focusVerses, story = false }) {
+  const { s } = useApp();
   if (!comprehension) return emptyTab(focusVerses);
   const list = Object.entries(comprehension)
     .filter(([key]) => Number(key.split(':')[0]) === Number(chapter))
@@ -367,7 +369,8 @@ function CommentsTab({ comprehension, chapter, focusVerses, story = false }) {
           <div key={key} data-testid="helps-comment" data-frame={verseKey}
             style={{ border: 'var(--stroke) solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 14, background: '#fff' }}>
             <Overline>{label}</Overline>
-            <p style={{ whiteSpace: 'pre-wrap' }}>{entry.text}</p>
+            {/* #657: a note reads as it was typed, in the project's direction. */}
+            <p dir={projectDir(s)} style={{ whiteSpace: 'pre-wrap', textAlign: 'start' }}>{entry.text}</p>
           </div>
         );
       })}

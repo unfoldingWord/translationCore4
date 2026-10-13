@@ -22,20 +22,31 @@
 //      the account trigger
 //   g  #612, #649: in Hindi and in Arabic no element that shows the script is letter-spaced
 //      (Home and the Report a problem dialog); every other language keeps the tracking of English
+//   h  #657: with Arabic the document, the app root, the top bar, the side panel and the
+//      dialog read right to left, on Home and in a project; the preview flips at once and
+//      Cancel restores; English reads left to right again with no restart
+//   i  #657: scripture follows the project: the seeded left-to-right project keeps its
+//      direction under Arabic, and a right-to-left project keeps its direction under English
 // The shared recorder (helpers/externalRequests.ts) writes each request log, and the
 // screenshots, into the test's output folder (and attaches them).
 import fs from 'node:fs';
 import path from 'node:path';
 import { test, expect } from './helpers/test';
 import type { Locator, Page, TestInfo } from '@playwright/test';
-import { RIG_CLIENT_SETTINGS, SEEDED_PROJECT, readClientSettingsDoc, resetClientSettings, resetPlaces, resetSeededChecking } from './helpers/rig';
+import { RIG_CLIENT_SETTINGS, SEEDED_PROJECT, listLocalRepos, readClientSettingsDoc, resetClientSettings, resetPlaces, resetSeededChecking, rigRepo } from './helpers/rig';
 import { dropOrigin, gateOff } from './helpers/door43Share';
+import { pickOption } from './helpers/dropdown';
 import { recordExternal } from './helpers/externalRequests';
 import { TC4_ROOT } from './helpers/root';
+import { lane } from './lane.mjs';
+import { ServerApi } from '../src/data/serverApi';
 import { LOCALES } from '../src/i18n/locales.js';
 
 const TAG = { tag: ['@app-language'] };
 const SEEDED_ID = `_local_/_local_/${SEEDED_PROJECT}`;
+const rigApi = new ServerApi({ baseUrl: lane().rigApi });
+/** The projects a case made in the rig (case i), removed after the file. */
+const madeRepos: string[] = [];
 
 // The expected strings come from the shipped catalogs, never from memory.
 const catalog = (id: string): Record<string, string> =>
@@ -108,6 +119,8 @@ test.describe('#522 — App language in the account menu', () => {
     await gateOff();
   });
   test.afterAll(async () => {
+    // Case i makes a project: it goes, so the next file starts from the seeded ones.
+    for (const repo of madeRepos) await rigApi.deleteRepo(`_local_/_local_/${repo}`).catch(() => {});
     resetSeededChecking();
     resetPlaces();
     resetClientSettings();
@@ -408,9 +421,14 @@ test.describe('#522 — App language in the account menu', () => {
     await expect.poll(focused).toBe('account-language');
     await page.keyboard.press('Enter');
     await expect(dialog(page)).toBeVisible();
+    // With ten languages (#649) the list opens with a search field, and End there moves the
+    // text cursor. The arrows reach the last row; Enter chooses the row that is highlighted.
     await select(page).focus();
+    await expect.poll(focused).toBe('language-select');
     await page.keyboard.press('ArrowDown');
-    await page.keyboard.press('End');
+    await expect(page.getByRole('listbox')).toBeVisible();
+    for (let i = 1; i < LOCALES.length; i++) await page.keyboard.press('ArrowDown');
+    await expect(page.locator(`[aria-activedescendant$="-opt-${LOCALES.length - 1}"]`)).toHaveCount(1);
     await page.keyboard.press('Enter');
     await expect(select(page)).toContainText(LABEL[LAST]);
     await expectLanguage(page, LAST);
@@ -527,5 +545,203 @@ test.describe('#522 — App language in the account menu', () => {
       expect(onReport.length, id).toBeGreaterThan(onHome.length);
       for (const el of [...onHome, ...onReport]) expect(['normal', '0px'], `${id}: "${el.text}"`).toContain(el.letterSpacing);
     }
+  });
+
+  // ---- h, i · #657: the interface follows the app language; scripture follows the project ----
+  /** The document's `dir`, and the direction the app root computes. */
+  const directions = (page: Page): Promise<{ html: string; root: string }> => page.evaluate(() => ({
+    html: document.documentElement.dir,
+    root: getComputedStyle(document.querySelector('#root > div') as HTMLElement).direction,
+  }));
+  /** Where the middle of `loc` is: the left or the right half of the window. */
+  const half = async (page: Page, loc: Locator): Promise<'left' | 'right'> => {
+    const box = (await loc.boundingBox())!;
+    return box.x + box.width / 2 < page.viewportSize()!.width / 2 ? 'left' : 'right';
+  };
+  const openTitus = async (page: Page): Promise<void> => {
+    await page.getByTestId(`project-${SEEDED_ID}`).getByRole('button', { name: /Titus/ }).click();
+    await expect(page.getByTestId('understand')).toBeVisible({ timeout: 20_000 });
+  };
+  const helps = (page: Page): Locator => page.getByTestId('helps-panel');
+  /** `dir` and the computed direction of each match of `loc`. */
+  const textDirections = (loc: Locator): Promise<Array<{ dir: string | null; direction: string }>> =>
+    loc.evaluateAll((els) => els.map((el) => ({ dir: el.getAttribute('dir'), direction: getComputedStyle(el).direction })));
+
+  test('h. #657: with Arabic the document, the top bar, the side panel and the dialog read right to left, on Home and in a project; the preview and the switch back flip at once', TAG, async ({ page }, testInfo) => {
+    const seen: Record<string, unknown> = {};
+    await page.goto('/');
+    await expectLanguage(page, 'en');
+    // The control: English reads left to right, and the account menu is at the right end.
+    expect(await directions(page)).toEqual({ html: 'ltr', root: 'ltr' });
+    expect(await half(page, trigger(page))).toBe('right');
+    await openTitus(page);
+    await expect(helps(page)).toBeVisible();
+    seen.en = { ...(await directions(page)), account: await half(page, trigger(page)), helps: await half(page, helps(page)) };
+    expect(seen.en).toEqual({ html: 'ltr', root: 'ltr', account: 'right', helps: 'right' });
+    // In the project: the preview flips the direction at once, and Cancel restores it.
+    await openDialog(page);
+    await choose(page, 'ar');
+    await expect.poll(() => directions(page)).toEqual({ html: 'rtl', root: 'rtl' });
+    await cancel(page).click();
+    await expect(dialog(page)).toHaveCount(0);
+    await expect.poll(() => directions(page)).toEqual({ html: 'ltr', root: 'ltr' });
+    // Arabic, applied, with no restart.
+    await openDialog(page);
+    await choose(page, 'ar');
+    const written = page.waitForResponse((r) => isSettingsWrite(r.url(), r.request().method()));
+    await apply(page).click();
+    await written;
+    await expect(dialog(page)).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => document.documentElement.lang)).toBe('ar');
+    seen.arProject = { ...(await directions(page)), account: await half(page, trigger(page)), helps: await half(page, helps(page)) };
+    await shot(page, testInfo, 'rtl-project-ar');
+    // The App language dialog.
+    await openDialog(page);
+    seen.arDialog = await dialog(page).evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return { direction: cs.direction, textAlign: cs.textAlign };
+    });
+    await shot(page, testInfo, 'rtl-dialog-ar');
+    await cancel(page).click();
+    await expect(dialog(page)).toHaveCount(0);
+    // Home.
+    await page.getByTestId('project-switch').click();
+    await expectLanguage(page, 'ar');
+    seen.arHome = { ...(await directions(page)), account: await half(page, trigger(page)) };
+    await shot(page, testInfo, 'rtl-home-ar');
+    // Back to English: left to right at once.
+    await openDialog(page);
+    await choose(page, 'en');
+    await apply(page).click();
+    await expect(dialog(page)).toHaveCount(0);
+    await expectLanguage(page, 'en');
+    seen.enAgain = { ...(await directions(page)), account: await half(page, trigger(page)) };
+    const file = testInfo.outputPath('interface-direction.json');
+    fs.writeFileSync(file, `${JSON.stringify(seen, null, 2)}\n`);
+    await testInfo.attach('interface-direction', { path: file, contentType: 'application/json' });
+    expect(seen.arProject).toEqual({ html: 'rtl', root: 'rtl', account: 'left', helps: 'left' });
+    expect((seen.arDialog as { direction: string }).direction).toBe('rtl');
+    expect(['start', 'right']).toContain((seen.arDialog as { textAlign: string }).textAlign);
+    expect(seen.arHome).toEqual({ html: 'rtl', root: 'rtl', account: 'left' });
+    expect(seen.enAgain).toEqual({ html: 'ltr', root: 'ltr', account: 'right' });
+  });
+
+  test('i. #657: scripture follows the project, not the app language: a left-to-right project under Arabic, and a right-to-left project under English', TAG, async ({ page }, testInfo) => {
+    test.setTimeout(120_000);
+    const seen: Record<string, unknown> = {};
+    const source = page.getByTestId('draft-source-text');
+    const target = page.getByTestId('draft-target-text');
+    const editor = page.getByTestId('section-editor').locator('textarea');
+    const draftSection = (id: string): Locator =>
+      page.getByRole('button', { name: new RegExp(`^${escapeRe(BY_ID[id]['draft.draftSection'].split('{span}')[0])}`) }).first();
+    // Arabic interface, the seeded left-to-right project.
+    writeStoredLocale('ar');
+    await page.goto('/');
+    await expectLanguage(page, 'ar');
+    await openTitus(page);
+    await page.getByRole('tab', { name: BY_ID.ar['nav.draft'], exact: true }).click();
+    await expect(source.first()).toBeVisible({ timeout: 20_000 });
+    await draftSection('ar').click();
+    await expect(editor).toBeVisible();
+    seen.arInterfaceLtrProject = {
+      interface: await directions(page),
+      source: await textDirections(source),
+      target: await textDirections(target),
+      editor: await textDirections(editor),
+    };
+    await shot(page, testInfo, 'ltr-project-ar');
+    await page.getByTestId('section-editor').getByRole('button', { name: BY_ID.ar['draft.cancelVerse'], exact: true }).click();
+    await page.getByTestId('project-switch').click();
+    await expectLanguage(page, 'ar');
+    // English interface, a right-to-left project made the way a translator makes one.
+    await openDialog(page);
+    await choose(page, 'en');
+    await apply(page).click();
+    await expect(dialog(page)).toHaveCount(0);
+    await expectLanguage(page, 'en');
+    const before = listLocalRepos();
+    await page.getByTestId('add-project').click();
+    await page.getByTestId('add-project-bible').click();
+    await page.getByLabel(EN['newBible.name']).fill('Equipo Rig — derecha a izquierda');
+    await page.getByLabel(EN['newBible.code']).fill('ar');
+    await page.getByRole('button', { name: EN['wizard.rtl'] }).click();
+    await page.getByRole('button', { name: 'Create Bible' }).click();
+    await page.getByRole('button', { name: EN['addBook.blankTitle'] }).click({ timeout: 20_000 });
+    await pickOption(page, EN['addBook.book'], 'Titus');
+    await page.getByRole('button', { name: EN['addBook.create'] }).click();
+    await expect(page.getByTestId('understand')).toBeVisible({ timeout: 20_000 });
+    const created = listLocalRepos().filter((r) => !before.includes(r));
+    expect(created, 'one new repository in the rig').toHaveLength(1);
+    madeRepos.push(created[0]);
+    const settings = JSON.parse(fs.readFileSync(path.join(rigRepo(created[0]), 'ingredients', 'checking', 'settings.json'), 'utf8'));
+    expect(settings.textDirection).toBe('rtl');
+    // A comprehension note is typed in the project's direction (its blur saves it).
+    const NOTE = 'بولس يقدّم نفسه كعبد ورسول.';
+    const note = page.getByPlaceholder(EN['understand.commentsPlaceholder']).first();
+    await note.fill(NOTE);
+    await note.blur();
+    await page.getByRole('tab', { name: EN['nav.draft'], exact: true }).click();
+    await expect(source.first()).toBeVisible({ timeout: 20_000 });
+    await draftSection('en').click();
+    await expect(editor).toBeVisible();
+    const editorSeen = await textDirections(editor);
+    await shot(page, testInfo, 'rtl-project-en');
+    await page.getByTestId('section-editor').getByRole('button', { name: EN['draft.cancelVerse'], exact: true }).click();
+    // A drafted verse, for the alignment list below (the blur saves it).
+    const VERSE = 'بولس، عبد الله ورسول يسوع المسيح.';
+    await page.getByRole('tab', { name: 'Verse', exact: true }).click();
+    await page.getByRole('button', { name: 'Start this verse' }).first().click();
+    const verse = page.getByRole('textbox', { name: 'Verse 1' });
+    await verse.fill(VERSE);
+    await verse.blur();
+    await expect(page.getByTestId('draft-target-text').filter({ hasText: VERSE })).toBeVisible();
+    // The note, shown in the Comments tab of the helps panel, reads as it was typed.
+    await helps(page).getByRole('tab', { name: EN['helps.comments'], exact: true }).click();
+    const shownNote = page.getByTestId('helps-comment').locator('p');
+    await expect(shownNote).toHaveText(NOTE);
+    seen.enInterfaceRtlProject = {
+      interface: await directions(page),
+      account: await half(page, trigger(page)),
+      source: await textDirections(source),
+      editor: editorSeen,
+      note: await textDirections(shownNote),
+      // The project's name in the top bar.
+      name: await textDirections(page.getByTestId('project-switch').getByText('Equipo Rig — derecha a izquierda', { exact: true })),
+    };
+    // A check comment has no language of its own: it reads in the direction of what is typed.
+    await page.getByRole('tab', { name: EN['nav.check'], exact: true }).click();
+    await page.getByTestId('open-translationNotes').click();
+    await page.getByTestId('comment-toggle').click();
+    const comment = page.getByTestId('comment-text');
+    await comment.fill('Paul calls himself a servant.');
+    const latin = await textDirections(comment);
+    await comment.fill(NOTE);
+    const arabic = await textDirections(comment);
+    await comment.fill('');
+    seen.checkComment = { latin, arabic };
+    // The alignment tool lists each drafted verse by its text, in the project's direction.
+    await page.getByTestId('check-back').click();
+    await page.getByTestId('open-align').click();
+    const row = page.getByTestId('align-verse-list').getByText(VERSE, { exact: true });
+    await expect(row).toBeVisible({ timeout: 20_000 });
+    seen.alignRow = await textDirections(row);
+    const file = testInfo.outputPath('scripture-direction.json');
+    fs.writeFileSync(file, `${JSON.stringify(seen, null, 2)}\n`);
+    await testInfo.attach('scripture-direction', { path: file, contentType: 'application/json' });
+    const ltr = seen.arInterfaceLtrProject as { interface: unknown; source: Array<{ direction: string }>; target: Array<{ direction: string }>; editor: unknown };
+    expect(ltr.interface).toEqual({ html: 'rtl', root: 'rtl' });
+    expect(ltr.source.length).toBeGreaterThan(0);
+    for (const el of [...ltr.source, ...ltr.target]) expect(el.direction).toBe('ltr');
+    expect(ltr.editor).toEqual([{ dir: 'ltr', direction: 'ltr' }]);
+    const rtl = seen.enInterfaceRtlProject as { interface: unknown; account: string; source: Array<{ direction: string }>; editor: unknown; note: unknown; name: unknown };
+    expect(rtl.name).toEqual([{ dir: 'rtl', direction: 'rtl' }]);
+    expect(seen.alignRow).toEqual([{ dir: 'rtl', direction: 'rtl' }]);
+    expect(rtl.interface).toEqual({ html: 'ltr', root: 'ltr' });
+    expect(rtl.account).toBe('right');
+    // The source is the English gateway text: it stays left to right.
+    for (const el of rtl.source) expect(el.direction).toBe('ltr');
+    expect(rtl.editor).toEqual([{ dir: 'rtl', direction: 'rtl' }]);
+    expect(rtl.note).toEqual([{ dir: 'rtl', direction: 'rtl' }]);
+    expect(seen.checkComment).toEqual({ latin: [{ dir: 'auto', direction: 'ltr' }], arabic: [{ dir: 'auto', direction: 'rtl' }] });
   });
 });
