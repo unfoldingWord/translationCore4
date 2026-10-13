@@ -311,6 +311,10 @@ describe('2026-08-28 adversarial round 25 regression — concurrent project open
     readResources: async () => null, // loadProjectPins: "no pins recorded"
     writeBook: async () => {},
     reconcileStaged: async () => {},
+    // #679: the open lists the fold's verse conflicts and their team.
+    actorId: 'fake-actor',
+    readVerseConflicts: () => [],
+    readTeam: () => ({ names: {}, actors: [] }),
   });
 
   it('the LATEST open exclusively owns the refs and the dispatched state — an earlier open resuming later assigns nothing', async () => {

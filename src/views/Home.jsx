@@ -145,10 +145,55 @@ export function ObsProjectCard({ p }) {
   );
 }
 
-function ProjectCard({ p }) {
+// #679: the conflict count of the card and of each book tile, from the fold of
+// the project's journal (loadConflicts) — never from a stored sync Report — so
+// it goes down as conflicts are kept. Unknown (D30) or none: nothing shows.
+// The owner's mockup (artboard 0) draws the chip and the tile line in a darker
+// warn brown on a Kindle tint; no token holds these two values.
+const conflictWarn = { color: '#7A4A06', fontWeight: 'var(--fw-heavy)', fontFamily: 'var(--font-ui)' };
+
+function ConflictsChip({ p, total }) {
+  const { actions } = useApp();
+  if (!total) return null;
+  return (
+    <button type="button" data-testid={`conflicts-${p.id}`} data-count={total}
+      aria-label={t('home.conflictsLabel', { n: total })} onClick={() => actions.openProjectConflicts(p.id)}
+      style={{ ...conflictWarn, boxSizing: 'border-box', display: 'inline-flex', alignItems: 'center', gap: 6, height: 24, padding: '0 10px 0 8px', borderRadius: 'var(--radius-pill)', border: 'var(--stroke-hair) solid var(--uw-kindle)', background: '#FDF1DE', fontSize: 'var(--fs-meta)', lineHeight: 1, cursor: 'pointer' }}>
+      <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none', display: 'block' }}>
+        <path d="M6 3v12" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="6" r="3" /><path d="M18 9a9 9 0 0 1-9 9" />
+      </svg>
+      {t(total === 1 ? 'home.conflictsOne' : 'home.conflictsMany', { n: total })}
+    </button>
+  );
+}
+
+function BookConflicts({ code, n }) {
+  if (!n) return null;
+  return (
+    <span data-testid={`book-conflicts-${code}`} data-count={n}
+      style={{ ...conflictWarn, display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 8, fontSize: '10.5px' }}>
+      <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: 'var(--radius-pill)', background: 'var(--uw-kindle)', flex: 'none' }} />
+      {t(n === 1 ? 'home.bookConflictsOne' : 'home.bookConflictsMany', { n })}
+    </span>
+  );
+}
+
+/** The card's conflict counts by book (none while unknown) and their total; read once per project. */
+function useConflictCounts(p) {
+  const { s, actions } = useApp();
+  const known = p.id in s.conflictsByProject;
+  useEffect(() => {
+    actions.loadConflicts(p);
+  }, [p.id, known]);
+  const counts = s.conflictsByProject[p.id] || {};
+  return { counts, total: Object.values(counts).reduce((sum, n) => sum + n, 0) };
+}
+
+export function ProjectCard({ p }) {
   const { s, actions } = useApp();
   const [expanded, setExpanded] = useState(false);
   const prog = s.progressByProject[p.id] || {};
+  const { counts: conflicts, total: conflictTotal } = useConflictCounts(p);
   // loadProgress caches by repoPath and no-ops on a fully-known cache. It
   // re-runs when the cache is dropped (an edit, a new book) or still carries
   // an unknown entry from a failed read, so a transient failure never pins the
@@ -179,6 +224,7 @@ function ProjectCard({ p }) {
             <Badge size="sm" tone={dir === 'rtl' ? 'warn' : 'neutral'} style={dir === 'rtl' ? undefined : { color: 'var(--text-secondary)' }}>{dir.toUpperCase()}</Badge>
             {s.importedRepo === p.id && <Badge size="sm" tone="accentSoft" data-testid="imported-badge">{t('importer.badge')}</Badge>}
             <SharedBadge p={p} />
+            <ConflictsChip p={p} total={conflictTotal} />
           </div>
           <span style={{ fontSize: 'var(--fs-ui-sm)', color: 'var(--text-tertiary)', fontWeight: 'var(--fw-medium)' }}>
             {p.languageTag} · {p.bookCodes.length} {p.bookCodes.length === 1 ? t('home.book') : t('home.books')} · {t('home.inProgress', { n: inProgress.length })}
@@ -199,8 +245,10 @@ function ProjectCard({ p }) {
           // yet read, or the read failed) — an em-dash, never a false 0% bar
           // claiming "no drafting has been done".
           return (
-            <BookTile key={code} name={bookName(code)} percent={hasPct ? pct : 0}
-              meta={hasPct ? undefined : '—'} onClick={() => actions.openProjectAt(p.id, code)} />
+            <BookTile key={code} data-testid={`book-tile-${code}`} name={bookName(code)} percent={hasPct ? pct : 0}
+              meta={hasPct ? undefined : '—'} onClick={() => actions.openProjectAt(p.id, code)}>
+              <BookConflicts code={code} n={conflicts[code]} />
+            </BookTile>
           );
         })}
         <button type="button" onClick={() => actions.openAddBook(p)} data-i="choice" data-tone="accent"

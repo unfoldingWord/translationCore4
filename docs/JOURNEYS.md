@@ -45,7 +45,7 @@ Owner of increment numbers: the GitHub milestones, mirrored in `docs/ROADMAP.md`
 | J15 | — | — | retired: slow open is a quality requirement on opening a project | retired | `e2e/j15-slow-open.spec.ts` stays, cited by a FR |
 | J16 | translator | Understand | Read a passage with helps and record a user comment | shipped alpha.5 | `e2e/j16-understand.spec.ts` |
 | J17 | translator | Exchange | Receive a project and continue offline | Phase 2 | none |
-| J18 | translator | Check | Resolve a verse fork | Phase 2 | none |
+| J18 | translator | Translate | Keep one version of a verse in conflict | Phase 2 (review screen built, #679; the journey proof comes with #681) | none |
 | J19 | consultant | Check | Record findings on a translation | Phase 2 | none |
 | J20 | facilitator | Start | Create an OBS project | shipped alpha.7 (#287; D74) | `e2e/j20-obs-create.spec.ts` |
 | J21 | translator | Translate | Translate a story frame by frame | shipped alpha.7 (#289, #292; D74) | `e2e/j21-obs-draft.spec.ts` |
@@ -296,12 +296,34 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 - Term: the user-facing word is "user comment". The journal op stays `note.add` (BURRITO-SPEC §8.5).
 - Proof: `e2e/j16-understand.spec.ts` (#117 adds the non-eng frame axis). Owner: built Increment 4 (#104); proof Increment 5 (#197).
 
-### J17–J19 (Phase 2)
+### J17 and J19 (Phase 2)
 
 - J17 translator receives a project and continues offline.
-- J18 translator resolves a verse fork through the reviewQueue.
 - J19 consultant records findings without drafting.
 - End states: defined when the §8 sync operations ratify (issue #22).
+
+### J18 Keep one version of a verse in conflict
+
+- Actor: translator. Activity: Translate.
+- Precondition: the project has a verse-text conflict. Two translators changed the same verse
+  from the same base, and a sync put the two versions in one journal (epic #24).
+- Steps: on Home, the project card shows "N conflicts · Review" and each book tile shows its
+  count · click the card button (or, in Translate, click the marker on a verse or the toolbar
+  button "N conflicts · Review") · the review shows one verse at a time: "Conflict n of m", the
+  ULT verse when Translate has it for that book, and each version with its owner and date,
+  newest first · click one version: the other versions fade · click "Keep this version" ·
+  click Previous or Next to go to the other conflicts · click "Back to …" at any time to leave.
+- End state: for each kept verse, one `text.verse.set` segment of this actor. Its `supersedes`
+  names every version of the verse (R-8.3.5). The fold shows no conflict for the verse, and the
+  other versions stay in `retained[]` with reason `superseded` (R-8.3.6). The verse shows the
+  kept text. The Home count and the Translate markers show only the conflicts that stay open.
+  The next sync sends the edit to the team.
+- MUST NOT: list a check-result or alignment conflict (G7); give a version a color by its
+  position ("Mine" is light blue on every conflict, and each teammate's version is cream);
+  start a sync; write when the translator leaves the review.
+- Proof: the component tests `test/conflictReview.test.tsx` and `test/keepVersion.test.tsx`,
+  and the fold test "confirm supersedes all heads" in `test/verseConflicts.test.ts`. The journey
+  spec comes with #681. Owner: #679.
 
 ### J20 Create an OBS project
 

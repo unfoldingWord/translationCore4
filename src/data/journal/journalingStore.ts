@@ -2262,6 +2262,14 @@ export class JournalingStore implements BurritoStore {
     return verseConflicts(this.foldNow(), this.events);
   }
 
+  /** The team as the fold knows it (#679): each actor's recorded Door43 name
+   * (`FoldOutput.names`, #674) and every actor id of the event set, sorted —
+   * the order the "Teammate n" labels number by (actorLabel). */
+  readTeam(): { names: Record<string, string>; actors: string[] } {
+    const actors = [...new Set(this.events.map((e) => e.actor))].sort();
+    return { names: this.foldNow().names, actors };
+  }
+
   /** Keep one version of a verse in conflict (#679): ONE text.verse.set with
    * the kept head's text whose `supersedes` names every head of the fork
    * (R-8.3.5), so the fold shows no conflict and keeps the other versions in
@@ -3235,6 +3243,13 @@ export class JournalingStore implements BurritoStore {
   }
 }
 
+/** The kv of a JournalStore that never opens (ProjectReader): no identity, no
+ * outbox, so any use is a defect. */
+const refuseKv = (): never => {
+  throw new Error('ProjectReader: a read-only journal read touched the kv');
+};
+const NO_KV: KvStore = { get: refuseKv, set: refuseKv, setIfAbsent: refuseKv, keys: refuseKv, delete: refuseKv };
+
 /** Read-only project access for surfaces that must not mutate and must not run
  * recovery (the Home progress bars, the settings dialog's read half, project
  * listing). Deliberately NOT a BurritoStore: it has no mutation surface at all,
@@ -3279,6 +3294,24 @@ export class ProjectReader {
 
   readResources(): Promise<ResourcesFile | null> {
     return this.boundRaw().readResources();
+  }
+
+  /** #679: the open verse-text conflicts, folded read-only from the journal
+   * (no open, no recovery, no write) — the Home card's count. Null when the
+   * journal holds a file the union refuses: then the count is unknown (D30),
+   * never a false 0. */
+  async readVerseConflicts(): Promise<VerseConflict[] | null> {
+    if (this.repo === null) throw new Error('ProjectReader: call open(repoPath) first');
+    const journal = new JournalStore({ api: this.raw.api, repoPath: this.repo, kv: NO_KV });
+    const { events, refused } = await journal.readAcceptedEvents();
+    if (refused !== 0) return null;
+    if (events.length === 0) return [];
+    const runner = defaultFoldRunner();
+    try {
+      return verseConflicts(await runner.fold(events), events);
+    } finally {
+      runner.dispose();
+    }
   }
 
   /** Bytes only — a reader has no journal, so it cannot supply the name. The

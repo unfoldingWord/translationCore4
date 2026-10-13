@@ -11,6 +11,7 @@ import { ServerApi } from './data/serverApi';
 import { StaleWriteError } from './data/httpStore';
 import { STORY_FILE, refusalCodeOf } from './data/journal/runtime';
 import { JournalingStore, ProjectReader } from './data/journal/journalingStore';
+import { parseVerseKey } from './data/journal/verseConflicts';
 import { SaveScheduler } from './data/saveScheduler';
 import { StoryScheduler, normalizeStoryUnit } from './data/storyScheduler';
 import { createObsPackCache, projectImageIngredients, readObsStoryPresentation } from './data/obsStory';
@@ -509,6 +510,15 @@ const initial = () => ({
   pickerProgress: null, // #136 (D3d): { seq, [tool]: {done,total,dropped,nextItem}|{error}, align: {…,nextRef} } — derived on picker open, never stored
   toolPos: {}, // #136: in-memory only — "your place is saved in each tool", keyed `${tool}:${book}`; dies with the app (§4.2)
   progressByProject: {}, // repoPath -> { CODE: draftPct } (lazy Home cache)
+  // #679: the open verse-text conflicts per project, folded from its journal:
+  // repoPath -> { CODE: count } in canonical order, or null when unknown (D30).
+  conflictsByProject: {},
+  // #679: the open project's verse-text conflicts (readVerseConflicts), the
+  // team that owns their versions ({ me, names, actors }), and the review:
+  // { key, error } while the conflict review shows, else null.
+  verseConflicts: [],
+  team: null,
+  conflictReview: null,
   // Last OBS story per project; user-machine state, never project data.
   obsStoryByProject: {},
   // The stories edited most recently per project on this machine (#328): the
@@ -700,7 +710,12 @@ function setShared(state, a) {
   return { ...state, remoteByProject: { ...state.remoteByProject, [a.id]: a.shared } };
 }
 
-const CHECK_SESSION_CASES = { patchCheckSession, checkDecisionSaved, refreshCheckDraft, pickerToolEntry, alignSaveState, checkSaveState, patchUpgrade, setProgress, setShared, patchSt: patchSettingsForm };
+// #679: Home's conflict counts, merged per project for the same reason as setProgress.
+function setConflicts(state, a) {
+  return { ...state, conflictsByProject: { ...state.conflictsByProject, [a.id]: a.counts } };
+}
+
+const CHECK_SESSION_CASES = { patchCheckSession, checkDecisionSaved, refreshCheckDraft, pickerToolEntry, alignSaveState, checkSaveState, patchUpgrade, setProgress, setShared, setConflicts, patchSt: patchSettingsForm };
 
 function setSourceEntry(state, a) {
   if (a.value === undefined || a.value === null) {
@@ -2146,6 +2161,7 @@ async function performProjectOpen(ctx, repoPath, bookCode, view = 'read') {
         project: { ...summary, scriptDirection, textFont, repoPath },
         projectScope,
         view,
+        conflictReview: null,
         projectPins: null,
         projectPinsLoaded: false,
         projectPinsError: null,
@@ -2176,6 +2192,8 @@ async function performProjectOpen(ctx, repoPath, bookCode, view = 'read') {
     // failure never blocks opening. N1 (round 14): the detached chain binds
     // every dispatch to the originating store instance and repo path.
     const pinsReady = loadProjectPins({ store, repoPath, storeRef, stateRef, actions, dispatch });
+    // #679: the conflicts of the fold this open just made (Translate markers, Home count).
+    adoptConflicts({ store, repoPath, dispatch });
     // B12 — warm the install resolver BEFORE any book/source read, so
     // resolveReadPath's installedCache is populated on a cold open.
     await actions.resolutionContext().catch(() => {});
@@ -2414,6 +2432,80 @@ function dispatchResolutionDown({ resolutionError, seq, understandSeqRef, dispat
 export const __performLoadUnderstandForTests = performLoadUnderstand;
 /** Test hook (#290): the story Understand load is unit-tested on the fake rig. */
 export const __performLoadStoryUnderstandForTests = performLoadStoryUnderstand;
+
+/** #679: the number of verse-text conflicts per book, in the conflicts' canonical order. */
+export const conflictCounts = (conflicts) => {
+  const counts = {};
+  for (const c of conflicts) counts[c.book] = (counts[c.book] ?? 0) + 1;
+  return counts;
+};
+
+/** #679: the open project's conflicts and team, read from its store's fold,
+ * and the Home count of that project with them. */
+function adoptConflicts({ store, repoPath, dispatch }) {
+  const verseConflicts = store.readVerseConflicts();
+  dispatch({ type: 'set', patch: { verseConflicts, team: { me: store.actorId, ...store.readTeam() } } });
+  dispatch({ type: 'setConflicts', id: repoPath, counts: conflictCounts(verseConflicts) });
+  return verseConflicts;
+}
+
+/** #679: Home's conflict count of one Bible project, folded read-only from its
+ * journal (ProjectReader). Cached per project; the open and "Keep this
+ * version" replace the entry from the open store's fold. */
+async function performLoadConflicts({ project, stateRef, dispatch, conflictsGen, apiClient: api }) {
+  if (project.flavor === 'textStories') return;
+  if (project.id in stateRef.current.conflictsByProject) return;
+  const gen = conflictsGen.get(project.id) || 0;
+  const reader = new ProjectReader({ api });
+  let conflicts;
+  try {
+    await reader.open(project.id);
+    conflicts = await reader.readVerseConflicts();
+  } catch {
+    return; // D30: no entry is an unknown count; the next Home visit reads again
+  }
+  if ((conflictsGen.get(project.id) || 0) !== gen) return;
+  dispatch({ type: 'setConflicts', id: project.id, counts: conflicts ? conflictCounts(conflicts) : null });
+}
+
+/** #679 "Keep this version": every pending save is on disk first, then the
+ * store writes the one resolving verse edit. The open book is read again, so
+ * Translate shows the kept text and the next save starts from it. Returns
+ * false when a save failed (the save indicator shows it) or the write failed
+ * (the review shows it). */
+async function performKeepVersion(ctx, key, keptTs) {
+  const { storeRef, stateRef, schedulerRef, rawRef, saveRefs, dispatch, conflictsGen } = ctx;
+  if (!(await drainSchedulers(saveRefs))) return false;
+  const store = storeRef.current;
+  const repoPath = stateRef.current.project?.repoPath;
+  if (!store || !repoPath) return false;
+  try {
+    await store.resolveVerse(key, keptTs);
+  } catch (e) {
+    if (storeRef.current === store && stateRef.current.conflictReview)
+      dispatch({ type: 'set', patch: { conflictReview: { ...stateRef.current.conflictReview, error: failureText(e) } } });
+    return false;
+  }
+  if (storeRef.current !== store) return true;
+  conflictsGen.set(repoPath, (conflictsGen.get(repoPath) || 0) + 1);
+  const { book } = parseVerseKey(key);
+  if (stateRef.current.book === book) {
+    const { usfm: raw } = await store.readBook(book);
+    if (storeRef.current === store && stateRef.current.book === book) {
+      rawRef.current = raw;
+      schedulerRef.current?.loadBook(book, raw);
+      dispatch({ type: 'set', patch: { bookRaw: raw } });
+    }
+  }
+  adoptConflicts({ store, repoPath, dispatch });
+  const review = stateRef.current.conflictReview;
+  if (review) dispatch({ type: 'set', patch: { conflictReview: { ...review, error: null } } });
+  return true;
+}
+
+/** Test hooks (#679): the Home count read and the keep action run on the fake rig. */
+export const __performLoadConflictsForTests = performLoadConflicts;
+export const __performKeepVersionForTests = performKeepVersion;
 
 /** Home: lazy per-book draft progress (design shows a bar per tile). #573:
  * with `inPlace`, the re-read of the open story project's entry after an edit. */
@@ -3508,6 +3600,9 @@ export function AppProvider({ children }) {
   // titles and percentages, so that entry stays, stale, and is read again in place.
   const progressGen = new Map();
   const progressStale = new Set();
+  // #679: Home's conflict count of a project: a keep bumps it, so an older
+  // in-flight read cannot put back the count from before the keep.
+  const conflictsGen = new Map();
   function invalidateProgress(repoPath) {
     progressGen.set(repoPath, (progressGen.get(repoPath) || 0) + 1);
     const st = stateRef.current;
@@ -3727,7 +3822,7 @@ export function AppProvider({ children }) {
         if (!(await drainSchedulers(saveRefs))) return;
         const st = stateRef.current;
         const from = st.view;
-        dispatch({ type: 'set', patch: { view } });
+        dispatch({ type: 'set', patch: { view, conflictReview: null } });
         // #532: an open check reads the draft made while the user was away.
         if (view === 'check' && from !== 'check' && st.checkSession?.items)
           dispatch({ type: 'refreshCheckDraft', seq: st.checkSession.seq });
@@ -6318,6 +6413,45 @@ export function AppProvider({ children }) {
       // ---- Home: lazy per-book draft progress (design shows a bar per tile) ----
       loadProgress: (project) => performLoadProgress({ project, stateRef, dispatch, progressGen, progressStale, actions: a, apiClient: api }),
 
+      // ---- #679: the conflict review ----------------------------------------
+      /** Home: the number of open verse-text conflicts of a Bible project. */
+      loadConflicts: (project) => performLoadConflicts({ project, stateRef, dispatch, conflictsGen, apiClient: api }),
+
+      /** Show the conflict review in Translate, at `key` or at the first conflict.
+       * The list is read again from the store's fold. No conflict: nothing opens. */
+      openConflictReview: (key) => {
+        const st = stateRef.current;
+        const store = storeRef.current;
+        if (!store || !st.project) return;
+        const conflicts = adoptConflicts({ store, repoPath: st.project.repoPath, dispatch });
+        const at = conflicts.find((c) => c.key === key) ?? conflicts[0];
+        if (!at) return;
+        dispatch({ type: 'set', patch: { conflictReview: { key: at.key, error: null } } });
+      },
+
+      /** Home "Review": open the project in Translate at the book of its first
+       * conflict, then the review. */
+      openProjectConflicts: async (repoPath) => {
+        const counts = stateRef.current.conflictsByProject[repoPath];
+        const book = counts ? Object.keys(counts)[0] : undefined;
+        await a.openProject(repoPath, book, 'draft');
+        if (stateRef.current.project?.repoPath !== repoPath) return;
+        a.openConflictReview();
+      },
+
+      /** Previous / Next in the review. */
+      showConflict: (key) => {
+        if (!stateRef.current.conflictReview) return;
+        dispatch({ type: 'set', patch: { conflictReview: { key, error: null } } });
+      },
+
+      /** Leave the review. The conflicts that are open stay listed. */
+      closeConflictReview: () => dispatch({ type: 'set', patch: { conflictReview: null } }),
+
+      /** "Keep this version": the kept head `keptTs` replaces every version of `key`. */
+      keepVersion: (key, keptTs) =>
+        performKeepVersion({ storeRef, stateRef, schedulerRef, rawRef, saveRefs, dispatch, conflictsGen }, key, keptTs),
+
       /** #329: the frame in focus on the story screens; the place record follows it. */
       setStoryFrame: (frame) => {
         const n = Number(frame);
@@ -6804,7 +6938,7 @@ export function AppProvider({ children }) {
         alignSessionSeq++;
         dispatch({
           type: 'set',
-          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, storyNumbers: [], storyNumber: null, story: null, sourceStory: null, storyImages: {}, storyImageNote: null, storyLoading: false, storyError: null, storySource: null, saveState: 'saved', noteSaveState: 'saved', alignSaveState: 'saved', checkSaveState: 'saved', storySaveState: 'saved', storySaveError: null, commitError: null, projectPins: null, projectPinsLoaded: false, projectPinsError: null, preflight: null, preflightError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null, aligning: false, alignSession: null, alignVerse: null, alignIndex: null, alignSuggest: { status: 'off', verses: 0, boosted: false, error: null }, pickerProgress: null, toolPos: {}, upgrade: UPGRADE_IDLE },
+          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, verseConflicts: [], team: null, conflictReview: null, storyNumbers: [], storyNumber: null, story: null, sourceStory: null, storyImages: {}, storyImageNote: null, storyLoading: false, storyError: null, storySource: null, saveState: 'saved', noteSaveState: 'saved', alignSaveState: 'saved', checkSaveState: 'saved', storySaveState: 'saved', storySaveError: null, commitError: null, projectPins: null, projectPinsLoaded: false, projectPinsError: null, preflight: null, preflightError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null, aligning: false, alignSession: null, alignVerse: null, alignIndex: null, alignSuggest: { status: 'off', verses: 0, boosted: false, error: null }, pickerProgress: null, toolPos: {}, upgrade: UPGRADE_IDLE },
         });
         refreshProjects(); // re-order: the project just left goes to the top
         if (leaving && leavingStore) startLeaveCheckpoint({ store: leavingStore, repoPath: leaving.repoPath, stateRef, dispatch });
