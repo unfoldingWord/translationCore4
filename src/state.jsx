@@ -514,6 +514,10 @@ const initial = () => ({
   // #679: the open verse-text conflicts per project, folded from its journal:
   // repoPath -> { CODE: count } in canonical order, or null when unknown (D30).
   conflictsByProject: {},
+  // #680: the team of the same read-only fold, per project that is not open:
+  // repoPath -> { names, actors } (ProjectReader.readConflictsAndTeam). The
+  // sync result labels teammates by it; the open project's team is `team`.
+  teamByProject: {},
   // #678: the project whose "Sync with Door43" runs (repoPath), or null; one
   // sync runs at a time. `syncResult`: the result of the last sync, which Home
   // shows: { repoPath, name, report, missingPins }. Never stored.
@@ -718,7 +722,9 @@ function setShared(state, a) {
 
 // #679: Home's conflict counts, merged per project for the same reason as setProgress.
 function setConflicts(state, a) {
-  return { ...state, conflictsByProject: { ...state.conflictsByProject, [a.id]: a.counts } };
+  const next = { ...state, conflictsByProject: { ...state.conflictsByProject, [a.id]: a.counts } };
+  if (a.team === undefined) return next;
+  return { ...next, teamByProject: { ...state.teamByProject, [a.id]: a.team } };
 }
 
 const CHECK_SESSION_CASES = { patchCheckSession, checkDecisionSaved, refreshCheckDraft, pickerToolEntry, alignSaveState, checkSaveState, patchUpgrade, setProgress, setShared, setConflicts, patchSt: patchSettingsForm };
@@ -2496,15 +2502,15 @@ async function performLoadConflicts({ project, stateRef, dispatch, conflictsGen,
   if (project.id in stateRef.current.conflictsByProject) return;
   const gen = conflictsGen.get(project.id) || 0;
   const reader = new ProjectReader({ api });
-  let conflicts;
+  let read;
   try {
     await reader.open(project.id);
-    conflicts = await reader.readVerseConflicts();
+    read = await reader.readConflictsAndTeam();
   } catch {
     return; // D30: no entry is an unknown count; the next Home visit reads again
   }
   if ((conflictsGen.get(project.id) || 0) !== gen) return;
-  dispatch({ type: 'setConflicts', id: project.id, counts: conflicts ? conflictCounts(conflicts) : null });
+  dispatch({ type: 'setConflicts', id: project.id, counts: read ? conflictCounts(read.conflicts) : null, team: read ? read.team : null });
 }
 
 /** #679 "Keep this version": every pending save is on disk first, then the
@@ -6143,7 +6149,9 @@ export function AppProvider({ children }) {
         conflictsGen.set(repoPath, (conflictsGen.get(repoPath) || 0) + 1);
         const conflicts = { ...stateRef.current.conflictsByProject };
         delete conflicts[repoPath];
-        dispatch({ type: 'set', patch: { conflictsByProject: conflicts } });
+        const teams = { ...stateRef.current.teamByProject };
+        delete teams[repoPath];
+        dispatch({ type: 'set', patch: { conflictsByProject: conflicts, teamByProject: teams } });
         invalidateProgress(repoPath);
         const st = stateRef.current;
         if (st.project?.id === repoPath) await a.openProject(repoPath, st.book ?? undefined, st.view);

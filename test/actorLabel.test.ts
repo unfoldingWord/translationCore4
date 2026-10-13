@@ -18,4 +18,10 @@ describe('actorLabel', () => {
     expect(actorLabel('actor-a', names, 'actor-b', ACTORS)).toBe('Teammate 1');
     expect(actorLabel('actor-d', names, 'actor-b', ACTORS)).toBe('Teammate 2');
   });
+
+  it('the three-argument contract of #680: a name, else "Teammate 1", and "Mine"', () => {
+    expect(actorLabel('actor-c', { 'actor-c': 'door43-c' }, 'actor-b')).toBe('door43-c');
+    expect(actorLabel('actor-a', {}, 'actor-b')).toBe('Teammate 1');
+    expect(actorLabel('actor-b', {}, 'actor-b')).toBe('Mine');
+  });
 });
