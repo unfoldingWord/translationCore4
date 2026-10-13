@@ -50,6 +50,38 @@ describe('#677 — open a project from Door43, the screens', () => {
     expect(actions.patchOd).toHaveBeenLastCalledWith({ repo: 'anna_k/other', error: null });
   });
 
+  it('a repository name with a dot gives a valid default name', () => {
+    state.od = od({ repo: '', name: '' });
+    render(<OpenFromDoor43 />);
+    fireEvent.change(screen.getByTestId('open-door43-repo'), { target: { value: 'anna_k/en_ult.v2' } });
+    expect(actions.patchOd).toHaveBeenLastCalledWith({ repo: 'anna_k/en_ult.v2', name: 'en_ult-v2', error: null });
+  });
+
+  it('while the open runs, Cancel and the close button are off, so a refusal always has its dialog', () => {
+    state.od = od({ busy: true });
+    render(<OpenFromDoor43 />);
+    expect((screen.getByTestId('open-door43-cancel') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByTitle(t('common.close'))).toBeNull();
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+    expect(actions.closeModal).not.toHaveBeenCalled();
+    // control: when the open is not running, Escape and Cancel each close the dialog
+    cleanup();
+    state.od = od();
+    render(<OpenFromDoor43 />);
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+    expect(actions.closeModal).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByTestId('open-door43-cancel'));
+    expect(actions.closeModal).toHaveBeenCalledTimes(2);
+  });
+
+  it('a repository with no tC4 journal shows its own sentence and code', () => {
+    state.od = od({ error: { code: 'open-door43.no-journal', reason: 'no journal' } });
+    render(<OpenFromDoor43 />);
+    const callout = screen.getByTestId('open-door43-refused');
+    expect(callout.getAttribute('data-code')).toBe('open-door43.no-journal');
+    expect(callout.textContent).toContain(t('openDoor43.refused.noJournal'));
+  });
+
   it('Open project runs the open; a repository on another server cannot be opened', () => {
     render(<OpenFromDoor43 />);
     const submit = screen.getByTestId('open-door43-submit') as HTMLButtonElement;

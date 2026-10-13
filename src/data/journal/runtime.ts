@@ -251,7 +251,7 @@ export const normalizeEvent = normalizeEventRef as (event: JournalEvent) => Jour
 // throws is a Refusal carrying one code from REFUSAL_CODES.
 export const REFUSAL_CODES = REFUSAL_CODES_REF as Readonly<Record<RefusalCode, string | null>>;
 export type RefusalCode = keyof typeof REFUSAL_CODES_REF;
-export type ReportOp = 'open' | 'checkpoint' | 'seed' | 'reconcile' | 'pin-complete' | 'export' | 'import' | 'share' | 'sync';
+export type ReportOp = 'open' | 'checkpoint' | 'seed' | 'reconcile' | 'pin-complete' | 'export' | 'import' | 'share' | 'sync' | 'open-door43';
 
 export interface Report<F extends Record<string, unknown> = Record<string, unknown>> {
   op: ReportOp;

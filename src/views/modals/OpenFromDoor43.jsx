@@ -7,12 +7,16 @@
 import React from 'react';
 import { useApp, door43 } from '../../state.jsx';
 import { t } from '../../i18n';
-import { openRepoPathOf, openSourceOf, repoPathInUse } from '../../data/share/syncOperation';
+import { openDefaultName, openRepoPathOf, openSourceOf, repoPathInUse } from '../../data/share/syncOperation';
 import { Modal, Field, Input, Button, Callout, Text } from '../../ds/index.js';
 
 const NAME_IN_USE = 'open-door43.name-exists';
 /** The body sentence of a refusal: one for the G2 and OBS codes, one for the rest. */
-const REFUSAL_TEXT = { 'sync.incoming-invalid': 'openDoor43.refused.invalid', 'sync.obs-unsupported': 'openDoor43.refused.obs' };
+const REFUSAL_TEXT = {
+  'sync.incoming-invalid': 'openDoor43.refused.invalid',
+  'sync.obs-unsupported': 'openDoor43.refused.obs',
+  'open-door43.no-journal': 'openDoor43.refused.noJournal',
+};
 
 /** The error under the project name: not a folder name, or a name in use. */
 function nameErrorOf(od, projects) {
@@ -55,14 +59,15 @@ export default function OpenFromDoor43() {
   const refusal = od.error && od.error.code !== NAME_IN_USE ? od.error : null;
   const cantOpen = !source || !od.name.trim() || !!nameError || od.busy;
   const onRepo = (repo) => {
-    const named = openSourceOf(repo, door43.server, dev)?.repo;
+    const from = openSourceOf(repo, door43.server, dev)?.repo;
+    const named = from === undefined ? undefined : openDefaultName(from);
     actions.patchOd(od.named ? { repo, error: null } : { repo, name: named ?? '', error: null });
   };
   return (
     <Modal title={t('openDoor43.title')} subtitle={t('openDoor43.subtitle')} data-testid="open-door43-modal" width={520}
-      closeLabel={t('common.close')} onClose={actions.closeModal}
+      closeLabel={t('common.close')} onClose={od.busy ? undefined : actions.closeModal}
       footer={<>
-        <Button variant="secondary" onClick={actions.closeModal} data-testid="open-door43-cancel">{t('openDoor43.cancel')}</Button>
+        <Button variant="secondary" disabled={od.busy} onClick={actions.closeModal} data-testid="open-door43-cancel">{t('openDoor43.cancel')}</Button>
         <Button variant="ocean" disabled={cantOpen} aria-busy={od.busy || undefined} onClick={actions.openDoor43Run} data-testid="open-door43-submit">
           {t(od.busy ? 'openDoor43.opening' : 'openDoor43.open')}
         </Button>

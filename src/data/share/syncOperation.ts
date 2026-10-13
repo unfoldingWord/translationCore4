@@ -43,6 +43,8 @@ import { segmentName, validateActorDoc, validateSegment, type JournalEvent } fro
 import { verifyProjectAgainstJournal } from '../journal/verify';
 import {
   deleteIfPresent,
+  openPathsOf,
+  type OpenPhase,
   lastSegmentName,
   previousCopyKey,
   runSwap,
@@ -189,11 +191,16 @@ export async function cloneProject(
 // ---- Open a project from Door43 (#677; layer 4 of epic #24) -----------------
 // A translator on another computer starts from the same project: a full copy of
 // Door43 `main` by `cloneProject`, into a scratch path that Home never lists
-// (`_local_/_archive_/`). Every journal file of the copy passes the one validator
-// (G2); then one move puts it at `_local_/_local_/<name>`, the only place the app
-// lists projects. A refusal deletes the scratch copy: nothing is written. The new
-// path gives a new actor id (identity.ts), and the clone keeps `origin`, so the
-// card reads "Sync with Door43" (#678: the shared state is `origin`, D84 point 1).
+// (`_local_/_archive_/`). The copy must hold a tC4 journal, and every journal
+// file passes the one validator (G2); then a copy and a delete put it at
+// `_local_/_local_/<name>`, the only place the app lists projects. A refusal
+// deletes the scratch copy: nothing is written. The new path gives a new actor id
+// (identity.ts), and the clone keeps `origin`, so the card reads "Sync with
+// Door43" (#678: the shared state is `origin`, D84 point 1).
+// The open writes an ops record (`op: 'open-door43'`) and saves each phase before
+// its step, so the next start can clean up after a kill. The phases and their
+// recovery rules are in opsLog.ts (`resolveOpen`). No open starts until the ops
+// log loads at this start (`opslog.not-loaded`).
 // Out of scope: private repositories, a branch choice, OBS projects (D98).
 
 const APP_ORG = '_local_/_local_';
@@ -220,6 +227,11 @@ export const openRepoPathOf = (name: string): string | null => {
   }
 };
 
+/** The default project name of a repository name: each run of signs that a
+ * project name cannot hold becomes one `-`, and no `-` stays at either end. */
+export const openDefaultName = (repo: string): string =>
+  repo.replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '');
+
 /** Is `repoPath` in the listing already? Compared without case: the disk of
  * macOS and Windows holds one folder for two names that differ only in case. */
 export const repoPathInUse = (listing: string[], repoPath: string): boolean =>
@@ -229,63 +241,107 @@ export interface OpenDeps {
   /** The platform. The caller passes `getNetEnabled` as the D95 barrier, and on
    * the rig a `cloneRepo` from `standInCloneRepo`, as for the sync. */
   api: ServerApi;
+  /** The ops log the open writes its record and its phases to. */
+  ops?: OpsRecorder;
 }
 
-/** The order of the dialog's "Open project": the name check is local and comes
- * first; then `ask` (the D95 question: the caller passes its `internetTask('open', …)`)
- * runs the open after a yes. Not now answers undefined, and nothing is sent or written. */
+/** The checks before the internet: the ops log is loaded, and the name is free. */
+async function openChecks(deps: OpenDeps, repoPath: string | null): Promise<void> {
+  if (deps.ops?.recovered === false)
+    throw new Refusal('opslog.not-loaded', 'the ops log did not load at this start; restart the app to open a project from Door43');
+  if (repoPath && repoPathInUse(await deps.api.listLocalRepos(), repoPath))
+    throw new Refusal('open-door43.name-exists', `a project at ${repoPath} is on this computer already`, { repoPath });
+}
+
+/** The order of the dialog's "Open project": the local checks come first; then
+ * `ask` (the D95 question: the caller passes its `internetTask('open', …)`) runs
+ * the open after a yes. Not now answers undefined, and nothing is sent or written. */
 export async function openFromDoor43Asking(
   deps: OpenDeps & { ask: (run: () => Promise<{ repoPath: string }>) => Promise<{ repoPath: string } | undefined> },
   request: { source: CloneSource; name: string },
 ): Promise<{ repoPath: string } | undefined> {
-  const repoPath = openRepoPathOf(request.name);
-  if (repoPath && repoPathInUse(await deps.api.listLocalRepos(), repoPath))
-    throw new Refusal('open-door43.name-exists', `a project at ${repoPath} is on this computer already`, { repoPath });
+  await openChecks(deps, openRepoPathOf(request.name));
   return deps.ask(() => openFromDoor43(deps, request));
+}
+
+/** The checks of the copy at `scratch`. Throws a Refusal: `sync.obs-unsupported`,
+ * `open-door43.no-journal`, or `sync.incoming-invalid` (G2). */
+async function checkOpenCopy(api: ServerApi, scratch: string, repoPath: string): Promise<void> {
+  // D98: Bible projects only
+  if (isObsMetadata(await api.getMetadataRaw(scratch)))
+    throw new Refusal('sync.obs-unsupported', 'only Bible projects open from Door43 (D98)', { repoPath });
+  // a tC4 project holds a journal; another repository is an import (#365)
+  const journal = await readFiles(api, scratch, (p) => p.startsWith(JOURNAL_PREFIX), false);
+  if (![...journal.keys()].some((p) => /^checking\/journal\/[^/]+\/segments\//.test(p)))
+    throw new Refusal('open-door43.no-journal', 'the repository holds no tC4 journal, so it is not a tC4 project', { repoPath });
+  // G2: every journal file passes the one validator, or nothing is written
+  const failures: Array<{ path: string; reason: string }> = [];
+  for (const [ipath, bytes] of journal) {
+    const verdict = await checkJournalFile({ validateSegment, validateActorDoc, segmentName }, ipath, bytes);
+    if (!verdict.ok) failures.push({ path: ipath, reason: verdict.reason });
+  }
+  if (failures.length)
+    throw new Refusal('sync.incoming-invalid', `${failures.length} journal file(s) on Door43 fail the validator`, { failures });
 }
 
 /** Open a project from Door43: put a full copy of `source` at
  * `_local_/_local_/<name>` and answer its path. Throws a Refusal, and then
- * nothing is written: `open-door43.name-exists` (checked first, before the internet),
- * `sync.offline`, the `cloneProject` codes, `sync.obs-unsupported`, or
- * `sync.incoming-invalid` (G2, with each failing path in `failures`). */
+ * nothing is written: `opslog.not-loaded` and `open-door43.name-exists` (checked
+ * first, before the internet), `sync.offline`, the `cloneProject` codes,
+ * `sync.obs-unsupported`, `open-door43.no-journal`, or `sync.incoming-invalid`
+ * (G2, with each failing path in `failures`). */
 export async function openFromDoor43(deps: OpenDeps, request: { source: CloneSource; name: string }): Promise<{ repoPath: string }> {
   const { api } = deps;
   const repoPath = openRepoPathOf(request.name);
   if (!repoPath) throw new Error(`the project name ${JSON.stringify(request.name)} is not a folder name`);
-  if (repoPathInUse(await api.listLocalRepos(), repoPath))
-    throw new Refusal('open-door43.name-exists', `a project at ${repoPath} is on this computer already`, { repoPath });
+  await openChecks(deps, repoPath);
   if (!(await api.getNetEnabled())) throw new Refusal('sync.offline', NO_CONSENT);
-  const scratch = `_local_/_archive_/tc4-open--${repoPath.split('/')[2]}`;
-  await deleteIfPresent(api, scratch);
+  const { scratch } = openPathsOf(repoPath);
+  const startedAt = new Date().toISOString();
+  const source = `${request.source.host}/${request.source.org}/${request.source.repo}`;
+  const record = await deps.ops?.begin('open-door43', { repoPath, scratch, source });
+  /** Save `phase` before its step; a phase that is not saved stops the open before the step. */
+  const phase = async (name: OpenPhase, facts: Record<string, unknown> = {}): Promise<void> => {
+    if ((await (record?.note({ phase: name, ...facts }) ?? true)) === false)
+      throw new Error(`the ops log did not save the phase ${name}; the open stopped before it`);
+  };
   try {
-    await cloneProject(api, request.source, scratch);
-    // D98: Bible projects only
-    if (isObsMetadata(await api.getMetadataRaw(scratch)))
-      throw new Refusal('sync.obs-unsupported', 'only Bible projects open from Door43 (D98)', { repoPath });
-    // G2: every journal file passes the one validator, or nothing is written
-    const journal = await readFiles(api, scratch, (p) => p.startsWith(JOURNAL_PREFIX), false);
-    const failures: Array<{ path: string; reason: string }> = [];
-    for (const [ipath, bytes] of journal) {
-      const verdict = await checkJournalFile({ validateSegment, validateActorDoc, segmentName }, ipath, bytes);
-      if (!verdict.ok) failures.push({ path: ipath, reason: verdict.reason });
-    }
-    if (failures.length)
-      throw new Refusal('sync.incoming-invalid', `${failures.length} journal file(s) on Door43 fail the validator`, { failures });
-    // the one move; a project made at this path meanwhile refuses with the name code
-    if (repoPathInUse(await api.listLocalRepos(), repoPath))
-      throw new Refusal('open-door43.name-exists', `a project at ${repoPath} is on this computer already`, { repoPath });
     try {
-      await api.copyRepo(scratch, repoPath, true);
+      await phase('start');
+      await deleteIfPresent(api, scratch);
+      await cloneProject(api, request.source, scratch, (clonePath) => phase('clone', { clonePath }).then(() => true, () => false));
+      await phase('check');
+      await checkOpenCopy(api, scratch, repoPath);
+      // a project made at this path meanwhile refuses with the name code
+      if (repoPathInUse(await api.listLocalRepos(), repoPath))
+        throw new Refusal('open-door43.name-exists', `a project at ${repoPath} is on this computer already`, { repoPath });
+      await phase('move.copy');
+      try {
+        await api.copyRepo(scratch, repoPath);
+      } catch (error) {
+        // The listing above proved the path free, so a part copy there is this open's;
+        // a target that is there already belongs to someone else and stays.
+        const facts = failureOf(error);
+        if (!/already exists/i.test(facts.reason)) await deleteIfPresent(api, repoPath).catch(() => {});
+        throw new Refusal('sync.move-failed', `the copy did not move to ${repoPath}`, { repoPath, ...facts });
+      }
     } catch (error) {
-      throw new Refusal('sync.move-failed', `the copy did not move to ${repoPath}`, { repoPath, ...failureOf(error) });
+      await deleteIfPresent(api, scratch).catch(() => {});
+      throw error;
     }
   } catch (error) {
-    await deleteIfPresent(api, scratch).catch(() => {});
+    await record?.close(failedReport('open-door43', startedAt, new Date().toISOString(), error, { repoPath, source }));
     throw error;
   }
+  // The project is complete at its path, so the open succeeded. The scratch copy
+  // goes; if this phase or this delete fails, only the scratch copy is left, and
+  // the next start (this phase) or the next open of the name deletes it.
+  await record?.note({ phase: 'move.delete-scratch' });
+  await deleteIfPresent(api, scratch).catch(() => {});
+  await record?.close(okReport('open-door43', startedAt, new Date().toISOString(), { repoPath, source }));
   return { repoPath };
 }
+
 
 /** The `resolve` the core reads: the §5.2 resource record of one (tool, book),
  * resolved over the folded pins and the installed resources (D30). */

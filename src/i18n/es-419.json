@@ -1009,5 +1009,7 @@
   "openDoor43.refused.other": "tC4 no pudo obtener el proyecto desde Door43. Asegúrese de que el repositorio sea público y de que su nombre sea correcto. No se escribió nada en esta computadora.",
   "openDoor43.nothingWritten": "No se escribió nada.",
   "openDoor43.done": "{name} se abrió desde Door43",
-  "refusal.open-door43.name-exists": "Ya hay un proyecto con este nombre en esta computadora. Elija otro nombre. No se escribió nada."
+  "refusal.open-door43.name-exists": "Ya hay un proyecto con este nombre en esta computadora. Elija otro nombre. No se escribió nada.",
+  "openDoor43.refused.noJournal": "Este repositorio no es un proyecto de tC4: no tiene un diario de tC4. Para traer sus archivos, use Importar un proyecto. No se escribió nada en esta computadora.",
+  "refusal.open-door43.no-journal": "Este repositorio no es un proyecto de tC4, por eso no se abrió. Use Importar un proyecto para sus archivos. No se escribió nada."
 }

@@ -8,7 +8,8 @@ import { JournalingStore, forgetProjectQueues } from '../../src/data/journal/jou
 import { forgetSharedClocks } from '../../src/data/journal/journalStore';
 import { actorIdFor } from '../../src/data/journal/identity';
 import { OpsLog, serialSettingsWriter } from '../../src/data/journal/opsLog';
-import { openFromDoor43, openFromDoor43Asking, openRepoPathOf, openSourceOf, sync, type CloneSource } from '../../src/data/share/syncOperation';
+import { reportError } from '../../src/data/journal/runtime';
+import { openDefaultName, openFromDoor43, openFromDoor43Asking, openRepoPathOf, openSourceOf, sync, type CloneSource } from '../../src/data/share/syncOperation';
 import { journalingRig, memKv, tickingNow, type JournalingRig } from '../helpers/journalingRig';
 
 const REPO = '_local_/_local_/prueba';
@@ -206,5 +207,166 @@ describe('#677 the dialog fields', () => {
   it('a project name is one folder name of letters, numbers, hyphens and underscores', () => {
     expect(openRepoPathOf('titus-team-draft')).toBe('_local_/_local_/titus-team-draft');
     for (const bad of ['', ' ', 'a b', '../x', 'a/b', '.hidden', 'x.y', 'ñandú']) expect(openRepoPathOf(bad), bad).toBeNull();
+  });
+
+  it('the default name of a valid repository name is always a valid project name', () => {
+    expect(openDefaultName('titus-team-draft')).toBe('titus-team-draft');
+    expect(openDefaultName('en_ult.v2')).toBe('en_ult-v2');
+    expect(openDefaultName('.hidden.repo')).toBe('hidden-repo');
+    for (const repo of ['titus-team-draft', 'en_ult.v2', '.hidden.repo', 'a..b', 'x.y.z', 'repo-1.0'])
+      expect(openRepoPathOf(openDefaultName(repo)), repo).not.toBeNull();
+  });
+});
+
+describe('#677 a repository that is not a tC4 project', () => {
+  it('a repository with no tC4 journal refuses open-door43.no-journal, and nothing is written', async () => {
+    const w = await world();
+    const remote = w.rig.remotes.get(URL_)!;
+    for (const p of [...remote.files.keys()]) if (p.startsWith('checking/journal/')) remote.files.delete(p);
+    const before = snapshot(w.rig);
+    const refusal = await refusalOf(openFromDoor43({ api: w.api }, { source: SOURCE, name: 'prueba_b' }));
+    expect(refusal.code).toBe('open-door43.no-journal');
+    expect(snapshot(w.rig)).toEqual(before);
+  });
+});
+
+// ---- crash recovery of the open (G8 class): the ops log records each phase ----
+
+/** The client-settings document; `hang` makes every later write never settle (a kill). */
+function settingsDoc() {
+  let doc: Record<string, unknown> = {};
+  let hung = false;
+  const read = async () => structuredClone(doc);
+  const write = async (next: Record<string, unknown>) => {
+    if (hung) return new Promise<void>(() => {});
+    doc = structuredClone(next);
+  };
+  return { read, write, get: () => doc, hang: () => (hung = true) };
+}
+const startApp = async (settings: ReturnType<typeof settingsDoc>, api: ServerApi) => {
+  const ops = new OpsLog({ read: settings.read, update: serialSettingsWriter(settings.read, settings.write) });
+  const resolved = await ops.recover(api);
+  return { ops, resolved };
+};
+/** Server calls that make or move or delete a folder. */
+const folderCall = (route: string) => /^\/api\/git\/(clone-repo|copy|delete)\//.test(route);
+
+describe('#677 crash recovery of the open (G8 class)', () => {
+  /** Run one open and kill it after (or, with `inside`, during) the `k`-th folder call:
+   * every later request and settings write never settles. A kill inside a copy
+   * leaves half of the source's files at the target; inside a delete, half of the files. */
+  async function killOpen(k: number, inside = false) {
+    const w = await world();
+    const settings = settingsDoc();
+    const { ops } = await startApp(settings, w.api);
+    let seen = 0;
+    let killed = false;
+    const dying = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (killed) return new Promise<Response>(() => {});
+      const url = new URL(String(input));
+      if (inside && folderCall(url.pathname) && seen + 1 === k) {
+        killed = true;
+        settings.hang();
+        const repo = url.pathname.split('/').slice(4, 7).map(decodeURIComponent).join('/');
+        const source = w.rig.repos.get(repo);
+        const half = <T,>(m: Map<string, T>) => [...m].slice(0, Math.ceil(m.size / 2));
+        if (source && url.pathname.includes('/git/copy/'))
+          w.rig.repos.set(url.searchParams.get('target_path')!, { files: new Map(half(source.files)), meta: {}, commits: [], dirty: new Set() });
+        if (source && url.pathname.includes('/git/delete/')) source.files = new Map(half(source.files));
+        return new Promise<Response>(() => {});
+      }
+      const response = await w.rig.fetchFn(input, init);
+      if (folderCall(url.pathname) && (seen += 1) === k) {
+        killed = true;
+        settings.hang();
+      }
+      return response;
+    }) as typeof fetch });
+    const run = openFromDoor43({ api: dying, ops }, { source: SOURCE, name: 'prueba_b' });
+    const done = await Promise.race([run.then(() => true, () => true), new Promise((r) => setTimeout(() => r(false), 200))]);
+    return { w, settings, killed, done };
+  }
+
+  /** The next start over the stored document; then the state of the folders. */
+  async function restart(w: World, settings: ReturnType<typeof settingsDoc>) {
+    const stored = settingsDoc();
+    await stored.write(structuredClone(settings.get()));
+    const { ops, resolved } = await startApp(stored, w.api);
+    return { ops, resolved };
+  }
+
+  /** After recovery: no clone and no scratch copy; the project is whole, or not there. */
+  function expectWholeOrNone(w: World): boolean {
+    expect(w.rig.repos.has(CLONE_PATH)).toBe(false);
+    expect(w.rig.repos.has(SCRATCH)).toBe(false);
+    const opened = w.rig.repos.get(OPENED);
+    if (!opened) return false;
+    expect(opened.files).toEqual(w.rig.remotes.get(URL_)!.files);
+    return true;
+  }
+
+  it('[G8] a kill after the clone: the next start deletes the clone path and the scratch copy, and the same repository opens again', async () => {
+    const dry = await killOpen(Infinity);
+    expect(dry.done).toBe(true);
+    const cloneCall = dry.w.rig.log.filter((l) => folderCall(l.route)).findIndex((l) => l.route.startsWith('/api/git/clone-repo/')) + 1;
+    expect(cloneCall).toBeGreaterThan(0);
+    const { w, settings, killed, done } = await killOpen(cloneCall);
+    expect([killed, done]).toEqual([true, false]);
+    expect(w.rig.repos.has(CLONE_PATH)).toBe(true);
+    const { ops, resolved } = await restart(w, settings);
+    expect(resolved.map((e) => e.op)).toEqual(['open-door43']);
+    expect(reportError(resolved[0].report)).toBeNull();
+    expect(resolved[0].report).toMatchObject({ ok: false, facts: { phase: 'clone', rolledBack: true } });
+    expect(expectWholeOrNone(w)).toBe(false);
+    // the same repository opens again: no sync.clone-path-exists
+    expect(await openFromDoor43({ api: w.api, ops }, { source: SOURCE, name: 'prueba_b' })).toEqual({ repoPath: OPENED });
+    expect(expectWholeOrNone(w)).toBe(true);
+  });
+
+  it('[G8] kill sweep after and inside each folder call: the project is whole or not there, and nothing is left behind', async () => {
+    const dry = await killOpen(Infinity);
+    const total = dry.w.rig.log.filter((l) => folderCall(l.route)).length;
+    expect(total).toBeGreaterThanOrEqual(3); // the stale-scratch delete, the clone, the moves
+    let whole = 0;
+    let none = 0;
+    for (const inside of [false, true])
+      for (let k = 1; k <= total; k += 1) {
+        const { w, settings, killed } = await killOpen(k, inside);
+        expect(killed, `kill ${k} inside=${inside}`).toBe(true);
+        const { ops, resolved } = await restart(w, settings);
+        for (const entry of resolved) expect(reportError(entry.report), `kill ${k}`).toBeNull();
+        if (expectWholeOrNone(w)) whole += 1;
+        else {
+          none += 1;
+          // nothing blocks a new open of the same repository
+          expect(await openFromDoor43({ api: w.api, ops }, { source: SOURCE, name: 'prueba_b' }), `kill ${k} inside=${inside}`).toEqual({ repoPath: OPENED });
+          expect(expectWholeOrNone(w)).toBe(true);
+        }
+      }
+    expect(whole).toBeGreaterThanOrEqual(1);
+    expect(none).toBeGreaterThanOrEqual(1);
+  });
+
+  it('the open is refused until the ops log has loaded at this start (opslog.not-loaded)', async () => {
+    const w = await world();
+    const settings = settingsDoc();
+    const ops = new OpsLog({ read: settings.read, update: serialSettingsWriter(settings.read, settings.write) });
+    const before = snapshot(w.rig);
+    const refusal = await refusalOf(openFromDoor43({ api: w.api, ops }, { source: SOURCE, name: 'prueba_b' }));
+    expect(refusal.code).toBe('opslog.not-loaded');
+    const asked = await refusalOf(openFromDoor43Asking({ api: w.api, ops, ask: async (run) => run() }, { source: SOURCE, name: 'prueba_b' }));
+    expect(asked.code).toBe('opslog.not-loaded');
+    expect(snapshot(w.rig)).toEqual(before);
+  });
+
+  it('an ok open and a refused open each close their record', async () => {
+    const w = await world();
+    const settings = settingsDoc();
+    const { ops } = await startApp(settings, w.api);
+    await openFromDoor43({ api: w.api, ops }, { source: SOURCE, name: 'prueba_b' });
+    await refusalOf(openFromDoor43({ api: w.api, ops }, { source: { ...SOURCE, repo: 'missing' }, name: 'prueba_c' }));
+    const entries = ops.entries.filter((e) => e.op === 'open-door43');
+    expect(entries.map((e) => [e.report?.ok, e.report?.code])).toEqual([[true, undefined], [false, 'sync.clone-failed']]);
+    for (const e of entries) expect(reportError(e.report)).toBeNull();
   });
 });

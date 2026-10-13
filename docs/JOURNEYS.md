@@ -314,11 +314,15 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   because identity is per path (D53(c)). Its card shows "Sync with Door43" (#678). The first sync
   needs no other step.
 - MUST NOT: write anything when one journal file on Door43 fails the validator (G2,
-  `sync.incoming-invalid`), when the name is in use (`open-door43.name-exists`), or when the
-  repository holds an OBS project (`sync.obs-unsupported`, D98). Round 1 has no branch choice and
-  no private repository (epic #24).
+  `sync.incoming-invalid`), when the name is in use (`open-door43.name-exists`), when the
+  repository has no tC4 journal (`open-door43.no-journal`; use Import, #365), or when the
+  repository holds an OBS project (`sync.obs-unsupported`, D98). MUST NOT leave a clone or a part
+  project after a stop: the ops log records each phase, and the next start cleans up
+  (`src/data/journal/opsLog.ts`). Round 1 has no branch choice and no private repository
+  (epic #24).
 - Proof: `e2e/j17-open-from-door43.spec.ts` (`@J17`), on the rig against the #673 stand-in. The
-  refusals and the internet question: `test/sync/openFromDoor43.test.ts`. Owner: built (#677).
+  refusals, the internet question and the crash recovery: `test/sync/openFromDoor43.test.ts`.
+  Owner: built (#677).
 
 ### J19 (Phase 2)
 

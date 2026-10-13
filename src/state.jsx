@@ -6363,28 +6363,31 @@ export function AppProvider({ children }) {
         a.patchOd({ busy: true, error: null });
         try {
           const opened = await openFromDoor43Asking(
-            { api: door43TransportApi(dev), ask: (run) => a.internetTask('open', run) },
+            { api: door43TransportApi(dev), ops: opsLog, ask: (run) => a.internetTask('open', run) },
             { source, name },
           );
-          if (!opened) {
-            if (stateRef.current.od) a.patchOd({ busy: false });
-            return;
-          }
-          // The project exists now: a failed read after this shows on Home, never as a refusal.
-          markUsed(opened.repoPath);
-          try {
-            await refreshProjects();
-            // The card reads `origin` now, so it shows "Sync with Door43" (#678).
-            await a.loadShared({ id: opened.repoPath }, true);
-          } catch (e) {
-            console.error(`open from Door43: the read after the open failed: ${String(e?.message || e)}`);
-          }
-          // Close only this dialog: the user may have opened another one meanwhile.
-          if (stateRef.current.modal === 'openDoor43') a.closeModal();
-          dispatch({ type: 'set', patch: { importToast: { key: 'openDoor43.done', name } } });
+          if (opened) await a.afterOpenFromDoor43(opened.repoPath, name);
+          else a.patchOd({ busy: false });
         } catch (e) {
-          if (stateRef.current.od) a.patchOd({ busy: false, error: { code: refusalCodeOf(e), reason: String(e?.reason || e?.message || e) } });
+          // Cancel is off while the open runs, so the dialog is there to show the refusal.
+          const error = { code: refusalCodeOf(e), reason: String(e?.reason || e?.message || e) };
+          if (stateRef.current.od) a.patchOd({ busy: false, error });
+          else console.error(`open from Door43 refused: ${error.code ?? error.reason}`);
         }
+      },
+      /** After an open from Door43: the project exists, so a failed read here is
+       * logged, never shown as a refusal. Home lists the card, and the card reads
+       * `origin`, so it shows "Sync with Door43" (#678). */
+      afterOpenFromDoor43: async (repoPath, name) => {
+        markUsed(repoPath);
+        try {
+          await refreshProjects();
+          await a.loadShared({ id: repoPath }, true);
+        } catch (e) {
+          console.error(`open from Door43: the read after the open failed: ${String(e?.message || e)}`);
+        }
+        if (stateRef.current.modal === 'openDoor43') a.closeModal();
+        dispatch({ type: 'set', patch: { importToast: { key: 'openDoor43.done', name } } });
       },
 
       createObs: async () => {

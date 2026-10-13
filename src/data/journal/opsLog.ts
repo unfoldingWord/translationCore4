@@ -192,6 +192,36 @@ export const syncPathsOf = (repoPath: string): SwapPaths => {
   return { repoPath, scratch: `_local_/_archive_/tc4-sync--${name}`, previous: `_local_/_archive_/tc4-previous--${name}` };
 };
 
+// ---- the open from Door43 (issue #677) -----------------------------------------
+// The open record (`op: 'open-door43'`) names its phase in `facts.phase`, saved
+// BEFORE the step it names, like the sync. Three folders take part: the fixed
+// clone path `clonePath`, the `scratch` copy (`_local_/_archive_/`, never listed),
+// and the new project `repoPath`, which was not there when the open began. The
+// recovery rule of each phase:
+//   start                delete a stale scratch copy.     Recovery: delete the scratch copy.
+//   clone                clone, then move to scratch.     Recovery: delete the clone path
+//                        (cloneProject proved it absent before this phase, so it is the
+//                        open's) and the scratch copy.
+//   check                read and check the copy.         Recovery: delete the scratch copy.
+//   move.copy            copy scratch to the project.     Recovery: delete the project (a
+//                        part copy can be there; the open checked the path was free just
+//                        before this phase) and the scratch copy. Nothing is kept.
+//   move.delete-scratch  the project is complete.        Recovery: delete the scratch copy;
+//                        the project stays, and the record closes ok.
+// The rule is the simple one: the project stays only when its copy finished. The
+// move is two calls (a copy, then a delete), not the platform's copy-and-delete in
+// one call, so the saved phase tells which side of the copy the kill was on.
+
+/** The phases of an open from Door43, in order. */
+export const OPEN_PHASES = ['start', 'clone', 'check', 'move.copy', 'move.delete-scratch'] as const;
+export type OpenPhase = (typeof OPEN_PHASES)[number];
+
+/** The scratch copy of an open from Door43. Under `_local_/_archive_/`, so Home never lists it. */
+export const openPathsOf = (repoPath: string): { repoPath: string; scratch: string } => ({
+  repoPath,
+  scratch: `_local_/_archive_/tc4-open--${repoPath.split('/')[2]}`,
+});
+
 /** Delete a repository; a repository that is not there is not an error. The
  * platform answers a delete of a missing repository with HTTP 400 "could not
  * delete repo: No such file or directory (os error 2)", which `isNotFound`
@@ -331,6 +361,7 @@ export class OpsLog implements OpsRecorder {
     if (entry.op === 'export')
       return failedReport('export', entry.startedAt, endedAt, new Error('the export was interrupted; no file was delivered'), facts);
     if (entry.op === 'sync') return this.resolveSync(entry, api, endedAt);
+    if (entry.op === 'open-door43') return this.resolveOpen(entry, api, endedAt);
     return failedReport(entry.op, entry.startedAt, endedAt,
       new Error(`the ${entry.op} was interrupted; the journal replays its staged actions at the next open of the project`), facts);
   }
@@ -370,6 +401,24 @@ export class OpsLog implements OpsRecorder {
     await deleteIfPresent(api, paths.scratch);
     return failedReport('sync', entry.startedAt, endedAt,
       new Error('the sync was interrupted before the swap; the project did not change'), { ...facts, rolledBack: true });
+  }
+
+  /** The recovery rule of an interrupted open from Door43 (the open section above). */
+  private async resolveOpen(entry: OpsEntry, api: OpsRecoveryApi, endedAt: string): Promise<Report> {
+    const facts = { ...entry.facts, interrupted: true };
+    const { phase, repoPath, clonePath } = entry.facts;
+    if (typeof repoPath !== 'string')
+      return failedReport('open-door43', entry.startedAt, endedAt, new Error('the open was interrupted before it named its project'), facts);
+    const { scratch } = openPathsOf(repoPath);
+    if (phase === 'move.delete-scratch') {
+      await deleteIfPresent(api, scratch);
+      return okReport('open-door43', entry.startedAt, endedAt, { ...facts, finishedMove: true });
+    }
+    if (phase === 'clone' && typeof clonePath === 'string') await deleteIfPresent(api, clonePath);
+    if (phase === 'move.copy') await deleteIfPresent(api, repoPath);
+    await deleteIfPresent(api, scratch);
+    return failedReport('open-door43', entry.startedAt, endedAt,
+      new Error('the open from Door43 was interrupted; nothing it wrote was kept'), { ...facts, rolledBack: true });
   }
 
   private current(id: string): OpsEntry {

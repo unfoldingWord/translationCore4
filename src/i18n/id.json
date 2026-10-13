@@ -1009,5 +1009,7 @@
   "openDoor43.refused.other": "tC4 tidak dapat mengambil proyek dari Door43. Pastikan repositori itu publik dan namanya benar. Tidak ada yang ditulis ke komputer ini.",
   "openDoor43.nothingWritten": "Tidak ada yang ditulis.",
   "openDoor43.done": "{name} dibuka dari Door43",
-  "refusal.open-door43.name-exists": "Proyek dengan nama ini sudah ada di komputer ini. Pilih nama lain. Tidak ada yang ditulis."
+  "refusal.open-door43.name-exists": "Proyek dengan nama ini sudah ada di komputer ini. Pilih nama lain. Tidak ada yang ditulis.",
+  "openDoor43.refused.noJournal": "Repositori ini bukan proyek tC4: tidak memiliki jurnal tC4. Untuk membawa berkasnya, gunakan Impor proyek. Tidak ada yang ditulis ke komputer ini.",
+  "refusal.open-door43.no-journal": "Repositori ini bukan proyek tC4, jadi tidak dibuka. Gunakan Impor proyek untuk berkasnya. Tidak ada yang ditulis."
 }
