@@ -1837,23 +1837,30 @@ function retryOwedCheckpoint({ store, storeRef, stateRef, dispatch }, repoPath) 
  * already open again. Only the latest failure is remembered: an earlier
  * project's pending work is durable in its journal and commits at its own
  * next checkpoint. */
-/** #678 (D88 point 6): how many pins of the project at `repoPath` name a
- * version that this computer does not have. Read from the project's pin file
- * after a sync, never stored. 0 when it cannot be read. */
-async function missingPinCount(repoPath, actions) {
+/** #678 (D88 point 6): the pins (with a commit) of the project at `repoPath`,
+ * read from its pin file; [] when it cannot be read. */
+async function projectPinsOf(repoPath) {
   try {
     const reader = new ProjectReader({ api });
     await reader.open(repoPath);
     const resources = await reader.readResources();
-    const { installed } = await actions.resolutionContext();
-    const pins = [
+    return [
       ...Object.values(resources?.languageSets ?? {}).flatMap((set) => Object.values(set ?? {})),
       ...Object.values(resources?.resources?.originalLanguage ?? {}),
     ].filter((pin) => pin && typeof pin === 'object' && pin.repoPath && pin.sha);
-    return pins.filter((pin) => !isPinLocal(installed, pin)).length;
   } catch {
-    return 0;
+    return [];
   }
+}
+
+/** #678 (D88 point 6): how many pins the sync brought (not in `before`) name a
+ * version that this computer does not have. Derived at result time, never stored. */
+async function missingPinCount(repoPath, before, actions) {
+  const known = new Set(before.map((pin) => `${pin.repoPath}@${pin.sha}`));
+  const brought = (await projectPinsOf(repoPath)).filter((pin) => !known.has(`${pin.repoPath}@${pin.sha}`));
+  if (!brought.length) return 0;
+  const { installed } = await actions.resolutionContext();
+  return brought.filter((pin) => !isPinLocal(installed, pin)).length;
 }
 
 function startLeaveCheckpoint({ store, repoPath, stateRef, dispatch }) {
@@ -6083,9 +6090,11 @@ export function AppProvider({ children }) {
         const repoPath = project.id;
         dispatch({ type: 'set', patch: { syncing: repoPath, syncResult: null } });
         let report;
+        let pinsBefore = [];
         try {
           // The checkpoint of a project the user just left goes first.
           await leaveCheckpoints.get(repoPath);
+          pinsBefore = await projectPinsOf(repoPath);
           const { coverage } = await a.resolutionContext();
           const dev = import.meta.env.DEV === true;
           const syncApi = Object.assign(Object.create(api), { getNetEnabled: internetAllowed });
@@ -6105,7 +6114,7 @@ export function AppProvider({ children }) {
         let missingPins = 0;
         if (report.ok) {
           await a.afterSync(project);
-          missingPins = await missingPinCount(repoPath, a);
+          missingPins = await missingPinCount(repoPath, pinsBefore, a);
         } else if (report.code === 'sync.auth-failed') {
           // Door43 refused the token: forget it, so the next press asks for the password (#467).
           await door43SignOut(desktopKeychain() ?? undefined).catch(() => {});
