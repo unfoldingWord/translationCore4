@@ -910,6 +910,25 @@ Alignment suggestions (D72 point 3) add three exact-pinned packages to the clien
 
 Measured locally on 2026-09-12 (macOS arm64, Node 22); the desktop artifact grows by the same client bytes and nothing else.
 
+## Release branches
+
+[decided 2026-10-13 — owner]
+
+- Each minor release has one release branch, named `release/<major>.<minor>`. The first is
+  `release/4.0`. It was cut from `main` at `17f4cbc` on 2026-10-13, with all checks green.
+- All work merges to `main` first, through the merge queue. `main` does not wait for a release.
+- A release branch gets fixes only. Do not put a feature on a release branch.
+- To put a fix in a release, merge it to `main` first. Then open a pull request to the release
+  branch that holds `git cherry-pick -x <commit>`. The `-x` line records the commit on `main`.
+- If a fix cannot apply to `main` (the code on `main` changed), write the fix on the release
+  branch. Write the reason in the pull request.
+- Tag each release (`vX.Y.Z`) on its release branch. Build the installers from that tag. The
+  packaging workflow runs automatically on a push to `main` only, so run it by hand
+  (`workflow_dispatch`) on the release branch. The tag rule of epic #59 still applies.
+- Stop cherry-picks to a release branch when the next minor release ships.
+- The repository ruleset "release branches" protects every `release/*` branch: a pull request
+  with one approval and the `verify` check, no force push, and no delete.
+
 ## Known limits (start of the pipeline, not the end)
 
 - **Three platforms**: macOS arm64 (#57), Linux x64 (#119) and Windows x64
