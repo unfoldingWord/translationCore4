@@ -12,7 +12,7 @@
 //   not-covered   — pins are local, but neither rung covers this book
 import React from 'react';
 import { useApp } from '../state.jsx';
-import { TOOL_SLOT } from '../data/resolve';
+import { TOOL_SLOT, oldTwlPin } from '../data/resolve';
 import { isDecided, locatorOf, referenceParts, textKeyOf } from '../data/derive';
 import { STORY_FILE } from '../data/journal/runtime';
 import { bookName } from '../data/bookNames';
@@ -1410,7 +1410,7 @@ export default function Check() {
             </Button>
           </Callout>
         )}
-        <OldTwlNotice pin={s.projectPinsOldTwl} />
+        <OldTwlNotice pin={oldTwlPin(s.projectPins)} />
 
         {pre === null && !s.preflightError && (
           <p style={{ fontSize: 'var(--fs-ui)', color: 'var(--text-tertiary)' }}>{t('check.checking')}</p>

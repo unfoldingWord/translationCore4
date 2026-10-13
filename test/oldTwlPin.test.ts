@@ -61,10 +61,10 @@ describe('D97 ruling 6 — the old-form twl pin is detected on either rung', () 
   });
 });
 
-describe('D97 ruling 6 — loadProjectPins states the old form with the pins', () => {
-  const run = (pins: ResourcesFile) =>
-    new Promise<Record<string, unknown>>((resolve) => {
-      const store = { readResources: async () => pins };
+describe('D97 ruling 6 — loadProjectPins lands the old-form document as read (the readers refuse, not the load)', () => {
+  it('an old-form project: the pins load, with no read error', async () => {
+    const store = { readResources: async () => OLD_BOTH };
+    const patch = await new Promise<Record<string, unknown>>((resolve) => {
       loadPins({
         store,
         repoPath: 'repo/p',
@@ -74,18 +74,7 @@ describe('D97 ruling 6 — loadProjectPins states the old form with the pins', (
         dispatch: (a: { patch: Record<string, unknown> }) => resolve(a.patch),
       });
     });
-
-  it('an old-form project: the pins load AND the old pin is stated', async () => {
-    const patch = await run(OLD_BOTH);
-    expect(patch).toMatchObject({ projectPinsLoaded: true, projectPinsError: null });
-    expect((patch.projectPinsOldTwl as ResourcePin).repoPath).toBe('git.door43.org/es-419_gl/es-419_tw');
-  });
-  it('an OBS project with the old form on its fallback set is stated too', async () => {
-    expect(((await run(OLD_OBS)).projectPinsOldTwl as ResourcePin).repoPath).toBe('git.door43.org/unfoldingWord/en_tw');
-  });
-  it('the two-repo form and the ruling 7 form are not stated', async () => {
-    expect((await run(SAMPLE)).projectPinsOldTwl).toBeNull();
-    expect((await run(RULING7)).projectPinsOldTwl).toBeNull();
+    expect(patch).toMatchObject({ projectPins: OLD_BOTH, projectPinsLoaded: true, projectPinsError: null });
   });
 });
 
@@ -101,12 +90,12 @@ const installedFor = (file: ResourcesFile) => {
 };
 
 describe('D97 ruling 6 — the Check preflight never offers tW from an old-form pin', () => {
-  const preflightFor = async (file: ResourcesFile, oldTwl: ResourcePin | null) => {
+  const preflightFor = async (file: ResourcesFile) => {
     const { installed, coverage } = installedFor(file);
     let state: Record<string, unknown> = {};
     const dispatch = (action: unknown) => { state = reducer(state, action as never); };
     await performRunPreflight({
-      stateRef: { current: { project: { repoPath: '_local_/_local_/p', flavor: 'textTranslation' }, book: 'TIT', projectPins: file, projectPinsOldTwl: oldTwl } },
+      stateRef: { current: { project: { repoPath: '_local_/_local_/p', flavor: 'textTranslation' }, book: 'TIT', projectPins: file } },
       dispatch,
       actions: { resolutionContext: async () => ({ installed, coverage, resolutionError: null }) },
     });
@@ -114,20 +103,20 @@ describe('D97 ruling 6 — the Check preflight never offers tW from an old-form 
   };
 
   it("an old-form project: tW is 'old-twl' with no resolution; tN is still ready", async () => {
-    const pre = await preflightFor(OLD_BOTH, oldTwlPin(OLD_BOTH));
+    const pre = await preflightFor(OLD_BOTH);
     expect(pre.translationWords.state).toBe('old-twl');
     expect(pre.translationWords.resolution).toBeNull();
     expect(pre.translationNotes.state).toBe('ready');
   });
   it('control: the two-repo form is ready', async () => {
-    const pre = await preflightFor(SAMPLE, null);
+    const pre = await preflightFor(SAMPLE);
     expect(pre.translationWords.state).toBe('ready');
     expect(pre.translationWords.resolution?.pin?.repoPath).toBe('git.door43.org/es-419_gl/es-419_twl');
   });
 });
 
 describe('D97 ruling 6 — Understand reads no TWL TSV from an old-form pin', () => {
-  const load = async (file: ResourcesFile, oldTwl: ResourcePin | null) => {
+  const load = async (file: ResourcesFile) => {
     const { installed, coverage } = installedFor(file);
     setInstalledCache(installed);
     // Each repo answers the header row of its own TSV (test/fixtures/resources/en_twl@v86/TIT.tsv,
@@ -139,7 +128,7 @@ describe('D97 ruling 6 — Understand reads no TWL TSV from an old-form pin', ()
     const dispatched: Array<Record<string, unknown>> = [];
     const store = { readNotes: () => [], readSourceBook: async () => { throw Object.assign(new Error('404'), { isNotFound: true }); } };
     await loadUnderstand({
-      stateRef: { current: { project: { repoPath: 'p', flavor: 'textTranslation' }, book: 'TIT', projectPins: file, projectPinsLoaded: true, projectPinsOldTwl: oldTwl, projectScope: {}, netEnabled: false, understand: null } },
+      stateRef: { current: { project: { repoPath: 'p', flavor: 'textTranslation' }, book: 'TIT', projectPins: file, projectPinsLoaded: true, projectScope: {}, netEnabled: false, understand: null } },
       storeRef: { current: store },
       understandSeqRef: { current: 0 },
       dispatch: (a: Record<string, unknown>) => dispatched.push(a),
@@ -159,14 +148,14 @@ describe('D97 ruling 6 — Understand reads no TWL TSV from an old-form pin', ()
   const twlLocal = (file: ResourcesFile) => localRepoPathFromRepoPath(file.languageSets.primary.translationWordsLinks.repoPath);
 
   it("an old-form project: the Words slot is 'old-twl' and the twl pin's TSV is never read", async () => {
-    const { final, tsvReads } = await load(OLD_BOTH, oldTwlPin(OLD_BOTH));
+    const { final, tsvReads } = await load(OLD_BOTH);
     expect(final.words.state).toBe('old-twl');
     expect(tsvReads).not.toContain(twlLocal(OLD_BOTH));
     expect(tsvReads).not.toContain(localRepoPathFromRepoPath(OLD_BOTH.languageSets.fallback.translationWordsLinks.repoPath));
     expect(final.notes.state).toBe('ready'); // the other helps still load
   });
   it('control: the two-repo form reads the twl TSV and the slot is ready', async () => {
-    const { final, tsvReads } = await load(SAMPLE, null);
+    const { final, tsvReads } = await load(SAMPLE);
     expect(final.words.state).toBe('ready');
     expect(tsvReads).toContain(twlLocal(SAMPLE));
   });
