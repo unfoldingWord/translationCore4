@@ -2572,9 +2572,10 @@ Context. D96 (#644) gave the bundled English set two pins. Gateway-language sets
 the one-repo form: the `translationWordsLinks` slot named `<lang>_tw`, whose DCS export takes
 the TWL TSVs from `<lang>_twl` `master`, not from a release [VERIFIED for `en_tw` — live
 fetches, 2026-10-12; issue #640. The same DCS export path serves every gateway]. Three
-gateway organizations publish no `_twl` repository: `ar_gt`, `Door43-Catalog` (`ml`,
-`ur-deva`) [VERIFIED — live DCS queries, 2026-10-12; all 19 entries of `src/data/gateways.ts`
-match their `hasTwl` value]. Rulings 1–5 of D96 apply here too.
+gateway entries, in two organizations, publish no `_twl` repository: `ar_gt`, and
+`Door43-Catalog` for `ml` and `ur-deva` [VERIFIED — the owner's live DCS queries of 2026-10-12
+in issue #646: all 19 entries of `src/data/gateways.ts` match their `hasTwl` value; this PR
+read `ar_gt/ar_twl` again on 2026-10-12: HTTP 404]. Rulings 1–5 of D96 apply here too.
 
 6. **The old form is not legal.** The `translationWordsLinks` slot MUST name a repository
    whose name ends in `_twl`. BURRITO-SPEC §5.3 no longer says that both slots MAY name the
