@@ -245,7 +245,11 @@ function ensureBundledResources({ resourcesDir, home, storeLeaf, profileLeaf }) 
         try { identity = resourceMetadata(candidate, pin, archive, recorded); }
         catch (error) { if (candidate === destination) throw error; continue; }
         if (identity.flavor !== flavor) throw new Error(`Resource flavor mismatch: ${candidate}`);
-        validateTree(candidate, tree);
+        // A DCS export of one pin can carry other TWL bytes on another fetch
+        // date (#640). The installed copy is never modified (#528), so it is
+        // complete when it agrees with its own inventory. A commit archive is
+        // deterministic and keeps the build's receipt tree.
+        validateTree(candidate, archive ? tree : identity.meta.ingredients);
         destination = candidate;
         break;
       }

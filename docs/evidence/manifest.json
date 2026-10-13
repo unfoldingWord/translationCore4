@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
   "tool": "scripts/prove.mjs",
-  "commit": "cdb9af8cb6da91d010d7b4f95109005216a59046",
+  "commit": "ebeb8e2e6cadbf682a1989736ff3c9dab96e4370",
   "dirty": false,
-  "date": "2026-09-30T05:45:51.237Z",
-  "node": "v22.23.2",
+  "date": "2026-10-12T20:43:46.054Z",
+  "node": "v22.23.3",
   "platform": "linux-x64",
   "ci": true,
   "rig": {
@@ -12,7 +12,7 @@
     "detected": false,
     "version": null,
     "product": null,
-    "rev": "99fd9bea8a9f3d14ac6a61f8e2213f1c5d42ed2a",
+    "rev": "a83725b67593b018f815fdb25a3920ce03e833e7",
     "revSource": "dev-env/server/Cargo.toml (the pinned build revision; the HTTP API reports no hash)",
     "repos": null,
     "pristine": null,
@@ -34,7 +34,7 @@
       "summary": [
         "✖ 1 problem (0 errors, 1 warning)"
       ],
-      "durationMs": 6222
+      "durationMs": 5742
     },
     {
       "id": "typecheck",
@@ -49,7 +49,7 @@
       "failed": null,
       "skippedTests": null,
       "summary": [],
-      "durationMs": 6139
+      "durationMs": 5568
     },
     {
       "id": "vitest",
@@ -60,14 +60,14 @@
       "skipped": null,
       "ok": true,
       "exitCode": 0,
-      "passed": 1230,
+      "passed": 1383,
       "failed": 0,
-      "skippedTests": 42,
+      "skippedTests": 43,
       "summary": [
-        "Test Files  121 passed | 5 skipped (126)",
-        "Tests  1230 passed | 42 skipped (1272)"
+        "Test Files  137 passed | 6 skipped (143)",
+        "Tests  1383 passed | 43 skipped (1426)"
       ],
-      "durationMs": 56155
+      "durationMs": 52534
     },
     {
       "id": "build",
@@ -82,9 +82,9 @@
       "failed": null,
       "skippedTests": null,
       "summary": [
-        "✓ built in 9.05s"
+        "✓ built in 9.63s"
       ],
-      "durationMs": 9436
+      "durationMs": 11528
     },
     {
       "id": "conformance:generate",
@@ -99,7 +99,7 @@
       "failed": null,
       "skippedTests": null,
       "summary": [],
-      "durationMs": 146
+      "durationMs": 178
     },
     {
       "id": "conformance:validate",
@@ -110,17 +110,17 @@
       "skipped": null,
       "ok": true,
       "exitCode": 0,
-      "passed": 50,
+      "passed": 51,
       "failed": 0,
       "skippedTests": null,
       "summary": [
-        "Stage-1 (path-authoritative — holds on today's pankosmia-web): 38 passed, 0 failed",
+        "Stage-1 (path-authoritative — holds on today's pankosmia-web): 39 passed, 0 failed",
         "Stage-2 (role/relationships durability — x-roles non-durable by design, D28; client re-asserts after remake): 2 passed, 0 failed",
         "Phase-2 (journal-merge design checks, §8.7): 3 passed, 0 failed",
         "OBS (the OBS project kind, §10 — sample-burrito-obs): 7 passed, 0 failed",
-        "50 passed, 0 failed"
+        "51 passed, 0 failed"
       ],
-      "durationMs": 488
+      "durationMs": 424
     },
     {
       "id": "conformance:journal",
@@ -137,7 +137,7 @@
       "summary": [
         "Journal suite: 356 passed, 0 failed (fast-check seed 20260707)"
       ],
-      "durationMs": 2379
+      "durationMs": 2362
     },
     {
       "id": "conformance:normative",
@@ -157,7 +157,7 @@
         "uncovered          : 0",
         "stale claims       : 0"
       ],
-      "durationMs": 69
+      "durationMs": 53
     },
     {
       "id": "conformance:transport",

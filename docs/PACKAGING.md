@@ -849,7 +849,13 @@ path and a byte-identical verified tree. A distinct release is installed
 at `$HOME/pankosmia/tc4-projects/_local_/_sideloaded_/<owner lowercased>--<repo>--<full SHA>`.
 Copy staging is outside discovery, on the same filesystem, and published by a
 directory rename. A complete exact release already installed at a legacy,
-short-SHA or full-SHA path is reused at its actual path. The atomic
+short-SHA or full-SHA path is reused at its actual path. "Complete" is decided
+against the copy's own inventory, not the build's: a DCS export is complete when
+every ingredient in its own `metadata.json` is present with the declared size and
+checksum; an archive copy still needs the byte-identical receipt tree. The export's
+TWL rows follow `en_twl` `master` at fetch time, so two builds of one pin can ship
+different bytes, and the installed copy is kept as it is (#640, owner ruling
+2026-10-12). The atomic
 `client_settings/uw-tc4.json` merge preserves other install records and preferences;
 a failed record write aborts startup, and retry reuses the published resource.
 Abandoned staging is removed on retry. Older releases remain byte-for-byte,
