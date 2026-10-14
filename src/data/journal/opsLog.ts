@@ -12,35 +12,33 @@
 // read-modify-write writer, so an ops write and any other settings write can
 // never overwrite each other.
 //
-// The sync record (issue #676, G8; D100) names its phase in `facts.phase`. The
-// sync writes the phase BEFORE the step that the phase names. Two folders take
-// part: the project `repoPath` and the `scratch` copy (`_local_/_archive_/`, so
-// Home never lists it), which the sync builds from Door43 main and pushes. Each
-// phase and its recovery rule:
-//   clone        the fixed clone path and the scratch copy are being made.
-//                Recovery: delete both. The project did not change.
-//   sync, push   the scratch copy is complete; the project did not change.
-//                Recovery: delete the scratch copy. (A push that Door43 accepted
-//                is not lost: the next sync gets it.)
-//   apply        the project is being made equal to the pushed scratch copy
-//                (`applyScratch`): its `ingredients/`, except `audio/`, get the
-//                scratch copy's journal files, then its derived files, then lose
-//                the files the scratch copy does not hold; then a remake and a
-//                commit. The phase is saved BEFORE the first write to the project.
-//                Recovery: run the same apply again (it is safe to run again: it
-//                compares, then writes), then delete the scratch copy. It goes
-//                only forward. A scratch copy that is gone means the apply ended.
-// A record at the apply phase locks its project (`isOpen`): open, or closed in
-// this session by a write that was not saved, since its saved phase is then
-// unknown. A record at any other phase locks nothing; the project did not change.
-// Recovery only goes forward, and the apply never removes a journal file, so
-// work saved in the project after the apply began stays: its derived files
-// rebuild at the next open (the journal is ahead of them, so the open
-// regenerates forward).
-// No sync starts, and no project opens or takes an edit, until `recover()` loads
-// the log at this start (`opslog.not-loaded`, syncOperation.ts and
-// JournalingStore.refusePendingSync). The app runs `recover()` once, at boot
-// (state.jsx); a restart loads the log again.
+// The sync (issue #676, G8; D100) keeps its safety record ON DISK, never in this
+// settings document: the settings document is written in place by many writers
+// and has no compare-and-set, so it never locks or unlocks a project. The record
+// is the project's scratch copy (`scratchPathOf`, under `_local_/_archive_/`, so
+// Home never lists it) and one marker file inside it, `ingredients/tc4-sync/apply.json`
+// (`APPLY_MARKER`). The order of a sync, after its push:
+//   write the marker -> move the sync generation on -> apply (`applyScratch`:
+//   the project's `ingredients/`, except `audio/` and the marker, get the
+//   scratch copy's journal files, then its derived files, then lose the files
+//   the scratch copy does not hold; then a remake and a commit) -> delete the
+//   marker (one file: a rename, so all or nothing) -> delete the scratch copy.
+// The disk rule (`finishPendingApply`), at each start and at the start of each
+// sync of the project:
+//   scratch copy with the marker   -> an apply may have begun: run the same apply
+//                                     again (it compares, then writes), delete
+//                                     the marker, delete the scratch copy.
+//                                     Any bytes at the marker path count: a torn
+//                                     marker write may still have begun an apply.
+//   scratch copy with no marker    -> delete it; the project did not change.
+//   no scratch copy                -> nothing is pending.
+// While the marker is there, the project takes no open (JournalingStore, one
+// GET of the scratch copy's paths; a missing repository answers [] with HTTP 200).
+// Recovery only goes forward, and the apply never removes a journal file, so work
+// saved in the project after the apply began stays: its derived files rebuild at
+// the next open (the journal is ahead of them, so the open regenerates forward).
+// The sync record in this log is only the Report for the dev Inspector; its
+// `phase` fact says how far the sync got.
 // A store opened before an apply is stale after it (JournalingStore): the sync
 // moves the project's sync generation on before the first write to the project,
 // and a store whose generation is older refuses every edit and checkpoint
@@ -124,8 +122,6 @@ export interface OpsHandle {
 /** What an operation needs to write its record. */
 export interface OpsRecorder {
   begin(op: OpsOp, facts?: Record<string, unknown>): Promise<OpsHandle>;
-  /** True while a record of `op` for `repoPath` locks it (#676: an unfinished sync apply). */
-  isOpen?(op: OpsOp, repoPath: string): boolean;
   /** False until `recover()` loads the log at this start (#676: no sync before it). */
   readonly recovered?: boolean;
 }
@@ -177,8 +173,10 @@ export const archiveNameOf = (repoPath: string): string => repoPath.replaceAll('
  * `list-local-repos` and the summaries skip (#673), so Home never lists it. */
 export const scratchPathOf = (repoPath: string): string => `_local_/_archive_/tc4-sync--${archiveNameOf(repoPath)}`;
 
-/** A record at this phase locks its project (module header). */
-export const isLockingPhase = (phase: unknown): boolean => phase === 'apply';
+/** The apply marker (module header): an ingredient path inside the scratch copy.
+ * The apply never writes it into the project and never removes it from there. */
+export const APPLY_MARKER = 'tc4-sync/apply.json';
+const isMarkerPath = (ipath: string): boolean => ipath.startsWith('tc4-sync/');
 
 /** The sync generation of each project in this process (module header): an
  * apply moves it on, and a store opened at an older one is stale. A restart
@@ -207,7 +205,7 @@ const isJournalPath = (ipath: string): boolean => ipath.startsWith(JOURNAL_PREFI
 /** The tree an apply makes equal: every ingredient but `audio/`. Round 1 never
  * reads or writes the one class that can be binary (R-8.7.3), so a teammate's
  * audio does not reach this project, and own audio stays where it is. */
-const inApplyTree = (ipath: string): boolean => !isUnjournaledIngredient(ipath);
+const inApplyTree = (ipath: string): boolean => !isUnjournaledIngredient(ipath) && !isMarkerPath(ipath);
 
 /** Each ingredient file of `repoPath` that `keep` keeps, by ingredient path: the
  * journal in one zipped read (else one read per file), the rest one read per
@@ -233,6 +231,36 @@ const isIngredientGone = (error: unknown): boolean => {
 
 const FLAGS = { updateIngredients: false, keepBak: false } as const;
 
+/** True while the scratch copy of `repoPath` holds the apply marker (module header). */
+export const isApplyPending = async (api: Pick<OpsRecoveryApi, 'listPaths'>, repoPath: string): Promise<boolean> =>
+  (await api.listPaths(scratchPathOf(repoPath))).includes(APPLY_MARKER);
+
+/** The disk rule (module header): finish an apply that the marker says may have
+ * begun, or delete a scratch copy that has no marker. Safe to run again. */
+export async function finishPendingApply(api: OpsRecoveryApi, repoPath: string): Promise<'applied' | 'deleted' | 'none'> {
+  const scratch = scratchPathOf(repoPath);
+  const paths = await api.listPaths(scratch);
+  if (paths.includes(APPLY_MARKER)) {
+    nextSyncGeneration(repoPath);
+    await applyScratch(api, repoPath, scratch);
+    await deleteIngredientIfPresent(api, scratch, APPLY_MARKER);
+    await deleteIfPresent(api, scratch);
+    return 'applied';
+  }
+  if (!paths.length) return 'none';
+  await deleteIfPresent(api, scratch);
+  return 'deleted';
+}
+
+/** Delete one ingredient; one that is not there is not an error. */
+export const deleteIngredientIfPresent = async (api: Pick<OpsRecoveryApi, 'deleteIngredient'>, repoPath: string, ipath: string): Promise<void> => {
+  try {
+    await api.deleteIngredient(repoPath, ipath);
+  } catch (error) {
+    if (!isIngredientGone(error)) throw error;
+  }
+};
+
 /** The apply (module header): make the project's `ingredients/`, except
  * `audio/`, equal to the scratch copy's. Journal files first (a journal file
  * never changes, R-8.1.4, so a different one is written again only when a stopped
@@ -254,11 +282,7 @@ export async function applyScratch(api: OpsRecoveryApi, repoPath: string, scratc
   let removed = 0;
   for (const ipath of livePaths) {
     if (isJournalPath(ipath) || target.has(ipath)) continue;
-    try {
-      await api.deleteIngredient(repoPath, ipath);
-    } catch (error) {
-      if (!isIngredientGone(error)) throw error;
-    }
+    await deleteIngredientIfPresent(api, repoPath, ipath);
     removed += 1;
   }
   if ((await api.gitStatus(repoPath)).length) {
@@ -293,13 +317,6 @@ export class OpsLog implements OpsRecorder {
   /** True after `recover()` loaded the log at this start. */
   recovered = false;
 
-  /** The ids of the records whose last write was not saved (module header). */
-  private readonly unsaved = new Set<string>();
-
-  isOpen(op: OpsOp, repoPath: string): boolean {
-    return this.entries.some((e) => e.op === op && e.facts.repoPath === repoPath && isLockingPhase(e.facts.phase)
-      && (!e.report || this.unsaved.has(e.id)));
-  }
 
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
@@ -320,12 +337,23 @@ export class OpsLog implements OpsRecorder {
    * Run once, when the app starts, before any operation begins. */
   async recover(api: OpsRecoveryApi): Promise<OpsEntry[]> {
     const doc = await this.readOrSetAside();
+    // the disk rule first, for each project: the settings document never decides it
+    this.applied = new Set();
+    for (const repoPath of (await api.listLocalRepos()).filter((p) => p.startsWith('_local_/_local_/'))) {
+      try {
+        if ((await finishPendingApply(api, repoPath)) === 'applied') this.applied.add(repoPath);
+      } catch (error) {
+        const failure = { id: `apply:${repoPath}`, op: 'sync' as OpsOp, error: `the pending apply of ${repoPath} did not finish: ${String((error as Error)?.message ?? error)}` };
+        this.errors = [...this.errors, failure];
+        console.error(`ops log: ${failure.error}`);
+      }
+    }
     const resolved: OpsEntry[] = [];
     for (const entry of opsEntriesOf(doc)) {
       // A record this session began is running, not interrupted.
       if (entry.report || this.entries.some((e) => e.id === entry.id)) continue;
       // One record that cannot be resolved never stops the others: it stays
-      // open (a sync apply then locks its project) and is reported.
+      // open and is reported.
       try {
         resolved.push({ ...entry, report: await this.resolve(entry, api) });
       } catch (error) {
@@ -361,24 +389,24 @@ export class OpsLog implements OpsRecorder {
       new Error(`the ${entry.op} was interrupted; the journal replays its staged actions at the next open of the project`), facts);
   }
 
-  /** The recovery rule of an interrupted sync (module header, G8). */
+  /** The projects whose pending apply this start finished (the disk rule). */
+  private applied = new Set<string>();
+
+  /** The Report of an interrupted sync. The disk rule has already run: a scratch
+   * copy left now has no marker, so it goes, with a fixed clone path that the
+   * record names. */
   private async resolveSync(entry: OpsEntry, api: OpsRecoveryApi, endedAt: string): Promise<Report> {
     const facts = { ...entry.facts, interrupted: true };
     const { phase, repoPath, clonePath } = entry.facts;
     if (typeof repoPath !== 'string')
       return failedReport('sync', entry.startedAt, endedAt, new Error('the sync was interrupted before it named its project'), facts);
-    const scratch = scratchPathOf(repoPath);
-    if (phase === 'apply') {
-      // forward only: a scratch copy that is gone means the apply ended
-      if ((await api.listPaths(scratch)).length) {
-        nextSyncGeneration(repoPath);
-        await applyScratch(api, repoPath, scratch);
-        await deleteIfPresent(api, scratch);
-      }
-      return okReport('sync', entry.startedAt, endedAt, { ...facts, finishedApply: true });
-    }
     if (phase === 'clone' && typeof clonePath === 'string') await deleteIfPresent(api, clonePath);
-    await deleteIfPresent(api, scratch);
+    await finishPendingApply(api, repoPath);
+    if (this.applied.has(repoPath)) return okReport('sync', entry.startedAt, endedAt, { ...facts, finishedApply: true });
+    // the record is not a lock: at `apply`, the marker (gone now) decided, and the
+    // apply either ended before the stop or had not begun
+    if (phase === 'apply')
+      return failedReport('sync', entry.startedAt, endedAt, new Error('the sync stopped at its apply; the disk rule found no apply to finish'), facts);
     return failedReport('sync', entry.startedAt, endedAt,
       new Error('the sync was interrupted before the apply; the project did not change'), { ...facts, rolledBack: true });
   }
@@ -410,10 +438,8 @@ export class OpsLog implements OpsRecorder {
     this.notify();
     try {
       await this.update((doc) => withEntries(doc, [entry]));
-      this.unsaved.delete(entry.id);
       return true;
     } catch (error) {
-      this.unsaved.add(entry.id);
       const failure = { id: entry.id, op: entry.op, error: String((error as Error)?.message ?? error) };
       this.errors = [...this.errors, failure];
       console.error(`ops log: the ${entry.op} record was not saved: ${failure.error}`);

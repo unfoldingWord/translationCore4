@@ -8,7 +8,8 @@ import { ServerApi } from '../../src/data/serverApi';
 import { JournalingStore, forgetProjectQueues } from '../../src/data/journal/journalingStore';
 import { JournalStore, forgetSharedClocks } from '../../src/data/journal/journalStore';
 import { actorIdFor } from '../../src/data/journal/identity';
-import { OpsLog, applyScratch, opsEntriesOf, scratchPathOf, serialSettingsWriter, type OpsRecoveryApi } from '../../src/data/journal/opsLog';
+import { APPLY_MARKER, OpsLog, applyScratch, opsEntriesOf, scratchPathOf, serialSettingsWriter, type OpsRecoveryApi } from '../../src/data/journal/opsLog';
+import { recordInstalled } from '../../src/data/installed';
 import { assertRepoPath } from '../../src/data/serverApi';
 import { fold, makeClock, reportError } from '../../src/data/journal/runtime';
 import { sealAction, segmentName, validateSegment, type JournalEvent } from '../../src/data/journal/seal';
@@ -40,7 +41,7 @@ function settingsDoc() {
     await tick();
     doc = structuredClone(next);
   };
-  return { read, write, get: () => doc, hang: () => (hung = true), writes: () => writes };
+  return { read, write, get: () => doc, hang: () => (hung = true), unhang: () => (hung = false), writes: () => writes };
 }
 const appStart = (settings: ReturnType<typeof settingsDoc>) =>
   new OpsLog({ read: settings.read, update: serialSettingsWriter(settings.read, settings.write) });
@@ -443,7 +444,7 @@ describe('#676 crash recovery of the sync (G8)', () => {
     const store = new JournalingStore({ api: w.api, kv: w.kv });
     await store.open(REPO);
     expect(store.actorId).toBe(w.actor);
-    expect(['converged', 'regenerated-forward']).toContain(store.lastReport?.facts.classification);
+    expect(['converged', 'regenerated-forward']).toContain(store.lastReport?.facts.classification); // never 'reconciled'
     store.dispose();
   }
 
@@ -464,41 +465,38 @@ describe('#676 crash recovery of the sync (G8)', () => {
     await expectOneProjectWithOwnWork(w, before, staged);
   });
 
-  it('[G8] when the retry fails too: sync.apply-pending, the record stays open, the project cannot open or sync, and the next start finishes it', async () => {
-    const w = await world({ outbox: true });
+  it('[G8] when the retry fails too: sync.apply-pending; the marker stays, so the project takes no open; the next sync finishes the apply first', async () => {
+    const w = await world({ outbox: true, teammate: true });
     const before = w.own();
     const staged = new Map([...w.kv.map].filter(([key]) => key.startsWith('outbox:')));
     w.rig.failOn(applyWrite, 2);
     const report = await sync(w.deps(), { repoPath: REPO, session: SESSION });
     expect([report.ok, report.code]).toEqual([false, 'sync.apply-pending']);
-    const [open] = opsEntriesOf(w.settings.get()).filter((e) => e.op === 'sync');
-    expect(open.report).toBeUndefined();
-    expect(open.facts.phase).toBe('apply');
-    // no edit and no new sync until recovery: the open is refused, and so is a second sync
+    expect(w.rig.repos.get(SCRATCH)!.files.has(APPLY_MARKER)).toBe(true);
+    // the disk decides: no open while the marker is there
     forgetSharedClocks();
     forgetProjectQueues();
     const store = new JournalingStore({ api: w.api, kv: w.kv, ops: w.ops });
     await expect(store.open(REPO)).rejects.toMatchObject({ code: 'sync.apply-pending' });
     store.dispose();
+    // a sync of the project finishes the pending apply first, then syncs
     const again = await sync(w.deps(), { repoPath: REPO, session: SESSION });
-    expect([again.ok, again.code]).toEqual([false, 'sync.apply-pending']);
-    expect(opsEntriesOf(w.settings.get()).filter((e) => e.op === 'sync')).toHaveLength(1);
-    // the next start finishes the apply
-    const [entry] = await restart(w, storedOf(w));
-    expect(entry.report).toMatchObject({ op: 'sync', ok: true, facts: { finishedApply: true } });
+    expect([again.ok, again.code]).toEqual([true, undefined]);
+    expect(w.rig.repos.has(SCRATCH)).toBe(false);
+    expect(await restart(w, storedOf(w))).toEqual([]);
     await expectOneProjectWithOwnWork(w, before, staged);
   });
 
   it('[G8] one record whose recovery throws does not stop the others: it stays open and is reported', async () => {
     const w = await world();
-    await w.ops.begin('sync', { repoPath: REPO, phase: 'apply' });
+    await w.ops.begin('sync', { repoPath: REPO, phase: 'push' });
     await w.ops.begin('export', { repoPath: REPO });
-    const throwing = fakeApi({ [SCRATCH]: new Map([['TIT.usfm', 'x']]), [REPO]: new Map() }, { failWrites: true });
+    const throwing = fakeApi({ [SCRATCH]: new Map([['TIT.usfm', 'x']]), [REPO]: new Map() }, { failDeleteRepo: true });
     const stored = storedOf(w);
     const next = new OpsLog({ read: stored.read, update: serialSettingsWriter(stored.read, stored.write) });
     const resolved = await next.recover(throwing);
     expect(resolved.map((e) => e.op)).toEqual(['export']);
-    expect(next.errors.map((e) => e.op)).toEqual(['sync']);
+    expect(next.errors.map((e) => e.op)).toContain('sync');
     expect(opsEntriesOf(w.settings.get()).filter((e) => e.op === 'sync' && !e.report)).toHaveLength(1);
   });
 
@@ -612,7 +610,7 @@ describe('#676 crash recovery of the sync (G8)', () => {
 
   it('a recorder that does not say it recovered is not loaded: the sync is refused', async () => {
     const w = await world();
-    const loose = { begin: w.ops.begin.bind(w.ops), isOpen: () => false };
+    const loose = { begin: w.ops.begin.bind(w.ops) };
     const report = await sync({ ...w.deps(), ops: loose }, { repoPath: REPO, session: SESSION });
     expect([report.ok, report.code]).toEqual([false, 'opslog.not-loaded']);
   });
@@ -666,7 +664,6 @@ describe('#676 crash recovery of the sync (G8)', () => {
     const report = await sync({ ...w.deps(), ops }, { repoPath: REPO, session: SESSION });
     failWrites = false;
     expect(report.code).toBe('sync.offline');
-    expect(ops.isOpen('sync', REPO)).toBe(false);
     const store = new JournalingStore({ api: w.api, kv: w.kv, ops });
     await store.open(REPO);
     store.dispose();
@@ -699,7 +696,6 @@ describe('#676 crash recovery of the sync (G8)', () => {
     expect(w.rig.repos.has(CLONE_PATH)).toBe(true);
     const [entry] = opsEntriesOf(w.settings.get()).filter((e) => e.op === 'sync');
     expect([entry.report, entry.facts.phase]).toEqual([undefined, 'clone']);
-    expect(w.ops.isOpen('sync', REPO)).toBe(false); // a record before the apply locks nothing
     await restart(w, storedOf(w));
     expect(w.rig.repos.has(CLONE_PATH)).toBe(false);
   });
@@ -727,28 +723,51 @@ describe('#676 crash recovery of the sync (G8)', () => {
 
   const tree = (files: Map<string, string>) => new Map([...files].filter(([p]) => !p.startsWith('audio/')).sort(([a], [b]) => (a < b ? -1 : 1)));
 
-  it('[G8] apply kill sweep: a kill after each call of the apply to the project, and inside each one; the next start finishes it, and the project opens with every own and teammate segment', async () => {
+  /** Counts every server call after the push (stateful: one per run). */
+  const afterPush = () => {
+    let pushed = false;
+    return (route: string) => {
+      if (route.includes('/git/push/')) {
+        pushed = true;
+        return false;
+      }
+      return pushed;
+    };
+  };
+
+  it('[G8] apply kill sweep: a kill after each server call after the push, and inside each one (marker write, apply, marker delete, scratch delete); the next start leaves one project that opens, never reconciled, with every own segment', async () => {
     const dry = await killAfter(Infinity, () => false, false, true);
     expect(dry.done).toBe(true);
-    const total = dry.w.rig.log.slice(dry.from).filter((l) => liveCall(l.route, l.method)).length;
-    expect(total).toBeGreaterThanOrEqual(4);
+    const log = dry.w.rig.log.slice(dry.from);
+    const total = log.length - 1 - log.map((l) => l.route.includes('/git/push/')).lastIndexOf(true);
+    expect(total).toBeGreaterThanOrEqual(10);
     let kills = 0;
+    let applied = 0;
+    let unchanged = 0;
     for (const inside of [false, true])
       for (let k = 1; k <= total; k += 1) {
-        const { w, before, staged, killed } = await killAfter(k, liveCall, inside, true);
+        const { w, before, staged, killed } = await killAfter(k, afterPush(), inside, true);
         expect(killed, `kill ${k}${inside ? ' inside' : ''}`).toBe(true);
-        const teammate = [...w.rig.remotes.get(URL_)!.files].filter(([p]) => p.startsWith(`checking/journal/${TEAMMATE}/`));
+        const project = new Map(w.rig.repos.get(REPO)!.files);
+        const marker = w.rig.repos.get(SCRATCH)?.files.has(APPLY_MARKER) ?? false;
         const [entry] = await restart(w, storedOf(w));
-        expect(entry.report, `kill ${k}`).toMatchObject({ op: 'sync', ok: true, facts: { finishedApply: true } });
+        expect(reportError(entry.report)).toBeNull();
+        expect(w.rig.repos.has(SCRATCH), `kill ${k}`).toBe(false);
         const live = w.rig.repos.get(REPO)!.files;
-        for (const [p, bytes] of teammate) expect(live.get(p), p).toBe(bytes);
-        expect(tree(live)).toEqual(tree(w.rig.remotes.get(URL_)!.files));
+        if (marker) expect(entry.report?.facts.finishedApply, `kill ${k}`).toBe(true);
+        // either the pushed tree is applied whole, or the project is as it was
+        if (tree(live).size === tree(w.rig.remotes.get(URL_)!.files).size && [...tree(w.rig.remotes.get(URL_)!.files)].every(([p, b]) => live.get(p) === b)) applied += 1;
+        else {
+          expect(live, `kill ${k}`).toEqual(project);
+          unchanged += 1;
+        }
         await expectOneProjectWithOwnWork(w, before, staged);
         kills += 1;
       }
     expect(kills).toBe(2 * total);
-    console.log(`[G8] apply kill sweep: ${kills} kill cases (${total} calls of the apply, after and inside each)`);
-  });
+    expect(applied).toBeGreaterThanOrEqual(1);
+    console.log(`[G8] apply kill sweep: ${kills} kill cases (${total} server calls after the push, after and inside each): ${applied} applied whole, ${unchanged} as they were`);
+  }, 180_000);
 
   it('[G8] a kill inside the settings write of the apply phase: nothing was applied, the next start deletes the scratch copy, and the project opens', async () => {
     const w = await world({ outbox: true, teammate: true });
@@ -774,11 +793,151 @@ describe('#676 crash recovery of the sync (G8)', () => {
     expect(entry.report).toMatchObject({ op: 'sync', ok: false, facts: { phase: 'push', rolledBack: true } });
     await expectOneProjectWithOwnWork(w, before, staged);
   });
+  // ---- the disk record (D100): the settings document never locks or unlocks ------
+
+  /** A teammate changed TIT 1:2 on Door43 main; this computer changed TIT 1:1 later. */
+  async function teammateTextWorld() {
+    const w = await world({ outbox: false });
+    const TM = '_local_/_local_/companero';
+    const remote = w.rig.remotes.get(URL_)!;
+    w.rig.repos.set(TM, { files: new Map(remote.files), meta: structuredClone(remote.meta), commits: [], dirty: new Set() });
+    forgetSharedClocks();
+    forgetProjectQueues();
+    let at = Date.parse('2026-10-13T08:00:00.000Z');
+    const tm = new JournalingStore({ api: w.api, kv: memKv(), now: () => (at += 1) });
+    await tm.open(TM);
+    await tm.writeBook('TIT', usfm('Pablo.', 'TEAMMATE TEXT'));
+    const tmActor = tm.actorId;
+    tm.dispose();
+    const tmFiles = w.rig.repos.get(TM)!.files;
+    w.rig.teammatePush(URL_, (r) => { for (const [p, b] of tmFiles) if (p.startsWith(`checking/journal/${tmActor}/`)) r.files.set(p, b); });
+    w.rig.repos.delete(TM);
+    forgetSharedClocks();
+    forgetProjectQueues();
+    return w;
+  }
+
+  /** Kill the sync at its first derived write of the apply (journal files are written). */
+  async function killInApply(w: World, ops: OpsLog) {
+    let killed = false;
+    const dying = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (killed) return new Promise<Response>(() => {});
+      const url = new URL(String(input));
+      if (url.pathname.startsWith(`/api/burrito/ingredient/raw/${REPO}`) && init?.method === 'POST' && !(url.searchParams.get('ipath') ?? '').startsWith('checking/journal/')) {
+        killed = true;
+        w.settings.hang();
+        return new Promise<Response>(() => {});
+      }
+      return w.rig.fetchFn(input, init);
+    }) as typeof fetch });
+    void sync({ ...w.deps(dying), ops }, { repoPath: REPO, session: SESSION });
+    await vi.waitFor(() => expect(killed).toBe(true));
+  }
+
+  /** The reopen keeps the teammate's text and seals no own edit of it. */
+  async function expectTeammateKept(w: World) {
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const store = new JournalingStore({ api: w.api, kv: w.kv });
+    await store.open(REPO);
+    expect(store.lastReport?.facts.classification).not.toBe('reconciled');
+    store.dispose();
+    expect(w.rig.repos.get(REPO)!.files.get('TIT.usfm')).toContain('TEAMMATE TEXT');
+    const own = await eventsOf(w.rig.repos.get(REPO)!.files, w.actor);
+    expect(own.some((e) => JSON.stringify(e).includes('___') && e.op !== 'book.add')).toBe(false);
+  }
+
+  it('[G1][G8] a concurrent raw settings write (recordInstalled) that drops the apply phase from the record: the marker still finishes the apply, and the teammate text stays (B1)', async () => {
+    const w = await teammateTextWorld();
+    let release = (): void => {};
+    const applySaved = new Promise<void>((r) => (release = r));
+    let started = false;
+    let installed = false;
+    const update = serialSettingsWriter(w.settings.read, async (d) => {
+      await w.settings.write(d);
+      const record = opsEntriesOf(d).find((e) => e.op === 'sync');
+      if (record?.facts.phase === 'push' && !started) {
+        started = true;
+        // a resource download ends now: a whole-document read, then a write after the apply phase
+        const raw = { getClientSettings: () => w.settings.read(), setClientSettings: async (_id: string, doc: Record<string, unknown>) => { await applySaved; await w.settings.write(doc); installed = true; } };
+        void recordInstalled(raw as never, 'uw-tc4', 'en_ult', { repoPath: 'unfoldingWord/en_ult', version: 'v1', sha: 'abc', flavor: 'x' } as never);
+      }
+      if (record?.facts.phase === 'apply') release();
+    });
+    const ops = new OpsLog({ read: w.settings.read, update });
+    await ops.recover(w.api);
+    await killInApply(w, ops);
+    await vi.waitFor(() => expect(installed).toBe(true));
+    expect(opsEntriesOf(w.settings.get()).find((e) => e.op === 'sync')?.facts.phase).toBe('push'); // the record lost the apply phase
+    const [entry] = await restart(w, storedOf(w));
+    expect(entry.report).toMatchObject({ op: 'sync', ok: true, facts: { finishedApply: true } });
+    await expectTeammateKept(w);
+  });
+
+  it('[G1][G8] a settings document torn at restart, with an apply pending: the disk rule still finishes the apply, and the teammate text stays (B2)', async () => {
+    const w = await teammateTextWorld();
+    await killInApply(w, w.ops);
+    expect(w.rig.repos.get(SCRATCH)!.files.has(APPLY_MARKER)).toBe(true);
+    const torn = JSON.stringify(w.settings.get()).slice(0, 40);
+    forgetSharedClocks();
+    forgetProjectQueues();
+    let doc: Record<string, unknown> | null = null;
+    const next = new OpsLog({
+      read: async () => (doc ? structuredClone(doc) : JSON.parse(torn)),
+      update: serialSettingsWriter(async () => (doc ? structuredClone(doc) : JSON.parse(torn)), async (d) => { doc = structuredClone(d); }),
+      readText: async () => torn,
+      replace: async (d) => { doc = structuredClone(d); },
+    });
+    await next.recover(w.api);
+    expect(next.errors.map((e) => e.kind)).toContain('settings-unreadable');
+    expect(w.rig.repos.has(SCRATCH)).toBe(false);
+    await expectTeammateKept(w);
+  });
+
+  it('[G1][G8] a kill inside the scratch delete after the apply: the part copy has no marker, so the next start only deletes it, and the project opens (B3)', async () => {
+    const w = await teammateTextWorld();
+    const isScratchDelete = (route: string) => route === `/api/git/delete/${SCRATCH}`;
+    let deletes = 0;
+    let killed = false;
+    const dying = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (killed) return new Promise<Response>(() => {});
+      const url = new URL(String(input));
+      // the last scratch delete of the sync, after the push: the server stops half way
+      if (isScratchDelete(url.pathname) && w.rig.remotes.get(URL_)!.version > 2 && (deletes += 1) === 1) {
+        killed = true;
+        w.settings.hang();
+        const scratch = w.rig.repos.get(SCRATCH)!;
+        scratch.files = new Map([...scratch.files].filter(([p]) => p !== 'TIT.usfm'));
+        return new Promise<Response>(() => {});
+      }
+      return w.rig.fetchFn(input, init);
+    }) as typeof fetch });
+    void sync(w.deps(dying), { repoPath: REPO, session: SESSION });
+    await vi.waitFor(() => expect(killed).toBe(true));
+    expect(w.rig.repos.get(SCRATCH)!.files.has(APPLY_MARKER)).toBe(false);
+    const applied = new Map(w.rig.repos.get(REPO)!.files);
+    await restart(w, storedOf(w));
+    expect(w.rig.repos.has(SCRATCH)).toBe(false);
+    expect(w.rig.repos.get(REPO)!.files).toEqual(applied); // nothing applied from the part copy
+    await expectTeammateKept(w);
+  });
+
+  it('[G8] a sync started while the marker is there finishes the pending apply first', async () => {
+    const w = await teammateTextWorld();
+    await killInApply(w, w.ops);
+    w.settings.unhang();
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const report = await sync(w.deps(), { repoPath: REPO, session: SESSION });
+    expect([report.ok, report.code]).toEqual([true, undefined]);
+    await expectTeammateKept(w);
+  });
 });
+
 
 /** A fake platform for `applyScratch`: one Map of files per repository. A delete
  * of a missing file answers as the platform does (HTTP 400 "No such file: <path>"). */
-function fakeApi(repos: Record<string, Map<string, string>>, opts: { failWrites?: boolean; listGone?: string[]; kill?: { after: number } } = {}) {
+function fakeApi(repos: Record<string, Map<string, string>>, opts: { failWrites?: boolean; failDeleteRepo?: boolean; listGone?: string[]; kill?: { after: number } } = {}) {
   let calls = 0;
   const dirty = new Set<string>();
   const step = (): void => {
@@ -787,7 +946,10 @@ function fakeApi(repos: Record<string, Map<string, string>>, opts: { failWrites?
   };
   const api = {
     listLocalRepos: async () => Object.keys(repos),
-    deleteRepo: async (repo: string) => void delete repos[repo],
+    deleteRepo: async (repo: string) => {
+      if (opts.failDeleteRepo) throw new Error('delete refused');
+      delete repos[repo];
+    },
     listPaths: async (repo: string) => [...(repos[repo]?.keys() ?? []), ...(repo === REPO ? (opts.listGone ?? []) : [])],
     readIngredient: async (repo: string, ipath: string) => repos[repo].get(ipath) ?? '',
     readIngredientZipped: async () => { throw new Error('no zip route'); },

@@ -2743,11 +2743,17 @@ signature check), `docs/PACKAGING.md` (Signing), and `scripts/README-windows.txt
    then the derived files. Then it removes each file that the pushed tree does not hold (never
    a journal file). Then it remakes the ingredients and commits. The project keeps its folder,
    its `.git` and its path, so it keeps its actor id (G5).
-2. **Crash recovery.** The ops log saves the phase `apply` before the first write to the
-   project. While that record is open, the project takes no open, no edit and no sync
-   (`sync.apply-pending`). The next start runs the same apply again from the scratch copy,
-   then deletes the scratch copy. The apply compares before it writes, so it is safe to run
-   again. Recovery only goes forward.
+2. **Crash recovery.** The disk is the record. The settings document never locks or unlocks
+   a project: many writers write it in place, and it has no compare-and-set. After the push,
+   the sync writes one marker file, `ingredients/tc4-sync/apply.json`, into the scratch copy.
+   Then it applies. Then it deletes the marker, then the scratch copy. At each start, and at
+   the start of each sync of the project, this rule runs: a scratch copy with the marker
+   (any bytes) gets the same apply again, then the marker and the scratch copy are deleted;
+   a scratch copy with no marker is deleted, because the project did not change; no scratch
+   copy means nothing is pending. While the marker is there, the project takes no open
+   (`sync.apply-pending`). The apply compares before it writes, so it is safe to run again.
+   Recovery only goes forward. The sync record in the ops log is only the Report for the dev
+   Inspector.
 3. **G8, new text.** A crash during the apply never makes the project unopenable, never loses
    own work, and never reverts or re-attributes teammate work; the next start finishes the
    apply.
@@ -2758,7 +2764,8 @@ signature check), `docs/PACKAGING.md` (Signing), and `scripts/README-windows.txt
    reach this project, and own audio stays where it is. The audio design stays open.
 6. **Cost.** The apply writes only the files that differ. One write costs 0.33 ms to 0.43 ms:
    1000 writes of about 1 KB took 325 ms to 426 ms [VERIFIED — pankosmia-web 0.18.15
-   (a83725b, 2026-09-29), rig on an Apple M2 Pro, three runs, 2026-10-14].
+   (a83725b, 2026-09-29), rig on an Apple M2 Pro, three runs, 2026-10-14;
+   `scripts/measure-sync-writes.mjs`].
 
 The swap, the previous copy, the go-back and the restore of the earlier #676 design are
 deleted with their tests. Where it lands: `src/data/share/syncOperation.ts`,

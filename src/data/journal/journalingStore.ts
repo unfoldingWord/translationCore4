@@ -50,7 +50,7 @@ import { idbKvStore, type KvStore } from './identity';
 import { sealAction, type JournalEvent } from './seal';
 import { defaultFoldRunner, type FoldRunner } from './foldRunner';
 import { verseConflicts, type VerseConflict } from './verseConflicts';
-import { syncGenerationOf, type OpsRecorder } from './opsLog';
+import { isApplyPending, syncGenerationOf, type OpsRecorder } from './opsLog';
 import {
   applyStoryState,
   completePartialPins,
@@ -523,7 +523,6 @@ export class JournalingStore implements BurritoStore {
   private queue<T>(fn: () => Promise<T>): Promise<T> {
     const repoPath = this.mustRepo();
     return inProjectQueue(repoPath, () => {
-      this.refusePendingSync(repoPath);
       // #676 (G1): a store opened before a sync's apply holds the old fold; it
       // takes no edit and no checkpoint after it. The caller opens the project again.
       if (this.openedGeneration !== syncGenerationOf(repoPath))
@@ -535,17 +534,13 @@ export class JournalingStore implements BurritoStore {
   /** The sync generation of the project when this store opened it (#676). */
   private openedGeneration = 0;
 
-  /** #676 (G8): a sync whose apply did not finish leaves its ops record open;
-   * until `recover()` finishes it at the next start, the project takes no open
-   * and no edit. When the log did not load at this start, an open record cannot
-   * be seen, so NO project opens or takes an edit (an open writes too: it replays
-   * the outbox and installs derived files) until a start loads it. A recorder
-   * that does not say it recovered is not loaded. Checked inside the project
-   * queue, so a sync that is running finishes first. */
-  private refusePendingSync(repoPath: string): void {
-    if (this.ops && this.ops.recovered !== true)
-      throw new Refusal('opslog.not-loaded', `the ops log did not load at this start; restart the app before you change ${repoPath}`, { repoPath });
-    if (this.ops?.isOpen?.('sync', repoPath))
+  /** #676 (G8, D100): while the project's scratch copy holds the apply marker, an
+   * apply may be half done; the project takes no open until a start or a sync
+   * finishes it. The disk decides, never the settings document. Edits need no
+   * check: a store opens only when no apply is pending, and an apply in this
+   * process makes every older store stale. */
+  private async refusePendingApply(repoPath: string): Promise<void> {
+    if (await isApplyPending(this.api, repoPath))
       throw new Refusal('sync.apply-pending', `the sync of ${repoPath} did not finish; restart the app to finish it`, { repoPath });
   }
 
@@ -1271,7 +1266,7 @@ export class JournalingStore implements BurritoStore {
     startedAt: string,
     phases: Report[],
   ): Promise<ProjectSummary> {
-    this.refusePendingSync(repoPath);
+    await this.refusePendingApply(repoPath);
     const summary = await this.raw.open(repoPath); // binds raw + setCurrentProject
     this.boundRepoPath = repoPath;
     this.journal = new JournalStore({ api: this.api, repoPath, kv: this.kv, now: this.now });

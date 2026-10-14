@@ -18,15 +18,16 @@
 //   6. push. Not a fast-forward: start again at step 2; after three tries stop
 //      with `sync.non-fast-forward` (G4). Never a force push: the platform push
 //      has no force form.
-//   7. the apply (G8, D100): the ops log saves the phase `apply`, the project's
-//      sync generation moves on (a store opened before it is stale), and
+//   7. the apply (G8, D100): write the apply marker into the scratch copy, move
+//      the project's sync generation on (a store opened before it is stale), and
 //      `applyScratch` makes the project's `ingredients/`, except `audio/`, equal
 //      to the pushed scratch copy: journal files, then derived files, then
 //      removes, then a remake and a commit. The project stays at its path, so it
 //      keeps its actor id (G5: the id is HMAC(secret, repoPath), identity.ts).
-//      src/data/journal/opsLog.ts names each phase and its recovery rule.
-//   8. clear the outbox entries the sync carried, delete the scratch copy, and
-//      close the ops record with the Report (`op: 'sync'`).
+//      src/data/journal/opsLog.ts gives the disk rule that finishes a stopped apply.
+//   8. delete the marker, clear the outbox entries the sync carried, delete the
+//      scratch copy, and close the ops record with the Report (`op: 'sync'`).
+// Before step 2, a sync finishes an apply that the marker says may have begun.
 //
 // The sync holds the project's mutation queue for its whole run, so no save of
 // the open store lands between the read of the journal and the apply. After an
@@ -50,8 +51,11 @@ import { idbKvStore, type KvStore } from '../journal/identity';
 import { segmentName, validateActorDoc, validateSegment, type JournalEvent } from '../journal/seal';
 import { verifyProjectAgainstJournal } from '../journal/verify';
 import {
+  APPLY_MARKER,
   applyScratch,
   deleteIfPresent,
+  deleteIngredientIfPresent,
+  finishPendingApply,
   nextSyncGeneration,
   readIngredientFiles,
   scratchPathOf,
@@ -258,25 +262,26 @@ export async function sync(deps: SyncDeps, request: SyncRequest): Promise<Report
     return failedReport('sync', at, at, new Refusal('sync.auth-failed', 'sign in to Door43 first'), { repoPath });
   }
   return inProjectQueue(repoPath, async () => {
-    // G8: one sync record per project. An open one is an apply that did not finish,
-    // and a log that did not load at this start can hide one. With no ops log at
-    // all, no phase is saved and a stopped apply cannot be recovered: refuse too.
+    // The Report goes to the ops log (the dev Inspector), so the log must be loaded.
+    // Safety does not depend on it: the scratch copy and its marker are the record.
     const ops = deps.ops;
     if (!ops || ops.recovered !== true) {
       const at = new Date().toISOString();
       return failedReport('sync', at, at,
         new Refusal('opslog.not-loaded', 'the ops log did not load at this start; restart the app to sync'), { repoPath });
     }
-    if (ops.isOpen?.('sync', repoPath)) {
+    // G8 (D100): an apply that the marker says may have begun is finished first
+    try {
+      await finishPendingApply(deps.api, repoPath);
+    } catch (error) {
       const at = new Date().toISOString();
       return failedReport('sync', at, at,
-        new Refusal('sync.apply-pending', `the sync of ${repoPath} did not finish; restart the app to finish it`), { repoPath });
+        new Refusal('sync.apply-pending', `the sync of ${repoPath} did not finish; restart the app to finish it`, failureOf(error)), { repoPath });
     }
     const record = await ops.begin('sync', { repoPath });
     const recorded = await syncRecorded(deps, request, record);
     const report = withCode(recorded.report);
-    // An apply that stopped leaves its record open, so the next start finishes it (G8).
-    // A close that is not saved keeps the project locked in this session (isOpen).
+    // A clone path left behind keeps its record open, so the next start deletes it.
     if (!recorded.open) await record.close(report);
     return report;
   });
@@ -445,11 +450,15 @@ async function syncRecorded(
   if ('result' in tried) return tried.result;
   const { facts } = tried;
 
-  // 7. the apply (G8, D100): the phase is in the ops log before the first write
-  // to the project; recovery only goes forward from it (opsLog.ts header).
-  if (!(await note({ phase: 'apply' }))) {
-    await deleteIfPresent(api, scratch).catch(() => {});
-    return failed(new Error('the ops log did not save the apply phase; the project did not change'), { tries: facts.tries });
+  // 7. the apply (G8, D100): the marker in the scratch copy is the record, and it is
+  // there before the first write to the project (opsLog.ts header)
+  await note({ phase: 'apply' });
+  try {
+    await api.writeIngredient(scratch, APPLY_MARKER, JSON.stringify({ actor: mine.actor, at: new Date().toISOString() }), { updateIngredients: false, keepBak: false });
+  } catch (error) {
+    // nothing is applied yet; a marker that may be there goes before its scratch copy
+    await deleteIngredientIfPresent(api, scratch, APPLY_MARKER).then(() => deleteIfPresent(api, scratch)).catch(() => {});
+    return failed(error, { tries: facts.tries, phase: 'apply' });
   }
   nextSyncGeneration(repoPath); // G1: a store opened before the apply is stale
   try {
@@ -460,13 +469,22 @@ async function syncRecorded(
       await applyScratch(api, repoPath, scratch);
     } catch (again) {
       const refusal = new Refusal('sync.apply-pending', 'the apply did not finish; the next start of the app finishes it', failureOf(again));
-      return { ...failed(refusal, { tries: facts.tries, phase: 'apply' }), open: true };
+      return failed(refusal, { tries: facts.tries, phase: 'apply' });
     }
   }
 
-  // 8. the outbox entries are live now; the scratch copy goes before the close, so
-  // a stop between the two finds it gone and closes the record as finished
-  await mine.journal.clearCarried(mine.outbox);
-  await deleteIfPresent(api, scratch);
+  // 8. the apply is done: the marker goes first (one file), then the scratch copy
+  try {
+    await deleteIngredientIfPresent(api, scratch, APPLY_MARKER);
+  } catch (error) {
+    const refusal = new Refusal('sync.apply-pending', 'the apply finished, but its marker was not deleted; the next start ends it', failureOf(error));
+    return failed(refusal, { tries: facts.tries, phase: 'apply' });
+  }
+  try {
+    await mine.journal.clearCarried(mine.outbox);
+    await deleteIfPresent(api, scratch);
+  } catch (error) {
+    return failed(error, { tries: facts.tries, applied: true }); // a coded `sync.failed` (withCode)
+  }
   return { report: okReport('sync', startedAt, new Date().toISOString(), { ...facts, repoPath }), open: false };
 }

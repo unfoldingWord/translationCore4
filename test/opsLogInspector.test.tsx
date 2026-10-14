@@ -52,7 +52,7 @@ describe('#374 the dev Inspector', () => {
     const refused = failedReport('sync', at(10), at(11), new Refusal('sync.no-write-access', 'x'), { repoPath: '_local_/_local_/prueba', tries: 1 });
     const ops = {
       entries: [
-        { id: 'd', op: 'sync', startedAt: at(7), facts: { repoPath: '_local_/_local_/prueba', phase: 'live' }, report: synced },
+        { id: 'd', op: 'sync', startedAt: at(7), facts: { repoPath: '_local_/_local_/prueba', phase: 'apply' }, report: synced },
         { id: 'e', op: 'sync', startedAt: at(10), facts: { repoPath: '_local_/_local_/prueba', phase: 'push' }, report: refused },
       ],
       errors: [],

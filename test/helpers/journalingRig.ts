@@ -272,7 +272,9 @@ export const journalingRig = () => {
       const repo = repoAt(3);
       maybeFail({ method, route, repo });
       const project = repos.get(repo);
-      if (!project) return notFound(`no such repo ${repo}`);
+      // a missing repository answers [] with HTTP 200, as the platform does
+      // [VERIFIED — pankosmia-web 0.18.15 (a83725b), rig GET of a missing _local_/_archive_/ path, 2026-10-13]
+      if (!project) return ok([]);
       return ok([...project.files.keys()].sort());
     }
 

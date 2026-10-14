@@ -133,7 +133,7 @@
   "refusal.sync.not-shared": "Proyek ini belum ada di Door43. Bagikan dulu, lalu sinkronkan. Tidak ada yang berubah.",
   "refusal.sync.clone-path-exists": "Di komputer ini ada folder dengan nama yang sama dengan proyek Door43, jadi sinkronisasi berhenti. Tidak ada yang berubah. Minta bantuan.",
   "refusal.sync.clone-failed": "Aplikasi tidak dapat mengambil proyek dari Door43. Pastikan internet menyala, lalu sinkronkan lagi. Tidak ada yang berubah.",
-  "refusal.sync.move-failed": "Aplikasi tidak dapat menaruh proyek yang disinkronkan di tempatnya. Proyek Anda tidak berubah. Sinkronkan lagi.",
+  "refusal.sync.move-failed": "Aplikasi tidak dapat menyiapkan salinan dari Door43. Proyek Anda tidak berubah. Sinkronkan lagi.",
   "refusal.sync.verify-failed": "Aplikasi menemukan masalah pada proyek gabungan, jadi aplikasi tidak mengirimnya ke Door43. Tidak ada yang berubah. Minta bantuan.",
   "refusal.sync.non-fast-forward": "Rekan tim Anda mengirim perubahan ke Door43 selama sinkronisasi Anda. Sinkronkan lagi. Tidak ada yang berubah.",
   "refusal.sync.no-write-access": "Door43 tidak mengizinkan Anda mengirim perubahan ke proyek ini. Minta akses tulis kepada pemilik proyek. Tidak ada yang berubah.",

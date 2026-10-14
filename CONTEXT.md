@@ -385,8 +385,9 @@ _Avoid_: error code, error message (as the thing a test checks)
 
 ## Team sync (D98, 2026-10-13)
 
-The ops log of a sync is the **Ops record**, **ops log** above: the next start finishes or
-undoes an operation that a crash stopped.
+The ops log keeps the Report of a sync (**Ops record**, **ops log** above), but it never locks
+a project. The **apply marker**, `ingredients/tc4-sync/apply.json` in the scratch copy, is the
+record of an apply that may have begun: the next start or sync finishes that apply (D100).
 
 **Sync**:
 One press of "Sync with Door43" after the first share. It gets Door43 main, checks each incoming

@@ -133,7 +133,7 @@
   "refusal.sync.not-shared": "Este proyecto todavía no está en Door43. Compártelo primero y luego sincroniza. No cambió nada.",
   "refusal.sync.clone-path-exists": "En esta computadora hay una carpeta con el mismo nombre que el proyecto de Door43, así que la sincronización se detuvo. No cambió nada. Pide ayuda.",
   "refusal.sync.clone-failed": "La aplicación no pudo obtener el proyecto de Door43. Asegúrate de que internet esté activado y sincroniza de nuevo. No cambió nada.",
-  "refusal.sync.move-failed": "La aplicación no pudo poner el proyecto sincronizado en su lugar. Tu proyecto no cambió. Sincroniza de nuevo.",
+  "refusal.sync.move-failed": "La aplicación no pudo preparar la copia de Door43. Tu proyecto no cambió. Sincroniza de nuevo.",
   "refusal.sync.verify-failed": "La aplicación encontró un problema en el proyecto combinado, así que no lo envió a Door43. No cambió nada. Pide ayuda.",
   "refusal.sync.non-fast-forward": "Tus compañeros enviaron cambios a Door43 durante tu sincronización. Sincroniza de nuevo. No cambió nada.",
   "refusal.sync.no-write-access": "Door43 no te permitió enviar cambios a este proyecto. Pide al dueño del proyecto acceso de escritura. No cambió nada.",

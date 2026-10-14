@@ -133,7 +133,7 @@
   "refusal.sync.not-shared": "This project is not on Door43 yet. Share it first, then sync. Nothing changed.",
   "refusal.sync.clone-path-exists": "A folder with the same name as the Door43 project is on this computer, so the sync stopped. Nothing changed. Ask for help.",
   "refusal.sync.clone-failed": "The app could not get the project from Door43. Make sure that the internet is on, then sync again. Nothing changed.",
-  "refusal.sync.move-failed": "The app could not put the synced project in its place. Your project did not change. Sync again.",
+  "refusal.sync.move-failed": "The app could not get the copy from Door43 ready. Your project did not change. Sync again.",
   "refusal.sync.verify-failed": "The app found a problem in the combined project, so it did not send it to Door43. Nothing changed. Ask for help.",
   "refusal.sync.non-fast-forward": "Your teammates sent changes to Door43 during your sync. Sync again. Nothing changed.",
   "refusal.sync.no-write-access": "Door43 did not let you send changes to this project. Ask the project owner for write access. Nothing changed.",
