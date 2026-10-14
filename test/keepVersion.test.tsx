@@ -130,13 +130,13 @@ describe('#679 "Keep this version"', () => {
     const { box, ctx, scheduler, rawRef } = await session(store, conflict);
     const real = store.resolveVerse.bind(store);
     const atWrite: Array<string | null> = [];
-    vi.spyOn(store, 'resolveVerse').mockImplementation(async (key, head) => {
+    vi.spyOn(store, 'resolveVerse').mockImplementation(async (key, head, shown) => {
       atWrite.push(scheduler.bookText('TIT'), rawRef.current);
       expect(() => scheduler.markDirty('TIT', 1, '2', 'x')).toThrow(/not loaded/); // no edit can reach the book now
-      return real(key, head);
+      return real(key, head, shown);
     });
     expect(await keepVersion(ctx, KEY, mine.ts)).toBe(true);
-    expect(store.resolveVerse).toHaveBeenCalledWith(KEY, mine.ts);
+    expect(store.resolveVerse).toHaveBeenCalledWith(KEY, mine.ts, conflict.versions.map((v) => v.ts));
     expect(atWrite).toEqual([null, null]);
     expect(box.state.verseConflicts).toEqual([]);
     expect(box.state.conflictsByProject).toEqual({ [REPO]: {} });
@@ -194,6 +194,29 @@ describe('#679 "Keep this version"', () => {
     expect(box.state.verseConflicts).toEqual([]);
     expect(box.state.conflictsByProject).toEqual({ [REPO]: {} });
     expect(store.projectedVerse('TIT', '1', '1')).toBe(mine.text);
+  });
+
+  // George, bench round 6 (High): an unsaved edit of the conflicted verse itself
+  // is written by the keep's drain. It is a version the person never saw on the
+  // review, so the keep must not replace it: the keep is refused, the edit stays
+  // a live version, and the review shows the new list.
+  it('an unsaved edit of the conflicted verse, written by the keep\'s drain, is not replaced by the keep', async () => {
+    const { store } = await conflicted();
+    const [conflict] = store.readVerseConflicts();
+    const mine = conflict.versions.find((v) => v.actor === store.actorId)!;
+    const { box, ctx, scheduler } = await session(store, conflict);
+    ctx.saveRefs = [ctx.schedulerRef] as never;
+    // Typed in Translate, not yet saved, when the review opened from the fold.
+    // The save's base is the projected head (the teammate's), so Mine stays a
+    // head beside the new text, and a keep of Mine would supersede the new text.
+    scheduler.markDirty('TIT', 1, '1', 'Pablo, siervo de Dios (nuevo).');
+    expect(await keepVersion(ctx, KEY, mine.ts)).toBe(false);
+    const [still] = store.readVerseConflicts();
+    expect(still?.key).toBe(KEY);
+    expect(still.versions.map((v) => v.text.trim())).toContain('Pablo, siervo de Dios (nuevo).');
+    expect(box.state.verseConflicts).toEqual([still]);
+    expect((box.state.conflictReview as { error: string | null; kept: boolean }).kept).toBe(false);
+    expect((box.state.conflictReview as { error: string | null }).error).toBeTruthy();
   });
 
   it('a keep whose regeneration fails, but whose chosen text the fold holds, is success', async () => {

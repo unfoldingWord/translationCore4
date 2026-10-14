@@ -2288,14 +2288,22 @@ export class JournalingStore implements BurritoStore {
    * the kept head's text whose `supersedes` names every head of the fork
    * (R-8.3.5), so the fold shows no conflict and keeps the other versions in
    * history (`retained[]`, reason `superseded`, R-8.3.6). `key` and `keptHead`
-   * come from readVerseConflicts(); anything else is a caller defect. */
-  async resolveVerse(key: string, keptHead: string): Promise<void> {
+   * come from readVerseConflicts(); anything else is a caller defect.
+   * `shownHeads` (bench round 6): the heads the person saw when they chose.
+   * When given, a fork whose heads are not exactly those (a save or any other
+   * action landed after the screen was drawn) is refused, never superseded —
+   * a version nobody saw is not replaced. */
+  async resolveVerse(key: string, keptHead: string, shownHeads?: readonly string[]): Promise<void> {
     return this.queue(async () => {
       await this.replayOwnStagedBeforeDiff(); // round-5 rule 1: REPLAY-BEFORE-DIFF
       const journal = this.mustJournal();
       const foldOut = await this.ensureFold();
       const conflict = verseConflicts(foldOut, this.events).find((c) => c.key === key);
       if (!conflict) throw new Error(`resolveVerse(${key}): the fold shows no verse-text conflict on this key`);
+      const heads = conflict.versions.map((v) => v.ts);
+      if (shownHeads && (shownHeads.length !== heads.length || !heads.every((h) => shownHeads.includes(h)))) {
+        throw new Error(`resolveVerse(${key}): the versions of this verse changed after the review showed them; nothing was kept`);
+      }
       const kept = conflict.versions.find((v) => v.ts === keptHead);
       if (!kept) throw new Error(`resolveVerse(${key}): ${keptHead} is not a head of this conflict`);
       const ts = journal.issueTs();

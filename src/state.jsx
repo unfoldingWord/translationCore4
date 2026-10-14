@@ -2496,10 +2496,13 @@ async function performKeepVersion(ctx, key, keptTs) {
   const seen = stateRef.current.verseConflicts ?? [];
   const position = seen.findIndex((c) => c.key === key);
   const chosen = seen[position]?.versions.find((v) => v.ts === keptTs)?.text;
+  // Bench round 6: the drain above can write a version of this very verse that
+  // the review never showed; the store refuses a fork whose heads are not these.
+  const shownHeads = seen[position]?.versions.map((v) => v.ts) ?? [];
   const { book } = parseVerseKey(key);
   const wasOpen = stateRef.current.book === book;
   if (!unloadEditorBook(ctx, book)) return false;
-  const failure = await store.resolveVerse(key, keptTs).then(() => null, (e) => e);
+  const failure = await store.resolveVerse(key, keptTs, shownHeads).then(() => null, (e) => e);
   if (storeRef.current !== store) return false;
   const loaded = await reloadAfterKeep(ctx, store, book, wasOpen);
   if (storeRef.current !== store) return false;
