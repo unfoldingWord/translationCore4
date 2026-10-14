@@ -48,7 +48,7 @@ import { revalidateAgainstDraft, resolutionWarning } from './data/revalidate';
 import { bootstrapVerse, linkWord, unlinkWord, moveWord, mergeAlignments, splitAlignment, stampTargetVerse, alignmentIsStale, reflowAlignment, settleDone, markDone } from './data/align/edit';
 import { linksFor, rebindSuggestions, sessionInputFor, trainingVerseOf, trainingVersesFor } from './data/align/suggest';
 import { SuggestScheduler } from './data/align/suggestScheduler';
-import { consequencesOfGatewayChange, applyGatewayChange, completeLanguageSets, uncoveredByChange, sourcePanesForGateway, gatewaysCoveringProject } from './data/gatewayChange';
+import { consequencesOfGatewayChange, applyGatewayChange, completeLanguageSets, uncoveredByChange, sourcePanesForGateway, gatewaysCoveringProject, literalPaneId } from './data/gatewayChange';
 import { carryOverDecisions } from './data/carryOver';
 import { applyTextUpgrade, applyUpgrade, invalidateAlignments, invalidatedTestaments, latestReleasesForSet, offerForSet, offerIsStale, repinOffer, textOfferIsStale, textOffers, textPinOf } from './data/upgrade';
 import { LADDER } from './data/burritoStore';
@@ -2814,8 +2814,9 @@ function loadSourcePanes({ store, code, seq, openSeqRef, stateRef, dispatch, pin
     type: 'set',
     patch: {
       sourcePanes: ids,
-      // Keep the tab valid: an imported project may name panes differently.
-      ...(ids.length > 0 && !ids.includes(st.sourceTab) && !(st.sourceTab === 'orig' && origPin) ? { sourceTab: ids[0] } : {}),
+      // Keep the tab valid: an imported project may name panes differently,
+      // and a gateway change may replace the literal pane (#704).
+      ...(ids.length > 0 && !ids.includes(st.sourceTab) && !(st.sourceTab === 'orig' && origPin) ? { sourceTab: literalPaneId(ids) } : {}),
     },
   });
   loadOrigPane({ store, origPin, code, seq, openSeqRef, stateRef, dispatch, testament });
