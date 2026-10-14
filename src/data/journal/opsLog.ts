@@ -69,12 +69,20 @@
 //     swap began: at swap.copy-previous recovery goes back (swap.go-back); at
 //     swap.delete-project it restores (swap.restore). Otherwise it goes forward
 //     with the scratch copy, which is pushed and complete.
-// A record whose last write was not saved counts as open in this session
-// (`isOpen`): its saved phase is unknown, so the project stays locked until a
-// start recovers it.
-// A store opened before a swap is stale after it (JournalingStore): each swap
-// moves the project's swap generation on, and a store whose generation is older
-// refuses every edit and checkpoint (`sync.project-replaced`).
+// Only a record at a swap phase (swap.*, including swap.go-back and
+// swap.restore) locks its project (`isOpen`): open, or closed in this session by
+// a write that was not saved, since its saved phase is then unknown. A record
+// before the swap locks nothing; the project did not change.
+// A store opened before a swap is stale after it (JournalingStore): the swap
+// moves the project's swap generation on when it first touches the live project
+// (swap.delete-project), and a store whose generation is older refuses every edit
+// and checkpoint (`sync.project-replaced`). A go-back at swap.copy-previous leaves
+// the project and its stores as they were.
+// A settings document that does not parse (a write the platform stopped half way:
+// `clients.rs` creates the file, then writes it) cannot lock anything, because no
+// record in it can be read. `recover()` keeps its bytes under `unreadableSettings`,
+// starts an empty ops log, and reports the incident; any other read failure fails
+// closed (`opslog.not-loaded`).
 // Each swap step is safe to run again when the
 // step after it has not run: it first deletes the target that a stopped copy
 // can leave in part. Two kill sweeps in test/sync/syncOperation.test.ts prove
@@ -85,6 +93,9 @@ import { Refusal, failedReport, okReport, type Report } from './runtime';
 import type { WriteIngredientFlags } from '../serverApi';
 import { isNotFoundError } from '../serverApi';
 import { idbKvStore, type KvStore } from './identity';
+
+/** The settings key that keeps the bytes of a settings document that did not parse. */
+export const UNREADABLE_KEY = 'unreadableSettings';
 
 export type OpsOp = Report['op'];
 
@@ -163,6 +174,8 @@ export interface OpsWriteError {
   id: string;
   op: OpsOp;
   error: string;
+  /** 'settings-unreadable': the settings document did not parse at this start (module header). */
+  kind?: 'settings-unreadable';
 }
 
 export interface OpsLogInit {
@@ -171,6 +184,10 @@ export interface OpsLogInit {
   now?: () => number;
   /** The installation store, where a recovered sync records its previous copy. Default: the shared IndexedDB store. */
   kv?: KvStore;
+  /** The raw text of the settings document, and a write that replaces it without
+   * a read: for a document that does not parse (module header). */
+  readText?: () => Promise<string>;
+  replace?: (doc: SettingsDoc) => Promise<void>;
 }
 
 /** What recovery needs from the platform. */
@@ -199,6 +216,8 @@ export const lastSegmentName = (paths: string[]): string => {
 export const SWAP_PHASES = ['swap.copy-previous', 'swap.delete-project', 'swap.copy-live', 'swap.delete-scratch'] as const;
 /** The two phases that go back instead of forward (module header). */
 export type BackPhase = 'swap.go-back' | 'swap.restore';
+/** A record at one of these phases locks its project (module header). */
+export const isLockingPhase = (phase: unknown): boolean => isSwapPhase(phase) || phase === 'swap.go-back' || phase === 'swap.restore';
 export type SwapPhase = (typeof SWAP_PHASES)[number];
 export const isSwapPhase = (phase: unknown): phase is SwapPhase => SWAP_PHASES.includes(phase as SwapPhase);
 
@@ -268,6 +287,8 @@ export async function runSwap(
   };
   for (const phase of SWAP_PHASES.slice(SWAP_PHASES.indexOf(from))) {
     if (!(await note(phase))) throw new Error(`the ops log did not save the phase ${phase}; the swap stopped before it`);
+    // G1: the first step that touches the live project makes every store opened before it stale
+    if (phase === 'swap.delete-project') nextSwapGeneration(repoPath);
     await steps[phase]();
   }
 }
@@ -326,7 +347,12 @@ export class OpsLog implements OpsRecorder {
     this.update = init.update;
     this.now = init.now ?? (() => Date.now());
     this.kv = init.kv ?? null;
+    this.readText = init.readText ?? null;
+    this.replace = init.replace ?? null;
   }
+
+  private readonly readText: (() => Promise<string>) | null;
+  private readonly replace: ((doc: SettingsDoc) => Promise<void>) | null;
 
   private readonly kv: KvStore | null;
   /** True after `recover()` loaded the log at this start. */
@@ -336,7 +362,8 @@ export class OpsLog implements OpsRecorder {
   private readonly unsaved = new Set<string>();
 
   isOpen(op: OpsOp, repoPath: string): boolean {
-    return this.entries.some((e) => e.op === op && e.facts.repoPath === repoPath && (!e.report || this.unsaved.has(e.id)));
+    return this.entries.some((e) => e.op === op && e.facts.repoPath === repoPath && isLockingPhase(e.facts.phase)
+      && (!e.report || this.unsaved.has(e.id)));
   }
 
   subscribe(listener: () => void): () => void {
@@ -357,7 +384,7 @@ export class OpsLog implements OpsRecorder {
   /** Resolve every record a killed operation left open, and load the log.
    * Run once, when the app starts, before any operation begins. */
   async recover(api: OpsRecoveryApi): Promise<OpsEntry[]> {
-    const doc = await this.read();
+    const doc = await this.readOrSetAside();
     const resolved: OpsEntry[] = [];
     for (const entry of opsEntriesOf(doc)) {
       // A record this session began is running, not interrupted.
@@ -437,7 +464,6 @@ export class OpsLog implements OpsRecorder {
         return true;
       });
       // the next successful checkpoint deletes the previous copy, as after a sync that ran to its end
-      nextSwapGeneration(repoPath);
       await this.kvStore().set(previousCopyKey(repoPath), paths.previous);
       return okReport('sync', entry.startedAt, endedAt, { ...facts, phase: 'live', finishedSwap: true });
     }
@@ -446,6 +472,23 @@ export class OpsLog implements OpsRecorder {
     await deleteIfPresent(api, paths.scratch);
     return failedReport('sync', entry.startedAt, endedAt,
       new Error('the sync was interrupted before the swap; the project did not change'), { ...facts, rolledBack: true });
+  }
+
+  /** The settings document; one that does not parse is kept under
+   * `UNREADABLE_KEY` and replaced by an empty ops log (module header). Any other
+   * failure throws: the log did not load. */
+  private async readOrSetAside(): Promise<SettingsDoc> {
+    try {
+      return await this.read();
+    } catch (error) {
+      if (!(error instanceof SyntaxError) || !this.readText || !this.replace) throw error;
+      const doc: SettingsDoc = { [UNREADABLE_KEY]: [{ at: new Date(this.now()).toISOString(), bytes: await this.readText() }] };
+      await this.replace(doc);
+      const failure: OpsWriteError = { id: 'settings', op: 'open', error: String(error.message), kind: 'settings-unreadable' };
+      this.errors = [...this.errors, failure];
+      console.error(`ops log: the settings document did not parse; its bytes are kept under ${UNREADABLE_KEY}: ${failure.error}`);
+      return doc;
+    }
   }
 
   /** swap.restore: save the later work (`carry`) and the phase BEFORE any delete. */

@@ -88,6 +88,7 @@ export const REFUSAL_CODES = Object.freeze({
   'sync.failed': null, // a sync failure that is no other refusal (a server error); the project did not change; facts.error holds the diagnosis
   'sync.project-replaced': null, // (G1) a store opened before a sync swap takes no edit and no checkpoint after it; open the project again
   'sync.not-main': null, // (G4) the Door43 repository's default branch is not main
+  'sync.audio-not-carried': null, // (G1) an own audio/ file Door43 main does not hold byte for byte; no route writes bytes
   'sync.swap-pending': null, // (G8) a swap did not finish; no open, edit or sync of the project until the next start finishes it
 });
 

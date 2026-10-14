@@ -814,9 +814,12 @@ describe('#676 crash recovery of the sync (G8)', () => {
     expect((await syncing).ok).toBe(true);
   });
 
-  /** Kill the sync INSIDE the delete of the project (half of its files go), and,
-   * just before, a writer that the gate does not see (another process) changes
-   * the project: the live mark moves on. */
+  /** Kill the sync INSIDE the delete of the project, and, just before, a writer
+   * that the gate does not see (another process) changes the project: the live
+   * mark moves on. The part delete takes half of the files that existed when the
+   * swap began, older journal files included, and leaves every newer file. (A
+   * delete that took a newer file leaves it only on Door43, through the pushed
+   * scratch copy; the live tree has no trace of it, so a restore cannot bring it.) */
   async function killInsideProjectDelete(w: World) {
     let killed = false;
     const dying = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -831,9 +834,11 @@ describe('#676 crash recovery of the sync (G8)', () => {
         await ungated.writeBook('TIT', usfm('Pablo.', lateWork));
         ungated.dispose();
         const project = w.rig.repos.get(REPO)!;
-        const keep = [...project.files].filter(([p, b]) => b.includes(lateWork) || p.startsWith('checking/journal/'));
-        const rest = [...project.files].filter(([p, b]) => !(b.includes(lateWork) || p.startsWith('checking/journal/')));
-        project.files = new Map([...keep, ...rest.slice(0, Math.floor(rest.length / 2))]); // a part delete
+        // files that existed when the swap began are in the previous copy; newer ones are not
+        const older = w.rig.repos.get(PATHS.previous)!.files;
+        const keep = [...project.files].filter(([p]) => !older.has(p));
+        const rest = [...project.files].filter(([p]) => older.has(p));
+        project.files = new Map([...keep, ...rest.filter((_, i) => i % 2 === 1)]); // a part delete
         return new Promise<Response>(() => {});
       }
       return w.rig.fetchFn(input, init);
@@ -843,11 +848,14 @@ describe('#676 crash recovery of the sync (G8)', () => {
     await new Promise((r) => setTimeout(r, 50));
   }
 
-  it('[G1][G8] a go-back at swap.delete-project restores the project from the previous copy, keeps the later work, and keeps the previous copy', async () => {
+  it('[G1][G8] a go-back at swap.delete-project restores the project from the previous copy, brings back the older journal files from it, and keeps the newer segments through carry', async () => {
     const w = await world({ outbox: true });
     const before = w.own();
     const preSync = new Map(w.rig.repos.get(REPO)!.files);
     await killInsideProjectDelete(w);
+    // the part delete took older journal files, and the previous copy lacks the newer segment
+    expect([...before.keys()].some((p) => !w.rig.repos.get(REPO)!.files.has(p))).toBe(true);
+    expect([...w.rig.repos.get(PATHS.previous)!.files.values()].some((b) => b.includes(lateWork))).toBe(false);
     const [entry] = await restart(w, storedOf(w));
     expect(entry.report).toMatchObject({ op: 'sync', ok: false, code: 'sync.move-failed', facts: { wentBack: true, restored: true } });
     const live = w.rig.repos.get(REPO)!.files;
@@ -967,6 +975,127 @@ describe('#676 crash recovery of the sync (G8)', () => {
     await w.kv.set(previousCopyKey(REPO), REPO);
     await expect(deletePreviousCopy(w.api, w.kv, REPO)).rejects.toThrow();
     expect(w.rig.repos.has(REPO)).toBe(true);
+  });
+  // ---- full review of b542af5 ----------------------------------------------------
+
+  it('[G8] a settings document that does not parse: one start keeps its bytes under their own key, starts an empty ops log, and the app opens projects', async () => {
+    const w = await world();
+    const bad = '{"opsLog":[{"id":"x","op":"sync","facts":{"phase":"swap.copy-pr';
+    let doc: Record<string, unknown> | null = null;
+    const ops = new OpsLog({
+      read: async () => (doc ? structuredClone(doc) : JSON.parse(bad)),
+      update: serialSettingsWriter(async () => (doc ? structuredClone(doc) : JSON.parse(bad)), async (d) => { doc = structuredClone(d); }),
+      readText: async () => bad,
+      replace: async (d) => { doc = structuredClone(d); },
+      kv: w.kv,
+    });
+    expect(await ops.recover(w.api)).toEqual([]);
+    expect(ops.recovered).toBe(true);
+    expect((doc as unknown as Record<string, Array<{ bytes: string }>>).unreadableSettings[0].bytes).toBe(bad);
+    expect(ops.errors.map((e) => e.kind)).toEqual(['settings-unreadable']);
+    const store = new JournalingStore({ api: w.api, kv: w.kv, ops });
+    await store.open(REPO);
+    store.dispose();
+  });
+
+  it('[G8] a settings read that fails for another reason still fails closed', async () => {
+    const w = await world();
+    const ops = new OpsLog({ read: async () => { throw new TypeError('fetch failed'); }, update: serialSettingsWriter(async () => ({}), async () => {}),
+      readText: async () => '', replace: async () => {}, kv: w.kv });
+    await expect(ops.recover(w.api)).rejects.toThrow();
+    expect(ops.recovered).toBe(false);
+  });
+
+  it('a go-back at swap.copy-previous leaves the project as it was, so the store that was open keeps working (P1)', async () => {
+    const w = await world();
+    const store = new JournalingStore({ api: w.api, kv: w.kv, ops: w.ops });
+    await store.open(REPO);
+    const before = new Map(w.rig.repos.get(REPO)!.files);
+    w.rig.failOn(({ route }) => route.includes(`/git/copy/${REPO}`), 1);
+    const report = await sync(w.deps(), { repoPath: REPO, session: SESSION });
+    expect(report.code).toBe('sync.move-failed');
+    expect(w.rig.repos.get(REPO)!.files).toEqual(before);
+    await store.writeBook('TIT', usfm('Pablo.', 'TRABAJO'));
+    store.dispose();
+  });
+
+  it('a sync refused before any swap whose close is not saved does not lock the project (P3)', async () => {
+    const w = await world();
+    w.rig.setNet(false);
+    let failWrites = false;
+    const ops = new OpsLog({ read: w.settings.read, update: serialSettingsWriter(w.settings.read, async (d) => {
+      if (failWrites) throw new Error('settings write failed');
+      await w.settings.write(d);
+    }), kv: w.kv });
+    await ops.recover(w.api);
+    const begin = ops.begin.bind(ops);
+    let first = true;
+    ops.begin = async (...a: Parameters<typeof begin>) => {
+      const handle = await begin(...a);
+      if (first) failWrites = true; // the first sync's close is not saved
+      first = false;
+      return handle;
+    };
+    const report = await sync({ ...w.deps(), ops }, { repoPath: REPO, session: SESSION });
+    failWrites = false;
+    expect(report.code).toBe('sync.offline');
+    expect(ops.isOpen('sync', REPO)).toBe(false);
+    const store = new JournalingStore({ api: w.api, kv: w.kv, ops });
+    await store.open(REPO);
+    store.dispose();
+    w.rig.setNet(true);
+    expect((await sync({ ...w.deps(), ops }, { repoPath: REPO, session: SESSION })).ok).toBe(true);
+  });
+
+  it('a refused token is matched on the libgit2 code (code=Auth (-16)), not on the text', async () => {
+    const pushReply = (reason: string) => async () => {
+      const w = await world();
+      const api = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) =>
+        String(input).includes('/git/push/')
+          ? new Response(JSON.stringify({ is_good: false, reason }), { status: 500 })
+          : w.rig.fetchFn(input, init)) as typeof fetch });
+      return (await sync(w.deps(api), { repoPath: REPO, session: SESSION })).code;
+    };
+    // the reply that the owner run recorded (docs/evidence/sync-transport-spike-2026-10-13.md, step 3)
+    expect(await pushReply('Could not push repo: server requires authentication that we do not support; class=Http (34); code=Auth (-16)')()).toBe('sync.auth-failed');
+    // the word alone is not the code
+    expect(await pushReply('Could not push repo: authentication hook said no; class=Http (34)')()).toBe('sync.push-failed');
+  });
+
+  it('a clone that does not move, and whose clean-up delete fails too, keeps its record open: the next start deletes the clone path (N4)', async () => {
+    const w = await world();
+    w.rig.failOn(({ route }) => route.startsWith(`/api/git/copy/${CLONE_PATH}`), 1);
+    w.rig.failOn(({ route }) => route.startsWith(`/api/git/delete/${CLONE_PATH}`), 1);
+    const report = await sync(w.deps(), { repoPath: REPO, session: SESSION });
+    expect([report.ok, report.code]).toEqual([false, 'sync.move-failed']);
+    expect(report.facts).toMatchObject({ refusal: { clonePathLeft: true } });
+    expect(w.rig.repos.has(CLONE_PATH)).toBe(true);
+    const [entry] = opsEntriesOf(w.settings.get()).filter((e) => e.op === 'sync');
+    expect([entry.report, entry.facts.phase]).toEqual([undefined, 'clone']);
+    expect(w.ops.isOpen('sync', REPO)).toBe(false); // a record with no swap phase locks nothing
+    await restart(w, storedOf(w));
+    expect(w.rig.repos.has(CLONE_PATH)).toBe(false);
+  });
+
+  it('[G1] an audio file of the project that Door43 main does not hold refuses the sync (sync.audio-not-carried); nothing changes', async () => {
+    const w = await world();
+    w.rig.repos.get(REPO)!.files.set('audio/TIT/1.mp3', 'ID3\u0000ÿþ binary');
+    const project = new Map(w.rig.repos.get(REPO)!.files);
+    const report = await sync(w.deps(), { repoPath: REPO, session: SESSION });
+    expect([report.ok, report.code]).toEqual([false, 'sync.audio-not-carried']);
+    expect(report.facts).toMatchObject({ refusal: { paths: ['audio/TIT/1.mp3'] } });
+    expect(w.rig.repos.get(REPO)!.files).toEqual(project);
+    expect(w.rig.remotes.get(URL_)!.version).toBe(1);
+  });
+
+  it('[G1] an audio file that Door43 main holds byte for byte syncs, and stays byte for byte', async () => {
+    const w = await world();
+    const audio = 'ID3\u0000ÿþ binary';
+    w.rig.repos.get(REPO)!.files.set('audio/TIT/1.mp3', audio);
+    w.rig.remotes.get(URL_)!.files.set('audio/TIT/1.mp3', audio);
+    const report = await sync(w.deps(), { repoPath: REPO, session: SESSION });
+    expect(report.ok).toBe(true);
+    expect(w.rig.repos.get(REPO)!.files.get('audio/TIT/1.mp3')).toBe(audio);
   });
 });
 

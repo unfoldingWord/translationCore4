@@ -675,6 +675,14 @@ export class ServerApi {
     return this.requestJson(`/client-settings/${encodeURIComponent(storageId)}`);
   }
 
+  /** GET /client-settings/<storage_id> as text: the bytes of the file, even when
+   * they do not parse (the platform returns the file as it is, `clients.rs`
+   * get_client_settings). For the ops log's unreadable-settings case (#676). */
+  async getClientSettingsText(storageId: string): Promise<string> {
+    assertSafeSegment(storageId, `storage id ${JSON.stringify(storageId)}`);
+    return this.requestText(`/client-settings/${encodeURIComponent(storageId)}`);
+  }
+
   /** POST /client-settings/<storage_id> body {"settings": {...}} — the value
    * must be a JSON object (verified server contract, clients.rs 0.18.5). */
   async setClientSettings(storageId: string, settings: Record<string, unknown>): Promise<void> {

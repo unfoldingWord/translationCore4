@@ -13,7 +13,7 @@
 // #43), which leaves the git-init debris of PLATFORM-NOTES #28.
 import type { KvStore } from '../../src/data/journal/identity';
 import { withLocalizedNames } from '../../scripts/fix-obs-template.mjs';
-import { unzipSync } from 'fflate';
+import { strToU8, unzipSync, zipSync } from 'fflate';
 
 // Real node builtins via the runtime (the app's polyfill plugin aliases them).
 const nodeFs = process.getBuiltinModule('node:fs');
@@ -475,8 +475,21 @@ export const journalingRig = () => {
 
     if (parts[1] === 'git' && parts[2] === 'delete') {
       const repo = repoAt(3);
+      maybeFail({ method, route, repo });
       repos.delete(repo);
       return ok();
+    }
+
+    // one ingredient directory as one zip, entry names relative to it. Only audio/
+    // (#676): the journal suites keep the per-file read they were written for.
+    if (parts[1] === 'burrito' && parts[2] === 'ingredient' && parts[3] === 'zipped' && url.searchParams.get('ipath') === 'audio') {
+      const repo = repoAt(4);
+      const dir = `${decodeURIComponent(url.searchParams.get('ipath') ?? '')}/`;
+      const project = repos.get(repo);
+      if (!project) return notFound(`no such repo ${repo}`);
+      const entries = Object.fromEntries([...project.files].filter(([p]) => p.startsWith(dir)).map(([p, text]) => [p.slice(dir.length), strToU8(text, true)]));
+      if (!Object.keys(entries).length) return notFound('could not locate repo or ingredient directory');
+      return new Response(zipSync(entries) as unknown as BodyInit, { status: 200 });
     }
 
     if (parts[1] === 'app-state' && parts[2] === 'current-project') {

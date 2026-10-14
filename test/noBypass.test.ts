@@ -61,7 +61,7 @@ const RAW_MUTATION_WHITELIST = new Set([
   'src/data/journal/journalingStore.ts', // the boundary itself
   'src/data/journal/journalStore.ts', // the segment writer (#61)
   'src/data/import/shell.ts', // a new repository before its journal exists (#361)
-  'src/data/journal/opsLog.ts', // finishes a killed import's rollback at the next start (#374)
+  'src/data/journal/opsLog.ts', // finishes a killed import's rollback (#374), and a sync's go-back or restore of the live project from its previous copy (#676)
   'src/data/share/syncOperation.ts', // writes the sync core's output into the scratch copy, never the live project (#676)
 ]);
 

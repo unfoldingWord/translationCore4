@@ -31,12 +31,13 @@
 // sync the caller MUST open the project again: the open store's fold and
 // `.git` are the old ones (#678).
 //
-// The HTTPS answers for a refused token (401) and for no write access (403)
-// are [PENDING — the owner's run on the Door43 QA server, #673 steps 3 and 4]. Until that
-// run records them, `refusalForPush` maps them by the HTTP status in the reason
-// text, as best known.
+// The HTTPS answer for a refused token is recorded: HTTP 500 with
+// `code=Auth (-16)` (docs/evidence/sync-transport-spike-2026-10-13.md, owner run
+// step 3), matched on the code, not on the text. The answer for no write access
+// (403) is [PENDING — the owner's run on the Door43 QA server, #673 step 4];
+// until then `refusalForPush` maps it by the HTTP status in the reason text.
 import { checkpointMessage } from '../checkpoint';
-import { Refusal, failedReport, okReport, projectResources, syncCore, type Report } from '../journal/runtime';
+import { Refusal, failedReport, isUnjournaledIngredient, okReport, projectResources, syncCore, type Report } from '../journal/runtime';
 import { JournalStore, readJournalZipOf } from '../journal/journalStore';
 import { inProjectQueue } from '../journal/journalingStore';
 import { idbKvStore, type KvStore } from '../journal/identity';
@@ -45,7 +46,6 @@ import { verifyProjectAgainstJournal } from '../journal/verify';
 import {
   deleteIfPresent,
   lastSegmentName,
-  nextSwapGeneration,
   previousCopyKey,
   runSwap,
   syncPathsOf,
@@ -55,6 +55,7 @@ import {
   type SwapPhase,
 } from '../journal/opsLog';
 import type { ServerApi } from '../serverApi';
+import { unzipServerZip } from '../serverZip';
 import { resolutionRecord, resolveToolBook, type Coverage, type Tool } from '../resolve';
 import type { ResourcesFile } from '../burritoStore';
 import { NO_CONSENT } from '../internet';
@@ -152,13 +153,15 @@ const refusalForPush = (error: unknown): Error => {
   if (status === 401 && /offline mode/.test(reason)) return new Refusal('sync.offline', NO_CONSENT, facts);
   if (/NotFastForward/.test(reason))
     return new Refusal('sync.non-fast-forward', 'Door43 main moved while this computer synced', facts);
-  // [PENDING — the owner's run on the Door43 QA server, #673 steps 3 and 4]: the HTTPS
-  // replies for a refused token and for no write access are not recorded yet. libgit2 names the HTTP
-  // status in its reason, so the status number is the best-known match.
+  // A refused token: libgit2's code, recorded by the owner run (step 3); the text
+  // ("authentication that we do not support") is misleading, so never match it.
+  if (/code=Auth \(-16\)/.test(reason))
+    return new Refusal('sync.auth-failed', 'Door43 did not accept the sign-in', facts);
+  // [PENDING — the owner's run on the Door43 QA server, #673 step 4]: the reply for
+  // no write access is not recorded yet; libgit2 names the HTTP status in its
+  // reason, so the status number is the best-known match.
   if (status === 403 || /\b403\b/.test(reason))
     return new Refusal('sync.no-write-access', 'Door43 did not accept the push: no write access', facts);
-  if (status === 401 || /\b401\b|authentication/i.test(reason))
-    return new Refusal('sync.auth-failed', 'Door43 did not accept the sign-in', facts);
   return new Refusal('sync.push-failed', `the push failed: ${reason}`, facts);
 };
 
@@ -189,8 +192,11 @@ export async function cloneProject(
   try {
     await api.copyRepo(clonePath, repoPath, true);
   } catch (error) {
-    await deleteIfPresent(api, clonePath).catch(() => {});
-    throw new Refusal('sync.move-failed', `the clone did not move to ${repoPath}`, { clonePath, ...failureOf(error) });
+    // A clone path the clean-up cannot delete stays on Home and blocks every later
+    // clone: say so (`clonePathLeft`), so the caller keeps its record for recovery.
+    const left = await deleteIfPresent(api, clonePath).then(() => null, (cleanup: unknown) => failureOf(cleanup).reason);
+    throw new Refusal('sync.move-failed', `the clone did not move to ${repoPath}`,
+      { clonePath, ...failureOf(error), ...(left === null ? {} : { clonePathLeft: true, cleanupError: left }) });
   }
   // Door43 `main` only (G4): the full clone checks out the repository's default
   // branch, and the push pushes the checked-out branch. The pinned platform has no
@@ -199,8 +205,9 @@ export async function cloneProject(
   // shallow), so a default branch other than `main` refuses.
   const head = (await api.listBranches(repoPath)).find((branch) => branch.is_head);
   if (head?.name !== 'main') {
-    await deleteIfPresent(api, repoPath).catch(() => {});
-    throw new Refusal('sync.not-main', 'the Door43 repository does not have main as its default branch', { branch: head?.name ?? null });
+    const left = await deleteIfPresent(api, repoPath).then(() => null, (cleanup: unknown) => failureOf(cleanup).reason);
+    throw new Refusal('sync.not-main', 'the Door43 repository does not have main as its default branch',
+      { branch: head?.name ?? null, ...(left === null ? {} : { targetLeft: true, cleanupError: left }) });
   }
 }
 
@@ -217,12 +224,37 @@ export const resolveFromCoverage =
  * read (else one read per file), the rest one read per file. `metadata.json`
  * is added when `withMetadata`. */
 async function readFiles(api: ServerApi, repoPath: string, filter: (ipath: string) => boolean, withMetadata: boolean): Promise<Map<string, string>> {
-  const paths = (await api.listPaths(repoPath)).filter(filter).sort();
+  // Every file read here is text: BURRITO-SPEC R-8.7.1 makes each shared
+  // non-journal file journal-derived (USFM or JSON) or the one tolerated
+  // unjournaled class `ingredients/audio/` (R-8.7.3), which can be binary. That
+  // class is never read as text: the core never writes or removes it, and
+  // `audioNotCarried` compares it byte for byte.
+  const paths = (await api.listPaths(repoPath)).filter((p) => filter(p) && !isUnjournaledIngredient(p)).sort();
   const zip = paths.some((p) => p.startsWith(JOURNAL_PREFIX)) ? await readJournalZipOf(api, repoPath) : null;
   const files = new Map<string, string>();
   for (const ipath of paths) files.set(ipath, zip?.get(ipath) ?? (await api.readIngredient(repoPath, ipath)));
   if (withMetadata) files.set('metadata.json', JSON.stringify(await api.getMetadataRaw(repoPath)));
   return files;
+}
+
+/** The bytes of a repository's `audio/` files, by ingredient path (one zipped read). */
+async function audioBytesOf(api: ServerApi, repoPath: string, paths: string[]): Promise<Map<string, Uint8Array>> {
+  const out = new Map<string, Uint8Array>();
+  if (!paths.some((p) => isUnjournaledIngredient(p))) return out;
+  for (const [name, bytes] of Object.entries(unzipServerZip(await api.readIngredientZipped(repoPath, 'audio'))))
+    if (!name.endsWith('/')) out.set(`audio/${name}`, bytes);
+  return out;
+}
+
+/** G1 for the one binary class (R-8.7.3): the platform has no route that writes
+ * bytes, so an own `audio/` file that Door43 main does not hold byte for byte
+ * cannot reach the copy. Such a sync refuses, and nothing changes. */
+async function audioNotCarried(api: ServerApi, repoPath: string, scratch: string): Promise<string[]> {
+  const own = await audioBytesOf(api, repoPath, await api.listPaths(repoPath));
+  if (!own.size) return [];
+  const remote = await audioBytesOf(api, scratch, await api.listPaths(scratch));
+  const same = (a: Uint8Array, b: Uint8Array | undefined): boolean => !!b && a.length === b.length && a.every((x, i) => x === b[i]);
+  return [...own].filter(([p, bytes]) => !same(bytes, remote.get(p))).map(([p]) => p).sort();
 }
 
 /** The events of this actor's journal files in `files` (Door43 main): what the name rule must see. */
@@ -326,6 +358,9 @@ async function syncOnce(
   await cloneProject(api, checked.source, paths.scratch, (clonePath) => note({ phase: 'clone', clonePath, try: tries }));
   await note({ phase: 'sync' });
   const remote = await readFiles(api, paths.scratch, () => true, true);
+  const notCarried = await audioNotCarried(api, mine.journal.repoPath, paths.scratch);
+  if (notCarried.length)
+    throw new Refusal('sync.audio-not-carried', 'the project holds audio files that Door43 main does not hold byte for byte', { paths: notCarried });
 
   // 3. the name action: once per actor (R-8.5.26), the username only
   const outbox = new Map(mine.outbox);
@@ -373,11 +408,39 @@ async function syncOnce(
   return { facts: core.report.facts };
 }
 
+/** Steps 2 to 6 with the G4 retries: the core's facts, or the result to return. */
+async function syncWithRetries(
+  deps: SyncDeps,
+  checked: Awaited<ReturnType<typeof preflight>>,
+  mine: Mine,
+  paths: SwapPaths,
+  note: (facts: Record<string, unknown>) => Promise<boolean>,
+  failed: (error: unknown, facts?: Record<string, unknown>) => { report: Report; open: boolean },
+): Promise<{ facts: Record<string, unknown> } | { result: { report: Report; open: boolean } }> {
+  const { api } = deps;
+  for (let tries = 1; ; tries += 1) {
+    try {
+      const once = await syncOnce(deps, checked, mine, paths, note, tries);
+      if ('refused' in once) {
+        await deleteIfPresent(api, paths.scratch);
+        return { result: { report: once.refused, open: false } };
+      }
+      return { facts: { ...once.facts, tries } };
+    } catch (error) {
+      await deleteIfPresent(api, paths.scratch).catch(() => {});
+      if ((error as { code?: string } | null)?.code === 'sync.non-fast-forward' && tries < SYNC_TRIES) continue;
+      // a clone path left behind: keep the record (phase clone), so the next start deletes it
+      if ((error as { facts?: { clonePathLeft?: boolean } } | null)?.facts?.clonePathLeft) return { result: { ...failed(error, { tries }), open: true } };
+      return { result: failed(error, { tries }) };
+    }
+  }
+}
+
 async function syncRecorded(
   deps: SyncDeps,
   request: SyncRequest,
   record: OpsHandle,
-): Promise<{ report: Report; open: boolean; closed?: boolean }> {
+): Promise<{ report: Report; open: boolean }> {
   const startedAt = new Date().toISOString();
   const { api } = deps;
   const { repoPath } = request;
@@ -407,22 +470,9 @@ async function syncRecorded(
   }
 
   // steps 2 to 6; a push that is not a fast-forward starts again (G4)
-  let facts: Record<string, unknown> = {};
-  for (let tries = 1; ; tries += 1) {
-    try {
-      const once = await syncOnce(deps, checked, mine, paths, note, tries);
-      if ('refused' in once) {
-        await deleteIfPresent(api, paths.scratch);
-        return { report: once.refused, open: false };
-      }
-      facts = { ...once.facts, tries };
-      break;
-    } catch (error) {
-      await deleteIfPresent(api, paths.scratch).catch(() => {});
-      if ((error as { code?: string } | null)?.code === 'sync.non-fast-forward' && tries < SYNC_TRIES) continue;
-      return failed(error, { tries });
-    }
-  }
+  const tried = await syncWithRetries(deps, checked, mine, paths, note, failed);
+  if ('result' in tried) return tried.result;
+  const { facts } = tried;
 
   // 7. the swap (G8): every phase is in the ops log before its step. The first
   // phase also saves the live mark, which recovery reads (opsLog.ts header).
@@ -432,8 +482,6 @@ async function syncRecorded(
     phase = next;
     return note({ phase: next, liveMark });
   };
-  // G1: from here a store opened before this swap is stale (opsLog.ts header)
-  nextSwapGeneration(repoPath);
   try {
     await runSwap(api, paths, 'swap.copy-previous', swapNote);
   } catch (error) {
