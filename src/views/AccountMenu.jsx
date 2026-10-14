@@ -63,7 +63,7 @@ function Trigger({ state, user, label, online, open, onClick }) {
         boxShadow: open ? '0 0 0 3px rgba(49,173,227,.45)' : 'none' }}>
         {user ? user.slice(0, 2).toUpperCase() : <Person />}
       </button>
-      {online && <span data-testid="internet-indicator" aria-hidden="true" style={{ position: 'absolute', right: -2, top: -2, width: 11, height: 11,
+      {online && <span data-testid="internet-indicator" aria-hidden="true" style={{ position: 'absolute', insetInlineEnd: -2, top: -2, width: 11, height: 11,
         borderRadius: 'var(--radius-pill)', background: 'var(--uw-inspire)', border: '2px solid #fff', boxSizing: 'border-box', pointerEvents: 'none' }} />}
     </>
   );

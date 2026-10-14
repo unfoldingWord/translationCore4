@@ -82,7 +82,7 @@ describe('#678 — the button', () => {
   it('sync label in every catalog', () => {
     const dir = path.resolve(process.cwd(), 'src', 'i18n');
     const catalogs = fs.readdirSync(dir).filter((f: string) => f.endsWith('.json'));
-    expect(catalogs).toHaveLength(9);
+    expect(catalogs).toHaveLength(10);
     const keys = ['home.sync', 'home.syncing', 'net.ask.sync', 'shareDialog.teamAccess', ...Object.values(SYNC_REFUSALS)];
     const en = JSON.parse(fs.readFileSync(path.join(dir, 'en.json'), 'utf8'));
     for (const file of catalogs) {
