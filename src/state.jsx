@@ -3335,6 +3335,22 @@ function isCheckToolReady(pre) {
   return Boolean(pre && pre.state === 'ready' && pre.resolution?.pin);
 }
 
+/** #679: resolve once the rendered state (stateRef) satisfies `holds`, or at the
+ * deadline. A dispatch reaches stateRef only on the next render. */
+function waitForState(stateRef, holds, ms = 5_000) {
+  const deadline = Date.now() + ms;
+  return new Promise((resolve) => {
+    const tick = () => {
+      if (holds(stateRef.current) || Date.now() >= deadline) {
+        resolve();
+        return;
+      }
+      setTimeout(tick, 0);
+    };
+    tick();
+  });
+}
+
 /** #268: openProject's pin load is detached — Resume into Check waits for it. */
 function waitForProjectPins(stateRef, ms = 20_000) {
   const deadline = Date.now() + ms;
@@ -6689,6 +6705,12 @@ export function AppProvider({ children }) {
         rawRef.current = raw;
         scheduler?.loadBook(code, raw);
         dispatch({ type: 'set', patch: { bookRaw: raw } });
+        // #679: the book now comes from memory, with no await. The HTTP read's
+        // await used to let React render before openBook returned; every next
+        // step reads stateRef, which a render sets (a resume into Check captured
+        // the old book and stopped: J4, J8, #434). Return once the state holds it.
+        await waitForState(stateRef, (st) => seq !== openSeqRef.current || (st.book === code && st.bookRaw === raw));
+        if (seq !== openSeqRef.current) return;
         // Round 37 (spec §5.3): the source panes come from the PROJECT's own
         // extraScripture pins — never the machine suite. Deferred while the
         // pins are still loading; loadProjectPins reloads on arrival.
