@@ -139,6 +139,7 @@
   "refusal.sync.no-write-access": "Door43 no te permitió enviar cambios a este proyecto. Pide al dueño del proyecto acceso de escritura. No cambió nada.",
   "refusal.sync.push-failed": "La aplicación no pudo enviar tus cambios a Door43. Sincroniza de nuevo. Si vuelve a pasar, pide ayuda. No cambió nada.",
   "refusal.opslog.not-loaded": "La aplicación no pudo leer su registro de trabajo sin terminar. Cierra la aplicación y ábrela de nuevo. Hasta entonces, no puedes abrir, cambiar ni sincronizar un proyecto.",
+  "refusal.sync.failed": "La sincronización se detuvo por un error. Tu proyecto no cambió. Sincroniza de nuevo. Si vuelve a pasar, pide ayuda.",
   "refusal.sync.swap-pending": "Una sincronización de este proyecto no terminó. Cierra la aplicación y ábrela de nuevo. Entonces la aplicación termina la sincronización. Hasta entonces, no puedes abrir ni cambiar este proyecto.",
   "home.book": "libro",
   "home.books": "libros",

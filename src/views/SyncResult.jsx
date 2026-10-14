@@ -26,6 +26,7 @@ export const SYNC_REFUSALS = {
   'sync.push-failed': 'syncResult.error.pushFailed',
   'opslog.not-loaded': 'syncResult.error.opsLogNotLoaded',
   'sync.swap-pending': 'syncResult.error.swapPending',
+  'sync.failed': 'refusal.sync.failed',
 };
 
 /** The message of a failed sync Report: the text of its code, else the reason. */
