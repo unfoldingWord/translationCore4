@@ -2269,6 +2269,13 @@ export class JournalingStore implements BurritoStore {
     return this.foldNow().books[book.toUpperCase()]?.usfm ?? null;
   }
 
+  /** The text of one verse as the current fold projects it (#679), in the form
+   * a VerseConflict version's `text` has: the value resolveVerse checks a
+   * candidate against. Null when the fold projects no such verse. */
+  projectedVerse(book: string, chapter: string, verse: string): string | null {
+    return this.foldNow().books[book.toUpperCase()]?.verses[`${chapter}:${verse}`] ?? null;
+  }
+
   /** The team as the fold knows it (#679): each actor's recorded Door43 name
    * (`FoldOutput.names`, #674) and every actor id of the event set, sorted —
    * the order the "Teammate n" labels number by (actorLabel). */

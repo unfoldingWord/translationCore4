@@ -56,7 +56,7 @@ const conflicted = async () => {
   forgetProjectQueues();
   const store = new JournalingStore({ api, kv, now: () => clock.advance(29) });
   await store.open(REPO);
-  return { api, files, store, own };
+  return { api, files, store, own, rig };
 };
 
 /** A dispatch that runs the real reducer, so the test reads the state the app would. */
@@ -130,6 +130,43 @@ describe('#679 "Keep this version"', () => {
     expect(ok).toBe(false);
     expect((box.state.conflictReview as { error: string }).error).toBeTruthy();
     expect(store.readVerseConflicts().map((c) => c.key)).toEqual([KEY]);
+  });
+
+  // Review finding (Frank, round 4): a keep that failed after it was staged is
+  // replayed by the next store mutation. A second keep of ANOTHER version then
+  // finds no conflict; that is not proof that the version it asked for was kept.
+  it('a failed keep of Mine, then a keep of the teammate version: the review reports that Mine was kept, never success', async () => {
+    const { store, rig } = await conflicted();
+    const [conflict] = store.readVerseConflicts();
+    const mine = conflict.versions.find((v) => v.actor === store.actorId)!;
+    const theirs = conflict.versions.find((v) => v.actor === TEAMMATE)!;
+    const { box, dispatch } = recorder({ project: { repoPath: REPO }, book: 'JON', conflictReview: { key: KEY, error: null }, conflictsByProject: { [REPO]: { TIT: 1 } }, verseConflicts: [conflict] });
+    const stateRef = { get current() { return box.state; } };
+    const ctx = { storeRef: { current: store }, stateRef, schedulerRef: { current: null }, rawRef: { current: null }, saveRefs: [], dispatch, conflictsGen: new Map() };
+    // Keep Mine: the segment write fails after the action is staged.
+    rig.failOn((c: { method: string; ipath?: string }) => c.method === 'POST' && (c.ipath ?? '').includes('/segments/'), 1);
+    expect(await keepVersion(ctx, KEY, mine.ts)).toBe(false);
+    expect(store.readVerseConflicts().map((c) => c.key)).toEqual([KEY]); // positive control: the first keep is not in the fold
+    // Keep the teammate's version: the store replays the staged Mine first.
+    expect(await keepVersion(ctx, KEY, theirs.ts)).toBe(false);
+    const { error } = box.state.conflictReview as { error: string | null };
+    expect(error).toMatch(/another version/);
+    // The recovered outcome is shown: the conflict left the list and the Home count, and the fold holds Mine.
+    expect(box.state.verseConflicts).toEqual([]);
+    expect(box.state.conflictsByProject).toEqual({ [REPO]: {} });
+    expect(store.projectedVerse('TIT', '1', '1')).toBe(mine.text);
+  });
+
+  it('negative control: a keep whose regeneration fails, but whose chosen text the fold holds, is still success', async () => {
+    const { store } = await conflicted();
+    const [conflict] = store.readVerseConflicts();
+    const theirs = conflict.versions.find((v) => v.actor === TEAMMATE)!;
+    vi.spyOn(store as unknown as { installAndConverge: () => Promise<void> }, 'installAndConverge').mockRejectedValueOnce(new Error('converge failed'));
+    const { box, dispatch } = recorder({ project: { repoPath: REPO }, book: 'JON', conflictReview: { key: KEY, error: null }, conflictsByProject: {}, verseConflicts: [conflict] });
+    const stateRef = { get current() { return box.state; } };
+    expect(await keepVersion({ storeRef: { current: store }, stateRef, schedulerRef: { current: null }, rawRef: { current: null }, saveRefs: [], dispatch, conflictsGen: new Map() }, KEY, theirs.ts)).toBe(true);
+    expect((box.state.conflictReview as { error: string | null }).error).toBeNull();
+    expect(store.projectedVerse('TIT', '1', '1')).toBe(theirs.text);
   });
 });
 

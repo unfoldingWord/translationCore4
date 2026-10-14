@@ -2489,29 +2489,54 @@ async function performKeepVersion(ctx, key, keptTs) {
   const repoPath = stateRef.current.project?.repoPath;
   if (!store || !repoPath) return false;
   const position = (stateRef.current.verseConflicts ?? []).findIndex((c) => c.key === key);
+  let chosen; // the text of the version this person asked for, as the fold showed it
+  let otherKept = null; // set when the fold settled the conflict on another version
   try {
+    chosen = versionText(store.readVerseConflicts(), key, keptTs);
     await store.resolveVerse(key, keptTs);
   } catch (e) {
-    // The store publishes before it regenerates the derived files, so a
-    // failure can come after the keep is in the journal. The fold decides.
     if (storeRef.current !== store) return false;
-    if (store.readVerseConflicts().some((c) => c.key === key)) {
-      if (stateRef.current.conflictReview)
-        dispatch({ type: 'set', patch: { conflictReview: { ...stateRef.current.conflictReview, error: failureText(e) } } });
-      return false;
-    }
-    console.warn(`keepVersion(${key}): kept, but the store reported: ${failureText(e)}`);
+    const settled = settleFailedKeep(ctx, store, key, chosen, e);
+    if (settled.refused) return false;
+    otherKept = settled.otherKept;
   }
-  if (storeRef.current !== store) return true;
+  if (storeRef.current !== store) return otherKept === null;
   conflictsGen.set(repoPath, (conflictsGen.get(repoPath) || 0) + 1);
   const left = adoptConflicts({ store, repoPath, dispatch });
   // The review stays at the same place in the list: the conflict after the kept one.
   if (stateRef.current.conflictReview) {
     const next = left[Math.min(Math.max(position, 0), left.length - 1)];
-    dispatch({ type: 'set', patch: { conflictReview: { key: next?.key ?? key, error: null } } });
+    dispatch({ type: 'set', patch: { conflictReview: { key: next?.key ?? key, error: otherKept } } });
   }
+  // The fold's version is installed either way: no edit may start from the text before it.
   installKeptBook(ctx, store, key);
-  return true;
+  return otherKept === null;
+}
+
+/** The text of version `ts` of the conflict on `key`; undefined when the list has no such version. */
+const versionText = (conflicts, key, ts) => conflicts.find((c) => c.key === key)?.versions.find((v) => v.ts === ts)?.text;
+
+/** resolveVerse threw. The store publishes before it regenerates the derived
+ * files, so a failure can come after the keep is in the journal: the fold
+ * decides. The conflict still open is a refused keep (the review shows the
+ * error). No conflict left is success only when the fold holds the chosen
+ * text: an earlier keep of this verse that failed after it was staged is
+ * replayed by the store first, and then the fold holds THAT version
+ * (CONTRIBUTING "Failure is not success"). */
+function settleFailedKeep({ stateRef, dispatch }, store, key, chosen, e) {
+  if (store.readVerseConflicts().some((c) => c.key === key)) {
+    if (stateRef.current.conflictReview)
+      dispatch({ type: 'set', patch: { conflictReview: { ...stateRef.current.conflictReview, error: failureText(e) } } });
+    return { refused: true };
+  }
+  const { book, chapter, verse } = parseVerseKey(key);
+  if (chosen !== undefined && store.projectedVerse(book, chapter, verse) === chosen) {
+    console.warn(`keepVersion(${key}): kept, but the store reported: ${failureText(e)}`);
+    return { refused: false, otherKept: null };
+  }
+  const otherKept = `${book} ${chapter}:${verse}: another version was kept, not the one you chose. An earlier keep of this verse was saved first. Check the verse in Translate. (${failureText(e)})`;
+  console.error(`keepVersion(${key}): ${otherKept}`);
+  return { refused: false, otherKept };
 }
 
 /** #679 (one read path): the book text the editor and its save buffer start
