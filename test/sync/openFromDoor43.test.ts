@@ -7,7 +7,9 @@ import { ServerApi } from '../../src/data/serverApi';
 import { JournalingStore, forgetProjectQueues } from '../../src/data/journal/journalingStore';
 import { forgetSharedClocks } from '../../src/data/journal/journalStore';
 import { actorIdFor } from '../../src/data/journal/identity';
-import { OpsLog, forgetRunningOpens, serialSettingsWriter } from '../../src/data/journal/opsLog';
+import { OpsLog, forgetRunningOpens, openRunning, serialSettingsWriter } from '../../src/data/journal/opsLog';
+import { runImport } from '../../src/data/import/shell';
+import { FAKE_PARSER } from '../../src/data/import/parsers';
 import { reportError } from '../../src/data/journal/runtime';
 import { openDefaultName, openFromDoor43, openFromDoor43Asking, openRepoPathOf, openSourceOf, forgetClonePathLocks, sync, withClonePathLock, type CloneSource } from '../../src/data/share/syncOperation';
 import { journalingRig, memKv, tickingNow, type JournalingRig } from '../helpers/journalingRig';
@@ -287,9 +289,10 @@ describe('#677 crash recovery of the open (G8 class)', () => {
       }
       return response;
     }) as typeof fetch });
+    const logStart = w.rig.log.length; // the open's own calls only, not the setup's
     const run = openFromDoor43({ api: dying, ops }, { source: SOURCE, name: 'prueba_b' });
     const done = await Promise.race([run.then(() => true, () => true), new Promise((r) => setTimeout(() => r(false), 200))]);
-    return { w, settings, killed, done };
+    return { w, settings, killed, done, openLog: w.rig.log.slice(logStart) };
   }
 
   /** The next start over the stored document; then the state of the folders. */
@@ -313,7 +316,7 @@ describe('#677 crash recovery of the open (G8 class)', () => {
   it('[G8] a kill after the clone: the next start deletes the clone path and the scratch copy, and the same repository opens again', async () => {
     const dry = await killOpen(Infinity);
     expect(dry.done).toBe(true);
-    const cloneCall = dry.w.rig.log.filter((l) => folderCall(l.route)).findIndex((l) => l.route.startsWith('/api/git/clone-repo/')) + 1;
+    const cloneCall = dry.openLog.filter((l) => folderCall(l.route)).findIndex((l) => l.route.startsWith('/api/git/clone-repo/')) + 1;
     expect(cloneCall).toBeGreaterThan(0);
     const { w, settings, killed, done } = await killOpen(cloneCall);
     expect([killed, done]).toEqual([true, false]);
@@ -330,7 +333,7 @@ describe('#677 crash recovery of the open (G8 class)', () => {
 
   it('[G8] kill sweep after and inside each folder call: the project is whole or not there, and nothing is left behind', async () => {
     const dry = await killOpen(Infinity);
-    const total = dry.w.rig.log.filter((l) => folderCall(l.route)).length;
+    const total = dry.openLog.filter((l) => folderCall(l.route)).length;
     expect(total).toBeGreaterThanOrEqual(3); // the stale-scratch delete, the clone, the moves
     let whole = 0;
     let none = 0;
@@ -741,22 +744,18 @@ describe('#677 the open recovers from the disk only', () => {
     expect(w.rig.repos.get(OPENED)?.files.get('TIT.usfm')).toContain('EDITED BY USER');
   });
 
-  it('[disk] a stale marked scratch copy never deletes a project made later under that name: the open refuses and deletes nothing', async () => {
+  it('[disk] a marked scratch copy beside a project that is not its copy deletes nothing: the open refuses', async () => {
     const w = await world();
     const settings = settingsDoc();
     const { ops } = await startApp(settings, w.api);
-    // a killed open left its marked scratch copy and no project; the record was lost
-    await w.api.copyRepo(REPO, SCRATCH);
-    await w.api.writeIngredient(SCRATCH, MARKER, '{"open":"_local_/_local_/prueba_b"}', { updateIngredients: false, keepBak: false });
-    // later the translator makes a different project under that name
+    // the translator's own project at the path (the create cleared any stale scratch first) ...
     const clock = tickingNow('2026-10-14T09:00:00.000Z');
     const mine = new JournalingStore({ api: w.api, kv: w.kvB, ops, now: () => clock.advance(7) });
-    // the create makes the folder, and its open meets the gate: refused, nothing deleted
-    await expect(mine.createProject({ content_name: 'Mine', content_abbr: 'prueba_b', content_language_code: 'es', add_book: false, versification: 'eng' }))
-      .rejects.toMatchObject({ code: 'open-door43.pending' });
+    await mine.createProject({ content_name: 'Mine', content_abbr: 'prueba_b', content_language_code: 'es', add_book: false, versification: 'eng' });
     mine.dispose();
-    expect(w.rig.repos.has(OPENED)).toBe(true);
-    expect(w.rig.repos.get(SCRATCH)!.files.has(MARKER)).toBe(true);
+    // ... and then a marked scratch copy of a different project for that path (defense in depth)
+    await w.api.copyRepo(REPO, SCRATCH);
+    await w.api.writeIngredient(SCRATCH, MARKER, '{"open":"_local_/_local_/prueba_b"}', { updateIngredients: false, keepBak: false });
     const before = new Map(w.rig.repos.get(OPENED)!.files);
     forgetProjectQueues();
     const store = new JournalingStore({ api: w.api, kv: w.kvB, ops });
@@ -785,5 +784,57 @@ describe('#677 the clone-path lock (shared with the sync, #676)', () => {
     await expect(first).rejects.toThrow('first failed');
     await second;
     expect(order).toEqual(['first start', 'other path', 'first end', 'second']);
+  });
+});
+
+describe('#677 a stale open never blocks a project made later at that path (the create chokepoint)', () => {
+  /** A killed open left its marked scratch copy and no project; its record was lost. */
+  async function staleMarkedScratch() {
+    const w = await world();
+    const settings = settingsDoc();
+    const { ops } = await startApp(settings, w.api);
+    await w.api.copyRepo(REPO, SCRATCH);
+    await w.api.writeIngredient(SCRATCH, MARKER, '{"open":"_local_/_local_/prueba_b"}', { updateIngredients: false, keepBak: false });
+    expect(w.rig.repos.has(OPENED)).toBe(false);
+    return { w, ops };
+  }
+
+  it('a New Bible with the same name is created and opens; the stale scratch copy is gone', async () => {
+    const { w, ops } = await staleMarkedScratch();
+    const clock = tickingNow('2026-10-14T09:00:00.000Z');
+    const mine = new JournalingStore({ api: w.api, kv: w.kvB, ops, now: () => clock.advance(7) });
+    await mine.createProject({ content_name: 'Mine', content_abbr: 'prueba_b', content_language_code: 'es', add_book: false, versification: 'eng' });
+    mine.dispose();
+    expect(w.rig.repos.has(SCRATCH)).toBe(false);
+    forgetProjectQueues();
+    const store = new JournalingStore({ api: w.api, kv: w.kvB, ops });
+    await store.open(OPENED);
+    store.dispose();
+  });
+
+  it('an Import with the same name is made and opens; the stale scratch copy is gone', async () => {
+    const { w, ops } = await staleMarkedScratch();
+    const clock = tickingNow('2026-10-14T09:00:00.000Z');
+    const store = new JournalingStore({ api: w.api, kv: w.kvB, ops, now: () => clock.advance(7) });
+    const file = (name: string, text: string) => ({ name, bytes: new TextEncoder().encode(text) });
+    const book = ['\\id TIT fake', '\\usfm 3.0', '\\h Tito', '\\mt Tito', '\\c 1', '\\p', '\\v 1 Uno.', ''].join('\n');
+    const report = await runImport(FAKE_PARSER, [file('57-TIT.usfm', book)], { name: 'prueba_b', language: 'es-419' }, { api: w.api, store });
+    expect([report.ok, report.facts.repoPath]).toEqual([true, OPENED]);
+    expect(w.rig.repos.has(SCRATCH)).toBe(false);
+    forgetProjectQueues();
+    const again = new JournalingStore({ api: w.api, kv: w.kvB, ops });
+    await again.open(OPENED);
+    again.dispose();
+  });
+
+  it('control: while an open from Door43 of that path runs, the create is refused and writes nothing', async () => {
+    const { w, ops } = await staleMarkedScratch();
+    openRunning.add(OPENED);
+    const mine = new JournalingStore({ api: w.api, kv: w.kvB, ops });
+    await expect(mine.createProject({ content_name: 'Mine', content_abbr: 'prueba_b', content_language_code: 'es', add_book: false, versification: 'eng' }))
+      .rejects.toMatchObject({ code: 'open-door43.pending' });
+    mine.dispose();
+    expect(w.rig.repos.has(OPENED)).toBe(false);
+    expect(w.rig.repos.get(SCRATCH)!.files.has(MARKER)).toBe(true);
   });
 });

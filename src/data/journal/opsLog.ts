@@ -67,6 +67,7 @@
 import { Refusal, failedReport, okReport, type Report } from './runtime';
 import { isNotFoundError } from '../serverApi';
 import { idbKvStore, type KvStore } from './identity';
+import { OPEN_MARKER, openRunning, openScratchOf } from '../openCopyMarks';
 
 export type OpsOp = Report['op'];
 
@@ -235,33 +236,18 @@ export const syncPathsOf = (repoPath: string): SwapPaths => {
 // nothing. No project with a marker is ever opened, so no edit can be lost when a
 // part copy is deleted. Edits need no gate: they run on an open store, and a marker
 // can appear only by a copy to a path that is free, which an open store is not.
+// A stale marked scratch copy never blocks a project made later at that path: every
+// create goes through the platform's create routes, and those first delete the scratch
+// copy for the path when no open of it runs here and no folder is at the path
+// (ServerApi `clearStaleOpenScratch`).
 
 /** The phases of an open from Door43, in order (the record only: a hint, not a safety input). */
 export const OPEN_PHASES = ['start', 'clone', 'check', 'move.copy', 'move.delete-scratch'] as const;
 export type OpenPhase = (typeof OPEN_PHASES)[number];
 
-/** One name for the WHOLE project path inside `_local_/_archive_/`: `-` becomes
- * `-d` and `/` becomes `-s`. The encoding is injective, and it adds only `-`,
- * `d` and `s`, so the name keeps the platform's path rules. The same function as
- * #676's `archiveNameOf` (issue-676 branch, opsLog.ts), written here until the
- * branches merge. */
-export const archiveNameOf = (repoPath: string): string => repoPath.replaceAll('-', '-d').replaceAll('/', '-s');
-
-/** The scratch copy of an open from Door43. Under `_local_/_archive_/`, so Home never lists it. */
-export const openScratchOf = (repoPath: string): string => `_local_/_archive_/tc4-open--${archiveNameOf(repoPath)}`;
-
-/** The marker of an unfinished copy (the open section above), as an ingredient path. */
-export const OPEN_MARKER = 'tc4-open/move.json';
-
-/** The projects whose open from Door43 runs in this app now. */
-const runningOpens = new Set<string>();
-export const openRunning = {
-  add: (repoPath: string): void => void runningOpens.add(repoPath),
-  delete: (repoPath: string): void => void runningOpens.delete(repoPath),
-  has: (repoPath: string): boolean => runningOpens.has(repoPath),
-};
-/** Tests: a kill ends the process, and with it every open that ran (a restart starts empty). */
-export const forgetRunningOpens = (): void => runningOpens.clear();
+// The open's names and its running set live in src/data/openCopyMarks.ts (no imports), so
+// the platform's create routes (serverApi.ts) can read them without a cycle.
+export { archiveNameOf, openScratchOf, OPEN_MARKER, openRunning, forgetRunningOpens } from '../openCopyMarks';
 
 /** What the disk says about a project's open from Door43, after `settleOpenCopy`. */
 export type OpenCopyState = 'clear' | 'finished' | 'removed' | 'blocked' | 'running';
