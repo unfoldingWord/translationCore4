@@ -320,6 +320,10 @@ test.describe('J26 — three translators sync one project through Door43', () =>
       expect(remote.main(), 'the first share pushed main').not.toBeNull();
       // the stand-in mirror that every clone copies (never committed to)
       execFileSync('git', ['clone', '-q', pathToFileURL(remote.bare).href, MIRROR_DIR]);
+      // a local git identity: the clone copies the mirror's .git, and the server's add-and-commit
+      // needs an identity on a machine with no global one (CI); test/sync/syncRig.integration.test.ts does the same
+      git(MIRROR_DIR, 'config', 'user.name', 'rig');
+      git(MIRROR_DIR, 'config', 'user.email', 'rig@localhost');
       await expect(page.getByTestId(`share-${idOf(A)}`)).toHaveText('Sync with Door43');
     });
 
