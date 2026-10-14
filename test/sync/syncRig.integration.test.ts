@@ -99,6 +99,10 @@ describe.skipIf(!rigUp)('#676 one full sync against the live rig and the #673 st
     await api.push(REPO, 'origin', SESSION.username, SESSION.token);
     // the mirror the stand-in clone copies: never committed to
     execFileSync('git', ['clone', '-q', url, dir(MIRROR)]);
+    // the server's own clone writes a local git identity (clone_repo.rs:84-93); the
+    // platform commit panics without one, and a CI runner has no global identity
+    git(dir(MIRROR), 'config', 'user.name', 'rig');
+    git(dir(MIRROR), 'config', 'user.email', 'rig@localhost');
     // after the share: one more own draft (only on this computer) ...
     await store.writeBook('TIT', usfm('Pablo, siervo de Dios.'));
     store.dispose();

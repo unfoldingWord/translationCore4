@@ -139,6 +139,7 @@
   "refusal.sync.no-write-access": "Door43 tidak mengizinkan Anda mengirim perubahan ke proyek ini. Minta akses tulis kepada pemilik proyek. Tidak ada yang berubah.",
   "refusal.sync.push-failed": "Aplikasi tidak dapat mengirim perubahan Anda ke Door43. Sinkronkan lagi. Jika ini terjadi lagi, minta bantuan. Tidak ada yang berubah.",
   "refusal.opslog.not-loaded": "Aplikasi tidak dapat membaca catatan pekerjaan yang belum selesai. Tutup aplikasi dan buka lagi. Sampai saat itu, Anda tidak dapat membuka, mengubah, atau menyinkronkan proyek.",
+  "refusal.sync.failed": "Sinkronisasi berhenti karena ada kesalahan. Proyek Anda tidak berubah. Sinkronkan lagi. Jika ini terjadi lagi, minta bantuan.",
   "refusal.sync.swap-pending": "Sinkronisasi proyek ini belum selesai. Tutup aplikasi dan buka lagi. Lalu aplikasi menyelesaikan sinkronisasi. Sampai saat itu, Anda tidak dapat membuka atau mengubah proyek ini.",
   "home.book": "kitab",
   "home.books": "kitab",
