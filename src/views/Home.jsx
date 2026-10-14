@@ -323,7 +323,7 @@ function AskForHelp({ help, text }) {
   if (!help || help.text !== text) return null;
   return (
     <Button size="sm" variant="outline" data-testid="ask-for-help" data-code={help.code}
-      style={{ marginLeft: 8 }} onClick={() => actions.askForHelp(help)}>
+      style={{ marginInlineStart: 8 }} onClick={() => actions.askForHelp(help)}>
       {t('feedback.ask')}
     </Button>
   );
