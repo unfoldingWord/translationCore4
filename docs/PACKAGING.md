@@ -545,9 +545,9 @@ Windows Security **App & browser control** on and Smart App Control off
 (`docs/evidence/windows-unsigned-silent-start-2026-10-13.md`, D98).
 
 The build signs with Azure Artifact Signing. It signs only on a manual run
-(**Run workflow** on `package-desktop`), and only when the repository variable
-`AZURE_SIGNING_ENDPOINT` is set. Every other run builds unsigned. A pull request
-gets no secrets, so it always builds unsigned.
+(**Run workflow** on `package-desktop`) on `main` or a `release/*` branch, and only
+when the repository variable `AZURE_SIGNING_ENDPOINT` is set. Every other run,
+including every pull request and every merge to `main`, builds unsigned.
 
 What a signed run does:
 
@@ -576,23 +576,51 @@ for three days, so a signature without a timestamp stops being valid
 [VERIFIED — Microsoft Learn, "Set up signing integrations to use Artifact
 Signing", page dated 2026-05-14, read 2026-10-13].
 
-The credential is an Entra app registration that has the **Artifact Signing
-Certificate Profile Signer** role on the certificate profile. Set these values
-in the repository settings:
+The build signs in to Azure with GitHub OIDC. No secret is stored [decided
+2026-10-13 — D98 ruling 7]. The `windows-x64` job has `id-token: write`. Before each
+`signtool` run, `sign-windows.ps1` asks GitHub for a fresh OIDC token, because the
+token expires after minutes and signing runs late in a long build. The Azure
+`WorkloadIdentityCredential` reads it from `AZURE_FEDERATED_TOKEN_FILE`. The build
+gives the token request values only to the signing calls, not to npm, cargo or the
+smoke test.
 
-| Name | Kind | Value |
-|---|---|---|
-| `AZURE_SIGNING_ENDPOINT` | variable | the regional endpoint of the signing account, for example `https://eus.codesigning.azure.net` |
-| `AZURE_SIGNING_ACCOUNT` | variable | the Artifact Signing account name |
-| `AZURE_SIGNING_PROFILE` | variable | the certificate profile name |
-| `AZURE_TENANT_ID` | secret | the Entra tenant ID |
-| `AZURE_CLIENT_ID` | secret | the app registration's client ID |
-| `AZURE_CLIENT_SECRET` | secret | the app registration's client secret |
+Set up Azure once:
+
+1. Create an Entra app registration, for example `tc4-github-signing`.
+2. On the certificate profile `uw-public-prod`, give the app registration the
+   **Artifact Signing Certificate Profile Signer** role.
+3. In the app registration, add one federated credential for each branch that
+   signs: `main` and `release/4.0`. Use the **Other issuer** scenario:
+
+   | Field | Value |
+   |---|---|
+   | Issuer | `https://token.actions.githubusercontent.com` |
+   | Subject | `repo:unfoldingWord@6601424/translationCore4@1323470539:ref:refs/heads/main` (and the same with `refs/heads/release/4.0`) |
+   | Audience | `api://AzureADTokenExchange` |
+
+   This repository was created on 2026-08-04. GitHub gives a repository created
+   after 2026-07-15 the immutable subject form, with the owner and repository IDs
+   [VERIFIED — GitHub Docs, "OpenID Connect reference", read 2026-10-14; repository
+   created 2026-08-04, owner ID 6601424, repository ID 1323470539 from
+   `gh api repos/unfoldingWord/translationCore4`, 2026-10-14]. The portal's
+   **GitHub Actions** scenario may build the older form without IDs. The subject
+   must match exactly. A signed run prints `GitHub OIDC subject:` in its log. If
+   Azure refuses the token, compare that line with the federated credential.
+4. A new release branch, for example `release/4.1`, needs its own federated
+   credential before it can sign.
+
+Then set these repository variables. None of them is secret:
+
+| Name | Value |
+|---|---|
+| `AZURE_SIGNING_ENDPOINT` | `https://eus.codesigning.azure.net/` |
+| `AZURE_SIGNING_ACCOUNT` | `unfoldingWordSigning` |
+| `AZURE_SIGNING_PROFILE` | `uw-public-prod` |
+| `AZURE_TENANT_ID` | the Entra tenant ID |
+| `AZURE_CLIENT_ID` | the app registration's client ID |
 
 The endpoint must match the region of the account. A wrong region gives a 403
-error [VERIFIED — same Microsoft Learn page, read 2026-10-13]. A client secret
-expires. Record its expiry date when you create it. The build gives the secret
-only to the signing calls, not to npm, cargo or the smoke test.
+error [VERIFIED — same Microsoft Learn page, read 2026-10-13].
 
 If `AZURE_SIGNING_ENDPOINT` is set but another value is empty, a manual run
 fails at the start. It does not build unsigned.

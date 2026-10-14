@@ -246,6 +246,11 @@ jobs:
     needs: package-preflight
     runs-on: windows-2025
     timeout-minutes: 90
+    # #456: id-token lets a signed run ask GitHub for an OIDC token, which Azure
+    # Artifact Signing trusts. A run whose subject Azure does not trust cannot sign.
+    permissions:
+      contents: read
+      id-token: write
     steps:
       # Windows git defaults to core.autocrlf=true. A CRLF package-desktop.zsh does
       # not parse under zsh, and CRLF sample-burrito bytes would break the debug
@@ -293,14 +298,14 @@ jobs:
         env:
           TC_HELP_DESK_TOKEN: ${{ secrets.TC_HELP_DESK_TOKEN }}
           TC_HELP_DESK_EMAIL: ${{ secrets.TC_HELP_DESK_EMAIL }}
-          # #456: manual runs sign with Azure Artifact Signing, when the repository
-          # variable AZURE_SIGNING_ENDPOINT is set. Every other run builds unsigned.
-          AZURE_SIGNING_ENDPOINT: ${{ github.event_name == 'workflow_dispatch' && vars.AZURE_SIGNING_ENDPOINT || '' }}
-          AZURE_SIGNING_ACCOUNT: ${{ github.event_name == 'workflow_dispatch' && vars.AZURE_SIGNING_ACCOUNT || '' }}
-          AZURE_SIGNING_PROFILE: ${{ github.event_name == 'workflow_dispatch' && vars.AZURE_SIGNING_PROFILE || '' }}
-          AZURE_TENANT_ID: ${{ github.event_name == 'workflow_dispatch' && secrets.AZURE_TENANT_ID || '' }}
-          AZURE_CLIENT_ID: ${{ github.event_name == 'workflow_dispatch' && secrets.AZURE_CLIENT_ID || '' }}
-          AZURE_CLIENT_SECRET: ${{ github.event_name == 'workflow_dispatch' && secrets.AZURE_CLIENT_SECRET || '' }}
+          # #456: a manual run on main or a release/* branch signs with Azure Artifact
+          # Signing, when the repository variable AZURE_SIGNING_ENDPOINT is set. A
+          # non-empty endpoint is the switch; every other run builds unsigned.
+          AZURE_SIGNING_ENDPOINT: ${{ github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')) && vars.AZURE_SIGNING_ENDPOINT || '' }}
+          AZURE_SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          AZURE_SIGNING_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
         shell: msys2 {0}
         run: zsh scripts/package-desktop.zsh
 

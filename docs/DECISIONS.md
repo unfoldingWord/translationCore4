@@ -2628,7 +2628,7 @@ samples and `sample-burrito-obs/.../resources.json`, `conformance/validate-journ
 (the tW resource fixture), `conformance/generate.mjs` and `conformance/README.md`, and
 `test/export/relationships.test.ts`.
 
-## D98 (2026-10-13, project-owner rulings) **Windows v4.0.0 ships signed. Signing is a release gate: an unsigned Windows build can start with no window and no warning. Overrules D89 point 4 for Windows.** [owner rulings on #456, 2026-10-13; evidence in `docs/evidence/windows-unsigned-silent-start-2026-10-13.md`]
+## D98 (2026-10-13 and 2026-10-14, project-owner rulings) **Windows v4.0.0 ships signed. Signing is a release gate: an unsigned Windows build can start with no window and no warning. Overrules D89 point 4 for Windows.** [owner rulings on #456, 2026-10-13 and 2026-10-14; evidence in `docs/evidence/windows-unsigned-silent-start-2026-10-13.md`]
 
 Context. D89 point 4 let Windows ship unsigned if the #456 credential did not work in CI by
 2026-10-08. That date passed with no signed build. On 2026-10-13 the owner found that an
@@ -2659,9 +2659,12 @@ Electronite graphics DLLs by hand removed the failure on that machine.
    promotes the rc.3 artifacts. [decided 2026-10-13 — owner, on #456; rc.2 tags when the
    Arabic work is ready]
 
-Open [FLAG: not yet ruled]: the CI credential (an Entra app registration with the Signer role,
-by client secret or GitHub OIDC). Ruling 6 changes #546, which says that v4.0.0 promotes the
-rc.2 artifact without a new build.
+7. **Credential.** CI signs in to Azure with GitHub OIDC: an Entra app registration with
+   the Signer role on `uw-public-prod`, and one federated credential for each branch that
+   signs (`main`, `release/4.0`). No secret is stored. A manual run on any other branch
+   builds unsigned. [decided 2026-10-14 — owner, on #456]
+
+Ruling 6 changes #546, which says that v4.0.0 promotes the rc.2 artifact without a new build.
 
 Where it lands: `scripts/sign-windows.ps1`, `scripts/package-desktop.zsh`, `scripts/tc4.iss`,
 `.github/workflows/package-desktop.yml` (the signing values and the `smoke-windows-x64`
