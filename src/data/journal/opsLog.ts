@@ -23,6 +23,9 @@
 //   scratch copy's journal files, then its derived files, then lose the files
 //   the scratch copy does not hold; then a remake and a commit) -> delete the
 //   marker (one file: a rename, so all or nothing) -> delete the scratch copy.
+//   A marker write that fails is followed by a marker delete. When that delete
+//   fails too, the marker may be there: the sync moves the generation on and
+//   answers `sync.apply-pending`.
 // The disk rule (`finishPendingApply`), at each start and at the start of each
 // sync of the project:
 //   scratch copy with the marker   -> an apply may have begun: run the same apply

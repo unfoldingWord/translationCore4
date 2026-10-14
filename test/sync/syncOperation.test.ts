@@ -910,6 +910,74 @@ describe('#676 crash recovery of the sync (G8)', () => {
     expect(await reopened(w)).toBe('converged');
     await expectOneProjectWithOwnWork(w, before, staged);
   });
+
+  /** A sync whose marker write lands on the server, but the answer is lost (HTTP 500).
+   * The server is still down for one clean-up call: the marker delete when
+   * `markerDeleteFails`, else the scratch delete after it. */
+  async function syncWithLostMarkerAnswer(w: World, markerDeleteFails: boolean) {
+    let tripped = false;
+    const flaky = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (!tripped && init?.method === 'POST' && decodeURIComponent(url.pathname) === `/api/burrito/ingredient/raw/${SCRATCH}` && url.searchParams.get('ipath') === APPLY_MARKER) {
+        tripped = true;
+        await w.rig.fetchFn(input, init); // the write lands
+        const down = markerDeleteFails ? `/api/burrito/ingredient/delete/${SCRATCH}` : `/api/git/delete/${SCRATCH}`;
+        w.rig.failOn(({ route }) => decodeURIComponent(route).startsWith(down), 1);
+        return new Response(JSON.stringify({ is_good: false, reason: 'the server stopped' }), { status: 500 });
+      }
+      return w.rig.fetchFn(input, init);
+    }) as typeof fetch });
+    const report = await sync(w.deps(flaky), { repoPath: REPO, session: SESSION });
+    expect(tripped).toBe(true);
+    return report;
+  }
+
+  it('[G1][G8] a marker write whose answer is lost, and whose marker delete fails: sync.apply-pending, a store opened before the sync takes no edit, and the next start applies with own work and the teammate text', async () => {
+    const w = await teammateTextWorld();
+    const before = w.own();
+    const editor = new JournalingStore({ api: w.api, kv: w.kv, ops: w.ops });
+    await editor.open(REPO);
+    const report = await syncWithLostMarkerAnswer(w, true);
+    // the marker may be there: the next start or sync applies the scratch copy
+    expect([report.ok, report.code]).toEqual([false, 'sync.apply-pending']);
+    expect(w.rig.repos.get(SCRATCH)!.files.has(APPLY_MARKER)).toBe(true);
+    // so the store opened before the sync is stale: an edit now would go under that apply
+    await expect(editor.writeBook('TIT', usfm('MINE AFTER THE SYNC'))).rejects.toMatchObject({ code: 'sync.project-replaced' });
+    await expect(editor.commit('stale save (tC4)')).rejects.toMatchObject({ code: 'sync.project-replaced' });
+    editor.dispose();
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const store = new JournalingStore({ api: w.api, kv: w.kv, ops: w.ops });
+    await expect(store.open(REPO)).rejects.toMatchObject({ code: 'sync.apply-pending' });
+    store.dispose();
+    // the next start applies the pushed tree
+    expect(await restart(w, storedOf(w))).toEqual([]);
+    expect(await reopened(w)).toBe('converged');
+    const tit = w.rig.repos.get(REPO)!.files.get('TIT.usfm');
+    expect([tit?.includes('Pablo, siervo.'), tit?.includes('TEAMMATE TEXT'), tit?.includes('MINE AFTER THE SYNC')]).toEqual([true, true, false]);
+    await expectOneProjectWithOwnWork(w, before, new Map());
+  });
+
+  it('[G8] a marker write whose answer is lost, and whose marker delete works (control): sync.failed, no apply can begin, and a store opened before the sync still saves', async () => {
+    const w = await teammateTextWorld();
+    const project = new Map(w.rig.repos.get(REPO)!.files);
+    const editor = new JournalingStore({ api: w.api, kv: w.kv, ops: w.ops });
+    await editor.open(REPO);
+    const report = await syncWithLostMarkerAnswer(w, false);
+    expect([report.ok, report.code]).toEqual([false, 'sync.failed']);
+    // the scratch copy stays (its delete failed), with no marker
+    expect(w.rig.repos.get(SCRATCH)!.files.has(APPLY_MARKER)).toBe(false);
+    expect(w.rig.repos.get(REPO)!.files).toEqual(project);
+    await editor.writeBook('TIT', usfm('MINE AFTER THE SYNC'));
+    editor.dispose();
+    const before = w.own();
+    // the next start only deletes the scratch copy; the save stays
+    expect(await restart(w, storedOf(w))).toEqual([]);
+    expect(w.rig.repos.has(SCRATCH)).toBe(false);
+    expect(await reopened(w)).toBe('converged');
+    expect(w.rig.repos.get(REPO)!.files.get('TIT.usfm')).toContain('MINE AFTER THE SYNC');
+    await expectOneProjectWithOwnWork(w, before, new Map());
+  });
   // ---- the disk record (D101): the settings document never locks or unlocks ------
 
   /** A teammate changed TIT 1:2 on Door43 main; this computer changed TIT 1:1 later. */

@@ -498,8 +498,20 @@ async function syncRecorded(
   try {
     await api.writeIngredient(scratch, APPLY_MARKER, JSON.stringify({ actor: mine.actor, at: new Date().toISOString() }), { updateIngredients: false, keepBak: false });
   } catch (error) {
-    // nothing is applied yet; a marker that may be there goes before its scratch copy
-    await deleteIngredientIfPresent(api, scratch, APPLY_MARKER).then(() => deleteIfPresent(api, scratch)).catch(() => {});
+    // Nothing is applied yet. The write may have landed with its answer lost, so
+    // the marker goes first, then its scratch copy.
+    try {
+      await deleteIngredientIfPresent(api, scratch, APPLY_MARKER);
+    } catch (again) {
+      // The marker may be there, and the next start or sync applies the scratch
+      // copy. A store opened before the sync is stale now (G1): an edit in it
+      // would go under that apply.
+      nextSyncGeneration(repoPath);
+      const refusal = new Refusal('sync.apply-pending', 'the apply marker may be there; the next start of the app finishes the sync', failureOf(again));
+      return failed(refusal, { tries: facts.tries, phase: 'apply' });
+    }
+    // no marker: no apply can begin, and a scratch copy left here is only deleted
+    await deleteIfPresent(api, scratch).catch(() => {});
     return failed(error, { tries: facts.tries, phase: 'apply' });
   }
   await note({ phase: 'apply' });

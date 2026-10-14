@@ -547,8 +547,8 @@ export class JournalingStore implements BurritoStore {
   /** #676 (G8, D101): while the project's scratch copy holds the apply marker, an
    * apply may be half done; the project takes no open until a start or a sync
    * finishes it. The disk decides, never the settings document. Edits need no
-   * check: a store opens only when no apply is pending, and an apply in this
-   * process makes every older store stale. */
+   * check: a store opens only when no apply is pending, and a sync in this
+   * process that may leave the marker on disk makes every older store stale. */
   private async refusePendingApply(repoPath: string): Promise<void> {
     let pending: boolean;
     try {
