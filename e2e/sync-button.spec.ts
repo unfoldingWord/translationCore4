@@ -204,9 +204,10 @@ test.describe('#678 — Sync with Door43', () => {
     await expect(page.getByTestId('sync-count-conflicts')).toHaveAttribute('data-count', '1');
     await expect(page.getByTestId('sync-count-newest')).toHaveAttribute('data-count', '0');
     await expect(page.getByTestId('sync-review')).toBeVisible();
-    // D88 point 6: the teammates moved no pin, so no Download is offered (the seeded
-    // project's own missing hbo_uhb pin was missing before the sync too)
-    await expect(page.getByTestId('sync-download')).toHaveCount(0);
+    // D88 point 6: Download is always offered while a pin names a version this computer
+    // lacks: the seeded project pins hbo_uhb v3.0.0, which the rig does not hold
+    await expect(page.getByTestId('sync-download')).toBeVisible();
+    expect(Number(await page.getByTestId('sync-missing-pins').getAttribute('data-count'))).toBeGreaterThan(0);
     // the card reads the project again: its conflict chip shows the one verse conflict (#679)
     await expect(page.getByTestId(`conflicts-${ID}`)).toHaveAttribute('data-count', '1');
     await shot(page, testInfo, 'sync-result-counts');
