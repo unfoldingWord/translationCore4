@@ -26,7 +26,7 @@ import { mapReference } from './data/mapReference';
 import { seedBookFromSource } from './data/seed';
 import { SOURCE_MISSING, SOURCE_NOT_INSTALLED, isSourceAbsent } from './data/sourceState';
 import { BOOK_NAMES, bookName } from './data/bookNames';
-import { GATEWAYS, gatewayKey, gatewayDisplayName, DCS_HOST, orgForRepoName } from './data/gateways';
+import { GATEWAYS, gatewayKey, gatewayDisplayName, DCS_HOST, orgForRepoName, languageSetDir } from './data/gateways';
 import { dcsReleases, fetchAndInstallPin, latestReleaseTag, identifyExistingInstall, releaseCommitSha, rezip, unwrapExport, verifySideload } from './data/resourceFetch';
 import { isNotFoundError } from './data/serverApi';
 import { readInstalled, recordInstalled, coverageFromLocal, languageSetFromInstalled, gatewayBiblesFromInstalled, mergeOptionalPins, isPinLocal, unsatisfiedProjectPinFor, pinsPreferringInstalled, localRepoPathFromRepoPath, installedPathFor, discoverOnDisk, flavorOfMetadata } from './data/installed';
@@ -6613,7 +6613,7 @@ export function AppProvider({ children }) {
         if (!isCurrentArticleRequest(now, seq, articleSeqRef.current, repoPath, key)) return;
         dispatch({
           type: 'set',
-          patch: { understand: { ...now.understand, article: { key, seq, loading: false, found, error: articleError, request } } },
+          patch: { understand: { ...now.understand, article: { key, seq, loading: false, found, error: articleError, request, dir: languageSetDir(set) } } },
         });
       },
 
