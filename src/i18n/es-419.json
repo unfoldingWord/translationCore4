@@ -139,7 +139,7 @@
   "refusal.sync.non-fast-forward": "Tus compañeros enviaron cambios a Door43 durante tu sincronización. Sincroniza de nuevo. No cambió nada.",
   "refusal.sync.no-write-access": "Door43 no te permitió enviar cambios a este proyecto. Pide al dueño del proyecto acceso de escritura. No cambió nada.",
   "refusal.sync.push-failed": "La aplicación no pudo enviar tus cambios a Door43. Sincroniza de nuevo. Si vuelve a pasar, pide ayuda. No cambió nada.",
-  "refusal.opslog.not-loaded": "La aplicación no pudo leer su registro de trabajo sin terminar. Cierra la aplicación y ábrela de nuevo. Hasta entonces, no puedes abrir, cambiar ni sincronizar un proyecto.",
+  "refusal.opslog.not-loaded": "La aplicación no pudo leer su registro de trabajo sin terminar. Cierra la aplicación y ábrela de nuevo. Hasta entonces, no puedes sincronizar un proyecto.",
   "refusal.sync.failed": "La sincronización se detuvo por un error. Tu proyecto no cambió. Sincroniza de nuevo. Si vuelve a pasar, pide ayuda.",
   "refusal.sync.project-replaced": "Este proyecto se sincronizó, así que la aplicación debe abrirlo de nuevo. Cierra el proyecto y ábrelo de nuevo. Luego haz tu último cambio otra vez.",
   "refusal.sync.not-main": "El repositorio de Door43 de este proyecto no tiene main como rama predeterminada. Pide al dueño del proyecto que haga de main la rama predeterminada en Door43. No cambió nada.",

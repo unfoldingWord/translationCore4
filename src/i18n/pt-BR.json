@@ -139,7 +139,7 @@
   "refusal.sync.non-fast-forward": "Seus colegas enviaram alterações ao Door43 durante a sua sincronização. Sincronize de novo. Nada mudou.",
   "refusal.sync.no-write-access": "O Door43 não deixou você enviar alterações para este projeto. Peça ao dono do projeto acesso de escrita. Nada mudou.",
   "refusal.sync.push-failed": "O aplicativo não conseguiu enviar suas alterações ao Door43. Sincronize de novo. Se acontecer de novo, peça ajuda. Nada mudou.",
-  "refusal.opslog.not-loaded": "O aplicativo não conseguiu ler o registro de trabalho não terminado. Feche o aplicativo e abra-o de novo. Até lá, você não pode abrir, alterar nem sincronizar um projeto.",
+  "refusal.opslog.not-loaded": "O aplicativo não conseguiu ler o registro de trabalho não terminado. Feche o aplicativo e abra-o de novo. Até lá, você não pode sincronizar um projeto.",
   "refusal.sync.failed": "A sincronização parou por causa de um erro. Seu projeto não mudou. Sincronize de novo. Se acontecer de novo, peça ajuda.",
   "refusal.sync.project-replaced": "Este projeto foi sincronizado, então o aplicativo precisa abri-lo de novo. Feche o projeto e abra-o de novo. Depois faça sua última alteração de novo.",
   "refusal.sync.not-main": "O repositório do Door43 deste projeto não tem main como branch padrão. Peça ao dono do projeto para tornar main o branch padrão no Door43. Nada mudou.",

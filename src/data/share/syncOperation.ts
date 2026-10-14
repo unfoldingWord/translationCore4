@@ -44,7 +44,7 @@
 // The HTTPS answer for a refused token is recorded: HTTP 500 with
 // `code=Auth (-16)` (docs/evidence/sync-transport-spike-2026-10-13.md, owner run
 // step 3), matched on the code, not on the text. The answer for no write access
-// (403) is [PENDING — the owner's run on the Door43 QA server, #673 step 4];
+// (403) is [PENDING — the owner's run on the Door43 QA server, #710];
 // until then `refusalForPush` maps it by the HTTP status in the reason text.
 import { checkpointMessage } from '../checkpoint';
 import { Refusal, checkJournalFile, failedReport, isObsMetadata, okReport, projectResources, syncCore, type Report } from '../journal/runtime';
@@ -173,7 +173,7 @@ const refusalForPush = (error: unknown): Error => {
   // ("authentication that we do not support") is misleading, so never match it.
   if (/code=Auth \(-16\)/.test(reason))
     return new Refusal('sync.auth-failed', 'Door43 did not accept the sign-in', facts);
-  // [PENDING — the owner's run on the Door43 QA server, #673 step 4]: the reply for
+  // [PENDING — the owner's run on the Door43 QA server, #710]: the reply for
   // no write access is not recorded yet; libgit2 names the HTTP status in its
   // reason, so the status number is the best-known match.
   if (status === 403 || /\b403\b/.test(reason))
@@ -506,11 +506,11 @@ async function ownEventsOf(files: Map<string, string>, actor: string): Promise<J
 /** Sync one project with Door43 `main` and return its Report (`op: 'sync'`).
  *
  * Contract for the caller (#678): after an ok sync the caller MUST open the
- * project again. The open `JournalingStore` holds the fold and `.git` of the
- * old folder, and saves that it queued during the sync run on that stale
- * store. A `sync.apply-pending` Report means the apply did not finish: the
- * project then takes no open, no edit and no sync until the next start of the
- * app finishes it. */
+ * project again. The open `JournalingStore` holds the fold from before the
+ * apply, so it takes no edit after it (`sync.project-replaced`). A
+ * `sync.apply-pending` Report means the apply did not finish: the project then
+ * takes no open and no edit until the next start, or the next sync of the
+ * project, finishes it. */
 export async function sync(deps: SyncDeps, request: SyncRequest): Promise<Report> {
   const { repoPath, session } = request;
   // Not signed in: refused before any request, the ops-log write included.
@@ -724,15 +724,29 @@ async function syncRecorded(
   const { facts } = tried;
 
   // 7. the apply (G8, D101): the marker in the scratch copy is the record, and it is
-  // there before the first write to the project (opsLog.ts header)
-  await note({ phase: 'apply' });
+  // there before the first write to the project (opsLog.ts header). The marker
+  // comes before the phase `apply` in the ops log: a record at `apply` with no
+  // marker is then always an apply that ended (`resolveSync`).
   try {
     await api.writeIngredient(scratch, APPLY_MARKER, JSON.stringify({ actor: mine.actor, at: new Date().toISOString() }), { updateIngredients: false, keepBak: false });
   } catch (error) {
-    // nothing is applied yet; a marker that may be there goes before its scratch copy
-    await deleteIngredientIfPresent(api, scratch, APPLY_MARKER).then(() => deleteIfPresent(api, scratch)).catch(() => {});
+    // Nothing is applied yet. The write may have landed with its answer lost, so
+    // the marker goes first, then its scratch copy.
+    try {
+      await deleteIngredientIfPresent(api, scratch, APPLY_MARKER);
+    } catch (again) {
+      // The marker may be there, and the next start or sync applies the scratch
+      // copy. A store opened before the sync is stale now (G1): an edit in it
+      // would go under that apply.
+      nextSyncGeneration(repoPath);
+      const refusal = new Refusal('sync.apply-pending', 'the apply marker may be there; the next start of the app finishes the sync', failureOf(again));
+      return failed(refusal, { tries: facts.tries, phase: 'apply' });
+    }
+    // no marker: no apply can begin, and a scratch copy left here is only deleted
+    await deleteIfPresent(api, scratch).catch(() => {});
     return failed(error, { tries: facts.tries, phase: 'apply' });
   }
+  await note({ phase: 'apply' });
   nextSyncGeneration(repoPath); // G1: a store opened before the apply is stale
   try {
     await applyScratch(api, repoPath, scratch);

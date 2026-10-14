@@ -139,7 +139,7 @@
   "refusal.sync.non-fast-forward": "Vos coéquipiers ont envoyé des modifications à Door43 pendant votre synchronisation. Synchronisez de nouveau. Rien n’a changé.",
   "refusal.sync.no-write-access": "Door43 ne vous a pas permis d’envoyer des modifications à ce projet. Demandez au propriétaire du projet un accès en écriture. Rien n’a changé.",
   "refusal.sync.push-failed": "L’application n’a pas pu envoyer vos modifications à Door43. Synchronisez de nouveau. Si cela se reproduit, demandez de l’aide. Rien n’a changé.",
-  "refusal.opslog.not-loaded": "L’application n’a pas pu lire son registre du travail non terminé. Fermez l’application et ouvrez-la de nouveau. D’ici là, vous ne pouvez pas ouvrir, modifier ni synchroniser un projet.",
+  "refusal.opslog.not-loaded": "L’application n’a pas pu lire son registre du travail non terminé. Fermez l’application et ouvrez-la de nouveau. D’ici là, vous ne pouvez pas synchroniser un projet.",
   "refusal.sync.failed": "La synchronisation s’est arrêtée à cause d’une erreur. Votre projet n’a pas changé. Synchronisez de nouveau. Si cela se reproduit, demandez de l’aide.",
   "refusal.sync.project-replaced": "Ce projet a été synchronisé, donc l’application doit l’ouvrir de nouveau. Fermez le projet et ouvrez-le de nouveau. Puis refaites votre dernière modification.",
   "refusal.sync.not-main": "Le dépôt Door43 de ce projet n’a pas main comme branche par défaut. Demandez au propriétaire du projet de faire de main la branche par défaut sur Door43. Rien n’a changé.",

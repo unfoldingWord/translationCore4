@@ -270,14 +270,16 @@ export const isPinLocal = (installed: InstalledMap, pin: ResourcePin): boolean =
   installedEntry(installed, pin) !== undefined;
 
 /** #678 (D88 point 6): how many pins of a project's pin file name a version
- * that this computer does not have: each language-set pin and each original-
- * language pin that carries a commit (D59: a pin with no sha is satisfiable by no
- * install, so it is not counted as a version to download). */
+ * that this computer does not have: each language-set pin, each original-
+ * language pin and each source Bible pane pin (`extraScripture`, #412) that
+ * carries a commit (D59: a pin with no sha is satisfiable by no install, so it is
+ * not counted as a version to download). */
 export const missingPinCount = (
   resources:
     | {
         languageSets?: Record<string, LanguageSet>;
         resources?: { originalLanguage?: { nt?: ResourcePin; ot?: ResourcePin } };
+        extraScripture?: ResourcePin[];
       }
     | null
     | undefined,
@@ -286,6 +288,7 @@ export const missingPinCount = (
   const pins: unknown[] = [
     ...Object.values(resources?.languageSets ?? {}).flatMap((set) => Object.values(set ?? {})),
     ...Object.values(resources?.resources?.originalLanguage ?? {}),
+    ...(resources?.extraScripture ?? []),
   ];
   return pins.filter(
     (pin): pin is ResourcePin =>
