@@ -271,6 +271,24 @@ describe('#676 the sync shell', () => {
     expect(w.rig.repos.has(PATHS.scratch)).toBe(false);
   });
 
+  it('a failure that is not a refusal still gives a coded Report (sync.failed); the project does not change', async () => {
+    const w = await world();
+    const project = new Map(w.rig.repos.get(REPO)!.files);
+    // the platform's commit answers as a panic does: HTTP 500 "unknown error while serving"
+    const panicking = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) =>
+      String(input).includes('/git/add-and-commit/_local_/_archive_/')
+        ? new Response('unknown error while serving /api/git/add-and-commit', { status: 500 })
+        : w.rig.fetchFn(input, init)) as typeof fetch });
+    const report = await sync(w.deps(panicking), { repoPath: REPO, session: SESSION });
+    expect(reportError(report)).toBeNull();
+    expect([report.ok, report.code]).toEqual([false, 'sync.failed']);
+    expect(String(report.facts.error)).toContain('add-and-commit');
+    expect(w.rig.repos.get(REPO)!.files).toEqual(project);
+    expect(w.rig.repos.has(PATHS.scratch)).toBe(false);
+    const [entry] = opsEntriesOf(w.settings.get()).filter((e) => e.op === 'sync');
+    expect(entry.report).toEqual(report);
+  });
+
   it('any other push failure refuses sync.push-failed', async () => {
     const w = await world();
     const failing = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) =>

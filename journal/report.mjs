@@ -85,6 +85,7 @@ export const REFUSAL_CODES = Object.freeze({
   'sync.no-write-access': null, // Door43 refused the push: no write access
   'sync.push-failed': null, // any other push failure
   'opslog.not-loaded': null, // (G8) the ops log did not load at this start: no project opens, takes an edit or syncs until it loads
+  'sync.failed': null, // a sync failure that is no other refusal (a server error); the project did not change; facts.error holds the diagnosis
   'sync.swap-pending': null, // (G8) a swap did not finish; no open, edit or sync of the project until the next start finishes it
   // Open a project from Door43 (src/data/share/syncOperation.ts, #677). Its other refusals are the
   // sync codes above: sync.offline, the clone codes, sync.obs-unsupported and (G2) sync.incoming-invalid.
