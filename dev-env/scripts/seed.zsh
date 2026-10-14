@@ -89,9 +89,4 @@ fi
 # D57: the install records of the sideloaded tags — a sideloaded resource's metadata
 # holds only its commit sha, and the release tag exists only in this record (#396).
 node "$(npath "$DEV/scripts/write-install-records.mjs")" "$(npath "$WORK")"
-# #650 slice 3: ar_gt's Arabic package, installed with its records after the line above
-# (it replaces the records), for the Arabic fixture only. Door43 offers no download for it.
-if [ "${TC4_ARABIC_FIXTURE:-}" = "1" ]; then
-  node "$(npath "$ROOT/scripts/seed-ar-gt.mjs")" "$(npath "$WORK")" "$(npath "$DEV/resources-cache")"
-fi
 echo "seeded: $WORK"

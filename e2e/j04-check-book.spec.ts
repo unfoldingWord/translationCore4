@@ -23,8 +23,9 @@ import {
   resetSeededChecking,
   sideloadedIngredient,
   resetPlaces, readClientSettingsDoc,
-  readProjectPins,
+  readProjectPins, RIG_CLIENT_SETTINGS, TC4_ROOT,
 } from './helpers/rig';
+import { execFileSync } from 'node:child_process';
 
 const PINS = () => ({
   tn: pinForSideloaded('en_tn', 'v91'),
@@ -832,6 +833,13 @@ test.describe.serial('J4 — the Arabic package, in an Arabic right-to-left proj
     const articles = twArticlesOf(JSON.parse(strFromU8(twMeta['metadata.json'])));
     const rows = deriveTwlItems(strFromU8(twlZip['ingredients/TIT.tsv']), 'TIT');
     const expected = rows.filter((item) => articles.has(`${item.category}/${item.contextId.groupId}`)).length;
+    // ar_gt installed here, not by the seed: Door43 offers no download for it (no `tc-ready`), and
+    // an ar_gt in the seed would be a third package in the Project settings other journeys count.
+    execFileSync(process.execPath, [
+      path.join(TC4_ROOT, 'scripts', 'seed-ar-gt.mjs'),
+      path.dirname(path.dirname(RIG_CLIENT_SETTINGS)),
+      path.dirname(AR_GT_TW_ZIP),
+    ], { stdio: 'inherit' });
     // Project settings: the Arabic package of ar_gt, then the confirm.
     await page.goto('/');
     await page.getByTestId(`project-_local_/_local_/${ARABIC_PROJECT}`).getByRole('button', { name: 'Settings' }).click();

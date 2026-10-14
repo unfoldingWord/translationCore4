@@ -9,10 +9,11 @@
 // Writes each cached release (dev-env/resources-cache) as a fresh install writes it: the
 // unwrapped export under repos/_local_/_sideloaded_/<owner>--<repo>, and an install record
 // in client_settings/uw-tc4.json with the repo path, the release tag, and the commit and
-// flavor of its metadata. Run after write-install-records.mjs, which replaces the records.
+// flavor of its metadata. The other records stay as they are.
 //
 // Usage:  node scripts/seed-ar-gt.mjs <work dir> <resources-cache dir>
-// Called from dev-env/scripts/seed.zsh when TC4_ARABIC_FIXTURE=1.
+// Called by the J4 case of AC3, just before it chooses ar_gt, and not by the seed: an
+// installed ar_gt is a third package in every Project settings, which other journeys count.
 
 import fs from 'node:fs';
 import path from 'node:path';

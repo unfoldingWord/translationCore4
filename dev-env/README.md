@@ -277,15 +277,18 @@ MSYS2 zsh window of the [Windows](#windows) section.
    zsh dev-env/scripts/cache-resource.zsh BSOJ/ar_ta v3 a25e9ac3d19bdef1923a758cbcf86154e809d28e
    zsh dev-env/scripts/cache-resource.zsh BSOJ/ar_tq v3.1 a63f38387c9d395e3e9e39ef1c098a377ffbb762
    zsh dev-env/scripts/cache-resource.zsh BSOJ/ar_avd v6.9 3ba2e7f1d2fb3c5b9c9682dcc20d09b6f3770c06
-   # The ar_gt package (AC3). The seed installs it: Door43 offers no download for it.
+   # The ar_gt package (AC3). Its case installs it: Door43 offers no download for it.
    zsh dev-env/scripts/cache-resource.zsh ar_gt/ar_tn v3.2 2833c35c934bb3595e4a421510b8ac78420b09cc
    zsh dev-env/scripts/cache-resource.zsh ar_gt/ar_tw v3 0ff22d80c6bca067554128c5b5e793ca0965eccb
    zsh dev-env/scripts/cache-resource.zsh ar_gt/ar_ta v3.3 f8246f627584fb76cd62266cd839e3c042821aa1
    ```
 
    Then select the fixture for the run: `TC4_ARABIC_FIXTURE=1 npx playwright test e2e/j04-check-book.spec.ts`.
-   The seed builds the project `arabic_burrito` and installs ar_gt only with that variable, so
-   every other run sees the same Home. Without the variable or the cache, the Arabic cases skip and say why.
+   With that variable the seed adds one thing, the project `arabic_burrito`, which installs
+   no package. The Arabic cases then install BSOJ (the AC1 download) and ar_gt (the AC3 case)
+   in the rig of that run, and other journeys count the installed packages: run them in a
+   separate run, without the variable. Without the variable or the cache, the Arabic cases
+   skip and say why.
 
 4. Run the journeys:
 
