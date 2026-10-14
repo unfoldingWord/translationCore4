@@ -99,6 +99,10 @@ describe.skipIf(!rigUp)('#676 one full sync against the live rig and the #673 st
     await api.push(REPO, 'origin', SESSION.username, SESSION.token);
     // the mirror the stand-in clone copies: never committed to
     execFileSync('git', ['clone', '-q', url, dir(MIRROR)]);
+    // the server's own clone writes a local git identity (clone_repo.rs:84-93); the
+    // platform commit panics without one, and a CI runner has no global identity
+    git(dir(MIRROR), 'config', 'user.name', 'rig');
+    git(dir(MIRROR), 'config', 'user.email', 'rig@localhost');
     // after the share: one more own draft (only on this computer) ...
     await store.writeBook('TIT', usfm('Pablo, siervo de Dios.'));
     store.dispose();
@@ -137,7 +141,7 @@ describe.skipIf(!rigUp)('#676 one full sync against the live rig and the #673 st
     };
     const report = await sync(deps, { repoPath: REPO, session: SESSION });
     expect(reportError(report)).toBeNull();
-    expect([report.ok, report.code]).toEqual([true, undefined]);
+    expect([report.ok, report.code], JSON.stringify(report)).toEqual([true, undefined]);
     expect(report.facts).toMatchObject({ tries: 1, received: { [TEAMMATE]: 1 }, names: { [actor]: 'facilitator', [TEAMMATE]: 'teammate' } });
 
     // G4: Door43 main moved forward, and it is the live project's HEAD
