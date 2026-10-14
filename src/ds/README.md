@@ -101,6 +101,8 @@ in the file:
   children as it did when they were the callout's direct children.
 - `Divider`: the ignored `inverse` prop is destructured as `_inverse`, and
   `Menu` drops an unused `Stack` import — both for the repository's lint.
+- `BookTile` (#679): `children` render below the progress bar. The Home book
+  tile shows its count of verse conflicts there.
 
 Dropped with this version: the local `--tc-invalid-inverse` token (#FF8B8B).
 The package now ships `--tc-invalid-on-dark` (#F2938A) for the same purpose,

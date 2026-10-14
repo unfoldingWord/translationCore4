@@ -11,6 +11,7 @@ import { ServerApi } from './data/serverApi';
 import { StaleWriteError } from './data/httpStore';
 import { STORY_FILE, refusalCodeOf } from './data/journal/runtime';
 import { JournalingStore, ProjectReader } from './data/journal/journalingStore';
+import { parseVerseKey } from './data/journal/verseConflicts';
 import { SaveScheduler } from './data/saveScheduler';
 import { StoryScheduler, normalizeStoryUnit } from './data/storyScheduler';
 import { createObsPackCache, projectImageIngredients, readObsStoryPresentation } from './data/obsStory';
@@ -509,6 +510,15 @@ const initial = () => ({
   pickerProgress: null, // #136 (D3d): { seq, [tool]: {done,total,dropped,nextItem}|{error}, align: {…,nextRef} } — derived on picker open, never stored
   toolPos: {}, // #136: in-memory only — "your place is saved in each tool", keyed `${tool}:${book}`; dies with the app (§4.2)
   progressByProject: {}, // repoPath -> { CODE: draftPct } (lazy Home cache)
+  // #679: the open verse-text conflicts per project, folded from its journal:
+  // repoPath -> { CODE: count } in canonical order, or null when unknown (D30).
+  conflictsByProject: {},
+  // #679: the open project's verse-text conflicts (readVerseConflicts), the
+  // team that owns their versions ({ me, names, actors }), and the review:
+  // { key, error } while the conflict review shows, else null.
+  verseConflicts: [],
+  team: null,
+  conflictReview: null,
   // Last OBS story per project; user-machine state, never project data.
   obsStoryByProject: {},
   // The stories edited most recently per project on this machine (#328): the
@@ -700,7 +710,12 @@ function setShared(state, a) {
   return { ...state, remoteByProject: { ...state.remoteByProject, [a.id]: a.shared } };
 }
 
-const CHECK_SESSION_CASES = { patchCheckSession, checkDecisionSaved, refreshCheckDraft, pickerToolEntry, alignSaveState, checkSaveState, patchUpgrade, setProgress, setShared, patchSt: patchSettingsForm };
+// #679: Home's conflict counts, merged per project for the same reason as setProgress.
+function setConflicts(state, a) {
+  return { ...state, conflictsByProject: { ...state.conflictsByProject, [a.id]: a.counts } };
+}
+
+const CHECK_SESSION_CASES = { patchCheckSession, checkDecisionSaved, refreshCheckDraft, pickerToolEntry, alignSaveState, checkSaveState, patchUpgrade, setProgress, setShared, setConflicts, patchSt: patchSettingsForm };
 
 function setSourceEntry(state, a) {
   if (a.value === undefined || a.value === null) {
@@ -2146,6 +2161,7 @@ async function performProjectOpen(ctx, repoPath, bookCode, view = 'read') {
         project: { ...summary, scriptDirection, textFont, repoPath },
         projectScope,
         view,
+        conflictReview: null,
         projectPins: null,
         projectPinsLoaded: false,
         projectPinsError: null,
@@ -2176,6 +2192,15 @@ async function performProjectOpen(ctx, repoPath, bookCode, view = 'read') {
     // failure never blocks opening. N1 (round 14): the detached chain binds
     // every dispatch to the originating store instance and repo path.
     const pinsReady = loadProjectPins({ store, repoPath, storeRef, stateRef, actions, dispatch });
+    // #679: the conflicts of the fold this open just made (Translate markers, Home count).
+    // A selector failure never blocks the open: the count is then unknown (D30).
+    try {
+      adoptConflicts({ store, repoPath, dispatch });
+    } catch (e) {
+      console.error(`verse conflicts of ${repoPath} could not be read: ${failureText(e)}`);
+      dispatch({ type: 'set', patch: { verseConflicts: [], team: null } });
+      dispatch({ type: 'setConflicts', id: repoPath, counts: null });
+    }
     // B12 — warm the install resolver BEFORE any book/source read, so
     // resolveReadPath's installedCache is populated on a cold open.
     await actions.resolutionContext().catch(() => {});
@@ -2414,6 +2439,142 @@ function dispatchResolutionDown({ resolutionError, seq, understandSeqRef, dispat
 export const __performLoadUnderstandForTests = performLoadUnderstand;
 /** Test hook (#290): the story Understand load is unit-tested on the fake rig. */
 export const __performLoadStoryUnderstandForTests = performLoadStoryUnderstand;
+
+/** #679: the number of verse-text conflicts per book, in the conflicts' canonical order. */
+export const conflictCounts = (conflicts) => {
+  const counts = {};
+  for (const c of conflicts) counts[c.book] = (counts[c.book] ?? 0) + 1;
+  return counts;
+};
+
+/** #679: the open project's conflicts and team, read from its store's fold,
+ * and the Home count of that project with them. */
+function adoptConflicts({ store, repoPath, dispatch }) {
+  const verseConflicts = store.readVerseConflicts();
+  dispatch({ type: 'set', patch: { verseConflicts, team: { me: store.actorId, ...store.readTeam() } } });
+  dispatch({ type: 'setConflicts', id: repoPath, counts: conflictCounts(verseConflicts) });
+  return verseConflicts;
+}
+
+/** #679: Home's conflict count of one Bible project, folded read-only from its
+ * journal (ProjectReader). Cached per project; the open and "Keep this
+ * version" replace the entry from the open store's fold. */
+async function performLoadConflicts({ project, stateRef, dispatch, conflictsGen, apiClient: api }) {
+  if (project.flavor === 'textStories') return;
+  if (project.id in stateRef.current.conflictsByProject) return;
+  const gen = conflictsGen.get(project.id) || 0;
+  const reader = new ProjectReader({ api });
+  let conflicts;
+  try {
+    await reader.open(project.id);
+    conflicts = await reader.readVerseConflicts();
+  } catch {
+    return; // D30: no entry is an unknown count; the next Home visit reads again
+  }
+  if ((conflictsGen.get(project.id) || 0) !== gen) return;
+  dispatch({ type: 'setConflicts', id: project.id, counts: conflicts ? conflictCounts(conflicts) : null });
+}
+
+/** #679 "Keep this version". A keep never meets a loaded book: the editor's
+ * copy of the book (the verse scheduler's buffer, rawRef, s.bookRaw) is what a
+ * save diffs against the fold, so any copy older than the keep writes the
+ * replaced version back (bench rounds 1–6). So: every pending save is on disk
+ * first (a failure refuses the keep), the book of the verse is unloaded (the
+ * review has no editor), the store writes the keep, and the book loads again
+ * through the one editor load path (ctx.reloadBook → openBook →
+ * loadEditorBook), which first publishes any action the store staged and could
+ * not publish. Only THEN is the outcome decided, once, from the fold: the
+ * list, the Home count, and kept or not. The chosen version is the one the
+ * person saw in the review when they pressed (s.verseConflicts). Returns
+ * whether the chosen version is kept. */
+async function performKeepVersion(ctx, key, keptTs) {
+  const { storeRef, stateRef, saveRefs } = ctx;
+  if (!(await drainSchedulers(saveRefs))) return false;
+  const store = storeRef.current;
+  const repoPath = stateRef.current.project?.repoPath;
+  if (!store || !repoPath) return false;
+  const seen = stateRef.current.verseConflicts ?? [];
+  const position = seen.findIndex((c) => c.key === key);
+  const chosen = seen[position]?.versions.find((v) => v.ts === keptTs)?.text;
+  // Bench round 6: the drain above can write a version of this very verse that
+  // the review never showed; the store refuses a fork whose heads are not these.
+  const shownHeads = seen[position]?.versions.map((v) => v.ts) ?? [];
+  const { book } = parseVerseKey(key);
+  const wasOpen = stateRef.current.book === book;
+  if (!unloadEditorBook(ctx, book)) return false;
+  const failure = await store.resolveVerse(key, keptTs, shownHeads).then(() => null, (e) => e);
+  if (storeRef.current !== store) return false;
+  const loaded = await reloadAfterKeep(ctx, store, book, wasOpen);
+  if (storeRef.current !== store) return false;
+  return keepOutcome(ctx, store, { key, repoPath, position, chosen, failure, loaded });
+}
+
+/** After the store's write: the open book loads again (ctx.reloadBook, the
+ * keepVersion action's openBook); for a book that is not open, the store
+ * publishes its staged actions all the same. Returns false when the open book
+ * could not load. */
+async function reloadAfterKeep({ rawRef, reloadBook }, store, book, wasOpen) {
+  if (wasOpen) {
+    await reloadBook(book);
+    return rawRef.current !== null;
+  }
+  await store.reconcileStaged().catch((e) => console.error(`keepVersion: staged actions not published: ${failureText(e)}`));
+  return true;
+}
+
+/** The outcome, from the fold after the reload. Kept ⇔ no conflict on the
+ * verse and the fold projects the chosen text. The review stays at its place
+ * (the conflict after the kept one) and says what did not happen. */
+function keepOutcome({ stateRef, dispatch, conflictsGen }, store, { key, repoPath, position, chosen, failure, loaded }) {
+  const { book, chapter, verse } = parseVerseKey(key);
+  conflictsGen.set(repoPath, (conflictsGen.get(repoPath) || 0) + 1);
+  const left = adoptConflicts({ store, repoPath, dispatch });
+  const open = left.some((c) => c.key === key);
+  const kept = !open && chosen !== undefined && store.projectedVerse(book, chapter, verse) === chosen;
+  const notes = kept ? [] : [open ? null : t('conflicts.otherKept'), failure && failureText(failure)];
+  const error = [...notes, loaded ? null : t('conflicts.bookNotLoaded')].filter(Boolean).join(' ') || null;
+  if (failure) console[kept ? 'warn' : 'error'](`keepVersion(${key}): ${kept ? 'kept' : 'not kept'}; the store reported: ${failureText(failure)}`);
+  if (stateRef.current.conflictReview) {
+    const next = left[Math.min(Math.max(position, 0), left.length - 1)];
+    dispatch({ type: 'set', patch: { conflictReview: { key: next?.key ?? key, error, kept } } });
+  }
+  return kept;
+}
+
+/** Before a keep: the verse scheduler forgets the book (it is clean: the drain
+ * ran), and the open book's text leaves the state. A book that cannot be
+ * unloaded refuses the keep, and the review says why. */
+function unloadEditorBook({ stateRef, schedulerRef, rawRef, dispatch }, book) {
+  try {
+    schedulerRef.current?.unloadBook(book);
+  } catch (e) {
+    const review = stateRef.current.conflictReview;
+    if (review) dispatch({ type: 'set', patch: { conflictReview: { ...review, error: failureText(e) } } });
+    return false;
+  }
+  if (stateRef.current.book === book) {
+    rawRef.current = null;
+    dispatch({ type: 'set', patch: { bookRaw: null } });
+  }
+  return true;
+}
+
+/** #679 (one read path): the book text the editor and its save buffer start
+ * from. The store first publishes any action it staged and could not publish
+ * (a keep whose write failed is one), so the text holds every action a later
+ * save would replay; then the fold projects the book — the text every save
+ * diffs against. Never the derived file on disk, which a failed regeneration
+ * can leave behind the journal. Throws when the fold has no such book. */
+export async function loadEditorBook(store, code) {
+  await store.reconcileStaged();
+  const raw = store.projectedBook(code);
+  if (raw === null) throw new Error(`the project's journal holds no ${code}`);
+  return raw;
+}
+
+/** Test hooks (#679): the Home count read and the keep action run on the fake rig. */
+export const __performLoadConflictsForTests = performLoadConflicts;
+export const __performKeepVersionForTests = performKeepVersion;
 
 /** Home: lazy per-book draft progress (design shows a bar per tile). #573:
  * with `inPlace`, the re-read of the open story project's entry after an edit. */
@@ -3167,6 +3328,28 @@ function isCheckToolReady(pre) {
   return Boolean(pre && pre.state === 'ready' && pre.resolution?.pin);
 }
 
+/** #679: resolve once the rendered state (stateRef) satisfies `holds`, or at the
+ * deadline. A dispatch reaches stateRef only on the next render. */
+function waitForState(stateRef, holds, ms = 5_000) {
+  const deadline = Date.now() + ms;
+  return new Promise((resolve) => {
+    const tick = () => {
+      if (holds(stateRef.current)) {
+        resolve();
+        return;
+      }
+      if (Date.now() >= deadline) {
+        // Never silent: a caller that reads stateRef next sees the old state.
+        console.error(`waitForState: the rendered state did not arrive in ${ms} ms`);
+        resolve();
+        return;
+      }
+      setTimeout(tick, 0);
+    };
+    tick();
+  });
+}
+
 /** #268: openProject's pin load is detached — Resume into Check waits for it. */
 function waitForProjectPins(stateRef, ms = 20_000) {
   const deadline = Date.now() + ms;
@@ -3300,6 +3483,10 @@ export function AppProvider({ children }) {
   // stateRef follows the render, so two quick clicks could both pass it.
   const gatewayBusyRef = useRef(false);
   const openSeqRef = useRef(0); // openBook sequence token (review finding M2)
+  // #679: the keep in flight. Every exit from the review waits for it, so no
+  // editor can show the book text from before the keep (review finding B1).
+  const keepPendingRef = useRef(null);
+  const keepSettled = () => keepPendingRef.current?.catch(() => {});
   const understandSeqRef = useRef(0); // loadUnderstand sequence token (2026-08-27 Codex review)
   // D65 (round-22 checkpoint): the comprehension-note SaveScheduler and the
   // registry mapping each note key to its write target. The scheduler's
@@ -3508,6 +3695,9 @@ export function AppProvider({ children }) {
   // titles and percentages, so that entry stays, stale, and is read again in place.
   const progressGen = new Map();
   const progressStale = new Set();
+  // #679: Home's conflict count of a project: a keep bumps it, so an older
+  // in-flight read cannot put back the count from before the keep.
+  const conflictsGen = new Map();
   function invalidateProgress(repoPath) {
     progressGen.set(repoPath, (progressGen.get(repoPath) || 0) + 1);
     const st = stateRef.current;
@@ -3719,6 +3909,7 @@ export function AppProvider({ children }) {
     };
     const a = {
       go: async (view) => {
+        await keepSettled(); // #679
         // B1/D65: navigation is flush-and-go (owner ruling 2026-08-28), and a
         // FAILED write holds navigation (FR-32). #100: every scheduler — an
         // alignment or decision made before the switch is on disk before the
@@ -3727,7 +3918,7 @@ export function AppProvider({ children }) {
         if (!(await drainSchedulers(saveRefs))) return;
         const st = stateRef.current;
         const from = st.view;
-        dispatch({ type: 'set', patch: { view } });
+        dispatch({ type: 'set', patch: { view, conflictReview: null } });
         // #532: an open check reads the draft made while the user was away.
         if (view === 'check' && from !== 'check' && st.checkSession?.items)
           dispatch({ type: 'refreshCheckDraft', seq: st.checkSession.seq });
@@ -6318,6 +6509,64 @@ export function AppProvider({ children }) {
       // ---- Home: lazy per-book draft progress (design shows a bar per tile) ----
       loadProgress: (project) => performLoadProgress({ project, stateRef, dispatch, progressGen, progressStale, actions: a, apiClient: api }),
 
+      // ---- #679: the conflict review ----------------------------------------
+      /** Home: the number of open verse-text conflicts of a Bible project. */
+      loadConflicts: (project) => performLoadConflicts({ project, stateRef, dispatch, conflictsGen, apiClient: api }),
+
+      /** Show the conflict review in Translate, at `key` or at the first conflict.
+       * The list is read again from the store's fold. No conflict: nothing opens. */
+      openConflictReview: (key) => {
+        const st = stateRef.current;
+        const store = storeRef.current;
+        // Bench P1: never over an open editing card — the section card's draft
+        // lives in the card and would be lost (its entries are disabled too).
+        if (!store || !st.project || st.editing) return;
+        const conflicts = adoptConflicts({ store, repoPath: st.project.repoPath, dispatch });
+        const at = conflicts.find((c) => c.key === key) ?? conflicts[0];
+        if (!at) return;
+        dispatch({ type: 'set', patch: { conflictReview: { key: at.key, error: null } } });
+      },
+
+      /** Home "Review": open the project in Translate at the book of its first
+       * conflict, then the review. */
+      openProjectConflicts: async (repoPath) => {
+        const counts = stateRef.current.conflictsByProject[repoPath];
+        const book = counts ? Object.keys(counts)[0] : undefined;
+        await a.openProject(repoPath, book, 'draft');
+        if (stateRef.current.project?.repoPath !== repoPath) return;
+        a.openConflictReview();
+      },
+
+      /** Previous / Next in the review. */
+      showConflict: async (key) => {
+        await keepSettled();
+        if (!stateRef.current.conflictReview) return;
+        dispatch({ type: 'set', patch: { conflictReview: { key, error: null } } });
+      },
+
+      /** Leave the review. The conflicts that are open stay listed. */
+      closeConflictReview: async () => {
+        await keepSettled();
+        dispatch({ type: 'set', patch: { conflictReview: null } });
+      },
+
+      /** "Keep this version": the kept head `keptTs` replaces every version of `key`. */
+      keepVersion: (key, keptTs) => {
+        // The keep unloads the open book; it loads again through the one editor
+        // load path, at the chapter it was on. (openBook does not wait for the
+        // pending keep: this IS the pending keep.)
+        const reloadBook = async (book) => {
+          const { chapter } = stateRef.current;
+          await a.openBook(book);
+          if (rawRef.current !== null && chapter !== 1) dispatch({ type: 'set', patch: { chapter } });
+        };
+        const run = performKeepVersion({ storeRef, stateRef, schedulerRef, rawRef, saveRefs, dispatch, conflictsGen, reloadBook }, key, keptTs);
+        keepPendingRef.current = run;
+        return run.finally(() => {
+          if (keepPendingRef.current === run) keepPendingRef.current = null;
+        });
+      },
+
       /** #329: the frame in focus on the story screens; the place record follows it. */
       setStoryFrame: (frame) => {
         const n = Number(frame);
@@ -6451,7 +6700,7 @@ export function AppProvider({ children }) {
         dispatch({ type: 'set', patch: { book: code, chapter: 1, bookRaw: null, bookError: null, sources: {}, editing: null, helpsHover: null, helpsActive: null, pickerProgress: null, ...(closeCheck ? { checkTool: null, checkSession: null } : {}) } });
         let raw;
         try {
-          ({ usfm: raw } = await store.readBook(code));
+          raw = await loadEditorBook(store, code); // #679: the fold with every staged action, never the disk file
         } catch (e) {
           if (seq === openSeqRef.current) {
             dispatch({ type: 'set', patch: { bookError: e?.reason || e?.message || String(e) } });
@@ -6462,6 +6711,12 @@ export function AppProvider({ children }) {
         rawRef.current = raw;
         scheduler?.loadBook(code, raw);
         dispatch({ type: 'set', patch: { bookRaw: raw } });
+        // #679: the book now comes from memory, with no await. The HTTP read's
+        // await used to let React render before openBook returned; every next
+        // step reads stateRef, which a render sets (a resume into Check captured
+        // the old book and stopped: J4, J8, #434). Return once the state holds it.
+        await waitForState(stateRef, (st) => seq !== openSeqRef.current || (st.book === code && st.bookRaw === raw));
+        if (seq !== openSeqRef.current) return;
         // Round 37 (spec §5.3): the source panes come from the PROJECT's own
         // extraScripture pins — never the machine suite. Deferred while the
         // pins are still loading; loadProjectPins reloads on arrival.
@@ -6767,6 +7022,7 @@ export function AppProvider({ children }) {
       retrySave: () =>
         Promise.all(saveRefs.map((ref) => (ref.current?.getFailure() ? ref.current.retry() : Promise.resolve()))),
       backToProjects: async () => {
+        await keepSettled(); // #679
         // Never navigate away from unsaved work or a visible failure (FR-32).
         // EVERY blocker is checked BEFORE anything is disposed (C3,
         // adversarial round 3): a refused exit must leave the project fully
@@ -6804,7 +7060,7 @@ export function AppProvider({ children }) {
         alignSessionSeq++;
         dispatch({
           type: 'set',
-          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, storyNumbers: [], storyNumber: null, story: null, sourceStory: null, storyImages: {}, storyImageNote: null, storyLoading: false, storyError: null, storySource: null, saveState: 'saved', noteSaveState: 'saved', alignSaveState: 'saved', checkSaveState: 'saved', storySaveState: 'saved', storySaveError: null, commitError: null, projectPins: null, projectPinsLoaded: false, projectPinsError: null, preflight: null, preflightError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null, aligning: false, alignSession: null, alignVerse: null, alignIndex: null, alignSuggest: { status: 'off', verses: 0, boosted: false, error: null }, pickerProgress: null, toolPos: {}, upgrade: UPGRADE_IDLE },
+          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, verseConflicts: [], team: null, conflictReview: null, storyNumbers: [], storyNumber: null, story: null, sourceStory: null, storyImages: {}, storyImageNote: null, storyLoading: false, storyError: null, storySource: null, saveState: 'saved', noteSaveState: 'saved', alignSaveState: 'saved', checkSaveState: 'saved', storySaveState: 'saved', storySaveError: null, commitError: null, projectPins: null, projectPinsLoaded: false, projectPinsError: null, preflight: null, preflightError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null, aligning: false, alignSession: null, alignVerse: null, alignIndex: null, alignSuggest: { status: 'off', verses: 0, boosted: false, error: null }, pickerProgress: null, toolPos: {}, upgrade: UPGRADE_IDLE },
         });
         refreshProjects(); // re-order: the project just left goes to the top
         if (leaving && leavingStore) startLeaveCheckpoint({ store: leavingStore, repoPath: leaving.repoPath, stateRef, dispatch });
