@@ -22,7 +22,14 @@ ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
 DisableProgramGroupPage=yes
 OutputDir={#Output}
+; #456: package-desktop.zsh defines Sign and the tc4sign tool when signing is on.
+#ifdef Sign
+SignTool=tc4sign
+SignedUninstaller=yes
+OutputBaseFilename=tC4-{#Version}-windows-x64
+#else
 OutputBaseFilename=tC4-{#Version}-windows-x64-unsigned
+#endif
 SetupIconFile={#Payload}\icon.ico
 UninstallDisplayIcon={app}\electronite\electron.exe
 InfoBeforeFile={#Payload}\README.txt
