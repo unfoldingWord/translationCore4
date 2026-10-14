@@ -24,6 +24,7 @@ const SESSION = { username: 'facilitator', token: TOKEN };
 const SCRATCH = scratchPathOf(REPO);
 const TEAMMATE = 'b676teammate0001';
 const usfm = (v1: string, v2 = '___') => ['\\id TIT prueba', '\\h Tito', '\\mt Tito', '\\c 1', '\\p', `\\v 1 ${v1}`, `\\v 2 ${v2}`, ''].join('\n');
+const phm = (v2: string) => ['\\id PHM prueba', '\\h Filemón', '\\mt Filemón', '\\c 1', '\\p', '\\v 1 Pablo.', `\\v 2 ${v2}`, ''].join('\n');
 const tick = () => new Promise((r) => setTimeout(r, 1));
 
 /** The client-settings document; `hang` makes every later write never settle (a kill). */
@@ -60,8 +61,9 @@ interface World {
 
 /** A shared project: one translator drafted TIT 1:1, checkpointed, shared to Door43,
  * then drafted TIT 1:2 (one more own segment, not on Door43 yet). With `outbox`,
- * a third draft is staged but its write failed: one outbox entry. */
-async function world(opts: { outbox?: boolean; teammate?: boolean } = {}): Promise<World> {
+ * a third draft is staged but its write failed: one outbox entry. With `phm`, the
+ * project has PHM too. */
+async function world(opts: { outbox?: boolean; teammate?: boolean; phm?: boolean } = {}): Promise<World> {
   forgetSharedClocks();
   forgetProjectQueues();
   const rig = journalingRig();
@@ -71,6 +73,7 @@ async function world(opts: { outbox?: boolean; teammate?: boolean } = {}): Promi
   const store = new JournalingStore({ api, kv, now: () => clock.advance(13) });
   await store.createProject({ content_name: 'Prueba', content_abbr: 'prueba', content_language_code: 'es', add_book: false, versification: 'eng' });
   await store.addBook({ book_code: 'TIT', book_title: 'Tito', book_abbr: 'TIT', add_cv: true, initialUsfm: usfm('Pablo.') });
+  if (opts.phm) await store.addBook({ book_code: 'PHM', book_title: 'Filemón', book_abbr: 'PHM', add_cv: true, initialUsfm: phm('___') });
   await store.commit('first (tC4)');
   rig.publish(REPO, URL_);
   await store.writeBook('TIT', usfm('Pablo, siervo.'));
@@ -1199,6 +1202,43 @@ describe('#676 crash recovery of the sync (G8)', () => {
     await expectTeammateKept(w);
     expect(await outOfBandEvents(w)).toEqual([]);
     await expectNextSyncKeepsTeammate(w);
+  });
+
+  it('[G1][G8] the same power loss after a sync that carried an own outbox entry (TIT) and a teammate edit (PHM): the reopen regenerates forward, seals no own edit of PHM, and the next sync keeps the teammate text on Door43 main (bench round 8, F2)', async () => {
+    const w = await world({ outbox: true, phm: true });
+    // a teammate changed PHM 1:2 on Door43 main; the own outbox entry changes TIT 1:2
+    const TM = '_local_/_local_/companero';
+    const remote = w.rig.remotes.get(URL_)!;
+    w.rig.repos.set(TM, { files: new Map(remote.files), meta: structuredClone(remote.meta), commits: [], dirty: new Set() });
+    forgetSharedClocks();
+    forgetProjectQueues();
+    let at = Date.parse('2026-10-13T08:00:00.000Z');
+    const tm = new JournalingStore({ api: w.api, kv: memKv(), now: () => (at += 1) });
+    await tm.open(TM);
+    await tm.writeBook('PHM', phm('TEAMMATE TEXT'));
+    const tmActor = tm.actorId;
+    tm.dispose();
+    const tmFiles = w.rig.repos.get(TM)!.files;
+    w.rig.teammatePush(URL_, (r) => { for (const [p, b] of tmFiles) if (p.startsWith(`checking/journal/${tmActor}/`)) r.files.set(p, b); });
+    w.rig.repos.delete(TM);
+    forgetSharedClocks();
+    forgetProjectQueues();
+    expect(outboxKeys(w)).toHaveLength(1);
+    await killInApply(w, w.ops); // the journal files of the apply land, the derived files do not
+    w.rig.repos.get(SCRATCH)!.files.delete(APPLY_MARKER); // the marker write did not reach the disk
+    await restart(w, storedOf(w));
+    expect(w.rig.repos.get(REPO)!.files.get('PHM.usfm')).toContain('\\v 2 ___'); // from before the sync
+    expect(await reopened(w)).toBe('regenerated-forward');
+    expect(w.rig.repos.get(REPO)!.files.get('PHM.usfm')).toContain('TEAMMATE TEXT');
+    expect(w.rig.repos.get(REPO)!.files.get('TIT.usfm')).toContain('en la esperanza.');
+    expect(await outOfBandEvents(w)).toEqual([]);
+    w.settings.unhang();
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const again = await sync(w.deps(), { repoPath: REPO, session: SESSION });
+    expect([again.ok, again.code]).toEqual([true, undefined]);
+    expect(w.rig.remotes.get(URL_)!.files.get('PHM.usfm')).toContain('TEAMMATE TEXT');
+    expect(w.rig.remotes.get(URL_)!.files.get('TIT.usfm')).toContain('en la esperanza.');
   });
 
   it('[G1][G8] a power loss that keeps the marker and loses the teammate segment from the scratch copy: the next start does not apply a copy that is not the fold of its journal, the Report is not ok, no own event takes the teammate text, and the next sync brings it', async () => {

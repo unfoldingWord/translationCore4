@@ -2035,13 +2035,16 @@ export class JournalingStore implements BurritoStore {
    * marker lost (a power loss, PLATFORM-NOTES #51), leaves teammate journal files
    * that no commit holds. Only the apply writes a teammate journal file, and it
    * commits last. So a teammate segment that `GET /git/status` lists is from an
-   * apply that did not end. When each `diverged` path on the disk is the
+   * apply that did not end. When each `unexplained` path on the disk is the
    * projection of the journal without those segments, the apply did not write it
    * yet: the journal is ahead, and the open regenerates forward. A reconcile would
-   * journal the old text as an own edit over the teammate's. A status read that
-   * fails stops the open: no reconcile runs on a guess. */
+   * journal the old text as an own edit over the teammate's. `unexplained` holds
+   * the diverged paths that the ledger does not explain as journal-ahead: the
+   * path of an own outbox entry that the sync carried has a record, so it is
+   * journal-ahead too. A status read that fails stops the open: no reconcile runs
+   * on a guess. */
   private async stoppedApplyExplains(
-    diverged: DivergedPath[],
+    unexplained: DivergedPath[],
     actions: Array<{ actor: string; ts: string; events: JournalEvent[] }>,
     resolutionRecords: IntentRecord[],
     harvested: Map<string, Record<string, unknown>>,
@@ -2060,7 +2063,7 @@ export class JournalingStore implements BurritoStore {
     const behind = await this.divergenceFrom(kept, resolutionRecords, harvested, disk);
     if (behind === null) return false;
     const notWritten = new Set(behind.map((d) => d.ipath));
-    return diverged.every((d) => !notWritten.has(d.ipath));
+    return unexplained.every((d) => !notWritten.has(d.ipath));
   }
 
   private reconciliationPaths(after: FoldOutput, disk: DiskInventory): string[] {
@@ -2230,10 +2233,14 @@ export class JournalingStore implements BurritoStore {
       return;
     }
 
+    // The diverged paths that no gate-satisfied ledger record explains as
+    // journal-ahead: (b2) and (c) decide only these.
+    const remainder = diverged.filter((d) => !aheadExplained(d.ipath));
+
     // (b2) G8 (#676): a sync apply that stopped with teammate journal files that no
-    // commit holds, and each diverged path as it was before the apply -> regenerate
+    // commit holds, and each remainder path as it was before the apply -> regenerate
     // forward.
-    if (await this.stoppedApplyExplains(diverged, actions, resolutionRecords, harvested, disk)) {
+    if (await this.stoppedApplyExplains(remainder, actions, resolutionRecords, harvested, disk)) {
       await regenerateForward();
       return;
     }
@@ -2243,7 +2250,6 @@ export class JournalingStore implements BurritoStore {
     // M3): a path a gate-satisfied ledger record already explains as
     // journal-ahead is NEVER re-journaled from its (stale) disk bytes; those
     // paths regenerate forward in the same recovery's convergence below.
-    const remainder = diverged.filter((d) => !aheadExplained(d.ipath));
     const usfmOnly = remainder.every((d) => /^[A-Z0-9]{3}\.usfm$/.test(d.ipath));
     if (usfmOnly) {
       const reconcile = await this.reconcileDivergence(remainder, disk);

@@ -43,7 +43,8 @@
 // the disk can keep later writes and lose the marker, or keep the marker and lose
 // part of the scratch copy. The whole-copy check above is one guard; the other is
 // in the open (JournalingStore, branch (b2)): teammate journal files that no
-// commit holds, with the disk from before the apply, regenerate forward.
+// commit holds, with the disk from before the apply on each diverged path that the
+// intent ledger does not explain, regenerate forward.
 // While the marker is there, the project takes no open (JournalingStore, one
 // GET of the scratch copy's paths; a missing repository answers [] with HTTP 200
 // [VERIFIED — pankosmia-web 0.18.15 (a83725b), live rig, 2026-10-14;
