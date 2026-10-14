@@ -25,6 +25,7 @@ const SESSION = { username: 'facilitator', token: TOKEN };
 const SCRATCH = scratchPathOf(REPO);
 const TEAMMATE = 'b676teammate0001';
 const usfm = (v1: string, v2 = '___') => ['\\id TIT prueba', '\\h Tito', '\\mt Tito', '\\c 1', '\\p', `\\v 1 ${v1}`, `\\v 2 ${v2}`, ''].join('\n');
+const phm = (v2: string) => ['\\id PHM prueba', '\\h Filemón', '\\mt Filemón', '\\c 1', '\\p', '\\v 1 Pablo.', `\\v 2 ${v2}`, ''].join('\n');
 const tick = () => new Promise((r) => setTimeout(r, 1));
 
 /** The client-settings document; `hang` makes every later write never settle (a kill). */
@@ -61,8 +62,9 @@ interface World {
 
 /** A shared project: one translator drafted TIT 1:1, checkpointed, shared to Door43,
  * then drafted TIT 1:2 (one more own segment, not on Door43 yet). With `outbox`,
- * a third draft is staged but its write failed: one outbox entry. */
-async function world(opts: { outbox?: boolean; teammate?: boolean } = {}): Promise<World> {
+ * a third draft is staged but its write failed: one outbox entry. With `phm`, the
+ * project has PHM too. */
+async function world(opts: { outbox?: boolean; teammate?: boolean; phm?: boolean } = {}): Promise<World> {
   forgetSharedClocks();
   forgetProjectQueues();
   const rig = journalingRig();
@@ -72,6 +74,7 @@ async function world(opts: { outbox?: boolean; teammate?: boolean } = {}): Promi
   const store = new JournalingStore({ api, kv, now: () => clock.advance(13) });
   await store.createProject({ content_name: 'Prueba', content_abbr: 'prueba', content_language_code: 'es', add_book: false, versification: 'eng' });
   await store.addBook({ book_code: 'TIT', book_title: 'Tito', book_abbr: 'TIT', add_cv: true, initialUsfm: usfm('Pablo.') });
+  if (opts.phm) await store.addBook({ book_code: 'PHM', book_title: 'Filemón', book_abbr: 'PHM', add_cv: true, initialUsfm: phm('___') });
   await store.commit('first (tC4)');
   rig.publish(REPO, URL_);
   await store.writeBook('TIT', usfm('Pablo, siervo.'));
@@ -444,8 +447,10 @@ describe('#676 crash recovery of the sync (G8)', () => {
   /** Run one sync and kill it after the `k`-th server call that matches `counts`:
    * that call answers, then every later request and settings write never settles.
    * `inside`: the server is killed DURING the k-th call instead: a copy leaves half
-   * of the source's files at the target, a delete leaves half of its files. */
-  async function killAfter(k: number, counts: (route: string, method: string) => boolean, inside = false, teammate = false, prepare?: (w: World) => void) {
+   * of the source's files at the target, a delete leaves half of its files.
+   * `before`: the k-th call never reaches the server; each settings write before it
+   * is saved (bench round 8: a saved phase with no marker). */
+  async function killAfter(k: number, counts: (route: string, method: string) => boolean, mode: 'after' | 'inside' | 'before' = 'after', teammate = false, prepare?: (w: World) => void) {
     const w = await world({ outbox: true, teammate });
     prepare?.(w);
     const from = w.rig.log.length;
@@ -458,9 +463,10 @@ describe('#676 crash recovery of the sync (G8)', () => {
       if (killed) return new Promise<Response>(() => {});
       const url = new URL(String(input));
       const method = init?.method ?? 'GET';
-      if (inside && counts(url.pathname, method) && seen + 1 === k) {
+      if (mode !== 'after' && counts(url.pathname, method) && seen + 1 === k) {
         killed = true;
         w.settings.hang();
+        if (mode === 'before') return new Promise<Response>(() => {});
         // the repository path follows /api/burrito/ingredient/raw/ or /api/git/(route)/
         const at = url.pathname.includes('/burrito/ingredient/') ? 5 : 4;
         const repo = url.pathname.split('/').slice(at, at + 3).map(decodeURIComponent).join('/');
@@ -626,7 +632,7 @@ describe('#676 crash recovery of the sync (G8)', () => {
       remote.files.set(ownPath, 'not a sealed segment');
       remote.files.set(APPLY_MARKER, JSON.stringify({ actor: 'someone', at: '2026-10-14T00:00:00.000Z' }));
     });
-    const { w, before, staged, killed } = await killAfter(1, (route) => route.includes('/git/copy/'), false, false, incoming);
+    const { w, before, staged, killed } = await killAfter(1, (route) => route.includes('/git/copy/'), 'after', false, incoming);
     expect(killed).toBe(true);
     expect(w.rig.repos.get(SCRATCH)?.files.has(APPLY_MARKER) ?? false).toBe(false);
     const project = new Map(w.rig.repos.get(REPO)!.files);
@@ -830,8 +836,8 @@ describe('#676 crash recovery of the sync (G8)', () => {
     };
   };
 
-  it('[G8] apply kill sweep: a kill after each server call after the push, and inside each one (marker write, apply, marker delete, scratch delete); the next start leaves one project that opens, never reconciled, with every own segment', async () => {
-    const dry = await killAfter(Infinity, () => false, false, true);
+  it('[G8] apply kill sweep: a kill after each server call after the push, inside each one (marker write, apply, marker delete, scratch delete), and before each one (the settings writes before it saved); the next start leaves one project that opens, never reconciled, with every own segment, and its Report is ok only when the pushed tree is applied whole', async () => {
+    const dry = await killAfter(Infinity, () => false, 'after', true);
     expect(dry.done).toBe(true);
     const log = dry.w.rig.log.slice(dry.from);
     const total = log.length - 1 - log.map((l) => l.route.includes('/git/push/')).lastIndexOf(true);
@@ -839,32 +845,49 @@ describe('#676 crash recovery of the sync (G8)', () => {
     let kills = 0;
     let applied = 0;
     let unchanged = 0;
-    for (const inside of [false, true])
+    for (const mode of ['after', 'inside', 'before'] as const)
       for (let k = 1; k <= total; k += 1) {
-        const { w, before, staged, killed } = await killAfter(k, afterPush(), inside, true);
-        expect(killed, `kill ${k}${inside ? ' inside' : ''}`).toBe(true);
+        const at = `kill ${k} ${mode}`;
+        const { w, before, staged, killed } = await killAfter(k, afterPush(), mode, true);
+        expect(killed, at).toBe(true);
         const project = new Map(w.rig.repos.get(REPO)!.files);
         const marker = w.rig.repos.get(SCRATCH)?.files.has(APPLY_MARKER) ?? false;
         const [entry] = await restart(w, storedOf(w));
-        expect(reportError(entry.report)).toBeNull();
-        expect(w.rig.repos.has(SCRATCH), `kill ${k}`).toBe(false);
+        expect(w.rig.repos.has(SCRATCH), at).toBe(false);
         const live = w.rig.repos.get(REPO)!.files;
-        if (marker) expect(entry.report?.facts.finishedApply, `kill ${k}`).toBe(true);
-        // either the pushed tree is applied whole, or the project is as it was
-        if (tree(live).size === tree(w.rig.remotes.get(URL_)!.files).size && [...tree(w.rig.remotes.get(URL_)!.files)].every(([p, b]) => live.get(p) === b)) applied += 1;
-        else {
-          expect(live, `kill ${k}`).toEqual(project);
+        if (marker) expect(entry.report?.facts.finishedApply, at).toBe(true);
+        // either the pushed tree is applied whole and the sync is ok, or the project
+        // is as it was and the sync failed: never ok over the tree before the sync
+        if (tree(live).size === tree(w.rig.remotes.get(URL_)!.files).size && [...tree(w.rig.remotes.get(URL_)!.files)].every(([p, b]) => live.get(p) === b)) {
+          expect(reportError(entry.report), at).toBeNull();
+          applied += 1;
+        } else {
+          expect(live, at).toEqual(project);
+          expect(entry.report, at).toMatchObject({ op: 'sync', ok: false, facts: { rolledBack: true } });
           unchanged += 1;
         }
         await expectOneProjectWithOwnWork(w, before, staged);
         kills += 1;
       }
-    expect(kills).toBe(2 * total);
+    expect(kills).toBe(3 * total);
     expect(applied).toBeGreaterThanOrEqual(1);
-    console.log(`[G8] apply kill sweep: ${kills} kill cases (${total} server calls after the push, after and inside each): ${applied} applied whole, ${unchanged} as they were`);
-  }, 180_000);
+    expect(unchanged).toBeGreaterThanOrEqual(1); // a kill before the marker write
+    console.log(`[G8] apply kill sweep: ${kills} kill cases (${total} server calls after the push, after, inside and before each): ${applied} applied whole, ${unchanged} as they were`);
+  }, 300_000);
 
-  it('[G8] a kill inside the settings write of the apply phase: nothing was applied, the next start deletes the scratch copy, and the project opens', async () => {
+  const teammateSegments = (files: Map<string, string>) => [...files.keys()].filter((p) => p.startsWith(`checking/journal/${TEAMMATE}/segments/`));
+
+  /** The classification of a new open of the project. */
+  async function reopened(w: World) {
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const store = new JournalingStore({ api: w.api, kv: w.kv });
+    await store.open(REPO);
+    store.dispose();
+    return store.lastReport?.facts.classification;
+  }
+
+  it('[G8] a kill inside the settings write of the apply phase: the marker is already there, so the next start finishes the apply, and the reopen is converged with the teammate segment (bench round 8)', async () => {
     const w = await world({ outbox: true, teammate: true });
     const before = w.own();
     const staged = new Map([...w.kv.map].filter(([key]) => key.startsWith('outbox:')));
@@ -883,15 +906,127 @@ describe('#676 crash recovery of the sync (G8)', () => {
       killed ? new Promise<Response>(() => {}) : w.rig.fetchFn(input, init)) as typeof fetch });
     void sync({ ...w.deps(dying), ops }, { repoPath: REPO, session: SESSION });
     await vi.waitFor(() => expect(killed).toBe(true));
+    // the marker is saved before the apply phase; nothing is applied yet
+    expect(w.rig.repos.get(SCRATCH)?.files.has(APPLY_MARKER) ?? false).toBe(true);
     expect(w.rig.repos.get(REPO)!.files).toEqual(project);
+    expect(teammateSegments(project)).toEqual([]);
     const [entry] = await restart(w, storedOf(w));
-    expect(entry.report).toMatchObject({ op: 'sync', ok: false, facts: { phase: 'push', rolledBack: true } });
+    expect(entry.report).toMatchObject({ op: 'sync', ok: true, facts: { phase: 'push', finishedApply: true } });
+    expect(teammateSegments(w.rig.repos.get(REPO)!.files)).toHaveLength(1);
+    expect(await reopened(w)).toBe('converged');
     await expectOneProjectWithOwnWork(w, before, staged);
+  });
+
+  it('[G8] a kill after the push and before the marker write lands: the next start reports a failed sync, the project is as it was, and the next sync ends converged with the teammate segment (bench round 8)', async () => {
+    const w = await world({ outbox: true, teammate: true });
+    const before = w.own();
+    const staged = new Map([...w.kv.map].filter(([key]) => key.startsWith('outbox:')));
+    const project = new Map(w.rig.repos.get(REPO)!.files);
+    let killed = false;
+    const dying = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (killed) return new Promise<Response>(() => {});
+      const url = new URL(String(input));
+      // the marker write never reaches the server; every settings write before it is saved
+      if (init?.method === 'POST' && decodeURIComponent(url.pathname) === `/api/burrito/ingredient/raw/${SCRATCH}` && url.searchParams.get('ipath') === APPLY_MARKER) {
+        killed = true;
+        w.settings.hang();
+        return new Promise<Response>(() => {});
+      }
+      return w.rig.fetchFn(input, init);
+    }) as typeof fetch });
+    void sync(w.deps(dying), { repoPath: REPO, session: SESSION });
+    await vi.waitFor(() => expect(killed).toBe(true));
+    // the push is done: Door43 main has every own file and the teammate segment
+    for (const [p, bytes] of before) expect(w.rig.remotes.get(URL_)!.files.get(p), p).toBe(bytes);
+    expect(teammateSegments(w.rig.remotes.get(URL_)!.files)).toHaveLength(1);
+    expect(w.rig.repos.get(SCRATCH)!.files.has(APPLY_MARKER)).toBe(false);
+    const [entry] = await restart(w, storedOf(w));
+    // the project did not change, so the sync did not end: never ok here
+    expect(entry.report).toMatchObject({ op: 'sync', ok: false, facts: { phase: 'push', rolledBack: true } });
+    expect(w.rig.repos.has(SCRATCH)).toBe(false);
+    expect(w.rig.repos.get(REPO)!.files).toEqual(project);
+    // the next sync brings Door43 main, with the teammate segment
+    w.settings.unhang();
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const again = await sync(w.deps(), { repoPath: REPO, session: SESSION });
+    expect([again.ok, again.code]).toEqual([true, undefined]);
+    expect(teammateSegments(w.rig.repos.get(REPO)!.files)).toHaveLength(1);
+    expect(await reopened(w)).toBe('converged');
+    await expectOneProjectWithOwnWork(w, before, staged);
+  });
+
+  /** A sync whose marker write lands on the server, but the answer is lost (HTTP 500).
+   * The server is still down for one clean-up call: the marker delete when
+   * `markerDeleteFails`, else the scratch delete after it. */
+  async function syncWithLostMarkerAnswer(w: World, markerDeleteFails: boolean) {
+    let tripped = false;
+    const flaky = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (!tripped && init?.method === 'POST' && decodeURIComponent(url.pathname) === `/api/burrito/ingredient/raw/${SCRATCH}` && url.searchParams.get('ipath') === APPLY_MARKER) {
+        tripped = true;
+        await w.rig.fetchFn(input, init); // the write lands
+        const down = markerDeleteFails ? `/api/burrito/ingredient/delete/${SCRATCH}` : `/api/git/delete/${SCRATCH}`;
+        w.rig.failOn(({ route }) => decodeURIComponent(route).startsWith(down), 1);
+        return new Response(JSON.stringify({ is_good: false, reason: 'the server stopped' }), { status: 500 });
+      }
+      return w.rig.fetchFn(input, init);
+    }) as typeof fetch });
+    const report = await sync(w.deps(flaky), { repoPath: REPO, session: SESSION });
+    expect(tripped).toBe(true);
+    return report;
+  }
+
+  it('[G1][G8] a marker write whose answer is lost, and whose marker delete fails: sync.apply-pending, a store opened before the sync takes no edit, and the next start applies with own work and the teammate text', async () => {
+    const w = await teammateTextWorld();
+    const before = w.own();
+    const editor = new JournalingStore({ api: w.api, kv: w.kv, ops: w.ops });
+    await editor.open(REPO);
+    const report = await syncWithLostMarkerAnswer(w, true);
+    // the marker may be there: the next start or sync applies the scratch copy
+    expect([report.ok, report.code]).toEqual([false, 'sync.apply-pending']);
+    expect(w.rig.repos.get(SCRATCH)!.files.has(APPLY_MARKER)).toBe(true);
+    // so the store opened before the sync is stale: an edit now would go under that apply
+    await expect(editor.writeBook('TIT', usfm('MINE AFTER THE SYNC'))).rejects.toMatchObject({ code: 'sync.project-replaced' });
+    await expect(editor.commit('stale save (tC4)')).rejects.toMatchObject({ code: 'sync.project-replaced' });
+    editor.dispose();
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const store = new JournalingStore({ api: w.api, kv: w.kv, ops: w.ops });
+    await expect(store.open(REPO)).rejects.toMatchObject({ code: 'sync.apply-pending' });
+    store.dispose();
+    // the next start applies the pushed tree
+    expect(await restart(w, storedOf(w))).toEqual([]);
+    expect(await reopened(w)).toBe('converged');
+    const tit = w.rig.repos.get(REPO)!.files.get('TIT.usfm');
+    expect([tit?.includes('Pablo, siervo.'), tit?.includes('TEAMMATE TEXT'), tit?.includes('MINE AFTER THE SYNC')]).toEqual([true, true, false]);
+    await expectOneProjectWithOwnWork(w, before, new Map());
+  });
+
+  it('[G8] a marker write whose answer is lost, and whose marker delete works (control): sync.failed, no apply can begin, and a store opened before the sync still saves', async () => {
+    const w = await teammateTextWorld();
+    const project = new Map(w.rig.repos.get(REPO)!.files);
+    const editor = new JournalingStore({ api: w.api, kv: w.kv, ops: w.ops });
+    await editor.open(REPO);
+    const report = await syncWithLostMarkerAnswer(w, false);
+    expect([report.ok, report.code]).toEqual([false, 'sync.failed']);
+    // the scratch copy stays (its delete failed), with no marker
+    expect(w.rig.repos.get(SCRATCH)!.files.has(APPLY_MARKER)).toBe(false);
+    expect(w.rig.repos.get(REPO)!.files).toEqual(project);
+    await editor.writeBook('TIT', usfm('MINE AFTER THE SYNC'));
+    editor.dispose();
+    const before = w.own();
+    // the next start only deletes the scratch copy; the save stays
+    expect(await restart(w, storedOf(w))).toEqual([]);
+    expect(w.rig.repos.has(SCRATCH)).toBe(false);
+    expect(await reopened(w)).toBe('converged');
+    expect(w.rig.repos.get(REPO)!.files.get('TIT.usfm')).toContain('MINE AFTER THE SYNC');
+    await expectOneProjectWithOwnWork(w, before, new Map());
   });
   // ---- the disk record (D101): the settings document never locks or unlocks ------
 
   /** A teammate changed TIT 1:2 on Door43 main; this computer changed TIT 1:1 later. */
-  async function teammateTextWorld() {
+  async function teammateTextWorld(more?: (tm: JournalingStore) => Promise<void>) {
     const w = await world({ outbox: false });
     const TM = '_local_/_local_/companero';
     const remote = w.rig.remotes.get(URL_)!;
@@ -901,6 +1036,7 @@ describe('#676 crash recovery of the sync (G8)', () => {
     let at = Date.parse('2026-10-13T08:00:00.000Z');
     const tm = new JournalingStore({ api: w.api, kv: memKv(), now: () => (at += 1) });
     await tm.open(TM);
+    await more?.(tm);
     await tm.writeBook('TIT', usfm('Pablo.', 'TEAMMATE TEXT'));
     const tmActor = tm.actorId;
     tm.dispose();
@@ -912,13 +1048,14 @@ describe('#676 crash recovery of the sync (G8)', () => {
     return w;
   }
 
-  /** Kill the sync at its first derived write of the apply (journal files are written). */
-  async function killInApply(w: World, ops: OpsLog) {
+  /** Kill the sync at its first derived write of the apply (journal files are written),
+   * or at the first apply write that `at` accepts. */
+  async function killInApply(w: World, ops: OpsLog, at = (ipath: string) => !ipath.startsWith('checking/journal/')) {
     let killed = false;
     const dying = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) => {
       if (killed) return new Promise<Response>(() => {});
       const url = new URL(String(input));
-      if (url.pathname.startsWith(`/api/burrito/ingredient/raw/${REPO}`) && init?.method === 'POST' && !(url.searchParams.get('ipath') ?? '').startsWith('checking/journal/')) {
+      if (url.pathname.startsWith(`/api/burrito/ingredient/raw/${REPO}`) && init?.method === 'POST' && at(url.searchParams.get('ipath') ?? '')) {
         killed = true;
         w.settings.hang();
         return new Promise<Response>(() => {});
@@ -1019,6 +1156,378 @@ describe('#676 crash recovery of the sync (G8)', () => {
     await expectTeammateKept(w);
   });
 
+  // A power loss (PLATFORM-NOTES #51): the platform calls no fsync, so the disk can keep
+  // any subset of the last writes, in any order. These tests make each subset that the
+  // marker order does not cover by hand, after a kill, before the next start.
+
+  /** The next sync, after a restart: it ends ok, and Door43 main keeps the teammate text. */
+  async function expectNextSyncKeepsTeammate(w: World) {
+    w.settings.unhang();
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const again = await sync(w.deps(), { repoPath: REPO, session: SESSION });
+    expect([again.ok, again.code]).toEqual([true, undefined]);
+    expect(w.rig.remotes.get(URL_)!.files.get('TIT.usfm')).toContain('TEAMMATE TEXT');
+    await expectTeammateKept(w);
+  }
+
+  /** The own events of the project whose seed says an out-of-band edit made them. */
+  const outOfBandEvents = async (w: World) =>
+    (await eventsOf(w.rig.repos.get(REPO)!.files, w.actor)).filter((e) => (e as { seed?: { source?: string } }).seed?.source === 'out-of-band-usfm');
+
+  it('[G1][G8] a power loss that keeps the journal writes of the apply and loses the marker and the derived writes: the reopen regenerates forward with the teammate text, seals no own edit, and the next sync keeps the teammate text on Door43 main', async () => {
+    const w = await teammateTextWorld();
+    await killInApply(w, w.ops);
+    w.rig.repos.get(SCRATCH)!.files.delete(APPLY_MARKER); // the marker write did not reach the disk
+    await restart(w, storedOf(w));
+    expect(w.rig.repos.get(REPO)!.files.get('TIT.usfm')).toContain('\\v 2 ___'); // the derived files are from before the sync
+    await expectTeammateKept(w);
+    expect(await outOfBandEvents(w)).toEqual([]);
+    await expectNextSyncKeepsTeammate(w);
+  });
+
+  it('[G1][G8] the same power loss when the platform lists the new teammate folder as one entry (libgit2 collapses an untracked folder): the reopen regenerates forward', async () => {
+    const w = await teammateTextWorld();
+    await killInApply(w, w.ops);
+    w.rig.repos.get(SCRATCH)!.files.delete(APPLY_MARKER);
+    await restart(w, storedOf(w));
+    // GET /git/status as the platform answers it [VERIFIED — rig 0.18.15 (a83725b), 2026-10-14]:
+    // a file in a tracked folder is one entry, a new folder is one entry with a trailing '/'
+    const own = `checking/journal/${w.actor}/`;
+    const collapsed = (paths: string[]) => [...new Set(paths.map((p) =>
+      p.startsWith('checking/journal/') && !p.startsWith(own) ? `ingredients/${p.split('/').slice(0, 3).join('/')}/` : `ingredients/${p}`))];
+    const platform = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (decodeURIComponent(url.pathname) === `/api/git/status/${REPO}`)
+        return new Response(JSON.stringify(collapsed([...w.rig.repos.get(REPO)!.dirty]).map((path) => ({ path, change_type: 'new' }))), { status: 200 });
+      return w.rig.fetchFn(input, init);
+    }) as typeof fetch });
+    expect(collapsed([...w.rig.repos.get(REPO)!.dirty]).some((p) => p.endsWith('/'))).toBe(true);
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const store = new JournalingStore({ api: platform, kv: w.kv });
+    await store.open(REPO);
+    expect(store.lastReport?.facts.classification).toBe('regenerated-forward');
+    store.dispose();
+    expect(w.rig.repos.get(REPO)!.files.get('TIT.usfm')).toContain('TEAMMATE TEXT');
+    expect(await outOfBandEvents(w)).toEqual([]);
+  });
+
+  it('[G1][G8] the same power loss when the git status read fails (HTTP 500): the open stops, and nothing is reconciled', async () => {
+    const w = await teammateTextWorld();
+    await killInApply(w, w.ops);
+    w.rig.repos.get(SCRATCH)!.files.delete(APPLY_MARKER);
+    await restart(w, storedOf(w));
+    const before = new Map(w.rig.repos.get(REPO)!.files);
+    const noStatus = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) =>
+      decodeURIComponent(new URL(String(input)).pathname) === `/api/git/status/${REPO}`
+        ? new Response(JSON.stringify({ is_good: false, reason: 'the server stopped' }), { status: 500 })
+        : w.rig.fetchFn(input, init)) as typeof fetch });
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const store = new JournalingStore({ api: noStatus, kv: w.kv });
+    await expect(store.open(REPO)).rejects.toThrow();
+    store.dispose();
+    expect(w.rig.repos.get(REPO)!.files).toEqual(before);
+    expect(await outOfBandEvents(w)).toEqual([]);
+  });
+
+  it('[G1][G8] a power loss that keeps the journal writes and a part of the derived writes of the apply, and loses the marker: the reopen regenerates forward, not reconciles', async () => {
+    const w = await teammateTextWorld(async (tm) => {
+      await tm.addBook({ book_code: 'JON', book_title: 'Jonas', book_abbr: 'JON', add_cv: true, initialUsfm: ['\\id JON prueba', '\\h Jonas', '\\mt Jonas', '\\c 1', '\\p', '\\v 1 Jonas.', ''].join('\n') });
+    });
+    await killInApply(w, w.ops, (ipath) => ipath === 'TIT.usfm'); // JON.usfm comes first and lands
+    w.rig.repos.get(SCRATCH)!.files.delete(APPLY_MARKER);
+    await restart(w, storedOf(w));
+    const live = w.rig.repos.get(REPO)!.files;
+    expect([live.has('JON.usfm'), live.get('TIT.usfm')!.includes('\\v 2 ___')]).toEqual([true, true]);
+    await expectTeammateKept(w);
+    expect(await outOfBandEvents(w)).toEqual([]);
+    await expectNextSyncKeepsTeammate(w);
+  });
+
+  it('[G1][G8] the same power loss after a sync that carried an own outbox entry (TIT) and a teammate edit (PHM): the reopen regenerates forward, seals no own edit of PHM, and the next sync keeps the teammate text on Door43 main (bench round 8, F2)', async () => {
+    const w = await world({ outbox: true, phm: true });
+    // a teammate changed PHM 1:2 on Door43 main; the own outbox entry changes TIT 1:2
+    const TM = '_local_/_local_/companero';
+    const remote = w.rig.remotes.get(URL_)!;
+    w.rig.repos.set(TM, { files: new Map(remote.files), meta: structuredClone(remote.meta), commits: [], dirty: new Set() });
+    forgetSharedClocks();
+    forgetProjectQueues();
+    let at = Date.parse('2026-10-13T08:00:00.000Z');
+    const tm = new JournalingStore({ api: w.api, kv: memKv(), now: () => (at += 1) });
+    await tm.open(TM);
+    await tm.writeBook('PHM', phm('TEAMMATE TEXT'));
+    const tmActor = tm.actorId;
+    tm.dispose();
+    const tmFiles = w.rig.repos.get(TM)!.files;
+    w.rig.teammatePush(URL_, (r) => { for (const [p, b] of tmFiles) if (p.startsWith(`checking/journal/${tmActor}/`)) r.files.set(p, b); });
+    w.rig.repos.delete(TM);
+    forgetSharedClocks();
+    forgetProjectQueues();
+    expect(outboxKeys(w)).toHaveLength(1);
+    await killInApply(w, w.ops); // the journal files of the apply land, the derived files do not
+    w.rig.repos.get(SCRATCH)!.files.delete(APPLY_MARKER); // the marker write did not reach the disk
+    await restart(w, storedOf(w));
+    expect(w.rig.repos.get(REPO)!.files.get('PHM.usfm')).toContain('\\v 2 ___'); // from before the sync
+    expect(await reopened(w)).toBe('regenerated-forward');
+    expect(w.rig.repos.get(REPO)!.files.get('PHM.usfm')).toContain('TEAMMATE TEXT');
+    expect(w.rig.repos.get(REPO)!.files.get('TIT.usfm')).toContain('en la esperanza.');
+    expect(await outOfBandEvents(w)).toEqual([]);
+    w.settings.unhang();
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const again = await sync(w.deps(), { repoPath: REPO, session: SESSION });
+    expect([again.ok, again.code]).toEqual([true, undefined]);
+    expect(w.rig.remotes.get(URL_)!.files.get('PHM.usfm')).toContain('TEAMMATE TEXT');
+    expect(w.rig.remotes.get(URL_)!.files.get('TIT.usfm')).toContain('en la esperanza.');
+  });
+
+  it('[G1][G8] a power loss that keeps the marker and loses the teammate segment from the scratch copy: the next start does not apply a copy that is not the fold of its journal, the Report is not ok, no own event takes the teammate text, and the next sync brings it', async () => {
+    const w = await teammateTextWorld();
+    const project = new Map(w.rig.repos.get(REPO)!.files);
+    await killInApply(w, w.ops, () => true); // no apply write lands
+    const scratch = w.rig.repos.get(SCRATCH)!.files;
+    expect(scratch.has(APPLY_MARKER)).toBe(true);
+    const lost = [...scratch.keys()].filter((p) => p.includes('/segments/') && !p.includes(`/${w.actor}/`) && scratch.get(p)!.includes('TEAMMATE TEXT'));
+    expect(lost).toHaveLength(1);
+    scratch.delete(lost[0]); // the scratch copy keeps its TIT.usfm with the teammate text
+    const [entry] = await restart(w, storedOf(w));
+    expect(entry.report?.ok).toBe(false);
+    expect(w.rig.repos.has(SCRATCH)).toBe(false);
+    expect(w.rig.repos.get(REPO)!.files).toEqual(project);
+    expect(await reopened(w)).toBe('converged');
+    expect(await outOfBandEvents(w)).toEqual([]);
+    await expectNextSyncKeepsTeammate(w);
+    expect(await outOfBandEvents(w)).toEqual([]);
+  });
+
+  it('[G8] a power loss that keeps the marker and loses TIT.usfm from the scratch copy: no part apply, no own event, and the next sync brings the teammate text', async () => {
+    const w = await teammateTextWorld();
+    const project = new Map(w.rig.repos.get(REPO)!.files);
+    await killInApply(w, w.ops, () => true);
+    w.rig.repos.get(SCRATCH)!.files.delete('TIT.usfm');
+    const [entry] = await restart(w, storedOf(w));
+    expect(entry.report?.ok).toBe(false);
+    expect(w.rig.repos.get(REPO)!.files).toEqual(project);
+    expect(await outOfBandEvents(w)).toEqual([]);
+    await expectNextSyncKeepsTeammate(w);
+  });
+
+  // A power loss that tears one file of the scratch copy, as the platform answers a read
+  // of it (PLATFORM-NOTES #51) [VERIFIED — pankosmia-web 0.18.15 (a83725b), source read
+  // 2026-10-14]: raw_metadata.rs and raw_text_ingredient.rs call read_to_string, so a
+  // missing file is HTTP 400, a torn or empty metadata.json is HTTP 200 with its bytes,
+  // and a file that is not UTF-8 is HTTP 400. The fake rig answers from whole objects,
+  // so the test answers here.
+  const tornScratch: Record<string, (route: string, ipath: string | null) => Response | null> = {
+    'metadata.json is missing': (route) => route === `/api/burrito/metadata/raw/${SCRATCH}`
+      ? new Response(JSON.stringify({ is_good: false, reason: 'could not read metadata: No such file or directory (os error 2)' }), { status: 400 }) : null,
+    'metadata.json is torn': (route) => route === `/api/burrito/metadata/raw/${SCRATCH}`
+      ? new Response('{"format":"scripture burrito","meta":{"categ', { status: 200 }) : null,
+    'metadata.json is empty': (route) => route === `/api/burrito/metadata/raw/${SCRATCH}`
+      ? new Response('', { status: 200 }) : null,
+    'TIT.usfm is not UTF-8': (route, ipath) => route === `/api/burrito/ingredient/raw/${SCRATCH}` && ipath === 'TIT.usfm'
+      ? new Response(JSON.stringify({ is_good: false, reason: 'could not read ingredient content: stream did not contain valid UTF-8' }), { status: 400 }) : null,
+  };
+  for (const [form, answer] of Object.entries(tornScratch))
+    it(`[G8] a power loss that keeps the marker and a scratch copy whose ${form}: the start does not lock the project; it deletes the copy with its marker, the Report is not ok, and the next sync brings the teammate text (bench round 8, F1)`, async () => {
+      const w = await teammateTextWorld();
+      const project = new Map(w.rig.repos.get(REPO)!.files);
+      await killInApply(w, w.ops, () => true); // no apply write lands
+      expect(w.rig.repos.get(SCRATCH)!.files.has(APPLY_MARKER)).toBe(true);
+      const torn = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = new URL(String(input));
+        const read = (init?.method ?? 'GET') === 'GET' && w.rig.repos.has(SCRATCH);
+        return (read && answer(decodeURIComponent(url.pathname), url.searchParams.get('ipath'))) || w.rig.fetchFn(input, init);
+      }) as typeof fetch });
+      forgetSharedClocks();
+      forgetProjectQueues();
+      const stored = storedOf(w);
+      const next = new OpsLog({ read: stored.read, update: serialSettingsWriter(stored.read, stored.write) });
+      const [entry] = await next.recover(torn);
+      expect(next.errors).toEqual([]);
+      expect(entry.report).toMatchObject({ op: 'sync', ok: false, facts: { scratchNotWhole: true } });
+      expect(w.rig.repos.has(SCRATCH)).toBe(false);
+      expect(w.rig.repos.get(REPO)!.files).toEqual(project);
+      expect(await reopened(w)).toBe('converged');
+      expect(await outOfBandEvents(w)).toEqual([]);
+      await expectNextSyncKeepsTeammate(w);
+    });
+
+  it('[G8] a power loss that keeps the marker and leaves LICENSE.md of the scratch copy not UTF-8 (the apply reads it, the fold does not derive it): the start does not lock the project, and the next sync brings the teammate text (round 8 review)', async () => {
+    const w = await teammateTextWorld();
+    const project = new Map(w.rig.repos.get(REPO)!.files);
+    await killInApply(w, w.ops, () => true); // no apply write lands
+    w.rig.repos.get(SCRATCH)!.files.set('LICENSE.md', 'license'); // a file that every check of the fold skips
+    const torn = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      return decodeURIComponent(url.pathname) === `/api/burrito/ingredient/raw/${SCRATCH}` && url.searchParams.get('ipath') === 'LICENSE.md'
+        ? new Response(JSON.stringify({ is_good: false, reason: 'could not read ingredient content: stream did not contain valid UTF-8' }), { status: 400 })
+        : w.rig.fetchFn(input, init);
+    }) as typeof fetch });
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const stored = storedOf(w);
+    const next = new OpsLog({ read: stored.read, update: serialSettingsWriter(stored.read, stored.write) });
+    const [entry] = await next.recover(torn);
+    expect(next.errors).toEqual([]);
+    expect(entry.report).toMatchObject({ op: 'sync', ok: false, facts: { scratchNotWhole: true } });
+    expect(w.rig.repos.has(SCRATCH)).toBe(false);
+    expect(w.rig.repos.get(REPO)!.files).toEqual(project);
+    expect(await reopened(w)).toBe('converged');
+    await expectNextSyncKeepsTeammate(w);
+  });
+
+  it('[G1][G8] a power loss that keeps the journal writes of the apply and the marker, and tears metadata.json of the scratch copy: the start applies no more, the reopen regenerates forward with the teammate text, and the next sync keeps it (round 8 critic, gap 3)', async () => {
+    const w = await teammateTextWorld();
+    await killInApply(w, w.ops); // the journal files of the apply land, the derived files do not
+    expect(w.rig.repos.get(SCRATCH)!.files.has(APPLY_MARKER)).toBe(true);
+    const answer = tornScratch['metadata.json is torn'];
+    const torn = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      const read = (init?.method ?? 'GET') === 'GET' && w.rig.repos.has(SCRATCH);
+      return (read && answer(decodeURIComponent(url.pathname), url.searchParams.get('ipath'))) || w.rig.fetchFn(input, init);
+    }) as typeof fetch });
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const stored = storedOf(w);
+    const next = new OpsLog({ read: stored.read, update: serialSettingsWriter(stored.read, stored.write) });
+    const [entry] = await next.recover(torn);
+    expect(next.errors).toEqual([]);
+    expect(entry.report).toMatchObject({ op: 'sync', ok: false, facts: { scratchNotWhole: true } });
+    expect(w.rig.repos.has(SCRATCH)).toBe(false);
+    expect(w.rig.repos.get(REPO)!.files.get('TIT.usfm')).toContain('\\v 2 ___'); // the derived files are from before the sync
+    expect(await reopened(w)).toBe('regenerated-forward');
+    expect(w.rig.repos.get(REPO)!.files.get('TIT.usfm')).toContain('TEAMMATE TEXT');
+    expect(await outOfBandEvents(w)).toEqual([]);
+    await expectNextSyncKeepsTeammate(w);
+  });
+
+  // Two failures of the whole-copy check that no damage to a file explains: a server
+  // error, and an HTTP 400 for a file that another process holds (Windows, os error 32).
+  const notDamage: Record<string, () => Response> = {
+    'a server error (HTTP 500)': () => new Response(JSON.stringify({ is_good: false, reason: 'the server stopped' }), { status: 500 }),
+    'a file that another process holds (HTTP 400, os error 32)': () => new Response(JSON.stringify({ is_good: false, reason: 'could not read metadata: The process cannot access the file because it is being used by another process. (os error 32)' }), { status: 400 }),
+  };
+  for (const [form, answer] of Object.entries(notDamage))
+  it(`[G8] ${form} during the whole-copy check is not a power loss: the marker stays, the project takes no open, and the next start applies (round 8 critic, gap 2)`, async () => {
+    const w = await teammateTextWorld();
+    await killInApply(w, w.ops, () => true); // no apply write lands
+    expect(w.rig.repos.get(SCRATCH)!.files.has(APPLY_MARKER)).toBe(true);
+    const failing = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) =>
+      decodeURIComponent(new URL(String(input)).pathname) === `/api/burrito/metadata/raw/${SCRATCH}`
+        ? answer()
+        : w.rig.fetchFn(input, init)) as typeof fetch });
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const stored = storedOf(w);
+    const next = new OpsLog({ read: stored.read, update: serialSettingsWriter(stored.read, stored.write) });
+    await next.recover(failing);
+    expect(next.errors.map((e) => e.id)).toContain(`apply:${REPO}`);
+    expect(w.rig.repos.get(SCRATCH)!.files.has(APPLY_MARKER)).toBe(true); // a server error is no proof of a power loss
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const store = new JournalingStore({ api: w.api, kv: w.kv });
+    await expect(store.open(REPO)).rejects.toMatchObject({ code: 'sync.apply-pending' });
+    store.dispose();
+    const [entry] = await restart(w, storedOf(w));
+    expect(entry.report).toMatchObject({ op: 'sync', ok: true, facts: { finishedApply: true } });
+    expect(await reopened(w)).toBe('converged');
+    await expectTeammateKept(w);
+  });
+
+  it('[G8] a disk rule that fails at the start for one project, and applies in the recovery of its record: the Report is ok with finishedApply, not "the project did not change" (round 8 critic, gap 4)', async () => {
+    const w = await world({ outbox: true, teammate: true });
+    const before = w.own();
+    const staged = new Map([...w.kv.map].filter(([key]) => key.startsWith('outbox:')));
+    let killed = false;
+    const ops = new OpsLog({ read: w.settings.read, update: serialSettingsWriter(w.settings.read, async (d) => {
+      if (opsEntriesOf(d).some((e) => e.op === 'sync' && e.facts.phase === 'apply')) {
+        killed = true;
+        w.settings.hang();
+        return new Promise<void>(() => {});
+      }
+      await w.settings.write(d);
+    }) });
+    await ops.recover(w.api);
+    const dying = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) =>
+      killed ? new Promise<Response>(() => {}) : w.rig.fetchFn(input, init)) as typeof fetch });
+    void sync({ ...w.deps(dying), ops }, { repoPath: REPO, session: SESSION });
+    await vi.waitFor(() => expect(killed).toBe(true));
+    expect(w.rig.repos.get(SCRATCH)!.files.has(APPLY_MARKER)).toBe(true); // the phase stays `push`
+    // the first listing of the scratch copy at the next start gets no answer
+    let lists = 0;
+    const flaky = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) =>
+      decodeURIComponent(new URL(String(input)).pathname) === `/api/burrito/paths/${SCRATCH}` && (lists += 1) === 1
+        ? new Response(JSON.stringify({ is_good: false, reason: 'the server stopped' }), { status: 500 })
+        : w.rig.fetchFn(input, init)) as typeof fetch });
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const stored = storedOf(w);
+    const next = new OpsLog({ read: stored.read, update: serialSettingsWriter(stored.read, stored.write) });
+    const [entry] = await next.recover(flaky);
+    expect(next.errors.map((e) => e.id)).toEqual([`apply:${REPO}`]);
+    expect(entry.report).toMatchObject({ op: 'sync', ok: true, facts: { phase: 'push', finishedApply: true } });
+    expect(teammateSegments(w.rig.repos.get(REPO)!.files)).toHaveLength(1);
+    await expectOneProjectWithOwnWork(w, before, staged);
+  });
+
+  it('[G8] control for the open guard: the same power loss plus an out-of-band edit of the book is not the disk from before the apply, so the open reconciles and keeps the edit (Ledger #11: this combination is not covered)', async () => {
+    const w = await teammateTextWorld();
+    await killInApply(w, w.ops);
+    w.rig.repos.get(SCRATCH)!.files.delete(APPLY_MARKER); // the marker write did not reach the disk
+    await restart(w, storedOf(w));
+    const live = w.rig.repos.get(REPO)!.files;
+    expect(live.get('TIT.usfm')).toContain('\\v 2 ___'); // the derived files are from before the sync
+    live.set('TIT.usfm', live.get('TIT.usfm')!.replace(/\\v 1 [^\n]*/, '\\v 1 OUT OF BAND TEXT'));
+    expect(await reopened(w)).toBe('reconciled');
+    expect(w.rig.repos.get(REPO)!.files.get('TIT.usfm')).toContain('OUT OF BAND TEXT');
+    expect((await outOfBandEvents(w)).map((e) => JSON.stringify(e)).join()).toContain('OUT OF BAND TEXT');
+  });
+
+  it('[G8] two recover() calls at the same time (React StrictMode runs the boot effect twice in a dev build) run one disk rule: no file of the project is deleted, and the reopen is converged (bench round 8, F4)', async () => {
+    const w = await world({ outbox: true, teammate: true });
+    await killInApply(w, w.ops);
+    w.settings.unhang();
+    expect(w.rig.repos.get(SCRATCH)!.files.has(APPLY_MARKER)).toBe(true);
+    forgetSharedClocks();
+    forgetProjectQueues();
+    // the 5th listing of the scratch copy waits until the copy is gone: without one
+    // disk rule, it is the second apply's read of its target
+    let lists = 0;
+    const deletes: string[] = [];
+    const racing = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      const route = decodeURIComponent(url.pathname);
+      if (route === `/api/burrito/paths/${SCRATCH}` && (lists += 1) === 5)
+        await vi.waitFor(() => expect(w.rig.repos.has(SCRATCH)).toBe(false), { timeout: 5000, interval: 2 });
+      if (init?.method === 'POST' && route.startsWith(`/api/burrito/ingredient/delete/${REPO}`)) deletes.push(url.searchParams.get('ipath') ?? '');
+      return w.rig.fetchFn(input, init);
+    }) as typeof fetch });
+    const ops = appStart(w.settings);
+    const [first, second] = await Promise.all([ops.recover(racing), ops.recover(racing)]);
+    expect(second).toEqual(first);
+    expect(deletes).toEqual([]);
+    expect(ops.errors).toEqual([]);
+    expect(opsEntriesOf(w.settings.get()).filter((e) => e.op === 'sync').map((e) => e.report?.facts.finishedApply)).toEqual([true]);
+    expect(w.rig.repos.has(SCRATCH)).toBe(false);
+    expect(await reopened(w)).toBe('converged');
+    expect([...w.rig.repos.get(REPO)!.files.keys()].some((p) => p.startsWith(`checking/journal/${TEAMMATE}/`))).toBe(true);
+  });
+
+  it('[G8] control: after a sync that ended, an edit of the teammate verse in another tool is still reconciled as an own edit (R-8.8.1)', async () => {
+    const w = await teammateTextWorld();
+    const report = await sync(w.deps(), { repoPath: REPO, session: SESSION });
+    expect([report.ok, report.code]).toEqual([true, undefined]);
+    expect(await reopened(w)).toBe('converged');
+    const live = w.rig.repos.get(REPO)!;
+    live.files.set('TIT.usfm', live.files.get('TIT.usfm')!.replace('TEAMMATE TEXT', 'OUT OF BAND TEXT'));
+    expect(await reopened(w)).toBe('reconciled');
+    expect(live.files.get('TIT.usfm')).toContain('OUT OF BAND TEXT');
+    expect((await outOfBandEvents(w)).map((e) => JSON.stringify(e)).join()).toContain('OUT OF BAND TEXT');
+  });
+
   it('[G8] a sync started while the marker is there finishes the pending apply first', async () => {
     const w = await teammateTextWorld();
     await killInApply(w, w.ops);
@@ -1034,11 +1543,13 @@ describe('#676 crash recovery of the sync (G8)', () => {
     const w = await world();
     const OTHER = 'qa.door43.org/team/otro';
     w.rig.createRepo(OTHER, { 'TIT.usfm': 'old text', 'gone.json': '{}' });
-    w.rig.createRepo(scratchPathOf(OTHER), { 'TIT.usfm': 'Door43 main text', [APPLY_MARKER]: '{}' });
+    // the scratch copy is whole: the fold of its journal (the world's project)
+    const whole = w.rig.repos.get(REPO)!;
+    w.rig.createRepo(scratchPathOf(OTHER), Object.fromEntries([...whole.files, [APPLY_MARKER, '{}']]), structuredClone(whole.meta));
     await appStart(settingsDoc()).recover(w.api);
     expect(w.rig.repos.has(scratchPathOf(OTHER))).toBe(false);
     const files = w.rig.repos.get(OTHER)!.files;
-    expect([files.get('TIT.usfm'), files.has('gone.json'), files.has(APPLY_MARKER)]).toEqual(['Door43 main text', false, false]);
+    expect([files.get('TIT.usfm'), files.has('gone.json'), files.has(APPLY_MARKER)]).toEqual([whole.files.get('TIT.usfm'), false, false]);
   });
 
   it('[G8] an open whose check for the marker gets no answer (HTTP 500) refuses with a code: fail closed', async () => {
@@ -1223,6 +1734,12 @@ describe('#676 applyScratch (D101)', () => {
   it('[G8] a run again deletes a file already gone without an error (HTTP 400 "No such file: <path>")', async () => {
     const repos = { [SCRATCH]: scratchFiles(), [REPO]: liveFiles() };
     await expect(applyScratch(fakeApi(repos, { listGone: ['checking/translationWords/JON.json'] }), REPO, SCRATCH)).resolves.toMatchObject({ removed: 2 });
+  });
+
+  it('[G8] a scratch copy that is gone (the platform lists a missing repository as []) is not applied: no file of the project is deleted (bench round 8, F4)', async () => {
+    const repos: Record<string, Map<string, string>> = { [REPO]: liveFiles() };
+    await expect(applyScratch(fakeApi(repos), REPO, SCRATCH)).rejects.toThrow();
+    expect(repos[REPO]).toEqual(liveFiles());
   });
 });
 

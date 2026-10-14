@@ -245,6 +245,24 @@ describe('#678 — the result, built only from report.facts', () => {
     expect(screen.getByTestId('sync-download')).toBeTruthy();
   });
 
+  it('D88 point 6: a sync whose only missing version is a source Bible pane (extraScripture, #412) offers Download (bench round 5)', () => {
+    // the pin file of the conformance sample, with every pin that names a version installed
+    const resources = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), 'conformance/sample-burrito/ingredients/checking/resources.json'), 'utf8'));
+    const pins = [
+      ...Object.values(resources.languageSets).flatMap((set) => Object.values(set as Record<string, unknown>)),
+      ...Object.values(resources.resources.originalLanguage),
+      ...resources.extraScripture,
+    ] as Array<{ repoPath: string; sha?: string; id?: string }>;
+    const installed = Object.fromEntries(pins.filter((pin) => pin.sha).map((pin) => [pin.repoPath, { ...pin }]));
+    expect(missingPinCount(resources, installed as never)).toBe(0); // control
+    const ult = resources.extraScripture.find((pin: { id: string }) => pin.id === 'ult');
+    const withoutUlt = Object.fromEntries(Object.entries(installed).filter(([key]) => key !== ult.repoPath));
+    const n = missingPinCount(resources, withoutUlt as never);
+    expect(n).toBe(1);
+    render(<SyncResult result={result(okSync(), n)} onReview={vi.fn()} onDownload={vi.fn()} onDismiss={vi.fn()} />);
+    expect(screen.getByTestId('sync-download')).toBeTruthy();
+  });
+
   it('one message per code', () => {
     // every code a sync can return has its own entry, and no entry names another code
     expect(Object.keys(SYNC_REFUSALS).sort()).toEqual([...SYNC_CODES].sort());
