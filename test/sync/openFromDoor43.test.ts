@@ -4,7 +4,7 @@
 // no repository was written: the same repositories, byte for byte, and no clone left.
 import { afterEach, describe, expect, it } from 'vitest';
 import { ServerApi } from '../../src/data/serverApi';
-import { JournalingStore, forgetProjectQueues } from '../../src/data/journal/journalingStore';
+import { JournalingStore, forgetProjectQueues, inProjectQueue } from '../../src/data/journal/journalingStore';
 import { forgetSharedClocks } from '../../src/data/journal/journalStore';
 import { actorIdFor } from '../../src/data/journal/identity';
 import { OpsLog, forgetRunningOpens, openRunning, serialSettingsWriter } from '../../src/data/journal/opsLog';
@@ -806,6 +806,28 @@ describe('#677 the clone-path lock (#676 `withClonePath`, shared with the sync)'
     await expect(first).rejects.toThrow('first failed');
     await second;
     expect(order).toEqual(['first start', 'other path', 'first end', 'second']);
+  });
+
+  it('lock order (#676): the open clones under the clone-path lock and never waits on a project queue', async () => {
+    const w = await world();
+    const settle = (run: Promise<unknown>) => Promise.race([run.then(() => 'done'), new Promise((r) => setTimeout(() => r('waits'), 500))]);
+    // the project queues of the target and of the shared project are held (a sync holds its queue when it clones)
+    let releaseQueues: () => void = () => {};
+    const queuesHeld = new Promise<void>((r) => (releaseQueues = r));
+    const queues = [inProjectQueue(OPENED, () => queuesHeld), inProjectQueue(REPO, () => queuesHeld)];
+    expect(await settle(openFromDoor43({ api: w.api }, { source: SOURCE, name: 'prueba_b' }))).toBe('done');
+    releaseQueues();
+    await Promise.all(queues);
+    // control: while the clone-path lock is held, the open waits for it
+    await w.api.deleteRepo(OPENED);
+    let releaseLock: () => void = () => {};
+    const lockHeld = new Promise<void>((r) => (releaseLock = r));
+    const lock = withClonePath(CLONE_PATH, () => lockHeld);
+    const open = openFromDoor43({ api: w.api }, { source: SOURCE, name: 'prueba_b' });
+    expect(await settle(open)).toBe('waits');
+    releaseLock();
+    await lock;
+    expect(await open).toEqual({ repoPath: OPENED });
   });
 });
 

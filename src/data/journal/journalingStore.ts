@@ -50,7 +50,7 @@ import { idbKvStore, type KvStore } from './identity';
 import { sealAction, type JournalEvent } from './seal';
 import { defaultFoldRunner, type FoldRunner } from './foldRunner';
 import { verseConflicts, type VerseConflict } from './verseConflicts';
-import { guardOpenCopy, isApplyPending, syncGenerationOf, type OpsRecorder } from './opsLog';
+import { guardOpenCopy, isApplyPending, recoverySettled, syncGenerationOf, type OpsRecorder } from './opsLog';
 import {
   applyStoryState,
   completePartialPins,
@@ -93,6 +93,16 @@ import {
 
 /** App-created projects live under this org (same constant as HttpStore). */
 const APP_ORG = '_local_/_local_';
+
+/** #676: a tC4 project lives only at `_local_/_local_/<name>` (httpStore.ts). A
+ * repository at another path is not a project: a resource, or the fixed clone
+ * path `<host>/<org>/<repo>` of a sync, which the sync deletes. No open and no
+ * create may bind it. */
+const refuseNonProjectPath = (repoPath: string): void => {
+  const name = repoPath.startsWith(`${APP_ORG}/`) ? repoPath.slice(APP_ORG.length + 1) : '';
+  if (!name || name.includes('/'))
+    throw new Refusal('open.not-a-project', `${repoPath} is not a tC4 project path (${APP_ORG}/<name>)`, { repoPath });
+};
 
 const TOOL_IDS = ['translationWords', 'translationNotes'] as const;
 
@@ -534,7 +544,7 @@ export class JournalingStore implements BurritoStore {
   /** The sync generation of the project when this store opened it (#676). */
   private openedGeneration = 0;
 
-  /** #676 (G8, D100): while the project's scratch copy holds the apply marker, an
+  /** #676 (G8, D101): while the project's scratch copy holds the apply marker, an
    * apply may be half done; the project takes no open until a start or a sync
    * finishes it. The disk decides, never the settings document. Edits need no
    * check: a store opens only when no apply is pending, and an apply in this
@@ -1159,7 +1169,9 @@ export class JournalingStore implements BurritoStore {
    * the creation seed. A crash between the two is healed by the SAME code path:
    * universal seeding on first open. */
   async createProject(params: CreateProjectParams): Promise<{ repoPath: string }> {
+    await recoverySettled(); // #676: a create never races the start recovery
     const repoPath = `${APP_ORG}/${params.content_abbr}`;
+    refuseNonProjectPath(repoPath);
     // Pre-check the name (PLATFORM-NOTES #28): creation git-inits BEFORE it
     // validates, so never attempt a create over an existing path, and delete
     // debris only when this listing POSITIVELY confirmed absence.
@@ -1199,7 +1211,9 @@ export class JournalingStore implements BurritoStore {
    * verbatim. A failure leaves no half-made project: the pre-check proved the
    * path absent, so the delete removes only our own debris (PLATFORM-NOTES #28). */
   async createObsProject(params: CreateObsProjectParams): Promise<{ repoPath: string }> {
+    await recoverySettled(); // #676: a create never races the start recovery
     const repoPath = `${APP_ORG}/${params.content_abbr}`;
+    refuseNonProjectPath(repoPath);
     const existing = await this.api.listLocalRepos();
     if (existing.includes(repoPath))
       throw new ServerApiError('/git/new-obs-resource', 0, `project ${repoPath} already exists`);
@@ -1275,6 +1289,8 @@ export class JournalingStore implements BurritoStore {
     startedAt: string,
     phases: Report[],
   ): Promise<ProjectSummary> {
+    refuseNonProjectPath(repoPath);
+    await recoverySettled(); // #676: an open never races the start recovery
     await this.refusePendingApply(repoPath);
     // #677: a project whose copy from Door43 is not proved finished never opens
     // (disk only, opsLog.ts `settleOpenCopy`): the gate finishes it or removes it.

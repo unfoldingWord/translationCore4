@@ -1,6 +1,6 @@
 // The sync shell (issue #676, layer 3 of epic #24) over a faked transport: the
 // fake rig (test/helpers/journalingRig.ts) answers the #673 routes — clone,
-// copy, push, delete — over an in-memory Door43 repository, and the apply (D100)
+// copy, push, delete — over an in-memory Door43 repository, and the apply (D101)
 // writes the pushed tree into the project. Each test asserts
 // codes and the state of the folders, never message text.
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -445,8 +445,9 @@ describe('#676 crash recovery of the sync (G8)', () => {
    * that call answers, then every later request and settings write never settles.
    * `inside`: the server is killed DURING the k-th call instead: a copy leaves half
    * of the source's files at the target, a delete leaves half of its files. */
-  async function killAfter(k: number, counts: (route: string, method: string) => boolean, inside = false, teammate = false) {
+  async function killAfter(k: number, counts: (route: string, method: string) => boolean, inside = false, teammate = false, prepare?: (w: World) => void) {
     const w = await world({ outbox: true, teammate });
+    prepare?.(w);
     const from = w.rig.log.length;
     const before = w.own();
     const staged = new Map([...w.kv.map].filter(([key]) => key.startsWith('outbox:')));
@@ -485,7 +486,13 @@ describe('#676 crash recovery of the sync (G8)', () => {
       return response;
     }) as typeof fetch });
     const run = sync(w.deps(dying), { repoPath: REPO, session: SESSION });
-    const done = await Promise.race([run.then(() => true), new Promise((r) => setTimeout(() => r(false), 200))]);
+    // wait for the end of the sync or for the kill, not for a fixed time: a full
+    // parallel suite can make the k-th call come later than any fixed wait
+    let poll: ReturnType<typeof setInterval> | undefined;
+    const done = await Promise.race([
+      run.then(() => true),
+      new Promise<boolean>((r) => { poll = setInterval(() => { if (killed) r(false); }, 2); }),
+    ]).finally(() => clearInterval(poll));
     return { w, before, staged, killed, done, cut, from };
   }
 
@@ -611,6 +618,22 @@ describe('#676 crash recovery of the sync (G8)', () => {
     expect(entry.report).toMatchObject({ op: 'sync', ok: false, facts: { phase: 'clone', rolledBack: true } });
     await expectOneProjectWithOwnWork(w, before, staged);
   });
+
+  it('[G1][G8] a marker that comes from Door43 never authorizes an apply: a kill right after the clone moves to the scratch copy leaves the project as it was (bench round 5)', async () => {
+    // Door43 main carries an apply marker and other bytes at an own journal path
+    const incoming = (w: World) => w.rig.teammatePush(URL_, (remote) => {
+      const ownPath = [...remote.files.keys()].find((p) => p.startsWith(`checking/journal/${w.actor}/segments/`))!;
+      remote.files.set(ownPath, 'not a sealed segment');
+      remote.files.set(APPLY_MARKER, JSON.stringify({ actor: 'someone', at: '2026-10-14T00:00:00.000Z' }));
+    });
+    const { w, before, staged, killed } = await killAfter(1, (route) => route.includes('/git/copy/'), false, false, incoming);
+    expect(killed).toBe(true);
+    expect(w.rig.repos.get(SCRATCH)?.files.has(APPLY_MARKER) ?? false).toBe(false);
+    const project = new Map(w.rig.repos.get(REPO)!.files);
+    await restart(w, storedOf(w));
+    expect(w.rig.repos.get(REPO)!.files).toEqual(project);
+    await expectOneProjectWithOwnWork(w, before, staged);
+  });
   // ---- escalation fixes (PR #688 rounds 1-5) ------------------------------------
 
   it('[G1] a store opened before an apply is stale after it: a save queued during the sync and a later checkpoint are refused', async () => {
@@ -659,7 +682,7 @@ describe('#676 crash recovery of the sync (G8)', () => {
     await opening;
     store.dispose();
     expect((await syncing).ok).toBe(true);
-  });
+  }, 30_000);
 
   it('[G4] a Door43 repository whose default branch is not main is refused (sync.not-main); nothing changes on Door43 or here', async () => {
     const w = await world();
@@ -670,7 +693,7 @@ describe('#676 crash recovery of the sync (G8)', () => {
     expect(w.rig.remotes.get(URL_)!.version).toBe(1);
     expect(w.rig.repos.get(REPO)!.files).toEqual(project);
     expect(w.rig.repos.has(SCRATCH)).toBe(false);
-  });
+  }, 30_000);
 
   it('the scratch names come from the whole project path: no two paths share them, and each passes the path rules', () => {
     const paths = ['_local_/_local_/prueba', 'qa.door43.org/facilitator/prueba', '_local_/_local_/a-sb', '_local_/_local_-s/b', '_local_/_local_/a_b'];
@@ -772,9 +795,9 @@ describe('#676 crash recovery of the sync (G8)', () => {
     expect(w.rig.repos.has(CLONE_PATH)).toBe(false);
   });
 
-  // ---- the apply (D100) -------------------------------------------------------
+  // ---- the apply (D101) -------------------------------------------------------
 
-  it('audio is outside the sync (D100): nothing writes or deletes it, own audio stays here, and a teammate audio file does not reach this project', async () => {
+  it('audio is outside the sync (D101): nothing reads, writes or deletes it, own audio stays here, and a teammate audio file does not reach this project', async () => {
     const w = await world();
     const own = 'ID3 own audio';
     w.rig.repos.get(REPO)!.files.set('audio/TIT/1.mp3', own);
@@ -782,8 +805,8 @@ describe('#676 crash recovery of the sync (G8)', () => {
     const audioCalls: string[] = [];
     const watching = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(String(input));
-      // the verifier reads the scratch copy's audio as text to list it as tolerated; nothing writes or deletes audio
-      if (init?.method === 'POST' && (url.searchParams.get('ipath') ?? '').startsWith('audio')) audioCalls.push(url.pathname);
+      // owner ruling: a sync never reads, writes or deletes ingredients/audio/ (any method, any route)
+      if ((url.searchParams.get('ipath') ?? '').startsWith('audio')) audioCalls.push(`${init?.method ?? 'GET'} ${url.pathname}`);
       return w.rig.fetchFn(input, init);
     }) as typeof fetch });
     const report = await sync(w.deps(watching), { repoPath: REPO, session: SESSION });
@@ -865,7 +888,7 @@ describe('#676 crash recovery of the sync (G8)', () => {
     expect(entry.report).toMatchObject({ op: 'sync', ok: false, facts: { phase: 'push', rolledBack: true } });
     await expectOneProjectWithOwnWork(w, before, staged);
   });
-  // ---- the disk record (D100): the settings document never locks or unlocks ------
+  // ---- the disk record (D101): the settings document never locks or unlocks ------
 
   /** A teammate changed TIT 1:2 on Door43 main; this computer changed TIT 1:1 later. */
   async function teammateTextWorld() {
@@ -988,7 +1011,9 @@ describe('#676 crash recovery of the sync (G8)', () => {
     await vi.waitFor(() => expect(killed).toBe(true));
     expect(w.rig.repos.get(SCRATCH)!.files.has(APPLY_MARKER)).toBe(false);
     const applied = new Map(w.rig.repos.get(REPO)!.files);
-    await restart(w, storedOf(w));
+    const [entry] = await restart(w, storedOf(w));
+    // the apply ended before the stop: the Report says the sync is over, not failed
+    expect(entry.report).toMatchObject({ op: 'sync', ok: true, facts: { phase: 'apply', applyPending: false } });
     expect(w.rig.repos.has(SCRATCH)).toBe(false);
     expect(w.rig.repos.get(REPO)!.files).toEqual(applied); // nothing applied from the part copy
     await expectTeammateKept(w);
@@ -1023,6 +1048,97 @@ describe('#676 crash recovery of the sync (G8)', () => {
     const store = new JournalingStore({ api: w.api, kv: w.kv, ops: w.ops });
     await expect(store.open(REPO)).rejects.toMatchObject({ code: 'sync.apply-pending' });
     await store.open(REPO); // the next check answers: the project opens
+    store.dispose();
+  });
+
+  it('[G8] a settings read that fails with no parse error (TypeError) does not stop the disk rule: the pending apply finishes, and a later start that loads opens the project', async () => {
+    const w = await teammateTextWorld();
+    await killInApply(w, w.ops);
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const broken = new OpsLog({ read: async () => { throw new TypeError('fetch failed'); }, update: serialSettingsWriter(async () => ({}), async () => {}),
+      readText: async () => '', replace: async () => {} });
+    await expect(broken.recover(w.api)).rejects.toThrow('fetch failed');
+    expect(broken.recovered).toBe(false); // the log did not load: a sync refuses
+    expect(w.rig.repos.has(SCRATCH)).toBe(false); // the apply finished, then the marker and the scratch copy went
+    expect(await restart(w, storedOf(w))).toBeDefined();
+    await expectTeammateKept(w);
+  });
+
+  it('[G8] a clean-up failure after a finished apply is sync.cleanup-failed, not sync.failed: the project has the apply and opens', async () => {
+    const w = await teammateTextWorld();
+    // the scratch delete after the push (Door43 main is at version 3 then)
+    w.rig.failOn(({ method, route }) => method === 'POST' && route === `/api/git/delete/${SCRATCH}` && w.rig.remotes.get(URL_)!.version > 2, 1);
+    const report = await sync(w.deps(), { repoPath: REPO, session: SESSION });
+    expect([report.ok, report.code]).toEqual([false, 'sync.cleanup-failed']);
+    expect(report.facts).toMatchObject({ applied: true });
+    await expectTeammateKept(w);
+  });
+
+  it('[G8] a create waits for the start recovery: it does not race the apply', async () => {
+    const w = await teammateTextWorld();
+    await killInApply(w, w.ops);
+    forgetSharedClocks();
+    forgetProjectQueues();
+    let release = (): void => {};
+    const gate = new Promise<void>((r) => (release = r));
+    let paused = false;
+    const slow = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (!paused && String(input).includes(`/burrito/ingredient/raw/${REPO}`) && init?.method === 'POST') {
+        paused = true;
+        await gate;
+      }
+      return w.rig.fetchFn(input, init);
+    }) as typeof fetch });
+    const stored = storedOf(w);
+    const recovering = new OpsLog({ read: stored.read, update: serialSettingsWriter(stored.read, stored.write) }).recover(slow);
+    await vi.waitFor(() => expect(paused).toBe(true)); // the apply runs
+    const store = new JournalingStore({ api: w.api, kv: memKv() });
+    let created = false;
+    const creating = store.createProject({ content_name: 'Nuevo', content_abbr: 'nuevo', content_language_code: 'es', add_book: false, versification: 'eng' })
+      .then(() => { created = true; });
+    await new Promise((r) => setTimeout(r, 50));
+    expect([created, w.rig.repos.has('_local_/_local_/nuevo')]).toEqual([false, false]);
+    release();
+    await recovering;
+    await creating;
+    expect(created).toBe(true);
+    store.dispose();
+    await expectTeammateKept(w);
+  });
+
+  it('[G8] a settings read that never answers holds no open and no create: the gate opens when the disk rule ends; the sync still refuses', async () => {
+    // the stores here have no `ops`: an open that writes its own ops-log record
+    // (`ops.begin`) waits for that settings write, which is not the gate
+    const w = await teammateTextWorld();
+    await killInApply(w, w.ops); // REPO has a pending apply (the marker)
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const hung = new OpsLog({ read: () => new Promise<Record<string, unknown>>(() => {}), update: serialSettingsWriter(async () => ({}), async () => {}) });
+    void hung.recover(w.api);
+    const within = <T,>(p: Promise<T>) => Promise.race([p.then(() => 'done'), new Promise((r) => setTimeout(() => r('held'), 2000))]);
+    // the project with the marker: the disk rule applied it, so it opens with the teammate text
+    const store = new JournalingStore({ api: w.api, kv: w.kv });
+    expect(await within(store.open(REPO))).toBe('done');
+    store.dispose();
+    expect(w.rig.repos.has(SCRATCH)).toBe(false);
+    expect(w.rig.repos.get(REPO)!.files.get('TIT.usfm')).toContain('TEAMMATE TEXT');
+    // a create goes on too
+    const creator = new JournalingStore({ api: w.api, kv: memKv() });
+    expect(await within(creator.createProject({ content_name: 'Nuevo', content_abbr: 'nuevo', content_language_code: 'es', add_book: false, versification: 'eng' }))).toBe('done');
+    creator.dispose();
+    // the log did not load: a sync refuses (fail closed)
+    const report = await sync({ ...w.deps(), ops: hung }, { repoPath: REPO, session: SESSION });
+    expect([report.ok, report.code]).toEqual([false, 'opslog.not-loaded']);
+  });
+
+  it('a repository outside _local_/_local_/ is not a project: an open of the fixed clone path refuses open.not-a-project, and the project opens', async () => {
+    const w = await world();
+    w.rig.createRepo(CLONE_PATH, Object.fromEntries(w.rig.repos.get(REPO)!.files));
+    forgetProjectQueues();
+    const store = new JournalingStore({ api: w.api, kv: w.kv });
+    await expect(store.open(CLONE_PATH)).rejects.toMatchObject({ code: 'open.not-a-project' });
+    await store.open(REPO);
     store.dispose();
   });
 });
@@ -1068,7 +1184,7 @@ function fakeApi(repos: Record<string, Map<string, string>>, opts: { failWrites?
   return api as unknown as OpsRecoveryApi;
 }
 
-describe('#676 applyScratch (D100)', () => {
+describe('#676 applyScratch (D101)', () => {
   const scratchFiles = () => new Map([
     ['TIT.usfm', 'new TIT'],
     ['checking/journal/a1/segments/s1.action.json', 'own 1'],

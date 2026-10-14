@@ -27,6 +27,7 @@ export const REFUSAL_CODES = Object.freeze({
   'journal.clock-not-ratcheted': 'R-8.2.4', // a ts was requested before the union read ratcheted the clock
   'ledger.unreadable': null, // an intent-ledger record in the installation store does not parse
   // The open path (live today, thrown by JournalingStore.open).
+  'open.not-a-project': null, // (#676) the path is not `_local_/_local_/<name>`: a resource or a sync's fixed clone path is never opened as a project
   'open.scope-unreadable': null, // the project scope cannot be read; a defaulted scope would journal a widened scope
   'open.unexplained-divergence': 'R-8.7.5', // derived state no journal prefix or §8.8 reconcile explains
   'open.story-divergence': 'R-10.7.5', // an out-of-band story edit; reconcile is not defined for stories
@@ -84,11 +85,12 @@ export const REFUSAL_CODES = Object.freeze({
   'sync.non-fast-forward': null, // (G4) Door43 main moved during three tries; never a force push
   'sync.no-write-access': null, // Door43 refused the push: no write access
   'sync.push-failed': null, // any other push failure
-  'opslog.not-loaded': null, // (G8) the ops log did not load at this start: no project opens, takes an edit or syncs until it loads
-  'sync.failed': null, // a sync failure that is no other refusal (a server error); the project did not change; facts.error holds the diagnosis
+  'opslog.not-loaded': null, // (G8) the ops log did not load at this start: no sync starts until it loads
+  'sync.failed': null, // a sync failure that is no other refusal (a server error) before the apply; the project did not change; facts.error holds the diagnosis
   'sync.project-replaced': null, // (G1) a store opened before a sync's apply takes no edit and no checkpoint after it; open the project again
   'sync.not-main': null, // (G4) the Door43 repository's default branch is not main
-  'sync.apply-pending': null, // (G8) an apply did not finish; no open, edit or sync of the project until the next start finishes it
+  'sync.apply-pending': null, // (G8) an apply may not have finished; the project takes no open until the next start or sync decides it
+  'sync.cleanup-failed': null, // (G8) the sync and its apply are done; the clean-up after them did not finish, and the next start or sync ends it
   // Open a project from Door43 (src/data/share/syncOperation.ts, #677). Its other refusals are the
   // sync codes above: sync.offline, the clone codes, sync.obs-unsupported and (G2) sync.incoming-invalid.
   'open-door43.name-exists': null, // a project with the chosen name is on this computer already; nothing was written

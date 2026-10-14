@@ -205,6 +205,19 @@ describe('#374 the one settings writer', () => {
     expect(opsEntriesOf(settings.get())).toHaveLength(1);
   });
 
+  it('#676: a whole-document replace goes through the same queue: it waits for a queued update, and the update after it reads its document', async () => {
+    const settings = settingsDoc();
+    const update = serialSettingsWriter(settings.read, settings.write);
+    const order: string[] = [];
+    await Promise.all([
+      update((doc) => { order.push('update 1'); return { ...doc, a: 1 }; }),
+      update.replace({ replaced: true }).then(() => order.push('replace')),
+      update((doc) => { order.push('update 2'); return { ...doc, b: 2 }; }),
+    ]);
+    expect(order).toEqual(['update 1', 'replace', 'update 2']);
+    expect(settings.get()).toEqual({ replaced: true, b: 2 });
+  });
+
   it('a failed ops write is reported, never dropped', async () => {
     const settings = settingsDoc();
     const ops = appStart(settings);

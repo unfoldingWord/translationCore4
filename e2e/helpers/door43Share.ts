@@ -87,11 +87,11 @@ export const git = (cwd: string, ...args: string[]): string =>
 /** The local project's `HEAD`. */
 export const head = (repo: string): string => git(rigRepo(repo), 'rev-parse', 'HEAD');
 
-/** The `ingredients/` files on a bare remote's `main`, but `audio/` (D100: a sync never carries audio). */
+/** The `ingredients/` files on a bare remote's `main`, but `audio/` (D101: a sync never carries audio). */
 export const mainIngredients = (bare: string): string[] =>
   git(bare, 'ls-tree', '-r', '--name-only', 'main').split('\n').filter((p) => p.startsWith('ingredients/') && !p.startsWith('ingredients/audio/'));
 
-/** D100 (#676): after a sync the project's `ingredients/` (but `audio/`) equal Door43 main's
+/** D101 (#676): after a sync the project's `ingredients/` (but `audio/`) equal Door43 main's
  * tree, byte for byte. The project's HEAD is not main's: only the tree is the same. */
 export function expectIngredientsEqualMain(bare: string, repo: string): void {
   const door = mainIngredients(bare);
