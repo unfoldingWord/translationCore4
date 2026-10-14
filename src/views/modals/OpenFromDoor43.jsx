@@ -72,7 +72,7 @@ export default function OpenFromDoor43() {
       closeLabel={t('common.close')} onClose={od.busy ? undefined : actions.closeModal}
       footer={<>
         <Button variant="secondary" disabled={od.busy} onClick={actions.closeModal} data-testid="open-door43-cancel">{t('openDoor43.cancel')}</Button>
-        <Button variant="ocean" disabled={cantOpen} aria-busy={od.busy || undefined} onClick={actions.openDoor43Run} data-testid="open-door43-submit">
+        <Button disabled={cantOpen} aria-busy={od.busy || undefined} onClick={actions.openDoor43Run} data-testid="open-door43-submit">
           {t(od.busy ? 'openDoor43.opening' : 'openDoor43.open')}
         </Button>
       </>}>
