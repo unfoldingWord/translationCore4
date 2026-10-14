@@ -1,6 +1,6 @@
 #!/bin/zsh
 # Build an UNSIGNED desktop artifact for tC4: macOS arm64 (#57), Linux x64 (#119),
-# Windows x64 (#181).
+# Windows x64 (#181). A Windows build is signed when the signing values are set (#456).
 #
 # The recipe follows the Pankosmia desktop-app-template (read-only reference,
 # MIT license). The wrapper is Electronite v37.1.0-graphite, the Graphite-enabled
@@ -29,6 +29,7 @@
 # booted app resolves repo_dir to the shared store — both variants.
 #
 # Output: dist-desktop/tC4-<version>[-debug]-<os>-<arch>-unsigned.zip
+#   (a signed Windows build drops -unsigned, #456)
 # Production emits a Mac .pkg or Windows .exe; --zip skips the installer.
 #
 # Requirements: node >= 20, npm, cargo, curl, unzip, git, and sha256sum or shasum.
@@ -38,6 +39,12 @@
 #   with the Windows node, cargo (MSVC) and git on the PATH; the smoke test
 #   opens a real window on the runner's desktop (#181).
 set -e
+
+# #456: the GitHub OIDC request values go to the signing calls only, never to
+# node, npm, cargo or the smoke test: keep them in unexported shell variables.
+SIGN_OIDC_URL=${ACTIONS_ID_TOKEN_REQUEST_URL:-}
+SIGN_OIDC_TOKEN=${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}
+unset ACTIONS_ID_TOKEN_REQUEST_URL ACTIONS_ID_TOKEN_REQUEST_TOKEN
 
 REPO=${0:a:h:h}
 BUILD="$REPO/dist-desktop"
@@ -181,6 +188,26 @@ case "$OS-$ARCH" in
   *) echo "No recorded Electronite checksum for platform '$OS-$ARCH' — record one first." >&2
      exit 1 ;;
 esac
+
+# Windows signing (#456). The build signs when AZURE_SIGNING_ENDPOINT is set: the
+# workflow sets it on manual runs only. Without it the build is unsigned, and the
+# artifact names say -unsigned. scripts/sign-windows.ps1 holds the signing pins.
+SIGNED=false
+NAME_SUFFIX="-unsigned"
+if [ "$OS" = windows ] && [ -n "${AZURE_SIGNING_ENDPOINT:-}" ]; then
+  SIGNED=true
+  NAME_SUFFIX=""
+fi
+SIGN_TOOLS="$BUILD/signing"
+sign_windows() {
+  ACTIONS_ID_TOKEN_REQUEST_URL="$SIGN_OIDC_URL" ACTIONS_ID_TOKEN_REQUEST_TOKEN="$SIGN_OIDC_TOKEN" \
+  MSYS2_ARG_CONV_EXCL='*' powershell.exe -NoProfile -ExecutionPolicy Bypass \
+    -File "$(cygpath -w "$REPO/scripts/sign-windows.ps1")" -ToolDir "$(cygpath -w "$SIGN_TOOLS")" "$@"
+}
+if [ "$SIGNED" = true ]; then
+  echo "== signing is on: fetching the pinned Artifact Signing tools (#456)"
+  sign_windows -Setup
+fi
 
 echo "== 1/7 build the tC4 client"
 cd "$REPO"
@@ -590,7 +617,7 @@ This build bundles the components below. Full texts are in licenses/.
 | puppeteer-core (electron/node_modules) | $PUPPETEER_CORE_VER | Apache-2.0 | github.com/puppeteer/puppeteer |
 | @puppeteer/browsers (electron/node_modules) | $PUPPETEER_BROWSERS_VER | Apache-2.0 | github.com/puppeteer/puppeteer |
 | @zip.js/zip.js (bundled export smoke; the tC3 import in the client) | $ZIP_JS_VER | BSD-3-Clause | github.com/gildas-lormeau/zip.js |
-| Client fonts: Mulish, Charis SIL, Noto Serif, Noto Serif Hebrew, Amiri (clients/uw-tc4) | Fontsource 5.3.0 | SIL OFL 1.1 (licenses/OFL-*.txt) | fontsource.org |
+| Client fonts: Mulish, Noto Sans Arabic, Charis SIL, Noto Serif, Noto Serif Hebrew, Amiri (clients/uw-tc4) | Fontsource 5.3.0 | SIL OFL 1.1 (licenses/OFL-*.txt) | fontsource.org |
 NOTICES
 for entry in "${BUNDLED_RESOURCES[@]}"; do
   bundled_fields "$entry"
@@ -609,6 +636,13 @@ NOTICES
 # each license text. package-macos.zsh adds its table rows above this list.
 [ -s "$REPO/dist/third-party-npm.md" ] || { echo "FATAL: the client build wrote no dist/third-party-npm.md (#554)" >&2; exit 1; }
 cat "$REPO/dist/third-party-npm.md" >> "$APPDIR/THIRD-PARTY-NOTICES.md"
+
+# #456: sign after brand-windows.mjs rewrites electron.exe, and before the
+# manifest hashes server.exe and the smoke test runs, so both see shipped bytes.
+if [ "$SIGNED" = true ]; then
+  echo "== signing the staged Windows code (#456)"
+  sign_windows -Sign "$(cygpath -w "$APPDIR")"
+fi
 
 # Input manifest: every component with its exact version/commit/checksum.
 SERVER_SHA=$(sha256_of "$APPDIR/bin/$SERVER_BIN")
@@ -636,7 +670,8 @@ done
 HELP_REV=$(<"$REPO/dist/help/.tc-website-rev")
 cat > "$APPDIR/BUILD-MANIFEST.json" <<MANIFEST
 {
-  "artifact": "tC4-$VERSION-$OS-$ARCH-unsigned",
+  "artifact": "tC4-$VERSION-$OS-$ARCH$NAME_SUFFIX",
+  "signed": $SIGNED,
   "variant": "$VARIANT",
   "project_store": "$HOME_LABEL/$STORE_LEAF (#70 — never $HOME_LABEL/pankosmia_repos)",
   "built_utc": "$DATETIME",
@@ -1058,11 +1093,18 @@ fi
 if [ "$OS" = windows ] && [ "$VARIANT" = production ] && [ "$MAKE_PKG" = true ]; then
   ISCC="${TC4_ISCC:-/c/Program Files (x86)/Inno Setup 6/ISCC.exe}"
   [ -f "$ISCC" ] || { echo "Inno Setup 6 compiler not found: $ISCC" >&2; exit 1; }
-  MSYS2_ARG_CONV_EXCL='*' "$ISCC" "/DPayload=$(cygpath -w "$APPDIR")" "/DOutput=$(cygpath -w "$BUILD")" "/DVersion=$VERSION" "$(cygpath -w "$REPO/scripts/tc4.iss")"
+  # #456: Inno Setup signs the installer and its uninstaller through the same
+  # script ($q is a quote, $f the quoted file name).
+  ISCC_SIGN=()
+  if [ "$SIGNED" = true ]; then
+    ISCC_SIGN=(/DSign "/Stc4sign=powershell.exe -NoProfile -ExecutionPolicy Bypass -File \$q$(cygpath -w "$REPO/scripts/sign-windows.ps1")\$q -ToolDir \$q$(cygpath -w "$SIGN_TOOLS")\$q -Sign \$f")
+  fi
+  ACTIONS_ID_TOKEN_REQUEST_URL="$SIGN_OIDC_URL" ACTIONS_ID_TOKEN_REQUEST_TOKEN="$SIGN_OIDC_TOKEN" \
+  MSYS2_ARG_CONV_EXCL='*' "$ISCC" "${ISCC_SIGN[@]}" "/DPayload=$(cygpath -w "$APPDIR")" "/DOutput=$(cygpath -w "$BUILD")" "/DVersion=$VERSION" "$(cygpath -w "$REPO/scripts/tc4.iss")"
 fi
 
 echo "== 7/7 zip the artifact"
-ZIP="$BUILD/tC4-$VERSION-$OS-$ARCH-unsigned.zip"
+ZIP="$BUILD/tC4-$VERSION-$OS-$ARCH$NAME_SUFFIX.zip"
 rm -f "$ZIP"
 cd "$STAGE"
 if [ "$OS" = macos ]; then

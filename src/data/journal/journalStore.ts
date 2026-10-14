@@ -627,6 +627,27 @@ export class JournalStore {
     return { events: actions.flatMap((a) => a.events), actions, actors, misnamed, invalid };
   }
 
+  /** Read-only (#679): every accepted event of the journal, ts-sorted, with NO
+   * open() — no actor.json provisioning, no ratchet. The same zip read and the
+   * same segment classifier as readUnion. `refused` counts the listed files the
+   * union would not accept (misnamed or invalid); a reader that needs the whole
+   * truth treats a nonzero count as an unknown state. */
+  async readAcceptedEvents(): Promise<{ events: JournalEvent[]; refused: number }> {
+    const zip = await this.readJournalZip();
+    const byActor = zip
+      ? groupSegmentPaths([...zip.keys()])
+      : groupSegmentPaths(await this.api.listPaths(this.repoPath));
+    const actions: Array<{ ts: string; events: JournalEvent[] }> = [];
+    let refused = 0;
+    for (const [actor, names] of byActor) {
+      const listing = await this.classifySegments(actor, names, undefined, zip ?? undefined);
+      refused += listing.misnamed.length + listing.invalid.length;
+      for (const segment of listing.segments) actions.push({ ts: segment.ts, events: segment.events });
+    }
+    actions.sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0));
+    return { events: actions.flatMap((a) => a.events), refused };
+  }
+
   /** Durably stage one action WITHOUT publishing it — the seed path (issue #62):
    * a multi-part universal seed stages EVERY part before the first publish, so a
    * crash mid-publication leaves nothing half-intended; replayStaged() finishes

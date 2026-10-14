@@ -49,6 +49,7 @@ import { JournalStore } from './journalStore';
 import { idbKvStore, type KvStore } from './identity';
 import { sealAction, type JournalEvent } from './seal';
 import { defaultFoldRunner, type FoldRunner } from './foldRunner';
+import { verseConflicts, type VerseConflict } from './verseConflicts';
 import { deletePreviousCopy, type OpsRecorder } from './opsLog';
 import {
   applyStoryState,
@@ -2270,6 +2271,97 @@ export class JournalingStore implements BurritoStore {
     });
   }
 
+  /** The verse-text conflicts of the open project (#679, G7), in canonical
+   * verse order — what the conflict review lists. */
+  readVerseConflicts(): VerseConflict[] {
+    return verseConflicts(this.foldNow(), this.events);
+  }
+
+  /** The text of `book` as the current fold projects it (#679): the bytes its
+   * regenerated USFM file holds, from memory, with no HTTP read that can fail.
+   * Null when the fold projects no such book. */
+  projectedBook(book: string): string | null {
+    return this.foldNow().books[book.toUpperCase()]?.usfm ?? null;
+  }
+
+  /** The text of one verse as the current fold projects it (#679), in the form
+   * a VerseConflict version's `text` has: the value resolveVerse checks a
+   * candidate against. Null when the fold projects no such verse. */
+  projectedVerse(book: string, chapter: string, verse: string): string | null {
+    return this.foldNow().books[book.toUpperCase()]?.verses[`${chapter}:${verse}`] ?? null;
+  }
+
+  /** The team as the fold knows it (#679): each actor's recorded Door43 name
+   * (`FoldOutput.names`, #674) and every actor id of the event set, sorted —
+   * the order the "Teammate n" labels number by (actorLabel). */
+  readTeam(): { names: Record<string, string>; actors: string[] } {
+    const actors = [...new Set(this.events.map((e) => e.actor))].sort();
+    return { names: this.foldNow().names, actors };
+  }
+
+  /** Keep one version of a verse in conflict (#679): ONE text.verse.set with
+   * the kept head's text whose `supersedes` names every head of the fork
+   * (R-8.3.5), so the fold shows no conflict and keeps the other versions in
+   * history (`retained[]`, reason `superseded`, R-8.3.6). `key` and `keptHead`
+   * come from readVerseConflicts(); anything else is a caller defect.
+   * `shownHeads` (bench round 6): the heads the person saw when they chose.
+   * When given, a fork whose heads are not exactly those (a save or any other
+   * action landed after the screen was drawn) is refused, never superseded —
+   * a version nobody saw is not replaced. */
+  async resolveVerse(key: string, keptHead: string, shownHeads?: readonly string[]): Promise<void> {
+    return this.queue(async () => {
+      await this.replayOwnStagedBeforeDiff(); // round-5 rule 1: REPLAY-BEFORE-DIFF
+      const journal = this.mustJournal();
+      const foldOut = await this.ensureFold();
+      const conflict = verseConflicts(foldOut, this.events).find((c) => c.key === key);
+      if (!conflict) throw new Error(`resolveVerse(${key}): the fold shows no verse-text conflict on this key`);
+      const heads = conflict.versions.map((v) => v.ts);
+      if (shownHeads && (shownHeads.length !== heads.length || !heads.every((h) => shownHeads.includes(h)))) {
+        throw new Error(`resolveVerse(${key}): the versions of this verse changed after the review showed them; nothing was kept`);
+      }
+      const kept = conflict.versions.find((v) => v.ts === keptHead);
+      if (!kept) throw new Error(`resolveVerse(${key}): ${keptHead} is not a head of this conflict`);
+      const ts = journal.issueTs();
+      const eventOn = (base: string): JournalEvent => ({
+        v: 1,
+        op: 'text.verse.set',
+        actor: journal.actorId,
+        ts,
+        base,
+        supersedes: conflict.versions.map((v) => v.ts),
+        book: conflict.book,
+        chapter: conflict.chapter,
+        verse: conflict.verse,
+        text: kept.text,
+      });
+      // The base must be a head whose structural ancestry holds every other head,
+      // or the fold refuses to supersede the heads off it (§8.3 ancestry rule): a
+      // renumber's post-image against an edit made before the renumber is such a
+      // case. The fold decides: try the projected (provisional) head first, the
+      // state this person reviewed, then the others, newest first, and publish
+      // the first edit whose fold has no conflict on the key, refuses no
+      // supersede, and projects the kept text. Usually one dry fold.
+      const candidates = [foldOut.headsTs[key], ...conflict.versions.map((v) => v.ts).reverse()]
+        .filter((base, i, all) => all.indexOf(base) === i);
+      const vkey = `${conflict.chapter}:${conflict.verse}`;
+      for (const base of candidates) {
+        const event = eventOn(base);
+        const after = await this.runner.fold([...this.events, normalizeEvent(event)]);
+        const resolved =
+          !after.forks.some((f) => f.key === key) &&
+          !after.supersedeRefused.some((r) => r.by === ts) &&
+          after.books[conflict.book]?.verses[vkey] === kept.text;
+        if (!resolved) continue;
+        await this.publishAndRegenerate([event], [bookIpath(conflict.book)]);
+        return;
+      }
+      throw new Error(
+        `resolveVerse(${key}): no single verse edit resolves this conflict — its versions lie on ` +
+          `structural branches that do not meet (a structural conflict on ${conflict.book})`,
+      );
+    });
+  }
+
   /** The explicit structural-edit operation (issue #62): ONE §8.5
    * text.structure.apply with the complete transition/disposition set, built
    * by the SAME conservative builder as §8.8 reconcile (no seed marker — this
@@ -3215,6 +3307,13 @@ export class JournalingStore implements BurritoStore {
   }
 }
 
+/** The kv of a JournalStore that never opens (ProjectReader): no identity, no
+ * outbox, so any use is a defect. */
+const refuseKv = (): never => {
+  throw new Error('ProjectReader: a read-only journal read touched the kv');
+};
+const NO_KV: KvStore = { get: refuseKv, set: refuseKv, setIfAbsent: refuseKv, keys: refuseKv, delete: refuseKv };
+
 /** Read-only project access for surfaces that must not mutate and must not run
  * recovery (the Home progress bars, the settings dialog's read half, project
  * listing). Deliberately NOT a BurritoStore: it has no mutation surface at all,
@@ -3259,6 +3358,24 @@ export class ProjectReader {
 
   readResources(): Promise<ResourcesFile | null> {
     return this.boundRaw().readResources();
+  }
+
+  /** #679: the open verse-text conflicts, folded read-only from the journal
+   * (no open, no recovery, no write) — the Home card's count. Null when the
+   * journal holds a file the union refuses: then the count is unknown (D30),
+   * never a false 0. */
+  async readVerseConflicts(): Promise<VerseConflict[] | null> {
+    if (this.repo === null) throw new Error('ProjectReader: call open(repoPath) first');
+    const journal = new JournalStore({ api: this.raw.api, repoPath: this.repo, kv: NO_KV });
+    const { events, refused } = await journal.readAcceptedEvents();
+    if (refused !== 0) return null;
+    if (events.length === 0) return [];
+    const runner = defaultFoldRunner();
+    try {
+      return verseConflicts(await runner.fold(events), events);
+    } finally {
+      runner.dispose();
+    }
   }
 
   /** Bytes only — a reader has no journal, so it cannot supply the name. The

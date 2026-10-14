@@ -107,6 +107,17 @@ const payloadOf = (e) => {
 // only way to reach an own `__proto__` payload field or an over-deep value here.
 export const headIdentity = (e) => canon(payloadOf(e));
 
+// The text a verse register head holds for slot `vkey` (§8.5): a verse edit's own text,
+// a book.add's initial verse (or the stub), or a structural post-image's transition
+// text. The ONE rule: the fold builds every `text|` head with it, and a reader that
+// names a head by its event (the conflict review, #679) takes the text from it.
+export const verseHeadText = (e, vkey) => {
+  if (e.op === 'text.verse.set') return e.text;
+  if (e.op === 'book.add') return (e.initialVerses || {})[vkey] ?? '___\n';
+  if (e.op === 'text.structure.apply') return e.transitions[vkey].text;
+  throw new Error(`verseHeadText: a ${e.op} makes no verse head`);
+};
+
 // The §5.2 identity key a decision disposition names: toolId|checkId|bookId|chapter|verse|occurrence.
 // Built from the ONE identity-key serializer (grammar.mjs) — the same string the schema's
 // grammar validates, so serializer and validator can never drift.
@@ -449,7 +460,6 @@ export const fold = (eventsIn) => {
       // A re-add bases on the book.remove it follows; a first add is a root (base null).
       const pend = structuralBaseState(e, CHAIN_OPS);
       if (pend) { pendingStructural.push(pend); continue; }
-      const initial = e.initialVerses || {};
       joinHead(`book|${e.book}`, { ts: e.ts, actor: e.actor, sanc: e.ts, book: e.book, event: e }, e.base, e.supersedes, e.actor);
       joinHead(`skel|${e.book}`, { ts: e.ts, actor: e.actor, sanc: e.ts, book: e.book,
         event: { op: 'text.skeleton.set', book: e.book, skeleton: e.skeleton } }, e.base, e.supersedes, e.actor);
@@ -462,7 +472,7 @@ export const fold = (eventsIn) => {
         // actor's re-add quarantined it. The prior head stays live; the generation
         // quarantine (ancestry, at projection) decides — one rule for every actor.
         pushHead(`text|${e.book}|${k}`, { ts: e.ts, actor: e.actor, sanc: e.ts, book: e.book,
-          event: { op: 'text.verse.set', book: e.book, chapter, verse, text: initial[k] ?? '___\n' } });
+          event: { op: 'text.verse.set', book: e.book, chapter, verse, text: verseHeadText(e, k) } });
       }
       acceptedStructural.add(e.ts);
       continue;
@@ -639,7 +649,7 @@ export const fold = (eventsIn) => {
         for (const src of tr.sources || []) consume(`text|${book}|${src.key}`, aliasTs(src.ts), e.ts);
         const { chapter, verse } = vkeyParts(dest);
         pushHead(`text|${book}|${dest}`, { ts: e.ts, actor: e.actor, sanc: e.ts, book,
-          event: { op: 'text.verse.set', book, chapter, verse, text: tr.text } });
+          event: { op: 'text.verse.set', book, chapter, verse, text: verseHeadText(e, dest) } });
       }
       for (const d of dispositions) {
         const dts = aliasTs(d.ts); // the D53d alias — the canonical head the ref names
