@@ -287,7 +287,8 @@ const isScratchWhole = async (api: OpsRecoveryApi, scratch: string): Promise<boo
   let verified: Awaited<ReturnType<typeof verifyProjectAgainstJournal>>;
   try {
     verified = await verifyProjectAgainstJournal(api, scratch, { skipUnjournaled: true });
-  } catch {
+  } catch (error) {
+    console.error(`ops log: the whole-copy check of ${scratch} failed, so the copy is not whole: ${String((error as Error)?.message ?? error)}`);
     return false;
   }
   return verified.projectionFailure === null && verified.invalidSegments.length === 0
