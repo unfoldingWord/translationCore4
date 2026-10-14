@@ -318,10 +318,21 @@ export async function openFromDoor43(deps: OpenDeps, request: { source: CloneSou
       console.error(`open from Door43: ${path} was not deleted; the next start deletes it: ${failureOf(error).reason}`);
     }
   };
+  // The clone path while it is this open's: from its saved phase until cloneProject returns.
+  // cloneProject can swallow a failed delete of it, so the open deletes it again on a failure.
+  let ownedClone = null as string | null;
+  // A part copy or a clone that stays: the scratch copy stays too, because recovery
+  // reads a missing scratch copy at `move.copy` as "the copy finished" (opsLog.ts).
+  const cleanupAfterFailure = async (): Promise<void> => {
+    if (ownedClone) await cleanup(ownedClone);
+    if (!cleanupFailed) await cleanup(scratch);
+  };
   try {
     await phase('start');
     await deleteIfPresent(api, scratch);
-    await cloneProject(api, request.source, scratch, (clonePath) => phase('clone', { clonePath }).then(() => true, () => false));
+    await cloneProject(api, request.source, scratch, (clonePath) =>
+      phase('clone', { clonePath }).then(() => ((ownedClone = clonePath), true), () => false));
+    ownedClone = null;
     await phase('check');
     await checkOpenCopy(api, scratch, repoPath);
     // a project made at this path meanwhile refuses with the name code
@@ -339,7 +350,7 @@ export async function openFromDoor43(deps: OpenDeps, request: { source: CloneSou
       throw new Refusal('sync.move-failed', `the copy did not move to ${repoPath}`, { repoPath, ...facts });
     }
   } catch (error) {
-    await cleanup(scratch);
+    await cleanupAfterFailure();
     if (!cleanupFailed) await record?.close(failedReport('open-door43', startedAt, new Date().toISOString(), error, { repoPath, source }));
     throw error;
   }

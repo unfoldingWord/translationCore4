@@ -450,6 +450,60 @@ describe('#677 the open never loses a project that opened (review B1, B2)', () =
     expect(w.rig.repos.has(OPENED)).toBe(false);
   });
 
+  it('[B3] a part copy whose delete fails: the scratch copy stays, the record stays open, and the next start deletes the part project', async () => {
+    const w = await world();
+    const s = failingSettingsDoc();
+    const ops = appOver(s);
+    await ops.recover(w.api);
+    const api = Object.create(w.api) as ServerApi;
+    api.copyRepo = async (from: string, to: string, del?: boolean) => {
+      await w.api.copyRepo(from, to, del);
+      if (to === OPENED) {
+        w.rig.repos.get(OPENED)!.files.delete('TIT.usfm'); // a part copy
+        throw Object.assign(new Error('server 500'), { status: 500 });
+      }
+    };
+    api.deleteRepo = async (p: string) => {
+      if (p === OPENED) throw Object.assign(new Error('server 500'), { status: 500 });
+      return w.api.deleteRepo(p);
+    };
+    expect((await refusalOf(openFromDoor43({ api, ops }, { source: SOURCE, name: 'prueba_b' }))).code).toBe('sync.move-failed');
+    expect(ops.isOpen('open-door43', OPENED, 'move.copy')).toBe(true);
+    // the next start, with a healthy server: the part project is not certified
+    forgetProjectQueues();
+    const ops2 = appOver(s);
+    const resolved = await ops2.recover(w.api);
+    expect(resolved.map((e) => [e.op, e.report?.ok])).toEqual([['open-door43', false]]);
+    expect(w.rig.repos.has(OPENED)).toBe(false);
+    expect(w.rig.repos.has(SCRATCH)).toBe(false);
+    expect(await openFromDoor43({ api: w.api, ops: ops2 }, { source: SOURCE, name: 'prueba_b' })).toEqual({ repoPath: OPENED });
+  });
+
+  it('[B4] a clone whose move and delete fail: the record stays open, and the next start deletes the clone path so the open runs again', async () => {
+    const w = await world();
+    const s = failingSettingsDoc();
+    const ops = appOver(s);
+    await ops.recover(w.api);
+    const api = Object.create(w.api) as ServerApi;
+    api.copyRepo = async (from: string, to: string, del?: boolean) => {
+      if (from === CLONE_PATH) throw Object.assign(new Error('server 500'), { status: 500 });
+      return w.api.copyRepo(from, to, del);
+    };
+    api.deleteRepo = async (p: string) => {
+      if (p === CLONE_PATH) throw Object.assign(new Error('server 500'), { status: 500 });
+      return w.api.deleteRepo(p);
+    };
+    expect((await refusalOf(openFromDoor43({ api, ops }, { source: SOURCE, name: 'prueba_b' }))).code).toBe('sync.move-failed');
+    expect(w.rig.repos.has(CLONE_PATH)).toBe(true);
+    expect(ops.isOpen('open-door43', OPENED, 'clone')).toBe(true);
+    forgetProjectQueues();
+    const ops2 = appOver(s);
+    const resolved = await ops2.recover(w.api);
+    expect(resolved.map((e) => [e.op, e.report?.ok])).toEqual([['open-door43', false]]);
+    expect(w.rig.repos.has(CLONE_PATH)).toBe(false);
+    expect(await openFromDoor43({ api: w.api, ops: ops2 }, { source: SOURCE, name: 'prueba_b' })).toEqual({ repoPath: OPENED });
+  });
+
   it('[B1] recovery never deletes a project that was there before the open (targetAbsent: false)', async () => {
     const w = await world();
     const s = failingSettingsDoc();

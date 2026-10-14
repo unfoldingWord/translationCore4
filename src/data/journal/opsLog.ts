@@ -438,7 +438,8 @@ export class OpsLog implements OpsRecorder {
   }
 
   /** At `move.copy`: is the project at `repoPath` whole? Yes when the scratch copy
-   * is gone (the open deletes it only after the copy finished), or when the project
+   * is gone (the open deletes it only after the copy finished, or after it deleted a
+   * part copy; a part copy it could not delete keeps the scratch copy), or when the project
    * holds a journal segment newer than the copy's `liveMark` (someone changed it
    * after the copy, so it opened whole). A missing repository lists as `[]`
    * [VERIFIED — pankosmia-web 0.18.15 (a83725b, 2026-09-29), live rig 2026-10-13]. */
