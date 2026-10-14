@@ -504,6 +504,43 @@ describe('#677 the open never loses a project that opened (review B1, B2)', () =
     expect(await openFromDoor43({ api: w.api, ops: ops2 }, { source: SOURCE, name: 'prueba_b' })).toEqual({ repoPath: OPENED });
   });
 
+  it('[B5] the copy finished, but the delete-scratch phase does not save and the scratch delete fails: the open is not ok, the project takes no edit, and the next start removes it', async () => {
+    const w = await world();
+    const s = failingSettingsDoc();
+    const ops = appOver(s);
+    await ops.recover(w.api);
+    const api = Object.create(w.api) as ServerApi;
+    let copied = false;
+    api.copyRepo = async (from: string, to: string, del?: boolean) => {
+      await w.api.copyRepo(from, to, del);
+      if (to === OPENED) {
+        copied = true;
+        s.fail(true); // every settings write after the copy fails
+      }
+    };
+    api.deleteRepo = async (p: string) => {
+      if (copied && p === SCRATCH) throw Object.assign(new Error('server 500'), { status: 500 });
+      return w.api.deleteRepo(p);
+    };
+    // neither witness of the finished copy is on disk: the open does not answer success
+    await expect(openFromDoor43({ api, ops }, { source: SOURCE, name: 'prueba_b' })).rejects.toThrow(/move\.delete-scratch/);
+    s.fail(false);
+    expect(w.rig.repos.has(SCRATCH)).toBe(true);
+    expect(ops.isOpen('open-door43', OPENED, 'move.copy')).toBe(true);
+    // the project takes no open and no edit in this session, so no edit can be lost
+    const store = new JournalingStore({ api: w.api, kv: w.kvB, ops });
+    await expect(store.open(OPENED)).rejects.toMatchObject({ code: 'open-door43.pending' });
+    store.dispose();
+    // the next start removes the project that was not reported, and the open runs again
+    forgetProjectQueues();
+    const ops2 = appOver(s);
+    const resolved = await ops2.recover(w.api);
+    expect(resolved.map((e) => [e.op, e.report?.ok])).toEqual([['open-door43', false]]);
+    expect(w.rig.repos.has(OPENED)).toBe(false);
+    expect(w.rig.repos.has(SCRATCH)).toBe(false);
+    expect(await openFromDoor43({ api: w.api, ops: ops2 }, { source: SOURCE, name: 'prueba_b' })).toEqual({ repoPath: OPENED });
+  });
+
   it('[B1] recovery never deletes a project that was there before the open (targetAbsent: false)', async () => {
     const w = await world();
     const s = failingSettingsDoc();
