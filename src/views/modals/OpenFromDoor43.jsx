@@ -3,7 +3,7 @@
 // The repository is `owner/repository` or a link; the project name is the
 // repository name until the user types one. A name in use shows under the name
 // field (`open-door43.name-exists`); any other refusal shows in a warn Callout with its
-// code: nothing was written. The operation is openFromDoor43 (syncOperation.ts).
+// code: no project was added. The operation is openFromDoor43 (syncOperation.ts).
 import React from 'react';
 import { useApp, door43 } from '../../state.jsx';
 import { t } from '../../i18n';
@@ -11,11 +11,15 @@ import { openDefaultName, openRepoPathOf, openSourceOf, repoPathInUse } from '..
 import { Modal, Field, Input, Button, Callout, Text } from '../../ds/index.js';
 
 const NAME_IN_USE = 'open-door43.name-exists';
-/** The body sentence of a refusal: one for the G2 and OBS codes, one for the rest. */
+/** The body sentence of a refusal: one per code the open throws; `refused.other` for the clone failure and any error without a code. */
 const REFUSAL_TEXT = {
   'sync.incoming-invalid': 'openDoor43.refused.invalid',
   'sync.obs-unsupported': 'openDoor43.refused.obs',
   'open-door43.no-journal': 'openDoor43.refused.noJournal',
+  'sync.clone-path-exists': 'openDoor43.refused.clonePathExists',
+  'opslog.not-loaded': 'openDoor43.refused.opsNotLoaded',
+  'sync.offline': 'openDoor43.refused.offline',
+  'sync.move-failed': 'openDoor43.refused.moveFailed',
 };
 
 /** The error under the project name: not a folder name, or a name in use. */
@@ -28,7 +32,7 @@ function nameErrorOf(od, projects) {
   return inUse ? t('openDoor43.nameInUse', { name }) : undefined;
 }
 
-/** Artboard g: the refusal, its code, "Nothing was written", and Ask for help. */
+/** Artboard g: the refusal, its code, "No project was added", and Ask for help. */
 function Refused({ refusal, onHelp }) {
   const text = t(REFUSAL_TEXT[refusal.code] ?? 'openDoor43.refused.other');
   return (
@@ -68,7 +72,7 @@ export default function OpenFromDoor43() {
       closeLabel={t('common.close')} onClose={od.busy ? undefined : actions.closeModal}
       footer={<>
         <Button variant="secondary" disabled={od.busy} onClick={actions.closeModal} data-testid="open-door43-cancel">{t('openDoor43.cancel')}</Button>
-        <Button variant="ocean" disabled={cantOpen} aria-busy={od.busy || undefined} onClick={actions.openDoor43Run} data-testid="open-door43-submit">
+        <Button disabled={cantOpen} aria-busy={od.busy || undefined} onClick={actions.openDoor43Run} data-testid="open-door43-submit">
           {t(od.busy ? 'openDoor43.opening' : 'openDoor43.open')}
         </Button>
       </>}>

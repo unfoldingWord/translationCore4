@@ -133,8 +133,9 @@ export interface OpsHandle {
 /** What an operation needs to write its record. */
 export interface OpsRecorder {
   begin(op: OpsOp, facts?: Record<string, unknown>): Promise<OpsHandle>;
-  /** True while a record of `op` for `repoPath` is open (#676: an unfinished sync swap). */
-  isOpen?(op: OpsOp, repoPath: string): boolean;
+  /** True while a record of `op` for `repoPath` is open (#676: an unfinished sync
+   * swap), and, when `phase` is given, its saved phase is `phase` (#677). */
+  isOpen?(op: OpsOp, repoPath: string, phase?: string): boolean;
   /** False until `recover()` loads the log at this start (#676: no sync before it). */
   readonly recovered?: boolean;
 }
@@ -203,14 +204,24 @@ export const syncPathsOf = (repoPath: string): SwapPaths => {
 //                        (cloneProject proved it absent before this phase, so it is the
 //                        open's) and the scratch copy.
 //   check                read and check the copy.         Recovery: delete the scratch copy.
-//   move.copy            copy scratch to the project.     Recovery: delete the project (a
-//                        part copy can be there; the open checked the path was free just
-//                        before this phase) and the scratch copy. Nothing is kept.
+//   move.copy            copy scratch to the project.     The phase also saves `targetAbsent`
+//                        (the open checked that no project was at the path) and `liveMark`
+//                        (the greatest segment name of the copy). Recovery decides by the
+//                        scratch copy, because the open deletes it only after the copy
+//                        finished: when it is gone, the project is whole and stays (ok). When
+//                        it is there, the project can be a part copy: recovery deletes the
+//                        project and the scratch copy, unless the project holds a segment
+//                        newer than `liveMark` (someone changed it, so it opened whole: it
+//                        stays). Without `targetAbsent`, the project is never deleted.
 //   move.delete-scratch  the project is complete.        Recovery: delete the scratch copy;
 //                        the project stays, and the record closes ok.
-// The rule is the simple one: the project stays only when its copy finished. The
-// move is two calls (a copy, then a delete), not the platform's copy-and-delete in
-// one call, so the saved phase tells which side of the copy the kill was on.
+// The rule: the project stays when its copy finished, and a project that was there
+// before the open is never deleted. The move is two calls (a copy, then a delete),
+// not the platform's copy-and-delete in one call, so the scratch copy tells which
+// side of the copy the stop was on. While a record is open at `move.copy`, the
+// project takes no open and no edit (`open-door43.pending`, JournalingStore), so no
+// change can be lost when recovery deletes a part copy. A cleanup that fails in the
+// open leaves the record open, and the next start runs it again.
 
 /** The phases of an open from Door43, in order. */
 export const OPEN_PHASES = ['start', 'clone', 'check', 'move.copy', 'move.delete-scratch'] as const;
@@ -301,8 +312,8 @@ export class OpsLog implements OpsRecorder {
   /** True after `recover()` loaded the log at this start. */
   recovered = false;
 
-  isOpen(op: OpsOp, repoPath: string): boolean {
-    return this.entries.some((e) => e.op === op && !e.report && e.facts.repoPath === repoPath);
+  isOpen(op: OpsOp, repoPath: string, phase?: string): boolean {
+    return this.entries.some((e) => e.op === op && !e.report && e.facts.repoPath === repoPath && (phase === undefined || e.facts.phase === phase));
   }
 
   subscribe(listener: () => void): () => void {
@@ -414,11 +425,27 @@ export class OpsLog implements OpsRecorder {
       await deleteIfPresent(api, scratch);
       return okReport('open-door43', entry.startedAt, endedAt, { ...facts, finishedMove: true });
     }
+    if (phase === 'move.copy' && entry.facts.targetAbsent === true && (await this.openCopyFinished(entry, api, scratch, repoPath))) {
+      await deleteIfPresent(api, scratch);
+      return okReport('open-door43', entry.startedAt, endedAt, { ...facts, finishedMove: true });
+    }
     if (phase === 'clone' && typeof clonePath === 'string') await deleteIfPresent(api, clonePath);
-    if (phase === 'move.copy') await deleteIfPresent(api, repoPath);
+    // a project that was there before the open is never the open's to delete
+    if (phase === 'move.copy' && entry.facts.targetAbsent === true) await deleteIfPresent(api, repoPath);
     await deleteIfPresent(api, scratch);
     return failedReport('open-door43', entry.startedAt, endedAt,
-      new Error('the open from Door43 was interrupted; nothing it wrote was kept'), { ...facts, rolledBack: true });
+      new Error('the open from Door43 was interrupted; no project was kept'), { ...facts, rolledBack: true });
+  }
+
+  /** At `move.copy`: is the project at `repoPath` whole? Yes when the scratch copy
+   * is gone (the open deletes it only after the copy finished), or when the project
+   * holds a journal segment newer than the copy's `liveMark` (someone changed it
+   * after the copy, so it opened whole). A missing repository lists as `[]`
+   * [VERIFIED — pankosmia-web 0.18.15 (a83725b, 2026-09-29), live rig 2026-10-13]. */
+  private async openCopyFinished(entry: OpsEntry, api: OpsRecoveryApi, scratch: string, repoPath: string): Promise<boolean> {
+    if ((await api.listPaths(scratch)).length === 0) return true;
+    const mark = typeof entry.facts.liveMark === 'string' ? entry.facts.liveMark : null;
+    return mark !== null && lastSegmentName(await api.listPaths(repoPath)) > mark;
   }
 
   private current(id: string): OpsEntry {

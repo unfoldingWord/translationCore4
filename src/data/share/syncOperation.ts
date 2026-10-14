@@ -195,7 +195,9 @@ export async function cloneProject(
 // (`_local_/_archive_/`). The copy must hold a tC4 journal, and every journal
 // file passes the one validator (G2); then a copy and a delete put it at
 // `_local_/_local_/<name>`, the only place the app lists projects. A refusal
-// deletes the scratch copy: nothing is written. The new path gives a new actor id
+// deletes the scratch copy: no project is written. (The platform can leave an empty
+// `<host>/<org>/` folder after a clone or a move; it is not a repository, and
+// `list-local-repos` and Home do not list it.) The new path gives a new actor id
 // (identity.ts), and the clone keeps `origin`, so the card reads "Sync with
 // Door43" (#678: the shared state is `origin`, D84 point 1).
 // The open writes an ops record (`op: 'open-door43'`) and saves each phase before
@@ -275,7 +277,7 @@ async function checkOpenCopy(api: ServerApi, scratch: string, repoPath: string):
   const journal = await readFiles(api, scratch, (p) => p.startsWith(JOURNAL_PREFIX), false);
   if (![...journal.keys()].some((p) => /^checking\/journal\/[^/]+\/segments\//.test(p)))
     throw new Refusal('open-door43.no-journal', 'the repository holds no tC4 journal, so it is not a tC4 project', { repoPath });
-  // G2: every journal file passes the one validator, or nothing is written
+  // G2: every journal file passes the one validator, or no project is written
   const failures: Array<{ path: string; reason: string }> = [];
   for (const [ipath, bytes] of journal) {
     const verdict = await checkJournalFile({ validateSegment, validateActorDoc, segmentName }, ipath, bytes);
@@ -287,7 +289,7 @@ async function checkOpenCopy(api: ServerApi, scratch: string, repoPath: string):
 
 /** Open a project from Door43: put a full copy of `source` at
  * `_local_/_local_/<name>` and answer its path. Throws a Refusal, and then
- * nothing is written: `opslog.not-loaded` and `open-door43.name-exists` (checked
+ * no project is written: `opslog.not-loaded` and `open-door43.name-exists` (checked
  * first, before the internet), `sync.offline`, the `cloneProject` codes,
  * `sync.obs-unsupported`, `open-door43.no-journal`, or `sync.incoming-invalid`
  * (G2, with each failing path in `failures`). */
@@ -306,40 +308,47 @@ export async function openFromDoor43(deps: OpenDeps, request: { source: CloneSou
     if ((await (record?.note({ phase: name, ...facts }) ?? true)) === false)
       throw new Error(`the ops log did not save the phase ${name}; the open stopped before it`);
   };
-  try {
+  // A cleanup that fails leaves the record open, so the next start runs it again.
+  let cleanupFailed = false;
+  const cleanup = async (path: string): Promise<void> => {
     try {
-      await phase('start');
-      await deleteIfPresent(api, scratch);
-      await cloneProject(api, request.source, scratch, (clonePath) => phase('clone', { clonePath }).then(() => true, () => false));
-      await phase('check');
-      await checkOpenCopy(api, scratch, repoPath);
-      // a project made at this path meanwhile refuses with the name code
-      if (repoPathInUse(await api.listLocalRepos(), repoPath))
-        throw new Refusal('open-door43.name-exists', `a project at ${repoPath} is on this computer already`, { repoPath });
-      await phase('move.copy');
-      try {
-        await api.copyRepo(scratch, repoPath);
-      } catch (error) {
-        // The listing above proved the path free, so a part copy there is this open's;
-        // a target that is there already belongs to someone else and stays.
-        const facts = failureOf(error);
-        if (!/already exists/i.test(facts.reason)) await deleteIfPresent(api, repoPath).catch(() => {});
-        throw new Refusal('sync.move-failed', `the copy did not move to ${repoPath}`, { repoPath, ...facts });
-      }
+      await deleteIfPresent(api, path);
     } catch (error) {
-      await deleteIfPresent(api, scratch).catch(() => {});
-      throw error;
+      cleanupFailed = true;
+      console.error(`open from Door43: ${path} was not deleted; the next start deletes it: ${failureOf(error).reason}`);
+    }
+  };
+  try {
+    await phase('start');
+    await deleteIfPresent(api, scratch);
+    await cloneProject(api, request.source, scratch, (clonePath) => phase('clone', { clonePath }).then(() => true, () => false));
+    await phase('check');
+    await checkOpenCopy(api, scratch, repoPath);
+    // a project made at this path meanwhile refuses with the name code
+    if (repoPathInUse(await api.listLocalRepos(), repoPath))
+      throw new Refusal('open-door43.name-exists', `a project at ${repoPath} is on this computer already`, { repoPath });
+    // the path is free (checked just now), and recovery reads the copy's last segment
+    await phase('move.copy', { targetAbsent: true, liveMark: lastSegmentName(await api.listPaths(scratch)) });
+    try {
+      await api.copyRepo(scratch, repoPath);
+    } catch (error) {
+      const facts = failureOf(error);
+      // A target that is there already belongs to someone else: it stays, and recovery must not touch it.
+      if (/already exists/i.test(facts.reason)) await record?.note({ targetAbsent: false });
+      else await cleanup(repoPath); // a part copy at the free path is this open's
+      throw new Refusal('sync.move-failed', `the copy did not move to ${repoPath}`, { repoPath, ...facts });
     }
   } catch (error) {
-    await record?.close(failedReport('open-door43', startedAt, new Date().toISOString(), error, { repoPath, source }));
+    await cleanup(scratch);
+    if (!cleanupFailed) await record?.close(failedReport('open-door43', startedAt, new Date().toISOString(), error, { repoPath, source }));
     throw error;
   }
-  // The project is complete at its path, so the open succeeded. The scratch copy
-  // goes; if this phase or this delete fails, only the scratch copy is left, and
-  // the next start (this phase) or the next open of the name deletes it.
+  // The copy finished, so the project is whole and the open succeeded. Then the
+  // scratch copy goes. When this phase does not save, the saved phase stays
+  // `move.copy`, and recovery keeps the project because the scratch copy is gone.
   await record?.note({ phase: 'move.delete-scratch' });
-  await deleteIfPresent(api, scratch).catch(() => {});
-  await record?.close(okReport('open-door43', startedAt, new Date().toISOString(), { repoPath, source }));
+  await cleanup(scratch);
+  if (!cleanupFailed) await record?.close(okReport('open-door43', startedAt, new Date().toISOString(), { repoPath, source }));
   return { repoPath };
 }
 
@@ -405,6 +414,13 @@ export async function sync(deps: SyncDeps, request: SyncRequest): Promise<Report
       const at = new Date().toISOString();
       return failedReport('sync', at, at,
         new Refusal('sync.swap-pending', `the sync of ${repoPath} did not finish; restart the app to finish it`), { repoPath });
+    }
+    // An open from Door43 that stopped at move.copy can leave a part copy here,
+    // which the next start may delete: no sync until that start finishes it.
+    if (ops.isOpen?.('open-door43', repoPath, 'move.copy')) {
+      const at = new Date().toISOString();
+      return failedReport('sync', at, at,
+        new Refusal('open-door43.pending', `the open from Door43 of ${repoPath} did not finish; restart the app to finish it`), { repoPath });
     }
     const record = await ops.begin('sync', { repoPath });
     const { report, open } = await syncRecorded(deps, request, record);

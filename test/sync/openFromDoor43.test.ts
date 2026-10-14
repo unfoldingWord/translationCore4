@@ -1,7 +1,7 @@
 // Open a project from Door43 (issue #677, layer 4 of epic #24) over the fake rig
 // (test/helpers/journalingRig.ts): computer A shares a project; computer B (its own
 // installation store) opens it under a name. Each refusal asserts its code and that
-// nothing was written: the same repositories, byte for byte, and no clone left.
+// no repository was written: the same repositories, byte for byte, and no clone left.
 import { afterEach, describe, expect, it } from 'vitest';
 import { ServerApi } from '../../src/data/serverApi';
 import { JournalingStore, forgetProjectQueues } from '../../src/data/journal/journalingStore';
@@ -34,6 +34,17 @@ async function world(): Promise<World> {
   forgetSharedClocks();
   forgetProjectQueues();
   const rig = journalingRig();
+  // The real server lists the paths of a missing repository as `[]` with HTTP 200
+  // [VERIFIED — pankosmia-web 0.18.15 (a83725b, 2026-09-29), live rig 2026-10-13:
+  // GET /api/burrito/paths/_local_/_archive_/tc4-open--nothere → [] 200]; the fake
+  // answers 400, so these tests answer as the server does. The recovery reads it.
+  const fake = rig.fetchFn;
+  rig.fetchFn = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const path = new URL(String(input)).pathname;
+    const repo = path.split('/').slice(4, 7).map(decodeURIComponent).join('/');
+    if (path.startsWith('/api/burrito/paths/') && !rig.repos.has(repo)) return new Response('[]', { status: 200 });
+    return fake(input, init);
+  }) as typeof fetch;
   const clock = tickingNow('2026-10-13T09:00:00.000Z');
   const api = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: rig.fetchFn });
   const store = new JournalingStore({ api, kv: memKv(), now: () => clock.advance(13) });
@@ -112,7 +123,7 @@ describe('#677 open a project from Door43', () => {
     const refusal = await refusalOf(openFromDoor43({ api: w.api }, { source: SOURCE, name: 'prueba_b' }));
     expect(refusal.code).toBe('sync.incoming-invalid');
     expect((refusal.facts?.failures as Array<{ path: string }>).map((f) => f.path)).toEqual([segment]);
-    // nothing was written: the same repositories, byte for byte; no project, scratch copy or clone
+    // no repository was written: the same repositories, byte for byte; no project, scratch copy or clone
     expect(snapshot(w.rig)).toEqual(before);
     expect(await w.api.listLocalRepos()).not.toContain(OPENED);
   });
@@ -173,7 +184,7 @@ describe('#677 open a project from Door43', () => {
     expect(w.rig.repos.has(OPENED)).toBe(true);
   });
 
-  it('an Open Bible Stories project refuses (Bible only, D98), and nothing is written', async () => {
+  it('an Open Bible Stories project refuses (Bible only, D98), and no repository is written', async () => {
     const w = await world();
     const remote = w.rig.remotes.get(URL_)!;
     (remote.meta as { type: unknown }).type = { flavorType: { name: 'gloss', flavor: { name: 'textStories' } } };
@@ -183,7 +194,7 @@ describe('#677 open a project from Door43', () => {
     expect(snapshot(w.rig)).toEqual(before);
   });
 
-  it('a repository that is not on Door43 refuses sync.clone-failed, and nothing is written', async () => {
+  it('a repository that is not on Door43 refuses sync.clone-failed, and no repository is written', async () => {
     const w = await world();
     const before = snapshot(w.rig);
     const refusal = await refusalOf(openFromDoor43({ api: w.api }, { source: { ...SOURCE, repo: 'missing' }, name: 'prueba_b' }));
@@ -219,7 +230,7 @@ describe('#677 the dialog fields', () => {
 });
 
 describe('#677 a repository that is not a tC4 project', () => {
-  it('a repository with no tC4 journal refuses open-door43.no-journal, and nothing is written', async () => {
+  it('a repository with no tC4 journal refuses open-door43.no-journal, and no repository is written', async () => {
     const w = await world();
     const remote = w.rig.remotes.get(URL_)!;
     for (const p of [...remote.files.keys()]) if (p.startsWith('checking/journal/')) remote.files.delete(p);
@@ -368,5 +379,136 @@ describe('#677 crash recovery of the open (G8 class)', () => {
     const entries = ops.entries.filter((e) => e.op === 'open-door43');
     expect(entries.map((e) => [e.report?.ok, e.report?.code])).toEqual([[true, undefined], [false, 'sync.clone-failed']]);
     for (const e of entries) expect(reportError(e.report)).toBeNull();
+  });
+});
+
+/** A settings document whose writes can fail on demand (not a kill: the app runs on). */
+function failingSettingsDoc() {
+  let doc: Record<string, unknown> = {};
+  let failing = false;
+  const read = async () => structuredClone(doc);
+  const write = async (next: Record<string, unknown>) => {
+    if (failing) throw new Error('settings write failed');
+    doc = structuredClone(next);
+  };
+  return { read, write, get: () => doc, fail: (on: boolean) => (failing = on) };
+}
+const appOver = (s: { read: () => Promise<Record<string, unknown>>; write: (d: Record<string, unknown>) => Promise<void> }) =>
+  new OpsLog({ read: s.read, update: serialSettingsWriter(s.read, s.write) });
+
+describe('#677 the open never loses a project that opened (review B1, B2)', () => {
+  it('[B1] the ops writes fail after the copy: the open is ok, the user edits, and the next start keeps the edited project', async () => {
+    const w = await world();
+    const s = failingSettingsDoc();
+    const ops = appOver(s);
+    await ops.recover(w.api);
+    const api = Object.create(w.api) as ServerApi;
+    api.copyRepo = async (from: string, to: string, del?: boolean) => {
+      await w.api.copyRepo(from, to, del);
+      if (to === OPENED) s.fail(true); // every settings write after the copy fails
+    };
+    expect(await openFromDoor43({ api, ops }, { source: SOURCE, name: 'prueba_b' })).toEqual({ repoPath: OPENED });
+    s.fail(false);
+    // the stored record still names move.copy: the later writes failed
+    expect((s.get().opsLog as Array<{ facts: { phase?: string }; report?: unknown }>).find((e) => !e.report)?.facts.phase).toBe('move.copy');
+    // the user edits the opened project in this session
+    const store = new JournalingStore({ api: w.api, kv: w.kvB, ops });
+    await store.open(OPENED);
+    await store.writeBook('TIT', usfm('EDITED BY USER'));
+    await store.commit('user edit (tC4)');
+    store.dispose();
+    // the next start keeps the project and the edit
+    forgetProjectQueues();
+    const resolved = await appOver(s).recover(w.api);
+    expect(resolved.map((e) => [e.op, e.report?.ok])).toEqual([['open-door43', true]]);
+    expect(reportError(resolved[0].report)).toBeNull();
+    expect(w.rig.repos.get(OPENED)?.files.get('TIT.usfm')).toContain('EDITED BY USER');
+    expect(w.rig.repos.has(SCRATCH)).toBe(false);
+  });
+
+  it('a cleanup that fails keeps the record open, and the next start finishes it', async () => {
+    const w = await world();
+    const remote = w.rig.remotes.get(URL_)!;
+    const segment = journalOf(remote.files).find(([p]) => p.includes('/segments/'))![0];
+    remote.files.set(segment, '{"not":"a sealed segment"}\n');
+    const s = failingSettingsDoc();
+    const ops = appOver(s);
+    await ops.recover(w.api);
+    const api = Object.create(w.api) as ServerApi;
+    let deletes = 0;
+    api.deleteRepo = async (p: string) => {
+      // the stale-scratch delete at the start passes; the cleanup after the refusal fails
+      if (p === SCRATCH && deletes++ === 1) throw Object.assign(new Error('server 500'), { status: 500 });
+      return w.api.deleteRepo(p);
+    };
+    expect((await refusalOf(openFromDoor43({ api, ops }, { source: SOURCE, name: 'prueba_b' }))).code).toBe('sync.incoming-invalid');
+    expect(w.rig.repos.has(SCRATCH)).toBe(true);
+    expect(ops.isOpen('open-door43', OPENED)).toBe(true);
+    const resolved = await appOver(s).recover(w.api);
+    expect(resolved.map((e) => [e.op, e.report?.ok])).toEqual([['open-door43', false]]);
+    expect(w.rig.repos.has(SCRATCH)).toBe(false);
+    expect(w.rig.repos.has(OPENED)).toBe(false);
+  });
+
+  it('[B1] recovery never deletes a project that was there before the open (targetAbsent: false)', async () => {
+    const w = await world();
+    const s = failingSettingsDoc();
+    const ops = appOver(s);
+    await ops.recover(w.api);
+    // a record that a killed open left at move.copy, for a path that held a project already
+    const record = await ops.begin('open-door43', { repoPath: REPO, scratch: '_local_/_archive_/tc4-open--prueba', source: CLONE_PATH });
+    await record.note({ phase: 'move.copy', targetAbsent: false, liveMark: '' });
+    await w.api.copyRepo(REPO, '_local_/_archive_/tc4-open--prueba');
+    const before = new Map(w.rig.repos.get(REPO)!.files);
+    const resolved = await appOver(s).recover(w.api);
+    expect(resolved[0].report).toMatchObject({ op: 'open-door43', ok: false });
+    expect(w.rig.repos.get(REPO)!.files).toEqual(before);
+    expect(w.rig.repos.has('_local_/_archive_/tc4-open--prueba')).toBe(false);
+  });
+
+  it('[B2] a recovery that fails leaves the record open, and the part project takes no open and no edit until a start finishes it', async () => {
+    const w = await world();
+    const s = failingSettingsDoc();
+    const ops = appOver(s);
+    await ops.recover(w.api);
+    const api = Object.create(w.api) as ServerApi;
+    api.copyRepo = async (from: string, to: string, del?: boolean) => {
+      await w.api.copyRepo(from, to, del);
+      if (to === OPENED) await new Promise(() => {}); // killed after the copy, before the next phase
+    };
+    void openFromDoor43({ api, ops }, { source: SOURCE, name: 'prueba_b' });
+    await new Promise((r) => setTimeout(r, 200));
+    expect(w.rig.repos.has(OPENED)).toBe(true);
+    // start 2: the recovery's delete of the project fails once
+    forgetProjectQueues();
+    const flaky = Object.create(w.api) as ServerApi;
+    let n = 0;
+    flaky.deleteRepo = async (p: string) => {
+      if (p === OPENED && n++ === 0) throw Object.assign(new Error('server 500'), { status: 500 });
+      return w.api.deleteRepo(p);
+    };
+    const ops2 = appOver(s);
+    await ops2.recover(flaky);
+    expect(ops2.errors.map((e) => e.op)).toEqual(['open-door43']);
+    expect(w.rig.repos.has(OPENED)).toBe(true);
+    // the project is listed, but it takes no open and no edit
+    const store = new JournalingStore({ api: w.api, kv: w.kvB, ops: ops2 });
+    await expect(store.open(OPENED)).rejects.toMatchObject({ code: 'open-door43.pending' });
+    store.dispose();
+    // and no sync: the next start may delete this part copy
+    const pushesBefore = [...w.rig.repos.keys()].length;
+    const refused = await sync(
+      { api: w.api, kv: w.kvB, door43Server: 'https://qa.door43.org', coverage: {}, ops: ops2 },
+      { repoPath: OPENED, session: { username: 'translator_b', token: 'tok-677' } },
+    );
+    expect([refused.ok, refused.code]).toEqual([false, 'open-door43.pending']);
+    expect([...w.rig.repos.keys()].length).toBe(pushesBefore);
+    // start 3 finishes the recovery: the part project goes, and the repository opens again
+    forgetProjectQueues();
+    const ops3 = appOver(s);
+    const resolved = await ops3.recover(w.api);
+    expect(resolved.map((e) => [e.op, e.report?.ok])).toEqual([['open-door43', false]]);
+    expect(w.rig.repos.has(OPENED)).toBe(false);
+    expect(await openFromDoor43({ api: w.api, ops: ops3 }, { source: SOURCE, name: 'prueba_b' })).toEqual({ repoPath: OPENED });
   });
 });
