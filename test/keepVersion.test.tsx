@@ -111,6 +111,9 @@ describe('#679 "Keep this version"', () => {
     expect(resolve).toHaveBeenCalledWith(KEY, mine.ts);
     expect(box.state.verseConflicts).toEqual([]);
     expect(box.state.conflictsByProject).toEqual({ [REPO]: {} });
+    // #680: the open store's fold fills Home's team too, so the sync result
+    // still names senders after the project closes (team: null on Home).
+    expect(box.state.teamByProject).toEqual({ [REPO]: store.readTeam() });
     expect(rawRef.current).toContain('\\v 1 Pablo, siervo de Dios (mío).');
     expect(loadBook).toHaveBeenCalledWith('TIT', rawRef.current);
     expect(box.state.bookRaw).toBe(rawRef.current);

@@ -2475,11 +2475,14 @@ export const conflictCounts = (conflicts) => {
 };
 
 /** #679: the open project's conflicts and team, read from its store's fold,
- * and the Home count of that project with them. */
+ * and the Home count of that project with them. #680: Home's team of the
+ * project too, so the sync result still names senders once the project
+ * closes (performLoadConflicts skips a project whose count is cached). */
 function adoptConflicts({ store, repoPath, dispatch }) {
   const verseConflicts = store.readVerseConflicts();
-  dispatch({ type: 'set', patch: { verseConflicts, team: { me: store.actorId, ...store.readTeam() } } });
-  dispatch({ type: 'setConflicts', id: repoPath, counts: conflictCounts(verseConflicts) });
+  const team = store.readTeam();
+  dispatch({ type: 'set', patch: { verseConflicts, team: { me: store.actorId, ...team } } });
+  dispatch({ type: 'setConflicts', id: repoPath, counts: conflictCounts(verseConflicts), team });
   return verseConflicts;
 }
 
