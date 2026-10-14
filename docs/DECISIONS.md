@@ -2778,15 +2778,18 @@ use ar_gt only as pin data stay: `test/oldTwlPin.test.ts`, `test/resourceFetch.t
    the sync writes one marker file, `ingredients/tc4-sync/apply.json`, into the scratch copy.
    Then it applies. Then it deletes the marker, then the scratch copy. At each start (for each
    repository that `list-local-repos` names, at any path), and at the start of each sync of
-   the project, this rule runs: a scratch copy with the marker (any bytes in the marker
-   file) gets the same apply again if the copy is whole (below) [PROPOSED 2026-10-14 — PR
-   #688; the owner confirms or re-words], then the marker and the scratch copy are deleted;
-   a scratch copy with no marker is deleted, because the project did not change; no scratch
-   copy means nothing is pending. A scratch copy with the marker that is not the fold of its
-   journal, or that the platform cannot read, is from a power loss (PLATFORM-NOTES #51). It
-   gets no apply: the rule deletes it and its marker, the Report is not ok (`scratchNotWhole`),
-   and the next sync brings Door43 main (Ledger #11). [PROPOSED 2026-10-14 — PR #688; the
-   owner confirms or re-words] While the marker is there, the project takes no open
+   the project, this rule runs. A scratch copy with the marker (any bytes in the marker file)
+   gets the same apply again if the copy is whole (below) [PROPOSED 2026-10-14 — PR #688; the
+   owner confirms or re-words]. Then the marker and the scratch copy are deleted. A scratch
+   copy with no marker is deleted, because the project did not change. No scratch copy means
+   nothing is pending. A scratch copy with the marker that is not the fold of its journal is
+   from a power loss (PLATFORM-NOTES #51). A copy that the platform cannot read is also from a
+   power loss. Such a copy gets no apply: the rule deletes it and its marker. At a start, the
+   Report of its open sync record is not ok (`scratchNotWhole`), and the next sync brings
+   Door43 main (Ledger #11). At the start of a sync, that sync goes on and brings Door43 main.
+   Any other failure of the check of the copy, such as a server error, is no proof of a power
+   loss. Then the marker stays, and the rule runs again at the next start or sync. [PROPOSED
+   2026-10-14 — PR #688; the owner confirms or re-words] While the marker is there, the project takes no open
    (`sync.apply-pending`). The rule runs before the settings read, so a settings read that
    fails never stops it. An open or a create waits for the disk rule of the start recovery
    (not for the settings read), and opens or creates only a project path (`_local_/_local_/<name>`; `open.not-a-project`). An open that writes its own record to the ops log (a store with `ops`, as in the app) still writes the settings document in `ops.begin`, so such an open waits for that write. A failure in
