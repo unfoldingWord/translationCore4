@@ -2779,8 +2779,8 @@ use ar_gt only as pin data stay: `test/oldTwlPin.test.ts`, `test/resourceFetch.t
    Then it applies. Then it deletes the marker, then the scratch copy. At each start (for each
    repository that `list-local-repos` names, at any path), and at the start of each sync of
    the project, this rule runs: a scratch copy with the marker (any bytes in the marker
-   file) gets the same apply again if the copy is whole (below), then the marker and the
-   scratch copy are deleted;
+   file) gets the same apply again if the copy is whole (below) [PROPOSED 2026-10-14 — PR
+   #688; the owner confirms or re-words], then the marker and the scratch copy are deleted;
    a scratch copy with no marker is deleted, because the project did not change; no scratch
    copy means nothing is pending. A scratch copy with the marker that is not the fold of its
    journal, or that the platform cannot read, is from a power loss (PLATFORM-NOTES #51). It
