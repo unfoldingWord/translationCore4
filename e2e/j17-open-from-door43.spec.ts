@@ -28,7 +28,9 @@ const ID = `_local_/_local_/${REPO}`;
 const REPOS = path.join(RIG_LOCAL_REPOS, '..', '..');
 const mirrorDir = (repo: string) => path.join(REPOS, '_local_', '_archive_', `${ORG}--${repo}`);
 const fixedDir = (repo: string) => path.join(REPOS, 'file', ORG, repo);
-const scratchDir = (name: string) => path.join(REPOS, '_local_', '_archive_', `tc4-open--${name}`);
+// The scratch copy names the WHOLE project path (opsLog.ts archiveNameOf: '-' to '-d', '/' to '-s').
+const scratchDir = (name: string) =>
+  path.join(REPOS, '_local_', '_archive_', `tc4-open--${`_local_/_local_/${name}`.replaceAll('-', '-d').replaceAll('/', '-s')}`);
 const JOURNAL = 'ingredients/checking/journal';
 
 /** A bare remote at <tmp>/<org>/<repo>.git whose `main` is `work`, and its mirror on the rig. */
@@ -166,6 +168,9 @@ test.describe('J17 — open a project from Door43', () => {
     expect(git(opened, 'rev-parse', 'HEAD')).toBe(remote.main());
     expect(git(opened, 'remote', 'get-url', 'origin')).toBe(pathToFileURL(remote.bare).href);
     expect(fs.readdirSync(path.join(opened, JOURNAL)).sort()).toEqual(actorsBefore);
+    // the copy finished: no marker stays in the project, and the scratch copy is gone
+    expect(fs.existsSync(path.join(opened, 'ingredients', 'tc4-open', 'move.json'))).toBe(false);
+    expect(git(opened, 'status', '--porcelain')).toBe('');
     expect(fs.existsSync(scratchDir(REPO))).toBe(false);
     expect(fs.existsSync(fixedDir(REPO))).toBe(false);
 

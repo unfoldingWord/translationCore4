@@ -1019,5 +1019,6 @@
   "openDoor43.refused.opsNotLoaded": "tC4 không thể đọc bản ghi công việc chưa xong của nó. Hãy đóng tC4 rồi mở lại, sau đó thử lại. Không có dự án nào được thêm vào máy tính này.",
   "openDoor43.refused.offline": "Internet đang tắt. Hãy bật internet, rồi thử lại. Không có dự án nào được thêm vào máy tính này.",
   "openDoor43.refused.moveFailed": "tC4 không thể đặt dự án vào đúng chỗ của nó trên máy tính này. Hãy thử lại. Nếu điều này xảy ra lần nữa, hãy nhờ trợ giúp. Không có dự án nào được thêm vào máy tính này.",
-  "refusal.open-door43.pending": "Ứng dụng chưa mở xong dự án này từ Door43. Hãy đóng ứng dụng rồi mở lại. Khi đó ứng dụng sẽ hoàn tất việc mở hoặc xóa bản sao dở dang. Cho đến lúc đó, bạn không thể mở hay thay đổi dự án này."
+  "refusal.open-door43.pending": "Ứng dụng đang mở dự án này từ Door43, hoặc không thể chứng minh dự án này là một bản sao đầy đủ. Ứng dụng không mở và không thay đổi nó. Hãy đợi, rồi thử lại. Nếu thông báo này xuất hiện lần nữa, hãy nhờ trợ giúp.",
+  "refusal.open-door43.removed": "Dự án này chưa mở xong từ Door43, nên ứng dụng đã xóa bản sao dở dang. Hãy mở lại dự án từ Door43."
 }

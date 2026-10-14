@@ -1019,5 +1019,6 @@
   "openDoor43.refused.opsNotLoaded": "tC4 no pudo leer su registro del trabajo sin terminar. Cierre tC4 y ábralo de nuevo; luego intente otra vez. No se agregó ningún proyecto a esta computadora.",
   "openDoor43.refused.offline": "Internet está desactivado. Active internet y luego intente otra vez. No se agregó ningún proyecto a esta computadora.",
   "openDoor43.refused.moveFailed": "tC4 no pudo poner el proyecto en su lugar en esta computadora. Intente otra vez. Si vuelve a ocurrir, pida ayuda. No se agregó ningún proyecto a esta computadora.",
-  "refusal.open-door43.pending": "La aplicación no terminó de abrir este proyecto desde Door43. Cierre la aplicación y ábrala de nuevo. Entonces la aplicación termina la apertura o quita la copia parcial. Hasta entonces, no puede abrir ni cambiar este proyecto."
+  "refusal.open-door43.pending": "La aplicación está abriendo este proyecto desde Door43, o no puede comprobar que este proyecto sea una copia completa. La aplicación no lo abrió ni lo cambió. Espere y luego intente otra vez. Si este mensaje vuelve a aparecer, pida ayuda.",
+  "refusal.open-door43.removed": "Este proyecto no terminó de abrirse desde Door43, por eso la aplicación quitó la copia parcial. Abra el proyecto desde Door43 otra vez."
 }

@@ -7,9 +7,9 @@ import { ServerApi } from '../../src/data/serverApi';
 import { JournalingStore, forgetProjectQueues } from '../../src/data/journal/journalingStore';
 import { forgetSharedClocks } from '../../src/data/journal/journalStore';
 import { actorIdFor } from '../../src/data/journal/identity';
-import { OpsLog, serialSettingsWriter } from '../../src/data/journal/opsLog';
+import { OpsLog, forgetRunningOpens, serialSettingsWriter } from '../../src/data/journal/opsLog';
 import { reportError } from '../../src/data/journal/runtime';
-import { openDefaultName, openFromDoor43, openFromDoor43Asking, openRepoPathOf, openSourceOf, sync, type CloneSource } from '../../src/data/share/syncOperation';
+import { openDefaultName, openFromDoor43, openFromDoor43Asking, openRepoPathOf, openSourceOf, forgetClonePathLocks, sync, withClonePathLock, type CloneSource } from '../../src/data/share/syncOperation';
 import { journalingRig, memKv, tickingNow, type JournalingRig } from '../helpers/journalingRig';
 
 const REPO = '_local_/_local_/prueba';
@@ -17,7 +17,8 @@ const URL_ = 'https://qa.door43.org/facilitator/prueba';
 const CLONE_PATH = 'qa.door43.org/facilitator/prueba';
 const SOURCE: CloneSource = { host: 'qa.door43.org', org: 'facilitator', repo: 'prueba' };
 const OPENED = '_local_/_local_/prueba_b';
-const SCRATCH = '_local_/_archive_/tc4-open--prueba_b';
+// The scratch path names the WHOLE project path (archiveNameOf: '-' becomes '-d', '/' becomes '-s').
+const SCRATCH = '_local_/_archive_/tc4-open--_local_-s_local_-sprueba_b';
 const usfm = (v1: string) => ['\\id TIT prueba', '\\h Tito', '\\mt Tito', '\\c 1', '\\p', `\\v 1 ${v1}`, '\\v 2 ___', ''].join('\n');
 
 interface World {
@@ -34,17 +35,6 @@ async function world(): Promise<World> {
   forgetSharedClocks();
   forgetProjectQueues();
   const rig = journalingRig();
-  // The real server lists the paths of a missing repository as `[]` with HTTP 200
-  // [VERIFIED — pankosmia-web 0.18.15 (a83725b, 2026-09-29), live rig 2026-10-13:
-  // GET /api/burrito/paths/_local_/_archive_/tc4-open--nothere → [] 200]; the fake
-  // answers 400, so these tests answer as the server does. The recovery reads it.
-  const fake = rig.fetchFn;
-  rig.fetchFn = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    const path = new URL(String(input)).pathname;
-    const repo = path.split('/').slice(4, 7).map(decodeURIComponent).join('/');
-    if (path.startsWith('/api/burrito/paths/') && !rig.repos.has(repo)) return new Response('[]', { status: 200 });
-    return fake(input, init);
-  }) as typeof fetch;
   const clock = tickingNow('2026-10-13T09:00:00.000Z');
   const api = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: rig.fetchFn });
   const store = new JournalingStore({ api, kv: memKv(), now: () => clock.advance(13) });
@@ -76,6 +66,8 @@ const refusalOf = async (run: Promise<unknown>) => {
 afterEach(() => {
   forgetSharedClocks();
   forgetProjectQueues();
+  forgetRunningOpens();
+  forgetClonePathLocks();
 });
 
 describe('#677 open a project from Door43', () => {
@@ -255,6 +247,8 @@ function settingsDoc() {
   return { read, write, get: () => doc, hang: () => (hung = true) };
 }
 const startApp = async (settings: ReturnType<typeof settingsDoc>, api: ServerApi) => {
+  forgetRunningOpens(); // a start is a new process
+  forgetClonePathLocks();
   const ops = new OpsLog({ read: settings.read, update: serialSettingsWriter(settings.read, settings.write) });
   const resolved = await ops.recover(api);
   return { ops, resolved };
@@ -282,7 +276,7 @@ describe('#677 crash recovery of the open (G8 class)', () => {
         const source = w.rig.repos.get(repo);
         const half = <T,>(m: Map<string, T>) => [...m].slice(0, Math.ceil(m.size / 2));
         if (source && url.pathname.includes('/git/copy/'))
-          w.rig.repos.set(url.searchParams.get('target_path')!, { files: new Map(half(source.files)), meta: {}, commits: [], dirty: new Set() });
+          w.rig.repos.set(url.searchParams.get('target_path')!, { files: new Map(half(source.files)), meta: structuredClone(source.meta), commits: [], dirty: new Set() });
         if (source && url.pathname.includes('/git/delete/')) source.files = new Map(half(source.files));
         return new Promise<Response>(() => {});
       }
@@ -394,7 +388,7 @@ function failingSettingsDoc() {
   return { read, write, get: () => doc, fail: (on: boolean) => (failing = on) };
 }
 const appOver = (s: { read: () => Promise<Record<string, unknown>>; write: (d: Record<string, unknown>) => Promise<void> }) =>
-  new OpsLog({ read: s.read, update: serialSettingsWriter(s.read, s.write) });
+  (forgetRunningOpens(), forgetClonePathLocks(), new OpsLog({ read: s.read, update: serialSettingsWriter(s.read, s.write) }));
 
 describe('#677 the open never loses a project that opened (review B1, B2)', () => {
   it('[B1] the ops writes fail after the copy: the open is ok, the user edits, and the next start keeps the edited project', async () => {
@@ -504,7 +498,220 @@ describe('#677 the open never loses a project that opened (review B1, B2)', () =
     expect(await openFromDoor43({ api: w.api, ops: ops2 }, { source: SOURCE, name: 'prueba_b' })).toEqual({ repoPath: OPENED });
   });
 
-  it('[B5] the copy finished, but the delete-scratch phase does not save and the scratch delete fails: the open is not ok, the project takes no edit, and the next start removes it', async () => {
+  // [B5] (bench round 4) expected "not ok, and the next start removes the project" when the
+  // delete-scratch phase did not save and the scratch delete failed. Under the disk design
+  // that outcome is wrong: the scratch marker is deleted only after the copy returned ok, so
+  // the copy is proved finished and the open IS ok. The test that replaces it is
+  // "[disk] a finished open with failed later cleanups is ok" below.
+
+  it('[B1] a record for a path that holds a project and no marker deletes nothing of that project', async () => {
+    const w = await world();
+    const s = failingSettingsDoc();
+    const ops = appOver(s);
+    await ops.recover(w.api);
+    // a record that a killed open left at move.copy (any facts), for a path that held a project already;
+    // its scratch copy has no marker
+    const scratch = '_local_/_archive_/tc4-open--_local_-s_local_-sprueba';
+    const record = await ops.begin('open-door43', { repoPath: REPO, scratch, source: CLONE_PATH });
+    await record.note({ phase: 'move.copy', targetAbsent: true, liveMark: '' });
+    await w.api.copyRepo(REPO, scratch);
+    const before = new Map(w.rig.repos.get(REPO)!.files);
+    await appOver(s).recover(w.api);
+    expect(w.rig.repos.get(REPO)!.files).toEqual(before);
+    expect(w.rig.repos.has(scratch)).toBe(false);
+  });
+
+  it('[B2] a recovery that fails at start: the gate removes the part copy before any open or sync, and the repository opens again', async () => {
+    const w = await world();
+    const s = failingSettingsDoc();
+    const ops = appOver(s);
+    await ops.recover(w.api);
+    const api = Object.create(w.api) as ServerApi;
+    api.copyRepo = async (from: string, to: string, del?: boolean) => {
+      await w.api.copyRepo(from, to, del);
+      if (to === OPENED) await new Promise(() => {}); // killed after the copy, before the scratch marker goes
+    };
+    void openFromDoor43({ api, ops }, { source: SOURCE, name: 'prueba_b' });
+    await new Promise((r) => setTimeout(r, 200));
+    expect(w.rig.repos.get(SCRATCH)!.files.has(MARKER)).toBe(true);
+    expect(w.rig.repos.has(OPENED)).toBe(true);
+    // start 2: the recovery's delete of the project fails once
+    forgetProjectQueues();
+    const flaky = Object.create(w.api) as ServerApi;
+    let n = 0;
+    flaky.deleteRepo = async (p: string) => {
+      if (p === OPENED && n++ === 0) throw Object.assign(new Error('server 500'), { status: 500 });
+      return w.api.deleteRepo(p);
+    };
+    const ops2 = appOver(s);
+    await ops2.recover(flaky);
+    expect(ops2.errors.map((e) => e.op)).toEqual(['open-door43']);
+    expect(w.rig.repos.has(OPENED)).toBe(true);
+    // no sync: the gate reads the marker, removes the copy that is not proved whole, and refuses
+    const refused = await sync(
+      { api: w.api, kv: w.kvB, door43Server: 'https://qa.door43.org', coverage: {}, ops: ops2 },
+      { repoPath: OPENED, session: { username: 'translator_b', token: 'tok-677' } },
+    );
+    expect([refused.ok, refused.code]).toEqual([false, 'open-door43.removed']);
+    expect(w.rig.repos.has(OPENED)).toBe(false);
+    expect(w.rig.repos.has(SCRATCH)).toBe(false);
+    // the repository opens again
+    forgetProjectQueues();
+    expect(await openFromDoor43({ api: w.api, ops: ops2 }, { source: SOURCE, name: 'prueba_b' })).toEqual({ repoPath: OPENED });
+  });
+
+  it('[B2] the gate on open: a part copy left with no record is removed, never opened', async () => {
+    const w = await world();
+    const settings = settingsDoc();
+    const { ops } = await startApp(settings, w.api);
+    // a part copy at the project path and the marked scratch copy; the record was lost
+    await w.api.copyRepo(REPO, SCRATCH);
+    await w.api.writeIngredient(SCRATCH, MARKER, '{"open":"_local_/_local_/prueba_b"}', { updateIngredients: false, keepBak: false });
+    await w.api.copyRepo(SCRATCH, OPENED);
+    w.rig.repos.get(OPENED)!.files.delete('TIT.usfm');
+    w.rig.repos.get(OPENED)!.files.delete(MARKER); // the copy stopped before the marker
+    const store = new JournalingStore({ api: w.api, kv: w.kvB, ops });
+    await expect(store.open(OPENED)).rejects.toMatchObject({ code: 'open-door43.removed' });
+    store.dispose();
+    expect(w.rig.repos.has(OPENED)).toBe(false);
+    expect(w.rig.repos.has(SCRATCH)).toBe(false);
+  });
+
+  it('[B2] the gate on open: a whole copy whose markers were not all deleted finishes forward and opens', async () => {
+    const w = await world();
+    const settings = settingsDoc();
+    const { ops } = await startApp(settings, w.api);
+    // the copy finished and the scratch marker went; the project marker and the scratch copy stay
+    await w.api.copyRepo(REPO, SCRATCH);
+    await w.api.writeIngredient(SCRATCH, MARKER, '{"open":"_local_/_local_/prueba_b"}', { updateIngredients: false, keepBak: false });
+    await w.api.copyRepo(SCRATCH, OPENED);
+    await w.api.deleteIngredient(SCRATCH, MARKER);
+    const store = new JournalingStore({ api: w.api, kv: w.kvB, ops });
+    await store.open(OPENED);
+    store.dispose();
+    expect(w.rig.repos.get(OPENED)!.files.has(MARKER)).toBe(false);
+    expect(w.rig.repos.has(SCRATCH)).toBe(false);
+  });
+});
+
+// ---- recovery and the gate decide from the disk only (the settings document is not load-bearing) ----
+
+const MARKER = 'tc4-open/move.json';
+/** A server call of the open that changes the disk: a folder call, or a marker write or delete. */
+const diskCall = (route: string, method: string) =>
+  folderCall(route) || (method === 'POST' && /^\/api\/burrito\/ingredient\/(raw|delete)\//.test(route));
+type SettingsAfterKill = 'kept' | 'erased' | 'regressed';
+
+describe('#677 the open recovers from the disk only', () => {
+  /** Run one open and kill it after (or inside) the `k`-th disk call; then change the
+   * stored settings as a lost update or a torn read would: `erased` (no ops log at all),
+   * or `regressed` (the open record goes back to its first phase and loses its facts). */
+  async function killAt(k: number, inside: boolean, after: SettingsAfterKill) {
+    const w = await world();
+    const settings = settingsDoc();
+    const { ops } = await startApp(settings, w.api);
+    let seen = 0;
+    let killed = false;
+    const dying = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (killed) return new Promise<Response>(() => {});
+      const url = new URL(String(input));
+      const method = init?.method ?? 'GET';
+      if (inside && diskCall(url.pathname, method) && seen + 1 === k) {
+        killed = true;
+        settings.hang();
+        const repo = url.pathname.split('/').slice(4, 7).map(decodeURIComponent).join('/');
+        const source = w.rig.repos.get(repo);
+        const half = <T,>(m: Map<string, T>) => [...m].slice(0, Math.ceil(m.size / 2));
+        if (source && url.pathname.includes('/git/copy/'))
+          w.rig.repos.set(url.searchParams.get('target_path')!, { files: new Map(half(source.files)), meta: structuredClone(source.meta), commits: [], dirty: new Set() });
+        if (source && url.pathname.includes('/git/delete/')) source.files = new Map(half(source.files));
+        return new Promise<Response>(() => {});
+      }
+      const response = await w.rig.fetchFn(input, init);
+      if (diskCall(url.pathname, method) && (seen += 1) === k) {
+        killed = true;
+        settings.hang();
+      }
+      return response;
+    }) as typeof fetch });
+    const logStart = w.rig.log.length;
+    const run = openFromDoor43({ api: dying, ops }, { source: SOURCE, name: 'prueba_b' });
+    await Promise.race([run.then(() => true, () => true), new Promise((r) => setTimeout(() => r(false), 200))]);
+    const openCalls = w.rig.log.slice(logStart).filter((l) => diskCall(l.route, l.method)).length;
+    const stored = structuredClone(settings.get()) as { opsLog?: Array<{ op: string; facts: Record<string, unknown>; report?: unknown }> };
+    if (after === 'erased') delete stored.opsLog;
+    if (after === 'regressed')
+      for (const e of stored.opsLog ?? []) if (e.op === 'open-door43' && !e.report) e.facts = { repoPath: e.facts.repoPath, phase: 'start' };
+    return { w, stored, killed, openCalls, partial: w.rig.repos.has(OPENED) && !sameFiles(w, OPENED) };
+  }
+  const sameFiles = (w: World, repo: string) => {
+    const files = new Map(w.rig.repos.get(repo)!.files);
+    files.delete(MARKER);
+    return JSON.stringify([...files].sort()) === JSON.stringify([...w.rig.remotes.get(URL_)!.files].sort());
+  };
+
+  /** The next start over `stored`, then the translator opens the project if Home lists it.
+   * The project is whole and opens, or the open refuses and the project is gone. Never a
+   * part project that opens. Then the same repository opens again. */
+  async function restartAndCheck(w: World, stored: Record<string, unknown>, label: string) {
+    const doc = settingsDoc();
+    await doc.write(stored);
+    forgetProjectQueues();
+    const { ops } = await startApp(doc, w.api);
+    let opened = false;
+    if (w.rig.repos.has(OPENED)) {
+      // judged before the open: an open legally rewrites some derived files
+      const wholeBefore = sameFiles(w, OPENED);
+      const store = new JournalingStore({ api: w.api, kv: w.kvB, ops });
+      try {
+        await store.open(OPENED);
+        opened = true;
+      } catch (error) {
+        expect((error as { code?: string }).code, label).toBe('open-door43.removed');
+      }
+      store.dispose();
+      if (opened) {
+        expect(wholeBefore, `${label}: the project that opened is whole`).toBe(true);
+        expect(w.rig.repos.get(OPENED)!.files.has(MARKER), `${label}: no marker in an opened project`).toBe(false);
+      } else expect(w.rig.repos.has(OPENED), `${label}: a refused part project is gone`).toBe(false);
+    }
+    if (!opened) {
+      forgetProjectQueues();
+      // the same repository opens again; the one exception is a clone path left with no record
+      try {
+        expect(await openFromDoor43({ api: w.api, ops }, { source: SOURCE, name: 'prueba_b' }), label).toEqual({ repoPath: OPENED });
+        expect(sameFiles(w, OPENED), label).toBe(true);
+      } catch (error) {
+        expect((error as { code?: string }).code, label).toBe('sync.clone-path-exists');
+        expect(w.rig.repos.has(CLONE_PATH), label).toBe(true);
+      }
+    }
+    return opened;
+  }
+
+  it('[disk] kill sweep over every disk call, with the settings kept, erased or regressed: whole and openable, or absent', async () => {
+    const dry = await killAt(Infinity, false, 'kept');
+    const total = dry.openCalls;
+    expect(total).toBeGreaterThanOrEqual(8); // stale delete, clone, move, marker, copy, marker deletes, scratch delete
+    expect(dry.w.rig.log.some((l) => l.method === 'POST' && l.route.includes('/ingredient/raw/') && l.route.includes('tc4-open'))).toBe(true);
+    let opened = 0;
+    let partials = 0;
+    let kills = 0;
+    for (const after of ['kept', 'erased', 'regressed'] as const)
+      for (const inside of [false, true])
+        for (let k = 1; k <= total; k += 1) {
+          const { w, stored, killed, partial } = await killAt(k, inside, after);
+          const label = `kill ${k} inside=${inside} settings=${after}`;
+          if (killed) kills += 1;
+          if (partial) partials += 1;
+          if (await restartAndCheck(w, stored, label)) opened += 1;
+        }
+    expect(kills).toBe(total * 6); // every disk call is killed, after it and inside it, under each settings case
+    expect(opened).toBeGreaterThanOrEqual(1);
+    expect(partials).toBeGreaterThanOrEqual(1); // the sweep reaches part copies at the project path
+  }, 120_000);
+
+  it('[disk] a finished open with failed later cleanups is ok, and the project opens (reverses bench B5)', async () => {
     const w = await world();
     const s = failingSettingsDoc();
     const ops = appOver(s);
@@ -522,84 +729,61 @@ describe('#677 the open never loses a project that opened (review B1, B2)', () =
       if (copied && p === SCRATCH) throw Object.assign(new Error('server 500'), { status: 500 });
       return w.api.deleteRepo(p);
     };
-    // neither witness of the finished copy is on disk: the open does not answer success
-    await expect(openFromDoor43({ api, ops }, { source: SOURCE, name: 'prueba_b' })).rejects.toThrow(/move\.delete-scratch/);
+    expect(await openFromDoor43({ api, ops }, { source: SOURCE, name: 'prueba_b' })).toEqual({ repoPath: OPENED });
     s.fail(false);
-    expect(w.rig.repos.has(SCRATCH)).toBe(true);
-    expect(ops.isOpen('open-door43', OPENED, 'move.copy')).toBe(true);
-    // the project takes no open and no edit in this session, so no edit can be lost
+    const store = new JournalingStore({ api: w.api, kv: w.kvB, ops });
+    await store.open(OPENED);
+    await store.writeBook('TIT', usfm('EDITED BY USER'));
+    await store.commit('user edit (tC4)');
+    store.dispose();
+    forgetProjectQueues();
+    await appOver(s).recover(w.api);
+    expect(w.rig.repos.get(OPENED)?.files.get('TIT.usfm')).toContain('EDITED BY USER');
+  });
+
+  it('[disk] a stale marked scratch copy never deletes a project made later under that name: the open refuses and deletes nothing', async () => {
+    const w = await world();
+    const settings = settingsDoc();
+    const { ops } = await startApp(settings, w.api);
+    // a killed open left its marked scratch copy and no project; the record was lost
+    await w.api.copyRepo(REPO, SCRATCH);
+    await w.api.writeIngredient(SCRATCH, MARKER, '{"open":"_local_/_local_/prueba_b"}', { updateIngredients: false, keepBak: false });
+    // later the translator makes a different project under that name
+    const clock = tickingNow('2026-10-14T09:00:00.000Z');
+    const mine = new JournalingStore({ api: w.api, kv: w.kvB, ops, now: () => clock.advance(7) });
+    // the create makes the folder, and its open meets the gate: refused, nothing deleted
+    await expect(mine.createProject({ content_name: 'Mine', content_abbr: 'prueba_b', content_language_code: 'es', add_book: false, versification: 'eng' }))
+      .rejects.toMatchObject({ code: 'open-door43.pending' });
+    mine.dispose();
+    expect(w.rig.repos.has(OPENED)).toBe(true);
+    expect(w.rig.repos.get(SCRATCH)!.files.has(MARKER)).toBe(true);
+    const before = new Map(w.rig.repos.get(OPENED)!.files);
+    forgetProjectQueues();
     const store = new JournalingStore({ api: w.api, kv: w.kvB, ops });
     await expect(store.open(OPENED)).rejects.toMatchObject({ code: 'open-door43.pending' });
     store.dispose();
-    // the next start removes the project that was not reported, and the open runs again
-    forgetProjectQueues();
-    const ops2 = appOver(s);
-    const resolved = await ops2.recover(w.api);
-    expect(resolved.map((e) => [e.op, e.report?.ok])).toEqual([['open-door43', false]]);
-    expect(w.rig.repos.has(OPENED)).toBe(false);
-    expect(w.rig.repos.has(SCRATCH)).toBe(false);
-    expect(await openFromDoor43({ api: w.api, ops: ops2 }, { source: SOURCE, name: 'prueba_b' })).toEqual({ repoPath: OPENED });
+    expect(w.rig.repos.get(OPENED)!.files).toEqual(before);
   });
+});
 
-  it('[B1] recovery never deletes a project that was there before the open (targetAbsent: false)', async () => {
-    const w = await world();
-    const s = failingSettingsDoc();
-    const ops = appOver(s);
-    await ops.recover(w.api);
-    // a record that a killed open left at move.copy, for a path that held a project already
-    const record = await ops.begin('open-door43', { repoPath: REPO, scratch: '_local_/_archive_/tc4-open--prueba', source: CLONE_PATH });
-    await record.note({ phase: 'move.copy', targetAbsent: false, liveMark: '' });
-    await w.api.copyRepo(REPO, '_local_/_archive_/tc4-open--prueba');
-    const before = new Map(w.rig.repos.get(REPO)!.files);
-    const resolved = await appOver(s).recover(w.api);
-    expect(resolved[0].report).toMatchObject({ op: 'open-door43', ok: false });
-    expect(w.rig.repos.get(REPO)!.files).toEqual(before);
-    expect(w.rig.repos.has('_local_/_archive_/tc4-open--prueba')).toBe(false);
-  });
-
-  it('[B2] a recovery that fails leaves the record open, and the part project takes no open and no edit until a start finishes it', async () => {
-    const w = await world();
-    const s = failingSettingsDoc();
-    const ops = appOver(s);
-    await ops.recover(w.api);
-    const api = Object.create(w.api) as ServerApi;
-    api.copyRepo = async (from: string, to: string, del?: boolean) => {
-      await w.api.copyRepo(from, to, del);
-      if (to === OPENED) await new Promise(() => {}); // killed after the copy, before the next phase
-    };
-    void openFromDoor43({ api, ops }, { source: SOURCE, name: 'prueba_b' });
-    await new Promise((r) => setTimeout(r, 200));
-    expect(w.rig.repos.has(OPENED)).toBe(true);
-    // start 2: the recovery's delete of the project fails once
-    forgetProjectQueues();
-    const flaky = Object.create(w.api) as ServerApi;
-    let n = 0;
-    flaky.deleteRepo = async (p: string) => {
-      if (p === OPENED && n++ === 0) throw Object.assign(new Error('server 500'), { status: 500 });
-      return w.api.deleteRepo(p);
-    };
-    const ops2 = appOver(s);
-    await ops2.recover(flaky);
-    expect(ops2.errors.map((e) => e.op)).toEqual(['open-door43']);
-    expect(w.rig.repos.has(OPENED)).toBe(true);
-    // the project is listed, but it takes no open and no edit
-    const store = new JournalingStore({ api: w.api, kv: w.kvB, ops: ops2 });
-    await expect(store.open(OPENED)).rejects.toMatchObject({ code: 'open-door43.pending' });
-    store.dispose();
-    // and no sync: the next start may delete this part copy
-    const pushesBefore = [...w.rig.repos.keys()].length;
-    const refused = await sync(
-      { api: w.api, kv: w.kvB, door43Server: 'https://qa.door43.org', coverage: {}, ops: ops2 },
-      { repoPath: OPENED, session: { username: 'translator_b', token: 'tok-677' } },
-    );
-    expect([refused.ok, refused.code]).toEqual([false, 'open-door43.pending']);
-    expect([...w.rig.repos.keys()].length).toBe(pushesBefore);
-    // start 3 finishes the recovery: the part project goes, and the repository opens again
-    forgetProjectQueues();
-    const ops3 = appOver(s);
-    const resolved = await ops3.recover(w.api);
-    expect(resolved.map((e) => [e.op, e.report?.ok])).toEqual([['open-door43', false]]);
-    expect(w.rig.repos.has(OPENED)).toBe(false);
-    expect(await openFromDoor43({ api: w.api, ops: ops3 }, { source: SOURCE, name: 'prueba_b' })).toEqual({ repoPath: OPENED });
+describe('#677 the clone-path lock (shared with the sync, #676)', () => {
+  it('calls for one clone path run one at a time, a failure frees the lock, and another path does not wait', async () => {
+    const order: string[] = [];
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    const first = withClonePathLock('qa.door43.org/facilitator/prueba', async () => {
+      order.push('first start');
+      await gate;
+      order.push('first end');
+      throw new Error('first failed');
+    });
+    const second = withClonePathLock('qa.door43.org/facilitator/prueba', async () => void order.push('second'));
+    // control: another clone path does not wait for the first
+    await withClonePathLock('qa.door43.org/facilitator/otra', async () => void order.push('other path'));
+    expect(order).toEqual(['first start', 'other path']);
+    release();
+    await expect(first).rejects.toThrow('first failed');
+    await second;
+    expect(order).toEqual(['first start', 'other path', 'first end', 'second']);
   });
 });

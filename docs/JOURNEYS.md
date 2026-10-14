@@ -318,10 +318,12 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   - the name is in use (`open-door43.name-exists`);
   - the repository has no tC4 journal (`open-door43.no-journal`; use Import, #365);
   - the repository holds an OBS project (`sync.obs-unsupported`, D98).
-- MUST NOT: leave a clone or a part project after a stop. The ops log records each phase, and the
-  next start cleans up (`src/data/journal/opsLog.ts`). Until then, a part project takes no open
-  and no edit (`open-door43.pending`).
-- MUST NOT: delete a project that opened. Recovery keeps the project when its copy finished.
+- MUST NOT: open a part project after a stop. A marker file goes with the copy. Before the
+  project opens or syncs, the app reads the disk: it finishes a whole copy, or it removes a part
+  copy (`open-door43.removed`). The settings document is not used for this
+  (`src/data/journal/opsLog.ts`).
+- MUST NOT: delete a project that opened. When the copy finished, the project stays. A project
+  that is not proved to be the copy is never deleted (`open-door43.pending`).
 - The platform can leave an empty `<host>/<org>/` folder after a clone. It is not a repository,
   and Home does not show it.
 - Round 1 has no branch choice and no private repository (epic #24).

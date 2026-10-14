@@ -91,7 +91,8 @@ export const REFUSAL_CODES = Object.freeze({
   // sync codes above: sync.offline, the clone codes, sync.obs-unsupported and (G2) sync.incoming-invalid.
   'open-door43.name-exists': null, // a project with the chosen name is on this computer already; nothing was written
   'open-door43.no-journal': null, // the repository holds no tC4 journal, so it is not a tC4 project (an import, #365); no project was written
-  'open-door43.pending': null, // an open from Door43 stopped while it copied the project; no open or edit of it until the next start finishes it
+  'open-door43.pending': null, // an open from Door43 of the project runs now, or its marked copy is not proved to be this project; no open
+  'open-door43.removed': null, // an open from Door43 did not finish; the gate removed its part copy, so the project did not open
 });
 
 export const isRefusalCode = (code) => typeof code === 'string' && Object.hasOwn(REFUSAL_CODES, code);

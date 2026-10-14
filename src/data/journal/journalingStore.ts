@@ -50,7 +50,7 @@ import { idbKvStore, type KvStore } from './identity';
 import { sealAction, type JournalEvent } from './seal';
 import { defaultFoldRunner, type FoldRunner } from './foldRunner';
 import { verseConflicts, type VerseConflict } from './verseConflicts';
-import { deletePreviousCopy, type OpsRecorder } from './opsLog';
+import { deletePreviousCopy, guardOpenCopy, type OpsRecorder } from './opsLog';
 import {
   applyStoryState,
   completePartialPins,
@@ -539,10 +539,6 @@ export class JournalingStore implements BurritoStore {
       throw new Refusal('opslog.not-loaded', `the ops log did not load at this start; restart the app before you change ${repoPath}`, { repoPath });
     if (this.ops?.isOpen?.('sync', repoPath))
       throw new Refusal('sync.swap-pending', `the sync of ${repoPath} did not finish; restart the app to finish it`, { repoPath });
-    // #677: an open from Door43 stopped while it copied the project here; the next
-    // start keeps the project or deletes a part copy (opsLog.ts), so no change lands first.
-    if (this.ops?.isOpen?.('open-door43', repoPath, 'move.copy'))
-      throw new Refusal('open-door43.pending', `the open from Door43 of ${repoPath} did not finish; restart the app to finish it`, { repoPath });
   }
 
   // ---- raw read delegation ---------------------------------------------------
@@ -1255,7 +1251,12 @@ export class JournalingStore implements BurritoStore {
     startedAt: string,
     phases: Report[],
   ): Promise<ProjectSummary> {
-    await inProjectQueue(repoPath, async () => this.refusePendingSwap(repoPath)); // #676, before any write
+    await inProjectQueue(repoPath, async () => {
+      this.refusePendingSwap(repoPath); // #676, before any write
+      // #677: a project whose copy from Door43 is not proved finished never opens
+      // (disk only, opsLog.ts `settleOpenCopy`): the gate finishes it or removes it.
+      await guardOpenCopy(this.api, repoPath);
+    });
     const summary = await this.raw.open(repoPath); // binds raw + setCurrentProject
     this.boundRepoPath = repoPath;
     this.journal = new JournalStore({ api: this.api, repoPath, kv: this.kv, now: this.now });

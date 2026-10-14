@@ -43,7 +43,11 @@ import { segmentName, validateActorDoc, validateSegment, type JournalEvent } fro
 import { verifyProjectAgainstJournal } from '../journal/verify';
 import {
   deleteIfPresent,
-  openPathsOf,
+  deleteIngredientIfPresent,
+  guardOpenCopy,
+  OPEN_MARKER,
+  openRunning,
+  openScratchOf,
   type OpenPhase,
   lastSegmentName,
   previousCopyKey,
@@ -162,6 +166,26 @@ const refusalForPush = (error: unknown): Error => {
   return new Refusal('sync.push-failed', `the push failed: ${reason}`, facts);
 };
 
+/** The in-process lock on one fixed clone path (host/org/repo): the calls for one
+ * path run one at a time. #677 (open from Door43) and #676 (sync) clone into the
+ * same fixed path. A local copy until issue-676-sync-shell merges; then the open
+ * uses that branch's exported helper here (the one call site is the clone step of
+ * `openFromDoor43`). */
+const clonePathLocks = new Map<string, Promise<unknown>>();
+/** Tests: a kill ends the process, and with it every lock it held (a restart starts empty). */
+export const forgetClonePathLocks = (): void => clonePathLocks.clear();
+export async function withClonePathLock<T>(clonePath: string, run: () => Promise<T>): Promise<T> {
+  const before = clonePathLocks.get(clonePath) ?? Promise.resolve();
+  const mine = before.then(run, run);
+  const tail = mine.catch(() => undefined);
+  clonePathLocks.set(clonePath, tail);
+  try {
+    return await mine;
+  } finally {
+    if (clonePathLocks.get(clonePath) === tail) clonePathLocks.delete(clonePath);
+  }
+}
+
 /** Clone Door43 `main` of `source` into `repoPath`, by the #673 method: a full
  * clone (no `branch`) to the fixed path `<host>/<org>/<repo>`, then a move.
  * `repoPath` must not exist. `beforeClone` runs after the checks and before the
@@ -205,10 +229,12 @@ export async function cloneProject(
 // `list-local-repos` and Home do not list it.) The new path gives a new actor id
 // (identity.ts), and the clone keeps `origin`, so the card reads "Sync with
 // Door43" (#678: the shared state is `origin`, D84 point 1).
-// The open writes an ops record (`op: 'open-door43'`) and saves each phase before
-// its step, so the next start can clean up after a kill. The phases and their
-// recovery rules are in opsLog.ts (`resolveOpen`). No open starts until the ops
-// log loads at this start (`opslog.not-loaded`).
+// Safety after a stop comes from the disk only: a marker file travels with the copy,
+// and the gate before each open or sync of the project (`guardOpenCopy`) and the
+// recovery at start decide from it (opsLog.ts, the open section, `settleOpenCopy`).
+// The ops record (`op: 'open-door43'`) is for the Report, the Inspector and the
+// clone-path hint. No open starts until the ops log loads at this start
+// (`opslog.not-loaded`).
 // Out of scope: private repositories, a branch choice, OBS projects (D98).
 
 const APP_ORG = '_local_/_local_';
@@ -292,6 +318,41 @@ async function checkOpenCopy(api: ServerApi, scratch: string, repoPath: string):
     throw new Refusal('sync.incoming-invalid', `${failures.length} journal file(s) on Door43 fail the validator`, { failures });
 }
 
+/** Steps 1 to 3 of the marker order (opsLog.ts, the open section): the marker in the
+ * scratch copy, the copy, then the scratch marker's delete. Throws `sync.move-failed`.
+ * `keepScratch` is called when a part copy of this open can stay at `repoPath`: the
+ * marked scratch copy must then stay too, as the only proof that it is not whole. */
+async function copyMarked(
+  api: ServerApi,
+  scratch: string,
+  repoPath: string,
+  startedAt: string,
+  cleanup: (step: () => Promise<void>, what: string) => Promise<boolean>,
+  keepScratch: () => void,
+): Promise<void> {
+  // 1. from here the copy is not finished until step 3
+  await api.writeIngredient(scratch, OPEN_MARKER, JSON.stringify({ open: repoPath, startedAt }), { updateIngredients: false, keepBak: false });
+  // 2. the copy
+  try {
+    await api.copyRepo(scratch, repoPath);
+  } catch (error) {
+    const facts = failureOf(error);
+    // A target that is there already belongs to someone else: the marker goes first,
+    // so that no gate can take that project for this open's part copy.
+    if (/already exists/i.test(facts.reason)) await cleanup(() => deleteIngredientIfPresent(api, scratch, OPEN_MARKER), 'the marker delete');
+    // a part copy at the free path is this open's
+    else if (!(await cleanup(() => deleteIfPresent(api, repoPath), 'the part copy delete'))) keepScratch();
+    throw new Refusal('sync.move-failed', `the copy did not move to ${repoPath}`, { repoPath, ...facts });
+  }
+  // 3. the copy returned ok, so the project is whole: the scratch marker goes first
+  try {
+    await deleteIngredientIfPresent(api, scratch, OPEN_MARKER);
+  } catch (error) {
+    if (!(await cleanup(() => deleteIfPresent(api, repoPath), 'the project delete after a failed marker delete'))) keepScratch();
+    throw new Refusal('sync.move-failed', `the copy at ${repoPath} was not confirmed`, { repoPath, ...failureOf(error) });
+  }
+}
+
 /** Open a project from Door43: put a full copy of `source` at
  * `_local_/_local_/<name>` and answer its path. Throws a Refusal, and then
  * no project is written: `opslog.not-loaded` and `open-door43.name-exists` (checked
@@ -304,85 +365,72 @@ export async function openFromDoor43(deps: OpenDeps, request: { source: CloneSou
   if (!repoPath) throw new Error(`the project name ${JSON.stringify(request.name)} is not a folder name`);
   await openChecks(deps, repoPath);
   if (!(await api.getNetEnabled())) throw new Refusal('sync.offline', NO_CONSENT);
-  const { scratch } = openPathsOf(repoPath);
+  if (openRunning.has(repoPath))
+    throw new Refusal('open-door43.pending', `an open from Door43 of ${repoPath} runs now`, { repoPath, state: 'running' });
+  const scratch = openScratchOf(repoPath);
   const startedAt = new Date().toISOString();
   const source = `${request.source.host}/${request.source.org}/${request.source.repo}`;
+  // The record is for the Report, the Inspector and the clone-path hint. Safety comes
+  // from the marker on disk (opsLog.ts, the open section), so a phase that does not
+  // save never stops the open.
   const record = await deps.ops?.begin('open-door43', { repoPath, scratch, source });
-  /** Save `phase` before its step; a phase that is not saved stops the open before the step. */
-  const phase = async (name: OpenPhase, facts: Record<string, unknown> = {}): Promise<void> => {
-    if ((await (record?.note({ phase: name, ...facts }) ?? true)) === false)
-      throw new Error(`the ops log did not save the phase ${name}; the open stopped before it`);
-  };
-  // A cleanup that fails leaves the record open, so the next start runs it again.
-  let cleanupFailed = false;
-  const cleanup = async (path: string): Promise<void> => {
+  const phase = (name: OpenPhase, facts: Record<string, unknown> = {}): Promise<unknown> =>
+    record?.note({ phase: name, ...facts }) ?? Promise.resolve(true);
+  // A cleanup that fails is logged, and the record stays open, so the next start runs
+  // its recovery (the clone-path hint, a stale scratch copy). Safety is the marker on disk.
+  let allClean = true;
+  const cleanup = async (step: () => Promise<void>, what: string): Promise<boolean> => {
     try {
-      await deleteIfPresent(api, path);
+      await step();
+      return true;
     } catch (error) {
-      cleanupFailed = true;
-      console.error(`open from Door43: ${path} was not deleted; the next start deletes it: ${failureOf(error).reason}`);
+      allClean = false;
+      console.error(`open from Door43: ${what} failed; the next gate or start finishes it: ${failureOf(error).reason}`);
+      return false;
     }
   };
-  // The clone path while it is this open's: from its saved phase until cloneProject returns.
-  // cloneProject can swallow a failed delete of it, so the open deletes it again on a failure.
-  let ownedClone = null as string | null;
-  // A part copy or a clone that stays: the scratch copy stays too, because recovery
-  // reads a missing scratch copy at `move.copy` as "the copy finished" (opsLog.ts).
-  const cleanupAfterFailure = async (): Promise<void> => {
-    if (ownedClone) await cleanup(ownedClone);
-    if (!cleanupFailed) await cleanup(scratch);
-  };
+  // A part copy of this open can stay at the project path: then the marked scratch copy
+  // MUST stay too. It is the only proof on disk that the project is not whole.
+  let keepScratch = false;
+  openRunning.add(repoPath);
   try {
-    await phase('start');
-    await deleteIfPresent(api, scratch);
-    await cloneProject(api, request.source, scratch, (clonePath) =>
-      phase('clone', { clonePath }).then(() => ((ownedClone = clonePath), true), () => false));
-    ownedClone = null;
-    await phase('check');
-    await checkOpenCopy(api, scratch, repoPath);
-    // a project made at this path meanwhile refuses with the name code
-    if (repoPathInUse(await api.listLocalRepos(), repoPath))
-      throw new Refusal('open-door43.name-exists', `a project at ${repoPath} is on this computer already`, { repoPath });
-    // the path is free (checked just now), and recovery reads the copy's last segment
-    await phase('move.copy', { targetAbsent: true, liveMark: lastSegmentName(await api.listPaths(scratch)) });
     try {
-      await api.copyRepo(scratch, repoPath);
+      await phase('start');
+      await deleteIfPresent(api, scratch);
+      // The fixed clone path is shared with the sync (#676): the clone, its move, and the
+      // delete of a clone this open made run inside the one lock on that path.
+      const clonePath = `${request.source.host}/${request.source.org}/${request.source.repo}`;
+      await withClonePathLock(clonePath, async () => {
+        let owned = false; // the clone path is this open's from its phase until cloneProject returns
+        try {
+          await cloneProject(api, request.source, scratch, () => phase('clone', { clonePath }).then(() => ((owned = true), true)));
+        } catch (error) {
+          if (owned) await cleanup(() => deleteIfPresent(api, clonePath), 'the clone delete');
+          throw error;
+        }
+      });
+      await phase('check');
+      await checkOpenCopy(api, scratch, repoPath);
+      // a project made at this path meanwhile refuses with the name code
+      if (repoPathInUse(await api.listLocalRepos(), repoPath))
+        throw new Refusal('open-door43.name-exists', `a project at ${repoPath} is on this computer already`, { repoPath });
+      await phase('move.copy');
+      await copyMarked(api, scratch, repoPath, startedAt, cleanup, () => (keepScratch = true));
     } catch (error) {
-      const facts = failureOf(error);
-      // A target that is there already belongs to someone else: it stays, and recovery must not touch it.
-      if (/already exists/i.test(facts.reason)) await record?.note({ targetAbsent: false });
-      else await cleanup(repoPath); // a part copy at the free path is this open's
-      throw new Refusal('sync.move-failed', `the copy did not move to ${repoPath}`, { repoPath, ...facts });
+      if (!keepScratch) await cleanup(() => deleteIfPresent(api, scratch), 'the scratch delete');
+      if (allClean && !keepScratch) await record?.close(failedReport('open-door43', startedAt, new Date().toISOString(), error, { repoPath, source }));
+      throw error;
     }
-  } catch (error) {
-    await cleanupAfterFailure();
-    if (!cleanupFailed) await record?.close(failedReport('open-door43', startedAt, new Date().toISOString(), error, { repoPath, source }));
-    throw error;
+    // 4. and 5. A failure here leaves the project whole: the next gate or start finishes it.
+    await phase('move.delete-scratch');
+    await cleanup(() => deleteIngredientIfPresent(api, repoPath, OPEN_MARKER), 'the project marker delete');
+    await cleanup(() => deleteIfPresent(api, scratch), 'the scratch delete');
+    if (allClean) await record?.close(okReport('open-door43', startedAt, new Date().toISOString(), { repoPath, source }));
+    return { repoPath };
+  } finally {
+    openRunning.delete(repoPath);
   }
-  const deleted = async (path: string): Promise<boolean> => (await cleanup(path), !cleanupFailed);
-  if (await finishOpen(record, () => deleted(scratch)))
-    await record?.close(okReport('open-door43', startedAt, new Date().toISOString(), { repoPath, source }));
-  return { repoPath };
 }
-
-/** The end of an open whose copy finished: the project is whole. Save
- * `move.delete-scratch`, then delete the scratch copy. Answers true when the record can
- * close ok; false when the scratch delete failed (the record stays open, and the next
- * start deletes the scratch copy). When this phase does not save, the saved phase stays
- * `move.copy`, and recovery keeps the project only because the scratch copy is gone.
- * So when neither is on disk, the next start deletes the project, and the open is not
- * ok: it throws, and the record goes back to `move.copy` in memory too (a failed note
- * changes it there), so the project takes no open, no edit and no sync until that start. */
-async function finishOpen(record: OpsHandle | undefined, deleteScratch: () => Promise<boolean>): Promise<boolean> {
-  const saved = (await (record?.note({ phase: 'move.delete-scratch' }) ?? true)) !== false;
-  const scratchGone = await deleteScratch();
-  if (!saved && !scratchGone) {
-    await record?.note({ phase: 'move.copy' });
-    throw new Error('the ops log did not save the phase move.delete-scratch, and the scratch copy was not deleted; the next start removes the project');
-  }
-  return scratchGone;
-}
-
 
 /** The `resolve` the core reads: the §5.2 resource record of one (tool, book),
  * resolved over the folded pins and the installed resources (D30). */
@@ -446,12 +494,13 @@ export async function sync(deps: SyncDeps, request: SyncRequest): Promise<Report
       return failedReport('sync', at, at,
         new Refusal('sync.swap-pending', `the sync of ${repoPath} did not finish; restart the app to finish it`), { repoPath });
     }
-    // An open from Door43 that stopped at move.copy can leave a part copy here,
-    // which the next start may delete: no sync until that start finishes it.
-    if (ops.isOpen?.('open-door43', repoPath, 'move.copy')) {
+    // #677: a project whose copy from Door43 is not proved finished never syncs
+    // (disk only, opsLog.ts `settleOpenCopy`): the gate finishes it or removes it.
+    try {
+      await guardOpenCopy(deps.api, repoPath);
+    } catch (error) {
       const at = new Date().toISOString();
-      return failedReport('sync', at, at,
-        new Refusal('open-door43.pending', `the open from Door43 of ${repoPath} did not finish; restart the app to finish it`), { repoPath });
+      return failedReport('sync', at, at, error, { repoPath });
     }
     const record = await ops.begin('sync', { repoPath });
     const recorded = await syncRecorded(deps, request, record);

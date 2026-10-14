@@ -1019,5 +1019,6 @@
   "openDoor43.refused.opsNotLoaded": "tC4 tidak dapat membaca catatan pekerjaan yang belum selesai. Tutup tC4 dan buka lagi, lalu coba lagi. Tidak ada proyek yang ditambahkan ke komputer ini.",
   "openDoor43.refused.offline": "Internet mati. Nyalakan internet, lalu coba lagi. Tidak ada proyek yang ditambahkan ke komputer ini.",
   "openDoor43.refused.moveFailed": "tC4 tidak dapat menaruh proyek di tempatnya di komputer ini. Coba lagi. Jika terjadi lagi, minta bantuan. Tidak ada proyek yang ditambahkan ke komputer ini.",
-  "refusal.open-door43.pending": "Aplikasi belum selesai membuka proyek ini dari Door43. Tutup aplikasi dan buka lagi. Lalu aplikasi menyelesaikan pembukaan atau menghapus salinan sebagian. Sampai saat itu, Anda tidak dapat membuka atau mengubah proyek ini."
+  "refusal.open-door43.pending": "Aplikasi sedang membuka proyek ini dari Door43, atau tidak dapat membuktikan bahwa proyek ini salinan lengkap. Aplikasi tidak membuka dan tidak mengubahnya. Tunggu, lalu coba lagi. Jika pesan ini muncul lagi, minta bantuan.",
+  "refusal.open-door43.removed": "Proyek ini belum selesai dibuka dari Door43, jadi aplikasi menghapus salinan sebagian. Buka proyek dari Door43 lagi."
 }
