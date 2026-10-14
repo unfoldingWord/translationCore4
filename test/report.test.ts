@@ -62,7 +62,7 @@ describe('#156 the refusal-code table is closed and bound', () => {
     // sync shell (#676) throws eleven more, and the store and the sync throw opslog.not-loaded.
     const reserved = /^(import\.damaged\.|share\.|export\.unsupported-kind$)/;
     const live = Object.keys(REFUSAL_CODES).filter((code) => !reserved.test(code));
-    expect(live.length).toBe(50);
+    expect(live.length).toBe(49);
     for (const code of live) expect(t(`refusal.${code}`, undefined, ''), code).not.toBe('');
   });
 

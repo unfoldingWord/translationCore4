@@ -1,4 +1,4 @@
-// The sync shell (issue #676; layer 3 of epic #24, D98). The thin part that
+// The sync shell (issue #676; layer 3 of epic #24, D98, D100). The thin part that
 // touches the server, beside the share operation. One sync of one project:
 //
 //   1. checks: a Door43 username and token (`sync.auth-failed`, before any
@@ -18,18 +18,24 @@
 //   6. push. Not a fast-forward: start again at step 2; after three tries stop
 //      with `sync.non-fast-forward` (G4). Never a force push: the platform push
 //      has no force form.
-//   7. the swap (G8): four server calls put the scratch copy at the project's
-//      path; the ops log records each phase (src/data/journal/opsLog.ts names
-//      each phase and its recovery rule). The project keeps its path, so it
+//   7. the apply (G8, D100): the ops log saves the phase `apply`, the project's
+//      sync generation moves on (a store opened before it is stale), and
+//      `applyScratch` makes the project's `ingredients/`, except `audio/`, equal
+//      to the pushed scratch copy: journal files, then derived files, then
+//      removes, then a remake and a commit. The project stays at its path, so it
 //      keeps its actor id (G5: the id is HMAC(secret, repoPath), identity.ts).
-//   8. live: clear the outbox entries the sync carried, record the previous
-//      copy (the next successful checkpoint deletes it), and close the ops
-//      record with the Report (`op: 'sync'`).
+//      src/data/journal/opsLog.ts names each phase and its recovery rule.
+//   8. clear the outbox entries the sync carried, delete the scratch copy, and
+//      close the ops record with the Report (`op: 'sync'`).
 //
 // The sync holds the project's mutation queue for its whole run, so no save of
-// the open store lands between the read of the journal and the swap. After an ok
-// sync the caller MUST open the project again: the open store's fold and
-// `.git` are the old ones (#678).
+// the open store lands between the read of the journal and the apply. After an
+// ok sync the caller MUST open the project again: the open store's fold is the
+// old one (#678).
+//
+// Audio: round 1 never reads or writes `ingredients/audio/` (the one class that
+// can be binary, R-8.7.3). A teammate's audio does not reach this project, and
+// own audio stays where it is (D100).
 //
 // The HTTPS answer for a refused token is recorded: HTTP 500 with
 // `code=Auth (-16)` (docs/evidence/sync-transport-spike-2026-10-13.md, owner run
@@ -37,25 +43,22 @@
 // (403) is [PENDING — the owner's run on the Door43 QA server, #673 step 4];
 // until then `refusalForPush` maps it by the HTTP status in the reason text.
 import { checkpointMessage } from '../checkpoint';
-import { Refusal, failedReport, isUnjournaledIngredient, okReport, projectResources, syncCore, type Report } from '../journal/runtime';
-import { JournalStore, readJournalZipOf } from '../journal/journalStore';
+import { Refusal, failedReport, okReport, projectResources, syncCore, type Report } from '../journal/runtime';
+import { JournalStore } from '../journal/journalStore';
 import { inProjectQueue } from '../journal/journalingStore';
 import { idbKvStore, type KvStore } from '../journal/identity';
 import { segmentName, validateActorDoc, validateSegment, type JournalEvent } from '../journal/seal';
 import { verifyProjectAgainstJournal } from '../journal/verify';
 import {
+  applyScratch,
   deleteIfPresent,
-  lastSegmentName,
-  previousCopyKey,
-  runSwap,
-  syncPathsOf,
+  nextSyncGeneration,
+  readIngredientFiles,
+  scratchPathOf,
   type OpsHandle,
   type OpsRecorder,
-  type SwapPaths,
-  type SwapPhase,
 } from '../journal/opsLog';
 import type { ServerApi } from '../serverApi';
-import { unzipServerZip } from '../serverZip';
 import { resolutionRecord, resolveToolBook, type Coverage, type Tool } from '../resolve';
 import type { ResourcesFile } from '../burritoStore';
 import { NO_CONSENT } from '../internet';
@@ -220,41 +223,12 @@ export const resolveFromCoverage =
     return resolutionRecord(resolveToolBook(resources, tool as Tool, book, coverage)) as unknown as Record<string, unknown>;
   };
 
-/** The files of one repository by ingredient path: the journal in one zipped
- * read (else one read per file), the rest one read per file. `metadata.json`
- * is added when `withMetadata`. */
+/** The files of one repository by ingredient path (`readIngredientFiles`: never
+ * `audio/`), and `metadata.json` when `withMetadata`. */
 async function readFiles(api: ServerApi, repoPath: string, filter: (ipath: string) => boolean, withMetadata: boolean): Promise<Map<string, string>> {
-  // Every file read here is text: BURRITO-SPEC R-8.7.1 makes each shared
-  // non-journal file journal-derived (USFM or JSON) or the one tolerated
-  // unjournaled class `ingredients/audio/` (R-8.7.3), which can be binary. That
-  // class is never read as text: the core never writes or removes it, and
-  // `audioNotCarried` compares it byte for byte.
-  const paths = (await api.listPaths(repoPath)).filter((p) => filter(p) && !isUnjournaledIngredient(p)).sort();
-  const zip = paths.some((p) => p.startsWith(JOURNAL_PREFIX)) ? await readJournalZipOf(api, repoPath) : null;
-  const files = new Map<string, string>();
-  for (const ipath of paths) files.set(ipath, zip?.get(ipath) ?? (await api.readIngredient(repoPath, ipath)));
+  const files = await readIngredientFiles(api, repoPath, filter);
   if (withMetadata) files.set('metadata.json', JSON.stringify(await api.getMetadataRaw(repoPath)));
   return files;
-}
-
-/** The bytes of a repository's `audio/` files, by ingredient path (one zipped read). */
-async function audioBytesOf(api: ServerApi, repoPath: string, paths: string[]): Promise<Map<string, Uint8Array>> {
-  const out = new Map<string, Uint8Array>();
-  if (!paths.some((p) => isUnjournaledIngredient(p))) return out;
-  for (const [name, bytes] of Object.entries(unzipServerZip(await api.readIngredientZipped(repoPath, 'audio'))))
-    if (!name.endsWith('/')) out.set(`audio/${name}`, bytes);
-  return out;
-}
-
-/** G1 for the one binary class (R-8.7.3): the platform has no route that writes
- * bytes, so an own `audio/` file that Door43 main does not hold byte for byte
- * cannot reach the copy. Such a sync refuses, and nothing changes. */
-async function audioNotCarried(api: ServerApi, repoPath: string, scratch: string): Promise<string[]> {
-  const own = await audioBytesOf(api, repoPath, await api.listPaths(repoPath));
-  if (!own.size) return [];
-  const remote = await audioBytesOf(api, scratch, await api.listPaths(scratch));
-  const same = (a: Uint8Array, b: Uint8Array | undefined): boolean => !!b && a.length === b.length && a.every((x, i) => x === b[i]);
-  return [...own].filter(([p, bytes]) => !same(bytes, remote.get(p))).map(([p]) => p).sort();
 }
 
 /** The events of this actor's journal files in `files` (Door43 main): what the name rule must see. */
@@ -273,7 +247,7 @@ async function ownEventsOf(files: Map<string, string>, actor: string): Promise<J
  * Contract for the caller (#678): after an ok sync the caller MUST open the
  * project again. The open `JournalingStore` holds the fold and `.git` of the
  * old folder, and saves that it queued during the sync run on that stale
- * store. A `sync.swap-pending` Report means the swap did not finish: the
+ * store. A `sync.apply-pending` Report means the apply did not finish: the
  * project then takes no open, no edit and no sync until the next start of the
  * app finishes it. */
 export async function sync(deps: SyncDeps, request: SyncRequest): Promise<Report> {
@@ -284,9 +258,9 @@ export async function sync(deps: SyncDeps, request: SyncRequest): Promise<Report
     return failedReport('sync', at, at, new Refusal('sync.auth-failed', 'sign in to Door43 first'), { repoPath });
   }
   return inProjectQueue(repoPath, async () => {
-    // G8: one sync record per project. An open one is a swap that did not finish,
+    // G8: one sync record per project. An open one is an apply that did not finish,
     // and a log that did not load at this start can hide one. With no ops log at
-    // all, no phase is saved and a stopped swap cannot be recovered: refuse too.
+    // all, no phase is saved and a stopped apply cannot be recovered: refuse too.
     const ops = deps.ops;
     if (!ops || ops.recovered !== true) {
       const at = new Date().toISOString();
@@ -296,12 +270,12 @@ export async function sync(deps: SyncDeps, request: SyncRequest): Promise<Report
     if (ops.isOpen?.('sync', repoPath)) {
       const at = new Date().toISOString();
       return failedReport('sync', at, at,
-        new Refusal('sync.swap-pending', `the sync of ${repoPath} did not finish; restart the app to finish it`), { repoPath });
+        new Refusal('sync.apply-pending', `the sync of ${repoPath} did not finish; restart the app to finish it`), { repoPath });
     }
     const record = await ops.begin('sync', { repoPath });
     const recorded = await syncRecorded(deps, request, record);
     const report = withCode(recorded.report);
-    // A swap that stopped leaves its record open, so the next start finishes it (G8).
+    // An apply that stopped leaves its record open, so the next start finishes it (G8).
     // A close that is not saved keeps the project locked in this session (isOpen).
     if (!recorded.open) await record.close(report);
     return report;
@@ -348,19 +322,16 @@ async function syncOnce(
   deps: SyncDeps,
   checked: Awaited<ReturnType<typeof preflight>>,
   mine: Mine,
-  paths: SwapPaths,
+  scratch: string,
   note: (facts: Record<string, unknown>) => Promise<boolean>,
   tries: number,
 ): Promise<{ facts: Record<string, unknown> } | { refused: Report }> {
   const { api } = deps;
   // 2. Door43 main into the scratch copy
-  await deleteIfPresent(api, paths.scratch);
-  await cloneProject(api, checked.source, paths.scratch, (clonePath) => note({ phase: 'clone', clonePath, try: tries }));
+  await deleteIfPresent(api, scratch);
+  await cloneProject(api, checked.source, scratch, (clonePath) => note({ phase: 'clone', clonePath, try: tries }));
   await note({ phase: 'sync' });
-  const remote = await readFiles(api, paths.scratch, () => true, true);
-  const notCarried = await audioNotCarried(api, mine.journal.repoPath, paths.scratch);
-  if (notCarried.length)
-    throw new Refusal('sync.audio-not-carried', 'the project holds audio files that Door43 main does not hold byte for byte', { paths: notCarried });
+  const remote = await readFiles(api, scratch, () => true, true);
 
   // 3. the name action: once per actor (R-8.5.26), the username only
   const outbox = new Map(mine.outbox);
@@ -382,14 +353,14 @@ async function syncOnce(
 
   // 5. write, delete, commit, verify
   for (const [ipath, bytes] of core.write)
-    await api.writeIngredient(paths.scratch, ipath, bytes, { updateIngredients: false, keepBak: false });
-  for (const ipath of core.remove) await api.deleteIngredient(paths.scratch, ipath);
-  const message = checkpointMessage('sync with Door43', await api.gitStatus(paths.scratch));
+    await api.writeIngredient(scratch, ipath, bytes, { updateIngredients: false, keepBak: false });
+  for (const ipath of core.remove) await api.deleteIngredient(scratch, ipath);
+  const message = checkpointMessage('sync with Door43', await api.gitStatus(scratch));
   if (message !== null) {
-    await api.remakeIngredients(paths.scratch);
-    await api.addAndCommit(paths.scratch, message);
+    await api.remakeIngredients(scratch);
+    await api.addAndCommit(scratch, message);
   }
-  const verified = await verifyProjectAgainstJournal(api, paths.scratch);
+  const verified = await verifyProjectAgainstJournal(api, scratch);
   if (!verified.ok)
     throw new Refusal('sync.verify-failed', 'the copy is not the fold of its journal; nothing was pushed', {
       projectionFailure: verified.projectionFailure,
@@ -401,7 +372,7 @@ async function syncOnce(
   // 6. push; never a force push (G4)
   await note({ phase: 'push' });
   try {
-    await api.push(paths.scratch, REMOTE, checked.username, checked.token);
+    await api.push(scratch, REMOTE, checked.username, checked.token);
   } catch (error) {
     throw refusalForPush(error);
   }
@@ -413,21 +384,21 @@ async function syncWithRetries(
   deps: SyncDeps,
   checked: Awaited<ReturnType<typeof preflight>>,
   mine: Mine,
-  paths: SwapPaths,
+  scratch: string,
   note: (facts: Record<string, unknown>) => Promise<boolean>,
   failed: (error: unknown, facts?: Record<string, unknown>) => { report: Report; open: boolean },
 ): Promise<{ facts: Record<string, unknown> } | { result: { report: Report; open: boolean } }> {
   const { api } = deps;
   for (let tries = 1; ; tries += 1) {
     try {
-      const once = await syncOnce(deps, checked, mine, paths, note, tries);
+      const once = await syncOnce(deps, checked, mine, scratch, note, tries);
       if ('refused' in once) {
-        await deleteIfPresent(api, paths.scratch);
+        await deleteIfPresent(api, scratch);
         return { result: { report: once.refused, open: false } };
       }
       return { facts: { ...once.facts, tries } };
     } catch (error) {
-      await deleteIfPresent(api, paths.scratch).catch(() => {});
+      await deleteIfPresent(api, scratch).catch(() => {});
       if ((error as { code?: string } | null)?.code === 'sync.non-fast-forward' && tries < SYNC_TRIES) continue;
       // a clone path left behind: keep the record (phase clone), so the next start deletes it
       if ((error as { facts?: { clonePathLeft?: boolean } } | null)?.facts?.clonePathLeft) return { result: { ...failed(error, { tries }), open: true } };
@@ -445,7 +416,7 @@ async function syncRecorded(
   const { api } = deps;
   const { repoPath } = request;
   const kv = deps.kv ?? idbKvStore();
-  const paths = syncPathsOf(repoPath);
+  const scratch = scratchPathOf(repoPath);
   const note = (facts: Record<string, unknown>): Promise<boolean> => record.note(facts);
   const failed = (error: unknown, facts: Record<string, unknown> = {}): { report: Report; open: boolean } => ({
     report: failedReport('sync', startedAt, new Date().toISOString(), error, { repoPath, ...facts }),
@@ -470,50 +441,32 @@ async function syncRecorded(
   }
 
   // steps 2 to 6; a push that is not a fast-forward starts again (G4)
-  const tried = await syncWithRetries(deps, checked, mine, paths, note, failed);
+  const tried = await syncWithRetries(deps, checked, mine, scratch, note, failed);
   if ('result' in tried) return tried.result;
   const { facts } = tried;
 
-  // 7. the swap (G8): every phase is in the ops log before its step. The first
-  // phase also saves the live mark, which recovery reads (opsLog.ts header).
-  const liveMark = lastSegmentName(await api.listPaths(repoPath));
-  let phase: SwapPhase = 'swap.copy-previous';
-  const swapNote = (next: SwapPhase): Promise<boolean> => {
-    phase = next;
-    return note({ phase: next, liveMark });
-  };
+  // 7. the apply (G8, D100): the phase is in the ops log before the first write
+  // to the project; recovery only goes forward from it (opsLog.ts header).
+  if (!(await note({ phase: 'apply' }))) {
+    await deleteIfPresent(api, scratch).catch(() => {});
+    return failed(new Error('the ops log did not save the apply phase; the project did not change'), { tries: facts.tries });
+  }
+  nextSyncGeneration(repoPath); // G1: a store opened before the apply is stale
   try {
-    await runSwap(api, paths, 'swap.copy-previous', swapNote);
-  } catch (error) {
-    // A server failure (not a kill) in this run. Going forward later is valid only
-    // when nothing can change the live project meanwhile (opsLog.ts header).
-    if (phase === 'swap.copy-previous') {
-      // the live project is still whole at its path: go back now. The go-back
-      // phase is saved BEFORE the first delete, so a stop after it finishes the
-      // go-back at the next start, never a forward swap without its scratch copy.
-      // When it is not saved, nothing is deleted, and the record stays open: the
-      // project stays locked until the next start goes forward from the saved phase.
-      if (!(await note({ phase: 'swap.go-back', liveMark }))) {
-        const pending = new Refusal('sync.swap-pending', 'the swap stopped, and the ops log did not save the go-back; the next start of the app finishes it', failureOf(error));
-        return { ...failed(pending, { tries: facts.tries, phase }), open: true };
-      }
-      await deleteIfPresent(api, paths.previous).catch(() => {});
-      await deleteIfPresent(api, paths.scratch).catch(() => {});
-      const refusal = new Refusal('sync.move-failed', 'the swap stopped before the project changed; the project is as it was', failureOf(error));
-      return failed(refusal, { tries: facts.tries, phase: 'swap.go-back' });
-    }
-    // the live path was touched: run the rest of the swap once more
+    await applyScratch(api, repoPath, scratch);
+  } catch {
+    // a server failure in this run: run the apply once more (it compares, then writes)
     try {
-      await runSwap(api, paths, phase, swapNote);
+      await applyScratch(api, repoPath, scratch);
     } catch (again) {
-      const refusal = new Refusal('sync.swap-pending', 'the swap did not finish; the next start of the app finishes it', failureOf(again));
-      return { ...failed(refusal, { tries: facts.tries, phase }), open: true };
+      const refusal = new Refusal('sync.apply-pending', 'the apply did not finish; the next start of the app finishes it', failureOf(again));
+      return { ...failed(refusal, { tries: facts.tries, phase: 'apply' }), open: true };
     }
   }
 
-  // 8. live
-  await note({ phase: 'live' });
+  // 8. the outbox entries are live now; the scratch copy goes before the close, so
+  // a stop between the two finds it gone and closes the record as finished
   await mine.journal.clearCarried(mine.outbox);
-  await kv.set(previousCopyKey(repoPath), paths.previous);
+  await deleteIfPresent(api, scratch);
   return { report: okReport('sync', startedAt, new Date().toISOString(), { ...facts, repoPath }), open: false };
 }

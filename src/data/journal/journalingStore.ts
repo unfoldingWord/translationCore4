@@ -50,7 +50,7 @@ import { idbKvStore, type KvStore } from './identity';
 import { sealAction, type JournalEvent } from './seal';
 import { defaultFoldRunner, type FoldRunner } from './foldRunner';
 import { verseConflicts, type VerseConflict } from './verseConflicts';
-import { deletePreviousCopy, swapGenerationOf, type OpsRecorder } from './opsLog';
+import { syncGenerationOf, type OpsRecorder } from './opsLog';
 import {
   applyStoryState,
   completePartialPins,
@@ -234,7 +234,7 @@ const spanMapping = (oldSlots: string[], newSlots: string[]): Array<{ from: stri
 
 const projectQueues = new Map<string, Promise<unknown>>();
 /** Run `fn` after every queued mutation of `repoPath` settles. Exported for the
- * sync (#676), which holds the project for its whole run, swap included. */
+ * sync (#676), which holds the project for its whole run, apply included. */
 export const inProjectQueue = <T>(repoPath: string, fn: () => Promise<T>): Promise<T> => {
   const prior = projectQueues.get(repoPath) ?? Promise.resolve();
   const run = prior.then(fn, fn);
@@ -523,31 +523,30 @@ export class JournalingStore implements BurritoStore {
   private queue<T>(fn: () => Promise<T>): Promise<T> {
     const repoPath = this.mustRepo();
     return inProjectQueue(repoPath, () => {
-      this.refusePendingSwap(repoPath);
-      // #676 (G1): a store opened before a swap holds the old fold and `.git`; it
-      // takes no edit and no checkpoint after the swap (so it never deletes the
-      // previous copy). The caller opens the project again.
-      if (this.openedGeneration !== swapGenerationOf(repoPath))
+      this.refusePendingSync(repoPath);
+      // #676 (G1): a store opened before a sync's apply holds the old fold; it
+      // takes no edit and no checkpoint after it. The caller opens the project again.
+      if (this.openedGeneration !== syncGenerationOf(repoPath))
         throw new Refusal('sync.project-replaced', `${repoPath} was synced after this store opened it; open it again`, { repoPath });
       return fn();
     });
   }
 
-  /** The swap generation of the project when this store opened it (#676). */
+  /** The sync generation of the project when this store opened it (#676). */
   private openedGeneration = 0;
 
-  /** #676 (G8): a sync whose swap did not finish leaves its ops record open;
+  /** #676 (G8): a sync whose apply did not finish leaves its ops record open;
    * until `recover()` finishes it at the next start, the project takes no open
    * and no edit. When the log did not load at this start, an open record cannot
    * be seen, so NO project opens or takes an edit (an open writes too: it replays
    * the outbox and installs derived files) until a start loads it. A recorder
    * that does not say it recovered is not loaded. Checked inside the project
    * queue, so a sync that is running finishes first. */
-  private refusePendingSwap(repoPath: string): void {
+  private refusePendingSync(repoPath: string): void {
     if (this.ops && this.ops.recovered !== true)
       throw new Refusal('opslog.not-loaded', `the ops log did not load at this start; restart the app before you change ${repoPath}`, { repoPath });
     if (this.ops?.isOpen?.('sync', repoPath))
-      throw new Refusal('sync.swap-pending', `the sync of ${repoPath} did not finish; restart the app to finish it`, { repoPath });
+      throw new Refusal('sync.apply-pending', `the sync of ${repoPath} did not finish; restart the app to finish it`, { repoPath });
   }
 
   // ---- raw read delegation ---------------------------------------------------
@@ -1261,7 +1260,7 @@ export class JournalingStore implements BurritoStore {
     phases: Report[],
   ): Promise<ProjectSummary> {
     // #676 (G8): the check, the reads and the writes of an open are ONE turn of
-    // the project queue, so no sync swap runs between them.
+    // the project queue, so no sync apply runs between them.
     return inProjectQueue(repoPath, () => this.openInQueue(repoPath, options, hooks, startedAt, phases));
   }
 
@@ -1272,7 +1271,7 @@ export class JournalingStore implements BurritoStore {
     startedAt: string,
     phases: Report[],
   ): Promise<ProjectSummary> {
-    this.refusePendingSwap(repoPath);
+    this.refusePendingSync(repoPath);
     const summary = await this.raw.open(repoPath); // binds raw + setCurrentProject
     this.boundRepoPath = repoPath;
     this.journal = new JournalStore({ api: this.api, repoPath, kv: this.kv, now: this.now });
@@ -1287,7 +1286,7 @@ export class JournalingStore implements BurritoStore {
     // ts until that read completes (R-8.2.4).
     await this.journal.open({ ratchet: 'deferred' });
     const facts = await this.recoverAndConverge(options, hooks);
-    this.openedGeneration = swapGenerationOf(repoPath);
+    this.openedGeneration = syncGenerationOf(repoPath);
     this.lastReport = okReport('open', startedAt, this.isoNow(), { ...facts, phases });
     return summary;
   }
@@ -3209,9 +3208,6 @@ export class JournalingStore implements BurritoStore {
     try {
       const facts = await this.checkpoint(message);
       this.lastReport = okReport('checkpoint', startedAt, this.isoNow(), facts);
-      // #676: the live project saved, so the copy a sync swapped out can go.
-      await deletePreviousCopy(this.api, this.kv, this.mustRepo()).catch((error: unknown) =>
-        console.error(`sync: the previous copy was not deleted: ${String((error as Error)?.message ?? error)}`));
     } catch (error) {
       this.lastReport = failedReport('checkpoint', startedAt, this.isoNow(), error, { message });
       throw error;

@@ -115,7 +115,7 @@ const groupSegmentPaths = (paths: string[]): Map<string, string[]> => {
  * directory yet) or the body does not unzip; the caller then falls back to the
  * per-file reads, which are authoritative either way. The sync (#676) reads the
  * project and its scratch copy with it too. */
-export const readJournalZipOf = async (api: ServerApi, repoPath: string): Promise<Map<string, string> | null> => {
+export const readJournalZipOf = async (api: Pick<ServerApi, 'readIngredientZipped'>, repoPath: string): Promise<Map<string, string> | null> => {
   let entries: Record<string, Uint8Array>;
   try {
     entries = unzipServerZip(await api.readIngredientZipped(repoPath, 'checking/journal'));
@@ -539,7 +539,7 @@ export class JournalStore {
   }
 
   /** Clear the staged intents whose exact bytes a sync made live (#676: only
-   * after the swap). A key that now holds other bytes is kept. */
+   * after the apply). A key that now holds other bytes is kept. */
   async clearCarried(carried: Map<string, string>): Promise<void> {
     for (const [ipath, bytes] of carried) {
       const key = `${this.outboxPrefix}${segmentTs(ipath.slice(this.segmentsDir.length + 1))}`;
