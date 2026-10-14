@@ -12,7 +12,7 @@ import '../../ds/tokens/print.css';
 import { PAGE_MARGIN_MM, PAPER_MM, PrintParts, printVariables } from './PrintBook.jsx';
 
 const px = (mm) => (mm * 96) / 25.4;
-const PAGE_NUMBER = { position: 'absolute', left: 0, right: 0, bottom: px(PAGE_MARGIN_MM.bottom) / 2 - 7, textAlign: 'center', fontFamily: '"Charis SIL", "PT Serif", Georgia, "Times New Roman", serif', fontSize: 11, color: '#626F78' };
+const PAGE_NUMBER = { position: 'absolute', insetInline: 0, bottom: px(PAGE_MARGIN_MM.bottom) / 2 - 7, textAlign: 'center', fontFamily: '"Charis SIL", "PT Serif", Georgia, "Times New Roman", serif', fontSize: 11, color: '#626F78' };
 // A sheet fills column by column; the last balances its columns, as the PDF's last page does.
 const FLOW = { flex: 1, minHeight: 0, columnFill: 'auto', overflow: 'hidden' };
 
@@ -111,7 +111,7 @@ function Sheet({ pageSetup, dir, title, number, children, sheetRef, hidden = fal
     position: hidden ? 'absolute' : 'relative',
     background: '#fff',
     ...(hidden
-      ? { visibility: 'hidden', pointerEvents: 'none', left: 0, top: 0 }
+      ? { visibility: 'hidden', pointerEvents: 'none', insetInlineStart: 0, top: 0 }
       : { boxShadow: 'var(--shadow-page)', borderRadius: 4, margin: '0 auto 24px' }),
   };
   return (

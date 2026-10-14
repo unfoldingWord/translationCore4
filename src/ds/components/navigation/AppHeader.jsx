@@ -12,8 +12,9 @@ import { Rule } from '../primitives/Rule.jsx';
 import { StatusDot } from '../core/StatusDot.jsx';
 
 /** The 56px application title bar: brand, project chip, mode switch, save state.
- * tC4 local: `switchTitle` localizes the project chip's tooltip. */
-export function AppHeader({ tone = 'ocean', logoSrc, projectInitials, projectName, projectMeta, switchTitle = 'Switch project', center, right, onBrandClick, onProjectClick }) {
+ * tC4 local: `switchTitle` localizes the project chip's tooltip; `projectNameDir` is the
+ * direction of the project's own name (#657). */
+export function AppHeader({ tone = 'ocean', logoSrc, projectInitials, projectName, projectNameDir, projectMeta, switchTitle = 'Switch project', center, right, onBrandClick, onProjectClick }) {
   const dark = tone === 'ocean';
   /* Everything that used to be a `dark ? … : …` ternary is now the surface
      context doing its job: the Surface paints Ocean, sets data-on="dark", and
@@ -49,7 +50,7 @@ export function AppHeader({ tone = 'ocean', logoSrc, projectInitials, projectNam
                 <Text role="captionStrong" style={{ color: 'var(--tone-on-fill)' }}>{projectInitials}</Text>
               </Surface>
               <Stack direction="column" gap={1} style={{ textAlign: 'start' }}>
-                <Text role="ui" tone="strong" truncate>{projectName}</Text>
+                <Text role="ui" tone="strong" truncate dir={projectNameDir}>{projectName}</Text>
                 <Text role="overline" tone="muted" truncate style={{ textTransform: 'none', letterSpacing: 'var(--track-11)' }}>{projectMeta}</Text>
               </Stack>
             </Stack>

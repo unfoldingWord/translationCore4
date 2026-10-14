@@ -4691,8 +4691,13 @@ const sameRegister = (a, b) => {
     // the union of a v: 1 seed and the v: 2 story events folds: books AND stories, side by side
     const union = fold([...s.events, v2Frame, v2Ref]);
     const sideBySide = union.books.TIT.usfm === s.books.TIT && union.stories[1].frames[1] === 'x' && union.stories[1].ref === 'x';
-    check('JC-33e: version policy — a v: 1 segment set folds exactly as before (books project, no story); the two story ops validate at v: 2 and REFUSE at v: 1 naming v: 2; v: 3 (the D98 superset) accepts them and v: 4 is an unknown version; a v: 2 envelope on a v: 1 op is legal (v: 2 is a superset) and continues its head without a fork; a union of v: 1 book events and v: 2 story events folds books and stories side by side [covers R-10.7.1 R-8.5.1]',
-      v1Only && v2ok && v1Refuses && v3Refuses && superset && sideBySide);
+    // v: 3 is a superset of v: 2 (R-8.5.1): the SAME note on a story decision key (no
+    // generation) validates and folds at v: 2 and at v: 3 (Frank review of #683)
+    const obsNote = (v) => ev({ v, op: 'note.add', actor: A, ts: t(9, 0, A), target: { decisionKey: 'translationNotes|tn01|obs|1|1|1' }, text: 'n' });
+    const obsNoteFolds = (v) => validateEvent(obsNote(v)) === null && fold([obsNote(v)]).notes.length === 1;
+    const v3StoryNote = obsNoteFolds(2) && obsNoteFolds(3);
+    check('JC-33e: version policy — a v: 1 segment set folds exactly as before (books project, no story); the two story ops validate at v: 2 and REFUSE at v: 1 naming v: 2; v: 3 (the D98 superset) accepts them, and a note on an `obs` decision key validates and folds at v: 2 and v: 3 alike; v: 4 is an unknown version; a v: 2 envelope on a v: 1 op is legal (v: 2 is a superset) and continues its head without a fork; a union of v: 1 book events and v: 2 story events folds books and stories side by side [covers R-10.7.1 R-8.5.1]',
+      v1Only && v2ok && v1Refuses && v3Refuses && v3StoryNote && superset && sideBySide, JSON.stringify({ v2: validateEvent(obsNote(2)), v3: validateEvent(obsNote(3)) }));
   }
 }
 

@@ -116,7 +116,7 @@ function SourceCell({ s, bookCode, keys, sourceModel, paneFocus, label }) {
       {isSourceAbsent(sourceModel) ? (
         <p style={italic}>{t(absenceMessageKey(sourceModel))}</p>
       ) : paragraphsOf(sourceKeysFor(keys, chapterVerses), chapterVerses).map((para) => (
-        <p key={para[0]} dir={isOrig ? (ot ? 'rtl' : 'ltr') : undefined} lang={isOrig ? (ot ? 'hbo' : 'el') : undefined}
+        <p key={para[0]} data-testid="draft-source-text" dir={isOrig ? (ot ? 'rtl' : 'ltr') : undefined} lang={isOrig ? (ot ? 'hbo' : 'el') : undefined}
           style={{ direction: isOrig ? (ot ? 'rtl' : 'ltr') : 'ltr', textAlign: 'start', fontFamily: isOrig ? (ot ? 'var(--font-hebrew)' : 'var(--font-greek)') : 'var(--font-scripture)', fontSize: 'var(--fs-verse-lg)', lineHeight: 'var(--lh-verse-lg)', color: 'var(--text-scripture)', margin: '0 0 10px' }}>
           {para.map((k) => {
             const srcVerse = chapterVerses[String(k)];
@@ -198,7 +198,7 @@ function TargetCell({ s, verses, keys, byKey, span, dir, type, editType, actions
             )}
           </div>
           {targetParagraphs(verses).map((para) => (
-            <p key={para[0].n} style={{ direction: dir, textAlign: 'start', ...type, color: 'var(--text-scripture)', margin: '0 0 10px', ...indentStyle(paragraphLevel(para)) }}>
+            <p key={para[0].n} data-testid="draft-target-text" style={{ direction: dir, textAlign: 'start', ...type, color: 'var(--text-scripture)', margin: '0 0 10px', ...indentStyle(paragraphLevel(para)) }}>
               {para.map((v) => {
                 const number = <sup style={SUP}>{v.n}</sup>;
                 const verse = <TargetVerse v={v} chapter={s.chapter} editing={verseOpen?.n === v.n} actions={actions} mode={mode} />;
