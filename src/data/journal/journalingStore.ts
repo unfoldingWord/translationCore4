@@ -2310,20 +2310,44 @@ export class JournalingStore implements BurritoStore {
       if (!conflict) throw new Error(`resolveVerse(${key}): the fold shows no verse-text conflict on this key`);
       const kept = conflict.versions.find((v) => v.ts === keptHead);
       if (!kept) throw new Error(`resolveVerse(${key}): ${keptHead} is not a head of this conflict`);
-      const event: JournalEvent = {
+      const ts = journal.issueTs();
+      const eventOn = (base: string): JournalEvent => ({
         v: 1,
         op: 'text.verse.set',
         actor: journal.actorId,
-        ts: journal.issueTs(),
-        // the projected (provisional) head is the state this person reviewed
-        base: foldOut.headsTs[key],
+        ts,
+        base,
         supersedes: conflict.versions.map((v) => v.ts),
         book: conflict.book,
         chapter: conflict.chapter,
         verse: conflict.verse,
         text: kept.text,
-      };
-      await this.publishAndRegenerate([event], [bookIpath(conflict.book)]);
+      });
+      // The base must be a head whose structural ancestry holds every other head,
+      // or the fold refuses to supersede the heads off it (§8.3 ancestry rule): a
+      // renumber's post-image against an edit made before the renumber is such a
+      // case. The fold decides: try the projected (provisional) head first, the
+      // state this person reviewed, then the others, newest first, and publish
+      // the first edit whose fold has no conflict on the key, refuses no
+      // supersede, and projects the kept text. Usually one dry fold.
+      const candidates = [foldOut.headsTs[key], ...conflict.versions.map((v) => v.ts).reverse()]
+        .filter((base, i, all) => all.indexOf(base) === i);
+      const vkey = `${conflict.chapter}:${conflict.verse}`;
+      for (const base of candidates) {
+        const event = eventOn(base);
+        const after = await this.runner.fold([...this.events, normalizeEvent(event)]);
+        const resolved =
+          !after.forks.some((f) => f.key === key) &&
+          !after.supersedeRefused.some((r) => r.by === ts) &&
+          after.books[conflict.book]?.verses[vkey] === kept.text;
+        if (!resolved) continue;
+        await this.publishAndRegenerate([event], [bookIpath(conflict.book)]);
+        return;
+      }
+      throw new Error(
+        `resolveVerse(${key}): no single verse edit resolves this conflict — its versions lie on ` +
+          `structural branches that do not meet (a structural conflict on ${conflict.book})`,
+      );
     });
   }
 

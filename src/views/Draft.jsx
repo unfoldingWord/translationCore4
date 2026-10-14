@@ -207,7 +207,7 @@ function TargetCell({ s, verses, keys, byKey, span, dir, type, editType, actions
                 return (
                   <React.Fragment key={v.n}>
                     {conflict
-                      ? <><ConflictVerse conflict={conflict} number={number} onReview={actions.openConflictReview}>{verse}</ConflictVerse>{' '}</>
+                      ? <><ConflictVerse conflict={conflict} number={number} onReview={actions.openConflictReview} disabled={s.editing != null}>{verse}</ConflictVerse>{' '}</>
                       : <>{number}{verse}</>}
                   </React.Fragment>
                 );
@@ -328,7 +328,7 @@ export default function Draft() {
           <IconButton title={t('draft.toggleRail')} onClick={actions.toggleRail}><RailIcon /></IconButton>
           <h2 style={{ fontSize: 'var(--fs-title)', letterSpacing: 'var(--track-17)', margin: 0 }}>{bookName(book.code)} {s.chapter}</h2>
           <div style={{ flex: 1 }} />
-          <ConflictsButton conflicts={s.verseConflicts} onClick={() => actions.openConflictReview()} />
+          <ConflictsButton conflicts={s.verseConflicts} onClick={() => actions.openConflictReview()} disabled={s.editing != null} />
           <HelpsToggleButton />
         </div>
 
