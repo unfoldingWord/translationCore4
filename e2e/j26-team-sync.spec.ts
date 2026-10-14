@@ -26,7 +26,7 @@ import { execFileSync } from 'node:child_process';
 import type { BrowserContext, Page, TestInfo } from '@playwright/test';
 import { test, expect } from './helpers/test';
 import { SEEDED_PROJECT, RIG_LOCAL_REPOS, TC4_ROOT, rigRepo, writePlace } from './helpers/rig';
-import { QA_SERVER, dropOrigin, fakeShare, gateOff, git, shot, type BareRemote } from './helpers/door43Share';
+import { QA_SERVER, dropOrigin, expectConvergedOpen, expectIngredientsEqualMain, fakeShare, gateOff, git, opsIds, shot, type BareRemote } from './helpers/door43Share';
 import { verifyAllJournaledProjects } from './helpers/journal';
 import { lane } from './lane.mjs';
 import { fold } from '../journal/fold.mjs';
@@ -222,7 +222,7 @@ async function openFromDoor43(page: Page, remote: BareRemote, t: Translator): Pr
   await page.getByTestId('net-confirm').click();
   await expect(page.getByTestId('open-door43-modal')).toHaveCount(0, { timeout: 120_000 });
   await expect(page.getByTestId(`share-${idOf(t)}`)).toHaveText('Sync with Door43');
-  expect(git(rigRepo(t.repo), 'rev-parse', 'HEAD')).toBe(remote.main());
+  expectIngredientsEqualMain(remote.bare, t.repo);
 }
 
 /** The counts of a sync result. */
@@ -421,7 +421,8 @@ test.describe('J26 — three translators sync one project through Door43', () =>
       await syncAs(page, A);
       expect(await counts(page)).toEqual({ received: 0, newest: 0, conflicts: 0 });
       expect(remote.main()).not.toBe(mainBefore);
-      expect(git(rigRepo(A.repo), 'rev-parse', 'HEAD')).toBe(remote.main());
+      // D100 (#676): the sync applies main's tree in place; A's HEAD is not main's
+      expectIngredientsEqualMain(remote.bare, A.repo);
       await page.getByTestId('sync-dismiss').click();
     });
 
@@ -441,8 +442,11 @@ test.describe('J26 — three translators sync one project through Door43', () =>
     }
 
     await test.step('5. all three projects show the same text', async () => {
+      const beforeOpens = opsIds();
       for (const t of TRANSLATORS) {
         await openTitus(page, t);
+        // the first open after the last sync classifies converged: the disk is the fold of the journal
+        await expectConvergedOpen(idOf(t), beforeOpens);
         for (const event of [A11, B12, C13]) await expect(page.getByText(event.text!.trim(), { exact: true })).toBeVisible();
         await expect(page.getByText(keptText, { exact: true })).toBeVisible();
         await expect(page.getByTestId('conflicts-review')).toHaveCount(0);
@@ -481,7 +485,8 @@ test.describe('J26 — three translators sync one project through Door43', () =>
     }
     for (const [p, bytes] of [...a].sort(([x], [y]) => (x < y ? -1 : 1))) lines.push(`${bytes.length}\t${p}`);
     for (const t of TRANSLATORS) {
-      expect(git(rigRepo(t.repo), 'rev-parse', 'HEAD'), `${t.label} HEAD`).toBe(remote.main());
+      // D100 (#676): each project's ingredients/ (but audio/) are Door43 main's tree, byte for byte
+      expectIngredientsEqualMain(remote.bare, t.repo);
       const forks = foldOf(t.repo).forks.filter((f) => f.key.startsWith('text|'));
       expect(forks, `${t.label}: no verse has a conflict`).toEqual([]);
     }

@@ -157,6 +157,12 @@ files, and no verse has a conflict` compares every file of the three repositorie
 It also checks that each `HEAD` is the same as Door43 `main`, and that the fold of each journal
 has no `text|` fork. The file list (bytes, path), the same in the three projects:
 
+Note (2026-10-14, D100): a sync now applies Door43 `main` in place (#676), so the `HEAD` of a project
+is not `main`. The test no longer checks `HEAD`. It checks that the `ingredients/` files of each
+project (but `audio/`) are the same as the tree of Door43 `main`, byte for byte. Step 5 also checks
+that the first open of each project after the last sync is `converged`. The run below is the run
+at `58a69e8`, before this change.
+
 ```
 9	.gitignore
 744	ingredients/JON.usfm
