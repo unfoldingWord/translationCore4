@@ -295,6 +295,10 @@ export default function Draft() {
   const effectiveMode = crossFrame ? 'verse' : mode;
   useLoadHelps();
 
+  // #679: the conflict review shows in Translate, in place of the two columns.
+  // It needs no loaded book: a keep unloads the book while it runs.
+  if (s.conflictReview) return <ConflictReview />;
+
   if (!book) {
     return (
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-tertiary)', fontSize: 'var(--fs-ui)' }}>
@@ -302,9 +306,6 @@ export default function Draft() {
       </div>
     );
   }
-
-  // #679: the conflict review shows in Translate, in place of the two columns.
-  if (s.conflictReview) return <ConflictReview />;
 
   const verses = book.byChapter[String(s.chapter)] || [];
   const conflictAt = conflictsOfBook(s.verseConflicts, book.code);

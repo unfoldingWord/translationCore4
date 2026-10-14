@@ -27,7 +27,7 @@ import { mapReference } from './data/mapReference';
 import { seedBookFromSource } from './data/seed';
 import { SOURCE_MISSING, SOURCE_NOT_INSTALLED, isSourceAbsent } from './data/sourceState';
 import { BOOK_NAMES, bookName } from './data/bookNames';
-import { GATEWAYS, gatewayKey, gatewayDisplayName, DCS_HOST, orgForRepoName } from './data/gateways';
+import { GATEWAYS, gatewayKey, gatewayDisplayName, DCS_HOST, orgForRepoName, languageSetDir } from './data/gateways';
 import { dcsReleases, fetchAndInstallPin, latestReleaseTag, identifyExistingInstall, releaseCommitSha, rezip, unwrapExport, verifySideload } from './data/resourceFetch';
 import { isNotFoundError } from './data/serverApi';
 import { readInstalled, recordInstalled, coverageFromLocal, languageSetFromInstalled, gatewayBiblesFromInstalled, mergeOptionalPins, isPinLocal, missingPinCount, unsatisfiedProjectPinFor, pinsPreferringInstalled, localRepoPathFromRepoPath, installedPathFor, discoverOnDisk, flavorOfMetadata } from './data/installed';
@@ -2505,108 +2505,101 @@ async function performLoadConflicts({ project, stateRef, dispatch, conflictsGen,
   dispatch({ type: 'setConflicts', id: project.id, counts: read ? conflictCounts(read.conflicts) : null, team: read ? read.team : null });
 }
 
-/** #679 "Keep this version": every pending save is on disk first, then the
- * store writes the one resolving verse edit. The open book is then installed
- * from the store's fold, so Translate shows the kept text and the next save
- * starts from it — never from the text before the keep, which a later save
- * would write back over the kept version. Returns false when a save failed
- * (the save indicator shows it) or the keep was not written (the review shows
- * it). */
+/** #679 "Keep this version". A keep never meets a loaded book: the editor's
+ * copy of the book (the verse scheduler's buffer, rawRef, s.bookRaw) is what a
+ * save diffs against the fold, so any copy older than the keep writes the
+ * replaced version back (bench rounds 1–6). So: every pending save is on disk
+ * first (a failure refuses the keep), the book of the verse is unloaded (the
+ * review has no editor), the store writes the keep, and the book loads again
+ * through the one editor load path (ctx.reloadBook → openBook →
+ * loadEditorBook), which first publishes any action the store staged and could
+ * not publish. Only THEN is the outcome decided, once, from the fold: the
+ * list, the Home count, and kept or not. The chosen version is the one the
+ * person saw in the review when they pressed (s.verseConflicts). Returns
+ * whether the chosen version is kept. */
 async function performKeepVersion(ctx, key, keptTs) {
-  const { storeRef, stateRef, saveRefs, dispatch, conflictsGen } = ctx;
+  const { storeRef, stateRef, saveRefs } = ctx;
   if (!(await drainSchedulers(saveRefs))) return false;
   const store = storeRef.current;
   const repoPath = stateRef.current.project?.repoPath;
   if (!store || !repoPath) return false;
-  const position = (stateRef.current.verseConflicts ?? []).findIndex((c) => c.key === key);
-  try {
-    await store.resolveVerse(key, keptTs);
-  } catch (e) {
-    // The store publishes before it regenerates the derived files, so a
-    // failure can come after the keep is in the journal. The fold decides.
-    if (storeRef.current !== store) return false;
-    if (store.readVerseConflicts().some((c) => c.key === key)) {
-      if (stateRef.current.conflictReview)
-        dispatch({ type: 'set', patch: { conflictReview: { ...stateRef.current.conflictReview, error: failureText(e) } } });
-      return false;
-    }
-    console.warn(`keepVersion(${key}): kept, but the store reported: ${failureText(e)}`);
+  const seen = stateRef.current.verseConflicts ?? [];
+  const position = seen.findIndex((c) => c.key === key);
+  const chosen = seen[position]?.versions.find((v) => v.ts === keptTs)?.text;
+  // Bench round 6: the drain above can write a version of this very verse that
+  // the review never showed; the store refuses a fork whose heads are not these.
+  const shownHeads = seen[position]?.versions.map((v) => v.ts) ?? [];
+  const { book } = parseVerseKey(key);
+  const wasOpen = stateRef.current.book === book;
+  if (!unloadEditorBook(ctx, book)) return false;
+  const failure = await store.resolveVerse(key, keptTs, shownHeads).then(() => null, (e) => e);
+  if (storeRef.current !== store) return false;
+  const loaded = await reloadAfterKeep(ctx, store, book, wasOpen);
+  if (storeRef.current !== store) return false;
+  return keepOutcome(ctx, store, { key, repoPath, position, chosen, failure, loaded });
+}
+
+/** After the store's write: the open book loads again (ctx.reloadBook, the
+ * keepVersion action's openBook); for a book that is not open, the store
+ * publishes its staged actions all the same. Returns false when the open book
+ * could not load. */
+async function reloadAfterKeep({ rawRef, reloadBook }, store, book, wasOpen) {
+  if (wasOpen) {
+    await reloadBook(book);
+    return rawRef.current !== null;
   }
-  if (storeRef.current !== store) return true;
+  await store.reconcileStaged().catch((e) => console.error(`keepVersion: staged actions not published: ${failureText(e)}`));
+  return true;
+}
+
+/** The outcome, from the fold after the reload. Kept ⇔ no conflict on the
+ * verse and the fold projects the chosen text. The review stays at its place
+ * (the conflict after the kept one) and says what did not happen. */
+function keepOutcome({ stateRef, dispatch, conflictsGen }, store, { key, repoPath, position, chosen, failure, loaded }) {
+  const { book, chapter, verse } = parseVerseKey(key);
   conflictsGen.set(repoPath, (conflictsGen.get(repoPath) || 0) + 1);
   const left = adoptConflicts({ store, repoPath, dispatch });
-  // The review stays at the same place in the list: the conflict after the kept one.
+  const open = left.some((c) => c.key === key);
+  const kept = !open && chosen !== undefined && store.projectedVerse(book, chapter, verse) === chosen;
+  const notes = kept ? [] : [open ? null : t('conflicts.otherKept'), failure && failureText(failure)];
+  const error = [...notes, loaded ? null : t('conflicts.bookNotLoaded')].filter(Boolean).join(' ') || null;
+  if (failure) console[kept ? 'warn' : 'error'](`keepVersion(${key}): ${kept ? 'kept' : 'not kept'}; the store reported: ${failureText(failure)}`);
   if (stateRef.current.conflictReview) {
     const next = left[Math.min(Math.max(position, 0), left.length - 1)];
-    dispatch({ type: 'set', patch: { conflictReview: { key: next?.key ?? key, error: null } } });
+    dispatch({ type: 'set', patch: { conflictReview: { key: next?.key ?? key, error, kept } } });
   }
-  installKeptBook(ctx, store, key);
+  return kept;
+}
+
+/** Before a keep: the verse scheduler forgets the book (it is clean: the drain
+ * ran), and the open book's text leaves the state. A book that cannot be
+ * unloaded refuses the keep, and the review says why. */
+function unloadEditorBook({ stateRef, schedulerRef, rawRef, dispatch }, book) {
+  try {
+    schedulerRef.current?.unloadBook(book);
+  } catch (e) {
+    const review = stateRef.current.conflictReview;
+    if (review) dispatch({ type: 'set', patch: { conflictReview: { ...review, error: failureText(e) } } });
+    return false;
+  }
+  if (stateRef.current.book === book) {
+    rawRef.current = null;
+    dispatch({ type: 'set', patch: { bookRaw: null } });
+  }
   return true;
 }
 
 /** #679 (one read path): the book text the editor and its save buffer start
- * from — the store's fold projection, the text every save diffs against. Never
- * the derived file on disk: a failed regeneration can leave that file behind
- * the journal, and a save from it would undo a kept version. In memory, so no
- * slower than the HTTP read it replaces. Throws when the fold has no such book. */
-export function editorBookText(store, code) {
+ * from. The store first publishes any action it staged and could not publish
+ * (a keep whose write failed is one), so the text holds every action a later
+ * save would replay; then the fold projects the book — the text every save
+ * diffs against. Never the derived file on disk, which a failed regeneration
+ * can leave behind the journal. Throws when the fold has no such book. */
+export async function loadEditorBook(store, code) {
+  await store.reconcileStaged();
   const raw = store.projectedBook(code);
   if (raw === null) throw new Error(`the project's journal holds no ${code}`);
   return raw;
-}
-
-/** After a keep: the book of the kept verse — open, or held by the verse
- * scheduler — takes the text the fold projects, from memory, in one
- * synchronous step for rawRef, the scheduler and bookRaw. If that cannot
- * happen, the book is unloaded: Translate shows its load error and no edit can
- * start from the text before the keep. */
-function installKeptBook({ stateRef, schedulerRef, rawRef, dispatch }, store, key) {
-  const { book, chapter, verse } = parseVerseKey(key);
-  const sched = schedulerRef.current;
-  const open = stateRef.current.book === book;
-  if (!open && sched?.bookText(book) == null) return;
-  try {
-    const raw = editorBookText(store, book);
-    let text = raw;
-    if (sched?.isDirty(book)) {
-      // Unsaved edits of OTHER verses stay; the kept verse takes the fold's
-      // text. The buffer moves onto the new base, so its next save carries
-      // the kept version, never the one it replaced.
-      // A kept verse the projection does not hold is "no answer", never an
-      // empty verse: rebasing '' would make the next save publish an empty
-      // verse over the keep. It goes to keptBookNotInstalled instead.
-      const kept = verseBody(raw, chapter, verse);
-      if (kept === null) throw new Error(`the fold's ${book} holds no verse ${chapter}:${verse}`);
-      text = spliceVerse(sched.bookText(book), chapter, verse, kept);
-      sched.rebaseBook(book, raw, text);
-    } else {
-      sched?.loadBook(book, raw);
-    }
-    if (open) {
-      rawRef.current = text;
-      dispatch({ type: 'set', patch: { bookRaw: text } });
-    }
-  } catch (e) {
-    keptBookNotInstalled({ stateRef, schedulerRef, rawRef, dispatch }, book, open, e);
-  }
-}
-
-/** The kept text could not be installed: the book is unloaded, so no edit
- * starts from the text before the keep. A buffer that cannot be unloaded (a
- * write in flight, or a failed write retained) is never ignored: the review
- * and the console say so. */
-function keptBookNotInstalled({ stateRef, schedulerRef, rawRef, dispatch }, book, open, error) {
-  let text = failureText(error);
-  if (open) rawRef.current = null;
-  try {
-    schedulerRef.current?.unloadBook(book);
-  } catch (unload) {
-    text = `${text} ${failureText(unload)}`;
-  }
-  console.error(`keepVersion: the kept text of ${book} was not installed: ${text}`);
-  if (open) dispatch({ type: 'set', patch: { bookRaw: null, bookError: text } });
-  const review = stateRef.current.conflictReview;
-  if (review) dispatch({ type: 'set', patch: { conflictReview: { ...review, error: text } } });
 }
 
 /** Test hooks (#679): the Home count read and the keep action run on the fake rig. */
@@ -6687,7 +6680,15 @@ export function AppProvider({ children }) {
 
       /** "Keep this version": the kept head `keptTs` replaces every version of `key`. */
       keepVersion: (key, keptTs) => {
-        const run = performKeepVersion({ storeRef, stateRef, schedulerRef, rawRef, saveRefs, dispatch, conflictsGen }, key, keptTs);
+        // The keep unloads the open book; it loads again through the one editor
+        // load path, at the chapter it was on. (openBook does not wait for the
+        // pending keep: this IS the pending keep.)
+        const reloadBook = async (book) => {
+          const { chapter } = stateRef.current;
+          await a.openBook(book);
+          if (rawRef.current !== null && chapter !== 1) dispatch({ type: 'set', patch: { chapter } });
+        };
+        const run = performKeepVersion({ storeRef, stateRef, schedulerRef, rawRef, saveRefs, dispatch, conflictsGen, reloadBook }, key, keptTs);
         keepPendingRef.current = run;
         return run.finally(() => {
           if (keepPendingRef.current === run) keepPendingRef.current = null;
@@ -6806,7 +6807,6 @@ export function AppProvider({ children }) {
       },
 
       openBook: async (code) => {
-        await keepSettled(); // #679
         // F2/D65/round 34: a book switch is a navigation like any other —
         // bring BOTH schedulers to rest in the re-checking loop (a note
         // staged while the verse drain awaited is caught by the next pass,
@@ -6828,7 +6828,7 @@ export function AppProvider({ children }) {
         dispatch({ type: 'set', patch: { book: code, chapter: 1, bookRaw: null, bookError: null, sources: {}, editing: null, helpsHover: null, helpsActive: null, pickerProgress: null, ...(closeCheck ? { checkTool: null, checkSession: null } : {}) } });
         let raw;
         try {
-          raw = editorBookText(store, code); // #679: the fold, never the disk file
+          raw = await loadEditorBook(store, code); // #679: the fold with every staged action, never the disk file
         } catch (e) {
           if (seq === openSeqRef.current) {
             dispatch({ type: 'set', patch: { bookError: e?.reason || e?.message || String(e) } });
@@ -6996,7 +6996,7 @@ export function AppProvider({ children }) {
         if (!isCurrentArticleRequest(now, seq, articleSeqRef.current, repoPath, key)) return;
         dispatch({
           type: 'set',
-          patch: { understand: { ...now.understand, article: { key, seq, loading: false, found, error: articleError, request } } },
+          patch: { understand: { ...now.understand, article: { key, seq, loading: false, found, error: articleError, request, dir: languageSetDir(set) } } },
         });
       },
 
