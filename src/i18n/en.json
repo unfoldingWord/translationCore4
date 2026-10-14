@@ -953,7 +953,7 @@
   "home.bookConflictsMany": "{n} conflicts",
   "home.sync": "Sync with Door43",
   "home.syncing": "Syncing…",
-  "net.ask.sync": "sign in to Door43 if needed and sync this project with Door43.",
+  "net.ask.sync": "get the changes of your teammates from Door43 and send the changes of this project to Door43. If necessary, tC4 signs in to Door43 first.",
   "syncResult.done": "Synced with Door43",
   "syncResult.receivedOne": "1 change from teammates",
   "syncResult.receivedMany": "{n} changes from teammates",

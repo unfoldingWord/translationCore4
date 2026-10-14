@@ -269,6 +269,31 @@ export const installedPathFor = (installed: InstalledMap, pin: ResourcePin): str
 export const isPinLocal = (installed: InstalledMap, pin: ResourcePin): boolean =>
   installedEntry(installed, pin) !== undefined;
 
+/** #678 (D88 point 6): how many pins of a project's pin file name a version
+ * that this computer does not have: each language-set pin and each original-
+ * language pin that carries a commit (D59: a pin with no sha is satisfiable by no
+ * install, so it is not counted as a version to download). */
+export const missingPinCount = (
+  resources:
+    | {
+        languageSets?: Record<string, LanguageSet>;
+        resources?: { originalLanguage?: { nt?: ResourcePin; ot?: ResourcePin } };
+      }
+    | null
+    | undefined,
+  installed: InstalledMap,
+): number => {
+  const pins: unknown[] = [
+    ...Object.values(resources?.languageSets ?? {}).flatMap((set) => Object.values(set ?? {})),
+    ...Object.values(resources?.resources?.originalLanguage ?? {}),
+  ];
+  return pins.filter(
+    (pin): pin is ResourcePin =>
+      Boolean(pin && typeof pin === 'object' && 'repoPath' in pin && (pin as ResourcePin).sha) &&
+      !isPinLocal(installed, pin as ResourcePin),
+  ).length;
+};
+
 /** The open project's pinned identity for one local install target, when no
  * install on this machine satisfies it. This is what a download of that repo
  * must fetch: identity is (repoPath, sha) — D58 — so downloading the catalog's

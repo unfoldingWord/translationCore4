@@ -155,9 +155,22 @@ test.describe('#678 — Sync with Door43', () => {
     await expect(page.getByTestId('sync-result')).toHaveCount(0);
     expect(remote.main()).toBe(shared);
 
-    // ---- sync 1: no teammate change. Turn on internet, sign in, one result ----
+    // ---- #530 edge: Cancel in the sign-in step of a sync sends nothing; the button comes back ----
     await button(page).click();
     await page.getByTestId('net-confirm').click();
+    await expect(page.getByTestId('share-signin')).toBeVisible();
+    await page.getByTestId('signin-cancel').click();
+    await expect(page.getByTestId('share-signin')).toHaveCount(0);
+    await page.waitForTimeout(1_000);
+    expect(gitCalls, 'Cancel in the sign-in step syncs nothing').toEqual([]);
+    expect(remote.main()).toBe(shared);
+    await expect(page.getByTestId('sync-result')).toHaveCount(0);
+    await expect(button(page)).toBeEnabled();
+    await expect(button(page)).toHaveText('Sync with Door43');
+
+    // ---- sync 1: no teammate change. The internet is on; sign in, one result ----
+    await button(page).click();
+    await expect(page.getByTestId('net-ask')).toHaveCount(0);
     await expect(page.getByTestId('share-signin')).toBeVisible();
     await signIn(page);
     const first = page.getByTestId('sync-result');
@@ -179,7 +192,9 @@ test.describe('#678 — Sync with Door43', () => {
     // ---- sync 2: two teammates changed TIT 1:1 on Door43 ----
     teammatesChangeOneVerse(remote);
     const teammatesMain = remote.main();
-    await button(page).click();
+    // #530 edge: a double press runs one sync (one clone, one push)
+    const callsBefore = gitCalls.length;
+    await button(page).dblclick();
     // the internet is on now, and the sign-in is in memory: no question, no sign-in step
     await expect(page.getByTestId('net-ask')).toHaveCount(0);
     const second = page.getByTestId('sync-result');
@@ -189,15 +204,19 @@ test.describe('#678 — Sync with Door43', () => {
     await expect(page.getByTestId('sync-count-conflicts')).toHaveAttribute('data-count', '1');
     await expect(page.getByTestId('sync-count-newest')).toHaveAttribute('data-count', '0');
     await expect(page.getByTestId('sync-review')).toBeVisible();
-    // D88 point 6: the teammates moved no pin, so no Download is offered (the seeded
-    // project's own missing hbo_uhb pin was missing before the sync too)
-    await expect(page.getByTestId('sync-download')).toHaveCount(0);
+    // D88 point 6: Download is always offered while a pin names a version this computer
+    // lacks: the seeded project pins hbo_uhb v3.0.0, which the rig does not hold
+    await expect(page.getByTestId('sync-download')).toBeVisible();
+    expect(Number(await page.getByTestId('sync-missing-pins').getAttribute('data-count'))).toBeGreaterThan(0);
     // the card reads the project again: its conflict chip shows the one verse conflict (#679)
     await expect(page.getByTestId(`conflicts-${ID}`)).toHaveAttribute('data-count', '1');
     await shot(page, testInfo, 'sync-result-counts');
     const afterSecond = remote.main();
     expect(git(remote.bare, 'merge-base', '--is-ancestor', teammatesMain!, afterSecond!)).toBe('');
     expect(head(SEEDED_PROJECT)).toBe(afterSecond);
+    const secondCalls = gitCalls.slice(callsBefore);
+    expect(secondCalls.filter((c) => c.includes('/api/git/push/')), 'one push for a double press').toHaveLength(1);
+    expect(secondCalls.filter((c) => c.includes('/api/git/pull-repo/')), 'one clone (copy, then pull) for a double press').toHaveLength(1);
     for (const actor of TEAMMATES)
       expect(fs.existsSync(path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking', 'journal', actor)), actor).toBe(true);
     await verifyAllJournaledProjects();

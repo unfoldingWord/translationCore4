@@ -43,6 +43,7 @@ import { ProjectCard, ObsProjectCard } from '../src/views/Home.jsx';
 import SyncResult, { SYNC_REFUSALS, syncCounts } from '../src/views/SyncResult.jsx';
 import { InternetDialog } from '../src/views/AccountMenu.jsx';
 import ShareDialog from '../src/views/modals/ShareDialog.jsx';
+import { missingPinCount } from '../src/data/installed';
 
 const AT = '2026-10-13T12:00:00.000Z';
 /** An ok sync Report: 3 + 2 teammate files, one non-text conflict, two verse conflicts, one restored file. */
@@ -222,6 +223,26 @@ describe('#678 — the result, built only from report.facts', () => {
     expect(screen.queryByTestId('sync-download')).toBeNull();
   });
 
+  it('D88 point 6: missingPinCount counts each pin that names a version this computer does not have', () => {
+    const ult = { repoPath: 'git.door43.org/unfoldingWord/en_ult', sha: 'a'.repeat(40), version: 'v91', flavor: 'textTranslation' };
+    const uhb = { repoPath: 'git.door43.org/unfoldingWord/hbo_uhb', sha: 'b'.repeat(40), version: 'v3.0.0', flavor: 'textTranslation' };
+    const resources = { languageSets: { primary: { literalText: ult } }, resources: { originalLanguage: { ot: uhb } } } as never;
+    const installed = { 'unfoldingWord/en_ult': { ...ult } };
+    // control: every version installed counts 0
+    expect(missingPinCount(resources, { ...installed, 'unfoldingWord/hbo_uhb': { ...uhb } })).toBe(0);
+    // the original-language pin names a version this computer lacks: 1, and the result offers Download
+    const n = missingPinCount(resources, installed);
+    expect(n).toBe(1);
+    // the same repository at another commit is not the pinned version (D58)
+    expect(missingPinCount(resources, { ...installed, 'unfoldingWord/hbo_uhb': { ...uhb, sha: 'c'.repeat(40) } })).toBe(1);
+    // a pin with no sha names no version to download (D59); no pin file counts 0
+    expect(missingPinCount({ languageSets: { primary: { literalText: { repoPath: ult.repoPath } } } } as never, {})).toBe(0);
+    expect(missingPinCount(null, {})).toBe(0);
+    render(<SyncResult result={result(okSync(), n)} onReview={vi.fn()} onDownload={vi.fn()} onDismiss={vi.fn()} />);
+    expect(screen.getByTestId('sync-missing-pins').getAttribute('data-count')).toBe('1');
+    expect(screen.getByTestId('sync-download')).toBeTruthy();
+  });
+
   it('one message per code', () => {
     // every code a sync can return has its own entry, and no entry names another code
     expect(Object.keys(SYNC_REFUSALS).sort()).toEqual([...SYNC_CODES].sort());
@@ -253,20 +274,27 @@ describe('#678 — the result, built only from report.facts', () => {
 });
 
 describe('#678 — the first share', () => {
-  const done = (mode?: string) => ({
+  const done = (project: Record<string, unknown>, mode?: string) => ({
     modal: 'share',
-    sh: { project: BIBLE, mode, step: 'done', steps: ['create', 'push'], report: { ok: true, facts: { url: SHARED.url } }, error: null, copied: false, busy: false, target: { kind: 'user' }, name: 'equipo' },
+    sh: { project, mode, step: 'done', steps: ['create', 'push'], report: { ok: true, facts: { url: SHARED.url } }, error: null, copied: false, busy: false, target: { kind: 'user' }, name: 'equipo' },
   });
 
   it('first-share result names write access', () => {
-    Object.assign(state, done());
+    Object.assign(state, done(BIBLE));
     render(<ShareDialog />);
     expect(screen.getByTestId('share-done')).toBeTruthy();
     expect(screen.getByTestId('share-team-access').textContent).toBe(t('shareDialog.teamAccess'));
   });
 
+  it('first-share result names write access: not for an OBS project, which cannot sync in round 1', () => {
+    Object.assign(state, done(OBS));
+    render(<ShareDialog />);
+    expect(screen.getByTestId('share-done')).toBeTruthy();
+    expect(screen.queryByTestId('share-team-access')).toBeNull();
+  });
+
   it('first-share result names write access: an upload of an OBS project does not repeat it', () => {
-    Object.assign(state, done('upload'));
+    Object.assign(state, done(OBS, 'upload'));
     render(<ShareDialog />);
     expect(screen.getByTestId('share-done')).toBeTruthy();
     expect(screen.queryByTestId('share-team-access')).toBeNull();

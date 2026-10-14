@@ -953,7 +953,7 @@
   "home.bookConflictsMany": "{n} xung đột",
   "home.sync": "Đồng bộ với Door43",
   "home.syncing": "Đang đồng bộ…",
-  "net.ask.sync": "đăng nhập vào Door43 nếu cần và đồng bộ dự án này với Door43.",
+  "net.ask.sync": "nhận các thay đổi của nhóm bạn từ Door43 và gửi các thay đổi của dự án này lên Door43. Nếu cần, tC4 đăng nhập vào Door43 trước.",
   "syncResult.done": "Đã đồng bộ với Door43",
   "syncResult.receivedOne": "1 thay đổi từ nhóm",
   "syncResult.receivedMany": "{n} thay đổi từ nhóm",
