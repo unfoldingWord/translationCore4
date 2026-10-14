@@ -350,6 +350,17 @@ describe('discovering resources that are on disk with no install record', () => 
     expect(orgForRepoName('fr_tn')).toBeNull();
     expect(found['_local_/_sideloaded_/fr_tn'].repoPath).toBe('git.door43.org/Xenizo/fr_tn');
   });
+
+  it('D100: with ar_gt out of the registry, an Arabic repo name resolves to BSOJ, even an older ar_gt install', async () => {
+    // A bare `ar_tn` path has no owner in it. BSOJ is the only configured
+    // Arabic organization, so it wins over the ar_gt export's own record:
+    // the mislabel D100 discloses.
+    const arSummaries = { '_local_/_sideloaded_/ar_tn': { book_codes: ['3JN'] } } as never;
+    const arApi = metadataApi({ '_local_/_sideloaded_/ar_tn': 'ar_gt/ar_tn' });
+    expect(orgForRepoName('ar_tn')).toBe('BSOJ');
+    const found = await discoverOnDisk(arApi, arSummaries, {}, orgForRepoName);
+    expect(found['_local_/_sideloaded_/ar_tn'].repoPath).toBe('git.door43.org/BSOJ/ar_tn');
+  });
 });
 
 describe('the whole point: a Spanish suite on disk resolves to a language set', () => {

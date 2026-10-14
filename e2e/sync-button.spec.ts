@@ -195,7 +195,7 @@ test.describe('#678 — Sync with Door43', () => {
     expect(newActors, 'main holds new segments of one actor only').toHaveLength(1);
     const actor = newActors[0];
     expect(fs.existsSync(path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking', 'journal', actor)), 'the actor is this project\'s').toBe(true);
-    // D100: the project's ingredients/ (but audio/) equal main's tree, byte for byte
+    // D101: the project's ingredients/ (but audio/) equal main's tree, byte for byte
     expectIngredientsEqualMain(remote.bare, SEEDED_PROJECT);
     await page.getByTestId('sync-dismiss').click();
     await expect(first).toHaveCount(0);
