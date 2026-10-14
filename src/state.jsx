@@ -2563,7 +2563,12 @@ function installKeptBook({ stateRef, schedulerRef, rawRef, dispatch }, store, ke
       // Unsaved edits of OTHER verses stay; the kept verse takes the fold's
       // text. The buffer moves onto the new base, so its next save carries
       // the kept version, never the one it replaced.
-      text = spliceVerse(sched.bookText(book), chapter, verse, verseBody(raw, chapter, verse) ?? '');
+      // A kept verse the projection does not hold is "no answer", never an
+      // empty verse: rebasing '' would make the next save publish an empty
+      // verse over the keep. It goes to keptBookNotInstalled instead.
+      const kept = verseBody(raw, chapter, verse);
+      if (kept === null) throw new Error(`the fold's ${book} holds no verse ${chapter}:${verse}`);
+      text = spliceVerse(sched.bookText(book), chapter, verse, kept);
       sched.rebaseBook(book, raw, text);
     } else {
       sched?.loadBook(book, raw);
