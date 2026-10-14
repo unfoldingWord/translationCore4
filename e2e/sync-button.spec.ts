@@ -199,13 +199,6 @@ test.describe('#678 — Sync with Door43', () => {
     expectIngredientsEqualMain(remote.bare, SEEDED_PROJECT);
     await page.getByTestId('sync-dismiss').click();
     await expect(first).toHaveCount(0);
-    // a reopen of the project classifies converged: the disk is the fold of its journal
-    const beforeOpen = opsIds();
-    await page.getByTestId(`project-${ID}`).getByRole('button', { name: /Titus/ }).click();
-    await expect(page.getByRole('heading', { name: /^Titus \d+$/ })).toBeVisible({ timeout: 120_000 });
-    await expectConvergedOpen(ID, beforeOpen);
-    await page.goto('/');
-    await expect(button(page)).toHaveText('Sync with Door43');
 
     // ---- sync 2: two teammates changed TIT 1:1 on Door43 ----
     teammatesChangeOneVerse(remote);
@@ -241,10 +234,14 @@ test.describe('#678 — Sync with Door43', () => {
     await verifyAllJournaledProjects();
 
     // ---- Review opens the conflict review of the project ----
+    // (no page load before sync 2: the internet and the sign-in live in the page)
+    const beforeOpen = opsIds();
     await page.getByTestId('sync-review').click();
     await expect(page.getByTestId('sync-result')).toHaveCount(0);
     await expect(page.getByTestId('conflict-review')).toBeVisible({ timeout: 120_000 });
     await expect(page.getByTestId('conflict-position')).toHaveAttribute('data-m', '1');
+    // the open after the sync classifies converged: the disk is the fold of its journal
+    await expectConvergedOpen(ID, beforeOpen);
   });
 
   test('no write access: one plain message, and nothing changes', TAG, async ({ page, context }, testInfo) => {
