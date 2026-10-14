@@ -1313,6 +1313,30 @@ describe('#676 crash recovery of the sync (G8)', () => {
       await expectNextSyncKeepsTeammate(w);
     });
 
+  it('[G8] a power loss that keeps the marker and leaves LICENSE.md of the scratch copy not UTF-8 (the apply reads it, the fold does not derive it): the start does not lock the project, and the next sync brings the teammate text (round 8 review)', async () => {
+    const w = await teammateTextWorld();
+    const project = new Map(w.rig.repos.get(REPO)!.files);
+    await killInApply(w, w.ops, () => true); // no apply write lands
+    w.rig.repos.get(SCRATCH)!.files.set('LICENSE.md', 'license'); // a file that every check of the fold skips
+    const torn = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      return decodeURIComponent(url.pathname) === `/api/burrito/ingredient/raw/${SCRATCH}` && url.searchParams.get('ipath') === 'LICENSE.md'
+        ? new Response(JSON.stringify({ is_good: false, reason: 'could not read ingredient content: stream did not contain valid UTF-8' }), { status: 400 })
+        : w.rig.fetchFn(input, init);
+    }) as typeof fetch });
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const stored = storedOf(w);
+    const next = new OpsLog({ read: stored.read, update: serialSettingsWriter(stored.read, stored.write) });
+    const [entry] = await next.recover(torn);
+    expect(next.errors).toEqual([]);
+    expect(entry.report).toMatchObject({ op: 'sync', ok: false, facts: { scratchNotWhole: true } });
+    expect(w.rig.repos.has(SCRATCH)).toBe(false);
+    expect(w.rig.repos.get(REPO)!.files).toEqual(project);
+    expect(await reopened(w)).toBe('converged');
+    await expectNextSyncKeepsTeammate(w);
+  });
+
   it('[G1][G8] a power loss that keeps the journal writes of the apply and the marker, and tears metadata.json of the scratch copy: the start applies no more, the reopen regenerates forward with the teammate text, and the next sync keeps it (round 8 critic, gap 3)', async () => {
     const w = await teammateTextWorld();
     await killInApply(w, w.ops); // the journal files of the apply land, the derived files do not
@@ -1338,13 +1362,20 @@ describe('#676 crash recovery of the sync (G8)', () => {
     await expectNextSyncKeepsTeammate(w);
   });
 
-  it('[G8] a server error during the whole-copy check is not a power loss: the marker stays, the project takes no open, and the next start applies (round 8 critic, gap 2)', async () => {
+  // Two failures of the whole-copy check that no damage to a file explains: a server
+  // error, and an HTTP 400 for a file that another process holds (Windows, os error 32).
+  const notDamage: Record<string, () => Response> = {
+    'a server error (HTTP 500)': () => new Response(JSON.stringify({ is_good: false, reason: 'the server stopped' }), { status: 500 }),
+    'a file that another process holds (HTTP 400, os error 32)': () => new Response(JSON.stringify({ is_good: false, reason: 'could not read metadata: The process cannot access the file because it is being used by another process. (os error 32)' }), { status: 400 }),
+  };
+  for (const [form, answer] of Object.entries(notDamage))
+  it(`[G8] ${form} during the whole-copy check is not a power loss: the marker stays, the project takes no open, and the next start applies (round 8 critic, gap 2)`, async () => {
     const w = await teammateTextWorld();
     await killInApply(w, w.ops, () => true); // no apply write lands
     expect(w.rig.repos.get(SCRATCH)!.files.has(APPLY_MARKER)).toBe(true);
     const failing = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) =>
       decodeURIComponent(new URL(String(input)).pathname) === `/api/burrito/metadata/raw/${SCRATCH}`
-        ? new Response(JSON.stringify({ is_good: false, reason: 'the server stopped' }), { status: 500 })
+        ? answer()
         : w.rig.fetchFn(input, init)) as typeof fetch });
     forgetSharedClocks();
     forgetProjectQueues();

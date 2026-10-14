@@ -276,20 +276,30 @@ export const recoverySettled = (): Promise<void> => recovering;
 export const isApplyPending = async (api: Pick<OpsRecoveryApi, 'listPaths'>, repoPath: string): Promise<boolean> =>
   (await api.listPaths(scratchPathOf(repoPath))).includes(APPLY_MARKER);
 
+/** A read failure that damage to a file explains (`isScratchWhole`). */
+const isDamagedRead = (error: unknown): boolean =>
+  error instanceof SyntaxError || isNotFoundError(error)
+  || ((error as { status?: number } | null)?.status === 400 && /did not contain valid UTF-8/.test((error as { reason?: string }).reason ?? ''));
+
 /** True when the scratch copy is the fold of its journal, as the sync verified it
  * before the push. The marker is not a derived file, so it is the one extra file.
+ * The check also reads each file that the apply reads, with the same read
+ * (`readIngredientFiles`): the fold does not derive `LICENSE.md` or the OBS front
+ * and back matter, so only this read covers them.
  * A power loss can leave a file that the platform cannot read (PLATFORM-NOTES #51):
- * a missing `metadata.json` or a file that is not UTF-8 is HTTP 400, and a torn
- * `metadata.json` does not parse. Such a copy is not whole. The copy is only a copy
- * of Door43 main after the push, so it goes with its marker, and the project does
- * not lock. Any other failure (a server error, no network) is no proof of a power
+ * a missing file is HTTP 400 "No such file", a file that is not UTF-8 is HTTP 400
+ * "did not contain valid UTF-8", and a torn `metadata.json` does not parse. Such a
+ * copy is not whole. The copy is only a copy of Door43 main after the push, so it
+ * goes with its marker, and the project does not lock. Any other failure (a server
+ * error, no network, a file that another process holds) is no proof of a power
  * loss: it throws, the marker stays, and the next start or sync runs the rule again. */
 const isScratchWhole = async (api: OpsRecoveryApi, scratch: string): Promise<boolean> => {
   let verified: Awaited<ReturnType<typeof verifyProjectAgainstJournal>>;
   try {
     verified = await verifyProjectAgainstJournal(api, scratch, { skipUnjournaled: true });
+    await readIngredientFiles(api, scratch, () => true);
   } catch (error) {
-    if (!(error instanceof SyntaxError) && (error as { status?: number } | null)?.status !== 400) throw error;
+    if (!isDamagedRead(error)) throw error;
     console.error(`ops log: the platform cannot read the scratch copy ${scratch}, so it is not whole: ${String((error as Error)?.message ?? error)}`);
     return false;
   }
