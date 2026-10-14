@@ -13,7 +13,7 @@ import { recordInstalled } from '../../src/data/installed';
 import { assertRepoPath } from '../../src/data/serverApi';
 import { fold, makeClock, reportError } from '../../src/data/journal/runtime';
 import { sealAction, segmentName, validateSegment, type JournalEvent } from '../../src/data/journal/seal';
-import { sync, SYNC_TRIES, type SyncDeps } from '../../src/data/share/syncOperation';
+import { sync, SYNC_TRIES, withClonePath, type SyncDeps } from '../../src/data/share/syncOperation';
 import { journalingRig, memKv, tickingNow, type JournalingRig } from '../helpers/journalingRig';
 
 const REPO = '_local_/_local_/prueba';
@@ -266,12 +266,42 @@ describe('#676 the sync shell', () => {
     expect([report.ok, report.code]).toEqual([false, 'sync.not-shared']);
   });
 
-  it('a folder at the fixed clone path refuses sync.clone-path-exists and is not deleted', async () => {
+  it('a clone that a kill left at the fixed clone path does not block the next sync: the sync deletes it and syncs', async () => {
     const w = await world();
-    w.rig.createRepo(CLONE_PATH, { 'keep.txt': 'not ours' });
+    w.rig.createRepo(CLONE_PATH, { 'TIT.usfm': 'a clone left between the clone and the move' });
     const report = await sync(w.deps(), { repoPath: REPO, session: SESSION });
+    expect([report.ok, report.code]).toEqual([true, undefined]);
+    expect(w.rig.repos.has(CLONE_PATH)).toBe(false);
+  });
+
+  it('a clone that holds the lock of the fixed clone path (#677 open from Door43) is not disturbed: the sync waits for it', async () => {
+    const w = await world();
+    let release = (): void => {};
+    const gate = new Promise<void>((r) => (release = r));
+    let inFlight = false;
+    const other = withClonePath(CLONE_PATH, async () => {
+      w.rig.createRepo(CLONE_PATH, { 'TIT.usfm': 'the clone of the other operation' });
+      inFlight = true;
+      await gate;
+      w.rig.repos.delete(CLONE_PATH); // its move off the fixed path
+    });
+    await vi.waitFor(() => expect(inFlight).toBe(true));
+    const from = w.rig.log.length;
+    const syncing = sync(w.deps(), { repoPath: REPO, session: SESSION });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(w.rig.repos.get(CLONE_PATH)?.files.get('TIT.usfm')).toBe('the clone of the other operation');
+    expect(w.rig.log.slice(from).filter(({ route }) => route.includes(`/git/delete/${CLONE_PATH}`) || route.includes('/git/clone-repo/'))).toEqual([]);
+    release();
+    await other;
+    expect((await syncing).ok).toBe(true);
+  });
+
+  it('a project at the fixed clone path refuses sync.clone-path-exists and is not deleted', async () => {
+    const w = await world();
+    w.rig.createRepo(CLONE_PATH, Object.fromEntries(w.rig.repos.get(REPO)!.files)).origin = URL_;
+    const report = await sync(w.deps(), { repoPath: CLONE_PATH, session: SESSION });
     expect([report.ok, report.code]).toEqual([false, 'sync.clone-path-exists']);
-    expect(w.rig.repos.get(CLONE_PATH)?.files.get('keep.txt')).toBe('not ours');
+    expect(w.rig.repos.get(CLONE_PATH)?.files.size).toBe(w.rig.repos.get(REPO)!.files.size);
   });
 
   it('a copy that is not the fold of its journal refuses sync.verify-failed and pushes nothing', async () => {
@@ -931,6 +961,27 @@ describe('#676 crash recovery of the sync (G8)', () => {
     const report = await sync(w.deps(), { repoPath: REPO, session: SESSION });
     expect([report.ok, report.code]).toEqual([true, undefined]);
     await expectTeammateKept(w);
+  });
+
+  it('[G8] the start finishes a pending apply of a project at any path, not only under _local_/_local_/', async () => {
+    const w = await world();
+    const OTHER = 'qa.door43.org/team/otro';
+    w.rig.createRepo(OTHER, { 'TIT.usfm': 'old text', 'gone.json': '{}' });
+    w.rig.createRepo(scratchPathOf(OTHER), { 'TIT.usfm': 'Door43 main text', [APPLY_MARKER]: '{}' });
+    await appStart(settingsDoc()).recover(w.api);
+    expect(w.rig.repos.has(scratchPathOf(OTHER))).toBe(false);
+    const files = w.rig.repos.get(OTHER)!.files;
+    expect([files.get('TIT.usfm'), files.has('gone.json'), files.has(APPLY_MARKER)]).toEqual(['Door43 main text', false, false]);
+  });
+
+  it('[G8] an open whose check for the marker gets no answer (HTTP 500) refuses with a code: fail closed', async () => {
+    const w = await world();
+    w.rig.failOn(({ method, route }) => method === 'GET' && route === `/api/burrito/paths/${SCRATCH}`, 1);
+    forgetProjectQueues();
+    const store = new JournalingStore({ api: w.api, kv: w.kv, ops: w.ops });
+    await expect(store.open(REPO)).rejects.toMatchObject({ code: 'sync.apply-pending' });
+    await store.open(REPO); // the next check answers: the project opens
+    store.dispose();
   });
 });
 

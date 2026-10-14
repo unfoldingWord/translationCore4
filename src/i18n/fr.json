@@ -142,7 +142,7 @@
   "refusal.sync.failed": "La synchronisation s’est arrêtée à cause d’une erreur. Votre projet n’a pas changé. Synchronisez de nouveau. Si cela se reproduit, demandez de l’aide.",
   "refusal.sync.project-replaced": "Ce projet a été synchronisé, donc l’application doit l’ouvrir de nouveau. Fermez le projet et ouvrez-le de nouveau. Puis refaites votre dernière modification.",
   "refusal.sync.not-main": "Le dépôt Door43 de ce projet n’a pas main comme branche par défaut. Demandez au propriétaire du projet de faire de main la branche par défaut sur Door43. Rien n’a changé.",
-  "refusal.sync.apply-pending": "Une synchronisation de ce projet ne s’est pas terminée. Fermez l’application et ouvrez-la de nouveau. L’application termine alors la synchronisation. D’ici là, vous ne pouvez pas ouvrir ni modifier ce projet.",
+  "refusal.sync.apply-pending": "L’application termine une synchronisation de ce projet. Attendez, puis ouvrez de nouveau le projet. Si vous voyez de nouveau ce message, synchronisez de nouveau le projet.",
   "home.book": "livre",
   "home.books": "livres",
   "wizard.title": "Nouveau projet",

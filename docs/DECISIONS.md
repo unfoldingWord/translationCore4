@@ -2746,8 +2746,9 @@ signature check), `docs/PACKAGING.md` (Signing), and `scripts/README-windows.txt
 2. **Crash recovery.** The disk is the record. The settings document never locks or unlocks
    a project: many writers write it in place, and it has no compare-and-set. After the push,
    the sync writes one marker file, `ingredients/tc4-sync/apply.json`, into the scratch copy.
-   Then it applies. Then it deletes the marker, then the scratch copy. At each start, and at
-   the start of each sync of the project, this rule runs: a scratch copy with the marker
+   Then it applies. Then it deletes the marker, then the scratch copy. At each start (for each
+   repository that `list-local-repos` names, at any path), and at the start of each sync of
+   the project, this rule runs: a scratch copy with the marker
    (any bytes) gets the same apply again, then the marker and the scratch copy are deleted;
    a scratch copy with no marker is deleted, because the project did not change; no scratch
    copy means nothing is pending. While the marker is there, the project takes no open

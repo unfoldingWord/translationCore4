@@ -77,7 +77,7 @@ export const REFUSAL_CODES = Object.freeze({
   'sync.auth-failed': null, // no Door43 username or token (checked before any request), or Door43 refused the token
   'sync.offline': null, // the internet is off (D95)
   'sync.not-shared': null, // the project has no `origin` on the Door43 server: share it first
-  'sync.clone-path-exists': null, // the fixed clone path `<host>/<org>/<repo>` already holds a folder
+  'sync.clone-path-exists': null, // the project or the clone's target is at the fixed clone path `<host>/<org>/<repo>`, or the server found a folder there
   'sync.clone-failed': null, // Door43 main did not clone
   'sync.move-failed': null, // a copy or a delete of a repository failed; the project did not change
   'sync.verify-failed': null, // the copy on disk is not the fold of its journal; nothing was pushed

@@ -3,9 +3,12 @@
 //
 //   1. checks: a Door43 username and token (`sync.auth-failed`, before any
 //      request), the internet gate (`sync.offline`, D95), and an `origin` on the
-//      Door43 server (`sync.not-shared`).
+//      Door43 server (`sync.not-shared`), and a project that is not at the fixed
+//      clone path (`sync.clone-path-exists`).
 //   2. get a full copy of Door43 `main` into the scratch copy: a clone to the
-//      fixed path, then a move (#673, `cloneProject`).
+//      fixed path, then a move (#673, `cloneProject`), under the lock of that
+//      path (`withClonePath`). A folder at the path is a clone that a kill left
+//      there, and the clone deletes it first.
 //   3. the name action (R-8.5.25): when this actor has no `actor.name.set` in
 //      its journal, its outbox or on Door43 main, the app writer seals one with
 //      the Door43 username only (`JournalStore.sealName`). It goes in as an
@@ -172,23 +175,46 @@ const refusalForPush = (error: unknown): Error => {
   return new Refusal('sync.push-failed', `the push failed: ${reason}`, facts);
 };
 
+/** The fixed path the clone route writes to (PLATFORM-NOTES #49). */
+export const clonePathOf = (source: CloneSource): string => `${source.host}/${source.org}/${source.repo}`;
+
+/** One in-process lock per fixed clone path. A clone holds it from the delete of
+ * a stale folder at the path to the move off the path, so two clones of the same
+ * repository (a sync, and #677 open from Door43) never meet there. `cloneProject`
+ * takes it; other code that uses the fixed path takes it too. The key has its
+ * own prefix, so it never waits on a project queue. */
+export const withClonePath = <T>(clonePath: string, fn: () => Promise<T>): Promise<T> =>
+  inProjectQueue(`clone-path:${clonePath}`, fn);
+
 /** Clone Door43 `main` of `source` into `repoPath`, by the #673 method: a full
  * clone (no `branch`) to the fixed path `<host>/<org>/<repo>`, then a move.
  * `repoPath` must not exist. `beforeClone` runs after the checks and before the
  * first side effect (the sync records its phase there). Throws a Refusal:
  * `sync.clone-path-exists`, `sync.offline`, `sync.clone-failed` or `sync.move-failed`.
  * For #677 (open a project from Door43). */
-export async function cloneProject(
+export function cloneProject(
   api: Pick<ServerApi, 'listLocalRepos' | 'cloneRepo' | 'copyRepo' | 'deleteRepo' | 'listBranches'>,
   source: CloneSource,
   repoPath: string,
   beforeClone?: (clonePath: string) => Promise<unknown>,
 ): Promise<void> {
-  const clonePath = `${source.host}/${source.org}/${source.repo}`;
-  // The fixed path is never deleted unless this clone made it: it can be an
-  // installed resource. A path that is there already refuses.
-  if ((await api.listLocalRepos()).includes(clonePath))
-    throw new Refusal('sync.clone-path-exists', `the clone path ${clonePath} already holds a folder`, { clonePath });
+  return withClonePath(clonePathOf(source), () => cloneLocked(api, source, repoPath, beforeClone));
+}
+
+async function cloneLocked(
+  api: Pick<ServerApi, 'listLocalRepos' | 'cloneRepo' | 'copyRepo' | 'deleteRepo' | 'listBranches'>,
+  source: CloneSource,
+  repoPath: string,
+  beforeClone?: (clonePath: string) => Promise<unknown>,
+): Promise<void> {
+  const clonePath = clonePathOf(source);
+  if (clonePath === repoPath)
+    throw new Refusal('sync.clone-path-exists', `the clone path ${clonePath} is the target`, { clonePath });
+  // A folder at the fixed path, while this process holds its lock, is a clone
+  // that a kill left between the clone and the move: no clone of this process is
+  // running there. tC4 installs resources under `_local_/_sideloaded_/`
+  // (installed.ts), never here, and the caller refuses a project at this path.
+  if ((await api.listLocalRepos()).includes(clonePath)) await deleteIfPresent(api, clonePath);
   if ((await beforeClone?.(clonePath)) === false)
     throw new Error('the ops log did not save the clone phase; nothing was cloned');
   try {
@@ -309,6 +335,9 @@ async function preflight(deps: SyncDeps, request: SyncRequest): Promise<{ source
   const allowFile = deps.allowFileRemote === true;
   const source = origin && remoteAllowed(origin.url, deps.door43Server, allowFile) ? cloneSourceOf(origin.url, allowFile) : null;
   if (!source) throw new Refusal('sync.not-shared', 'the project has no origin on the Door43 server; share it first');
+  // a project at the fixed clone path is not a clone that a kill left: never delete it
+  if (clonePathOf(source) === repoPath)
+    throw new Refusal('sync.clone-path-exists', `the project ${repoPath} is at the fixed clone path`, { clonePath: repoPath });
   return { source, username: session.username, token: session.token };
 }
 

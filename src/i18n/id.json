@@ -142,7 +142,7 @@
   "refusal.sync.failed": "Sinkronisasi berhenti karena ada kesalahan. Proyek Anda tidak berubah. Sinkronkan lagi. Jika ini terjadi lagi, minta bantuan.",
   "refusal.sync.project-replaced": "Proyek ini telah disinkronkan, jadi aplikasi harus membukanya lagi. Tutup proyek dan buka lagi. Lalu buat perubahan terakhir Anda lagi.",
   "refusal.sync.not-main": "Repositori Door43 proyek ini tidak memakai main sebagai cabang bawaan. Minta pemilik proyek menjadikan main cabang bawaan di Door43. Tidak ada yang berubah.",
-  "refusal.sync.apply-pending": "Sinkronisasi proyek ini belum selesai. Tutup aplikasi dan buka lagi. Lalu aplikasi menyelesaikan sinkronisasi. Sampai saat itu, Anda tidak dapat membuka atau mengubah proyek ini.",
+  "refusal.sync.apply-pending": "Aplikasi sedang menyelesaikan sinkronisasi proyek ini. Tunggu, lalu buka proyek lagi. Jika Anda melihat pesan ini lagi, sinkronkan proyek lagi.",
   "home.book": "kitab",
   "home.books": "kitab",
   "wizard.title": "Proyek baru",

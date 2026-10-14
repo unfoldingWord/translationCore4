@@ -407,7 +407,10 @@ export const journalingRig = () => {
     }
 
     if (parts[1] === 'git' && parts[2] === 'list-local-repos') {
-      return ok([...repos.keys()].sort());
+      // the platform skips these three folders [VERIFIED — pankosmia-web 0.18.15
+      // (a83725b) src/endpoints/git2/list_local_repos.rs:48-50, source read 2026-10-14]
+      const hidden = ['_local_/_quarantine_/', '_local_/_archive_/', '_local_/_updates_/'];
+      return ok([...repos.keys()].filter((p) => !hidden.some((h) => p.startsWith(h))).sort());
     }
 
     if (parts[1] === 'net' && parts[2] === 'status') {

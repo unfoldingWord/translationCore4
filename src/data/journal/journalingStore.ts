@@ -540,8 +540,17 @@ export class JournalingStore implements BurritoStore {
    * check: a store opens only when no apply is pending, and an apply in this
    * process makes every older store stale. */
   private async refusePendingApply(repoPath: string): Promise<void> {
-    if (await isApplyPending(this.api, repoPath))
-      throw new Refusal('sync.apply-pending', `the sync of ${repoPath} did not finish; restart the app to finish it`, { repoPath });
+    let pending: boolean;
+    try {
+      pending = await isApplyPending(this.api, repoPath);
+    } catch (error) {
+      // no answer is no proof that no apply is pending: refuse (fail closed)
+      const failure = error as { status?: number; message?: string } | null;
+      throw new Refusal('sync.apply-pending', `the app could not check for an unfinished sync of ${repoPath}`,
+        { repoPath, status: failure?.status ?? 0, reason: failure?.message ?? String(error) });
+    }
+    if (pending)
+      throw new Refusal('sync.apply-pending', `the app is finishing a sync of ${repoPath}; open it again soon`, { repoPath });
   }
 
   // ---- raw read delegation ---------------------------------------------------

@@ -337,9 +337,14 @@ export class OpsLog implements OpsRecorder {
    * Run once, when the app starts, before any operation begins. */
   async recover(api: OpsRecoveryApi): Promise<OpsEntry[]> {
     const doc = await this.readOrSetAside();
-    // the disk rule first, for each project: the settings document never decides it
+    // The disk rule first, for each repository at any path (a project opened from
+    // Door43 can be outside `_local_/_local_/`): the settings document never
+    // decides it. The platform lists no `_local_/_archive_/` folder
+    // (list_local_repos.rs, pankosmia-web a83725b), so the scan goes from each
+    // repository to its scratch copy: one GET each, and a missing scratch copy
+    // answers [] with HTTP 200.
     this.applied = new Set();
-    for (const repoPath of (await api.listLocalRepos()).filter((p) => p.startsWith('_local_/_local_/'))) {
+    for (const repoPath of await api.listLocalRepos()) {
       try {
         if ((await finishPendingApply(api, repoPath)) === 'applied') this.applied.add(repoPath);
       } catch (error) {
