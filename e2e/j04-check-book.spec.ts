@@ -7,6 +7,9 @@
 import { test, expect } from './helpers/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
 import { articleMarks } from './helpers/articleMarks';
+import { gateOff, turnOnInternet } from './helpers/door43Share';
+import { cachedZip, mockDoor43Package, type CachedRepo } from './helpers/door43Package';
+import { recordExternal } from './helpers/externalRequests';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -18,6 +21,7 @@ import {
   resetSeededChecking,
   sideloadedIngredient,
   resetPlaces, readClientSettingsDoc,
+  readProjectPins,
 } from './helpers/rig';
 
 const PINS = () => ({
@@ -657,4 +661,161 @@ test.afterAll(async () => {
     // targeted or failed run leaves the rig stripped for the next user.
     resetSeededChecking();
   }
+});
+
+// ---- #650: the Arabic package (BSOJ) and an Arabic right-to-left project ----
+// Run with the fixture selected: TC4_ARABIC_FIXTURE=1 npx playwright test e2e/j04-check-book.spec.ts
+// The seed then builds `arabic_burrito` (scripts/seed-arabic-project.mjs), and Door43 is held
+// still for BSOJ from the resource cache (helpers/door43Package.ts). The interface is English.
+const ARABIC_PROJECT = 'arabic_burrito';
+// BSOJ's catalogue entries as Door43 reports them [VERIFIED — git.door43.org
+// /api/v1/catalog/search?owner=BSOJ&lang=ar&stage=latest, 2026-10-14]: flavor and topics as
+// listed; the book lists cut to the rig's books. The catalogue also lists three Bibles
+// (ar_avd, ar_arst, ar_nav: textTranslation, tc-ready) and ar_glt/ar_gst (no topics).
+const BSOJ: CachedRepo[] = [
+  { repo: 'ar_tn', tag: 'v6.1', flavor: 'x-bcvnotes', topics: ['tc-ready'], books: ['tit', 'jon'] },
+  { repo: 'ar_twl', tag: 'v5.1', flavor: 'x-bcvarticles', topics: ['tc-ready'], books: ['tit', 'jon'] },
+  { repo: 'ar_tw', tag: 'v5', flavor: 'x-peripheralArticles', topics: ['tc-ready'], books: [] },
+  { repo: 'ar_ta', tag: 'v3', flavor: 'x-peripheralArticles', topics: ['tc-ready'], books: [] },
+  { repo: 'ar_tq', tag: 'v3.1', flavor: 'x-bcvquestions', topics: ['tc-ready'], books: ['tit', 'jon'] },
+];
+// The catalogue held still lists the helps only. A Bible row is always downloaded, and
+// served from the route the 90 MB ar_avd export closed the test's browser; a checking set
+// needs tN, TWL, tW and tA (D17), not a Bible.
+const arabicMissing = (): string | null => {
+  if (process.env.TC4_ARABIC_FIXTURE !== '1') return 'the Arabic fixture is not selected: run with TC4_ARABIC_FIXTURE=1';
+  const absent = BSOJ.filter((r) => !fs.existsSync(cachedZip(r.repo, r.tag))).map((r) => `${r.repo} ${r.tag}`);
+  if (absent.length) return `not cached under dev-env/resources-cache: ${absent.join(', ')} — see dev-env/README.md`;
+  if (!fs.existsSync(rigRepo(ARABIC_PROJECT))) return `the seed did not build ${ARABIC_PROJECT}`;
+  return null;
+};
+/** `dir` and the computed direction of each match of `loc`. */
+const directionsOf = (loc: import('@playwright/test').Locator) =>
+  loc.evaluateAll((els) => els.map((el) => ({ dir: el.getAttribute('dir'), direction: getComputedStyle(el).direction })));
+/** `dir` and the computed direction of the first match, read on that one element. */
+const directionOf = async (loc: import('@playwright/test').Locator) => {
+  await expect(loc.first()).toBeVisible({ timeout: 30_000 });
+  return loc.first().evaluate((el) => ({ dir: el.getAttribute('dir'), direction: getComputedStyle(el).direction }));
+};
+async function openArabicTitus(page: import('@playwright/test').Page) {
+  await page.goto('/');
+  await page.getByTestId(`project-_local_/_local_/${ARABIC_PROJECT}`).getByRole('button', { name: /Titus/ }).click();
+  await expect(page.getByTestId('understand')).toBeVisible({ timeout: 30_000 });
+}
+
+test.describe.serial('J4 — the Arabic package, in an Arabic right-to-left project (#650)', () => {
+  test.beforeEach(() => {
+    const missing = arabicMissing();
+    test.skip(missing !== null, missing ?? '');
+  });
+
+  test('AC5: the Arabic project opens with right-to-left scripture panes @J4', async ({ page }, testInfo) => {
+    await openArabicTitus(page);
+    await page.getByRole('tab', { name: 'Translate', exact: true }).click();
+    const target = page.getByTestId('draft-target-text');
+    await expect(target.first()).toBeVisible({ timeout: 30_000 });
+    const seen = { target: await directionsOf(target), document: await page.evaluate(() => document.documentElement.dir) };
+    const file = testInfo.outputPath('arabic-scripture-direction.json');
+    fs.writeFileSync(file, `${JSON.stringify(seen, null, 2)}\n`);
+    await testInfo.attach('arabic-scripture-direction', { path: file, contentType: 'application/json' });
+    const picture = testInfo.outputPath('arabic-project-translate.png');
+    await page.screenshot({ path: picture });
+    await testInfo.attach('arabic-project-translate', { path: picture, contentType: 'image/png' });
+    expect(seen.document).toBe('ltr');
+    expect(seen.target.length).toBeGreaterThan(0);
+    for (const el of seen.target) expect(el.direction).toBe('rtl');
+  });
+
+  test('AC1: the project downloads BSOJ in the app and checks in it; the pins name BSOJ with a sha @J4', async ({ page }, testInfo) => {
+    test.setTimeout(300_000);
+    await page.goto('/');
+    await turnOnInternet(page);
+    const stop = await mockDoor43Package(page, 'BSOJ', BSOJ);
+    try {
+      await page.getByTestId(`project-_local_/_local_/${ARABIC_PROJECT}`).getByRole('button', { name: 'Settings' }).click();
+      await page.getByTestId('settings-manage-sources').click();
+      const sources = page.getByTestId('sources-modal');
+      await expect(sources).toBeVisible({ timeout: 60_000 });
+      await sources.getByText(/^BSOJ · /).click();
+      await page.getByTestId('sources-download').click();
+      await expect(page.getByTestId('sources-done')).toBeVisible({ timeout: 240_000 });
+      await page.getByTestId('use-for-checking').click();
+      await expect(page.getByTestId('gateway-change')).toBeVisible({ timeout: 60_000 });
+      await page.getByTestId('gateway-confirm').click();
+      await expect(page.getByTestId('gateway-change').or(page.getByTestId('gateway-error'))).toHaveCount(0, { timeout: 60_000 });
+    } finally {
+      await stop();
+      await gateOff();
+    }
+    const primary = readProjectPins(ARABIC_PROJECT).languageSets.primary as Record<string, { repoPath?: string; sha?: string }> & { gatewayLanguage: unknown };
+    const file = testInfo.outputPath('arabic-pins.json');
+    fs.writeFileSync(file, `${JSON.stringify(primary, null, 2)}\n`);
+    await testInfo.attach('arabic-pins', { path: file, contentType: 'application/json' });
+    expect(primary.gatewayLanguage).toEqual({ languageId: 'ar', owner: 'BSOJ' });
+    for (const [slot, repo] of [['translationNotes', 'ar_tn'], ['translationWordsLinks', 'ar_twl'], ['translationWords', 'ar_tw'], ['translationAcademy', 'ar_ta']]) {
+      expect(primary[slot]?.repoPath, slot).toMatch(new RegExp(`/BSOJ/${repo}$`));
+      expect(primary[slot]?.sha, slot).toMatch(/^[0-9a-f]{40}$/);
+    }
+  });
+
+  test('AC2 and AC4: with the internet off and an English interface, the Arabic helps read right to left, the tW list comes from ar_twl, and nothing leaves the computer @J4', async ({ page }, testInfo) => {
+    test.setTimeout(180_000);
+    await gateOff();
+    const external = recordExternal(page);
+    const seen: Record<string, unknown> = {};
+    await openArabicTitus(page);
+    // The helps panel of Understand.
+    const helps = page.getByTestId('helps-panel');
+    seen.note = await directionOf(page.getByTestId('helps-note'));
+    await helps.getByRole('button', { name: 'Translation Academy →', exact: true }).first().click();
+    seen.article = await directionOf(page.getByTestId('understand-article'));
+    seen.articleTitle = await directionOf(page.getByTestId('helps-article-title'));
+    await page.getByTestId('helps-article-close').click();
+    await helps.getByRole('tab', { name: 'Words', exact: true }).click();
+    seen.word = await directionOf(page.getByTestId('helps-word'));
+    await helps.getByRole('button', { name: 'Read the article →', exact: true }).first().click();
+    seen.wordArticle = await directionOf(page.getByTestId('understand-article'));
+    seen.wordArticleTitle = await directionOf(page.getByTestId('helps-article-title'));
+    seen.wordArticleText = (await page.getByTestId('understand-article').textContent())?.slice(0, 80);
+    await page.getByTestId('helps-article-close').click();
+    const understandPicture = testInfo.outputPath('arabic-helps-understand.png');
+    await page.screenshot({ path: understandPicture });
+    await testInfo.attach('arabic-helps-understand', { path: understandPicture, contentType: 'image/png' });
+    // Check: tN, then tW.
+    await page.getByRole('tab', { name: 'Check', exact: true }).click();
+    await page.getByTestId('open-translationNotes').click();
+    seen.checkNote = await directionOf(page.getByTestId('check-note-text'));
+    await page.getByTestId('open-academy').click();
+    seen.checkArticle = await directionOf(page.getByTestId('academy-drawer').getByTestId('article-panel'));
+    await page.keyboard.press('Escape');
+    await page.getByTestId('check-back').click();
+    await page.getByTestId('open-translationWords').click();
+    const twSource = page.getByText(/git\.door43\.org\/BSOJ\/ar_twl/);
+    await expect(twSource).toBeVisible({ timeout: 30_000 });
+    seen.twSource = (await twSource.textContent())?.trim();
+    seen.twProgress = (await page.getByTestId('check-progress').textContent())?.trim();
+    await page.getByTestId('open-academy').click();
+    seen.checkWordArticle = await directionOf(page.getByTestId('academy-drawer').getByTestId('article-panel'));
+    seen.checkWordArticleText = (await page.getByTestId('academy-drawer').getByTestId('article-panel').textContent())?.slice(0, 80);
+    const checkPicture = testInfo.outputPath('arabic-helps-check.png');
+    await page.screenshot({ path: checkPicture, animations: 'disabled' });
+    await testInfo.attach('arabic-helps-check', { path: checkPicture, contentType: 'image/png' });
+    seen.external = external.external();
+    seen.document = await page.evaluate(() => document.documentElement.dir);
+    const file = testInfo.outputPath('arabic-helps-direction.json');
+    fs.writeFileSync(file, `${JSON.stringify(seen, null, 2)}\n`);
+    await testInfo.attach('arabic-helps-direction', { path: file, contentType: 'application/json' });
+    await external.save(testInfo);
+
+    expect(seen.document).toBe('ltr');
+    for (const part of ['note', 'article', 'articleTitle', 'word', 'wordArticle', 'wordArticleTitle', 'checkNote', 'checkArticle', 'checkWordArticle']) {
+      expect(seen[part], part).toEqual({ dir: 'rtl', direction: 'rtl' });
+    }
+    expect(seen.twSource).toContain('git.door43.org/BSOJ/ar_twl');
+    // The tW list has items: "0 of N resolved", N > 0.
+    expect(Number(/of (\d+)/.exec(String(seen.twProgress))?.[1] ?? 0)).toBeGreaterThan(0);
+    // The tW articles are Arabic text.
+    for (const part of ['wordArticleText', 'checkWordArticleText']) expect(String(seen[part]), part).toMatch(/[\u0600-\u06FF]/);
+    expect(seen.external).toEqual([]);
+  });
 });

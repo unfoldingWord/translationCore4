@@ -33,6 +33,13 @@ fi
 # a project open reads thousands of segments and the slow-open journey can watch
 # the progress indicator. Deterministic (same bytes every seed).
 node "$(npath "$ROOT/scripts/seed-large-project.mjs")" "$(npath "$WORK/repos/_local_/_local_/sample_burrito_large")" --edits 4000
+# #650: the Arabic right-to-left project (Titus, BSOJ ar_avd text), only when the run asks
+# for it (TC4_ARABIC_FIXTURE=1) and the cache holds ar_avd v6.9; the other journeys see
+# the same Home as before. The J4 Arabic cases name what they skip on.
+AR_AVD_Z="$DEV/resources-cache/ar_avd-v6.9-unwrapped.zip"
+if [ "${TC4_ARABIC_FIXTURE:-}" = "1" ] && [ -f "$AR_AVD_Z" ]; then
+  node "$(npath "$ROOT/scripts/seed-arabic-project.mjs")" "$(npath "$WORK/repos/_local_/_local_/arabic_burrito")" "$(npath "$AR_AVD_Z")"
+fi
 # A SECOND gateway-language suite (es-419_gl) rides along, so the two-language-set
 # path (D17/D30 ladder, D23a gateway change, D36 carry-over) is exercisable on the
 # rig. es-419_tn v66 covers 3JN/JON/RUT/TIT — TIT and JON are the rig's books, so a

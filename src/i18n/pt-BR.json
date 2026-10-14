@@ -943,6 +943,8 @@
   "conflicts.cancel": "Cancelar",
   "conflicts.keep": "Manter esta versão",
   "conflicts.keepError": "A versão não foi mantida.",
+  "conflicts.otherKept": "Outra versão deste versículo foi mantida.",
+  "conflicts.bookNotLoaded": "O livro não abriu de novo. Volte para o Início e abra o projeto novamente.",
   "conflicts.reviewOne": "1 conflito · Revisar",
   "conflicts.reviewMany": "{n} conflitos · Revisar",
   "conflicts.marker": "{n} versões · Revisar",
