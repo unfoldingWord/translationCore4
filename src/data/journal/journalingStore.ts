@@ -47,7 +47,7 @@ import { INSTALLED_SUITE } from '../installedSuite';
 import { withBookHeader } from '../seed';
 import { JournalStore } from './journalStore';
 import { idbKvStore, type KvStore } from './identity';
-import { sealAction, type JournalEvent } from './seal';
+import { sealAction, segmentName, type JournalEvent } from './seal';
 import { defaultFoldRunner, type FoldRunner } from './foldRunner';
 import { verseConflicts, type VerseConflict } from './verseConflicts';
 import { isApplyPending, recoverySettled, syncGenerationOf, type OpsRecorder } from './opsLog';
@@ -1998,25 +1998,68 @@ export class JournalingStore implements BurritoStore {
   ): Promise<boolean> {
     const maxPrefix = 8;
     for (let drop = 1; drop <= Math.min(maxPrefix, actions.length); drop += 1) {
-      const prefixEvents = actions.slice(0, actions.length - drop).flatMap((action) => action.events);
-      let prefixFold: FoldOutput;
-      try {
-        prefixFold = await this.runner.fold(prefixEvents);
-      } catch {
-        break;
-      }
-      if (resolutionRecords.length === 0 && this.compareDisk(prefixFold, disk).length === 0) return true;
-      if (resolutionRecords.length === 0) continue;
-      const prefixTs = new Set(prefixEvents.map((event) => event.ts));
-      const prefixResolutions = new Map(harvested);
-      for (const record of resolutionRecords)
-        if (record.kind !== 'unconditional' && prefixTs.has(record.ts))
-          for (const [key, resource] of Object.entries(record.resolutions!))
-            prefixResolutions.set(key, resource);
-      if (this.withResolutions(prefixResolutions, () => this.compareDisk(prefixFold, disk).length === 0))
-        return true;
+      const behind = await this.divergenceFrom(actions.slice(0, actions.length - drop), resolutionRecords, harvested, disk);
+      if (behind === null) break;
+      if (behind.length === 0) return true;
     }
     return false;
+  }
+
+  /** The paths where the disk is not the projection of the fold of `actions`,
+   * under the resolutions the disk holds and those of the ledger records that the
+   * actions gate; null when the fold refuses the actions. */
+  private async divergenceFrom(
+    actions: Array<{ actor: string; ts: string; events: JournalEvent[] }>,
+    resolutionRecords: IntentRecord[],
+    harvested: Map<string, Record<string, unknown>>,
+    disk: DiskInventory,
+  ): Promise<DivergedPath[] | null> {
+    const events = actions.flatMap((action) => action.events);
+    let partFold: FoldOutput;
+    try {
+      partFold = await this.runner.fold(events);
+    } catch {
+      return null;
+    }
+    if (resolutionRecords.length === 0) return this.compareDisk(partFold, disk);
+    const partTs = new Set(events.map((event) => event.ts));
+    const partResolutions = new Map(harvested);
+    for (const record of resolutionRecords)
+      if (record.kind !== 'unconditional' && partTs.has(record.ts))
+        for (const [key, resource] of Object.entries(record.resolutions!))
+          partResolutions.set(key, resource);
+    return this.withResolutions(partResolutions, () => this.compareDisk(partFold, disk));
+  }
+
+  /** G8 (#676): a sync apply that stopped before all its derived writes, with its
+   * marker lost (a power loss, PLATFORM-NOTES #51), leaves teammate journal files
+   * that no commit holds. Only the apply writes a teammate journal file, and it
+   * commits last. So a teammate segment that `GET /git/status` lists is from an
+   * apply that did not end. When each `diverged` path on the disk is the
+   * projection of the journal without those segments, the apply did not write it
+   * yet: the journal is ahead, and the open regenerates forward. A reconcile would
+   * journal the old text as an own edit over the teammate's. */
+  private async stoppedApplyExplains(
+    diverged: DivergedPath[],
+    actions: Array<{ actor: string; ts: string; events: JournalEvent[] }>,
+    resolutionRecords: IntentRecord[],
+    harvested: Map<string, Record<string, unknown>>,
+    disk: DiskInventory,
+  ): Promise<boolean> {
+    const own = this.mustJournal().actorId;
+    if (actions.every((action) => action.actor === own)) return false;
+    // A new folder is one entry that ends in '/': libgit2 does not recurse into an
+    // untracked folder [VERIFIED — rig 0.18.15 (a83725b), status.rs, 2026-10-14].
+    const changed = (await this.api.gitStatus(this.mustRepo())).map((change) => change.path);
+    const uncommitted = (ipath: string): boolean =>
+      changed.some((path) => path === ipath || (path.endsWith('/') && ipath.startsWith(path)));
+    const kept = actions.filter((action) =>
+      action.actor === own || !uncommitted(`ingredients/checking/journal/${action.actor}/segments/${segmentName(action.ts)}`));
+    if (kept.length === actions.length) return false;
+    const behind = await this.divergenceFrom(kept, resolutionRecords, harvested, disk);
+    if (behind === null) return false;
+    const notWritten = new Set(behind.map((d) => d.ipath));
+    return diverged.every((d) => !notWritten.has(d.ipath));
   }
 
   private reconciliationPaths(after: FoldOutput, disk: DiskInventory): string[] {
@@ -2182,6 +2225,14 @@ export class JournalingStore implements BurritoStore {
     // branch survives even a lost ledger record: the journal itself still
     // explains the lag.
     if (await this.prefixMatchesDisk(actions, resolutionRecords, harvested, disk)) {
+      await regenerateForward();
+      return;
+    }
+
+    // (b2) G8 (#676): a sync apply that stopped with teammate journal files that no
+    // commit holds, and each diverged path as it was before the apply -> regenerate
+    // forward.
+    if (await this.stoppedApplyExplains(diverged, actions, resolutionRecords, harvested, disk)) {
       await regenerateForward();
       return;
     }

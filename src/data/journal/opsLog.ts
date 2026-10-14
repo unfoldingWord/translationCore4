@@ -33,8 +33,16 @@
 //                                     the marker, delete the scratch copy.
 //                                     Any bytes at the marker path count: a torn
 //                                     marker write may still have begun an apply.
+//                                     Only a copy that is the fold of its journal
+//                                     is applied; a copy that is not whole goes
+//                                     with its marker, not applied.
 //   scratch copy with no marker    -> delete it; the project did not change.
 //   no scratch copy                -> nothing is pending.
+// A power loss is not a kill: the platform calls no fsync (PLATFORM-NOTES #51), so
+// the disk can keep later writes and lose the marker, or keep the marker and lose
+// part of the scratch copy. The whole-copy check above is one guard; the other is
+// in the open (JournalingStore, branch (b2)): teammate journal files that no
+// commit holds, with the disk from before the apply, regenerate forward.
 // While the marker is there, the project takes no open (JournalingStore, one
 // GET of the scratch copy's paths; a missing repository answers [] with HTTP 200
 // [VERIFIED — pankosmia-web 0.18.15 (a83725b), live rig, 2026-10-14;
@@ -68,6 +76,7 @@ import { Refusal, failedReport, isUnjournaledIngredient, okReport, type Report }
 import type { ServerApi } from '../serverApi';
 import { isNotFoundError } from '../serverApi';
 import { readJournalZipOf } from './journalStore';
+import { verifyProjectAgainstJournal } from './verify';
 
 /** The settings key that keeps the bytes of a settings document that did not parse. */
 export const UNREADABLE_KEY = 'unreadableSettings';
@@ -180,6 +189,7 @@ export type OpsRecoveryApi = Pick<
   | 'gitStatus'
   | 'remakeIngredients'
   | 'addAndCommit'
+  | 'getMetadataRaw'
 >;
 
 // ---- the sync apply (issue #676, G8; D101) --------------------------------------
@@ -264,17 +274,28 @@ export const recoverySettled = (): Promise<void> => recovering;
 export const isApplyPending = async (api: Pick<OpsRecoveryApi, 'listPaths'>, repoPath: string): Promise<boolean> =>
   (await api.listPaths(scratchPathOf(repoPath))).includes(APPLY_MARKER);
 
+/** True when the scratch copy is the fold of its journal, as the sync verified it
+ * before the push. The marker is not a derived file, so it is the one extra file. */
+const isScratchWhole = async (api: OpsRecoveryApi, scratch: string): Promise<boolean> => {
+  const verified = await verifyProjectAgainstJournal(api, scratch, { skipUnjournaled: true });
+  return verified.projectionFailure === null && verified.invalidSegments.length === 0
+    && verified.metadataProblems.length === 0 && verified.mismatches.every((m) => isMarkerPath(m.ipath));
+};
+
 /** The disk rule (module header): finish an apply that the marker says may have
- * begun, or delete a scratch copy that has no marker. Safe to run again. */
-export async function finishPendingApply(api: OpsRecoveryApi, repoPath: string): Promise<'applied' | 'deleted' | 'none'> {
+ * begun, or delete a scratch copy that has no marker. Safe to run again. A copy
+ * that is not whole (a power loss, PLATFORM-NOTES #51) is not applied: it goes,
+ * with its marker (`'refused'`). */
+export async function finishPendingApply(api: OpsRecoveryApi, repoPath: string): Promise<'applied' | 'refused' | 'deleted' | 'none'> {
   const scratch = scratchPathOf(repoPath);
   const paths = await api.listPaths(scratch);
   if (paths.includes(APPLY_MARKER)) {
     nextSyncGeneration(repoPath);
-    await applyScratch(api, repoPath, scratch);
+    const whole = await isScratchWhole(api, scratch);
+    if (whole) await applyScratch(api, repoPath, scratch);
     await deleteIngredientIfPresent(api, scratch, APPLY_MARKER);
     await deleteIfPresent(api, scratch);
-    return 'applied';
+    return whole ? 'applied' : 'refused';
   }
   if (!paths.length) return 'none';
   await deleteIfPresent(api, scratch);
@@ -379,6 +400,7 @@ export class OpsLog implements OpsRecorder {
    * answers [] with HTTP 200. Returns the failure of the list, or null. */
   private async runDiskRule(api: OpsRecoveryApi): Promise<unknown> {
     this.applied = new Set();
+    this.refused = new Set();
     let repos: string[];
     try {
       repos = await api.listLocalRepos();
@@ -387,7 +409,9 @@ export class OpsLog implements OpsRecorder {
     }
     for (const repoPath of repos) {
       try {
-        if ((await finishPendingApply(api, repoPath)) === 'applied') this.applied.add(repoPath);
+        const outcome = await finishPendingApply(api, repoPath);
+        if (outcome === 'applied') this.applied.add(repoPath);
+        if (outcome === 'refused') this.refused.add(repoPath);
       } catch (error) {
         const failure = { id: `apply:${repoPath}`, op: 'sync' as OpsOp, error: `the pending apply of ${repoPath} did not finish: ${String((error as Error)?.message ?? error)}` };
         this.errors = [...this.errors, failure];
@@ -455,6 +479,8 @@ export class OpsLog implements OpsRecorder {
 
   /** The projects whose pending apply this start finished (the disk rule). */
   private applied = new Set<string>();
+  /** The projects whose scratch copy with the marker was not whole (the disk rule). */
+  private refused = new Set<string>();
 
   /** The Report of an interrupted sync. The disk rule has already run: a scratch
    * copy left now has no marker, so it goes, with a fixed clone path that the
@@ -465,13 +491,18 @@ export class OpsLog implements OpsRecorder {
     if (typeof repoPath !== 'string')
       return failedReport('sync', entry.startedAt, endedAt, new Error('the sync was interrupted before it named its project'), facts);
     if (phase === 'clone' && typeof clonePath === 'string') await deleteIfPresent(api, clonePath);
-    await finishPendingApply(api, repoPath);
+    if ((await finishPendingApply(api, repoPath)) === 'refused' || this.refused.has(repoPath))
+      return failedReport('sync', entry.startedAt, endedAt,
+        new Error('the scratch copy of the sync was not whole after the stop, so it was not applied; the next sync brings Door43 main'),
+        { ...facts, scratchNotWhole: true });
     if (this.applied.has(repoPath)) return okReport('sync', entry.startedAt, endedAt, { ...facts, finishedApply: true });
     // The record is not a lock. The sync saves the phase `apply` only after the
     // marker write, and it deletes the marker only after the apply ends. So a
     // record at `apply` with no marker is an apply that ended (B3): the sync is over.
     // A stop before the marker write leaves the phase at `push` (or earlier): the
     // project did not change, and the next sync brings Door43 main to it.
+    // After a power loss that lost the marker, `apply` can be wrong (Ledger #11):
+    // own work stays, the open regenerates forward, and the next sync applies.
     if (phase === 'apply') return okReport('sync', entry.startedAt, endedAt, { ...facts, applyPending: false });
     return failedReport('sync', entry.startedAt, endedAt,
       new Error('the sync was interrupted before the apply; the project did not change'), { ...facts, rolledBack: true });
