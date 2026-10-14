@@ -412,6 +412,13 @@ export async function sync(deps: SyncDeps, request: SyncRequest): Promise<Report
       return failedReport('sync', at, at,
         new Refusal('sync.swap-pending', `the sync of ${repoPath} did not finish; restart the app to finish it`), { repoPath });
     }
+    // An open from Door43 that stopped at move.copy can leave a part copy here,
+    // which the next start may delete: no sync until that start finishes it.
+    if (deps.ops?.isOpen?.('open-door43', repoPath, 'move.copy')) {
+      const at = new Date().toISOString();
+      return failedReport('sync', at, at,
+        new Refusal('open-door43.pending', `the open from Door43 of ${repoPath} did not finish; restart the app to finish it`), { repoPath });
+    }
     const record = await deps.ops?.begin('sync', { repoPath });
     const { report, open } = await syncRecorded(deps, request, record);
     // A swap that stopped leaves its record open, so the next start finishes it (G8).

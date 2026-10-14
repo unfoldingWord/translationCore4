@@ -495,6 +495,14 @@ describe('#677 the open never loses a project that opened (review B1, B2)', () =
     const store = new JournalingStore({ api: w.api, kv: w.kvB, ops: ops2 });
     await expect(store.open(OPENED)).rejects.toMatchObject({ code: 'open-door43.pending' });
     store.dispose();
+    // and no sync: the next start may delete this part copy
+    const pushesBefore = [...w.rig.repos.keys()].length;
+    const refused = await sync(
+      { api: w.api, kv: w.kvB, door43Server: 'https://qa.door43.org', coverage: {}, ops: ops2 },
+      { repoPath: OPENED, session: { username: 'translator_b', token: 'tok-677' } },
+    );
+    expect([refused.ok, refused.code]).toEqual([false, 'open-door43.pending']);
+    expect([...w.rig.repos.keys()].length).toBe(pushesBefore);
     // start 3 finishes the recovery: the part project goes, and the repository opens again
     forgetProjectQueues();
     const ops3 = appOver(s);
