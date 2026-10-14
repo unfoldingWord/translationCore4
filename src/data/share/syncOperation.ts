@@ -1,4 +1,4 @@
-// The sync shell (issue #676; layer 3 of epic #24, D98, D100). The thin part that
+// The sync shell (issue #676; layer 3 of epic #24, D98, D101). The thin part that
 // touches the server, beside the share operation. One sync of one project:
 //
 //   1. checks: a Door43 username and token (`sync.auth-failed`, before any
@@ -21,7 +21,7 @@
 //   6. push. Not a fast-forward: start again at step 2; after three tries stop
 //      with `sync.non-fast-forward` (G4). Never a force push: the platform push
 //      has no force form.
-//   7. the apply (G8, D100): write the apply marker into the scratch copy, move
+//   7. the apply (G8, D101): write the apply marker into the scratch copy, move
 //      the project's sync generation on (a store opened before it is stale), and
 //      `applyScratch` makes the project's `ingredients/`, except `audio/`, equal
 //      to the pushed scratch copy: journal files, then derived files, then
@@ -39,7 +39,7 @@
 //
 // Audio: round 1 never reads or writes `ingredients/audio/` (the one class that
 // can be binary, R-8.7.3). A teammate's audio does not reach this project, and
-// own audio stays where it is (D100).
+// own audio stays where it is (D101).
 //
 // The HTTPS answer for a refused token is recorded: HTTP 500 with
 // `code=Auth (-16)` (docs/evidence/sync-transport-spike-2026-10-13.md, owner run
@@ -182,7 +182,10 @@ export const clonePathOf = (source: CloneSource): string => `${source.host}/${so
  * a stale folder at the path to the move off the path, so two clones of the same
  * repository (a sync, and #677 open from Door43) never meet there. `cloneProject`
  * takes it; other code that uses the fixed path takes it too. The key has its
- * own prefix, so it never waits on a project queue. */
+ * own prefix, so it never waits on a project queue.
+ * Lock order: the project queue (`inProjectQueue`) first, then this lock; never
+ * the reverse. A sync holds its project queue when it clones; code that holds
+ * this lock must never wait on a project queue, or the two can deadlock. */
 export const withClonePath = <T>(clonePath: string, fn: () => Promise<T>): Promise<T> =>
   inProjectQueue(`clone-path:${clonePath}`, fn);
 
@@ -197,8 +200,9 @@ export function cloneProject(
   source: CloneSource,
   repoPath: string,
   beforeClone?: (clonePath: string) => Promise<unknown>,
+  beforeMove?: (clonePath: string) => Promise<unknown>,
 ): Promise<void> {
-  return withClonePath(clonePathOf(source), () => cloneLocked(api, source, repoPath, beforeClone));
+  return withClonePath(clonePathOf(source), () => cloneLocked(api, source, repoPath, beforeClone, beforeMove));
 }
 
 async function cloneLocked(
@@ -206,6 +210,7 @@ async function cloneLocked(
   source: CloneSource,
   repoPath: string,
   beforeClone?: (clonePath: string) => Promise<unknown>,
+  beforeMove?: (clonePath: string) => Promise<unknown>,
 ): Promise<void> {
   const clonePath = clonePathOf(source);
   if (clonePath === repoPath)
@@ -223,6 +228,8 @@ async function cloneLocked(
     throw refusalForClone(error);
   }
   try {
+    // `beforeMove` runs at the fixed path, before the clone can reach `repoPath`
+    await beforeMove?.(clonePath);
     await api.copyRepo(clonePath, repoPath, true);
   } catch (error) {
     // A clone path the clean-up cannot delete stays on Home and blocks every later
@@ -296,7 +303,7 @@ export async function sync(deps: SyncDeps, request: SyncRequest): Promise<Report
       return failedReport('sync', at, at,
         new Refusal('opslog.not-loaded', 'the ops log did not load at this start; restart the app to sync'), { repoPath });
     }
-    // G8 (D100): an apply that the marker says may have begun is finished first
+    // G8 (D101): an apply that the marker says may have begun is finished first
     try {
       await finishPendingApply(deps.api, repoPath);
     } catch (error) {
@@ -363,7 +370,12 @@ async function syncOnce(
   const { api } = deps;
   // 2. Door43 main into the scratch copy
   await deleteIfPresent(api, scratch);
-  await cloneProject(api, checked.source, scratch, (clonePath) => note({ phase: 'clone', clonePath, try: tries }));
+  // Door43 content never authorizes an apply: a marker that came with the clone is
+  // deleted at the fixed path, before the move, so the scratch copy holds a marker
+  // only after this sync wrote it (step 7). A kill before the move leaves only the
+  // clone path, which the next clone deletes.
+  await cloneProject(api, checked.source, scratch, (clonePath) => note({ phase: 'clone', clonePath, try: tries }),
+    (clonePath) => deleteIngredientIfPresent(api, clonePath, APPLY_MARKER));
   await note({ phase: 'sync' });
   const remote = await readFiles(api, scratch, () => true, true);
 
@@ -394,7 +406,7 @@ async function syncOnce(
     await api.remakeIngredients(scratch);
     await api.addAndCommit(scratch, message);
   }
-  const verified = await verifyProjectAgainstJournal(api, scratch);
+  const verified = await verifyProjectAgainstJournal(api, scratch, { skipUnjournaled: true }); // audio/ is never read
   if (!verified.ok)
     throw new Refusal('sync.verify-failed', 'the copy is not the fold of its journal; nothing was pushed', {
       projectionFailure: verified.projectionFailure,
@@ -479,7 +491,7 @@ async function syncRecorded(
   if ('result' in tried) return tried.result;
   const { facts } = tried;
 
-  // 7. the apply (G8, D100): the marker in the scratch copy is the record, and it is
+  // 7. the apply (G8, D101): the marker in the scratch copy is the record, and it is
   // there before the first write to the project (opsLog.ts header)
   await note({ phase: 'apply' });
   try {
@@ -503,17 +515,16 @@ async function syncRecorded(
   }
 
   // 8. the apply is done: the marker goes first (one file), then the scratch copy
+  // A failure from here on is after the apply: the sync is done, and the next
+  // start or sync ends the clean-up (a marker left there applies again, which
+  // changes nothing).
   try {
     await deleteIngredientIfPresent(api, scratch, APPLY_MARKER);
-  } catch (error) {
-    const refusal = new Refusal('sync.apply-pending', 'the apply finished, but its marker was not deleted; the next start ends it', failureOf(error));
-    return failed(refusal, { tries: facts.tries, phase: 'apply' });
-  }
-  try {
     await mine.journal.clearCarried(mine.outbox);
     await deleteIfPresent(api, scratch);
   } catch (error) {
-    return failed(error, { tries: facts.tries, applied: true }); // a coded `sync.failed` (withCode)
+    const refusal = new Refusal('sync.cleanup-failed', 'the sync is done; its clean-up did not finish, and the next start or sync ends it', failureOf(error));
+    return failed(refusal, { tries: facts.tries, applied: true });
   }
   return { report: okReport('sync', startedAt, new Date().toISOString(), { ...facts, repoPath }), open: false };
 }

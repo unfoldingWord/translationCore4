@@ -1,4 +1,4 @@
-// D100 point 6 (#676): the cost of one apply write. Times N sequential writes, the
+// D101 point 6 (#676): the cost of one apply write. Times N sequential writes, the
 // request the sync apply makes for each file (ServerApi.writeIngredient: one POST
 // per file, no ingredients update, no .bak). It writes N files into REPO, so run it
 // only against a seeded rig, then reseed. Usage:

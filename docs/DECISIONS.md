@@ -2647,7 +2647,7 @@ this computer does not have, rebuilds, and pushes [VERIFIED — `journal/fold.mj
 2. **The project owner gives teammates write access on Door43.** tC4 does not manage access.
 3. **"Upload changes" becomes "Sync with Door43" after the first share.** One press gets Door43
    `main`, adds the own journal files, rebuilds the project files, pushes, and applies the
-   pushed tree to the project in place. [amended 2026-10-14 — D100: no swap, no second
+   pushed tree to the project in place. [amended 2026-10-14 — D101: no swap, no second
    project folder]
 4. **The conflict review follows translationStudio's design**, verse by verse, with the shading
    set by the owner of each version, not by its position.
@@ -2675,12 +2675,12 @@ This table is the home of the guarantees; epic #24 links here.
 |---|---|---|---|---|
 | G1 | Own work is never lost: each own journal file and outbox entry from before a sync is in the result, byte for byte, or the sync changes nothing. | 2 | R-8.7.7 | #674 (JC-35), #675 |
 | G2 | Incoming files are checked: each journal file from Door43 passes the one validator. One failure stops the sync. | 2 | R-8.7.8 | #674 (JC-35), #675, #677 |
-| G3 | Derived files are rebuilt, never trusted: each project file that tC4 writes is the projection of the fold over the base inputs of R-8.7.9. `metadata.json` belongs to the server and a sync never writes it. | 2 | R-8.7.9, R-8.7.10 | #674 (JC-35), #675 |
+| G3 | Derived files are rebuilt, never trusted: each project file that tC4 writes is the projection of the fold over the base inputs of R-8.7.9. `metadata.json` belongs to the server: a sync never writes its content, and the remake and the commit of the apply make the platform stamp it again (PLATFORM-NOTES #48). [amended 2026-10-14 — D101] | 2 | R-8.7.9, R-8.7.10 | #674 (JC-35), #675 |
 | G4 | Door43 `main` only moves forward: never a force push; a push that is not a fast-forward starts the sync again. | 3 | app rule (§8.7) | #676 |
 | G5 | Identity holds: after a sync, the project is at the same path with the same actor id. | 3 | app rule (§8.7) | #676 |
 | G6 | Same journals, same project: two computers with the same journals have the same project files. | 2 | R-8.7.11 | #674 (JC-35), #675 |
 | G7 | Only verse text reaches a person: other conflicts keep the newest version, and the result counts each one once. | 1, 2, 4 | R-8.7.12 | #674 (JC-35), #675, #679 |
-| G8 | A crash during the apply never makes the project unopenable, never loses own work, and never reverts or re-attributes teammate work; the next start finishes the apply. [amended 2026-10-14 — D100] | 3 | app rule (§8.7) | #676 |
+| G8 | A crash during the apply never makes the project unopenable, never loses own work, and never reverts or re-attributes teammate work; the next start finishes the apply. [amended 2026-10-14 — D101] | 3 | app rule (§8.7) | #676 |
 
 The refusal codes of the format-facing rules are in `journal/report.mjs`:
 `sync.own-file-differs` (R-8.7.7), `sync.incoming-invalid` (R-8.7.8), `sync.metadata-overlay`
@@ -2736,7 +2736,37 @@ Where it lands: `scripts/sign-windows.ps1`, `scripts/package-desktop.zsh`, `scri
 `.github/workflows/package-desktop.yml` (the signing values and the `smoke-windows-x64`
 signature check), `docs/PACKAGING.md` (Signing), and `scripts/README-windows.txt`.
 
-## D100 (2026-10-14, project-owner ruling) **The sync applies Door43 main to the project in place. There is no swap, no previous copy and no second project folder. Amends D98 point 3 and the G8 row of D98.** [owner ruling of 2026-10-14 on #676, PR #688]
+## D100 (2026-10-14, project-owner ruling) **ar_gt leaves the gateway registry. BSOJ is the only Arabic package. D97 ruling 7 now applies to `Door43-Catalog` for `ml` and `ur-deva`. Amends D97 ruling 7.** [owner ruling on #650, 2026-10-14; evidence in #650 and pull request #697]
+
+Context. D97 ruling 7 named `ar_gt` as one of the gateway organizations with no `_twl`
+repository, and as the worked example of an Arabic set that pins the bundled `en_twl` with
+its own `ar_tw`. The #650 work found that ar_gt is not a usable Arabic package: in
+`ar_gt/ar_tw` v3, 420 of the 422 articles are Persian under the tag `ar`; `ar_gt/ar_tn` v3.2
+holds only `tn_3JN.tsv`; and no ar_gt repository has the `tc-ready` topic, so the Source
+texts screen never offers it for download [VERIFIED — Door43 API reads, 2026-10-14].
+
+1. **The registry has no ar_gt entry.** `src/data/gateways.ts` lists one Arabic package,
+   `BSOJ` (`hasTwl: true`).
+2. **Ruling 7 stands, with other examples.** A gateway with `hasTwl: false` still pins the
+   bundled `en_twl` with its own `<lang>_tw`. Those gateways are now `Door43-Catalog` for
+   `ml` and `ur-deva` [`Door43-Catalog/ur-deva_twl` answers HTTP 404, read 2026-10-14]. The
+   tests of ruling 7 that read the registry use `ur-deva`; the test that two organizations
+   of one language decide separately uses a test-only gateway object, since no registry
+   pair shows that difference any more. D97 itself is not rewritten.
+3. **Two behavior changes.** (1) A tC3 import that recorded `ar_gt/ar_tw` leaves its tW slot
+   unresolved: the import no longer finds ar_gt in the registry, so it looks for
+   `ar_gt/ar_twl`, which does not exist. (2) `orgForRepoName('ar_tn')` returns `BSOJ`, where
+   it returned null while two organizations claimed `ar`. So an older Arabic install whose
+   path carries no owner (`_sideloaded_/ar_tn`) is read as BSOJ's, even one that came from
+   ar_gt. No user could download ar_gt in the app, so neither case comes from a normal
+   install.
+
+Where it lands: `src/data/gateways.ts`, `test/gatewayTwl.test.ts`, `test/import/tc3.test.ts`,
+`test/installed.test.ts`, and the J4 Arabic run (`e2e/j04-check-book.spec.ts`). Tests that
+use ar_gt only as pin data stay: `test/oldTwlPin.test.ts`, `test/resourceFetch.test.ts` and
+`conformance/validate.mjs`.
+
+## D101 (2026-10-14, project-owner ruling) **The sync applies Door43 main to the project in place. There is no swap, no previous copy and no second project folder. Amends D98 point 3 and the G8 row of D98.** [owner ruling of 2026-10-14 on #676, PR #688]
 
 1. **The apply.** After the push, the sync makes the project's `ingredients/` folder, except
    `ingredients/audio/`, equal to the tree that it pushed. It writes the journal files first,
@@ -2752,7 +2782,11 @@ signature check), `docs/PACKAGING.md` (Signing), and `scripts/README-windows.txt
    (any bytes) gets the same apply again, then the marker and the scratch copy are deleted;
    a scratch copy with no marker is deleted, because the project did not change; no scratch
    copy means nothing is pending. While the marker is there, the project takes no open
-   (`sync.apply-pending`). The apply compares before it writes, so it is safe to run again.
+   (`sync.apply-pending`). The rule runs before the settings read, so a settings read that
+   fails never stops it. An open or a create waits for the disk rule of the start recovery
+   (not for the settings read), and opens or creates only a project path (`_local_/_local_/<name>`; `open.not-a-project`). An open that writes its own record to the ops log (a store with `ops`, as in the app) still writes the settings document in `ops.begin`, so such an open waits for that write. A failure in
+   the clean-up after a finished apply is `sync.cleanup-failed`: the sync is done.
+   The apply compares before it writes, so it is safe to run again.
    Recovery only goes forward. The sync record in the ops log is only the Report for the dev
    Inspector.
 3. **G8, new text.** A crash during the apply never makes the project unopenable, never loses

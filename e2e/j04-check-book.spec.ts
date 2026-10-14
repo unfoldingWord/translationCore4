@@ -736,6 +736,9 @@ test.describe.serial('J4 — the Arabic package, in an Arabic right-to-left proj
       await page.getByTestId('settings-manage-sources').click();
       const sources = page.getByTestId('sources-modal');
       await expect(sources).toBeVisible({ timeout: 60_000 });
+      // AC6 (D100): the language step lists one Arabic package, BSOJ's.
+      await expect(sources.getByText('العربية', { exact: true })).toHaveCount(1);
+      await expect(sources.getByText(/^(BSOJ|ar_gt) · /)).toHaveText([/^BSOJ · /]);
       await sources.getByText(/^BSOJ · /).click();
       await page.getByTestId('sources-download').click();
       await expect(page.getByTestId('sources-done')).toBeVisible({ timeout: 240_000 });
