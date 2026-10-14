@@ -191,7 +191,7 @@ test.describe('J17 — open a project from Door43', () => {
     const actorsAfter = actorsOn(remote);
     const added = actorsAfter.filter((a) => !actorsBefore.includes(a));
     expect(added, 'one new actor on Door43 main: this computer in this project').toHaveLength(1);
-    // D100 (#676): the sync applies main's tree in place; the project's HEAD is not main's
+    // D101 (#676): the sync applies main's tree in place; the project's HEAD is not main's
     expectIngredientsEqualMain(remote.bare, REPO);
     const beforeOpen = opsIds();
     await page.getByTestId('sync-dismiss').click();
