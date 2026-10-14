@@ -77,7 +77,7 @@ export const REFUSAL_CODES = Object.freeze({
   'sync.auth-failed': null, // no Door43 username or token (checked before any request), or Door43 refused the token
   'sync.offline': null, // the internet is off (D95)
   'sync.not-shared': null, // the project has no `origin` on the Door43 server: share it first
-  'sync.clone-path-exists': null, // the fixed clone path `<host>/<org>/<repo>` already holds a folder
+  'sync.clone-path-exists': null, // the project or the clone's target is at the fixed clone path `<host>/<org>/<repo>`, or the server found a folder there
   'sync.clone-failed': null, // Door43 main did not clone
   'sync.move-failed': null, // a copy or a delete of a repository failed; the project did not change
   'sync.verify-failed': null, // the copy on disk is not the fold of its journal; nothing was pushed
@@ -86,12 +86,15 @@ export const REFUSAL_CODES = Object.freeze({
   'sync.push-failed': null, // any other push failure
   'opslog.not-loaded': null, // (G8) the ops log did not load at this start: no project opens, takes an edit or syncs until it loads
   'sync.failed': null, // a sync failure that is no other refusal (a server error); the project did not change; facts.error holds the diagnosis
-  'sync.swap-pending': null, // (G8) a swap did not finish; no open, edit or sync of the project until the next start finishes it
+  'sync.project-replaced': null, // (G1) a store opened before a sync's apply takes no edit and no checkpoint after it; open the project again
+  'sync.not-main': null, // (G4) the Door43 repository's default branch is not main
+  'sync.apply-pending': null, // (G8) an apply did not finish; no open, edit or sync of the project until the next start finishes it
   // Open a project from Door43 (src/data/share/syncOperation.ts, #677). Its other refusals are the
   // sync codes above: sync.offline, the clone codes, sync.obs-unsupported and (G2) sync.incoming-invalid.
   'open-door43.name-exists': null, // a project with the chosen name is on this computer already; nothing was written
   'open-door43.no-journal': null, // the repository holds no tC4 journal, so it is not a tC4 project (an import, #365); no project was written
-  'open-door43.pending': null, // an open from Door43 stopped while it copied the project; no open or edit of it until the next start finishes it
+  'open-door43.pending': null, // an open from Door43 of the project runs now, or its marked copy is not proved to be this project; no open
+  'open-door43.removed': null, // an open from Door43 did not finish; the gate removed its part copy, so the project did not open
 });
 
 export const isRefusalCode = (code) => typeof code === 'string' && Object.hasOwn(REFUSAL_CODES, code);

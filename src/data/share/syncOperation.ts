@@ -1,11 +1,14 @@
-// The sync shell (issue #676; layer 3 of epic #24, D98). The thin part that
+// The sync shell (issue #676; layer 3 of epic #24, D98, D100). The thin part that
 // touches the server, beside the share operation. One sync of one project:
 //
 //   1. checks: a Door43 username and token (`sync.auth-failed`, before any
 //      request), the internet gate (`sync.offline`, D95), and an `origin` on the
-//      Door43 server (`sync.not-shared`).
+//      Door43 server (`sync.not-shared`), and a project that is not at the fixed
+//      clone path (`sync.clone-path-exists`).
 //   2. get a full copy of Door43 `main` into the scratch copy: a clone to the
-//      fixed path, then a move (#673, `cloneProject`).
+//      fixed path, then a move (#673, `cloneProject`), under the lock of that
+//      path (`withClonePath`). A folder at the path is a clone that a kill left
+//      there, and the clone deletes it first.
 //   3. the name action (R-8.5.25): when this actor has no `actor.name.set` in
 //      its journal, its outbox or on Door43 main, the app writer seals one with
 //      the Door43 username only (`JournalStore.sealName`). It goes in as an
@@ -18,41 +21,54 @@
 //   6. push. Not a fast-forward: start again at step 2; after three tries stop
 //      with `sync.non-fast-forward` (G4). Never a force push: the platform push
 //      has no force form.
-//   7. the swap (G8): four server calls put the scratch copy at the project's
-//      path; the ops log records each phase (src/data/journal/opsLog.ts names
-//      each phase and its recovery rule). The project keeps its path, so it
+//   7. the apply (G8, D100): write the apply marker into the scratch copy, move
+//      the project's sync generation on (a store opened before it is stale), and
+//      `applyScratch` makes the project's `ingredients/`, except `audio/`, equal
+//      to the pushed scratch copy: journal files, then derived files, then
+//      removes, then a remake and a commit. The project stays at its path, so it
 //      keeps its actor id (G5: the id is HMAC(secret, repoPath), identity.ts).
-//   8. live: clear the outbox entries the sync carried, record the previous
-//      copy (the next successful checkpoint deletes it), and close the ops
-//      record with the Report (`op: 'sync'`).
+//      src/data/journal/opsLog.ts gives the disk rule that finishes a stopped apply.
+//   8. delete the marker, clear the outbox entries the sync carried, delete the
+//      scratch copy, and close the ops record with the Report (`op: 'sync'`).
+// Before step 2, a sync finishes an apply that the marker says may have begun.
 //
 // The sync holds the project's mutation queue for its whole run, so no save of
-// the open store lands between the read of the journal and the swap. After an ok
-// sync the caller MUST open the project again: the open store's fold and
-// `.git` are the old ones (#678).
+// the open store lands between the read of the journal and the apply. After an
+// ok sync the caller MUST open the project again: the open store's fold is the
+// old one (#678).
 //
-// The HTTPS answers for a refused token (401) and for no write access (403)
-// are [PENDING — owner run, #673 steps 3 and 4]. `refusalForPush` maps them by
-// the HTTP status in the reason text, as best known.
+// Audio: round 1 never reads or writes `ingredients/audio/` (the one class that
+// can be binary, R-8.7.3). A teammate's audio does not reach this project, and
+// own audio stays where it is (D100).
+//
+// The HTTPS answer for a refused token is recorded: HTTP 500 with
+// `code=Auth (-16)` (docs/evidence/sync-transport-spike-2026-10-13.md, owner run
+// step 3), matched on the code, not on the text. The answer for no write access
+// (403) is [PENDING — the owner's run on the Door43 QA server, #673 step 4];
+// until then `refusalForPush` maps it by the HTTP status in the reason text.
 import { checkpointMessage } from '../checkpoint';
 import { Refusal, checkJournalFile, failedReport, isObsMetadata, okReport, projectResources, syncCore, type Report } from '../journal/runtime';
-import { JournalStore, readJournalZipOf } from '../journal/journalStore';
+import { JournalStore } from '../journal/journalStore';
 import { inProjectQueue } from '../journal/journalingStore';
 import { idbKvStore, type KvStore } from '../journal/identity';
 import { segmentName, validateActorDoc, validateSegment, type JournalEvent } from '../journal/seal';
 import { verifyProjectAgainstJournal } from '../journal/verify';
 import {
+  APPLY_MARKER,
+  applyScratch,
   deleteIfPresent,
-  openPathsOf,
+  deleteIngredientIfPresent,
+  finishPendingApply,
+  nextSyncGeneration,
+  readIngredientFiles,
+  scratchPathOf,
+  guardOpenCopy,
+  OPEN_MARKER,
+  openRunning,
+  openScratchOf,
   type OpenPhase,
-  lastSegmentName,
-  previousCopyKey,
-  runSwap,
-  syncPathsOf,
   type OpsHandle,
   type OpsRecorder,
-  type SwapPaths,
-  type SwapPhase,
 } from '../journal/opsLog';
 import { assertRepoPath, type ServerApi } from '../serverApi';
 import { resolutionRecord, resolveToolBook, type Coverage, type Tool } from '../resolve';
@@ -152,15 +168,28 @@ const refusalForPush = (error: unknown): Error => {
   if (status === 401 && /offline mode/.test(reason)) return new Refusal('sync.offline', NO_CONSENT, facts);
   if (/NotFastForward/.test(reason))
     return new Refusal('sync.non-fast-forward', 'Door43 main moved while this computer synced', facts);
-  // [PENDING — owner run, #673 steps 3 and 4]: the HTTPS replies for a refused
-  // token and for no write access are not recorded yet. libgit2 names the HTTP
-  // status in its reason, so the status number is the best-known match.
+  // A refused token: libgit2's code, recorded by the owner run (step 3); the text
+  // ("authentication that we do not support") is misleading, so never match it.
+  if (/code=Auth \(-16\)/.test(reason))
+    return new Refusal('sync.auth-failed', 'Door43 did not accept the sign-in', facts);
+  // [PENDING — the owner's run on the Door43 QA server, #673 step 4]: the reply for
+  // no write access is not recorded yet; libgit2 names the HTTP status in its
+  // reason, so the status number is the best-known match.
   if (status === 403 || /\b403\b/.test(reason))
     return new Refusal('sync.no-write-access', 'Door43 did not accept the push: no write access', facts);
-  if (status === 401 || /\b401\b|authentication/i.test(reason))
-    return new Refusal('sync.auth-failed', 'Door43 did not accept the sign-in', facts);
   return new Refusal('sync.push-failed', `the push failed: ${reason}`, facts);
 };
+
+/** The fixed path the clone route writes to (PLATFORM-NOTES #49). */
+export const clonePathOf = (source: CloneSource): string => `${source.host}/${source.org}/${source.repo}`;
+
+/** One in-process lock per fixed clone path. A clone holds it from the delete of
+ * a stale folder at the path to the move off the path, so two clones of the same
+ * repository (a sync, and #677 open from Door43) never meet there. `cloneProject`
+ * takes it; other code that uses the fixed path takes it too. The key has its
+ * own prefix, so it never waits on a project queue. */
+export const withClonePath = <T>(clonePath: string, fn: () => Promise<T>): Promise<T> =>
+  inProjectQueue(`clone-path:${clonePath}`, fn);
 
 /** Clone Door43 `main` of `source` into `repoPath`, by the #673 method: a full
  * clone (no `branch`) to the fixed path `<host>/<org>/<repo>`, then a move.
@@ -168,17 +197,29 @@ const refusalForPush = (error: unknown): Error => {
  * first side effect (the sync records its phase there). Throws a Refusal:
  * `sync.clone-path-exists`, `sync.offline`, `sync.clone-failed` or `sync.move-failed`.
  * For #677 (open a project from Door43). */
-export async function cloneProject(
-  api: Pick<ServerApi, 'listLocalRepos' | 'cloneRepo' | 'copyRepo' | 'deleteRepo'>,
+export function cloneProject(
+  api: Pick<ServerApi, 'listLocalRepos' | 'cloneRepo' | 'copyRepo' | 'deleteRepo' | 'listBranches'>,
   source: CloneSource,
   repoPath: string,
   beforeClone?: (clonePath: string) => Promise<unknown>,
 ): Promise<void> {
-  const clonePath = `${source.host}/${source.org}/${source.repo}`;
-  // The fixed path is never deleted unless this clone made it: it can be an
-  // installed resource. A path that is there already refuses.
-  if ((await api.listLocalRepos()).includes(clonePath))
-    throw new Refusal('sync.clone-path-exists', `the clone path ${clonePath} already holds a folder`, { clonePath });
+  return withClonePath(clonePathOf(source), () => cloneLocked(api, source, repoPath, beforeClone));
+}
+
+async function cloneLocked(
+  api: Pick<ServerApi, 'listLocalRepos' | 'cloneRepo' | 'copyRepo' | 'deleteRepo' | 'listBranches'>,
+  source: CloneSource,
+  repoPath: string,
+  beforeClone?: (clonePath: string) => Promise<unknown>,
+): Promise<void> {
+  const clonePath = clonePathOf(source);
+  if (clonePath === repoPath)
+    throw new Refusal('sync.clone-path-exists', `the clone path ${clonePath} is the target`, { clonePath });
+  // A folder at the fixed path, while this process holds its lock, is a clone
+  // that a kill left between the clone and the move: no clone of this process is
+  // running there. tC4 installs resources under `_local_/_sideloaded_/`
+  // (installed.ts), never here, and the caller refuses a project at this path.
+  if ((await api.listLocalRepos()).includes(clonePath)) await deleteIfPresent(api, clonePath);
   if ((await beforeClone?.(clonePath)) === false)
     throw new Error('the ops log did not save the clone phase; nothing was cloned');
   try {
@@ -189,8 +230,22 @@ export async function cloneProject(
   try {
     await api.copyRepo(clonePath, repoPath, true);
   } catch (error) {
-    await deleteIfPresent(api, clonePath).catch(() => {});
-    throw new Refusal('sync.move-failed', `the clone did not move to ${repoPath}`, { clonePath, ...failureOf(error) });
+    // A clone path the clean-up cannot delete stays on Home and blocks every later
+    // clone: say so (`clonePathLeft`), so the caller keeps its record for recovery.
+    const left = await deleteIfPresent(api, clonePath).then(() => null, (cleanup: unknown) => failureOf(cleanup).reason);
+    throw new Refusal('sync.move-failed', `the clone did not move to ${repoPath}`,
+      { clonePath, ...failureOf(error), ...(left === null ? {} : { clonePathLeft: true, cleanupError: left }) });
+  }
+  // Door43 `main` only (G4): the full clone checks out the repository's default
+  // branch, and the push pushes the checked-out branch. The pinned platform has no
+  // route that checks out `main` from `origin` with full history (`git/branch`
+  // needs a local branch, `git/new-branch` branches from HEAD, a `branch` clone is
+  // shallow), so a default branch other than `main` refuses.
+  const head = (await api.listBranches(repoPath)).find((branch) => branch.is_head);
+  if (head?.name !== 'main') {
+    const left = await deleteIfPresent(api, repoPath).then(() => null, (cleanup: unknown) => failureOf(cleanup).reason);
+    throw new Refusal('sync.not-main', 'the Door43 repository does not have main as its default branch',
+      { branch: head?.name ?? null, ...(left === null ? {} : { targetLeft: true, cleanupError: left }) });
   }
 }
 
@@ -205,10 +260,12 @@ export async function cloneProject(
 // `list-local-repos` and Home do not list it.) The new path gives a new actor id
 // (identity.ts), and the clone keeps `origin`, so the card reads "Sync with
 // Door43" (#678: the shared state is `origin`, D84 point 1).
-// The open writes an ops record (`op: 'open-door43'`) and saves each phase before
-// its step, so the next start can clean up after a kill. The phases and their
-// recovery rules are in opsLog.ts (`resolveOpen`). No open starts until the ops
-// log loads at this start (`opslog.not-loaded`).
+// Safety after a stop comes from the disk only: a marker file travels with the copy,
+// and the gate before each open or sync of the project (`guardOpenCopy`) and the
+// recovery at start decide from it (opsLog.ts, the open section, `settleOpenCopy`).
+// The ops record (`op: 'open-door43'`) is for the Report, the Inspector and the
+// clone-path hint. No open starts until the ops log loads at this start
+// (`opslog.not-loaded`).
 // Out of scope: private repositories, a branch choice, OBS projects (D98).
 
 const APP_ORG = '_local_/_local_';
@@ -292,6 +349,41 @@ async function checkOpenCopy(api: ServerApi, scratch: string, repoPath: string):
     throw new Refusal('sync.incoming-invalid', `${failures.length} journal file(s) on Door43 fail the validator`, { failures });
 }
 
+/** Steps 1 to 3 of the marker order (opsLog.ts, the open section): the marker in the
+ * scratch copy, the copy, then the scratch marker's delete. Throws `sync.move-failed`.
+ * `keepScratch` is called when a part copy of this open can stay at `repoPath`: the
+ * marked scratch copy must then stay too, as the only proof that it is not whole. */
+async function copyMarked(
+  api: ServerApi,
+  scratch: string,
+  repoPath: string,
+  startedAt: string,
+  cleanup: (step: () => Promise<void>, what: string) => Promise<boolean>,
+  keepScratch: () => void,
+): Promise<void> {
+  // 1. from here the copy is not finished until step 3
+  await api.writeIngredient(scratch, OPEN_MARKER, JSON.stringify({ open: repoPath, startedAt }), { updateIngredients: false, keepBak: false });
+  // 2. the copy
+  try {
+    await api.copyRepo(scratch, repoPath);
+  } catch (error) {
+    const facts = failureOf(error);
+    // A target that is there already belongs to someone else: the marker goes first,
+    // so that no gate can take that project for this open's part copy.
+    if (/already exists/i.test(facts.reason)) await cleanup(() => deleteIngredientIfPresent(api, scratch, OPEN_MARKER), 'the marker delete');
+    // a part copy at the free path is this open's
+    else if (!(await cleanup(() => deleteIfPresent(api, repoPath), 'the part copy delete'))) keepScratch();
+    throw new Refusal('sync.move-failed', `the copy did not move to ${repoPath}`, { repoPath, ...facts });
+  }
+  // 3. the copy returned ok, so the project is whole: the scratch marker goes first
+  try {
+    await deleteIngredientIfPresent(api, scratch, OPEN_MARKER);
+  } catch (error) {
+    if (!(await cleanup(() => deleteIfPresent(api, repoPath), 'the project delete after a failed marker delete'))) keepScratch();
+    throw new Refusal('sync.move-failed', `the copy at ${repoPath} was not confirmed`, { repoPath, ...failureOf(error) });
+  }
+}
+
 /** Open a project from Door43: put a full copy of `source` at
  * `_local_/_local_/<name>` and answer its path. Throws a Refusal, and then
  * no project is written: `opslog.not-loaded` and `open-door43.name-exists` (checked
@@ -304,85 +396,71 @@ export async function openFromDoor43(deps: OpenDeps, request: { source: CloneSou
   if (!repoPath) throw new Error(`the project name ${JSON.stringify(request.name)} is not a folder name`);
   await openChecks(deps, repoPath);
   if (!(await api.getNetEnabled())) throw new Refusal('sync.offline', NO_CONSENT);
-  const { scratch } = openPathsOf(repoPath);
+  if (openRunning.has(repoPath))
+    throw new Refusal('open-door43.pending', `an open from Door43 of ${repoPath} runs now`, { repoPath, state: 'running' });
+  const scratch = openScratchOf(repoPath);
   const startedAt = new Date().toISOString();
   const source = `${request.source.host}/${request.source.org}/${request.source.repo}`;
+  // The record is for the Report, the Inspector and the clone-path hint. Safety comes
+  // from the marker on disk (opsLog.ts, the open section), so a phase that does not
+  // save never stops the open.
   const record = await deps.ops?.begin('open-door43', { repoPath, scratch, source });
-  /** Save `phase` before its step; a phase that is not saved stops the open before the step. */
-  const phase = async (name: OpenPhase, facts: Record<string, unknown> = {}): Promise<void> => {
-    if ((await (record?.note({ phase: name, ...facts }) ?? true)) === false)
-      throw new Error(`the ops log did not save the phase ${name}; the open stopped before it`);
-  };
-  // A cleanup that fails leaves the record open, so the next start runs it again.
-  let cleanupFailed = false;
-  const cleanup = async (path: string): Promise<void> => {
+  const phase = (name: OpenPhase, facts: Record<string, unknown> = {}): Promise<unknown> =>
+    record?.note({ phase: name, ...facts }) ?? Promise.resolve(true);
+  // A cleanup that fails is logged, and the record stays open, so the next start runs
+  // its recovery (the clone-path hint, a stale scratch copy). Safety is the marker on disk.
+  let allClean = true;
+  const cleanup = async (step: () => Promise<void>, what: string): Promise<boolean> => {
     try {
-      await deleteIfPresent(api, path);
+      await step();
+      return true;
     } catch (error) {
-      cleanupFailed = true;
-      console.error(`open from Door43: ${path} was not deleted; the next start deletes it: ${failureOf(error).reason}`);
+      allClean = false;
+      console.error(`open from Door43: ${what} failed; the next gate or start finishes it: ${failureOf(error).reason}`);
+      return false;
     }
   };
-  // The clone path while it is this open's: from its saved phase until cloneProject returns.
-  // cloneProject can swallow a failed delete of it, so the open deletes it again on a failure.
-  let ownedClone = null as string | null;
-  // A part copy or a clone that stays: the scratch copy stays too, because recovery
-  // reads a missing scratch copy at `move.copy` as "the copy finished" (opsLog.ts).
-  const cleanupAfterFailure = async (): Promise<void> => {
-    if (ownedClone) await cleanup(ownedClone);
-    if (!cleanupFailed) await cleanup(scratch);
+  // A clone path that `cloneProject` could not delete keeps the record open (phase
+  // clone), so the next start deletes it, as for the sync.
+  const keepIfCloneLeft = (error: unknown): void => {
+    if ((error as { facts?: { clonePathLeft?: boolean } } | null)?.facts?.clonePathLeft) allClean = false;
   };
+  // A part copy of this open can stay at the project path: then the marked scratch copy
+  // MUST stay too. It is the only proof on disk that the project is not whole.
+  let keepScratch = false;
+  openRunning.add(repoPath);
   try {
-    await phase('start');
-    await deleteIfPresent(api, scratch);
-    await cloneProject(api, request.source, scratch, (clonePath) =>
-      phase('clone', { clonePath }).then(() => ((ownedClone = clonePath), true), () => false));
-    ownedClone = null;
-    await phase('check');
-    await checkOpenCopy(api, scratch, repoPath);
-    // a project made at this path meanwhile refuses with the name code
-    if (repoPathInUse(await api.listLocalRepos(), repoPath))
-      throw new Refusal('open-door43.name-exists', `a project at ${repoPath} is on this computer already`, { repoPath });
-    // the path is free (checked just now), and recovery reads the copy's last segment
-    await phase('move.copy', { targetAbsent: true, liveMark: lastSegmentName(await api.listPaths(scratch)) });
     try {
-      await api.copyRepo(scratch, repoPath);
+      await phase('start');
+      await deleteIfPresent(api, scratch);
+      // The fixed clone path is shared with the sync (#676): `cloneProject` runs under its
+      // one lock (`withClonePath`) and first deletes a clone that a stop left there, so a
+      // left clone never blocks the next open of the repository.
+      const clonePath = clonePathOf(request.source);
+      await cloneProject(api, request.source, scratch, () => phase('clone', { clonePath }).then(() => true));
+      await phase('check');
+      await checkOpenCopy(api, scratch, repoPath);
+      // a project made at this path meanwhile refuses with the name code
+      if (repoPathInUse(await api.listLocalRepos(), repoPath))
+        throw new Refusal('open-door43.name-exists', `a project at ${repoPath} is on this computer already`, { repoPath });
+      await phase('move.copy');
+      await copyMarked(api, scratch, repoPath, startedAt, cleanup, () => (keepScratch = true));
     } catch (error) {
-      const facts = failureOf(error);
-      // A target that is there already belongs to someone else: it stays, and recovery must not touch it.
-      if (/already exists/i.test(facts.reason)) await record?.note({ targetAbsent: false });
-      else await cleanup(repoPath); // a part copy at the free path is this open's
-      throw new Refusal('sync.move-failed', `the copy did not move to ${repoPath}`, { repoPath, ...facts });
+      if (!keepScratch) await cleanup(() => deleteIfPresent(api, scratch), 'the scratch delete');
+      keepIfCloneLeft(error);
+      if (allClean && !keepScratch) await record?.close(failedReport('open-door43', startedAt, new Date().toISOString(), error, { repoPath, source }));
+      throw error;
     }
-  } catch (error) {
-    await cleanupAfterFailure();
-    if (!cleanupFailed) await record?.close(failedReport('open-door43', startedAt, new Date().toISOString(), error, { repoPath, source }));
-    throw error;
+    // 4. and 5. A failure here leaves the project whole: the next gate or start finishes it.
+    await phase('move.delete-scratch');
+    await cleanup(() => deleteIngredientIfPresent(api, repoPath, OPEN_MARKER), 'the project marker delete');
+    await cleanup(() => deleteIfPresent(api, scratch), 'the scratch delete');
+    if (allClean) await record?.close(okReport('open-door43', startedAt, new Date().toISOString(), { repoPath, source }));
+    return { repoPath };
+  } finally {
+    openRunning.delete(repoPath);
   }
-  const deleted = async (path: string): Promise<boolean> => (await cleanup(path), !cleanupFailed);
-  if (await finishOpen(record, () => deleted(scratch)))
-    await record?.close(okReport('open-door43', startedAt, new Date().toISOString(), { repoPath, source }));
-  return { repoPath };
 }
-
-/** The end of an open whose copy finished: the project is whole. Save
- * `move.delete-scratch`, then delete the scratch copy. Answers true when the record can
- * close ok; false when the scratch delete failed (the record stays open, and the next
- * start deletes the scratch copy). When this phase does not save, the saved phase stays
- * `move.copy`, and recovery keeps the project only because the scratch copy is gone.
- * So when neither is on disk, the next start deletes the project, and the open is not
- * ok: it throws, and the record goes back to `move.copy` in memory too (a failed note
- * changes it there), so the project takes no open, no edit and no sync until that start. */
-async function finishOpen(record: OpsHandle | undefined, deleteScratch: () => Promise<boolean>): Promise<boolean> {
-  const saved = (await (record?.note({ phase: 'move.delete-scratch' }) ?? true)) !== false;
-  const scratchGone = await deleteScratch();
-  if (!saved && !scratchGone) {
-    await record?.note({ phase: 'move.copy' });
-    throw new Error('the ops log did not save the phase move.delete-scratch, and the scratch copy was not deleted; the next start removes the project');
-  }
-  return scratchGone;
-}
-
 
 /** The `resolve` the core reads: the §5.2 resource record of one (tool, book),
  * resolved over the folded pins and the installed resources (D30). */
@@ -393,14 +471,10 @@ export const resolveFromCoverage =
     return resolutionRecord(resolveToolBook(resources, tool as Tool, book, coverage)) as unknown as Record<string, unknown>;
   };
 
-/** The files of one repository by ingredient path: the journal in one zipped
- * read (else one read per file), the rest one read per file. `metadata.json`
- * is added when `withMetadata`. */
+/** The files of one repository by ingredient path (`readIngredientFiles`: never
+ * `audio/`), and `metadata.json` when `withMetadata`. */
 async function readFiles(api: ServerApi, repoPath: string, filter: (ipath: string) => boolean, withMetadata: boolean): Promise<Map<string, string>> {
-  const paths = (await api.listPaths(repoPath)).filter(filter).sort();
-  const zip = paths.some((p) => p.startsWith(JOURNAL_PREFIX)) ? await readJournalZipOf(api, repoPath) : null;
-  const files = new Map<string, string>();
-  for (const ipath of paths) files.set(ipath, zip?.get(ipath) ?? (await api.readIngredient(repoPath, ipath)));
+  const files = await readIngredientFiles(api, repoPath, filter);
   if (withMetadata) files.set('metadata.json', JSON.stringify(await api.getMetadataRaw(repoPath)));
   return files;
 }
@@ -421,7 +495,7 @@ async function ownEventsOf(files: Map<string, string>, actor: string): Promise<J
  * Contract for the caller (#678): after an ok sync the caller MUST open the
  * project again. The open `JournalingStore` holds the fold and `.git` of the
  * old folder, and saves that it queued during the sync run on that stale
- * store. A `sync.swap-pending` Report means the swap did not finish: the
+ * store. A `sync.apply-pending` Report means the apply did not finish: the
  * project then takes no open, no edit and no sync until the next start of the
  * app finishes it. */
 export async function sync(deps: SyncDeps, request: SyncRequest): Promise<Report> {
@@ -432,34 +506,35 @@ export async function sync(deps: SyncDeps, request: SyncRequest): Promise<Report
     return failedReport('sync', at, at, new Refusal('sync.auth-failed', 'sign in to Door43 first'), { repoPath });
   }
   return inProjectQueue(repoPath, async () => {
-    // G8: one sync record per project. An open one is a swap that did not finish,
-    // and a log that did not load at this start can hide one. With no ops log at
-    // all, no phase is saved and a stopped swap cannot be recovered: refuse too.
+    // The Report goes to the ops log (the dev Inspector), so the log must be loaded.
+    // Safety does not depend on it: the scratch copy and its marker are the record.
     const ops = deps.ops;
-    if (!ops || ops.recovered === false) {
+    if (!ops || ops.recovered !== true) {
       const at = new Date().toISOString();
       return failedReport('sync', at, at,
         new Refusal('opslog.not-loaded', 'the ops log did not load at this start; restart the app to sync'), { repoPath });
     }
-    if (ops.isOpen?.('sync', repoPath)) {
+    // G8 (D100): an apply that the marker says may have begun is finished first
+    try {
+      await finishPendingApply(deps.api, repoPath);
+    } catch (error) {
       const at = new Date().toISOString();
       return failedReport('sync', at, at,
-        new Refusal('sync.swap-pending', `the sync of ${repoPath} did not finish; restart the app to finish it`), { repoPath });
+        new Refusal('sync.apply-pending', `the sync of ${repoPath} did not finish; restart the app to finish it`, failureOf(error)), { repoPath });
     }
-    // An open from Door43 that stopped at move.copy can leave a part copy here,
-    // which the next start may delete: no sync until that start finishes it.
-    if (ops.isOpen?.('open-door43', repoPath, 'move.copy')) {
+    // #677: a project whose copy from Door43 is not proved finished never syncs
+    // (disk only, opsLog.ts `settleOpenCopy`): the gate finishes it or removes it.
+    try {
+      await guardOpenCopy(deps.api, repoPath);
+    } catch (error) {
       const at = new Date().toISOString();
-      return failedReport('sync', at, at,
-        new Refusal('open-door43.pending', `the open from Door43 of ${repoPath} did not finish; restart the app to finish it`), { repoPath });
+      return failedReport('sync', at, at, error, { repoPath });
     }
     const record = await ops.begin('sync', { repoPath });
     const recorded = await syncRecorded(deps, request, record);
     const report = withCode(recorded.report);
-    const { open, closed } = recorded;
-    // A swap that stopped leaves its record open, so the next start finishes it (G8).
-    // A go-back at swap.copy-previous closed its record itself, before its deletes.
-    if (!open && !closed) await record.close(report);
+    // A clone path left behind keeps its record open, so the next start deletes it.
+    if (!recorded.open) await record.close(report);
     return report;
   });
 }
@@ -486,6 +561,9 @@ async function preflight(deps: SyncDeps, request: SyncRequest): Promise<{ source
   const allowFile = deps.allowFileRemote === true;
   const source = origin && remoteAllowed(origin.url, deps.door43Server, allowFile) ? cloneSourceOf(origin.url, allowFile) : null;
   if (!source) throw new Refusal('sync.not-shared', 'the project has no origin on the Door43 server; share it first');
+  // a project at the fixed clone path is not a clone that a kill left: never delete it
+  if (clonePathOf(source) === repoPath)
+    throw new Refusal('sync.clone-path-exists', `the project ${repoPath} is at the fixed clone path`, { clonePath: repoPath });
   return { source, username: session.username, token: session.token };
 }
 
@@ -504,16 +582,16 @@ async function syncOnce(
   deps: SyncDeps,
   checked: Awaited<ReturnType<typeof preflight>>,
   mine: Mine,
-  paths: SwapPaths,
+  scratch: string,
   note: (facts: Record<string, unknown>) => Promise<boolean>,
   tries: number,
 ): Promise<{ facts: Record<string, unknown> } | { refused: Report }> {
   const { api } = deps;
   // 2. Door43 main into the scratch copy
-  await deleteIfPresent(api, paths.scratch);
-  await cloneProject(api, checked.source, paths.scratch, (clonePath) => note({ phase: 'clone', clonePath, try: tries }));
+  await deleteIfPresent(api, scratch);
+  await cloneProject(api, checked.source, scratch, (clonePath) => note({ phase: 'clone', clonePath, try: tries }));
   await note({ phase: 'sync' });
-  const remote = await readFiles(api, paths.scratch, () => true, true);
+  const remote = await readFiles(api, scratch, () => true, true);
 
   // 3. the name action: once per actor (R-8.5.26), the username only
   const outbox = new Map(mine.outbox);
@@ -535,14 +613,14 @@ async function syncOnce(
 
   // 5. write, delete, commit, verify
   for (const [ipath, bytes] of core.write)
-    await api.writeIngredient(paths.scratch, ipath, bytes, { updateIngredients: false, keepBak: false });
-  for (const ipath of core.remove) await api.deleteIngredient(paths.scratch, ipath);
-  const message = checkpointMessage('sync with Door43', await api.gitStatus(paths.scratch));
+    await api.writeIngredient(scratch, ipath, bytes, { updateIngredients: false, keepBak: false });
+  for (const ipath of core.remove) await api.deleteIngredient(scratch, ipath);
+  const message = checkpointMessage('sync with Door43', await api.gitStatus(scratch));
   if (message !== null) {
-    await api.remakeIngredients(paths.scratch);
-    await api.addAndCommit(paths.scratch, message);
+    await api.remakeIngredients(scratch);
+    await api.addAndCommit(scratch, message);
   }
-  const verified = await verifyProjectAgainstJournal(api, paths.scratch);
+  const verified = await verifyProjectAgainstJournal(api, scratch);
   if (!verified.ok)
     throw new Refusal('sync.verify-failed', 'the copy is not the fold of its journal; nothing was pushed', {
       projectionFailure: verified.projectionFailure,
@@ -554,23 +632,51 @@ async function syncOnce(
   // 6. push; never a force push (G4)
   await note({ phase: 'push' });
   try {
-    await api.push(paths.scratch, REMOTE, checked.username, checked.token);
+    await api.push(scratch, REMOTE, checked.username, checked.token);
   } catch (error) {
     throw refusalForPush(error);
   }
   return { facts: core.report.facts };
 }
 
+/** Steps 2 to 6 with the G4 retries: the core's facts, or the result to return. */
+async function syncWithRetries(
+  deps: SyncDeps,
+  checked: Awaited<ReturnType<typeof preflight>>,
+  mine: Mine,
+  scratch: string,
+  note: (facts: Record<string, unknown>) => Promise<boolean>,
+  failed: (error: unknown, facts?: Record<string, unknown>) => { report: Report; open: boolean },
+): Promise<{ facts: Record<string, unknown> } | { result: { report: Report; open: boolean } }> {
+  const { api } = deps;
+  for (let tries = 1; ; tries += 1) {
+    try {
+      const once = await syncOnce(deps, checked, mine, scratch, note, tries);
+      if ('refused' in once) {
+        await deleteIfPresent(api, scratch);
+        return { result: { report: once.refused, open: false } };
+      }
+      return { facts: { ...once.facts, tries } };
+    } catch (error) {
+      await deleteIfPresent(api, scratch).catch(() => {});
+      if ((error as { code?: string } | null)?.code === 'sync.non-fast-forward' && tries < SYNC_TRIES) continue;
+      // a clone path left behind: keep the record (phase clone), so the next start deletes it
+      if ((error as { facts?: { clonePathLeft?: boolean } } | null)?.facts?.clonePathLeft) return { result: { ...failed(error, { tries }), open: true } };
+      return { result: failed(error, { tries }) };
+    }
+  }
+}
+
 async function syncRecorded(
   deps: SyncDeps,
   request: SyncRequest,
   record: OpsHandle,
-): Promise<{ report: Report; open: boolean; closed?: boolean }> {
+): Promise<{ report: Report; open: boolean }> {
   const startedAt = new Date().toISOString();
   const { api } = deps;
   const { repoPath } = request;
   const kv = deps.kv ?? idbKvStore();
-  const paths = syncPathsOf(repoPath);
+  const scratch = scratchPathOf(repoPath);
   const note = (facts: Record<string, unknown>): Promise<boolean> => record.note(facts);
   const failed = (error: unknown, facts: Record<string, unknown> = {}): { report: Report; open: boolean } => ({
     report: failedReport('sync', startedAt, new Date().toISOString(), error, { repoPath, ...facts }),
@@ -595,62 +701,45 @@ async function syncRecorded(
   }
 
   // steps 2 to 6; a push that is not a fast-forward starts again (G4)
-  let facts: Record<string, unknown> = {};
-  for (let tries = 1; ; tries += 1) {
-    try {
-      const once = await syncOnce(deps, checked, mine, paths, note, tries);
-      if ('refused' in once) {
-        await deleteIfPresent(api, paths.scratch);
-        return { report: once.refused, open: false };
-      }
-      facts = { ...once.facts, tries };
-      break;
-    } catch (error) {
-      await deleteIfPresent(api, paths.scratch).catch(() => {});
-      if ((error as { code?: string } | null)?.code === 'sync.non-fast-forward' && tries < SYNC_TRIES) continue;
-      return failed(error, { tries });
-    }
-  }
+  const tried = await syncWithRetries(deps, checked, mine, scratch, note, failed);
+  if ('result' in tried) return tried.result;
+  const { facts } = tried;
 
-  // 7. the swap (G8): every phase is in the ops log before its step. The first
-  // phase also saves the live mark, which recovery reads (opsLog.ts header).
-  const liveMark = lastSegmentName(await api.listPaths(repoPath));
-  let phase: SwapPhase = 'swap.copy-previous';
-  const swapNote = (next: SwapPhase): Promise<boolean> => {
-    phase = next;
-    return note(next === 'swap.copy-previous' ? { phase: next, liveMark } : { phase: next });
-  };
+  // 7. the apply (G8, D100): the marker in the scratch copy is the record, and it is
+  // there before the first write to the project (opsLog.ts header)
+  await note({ phase: 'apply' });
   try {
-    await runSwap(api, paths, 'swap.copy-previous', swapNote);
+    await api.writeIngredient(scratch, APPLY_MARKER, JSON.stringify({ actor: mine.actor, at: new Date().toISOString() }), { updateIngredients: false, keepBak: false });
   } catch (error) {
-    // A server failure (not a kill) in this run. Going forward later is valid only
-    // when nothing can change the live project meanwhile (opsLog.ts header).
-    if (phase === 'swap.copy-previous') {
-      // the live project is still whole at its path: go back now. The record is
-      // closed BEFORE the copies are deleted: a record still saved at
-      // swap.copy-previous makes the next start go forward with the scratch copy,
-      // so the scratch copy must outlive it (G8). If the close is not saved, both
-      // copies stay, and the next start goes forward, or back when the live
-      // project changes before it (the live mark).
-      const refusal = new Refusal('sync.move-failed', 'the swap stopped before the project changed; the project is as it was', failureOf(error));
-      const back = { ...failed(refusal, { tries: facts.tries, phase }), closed: true };
-      if (!(await record.close(back.report))) return back;
-      await deleteIfPresent(api, paths.previous).catch(() => {});
-      await deleteIfPresent(api, paths.scratch).catch(() => {});
-      return back;
-    }
-    // the live path was touched: run the rest of the swap once more
+    // nothing is applied yet; a marker that may be there goes before its scratch copy
+    await deleteIngredientIfPresent(api, scratch, APPLY_MARKER).then(() => deleteIfPresent(api, scratch)).catch(() => {});
+    return failed(error, { tries: facts.tries, phase: 'apply' });
+  }
+  nextSyncGeneration(repoPath); // G1: a store opened before the apply is stale
+  try {
+    await applyScratch(api, repoPath, scratch);
+  } catch {
+    // a server failure in this run: run the apply once more (it compares, then writes)
     try {
-      await runSwap(api, paths, phase, swapNote);
+      await applyScratch(api, repoPath, scratch);
     } catch (again) {
-      const refusal = new Refusal('sync.swap-pending', 'the swap did not finish; the next start of the app finishes it', failureOf(again));
-      return { ...failed(refusal, { tries: facts.tries, phase }), open: true };
+      const refusal = new Refusal('sync.apply-pending', 'the apply did not finish; the next start of the app finishes it', failureOf(again));
+      return failed(refusal, { tries: facts.tries, phase: 'apply' });
     }
   }
 
-  // 8. live
-  await note({ phase: 'live' });
-  await mine.journal.clearCarried(mine.outbox);
-  await kv.set(previousCopyKey(repoPath), paths.previous);
+  // 8. the apply is done: the marker goes first (one file), then the scratch copy
+  try {
+    await deleteIngredientIfPresent(api, scratch, APPLY_MARKER);
+  } catch (error) {
+    const refusal = new Refusal('sync.apply-pending', 'the apply finished, but its marker was not deleted; the next start ends it', failureOf(error));
+    return failed(refusal, { tries: facts.tries, phase: 'apply' });
+  }
+  try {
+    await mine.journal.clearCarried(mine.outbox);
+    await deleteIfPresent(api, scratch);
+  } catch (error) {
+    return failed(error, { tries: facts.tries, applied: true }); // a coded `sync.failed` (withCode)
+  }
   return { report: okReport('sync', startedAt, new Date().toISOString(), { ...facts, repoPath }), open: false };
 }

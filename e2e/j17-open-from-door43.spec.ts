@@ -13,7 +13,7 @@ import { execFileSync } from 'node:child_process';
 import type { Page } from '@playwright/test';
 import { test, expect } from './helpers/test';
 import { SEEDED_PROJECT, RIG_LOCAL_REPOS, rigRepo, writePlace } from './helpers/rig';
-import { USER, fakeShare, git, shot, signIn, gateOff, type BareRemote } from './helpers/door43Share';
+import { USER, expectConvergedOpen, expectIngredientsEqualMain, fakeShare, git, opsIds, shot, signIn, gateOff, type BareRemote } from './helpers/door43Share';
 import { lane } from './lane.mjs';
 import { ServerApi } from '../src/data/serverApi';
 import { describeVerifierReport, verifyProjectAgainstJournal } from '../src/data/journal/verify';
@@ -28,7 +28,9 @@ const ID = `_local_/_local_/${REPO}`;
 const REPOS = path.join(RIG_LOCAL_REPOS, '..', '..');
 const mirrorDir = (repo: string) => path.join(REPOS, '_local_', '_archive_', `${ORG}--${repo}`);
 const fixedDir = (repo: string) => path.join(REPOS, 'file', ORG, repo);
-const scratchDir = (name: string) => path.join(REPOS, '_local_', '_archive_', `tc4-open--${name}`);
+// The scratch copy names the WHOLE project path (opsLog.ts archiveNameOf: '-' to '-d', '/' to '-s').
+const scratchDir = (name: string) =>
+  path.join(REPOS, '_local_', '_archive_', `tc4-open--${`_local_/_local_/${name}`.replaceAll('-', '-d').replaceAll('/', '-s')}`);
 const JOURNAL = 'ingredients/checking/journal';
 
 /** A bare remote at <tmp>/<org>/<repo>.git whose `main` is `work`, and its mirror on the rig. */
@@ -166,6 +168,9 @@ test.describe('J17 — open a project from Door43', () => {
     expect(git(opened, 'rev-parse', 'HEAD')).toBe(remote.main());
     expect(git(opened, 'remote', 'get-url', 'origin')).toBe(pathToFileURL(remote.bare).href);
     expect(fs.readdirSync(path.join(opened, JOURNAL)).sort()).toEqual(actorsBefore);
+    // the copy finished: no marker stays in the project, and the scratch copy is gone
+    expect(fs.existsSync(path.join(opened, 'ingredients', 'tc4-open', 'move.json'))).toBe(false);
+    expect(git(opened, 'status', '--porcelain')).toBe('');
     expect(fs.existsSync(scratchDir(REPO))).toBe(false);
     expect(fs.existsSync(fixedDir(REPO))).toBe(false);
 
@@ -186,7 +191,13 @@ test.describe('J17 — open a project from Door43', () => {
     const actorsAfter = actorsOn(remote);
     const added = actorsAfter.filter((a) => !actorsBefore.includes(a));
     expect(added, 'one new actor on Door43 main: this computer in this project').toHaveLength(1);
-    expect(git(opened, 'rev-parse', 'HEAD')).toBe(remote.main());
+    // D100 (#676): the sync applies main's tree in place; the project's HEAD is not main's
+    expectIngredientsEqualMain(remote.bare, REPO);
+    const beforeOpen = opsIds();
+    await page.getByTestId('sync-dismiss').click();
+    await page.getByTestId(`project-${ID}`).getByRole('button', { name: /Titus/ }).click();
+    await expect(page.getByRole('heading', { name: /^Titus \d+$/ })).toBeVisible({ timeout: 120_000 });
+    await expectConvergedOpen(ID, beforeOpen);
     // the opened project is the fold of its journal (the #62 verifier)
     const verified = await verifyProjectAgainstJournal(new ServerApi({ baseUrl: lane().rigApi }), ID);
     expect(verified.ok, describeVerifierReport(verified)).toBe(true);

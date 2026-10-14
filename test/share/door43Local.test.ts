@@ -15,6 +15,7 @@ const calls = (api: Door43Api): Array<[string, () => Promise<unknown>]> => [
   ['canCreateRepository', () => api.canCreateRepository(session, 'org')],
   ['countRepositories', () => api.countRepositories(session, 'org', 'en')],
   ['createRepository', () => api.createRepository(session, { kind: 'user' }, 'repo')],
+  ['hasBranch', () => api.hasBranch(session, 'org', 'repo', 'main')],
   ['signIn', () => api.signIn('tester', 'password')],
 ];
 
