@@ -943,6 +943,8 @@
   "conflicts.cancel": "Hủy",
   "conflicts.keep": "Giữ phiên bản này",
   "conflicts.keepError": "Phiên bản chưa được giữ.",
+  "conflicts.otherKept": "Một phiên bản khác của câu này đã được giữ.",
+  "conflicts.bookNotLoaded": "Sách không mở lại được. Hãy quay lại Trang chủ và mở lại dự án.",
   "conflicts.reviewOne": "1 xung đột · Xem xét",
   "conflicts.reviewMany": "{n} xung đột · Xem xét",
   "conflicts.marker": "{n} phiên bản · Xem xét",

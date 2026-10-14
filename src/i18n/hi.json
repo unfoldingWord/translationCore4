@@ -943,6 +943,8 @@
   "conflicts.cancel": "रद्द करें",
   "conflicts.keep": "यह संस्करण रखें",
   "conflicts.keepError": "संस्करण नहीं रखा गया।",
+  "conflicts.otherKept": "इस पद का कोई दूसरा संस्करण रखा गया है।",
+  "conflicts.bookNotLoaded": "पुस्तक फिर से नहीं खुली। होम पर वापस जाएँ और परियोजना फिर से खोलें।",
   "conflicts.reviewOne": "1 टकराव · देखें",
   "conflicts.reviewMany": "{n} टकराव · देखें",
   "conflicts.marker": "{n} संस्करण · देखें",

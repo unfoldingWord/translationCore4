@@ -16,8 +16,8 @@ name: package-desktop
 #
 # #119 adds the linux-x64 job beside the proven macos-arm64 one. Both run the
 # same script; only the host differs. #181 adds windows-x64: the same script
-# again, under MSYS2's zsh on a Windows runner. Signed/notarized installers
-# remain #44's.
+# again, under MSYS2's zsh on a Windows runner. #456 signs the Windows build on
+# manual (workflow_dispatch) runs only; macOS stays unsigned and not notarized.
 #
 # #45 adds one smoke-* job per platform: a FRESH runner downloads the artifact the
 # build job uploaded, unpacks it once, and runs the shipped post-install smoke test
@@ -246,6 +246,15 @@ jobs:
     needs: package-preflight
     runs-on: windows-2025
     timeout-minutes: 90
+    # #456: a manual run on main or a release/* branch runs in the windows-signing
+    # environment. Azure trusts that environment's OIDC subject, and the
+    # environment's branch rules allow only main and release/*. Every other run
+    # uses no environment and builds unsigned. Keep this condition equal to the
+    # AZURE_SIGNING_ENDPOINT one below.
+    environment: ${{ github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')) && 'windows-signing' || '' }}
+    permissions:
+      contents: read
+      id-token: write
     steps:
       # Windows git defaults to core.autocrlf=true. A CRLF package-desktop.zsh does
       # not parse under zsh, and CRLF sample-burrito bytes would break the debug
@@ -293,6 +302,14 @@ jobs:
         env:
           TC_HELP_DESK_TOKEN: ${{ secrets.TC_HELP_DESK_TOKEN }}
           TC_HELP_DESK_EMAIL: ${{ secrets.TC_HELP_DESK_EMAIL }}
+          # #456: a manual run on main or a release/* branch (the windows-signing
+          # environment above) signs with Azure Artifact Signing, when the variable
+          # AZURE_SIGNING_ENDPOINT is set. A non-empty endpoint is the switch.
+          AZURE_SIGNING_ENDPOINT: ${{ github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')) && vars.AZURE_SIGNING_ENDPOINT || '' }}
+          AZURE_SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          AZURE_SIGNING_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
         shell: msys2 {0}
         run: zsh scripts/package-desktop.zsh
 
@@ -306,12 +323,13 @@ jobs:
           retention-days: 7
 
       # Single-layer download (#119): one file, `archive: false`; the artifact is named after
-      # the file, tC4-<version>-windows-x64-unsigned.zip. Permission bits do not apply.
+      # the file, tC4-<version>-windows-x64-unsigned.zip (a signed build drops -unsigned,
+      # #456). Permission bits do not apply.
       - name: Upload the artifact (merges to main — 30-day retention)
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v7
         with:
-          path: dist-desktop/tC4-*-unsigned.zip
+          path: dist-desktop/tC4-*-windows-x64*.zip
           archive: false
           if-no-files-found: error
           retention-days: 30
@@ -320,7 +338,7 @@ jobs:
         if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v7
         with:
-          path: dist-desktop/tC4-*-unsigned.zip
+          path: dist-desktop/tC4-*-windows-x64*.zip
           archive: false
           if-no-files-found: error
           retention-days: 3
@@ -328,7 +346,7 @@ jobs:
       - name: Upload the Windows installer
         uses: actions/upload-artifact@v7
         with:
-          path: dist-desktop/tC4-*-windows-x64-unsigned.exe
+          path: dist-desktop/tC4-*-windows-x64*.exe
           archive: false
           if-no-files-found: error
           retention-days: ${{ github.event_name == 'pull_request' && 3 || 30 }}
@@ -344,7 +362,7 @@ jobs:
       run:
         shell: pwsh
     steps:
-      - name: Download and install the unsigned artifact
+      - name: Download and install the Windows installer
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -352,7 +370,7 @@ jobs:
           New-Item -ItemType Directory -Force download, smoke-logs | Out-Null
           $artifacts = gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts" | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0) { throw 'Artifact listing failed' }
-          $matches = @($artifacts.artifacts | Where-Object { $_.name -match '^tC4-.*-windows-x64-unsigned\.exe$' })
+          $matches = @($artifacts.artifacts | Where-Object { $_.name -match '^tC4-.*-windows-x64(-unsigned)?\.exe$' })
           if ($matches.Count -ne 1) { throw 'Expected exactly one Windows installer' }
           # gh returns raw bytes for archive:false. PowerShell 7 preserves native
           # stdout bytes with > (the runner ships PowerShell 7.4 or later).
@@ -376,6 +394,29 @@ jobs:
           }
           Write-Host 'ok installed Start menu and desktop shortcuts'
           Get-Content "$installDir\BUILD-MANIFEST.json"
+          "TC4_INSTALLER_NAME=$($matches[0].name)" >> $env:GITHUB_ENV
+      # #456: a signed build must be signed everywhere. The manifest, the file name
+      # and the signatures must agree; an unsigned build only checks the first two.
+      - name: Check the Authenticode signatures
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $signed = (Get-Content -Raw "$env:TC4_INSTALL_DIR\BUILD-MANIFEST.json" | ConvertFrom-Json).signed
+          $unsignedName = $env:TC4_INSTALLER_NAME -match '-unsigned\.exe$'
+          if ($signed -eq $unsignedName) { throw "BUILD-MANIFEST.json signed=$signed does not match the file name $env:TC4_INSTALLER_NAME" }
+          if (-not $signed) { Write-Host 'unsigned build: no signature check'; return }
+          $installer = Get-AuthenticodeSignature download/installer.exe
+          $installer | Format-List Status, StatusMessage, SignerCertificate, TimeStamperCertificate
+          if ($installer.Status -ne 'Valid' -or -not $installer.TimeStamperCertificate) { throw 'The installer is not Valid and timestamped' }
+          $bad = @(Get-ChildItem $env:TC4_INSTALL_DIR -Recurse -File | Where-Object { $_.Extension -in '.exe', '.dll', '.node' } |
+            Get-AuthenticodeSignature | Where-Object Status -ne 'Valid')
+          if ($bad.Count) { $bad | Format-Table Path, Status -AutoSize | Out-String -Width 300 | Write-Host; throw "$($bad.Count) installed file(s) are not Valid" }
+          # #456 Q3: the subject of the uw-public-prod certificate profile (owner, 2026-10-13).
+          $publisher = 'CN=unfoldingWord, O=unfoldingWord, L=Orlando, S=Florida, C=US'
+          foreach ($file in "$PWD\download\installer.exe", "$env:TC4_INSTALL_DIR\electronite\electron.exe", "$env:TC4_INSTALL_DIR\bin\server.exe", "$env:TC4_INSTALL_DIR\unins000.exe") {
+            $subject = (Get-AuthenticodeSignature -LiteralPath $file).SignerCertificate.Subject
+            if ($subject -cne $publisher) { throw "$file is signed by '$subject', not '$publisher'" }
+          }
+          Write-Host "ok every installed .exe, .dll and .node file is Valid; tC4's own files are signed by $publisher"
       - name: Installed app smoke with no development tools on PATH
         run: |
           $ErrorActionPreference = 'Stop'

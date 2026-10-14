@@ -28,7 +28,7 @@ import { absenceMessageKey, isSourceAbsent } from '../data/sourceState';
 import { BlockText, ExpandableNote, Quoted, glTitleFor } from './HelpsPanel.jsx';
 import { RAIL_FILTERS, RAIL_FILTER_ORDER, hasComment, isBookmarked, railCounts } from './checkFilters.js';
 import { t } from '../i18n';
-import { projectDir } from './scriptStyle.js';
+import { helpsDir, projectDir } from './scriptStyle.js';
 import { Button, Callout, Drawer, Overline, ProgressBar } from '../ds/index.js';
 
 const TOOLS = Object.keys(TOOL_SLOT);
@@ -282,7 +282,7 @@ function FallbackWarning({ tool, missing }) {
 /** The help article behind the active item (C2.5), read from the installed
  * burrito — presented as the mockup's right-side Drawer (F1, INVENTORY §6),
  * not an inline card. Absence is stated, never rendered as an empty panel. */
-function ArticleBody({ article }) {
+function ArticleBody({ article, dir }) {
   if (!article || article.loading) {
     return <p style={{ fontSize: 'var(--fs-caption-lg)', color: 'var(--text-tertiary)', margin: 0 }}>{t('check.articleLoading')}</p>;
   }
@@ -303,7 +303,7 @@ function ArticleBody({ article }) {
   // already exceeds the old 40-block cap.
   const blocks = renderArticleBlocks(article.found.body);
   return (
-    <div data-testid="article-panel">
+    <div data-testid="article-panel" dir={dir}>
       {blocks.map((b, i) => {
         if (b.kind === 'h') {
           return (
@@ -333,13 +333,16 @@ function ArticleBody({ article }) {
 }
 
 /* The design system's own end-edge slide-over ('Translation Academy' is its
- * documented purpose); the article prose inherits the document direction. */
-function AcademyDrawer({ article, cat, onClose }) {
+ * documented purpose); the article prose reads in the direction of its gateway
+ * package (#650). */
+function AcademyDrawer({ article, cat, resource, onClose }) {
+  const { s } = useApp();
   return (
     <Drawer data-testid="academy-drawer" width="var(--drawer-width)" onClose={onClose} closeLabel={t('common.close')}
       eyebrow={t('check.academyEyebrow', { cat })}
-      title={article?.found?.title ?? t('check.academyFallback')}>
-      <ArticleBody article={article} />
+      title={article?.found?.title ?? t('check.academyFallback')}
+      titleDir={article?.found?.title ? helpsDir(s, resource?.languageSet) : undefined}>
+      <ArticleBody article={article} dir={helpsDir(s, resource?.languageSet)} />
     </Drawer>
   );
 }
@@ -620,6 +623,8 @@ function CheckDetail({ cs, item, title, sources, sourcePanes, sourceStory, words
   const { c, v } = referenceParts(item.contextId.reference);
   const quote = title;
   const idx = cs.activeIndex;
+  const { s } = useApp();
+  const helpDir = helpsDir(s, cs.resource?.languageSet);
   const canPrev = idx > 0;
   const canNext = idx < cs.items.length - 1;
   const navStyle = (enabled) => ({
@@ -653,7 +658,7 @@ function CheckDetail({ cs, item, title, sources, sourcePanes, sourceStory, words
       {item.contextId.occurrenceNote && (
         <div data-testid="check-note" style={{ maxWidth: '62ch', marginBottom: 8, borderRadius: 'var(--radius-lg)', padding: '16px 18px', background: 'var(--surface-warm)', border: 'var(--stroke) solid var(--tc-warn-border)' }}>
           <Overline style={{ color: 'var(--tc-warn-text-2)' }}>{t('check.whatToCheck')}</Overline>
-          <div style={{ fontSize: 'var(--fs-title-sm)', letterSpacing: 'var(--track-16)', lineHeight: 'var(--lh-body)', fontWeight: 'var(--fw-medium)', color: 'var(--uw-ink)', margin: '7px 0 0' }}>
+          <div dir={helpDir} data-testid="check-note-text" style={{ fontSize: 'var(--fs-title-sm)', letterSpacing: 'var(--track-16)', lineHeight: 'var(--lh-body)', fontWeight: 'var(--fw-medium)', color: 'var(--uw-ink)', margin: '7px 0 0' }}>
             {/* Keyed by item: the expanded/collapsed state must not leak from
               * one check to the next. */}
             <ExpandableNote key={idx} text={item.contextId.occurrenceNote} />
@@ -1280,7 +1285,7 @@ function CheckSession() {
         )}
       </main>
       {academyOpen && (
-        <AcademyDrawer article={cs.article} cat={item?.category} onClose={() => setAcademyOpen(false)} />
+        <AcademyDrawer article={cs.article} cat={item?.category} resource={cs.resource} onClose={() => setAcademyOpen(false)} />
       )}
     </div>
   );

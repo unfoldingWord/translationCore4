@@ -1,3 +1,5 @@
+import { languageSetDir } from '../data/gateways';
+
 // Target-language typography from the project's chosen script font (settings
 // textFont, one of state.SCRIPT_FONTS). Nastaliq sets small and stacks
 // diagonally, so it takes its own size and leading and never --fs-verse-lg
@@ -27,6 +29,10 @@ export const targetType = (font, step = 'lg') => {
 
 /** The project's text direction as a `dir` value. */
 export const projectDir = (s) => (s.project?.scriptDirection === 'rtl' ? 'rtl' : 'ltr');
+
+/** #650: the direction of the helps that come from a rung of the project's pins (primary or
+ * fallback). Helps follow their gateway package, not the interface and not the project. */
+export const helpsDir = (s, rung) => languageSetDir(s.projectPins?.languageSets?.[rung]);
 
 /** targetType from app state (the project's script font). */
 export const targetTypeFor = (s, step = 'lg') => targetType(s.project?.textFont, step);
