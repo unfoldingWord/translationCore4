@@ -81,6 +81,13 @@ export const gatewayKey = (g: Gateway): string => `${g.id}::${g.org}`;
 export const findGateway = (key: string): Gateway | undefined =>
   GATEWAYS.find((g) => gatewayKey(g) === key);
 
+/** #650: the direction that the helps of a language set read in: its gateway package's.
+ * Undefined for a package that is not in the registry. */
+export const languageSetDir = (set?: { gatewayLanguage?: { languageId: string; owner: string } } | null): 'ltr' | 'rtl' | undefined => {
+  const g = set?.gatewayLanguage;
+  return g ? findGateway(`${g.languageId}::${g.owner}`)?.dir : undefined;
+};
+
 /** The one name every screen shows for a gateway language (#579, D94): the
  * language's own name (`autonym`), so a list row, the ready message, the change
  * dialogue and the Project settings sentence agree. Lists add the English

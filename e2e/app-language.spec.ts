@@ -30,6 +30,9 @@
 //   j  #686: with the internet off, the browser paints Arabic interface text in the bundled
 //      Noto Sans Arabic at each weight the interface shows; Latin text stays in Mulish; the
 //      Pashto, Sindhi and Kurdish names of the shipped language list show in it too
+//   k  #650: helps read in the direction of their gateway package: under the Arabic interface
+//      the notes, words, questions, simplified text and articles of a left-to-right package
+//      are left to right
 // The shared recorder (helpers/externalRequests.ts) writes each request log, and the
 // screenshots, into the test's output folder (and attaches them).
 import fs from 'node:fs';
@@ -877,5 +880,52 @@ test.describe('#522 — App language in the account menu', () => {
     }
     expect(samples.ps.letters === [...samples.ps.name].length && samples.ckb.letters === [...samples.ckb.name].length).toBe(true);
     expect(external.external()).toEqual([]);
+  });
+
+  // ---- k · #650: helps read in the direction of their gateway package ----
+  test('k. #650: with the Arabic interface, the helps of a left-to-right package read left to right: notes, words, questions, the simplified text, the article, and the note and the article of a check', TAG, async ({ page }, testInfo) => {
+    test.setTimeout(90_000);
+    const AR = BY_ID.ar;
+    const seen: Record<string, unknown> = {};
+    const one = async (loc: Locator): Promise<{ dir: string | null; direction: string }> => {
+      await expect(loc.first()).toBeVisible({ timeout: 20_000 });
+      return (await textDirections(loc.first()))[0];
+    };
+    writeStoredLocale('ar');
+    await page.goto('/');
+    await expectLanguage(page, 'ar');
+    await openTitus(page);
+    await expect(helps(page)).toBeVisible();
+    // The packages of the seeded project (Spanish, and English behind it) read left to right.
+    seen.note = await one(page.getByTestId('helps-note'));
+    await helps(page).getByRole('button', { name: AR['understand.academyLink'], exact: true }).first().click();
+    seen.article = await one(page.getByTestId('understand-article'));
+    await shot(page, testInfo, 'helps-ltr-under-arabic');
+    await page.getByTestId('helps-article-close').click();
+    await helps(page).getByRole('tab', { name: AR['helps.words'], exact: true }).click();
+    seen.word = await one(page.getByTestId('helps-word'));
+    await helps(page).getByRole('tab', { name: AR['helps.questions'], exact: true }).click();
+    seen.question = await one(page.getByTestId('understand-question'));
+    await helps(page).getByRole('tab').nth(3).click();
+    seen.simplified = await one(page.getByTestId('understand-simplified').locator('p'));
+    // A check: its note, and the article of its Translation Academy drawer.
+    await page.getByRole('tab', { name: AR['nav.check'], exact: true }).click();
+    await page.getByTestId('open-translationNotes').click();
+    seen.checkNote = await one(page.getByTestId('check-note-text'));
+    await page.getByTestId('open-academy').click();
+    seen.checkArticle = await one(page.getByTestId('academy-drawer').getByTestId('article-panel'));
+    // The drawer slides in: the picture is of its final state.
+    const picture = testInfo.outputPath('check-helps-ltr-under-arabic.png');
+    await page.screenshot({ path: picture, animations: 'disabled' });
+    await testInfo.attach('check-helps-ltr-under-arabic', { path: picture, contentType: 'image/png' });
+    seen.interface = await directions(page);
+    const file = testInfo.outputPath('helps-direction.json');
+    fs.writeFileSync(file, `${JSON.stringify(seen, null, 2)}\n`);
+    await testInfo.attach('helps-direction', { path: file, contentType: 'application/json' });
+    // The interface stays right to left; each help states its own direction.
+    expect(seen.interface).toEqual({ html: 'rtl', root: 'rtl' });
+    for (const part of ['note', 'article', 'word', 'question', 'simplified', 'checkNote', 'checkArticle']) {
+      expect(seen[part], part).toEqual({ dir: 'ltr', direction: 'ltr' });
+    }
   });
 });
