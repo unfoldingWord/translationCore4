@@ -492,8 +492,9 @@ async function syncRecorded(
   const { facts } = tried;
 
   // 7. the apply (G8, D101): the marker in the scratch copy is the record, and it is
-  // there before the first write to the project (opsLog.ts header)
-  await note({ phase: 'apply' });
+  // there before the first write to the project (opsLog.ts header). The marker
+  // comes before the phase `apply` in the ops log: a record at `apply` with no
+  // marker is then always an apply that ended (`resolveSync`).
   try {
     await api.writeIngredient(scratch, APPLY_MARKER, JSON.stringify({ actor: mine.actor, at: new Date().toISOString() }), { updateIngredients: false, keepBak: false });
   } catch (error) {
@@ -501,6 +502,7 @@ async function syncRecorded(
     await deleteIngredientIfPresent(api, scratch, APPLY_MARKER).then(() => deleteIfPresent(api, scratch)).catch(() => {});
     return failed(error, { tries: facts.tries, phase: 'apply' });
   }
+  await note({ phase: 'apply' });
   nextSyncGeneration(repoPath); // G1: a store opened before the apply is stale
   try {
     await applyScratch(api, repoPath, scratch);

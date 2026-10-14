@@ -402,8 +402,10 @@ describe('#676 crash recovery of the sync (G8)', () => {
   /** Run one sync and kill it after the `k`-th server call that matches `counts`:
    * that call answers, then every later request and settings write never settles.
    * `inside`: the server is killed DURING the k-th call instead: a copy leaves half
-   * of the source's files at the target, a delete leaves half of its files. */
-  async function killAfter(k: number, counts: (route: string, method: string) => boolean, inside = false, teammate = false, prepare?: (w: World) => void) {
+   * of the source's files at the target, a delete leaves half of its files.
+   * `before`: the k-th call never reaches the server; each settings write before it
+   * is saved (bench round 8: a saved phase with no marker). */
+  async function killAfter(k: number, counts: (route: string, method: string) => boolean, mode: 'after' | 'inside' | 'before' = 'after', teammate = false, prepare?: (w: World) => void) {
     const w = await world({ outbox: true, teammate });
     prepare?.(w);
     const from = w.rig.log.length;
@@ -416,9 +418,10 @@ describe('#676 crash recovery of the sync (G8)', () => {
       if (killed) return new Promise<Response>(() => {});
       const url = new URL(String(input));
       const method = init?.method ?? 'GET';
-      if (inside && counts(url.pathname, method) && seen + 1 === k) {
+      if (mode !== 'after' && counts(url.pathname, method) && seen + 1 === k) {
         killed = true;
         w.settings.hang();
+        if (mode === 'before') return new Promise<Response>(() => {});
         // the repository path follows /api/burrito/ingredient/raw/ or /api/git/(route)/
         const at = url.pathname.includes('/burrito/ingredient/') ? 5 : 4;
         const repo = url.pathname.split('/').slice(at, at + 3).map(decodeURIComponent).join('/');
@@ -584,7 +587,7 @@ describe('#676 crash recovery of the sync (G8)', () => {
       remote.files.set(ownPath, 'not a sealed segment');
       remote.files.set(APPLY_MARKER, JSON.stringify({ actor: 'someone', at: '2026-10-14T00:00:00.000Z' }));
     });
-    const { w, before, staged, killed } = await killAfter(1, (route) => route.includes('/git/copy/'), false, false, incoming);
+    const { w, before, staged, killed } = await killAfter(1, (route) => route.includes('/git/copy/'), 'after', false, incoming);
     expect(killed).toBe(true);
     expect(w.rig.repos.get(SCRATCH)?.files.has(APPLY_MARKER) ?? false).toBe(false);
     const project = new Map(w.rig.repos.get(REPO)!.files);
@@ -788,8 +791,8 @@ describe('#676 crash recovery of the sync (G8)', () => {
     };
   };
 
-  it('[G8] apply kill sweep: a kill after each server call after the push, and inside each one (marker write, apply, marker delete, scratch delete); the next start leaves one project that opens, never reconciled, with every own segment', async () => {
-    const dry = await killAfter(Infinity, () => false, false, true);
+  it('[G8] apply kill sweep: a kill after each server call after the push, inside each one (marker write, apply, marker delete, scratch delete), and before each one (the settings writes before it saved); the next start leaves one project that opens, never reconciled, with every own segment, and its Report is ok only when the pushed tree is applied whole', async () => {
+    const dry = await killAfter(Infinity, () => false, 'after', true);
     expect(dry.done).toBe(true);
     const log = dry.w.rig.log.slice(dry.from);
     const total = log.length - 1 - log.map((l) => l.route.includes('/git/push/')).lastIndexOf(true);
@@ -797,32 +800,49 @@ describe('#676 crash recovery of the sync (G8)', () => {
     let kills = 0;
     let applied = 0;
     let unchanged = 0;
-    for (const inside of [false, true])
+    for (const mode of ['after', 'inside', 'before'] as const)
       for (let k = 1; k <= total; k += 1) {
-        const { w, before, staged, killed } = await killAfter(k, afterPush(), inside, true);
-        expect(killed, `kill ${k}${inside ? ' inside' : ''}`).toBe(true);
+        const at = `kill ${k} ${mode}`;
+        const { w, before, staged, killed } = await killAfter(k, afterPush(), mode, true);
+        expect(killed, at).toBe(true);
         const project = new Map(w.rig.repos.get(REPO)!.files);
         const marker = w.rig.repos.get(SCRATCH)?.files.has(APPLY_MARKER) ?? false;
         const [entry] = await restart(w, storedOf(w));
-        expect(reportError(entry.report)).toBeNull();
-        expect(w.rig.repos.has(SCRATCH), `kill ${k}`).toBe(false);
+        expect(w.rig.repos.has(SCRATCH), at).toBe(false);
         const live = w.rig.repos.get(REPO)!.files;
-        if (marker) expect(entry.report?.facts.finishedApply, `kill ${k}`).toBe(true);
-        // either the pushed tree is applied whole, or the project is as it was
-        if (tree(live).size === tree(w.rig.remotes.get(URL_)!.files).size && [...tree(w.rig.remotes.get(URL_)!.files)].every(([p, b]) => live.get(p) === b)) applied += 1;
-        else {
-          expect(live, `kill ${k}`).toEqual(project);
+        if (marker) expect(entry.report?.facts.finishedApply, at).toBe(true);
+        // either the pushed tree is applied whole and the sync is ok, or the project
+        // is as it was and the sync failed: never ok over the tree before the sync
+        if (tree(live).size === tree(w.rig.remotes.get(URL_)!.files).size && [...tree(w.rig.remotes.get(URL_)!.files)].every(([p, b]) => live.get(p) === b)) {
+          expect(reportError(entry.report), at).toBeNull();
+          applied += 1;
+        } else {
+          expect(live, at).toEqual(project);
+          expect(entry.report, at).toMatchObject({ op: 'sync', ok: false, facts: { rolledBack: true } });
           unchanged += 1;
         }
         await expectOneProjectWithOwnWork(w, before, staged);
         kills += 1;
       }
-    expect(kills).toBe(2 * total);
+    expect(kills).toBe(3 * total);
     expect(applied).toBeGreaterThanOrEqual(1);
-    console.log(`[G8] apply kill sweep: ${kills} kill cases (${total} server calls after the push, after and inside each): ${applied} applied whole, ${unchanged} as they were`);
-  }, 180_000);
+    expect(unchanged).toBeGreaterThanOrEqual(1); // a kill before the marker write
+    console.log(`[G8] apply kill sweep: ${kills} kill cases (${total} server calls after the push, after, inside and before each): ${applied} applied whole, ${unchanged} as they were`);
+  }, 300_000);
 
-  it('[G8] a kill inside the settings write of the apply phase: nothing was applied, the next start deletes the scratch copy, and the project opens', async () => {
+  const teammateSegments = (files: Map<string, string>) => [...files.keys()].filter((p) => p.startsWith(`checking/journal/${TEAMMATE}/segments/`));
+
+  /** The classification of a new open of the project. */
+  async function reopened(w: World) {
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const store = new JournalingStore({ api: w.api, kv: w.kv });
+    await store.open(REPO);
+    store.dispose();
+    return store.lastReport?.facts.classification;
+  }
+
+  it('[G8] a kill inside the settings write of the apply phase: the marker is already there, so the next start finishes the apply, and the reopen is converged with the teammate segment (bench round 8)', async () => {
     const w = await world({ outbox: true, teammate: true });
     const before = w.own();
     const staged = new Map([...w.kv.map].filter(([key]) => key.startsWith('outbox:')));
@@ -841,9 +861,53 @@ describe('#676 crash recovery of the sync (G8)', () => {
       killed ? new Promise<Response>(() => {}) : w.rig.fetchFn(input, init)) as typeof fetch });
     void sync({ ...w.deps(dying), ops }, { repoPath: REPO, session: SESSION });
     await vi.waitFor(() => expect(killed).toBe(true));
+    // the marker is saved before the apply phase; nothing is applied yet
+    expect(w.rig.repos.get(SCRATCH)?.files.has(APPLY_MARKER) ?? false).toBe(true);
     expect(w.rig.repos.get(REPO)!.files).toEqual(project);
+    expect(teammateSegments(project)).toEqual([]);
     const [entry] = await restart(w, storedOf(w));
+    expect(entry.report).toMatchObject({ op: 'sync', ok: true, facts: { phase: 'push', finishedApply: true } });
+    expect(teammateSegments(w.rig.repos.get(REPO)!.files)).toHaveLength(1);
+    expect(await reopened(w)).toBe('converged');
+    await expectOneProjectWithOwnWork(w, before, staged);
+  });
+
+  it('[G8] a kill after the push and before the marker write lands: the next start reports a failed sync, the project is as it was, and the next sync ends converged with the teammate segment (bench round 8)', async () => {
+    const w = await world({ outbox: true, teammate: true });
+    const before = w.own();
+    const staged = new Map([...w.kv.map].filter(([key]) => key.startsWith('outbox:')));
+    const project = new Map(w.rig.repos.get(REPO)!.files);
+    let killed = false;
+    const dying = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (killed) return new Promise<Response>(() => {});
+      const url = new URL(String(input));
+      // the marker write never reaches the server; every settings write before it is saved
+      if (init?.method === 'POST' && decodeURIComponent(url.pathname) === `/api/burrito/ingredient/raw/${SCRATCH}` && url.searchParams.get('ipath') === APPLY_MARKER) {
+        killed = true;
+        w.settings.hang();
+        return new Promise<Response>(() => {});
+      }
+      return w.rig.fetchFn(input, init);
+    }) as typeof fetch });
+    void sync(w.deps(dying), { repoPath: REPO, session: SESSION });
+    await vi.waitFor(() => expect(killed).toBe(true));
+    // the push is done: Door43 main has every own file and the teammate segment
+    for (const [p, bytes] of before) expect(w.rig.remotes.get(URL_)!.files.get(p), p).toBe(bytes);
+    expect(teammateSegments(w.rig.remotes.get(URL_)!.files)).toHaveLength(1);
+    expect(w.rig.repos.get(SCRATCH)!.files.has(APPLY_MARKER)).toBe(false);
+    const [entry] = await restart(w, storedOf(w));
+    // the project did not change, so the sync did not end: never ok here
     expect(entry.report).toMatchObject({ op: 'sync', ok: false, facts: { phase: 'push', rolledBack: true } });
+    expect(w.rig.repos.has(SCRATCH)).toBe(false);
+    expect(w.rig.repos.get(REPO)!.files).toEqual(project);
+    // the next sync brings Door43 main, with the teammate segment
+    w.settings.unhang();
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const again = await sync(w.deps(), { repoPath: REPO, session: SESSION });
+    expect([again.ok, again.code]).toEqual([true, undefined]);
+    expect(teammateSegments(w.rig.repos.get(REPO)!.files)).toHaveLength(1);
+    expect(await reopened(w)).toBe('converged');
     await expectOneProjectWithOwnWork(w, before, staged);
   });
   // ---- the disk record (D101): the settings document never locks or unlocks ------

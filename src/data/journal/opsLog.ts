@@ -464,10 +464,11 @@ export class OpsLog implements OpsRecorder {
     if (phase === 'clone' && typeof clonePath === 'string') await deleteIfPresent(api, clonePath);
     await finishPendingApply(api, repoPath);
     if (this.applied.has(repoPath)) return okReport('sync', entry.startedAt, endedAt, { ...facts, finishedApply: true });
-    // The record is not a lock: at `apply`, the push is done and the marker (gone
-    // now) decided. No apply is pending, so the sync is over: the apply ended (its
-    // marker was deleted), or the stop came before the marker write, and then the
-    // next sync brings Door43 main, which has the work, to the project.
+    // The record is not a lock. The sync saves the phase `apply` only after the
+    // marker write, and it deletes the marker only after the apply ends. So a
+    // record at `apply` with no marker is an apply that ended (B3): the sync is over.
+    // A stop before the marker write leaves the phase at `push` (or earlier): the
+    // project did not change, and the next sync brings Door43 main to it.
     if (phase === 'apply') return okReport('sync', entry.startedAt, endedAt, { ...facts, applyPending: false });
     return failedReport('sync', entry.startedAt, endedAt,
       new Error('the sync was interrupted before the apply; the project did not change'), { ...facts, rolledBack: true });
