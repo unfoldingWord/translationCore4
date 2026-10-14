@@ -1270,6 +1270,36 @@ describe('#676 crash recovery of the sync (G8)', () => {
       await expectNextSyncKeepsTeammate(w);
     });
 
+  it('[G8] two recover() calls at the same time (React StrictMode runs the boot effect twice in a dev build) run one disk rule: no file of the project is deleted, and the reopen is converged (bench round 8, F4)', async () => {
+    const w = await world({ outbox: true, teammate: true });
+    await killInApply(w, w.ops);
+    w.settings.unhang();
+    expect(w.rig.repos.get(SCRATCH)!.files.has(APPLY_MARKER)).toBe(true);
+    forgetSharedClocks();
+    forgetProjectQueues();
+    // the 5th listing of the scratch copy waits until the copy is gone: without one
+    // disk rule, it is the second apply's read of its target
+    let lists = 0;
+    const deletes: string[] = [];
+    const racing = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      const route = decodeURIComponent(url.pathname);
+      if (route === `/api/burrito/paths/${SCRATCH}` && (lists += 1) === 5)
+        await vi.waitFor(() => expect(w.rig.repos.has(SCRATCH)).toBe(false), { timeout: 5000, interval: 2 });
+      if (init?.method === 'POST' && route.startsWith(`/api/burrito/ingredient/delete/${REPO}`)) deletes.push(url.searchParams.get('ipath') ?? '');
+      return w.rig.fetchFn(input, init);
+    }) as typeof fetch });
+    const ops = appStart(w.settings);
+    const [first, second] = await Promise.all([ops.recover(racing), ops.recover(racing)]);
+    expect(second).toEqual(first);
+    expect(deletes).toEqual([]);
+    expect(ops.errors).toEqual([]);
+    expect(opsEntriesOf(w.settings.get()).filter((e) => e.op === 'sync').map((e) => e.report?.facts.finishedApply)).toEqual([true]);
+    expect(w.rig.repos.has(SCRATCH)).toBe(false);
+    expect(await reopened(w)).toBe('converged');
+    expect([...w.rig.repos.get(REPO)!.files.keys()].some((p) => p.startsWith(`checking/journal/${TEAMMATE}/`))).toBe(true);
+  });
+
   it('[G8] control: after a sync that ended, an edit of the teammate verse in another tool is still reconciled as an own edit (R-8.8.1)', async () => {
     const w = await teammateTextWorld();
     const report = await sync(w.deps(), { repoPath: REPO, session: SESSION });
@@ -1488,6 +1518,12 @@ describe('#676 applyScratch (D101)', () => {
   it('[G8] a run again deletes a file already gone without an error (HTTP 400 "No such file: <path>")', async () => {
     const repos = { [SCRATCH]: scratchFiles(), [REPO]: liveFiles() };
     await expect(applyScratch(fakeApi(repos, { listGone: ['checking/translationWords/JON.json'] }), REPO, SCRATCH)).resolves.toMatchObject({ removed: 2 });
+  });
+
+  it('[G8] a scratch copy that is gone (the platform lists a missing repository as []) is not applied: no file of the project is deleted (bench round 8, F4)', async () => {
+    const repos: Record<string, Map<string, string>> = { [REPO]: liveFiles() };
+    await expect(applyScratch(fakeApi(repos), REPO, SCRATCH)).rejects.toThrow();
+    expect(repos[REPO]).toEqual(liveFiles());
   });
 });
 

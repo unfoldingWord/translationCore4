@@ -329,6 +329,9 @@ export const deleteIngredientIfPresent = async (api: Pick<OpsRecoveryApi, 'delet
  * file); then a remake and a commit. Safe to run again. */
 export async function applyScratch(api: OpsRecoveryApi, repoPath: string, scratch: string): Promise<{ written: number; removed: number }> {
   const target = await readIngredientFiles(api, scratch, () => true);
+  // A scratch copy that is gone lists as [] (module header). Its empty tree would
+  // remove each file of the project, so it is not applied.
+  if (!target.size) throw new Error(`the scratch copy ${scratch} holds no file; nothing was applied`);
   const livePaths = (await api.listPaths(repoPath)).filter(inApplyTree);
   const live = await readIngredientFiles(api, repoPath, isJournalPath);
   let written = 0;
@@ -395,14 +398,21 @@ export class OpsLog implements OpsRecorder {
   }
 
   /** Resolve every record a killed operation left open, and load the log.
-   * Run once, when the app starts, before any operation begins. */
+   * Run once, when the app starts, before any operation begins. A second call
+   * gets the first run (#676): React StrictMode runs the boot effect twice in a
+   * dev build, and two disk rules at the same time can apply a scratch copy that
+   * the other one deleted. */
   recover(api: OpsRecoveryApi): Promise<OpsEntry[]> {
+    if (this.recovery) return this.recovery;
     let settle = (): void => {};
     recovering = new Promise<void>((resolve) => (settle = resolve));
     const run = this.recoverOnce(api, () => settle());
     run.then(settle, settle);
+    this.recovery = run;
     return run;
   }
+
+  private recovery: Promise<OpsEntry[]> | null = null;
 
   /** The disk rule for each repository at any path (a project opened from Door43
    * can be outside `_local_/_local_/`). The platform lists no `_local_/_archive_/`
