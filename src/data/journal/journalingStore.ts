@@ -2038,7 +2038,8 @@ export class JournalingStore implements BurritoStore {
    * apply that did not end. When each `diverged` path on the disk is the
    * projection of the journal without those segments, the apply did not write it
    * yet: the journal is ahead, and the open regenerates forward. A reconcile would
-   * journal the old text as an own edit over the teammate's. */
+   * journal the old text as an own edit over the teammate's. A status read that
+   * fails stops the open: no reconcile runs on a guess. */
   private async stoppedApplyExplains(
     diverged: DivergedPath[],
     actions: Array<{ actor: string; ts: string; events: JournalEvent[] }>,

@@ -1168,6 +1168,25 @@ describe('#676 crash recovery of the sync (G8)', () => {
     expect(await outOfBandEvents(w)).toEqual([]);
   });
 
+  it('[G1][G8] the same power loss when the git status read fails (HTTP 500): the open stops, and nothing is reconciled', async () => {
+    const w = await teammateTextWorld();
+    await killInApply(w, w.ops);
+    w.rig.repos.get(SCRATCH)!.files.delete(APPLY_MARKER);
+    await restart(w, storedOf(w));
+    const before = new Map(w.rig.repos.get(REPO)!.files);
+    const noStatus = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) =>
+      decodeURIComponent(new URL(String(input)).pathname) === `/api/git/status/${REPO}`
+        ? new Response(JSON.stringify({ is_good: false, reason: 'the server stopped' }), { status: 500 })
+        : w.rig.fetchFn(input, init)) as typeof fetch });
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const store = new JournalingStore({ api: noStatus, kv: w.kv });
+    await expect(store.open(REPO)).rejects.toThrow();
+    store.dispose();
+    expect(w.rig.repos.get(REPO)!.files).toEqual(before);
+    expect(await outOfBandEvents(w)).toEqual([]);
+  });
+
   it('[G1][G8] a power loss that keeps the journal writes and a part of the derived writes of the apply, and loses the marker: the reopen regenerates forward, not reconciles', async () => {
     const w = await teammateTextWorld(async (tm) => {
       await tm.addBook({ book_code: 'JON', book_title: 'Jonas', book_abbr: 'JON', add_cv: true, initialUsfm: ['\\id JON prueba', '\\h Jonas', '\\mt Jonas', '\\c 1', '\\p', '\\v 1 Jonas.', ''].join('\n') });
