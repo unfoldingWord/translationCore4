@@ -1273,15 +1273,18 @@ describe('#676 crash recovery of the sync (G8)', () => {
   });
 
   // A power loss that tears one file of the scratch copy, as the platform answers a read
-  // of it [VERIFIED — pankosmia-web 0.18.15 (a83725b), source read 2026-10-14]:
-  // raw_metadata.rs and raw_text_ingredient.rs call read_to_string, so a missing file is
-  // HTTP 400, a torn metadata.json is HTTP 200 with its bytes, and a file that is not
-  // UTF-8 is HTTP 400. The fake rig answers from whole objects, so the test answers here.
+  // of it (PLATFORM-NOTES #51) [VERIFIED — pankosmia-web 0.18.15 (a83725b), source read
+  // 2026-10-14]: raw_metadata.rs and raw_text_ingredient.rs call read_to_string, so a
+  // missing file is HTTP 400, a torn or empty metadata.json is HTTP 200 with its bytes,
+  // and a file that is not UTF-8 is HTTP 400. The fake rig answers from whole objects,
+  // so the test answers here.
   const tornScratch: Record<string, (route: string, ipath: string | null) => Response | null> = {
     'metadata.json is missing': (route) => route === `/api/burrito/metadata/raw/${SCRATCH}`
       ? new Response(JSON.stringify({ is_good: false, reason: 'could not read metadata: No such file or directory (os error 2)' }), { status: 400 }) : null,
     'metadata.json is torn': (route) => route === `/api/burrito/metadata/raw/${SCRATCH}`
       ? new Response('{"format":"scripture burrito","meta":{"categ', { status: 200 }) : null,
+    'metadata.json is empty': (route) => route === `/api/burrito/metadata/raw/${SCRATCH}`
+      ? new Response('', { status: 200 }) : null,
     'TIT.usfm is not UTF-8': (route, ipath) => route === `/api/burrito/ingredient/raw/${SCRATCH}` && ipath === 'TIT.usfm'
       ? new Response(JSON.stringify({ is_good: false, reason: 'could not read ingredient content: stream did not contain valid UTF-8' }), { status: 400 }) : null,
   };
@@ -1309,6 +1312,106 @@ describe('#676 crash recovery of the sync (G8)', () => {
       expect(await outOfBandEvents(w)).toEqual([]);
       await expectNextSyncKeepsTeammate(w);
     });
+
+  it('[G1][G8] a power loss that keeps the journal writes of the apply and the marker, and tears metadata.json of the scratch copy: the start applies no more, the reopen regenerates forward with the teammate text, and the next sync keeps it (round 8 critic, gap 3)', async () => {
+    const w = await teammateTextWorld();
+    await killInApply(w, w.ops); // the journal files of the apply land, the derived files do not
+    expect(w.rig.repos.get(SCRATCH)!.files.has(APPLY_MARKER)).toBe(true);
+    const answer = tornScratch['metadata.json is torn'];
+    const torn = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      const read = (init?.method ?? 'GET') === 'GET' && w.rig.repos.has(SCRATCH);
+      return (read && answer(decodeURIComponent(url.pathname), url.searchParams.get('ipath'))) || w.rig.fetchFn(input, init);
+    }) as typeof fetch });
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const stored = storedOf(w);
+    const next = new OpsLog({ read: stored.read, update: serialSettingsWriter(stored.read, stored.write) });
+    const [entry] = await next.recover(torn);
+    expect(next.errors).toEqual([]);
+    expect(entry.report).toMatchObject({ op: 'sync', ok: false, facts: { scratchNotWhole: true } });
+    expect(w.rig.repos.has(SCRATCH)).toBe(false);
+    expect(w.rig.repos.get(REPO)!.files.get('TIT.usfm')).toContain('\\v 2 ___'); // the derived files are from before the sync
+    expect(await reopened(w)).toBe('regenerated-forward');
+    expect(w.rig.repos.get(REPO)!.files.get('TIT.usfm')).toContain('TEAMMATE TEXT');
+    expect(await outOfBandEvents(w)).toEqual([]);
+    await expectNextSyncKeepsTeammate(w);
+  });
+
+  it('[G8] a server error during the whole-copy check is not a power loss: the marker stays, the project takes no open, and the next start applies (round 8 critic, gap 2)', async () => {
+    const w = await teammateTextWorld();
+    await killInApply(w, w.ops, () => true); // no apply write lands
+    expect(w.rig.repos.get(SCRATCH)!.files.has(APPLY_MARKER)).toBe(true);
+    const failing = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) =>
+      decodeURIComponent(new URL(String(input)).pathname) === `/api/burrito/metadata/raw/${SCRATCH}`
+        ? new Response(JSON.stringify({ is_good: false, reason: 'the server stopped' }), { status: 500 })
+        : w.rig.fetchFn(input, init)) as typeof fetch });
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const stored = storedOf(w);
+    const next = new OpsLog({ read: stored.read, update: serialSettingsWriter(stored.read, stored.write) });
+    await next.recover(failing);
+    expect(next.errors.map((e) => e.id)).toContain(`apply:${REPO}`);
+    expect(w.rig.repos.get(SCRATCH)!.files.has(APPLY_MARKER)).toBe(true); // a server error is no proof of a power loss
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const store = new JournalingStore({ api: w.api, kv: w.kv });
+    await expect(store.open(REPO)).rejects.toMatchObject({ code: 'sync.apply-pending' });
+    store.dispose();
+    const [entry] = await restart(w, storedOf(w));
+    expect(entry.report).toMatchObject({ op: 'sync', ok: true, facts: { finishedApply: true } });
+    expect(await reopened(w)).toBe('converged');
+    await expectTeammateKept(w);
+  });
+
+  it('[G8] a disk rule that fails at the start for one project, and applies in the recovery of its record: the Report is ok with finishedApply, not "the project did not change" (round 8 critic, gap 4)', async () => {
+    const w = await world({ outbox: true, teammate: true });
+    const before = w.own();
+    const staged = new Map([...w.kv.map].filter(([key]) => key.startsWith('outbox:')));
+    let killed = false;
+    const ops = new OpsLog({ read: w.settings.read, update: serialSettingsWriter(w.settings.read, async (d) => {
+      if (opsEntriesOf(d).some((e) => e.op === 'sync' && e.facts.phase === 'apply')) {
+        killed = true;
+        w.settings.hang();
+        return new Promise<void>(() => {});
+      }
+      await w.settings.write(d);
+    }) });
+    await ops.recover(w.api);
+    const dying = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) =>
+      killed ? new Promise<Response>(() => {}) : w.rig.fetchFn(input, init)) as typeof fetch });
+    void sync({ ...w.deps(dying), ops }, { repoPath: REPO, session: SESSION });
+    await vi.waitFor(() => expect(killed).toBe(true));
+    expect(w.rig.repos.get(SCRATCH)!.files.has(APPLY_MARKER)).toBe(true); // the phase stays `push`
+    // the first listing of the scratch copy at the next start gets no answer
+    let lists = 0;
+    const flaky = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) =>
+      decodeURIComponent(new URL(String(input)).pathname) === `/api/burrito/paths/${SCRATCH}` && (lists += 1) === 1
+        ? new Response(JSON.stringify({ is_good: false, reason: 'the server stopped' }), { status: 500 })
+        : w.rig.fetchFn(input, init)) as typeof fetch });
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const stored = storedOf(w);
+    const next = new OpsLog({ read: stored.read, update: serialSettingsWriter(stored.read, stored.write) });
+    const [entry] = await next.recover(flaky);
+    expect(next.errors.map((e) => e.id)).toEqual([`apply:${REPO}`]);
+    expect(entry.report).toMatchObject({ op: 'sync', ok: true, facts: { phase: 'push', finishedApply: true } });
+    expect(teammateSegments(w.rig.repos.get(REPO)!.files)).toHaveLength(1);
+    await expectOneProjectWithOwnWork(w, before, staged);
+  });
+
+  it('[G8] control for the open guard: the same power loss plus an out-of-band edit of the book is not the disk from before the apply, so the open reconciles and keeps the edit (Ledger #11: this combination is not covered)', async () => {
+    const w = await teammateTextWorld();
+    await killInApply(w, w.ops);
+    w.rig.repos.get(SCRATCH)!.files.delete(APPLY_MARKER); // the marker write did not reach the disk
+    await restart(w, storedOf(w));
+    const live = w.rig.repos.get(REPO)!.files;
+    expect(live.get('TIT.usfm')).toContain('\\v 2 ___'); // the derived files are from before the sync
+    live.set('TIT.usfm', live.get('TIT.usfm')!.replace(/\\v 1 [^\n]*/, '\\v 1 OUT OF BAND TEXT'));
+    expect(await reopened(w)).toBe('reconciled');
+    expect(w.rig.repos.get(REPO)!.files.get('TIT.usfm')).toContain('OUT OF BAND TEXT');
+    expect((await outOfBandEvents(w)).map((e) => JSON.stringify(e)).join()).toContain('OUT OF BAND TEXT');
+  });
 
   it('[G8] two recover() calls at the same time (React StrictMode runs the boot effect twice in a dev build) run one disk rule: no file of the project is deleted, and the reopen is converged (bench round 8, F4)', async () => {
     const w = await world({ outbox: true, teammate: true });

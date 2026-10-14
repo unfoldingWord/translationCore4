@@ -35,8 +35,9 @@
 //                                     marker write may still have begun an apply.
 //                                     Only a copy that is the fold of its journal
 //                                     is applied; a copy that is not whole goes
-//                                     with its marker, not applied. A check that
-//                                     cannot read the copy counts as not whole.
+//                                     with its marker, not applied. A copy that
+//                                     the platform cannot read is not whole; a
+//                                     server error stops the rule, not the copy.
 //   scratch copy with no marker    -> delete it; the project did not change.
 //   no scratch copy                -> nothing is pending.
 // A power loss is not a kill: the platform calls no fsync (PLATFORM-NOTES #51), so
@@ -49,9 +50,8 @@
 // GET of the scratch copy's paths; a missing repository answers [] with HTTP 200
 // [VERIFIED — pankosmia-web 0.18.15 (a83725b), live rig, 2026-10-14;
 // `get_repo_file_paths.rs:32-33`]).
-// Recovery only goes forward, and the apply never removes a journal file, so work
-// saved in the project after the apply began stays: its derived files rebuild at
-// the next open (the journal is ahead of them, so the open regenerates forward).
+// Recovery only goes forward, and the apply never removes a journal file, so no
+// journal file of the project is lost.
 // The apply repairs a journal file that a stopped write left in part by writing
 // it again: the ingredient POST replaces the whole file [VERIFIED — rig 0.18.15
 // (a83725b), 2026-10-14: a write of "second" over "first bytes" reads back
@@ -278,17 +278,19 @@ export const isApplyPending = async (api: Pick<OpsRecoveryApi, 'listPaths'>, rep
 
 /** True when the scratch copy is the fold of its journal, as the sync verified it
  * before the push. The marker is not a derived file, so it is the one extra file.
- * A check that throws counts as not whole: a power loss can leave a file that the
- * platform cannot read (a missing or torn `metadata.json` is HTTP 400 or bytes that
- * do not parse; a file that is not UTF-8 is HTTP 400). The copy is only a copy of
- * Door43 main after the push, so it goes with its marker, and the project does not
- * lock. A server error during the check has the same result: one more sync. */
+ * A power loss can leave a file that the platform cannot read (PLATFORM-NOTES #51):
+ * a missing `metadata.json` or a file that is not UTF-8 is HTTP 400, and a torn
+ * `metadata.json` does not parse. Such a copy is not whole. The copy is only a copy
+ * of Door43 main after the push, so it goes with its marker, and the project does
+ * not lock. Any other failure (a server error, no network) is no proof of a power
+ * loss: it throws, the marker stays, and the next start or sync runs the rule again. */
 const isScratchWhole = async (api: OpsRecoveryApi, scratch: string): Promise<boolean> => {
   let verified: Awaited<ReturnType<typeof verifyProjectAgainstJournal>>;
   try {
     verified = await verifyProjectAgainstJournal(api, scratch, { skipUnjournaled: true });
   } catch (error) {
-    console.error(`ops log: the whole-copy check of ${scratch} failed, so the copy is not whole: ${String((error as Error)?.message ?? error)}`);
+    if (!(error instanceof SyntaxError) && (error as { status?: number } | null)?.status !== 400) throw error;
+    console.error(`ops log: the platform cannot read the scratch copy ${scratch}, so it is not whole: ${String((error as Error)?.message ?? error)}`);
     return false;
   }
   return verified.projectionFailure === null && verified.invalidSegments.length === 0
@@ -514,7 +516,9 @@ export class OpsLog implements OpsRecorder {
     if (typeof repoPath !== 'string')
       return failedReport('sync', entry.startedAt, endedAt, new Error('the sync was interrupted before it named its project'), facts);
     if (phase === 'clone' && typeof clonePath === 'string') await deleteIfPresent(api, clonePath);
-    if ((await finishPendingApply(api, repoPath)) === 'refused' || this.refused.has(repoPath))
+    const outcome = await finishPendingApply(api, repoPath);
+    if (outcome === 'applied') this.applied.add(repoPath);
+    if (outcome === 'refused' || this.refused.has(repoPath))
       return failedReport('sync', entry.startedAt, endedAt,
         new Error('the scratch copy of the sync was not whole after the stop, so it was not applied; the next sync brings Door43 main'),
         { ...facts, scratchNotWhole: true });
@@ -525,7 +529,7 @@ export class OpsLog implements OpsRecorder {
     // A stop before the marker write leaves the phase at `push` (or earlier): the
     // project did not change, and the next sync brings Door43 main to it.
     // After a power loss that lost the marker, `apply` can be wrong (Ledger #11):
-    // own work stays, the open regenerates forward, and the next sync applies.
+    // own work stays, the open converges or regenerates forward, and the next sync applies.
     if (phase === 'apply') return okReport('sync', entry.startedAt, endedAt, { ...facts, applyPending: false });
     return failedReport('sync', entry.startedAt, endedAt,
       new Error('the sync was interrupted before the apply; the project did not change'), { ...facts, rolledBack: true });

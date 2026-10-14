@@ -44,7 +44,7 @@
 // The HTTPS answer for a refused token is recorded: HTTP 500 with
 // `code=Auth (-16)` (docs/evidence/sync-transport-spike-2026-10-13.md, owner run
 // step 3), matched on the code, not on the text. The answer for no write access
-// (403) is [PENDING — the owner's run on the Door43 QA server, #673 step 4];
+// (403) is [PENDING — the owner's run on the Door43 QA server, #710];
 // until then `refusalForPush` maps it by the HTTP status in the reason text.
 import { checkpointMessage } from '../checkpoint';
 import { Refusal, failedReport, okReport, projectResources, syncCore, type Report } from '../journal/runtime';
@@ -167,7 +167,7 @@ const refusalForPush = (error: unknown): Error => {
   // ("authentication that we do not support") is misleading, so never match it.
   if (/code=Auth \(-16\)/.test(reason))
     return new Refusal('sync.auth-failed', 'Door43 did not accept the sign-in', facts);
-  // [PENDING — the owner's run on the Door43 QA server, #673 step 4]: the reply for
+  // [PENDING — the owner's run on the Door43 QA server, #710]: the reply for
   // no write access is not recorded yet; libgit2 names the HTTP status in its
   // reason, so the status number is the best-known match.
   if (status === 403 || /\b403\b/.test(reason))
@@ -282,11 +282,11 @@ async function ownEventsOf(files: Map<string, string>, actor: string): Promise<J
 /** Sync one project with Door43 `main` and return its Report (`op: 'sync'`).
  *
  * Contract for the caller (#678): after an ok sync the caller MUST open the
- * project again. The open `JournalingStore` holds the fold and `.git` of the
- * old folder, and saves that it queued during the sync run on that stale
- * store. A `sync.apply-pending` Report means the apply did not finish: the
- * project then takes no open, no edit and no sync until the next start of the
- * app finishes it. */
+ * project again. The open `JournalingStore` holds the fold from before the
+ * apply, so it takes no edit after it (`sync.project-replaced`). A
+ * `sync.apply-pending` Report means the apply did not finish: the project then
+ * takes no open and no edit until the next start, or the next sync of the
+ * project, finishes it. */
 export async function sync(deps: SyncDeps, request: SyncRequest): Promise<Report> {
   const { repoPath, session } = request;
   // Not signed in: refused before any request, the ops-log write included.
