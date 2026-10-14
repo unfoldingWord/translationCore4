@@ -18,6 +18,9 @@
 // (test/journalVerify.test.ts and the store suites), and from the rig journey
 // teardown after every journey that mutates a project (e2e/helpers/rig.ts).
 import { ServerApi, ServerApiError, type BurritoMetadata } from '../serverApi';
+
+/** What the verifier reads from the platform. */
+export type VerifyApi = Pick<ServerApi, 'listPaths' | 'readIngredient' | 'getMetadataRaw'>;
 import { md5Hex } from '../httpStore';
 import { actorSlugError, isTs } from '../../../journal/grammar.mjs';
 import { segmentName, segmentTs, validateSegment, type JournalEvent } from './seal';
@@ -80,7 +83,7 @@ const segmentPathOf = (path: string): { actor: string; ts: string } | { reason: 
 /** Read + validate every journal segment over the ingredient surface with the
  * SAME conformance reader the store uses. Nothing invalid is dropped silently. */
 const readJournal = async (
-  api: ServerApi,
+  api: VerifyApi,
   repoPath: string,
   paths: string[],
 ): Promise<{ events: JournalEvent[]; invalidSegments: Array<{ path: string; reason: string }> }> => {
@@ -126,11 +129,14 @@ const readJournal = async (
 
 /** The real project's derived bytes: everything except the journal, the
  * tolerated unjournaled classes, and (§10, R-10.2.1) the OBS front and back
- * matter and license — copied, never derived, outside the compare like audio/. */
-const readDerivedDisk = async (api: ServerApi, repoPath: string, paths: string[]): Promise<Record<string, string>> => {
+ * matter and license — copied, never derived, outside the compare like audio/.
+ * `skipUnjournaled` (#676, owner ruling: a sync never reads `audio/`): the
+ * unjournaled classes are listed, never read. */
+const readDerivedDisk = async (api: VerifyApi, repoPath: string, paths: string[], skipUnjournaled: boolean): Promise<Record<string, string>> => {
   const diskFiles: Record<string, string> = {};
   for (const path of paths) {
     if (path.startsWith(JOURNAL_PREFIX) || isObsBaseIngredient(path)) continue;
+    if (skipUnjournaled && isUnjournaledIngredient(path)) continue;
     try {
       diskFiles[path] = await api.readIngredient(repoPath, path);
     } catch (error) {
@@ -207,16 +213,18 @@ const addUnfoldedStories = (projections: Record<string, string>, diskFiles: Reco
  * decision file without one is reported as a mismatch by the byte compare.
  */
 export const verifyProjectAgainstJournal = async (
-  api: ServerApi,
+  api: VerifyApi,
   repoPath: string,
+  options: { skipUnjournaled?: boolean } = {},
 ): Promise<VerifierReport> => {
+  const skipUnjournaled = options.skipUnjournaled === true;
   const paths = await api.listPaths(repoPath);
 
   // 1. The journal, validated by the conformance reader.
   const { events, invalidSegments } = await readJournal(api, repoPath, paths);
 
   // 2. The real project's derived bytes.
-  const diskFiles = await readDerivedDisk(api, repoPath, paths);
+  const diskFiles = await readDerivedDisk(api, repoPath, paths, skipUnjournaled);
 
   // 3. Fold + generate the exhaustive derived set into a disposable tree. A
   //    refusal here (a corrupt/incomplete journal) is REPORTED, never thrown:
@@ -282,7 +290,7 @@ export const verifyProjectAgainstJournal = async (
     projectionFailure: null,
     mismatches,
     metadataProblems,
-    tolerated: verdict.tolerated.filter((p) => isUnjournaledIngredient(p)),
+    tolerated: (skipUnjournaled ? paths : verdict.tolerated).filter((p) => isUnjournaledIngredient(p)),
     clean: verdict.clean,
     foldReports: {
       forks: foldOut.forks,

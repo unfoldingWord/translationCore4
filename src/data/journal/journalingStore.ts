@@ -47,10 +47,10 @@ import { INSTALLED_SUITE } from '../installedSuite';
 import { withBookHeader } from '../seed';
 import { JournalStore } from './journalStore';
 import { idbKvStore, type KvStore } from './identity';
-import { sealAction, type JournalEvent } from './seal';
+import { sealAction, segmentName, type JournalEvent } from './seal';
 import { defaultFoldRunner, type FoldRunner } from './foldRunner';
 import { verseConflicts, type VerseConflict } from './verseConflicts';
-import type { OpsRecorder } from './opsLog';
+import { isApplyPending, recoverySettled, syncGenerationOf, type OpsRecorder } from './opsLog';
 import {
   applyStoryState,
   completePartialPins,
@@ -93,6 +93,16 @@ import {
 
 /** App-created projects live under this org (same constant as HttpStore). */
 const APP_ORG = '_local_/_local_';
+
+/** #676: a tC4 project lives only at `_local_/_local_/<name>` (httpStore.ts). A
+ * repository at another path is not a project: a resource, or the fixed clone
+ * path `<host>/<org>/<repo>` of a sync, which the sync deletes. No open and no
+ * create may bind it. */
+const refuseNonProjectPath = (repoPath: string): void => {
+  const name = repoPath.startsWith(`${APP_ORG}/`) ? repoPath.slice(APP_ORG.length + 1) : '';
+  if (!name || name.includes('/'))
+    throw new Refusal('open.not-a-project', `${repoPath} is not a tC4 project path (${APP_ORG}/<name>)`, { repoPath });
+};
 
 const TOOL_IDS = ['translationWords', 'translationNotes'] as const;
 
@@ -233,7 +243,9 @@ const spanMapping = (oldSlots: string[], newSlots: string[]): Array<{ from: stri
 // ---------------------------------------------------------------------------
 
 const projectQueues = new Map<string, Promise<unknown>>();
-const inProjectQueue = <T>(repoPath: string, fn: () => Promise<T>): Promise<T> => {
+/** Run `fn` after every queued mutation of `repoPath` settles. Exported for the
+ * sync (#676), which holds the project for its whole run, apply included. */
+export const inProjectQueue = <T>(repoPath: string, fn: () => Promise<T>): Promise<T> => {
   const prior = projectQueues.get(repoPath) ?? Promise.resolve();
   const run = prior.then(fn, fn);
   // A settled-either-way marker keeps the chain alive across rejections.
@@ -519,7 +531,36 @@ export class JournalingStore implements BurritoStore {
   }
 
   private queue<T>(fn: () => Promise<T>): Promise<T> {
-    return inProjectQueue(this.mustRepo(), fn);
+    const repoPath = this.mustRepo();
+    return inProjectQueue(repoPath, () => {
+      // #676 (G1): a store opened before a sync's apply holds the old fold; it
+      // takes no edit and no checkpoint after it. The caller opens the project again.
+      if (this.openedGeneration !== syncGenerationOf(repoPath))
+        throw new Refusal('sync.project-replaced', `${repoPath} was synced after this store opened it; open it again`, { repoPath });
+      return fn();
+    });
+  }
+
+  /** The sync generation of the project when this store opened it (#676). */
+  private openedGeneration = 0;
+
+  /** #676 (G8, D101): while the project's scratch copy holds the apply marker, an
+   * apply may be half done; the project takes no open until a start or a sync
+   * finishes it. The disk decides, never the settings document. Edits need no
+   * check: a store opens only when no apply is pending, and a sync in this
+   * process that may leave the marker on disk makes every older store stale. */
+  private async refusePendingApply(repoPath: string): Promise<void> {
+    let pending: boolean;
+    try {
+      pending = await isApplyPending(this.api, repoPath);
+    } catch (error) {
+      // no answer is no proof that no apply is pending: refuse (fail closed)
+      const failure = error as { status?: number; message?: string } | null;
+      throw new Refusal('sync.apply-pending', `the app could not check for an unfinished sync of ${repoPath}`,
+        { repoPath, status: failure?.status ?? 0, reason: failure?.message ?? String(error) });
+    }
+    if (pending)
+      throw new Refusal('sync.apply-pending', `the app is finishing a sync of ${repoPath}; open it again soon`, { repoPath });
   }
 
   // ---- raw read delegation ---------------------------------------------------
@@ -1128,7 +1169,9 @@ export class JournalingStore implements BurritoStore {
    * the creation seed. A crash between the two is healed by the SAME code path:
    * universal seeding on first open. */
   async createProject(params: CreateProjectParams): Promise<{ repoPath: string }> {
+    await recoverySettled(); // #676: a create never races the start recovery
     const repoPath = `${APP_ORG}/${params.content_abbr}`;
+    refuseNonProjectPath(repoPath);
     // Pre-check the name (PLATFORM-NOTES #28): creation git-inits BEFORE it
     // validates, so never attempt a create over an existing path, and delete
     // debris only when this listing POSITIVELY confirmed absence.
@@ -1168,7 +1211,9 @@ export class JournalingStore implements BurritoStore {
    * verbatim. A failure leaves no half-made project: the pre-check proved the
    * path absent, so the delete removes only our own debris (PLATFORM-NOTES #28). */
   async createObsProject(params: CreateObsProjectParams): Promise<{ repoPath: string }> {
+    await recoverySettled(); // #676: a create never races the start recovery
     const repoPath = `${APP_ORG}/${params.content_abbr}`;
+    refuseNonProjectPath(repoPath);
     const existing = await this.api.listLocalRepos();
     if (existing.includes(repoPath))
       throw new ServerApiError('/git/new-obs-resource', 0, `project ${repoPath} already exists`);
@@ -1232,6 +1277,21 @@ export class JournalingStore implements BurritoStore {
     startedAt: string,
     phases: Report[],
   ): Promise<ProjectSummary> {
+    // #676 (G8): the check, the reads and the writes of an open are ONE turn of
+    // the project queue, so no sync apply runs between them.
+    return inProjectQueue(repoPath, () => this.openInQueue(repoPath, options, hooks, startedAt, phases));
+  }
+
+  private async openInQueue(
+    repoPath: string,
+    options: OpenOptions,
+    hooks: OpenHooks,
+    startedAt: string,
+    phases: Report[],
+  ): Promise<ProjectSummary> {
+    refuseNonProjectPath(repoPath);
+    await recoverySettled(); // #676: an open never races the start recovery
+    await this.refusePendingApply(repoPath);
     const summary = await this.raw.open(repoPath); // binds raw + setCurrentProject
     this.boundRepoPath = repoPath;
     this.journal = new JournalStore({ api: this.api, repoPath, kv: this.kv, now: this.now });
@@ -1245,11 +1305,10 @@ export class JournalingStore implements BurritoStore {
     // journal once, not twice (issue #95); the journal store refuses to mint a
     // ts until that read completes (R-8.2.4).
     await this.journal.open({ ratchet: 'deferred' });
-    return inProjectQueue(repoPath, async () => {
-      const facts = await this.recoverAndConverge(options, hooks);
-      this.lastReport = okReport('open', startedAt, this.isoNow(), { ...facts, phases });
-      return summary;
-    });
+    const facts = await this.recoverAndConverge(options, hooks);
+    this.openedGeneration = syncGenerationOf(repoPath);
+    this.lastReport = okReport('open', startedAt, this.isoNow(), { ...facts, phases });
+    return summary;
   }
 
   private isoNow(): string {
@@ -1939,25 +1998,72 @@ export class JournalingStore implements BurritoStore {
   ): Promise<boolean> {
     const maxPrefix = 8;
     for (let drop = 1; drop <= Math.min(maxPrefix, actions.length); drop += 1) {
-      const prefixEvents = actions.slice(0, actions.length - drop).flatMap((action) => action.events);
-      let prefixFold: FoldOutput;
-      try {
-        prefixFold = await this.runner.fold(prefixEvents);
-      } catch {
-        break;
-      }
-      if (resolutionRecords.length === 0 && this.compareDisk(prefixFold, disk).length === 0) return true;
-      if (resolutionRecords.length === 0) continue;
-      const prefixTs = new Set(prefixEvents.map((event) => event.ts));
-      const prefixResolutions = new Map(harvested);
-      for (const record of resolutionRecords)
-        if (record.kind !== 'unconditional' && prefixTs.has(record.ts))
-          for (const [key, resource] of Object.entries(record.resolutions!))
-            prefixResolutions.set(key, resource);
-      if (this.withResolutions(prefixResolutions, () => this.compareDisk(prefixFold, disk).length === 0))
-        return true;
+      const behind = await this.divergenceFrom(actions.slice(0, actions.length - drop), resolutionRecords, harvested, disk);
+      if (behind === null) break;
+      if (behind.length === 0) return true;
     }
     return false;
+  }
+
+  /** The paths where the disk is not the projection of the fold of `actions`,
+   * under the resolutions the disk holds and those of the ledger records that the
+   * actions gate; null when the fold refuses the actions. */
+  private async divergenceFrom(
+    actions: Array<{ actor: string; ts: string; events: JournalEvent[] }>,
+    resolutionRecords: IntentRecord[],
+    harvested: Map<string, Record<string, unknown>>,
+    disk: DiskInventory,
+  ): Promise<DivergedPath[] | null> {
+    const events = actions.flatMap((action) => action.events);
+    let partFold: FoldOutput;
+    try {
+      partFold = await this.runner.fold(events);
+    } catch {
+      return null;
+    }
+    if (resolutionRecords.length === 0) return this.compareDisk(partFold, disk);
+    const partTs = new Set(events.map((event) => event.ts));
+    const partResolutions = new Map(harvested);
+    for (const record of resolutionRecords)
+      if (record.kind !== 'unconditional' && partTs.has(record.ts))
+        for (const [key, resource] of Object.entries(record.resolutions!))
+          partResolutions.set(key, resource);
+    return this.withResolutions(partResolutions, () => this.compareDisk(partFold, disk));
+  }
+
+  /** G8 (#676): a sync apply that stopped before all its derived writes, with its
+   * marker lost (a power loss, PLATFORM-NOTES #51), leaves teammate journal files
+   * that no commit holds. Only the apply writes a teammate journal file, and it
+   * commits last. So a teammate segment that `GET /git/status` lists is from an
+   * apply that did not end. When each `unexplained` path on the disk is the
+   * projection of the journal without those segments, the apply did not write it
+   * yet: the journal is ahead, and the open regenerates forward. A reconcile would
+   * journal the old text as an own edit over the teammate's. `unexplained` holds
+   * the diverged paths that the ledger does not explain as journal-ahead: the
+   * path of an own outbox entry that the sync carried has a record, so it is
+   * journal-ahead too. A status read that fails stops the open: no reconcile runs
+   * on a guess. */
+  private async stoppedApplyExplains(
+    unexplained: DivergedPath[],
+    actions: Array<{ actor: string; ts: string; events: JournalEvent[] }>,
+    resolutionRecords: IntentRecord[],
+    harvested: Map<string, Record<string, unknown>>,
+    disk: DiskInventory,
+  ): Promise<boolean> {
+    const own = this.mustJournal().actorId;
+    if (actions.every((action) => action.actor === own)) return false;
+    // A new folder is one entry that ends in '/': libgit2 does not recurse into an
+    // untracked folder [VERIFIED — rig 0.18.15 (a83725b), status.rs, 2026-10-14].
+    const changed = (await this.api.gitStatus(this.mustRepo())).map((change) => change.path);
+    const uncommitted = (ipath: string): boolean =>
+      changed.some((path) => path === ipath || (path.endsWith('/') && ipath.startsWith(path)));
+    const kept = actions.filter((action) =>
+      action.actor === own || !uncommitted(`ingredients/checking/journal/${action.actor}/segments/${segmentName(action.ts)}`));
+    if (kept.length === actions.length) return false;
+    const behind = await this.divergenceFrom(kept, resolutionRecords, harvested, disk);
+    if (behind === null) return false;
+    const notWritten = new Set(behind.map((d) => d.ipath));
+    return unexplained.every((d) => !notWritten.has(d.ipath));
   }
 
   private reconciliationPaths(after: FoldOutput, disk: DiskInventory): string[] {
@@ -2127,12 +2233,23 @@ export class JournalingStore implements BurritoStore {
       return;
     }
 
+    // The diverged paths that no gate-satisfied ledger record explains as
+    // journal-ahead: (b2) and (c) decide only these.
+    const remainder = diverged.filter((d) => !aheadExplained(d.ipath));
+
+    // (b2) G8 (#676): a sync apply that stopped with teammate journal files that no
+    // commit holds, and each remainder path as it was before the apply -> regenerate
+    // forward.
+    if (await this.stoppedApplyExplains(remainder, actions, resolutionRecords, harvested, disk)) {
+      await regenerateForward();
+      return;
+    }
+
     // (c) Every UNEXPLAINED diverged path is a book USFM (edited or created
     // out-of-band) -> §8.8 reconcile those - and ONLY those (round-5 rule 2,
     // M3): a path a gate-satisfied ledger record already explains as
     // journal-ahead is NEVER re-journaled from its (stale) disk bytes; those
     // paths regenerate forward in the same recovery's convergence below.
-    const remainder = diverged.filter((d) => !aheadExplained(d.ipath));
     const usfmOnly = remainder.every((d) => /^[A-Z0-9]{3}\.usfm$/.test(d.ipath));
     if (usfmOnly) {
       const reconcile = await this.reconcileDivergence(remainder, disk);

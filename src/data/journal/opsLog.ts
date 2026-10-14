@@ -11,7 +11,77 @@
 // so they never enter a burrito. Every write goes through ONE serialized
 // read-modify-write writer, so an ops write and any other settings write can
 // never overwrite each other.
-import { Refusal, failedReport, type Report } from './runtime';
+//
+// The sync (issue #676, G8; D101) keeps its safety record ON DISK, never in this
+// settings document: the settings document is written in place by many writers
+// and has no compare-and-set, so it never locks or unlocks a project. The record
+// is the project's scratch copy (`scratchPathOf`, under `_local_/_archive_/`, so
+// Home never lists it) and one marker file inside it, `ingredients/tc4-sync/apply.json`
+// (`APPLY_MARKER`). The order of a sync, after its push:
+//   write the marker -> move the sync generation on -> apply (`applyScratch`:
+//   the project's `ingredients/`, except `audio/` and the marker, get the
+//   scratch copy's journal files, then its derived files, then lose the files
+//   the scratch copy does not hold; then a remake and a commit) -> delete the
+//   marker (one file: a rename, so all or nothing) -> delete the scratch copy.
+//   A marker write that fails is followed by a marker delete. When that delete
+//   fails too, the marker may be there: the sync moves the generation on and
+//   answers `sync.apply-pending`.
+// The disk rule (`finishPendingApply`), at each start and at the start of each
+// sync of the project:
+//   scratch copy with the marker   -> an apply may have begun: run the same apply
+//                                     again (it compares, then writes), delete
+//                                     the marker, delete the scratch copy.
+//                                     Any bytes at the marker path count: a torn
+//                                     marker write may still have begun an apply.
+//                                     Only a copy that is the fold of its journal
+//                                     is applied; a copy that is not whole goes
+//                                     with its marker, not applied. A copy that
+//                                     the platform cannot read is not whole; a
+//                                     server error stops the rule, not the copy.
+//   scratch copy with no marker    -> delete it; the project did not change.
+//   no scratch copy                -> nothing is pending.
+// A power loss is not a kill: the platform calls no fsync (PLATFORM-NOTES #51), so
+// the disk can keep later writes and lose the marker, or keep the marker and lose
+// part of the scratch copy. The whole-copy check above is one guard; the other is
+// in the open (JournalingStore, branch (b2)): teammate journal files that no
+// commit holds, with the disk from before the apply on each diverged path that the
+// intent ledger does not explain, regenerate forward.
+// While the marker is there, the project takes no open (JournalingStore, one
+// GET of the scratch copy's paths; a missing repository answers [] with HTTP 200
+// [VERIFIED — pankosmia-web 0.18.15 (a83725b), live rig, 2026-10-14;
+// `get_repo_file_paths.rs:32-33`]).
+// Recovery only goes forward, and the apply never removes a journal file, so no
+// journal file of the project is lost.
+// The apply repairs a journal file that a stopped write left in part by writing
+// it again: the ingredient POST replaces the whole file [VERIFIED — rig 0.18.15
+// (a83725b), 2026-10-14: a write of "second" over "first bytes" reads back
+// "second", and no .bak is made with `no_bak`].
+// `recover()` runs the disk rule before it reads the settings document, so a
+// settings read that fails never stops it. Before an open or a create, a store
+// waits for the disk rule of the start recovery (`recoverySettled`), not for the
+// settings read; an open that writes its own record here (`ops.begin`) still
+// waits for that settings write. A store opens or creates only a project path
+// (`_local_/_local_/<name>`): the fixed clone path of a sync is a listed
+// repository for a moment, and the sync deletes it.
+// The sync record in this log is only the Report for the dev Inspector; its
+// `phase` fact says how far the sync got.
+// A store opened before an apply is stale after it (JournalingStore): the sync
+// moves the project's sync generation on before the first write to the project,
+// and a store whose generation is older refuses every edit and checkpoint
+// (`sync.project-replaced`).
+// A settings document that does not parse (a write the platform stopped half way:
+// `clients.rs` creates the file, then writes it) cannot lock anything, because no
+// record in it can be read. `recover()` keeps its bytes under `unreadableSettings`,
+// starts an empty ops log, and reports the incident; any other read failure fails
+// closed after the disk rule (`opslog.not-loaded`: no sync starts).
+import { Refusal, failedReport, isUnjournaledIngredient, okReport, type Report } from './runtime';
+import type { ServerApi } from '../serverApi';
+import { isNotFoundError } from '../serverApi';
+import { readJournalZipOf } from './journalStore';
+import { verifyProjectAgainstJournal } from './verify';
+
+/** The settings key that keeps the bytes of a settings document that did not parse. */
+export const UNREADABLE_KEY = 'unreadableSettings';
 
 export type OpsOp = Report['op'];
 
@@ -38,18 +108,24 @@ export type SettingsWriter = (mutate: (doc: SettingsDoc) => SettingsDoc) => Prom
 export function serialSettingsWriter(
   read: () => Promise<SettingsDoc>,
   write: (doc: SettingsDoc) => Promise<void>,
-): SettingsWriter & { idle(): Promise<unknown> } {
+): SettingsWriter & { idle(): Promise<unknown>; replace(doc: SettingsDoc): Promise<void> } {
   let chain: Promise<unknown> = Promise.resolve();
-  const update: SettingsWriter = (mutate) => {
-    const run = chain.then(async () => {
-      const doc = await read();
-      await write(mutate(doc));
-    });
+  const queue = (step: () => Promise<void>): Promise<void> => {
+    const run = chain.then(step);
     chain = run.catch(() => {});
     return run;
   };
-  /** Settles when every write queued so far has settled. */
-  return Object.assign(update, { idle: () => chain });
+  const update: SettingsWriter = (mutate) => queue(async () => {
+    const doc = await read();
+    await write(mutate(doc));
+  });
+  return Object.assign(update, {
+    /** Settles when every write queued so far has settled. */
+    idle: () => chain,
+    /** #676: write a whole document with no read (a document that does not
+     * parse), in the same queue as every update. */
+    replace: (doc: SettingsDoc) => queue(() => write(doc)),
+  });
 }
 
 export const opsEntriesOf = (doc: SettingsDoc | null | undefined): OpsEntry[] =>
@@ -79,6 +155,8 @@ export interface OpsHandle {
 /** What an operation needs to write its record. */
 export interface OpsRecorder {
   begin(op: OpsOp, facts?: Record<string, unknown>): Promise<OpsHandle>;
+  /** False until `recover()` loads the log at this start (#676: no sync before it). */
+  readonly recovered?: boolean;
 }
 
 /** A failed ops write: which record, and why. */
@@ -86,18 +164,210 @@ export interface OpsWriteError {
   id: string;
   op: OpsOp;
   error: string;
+  /** 'settings-unreadable': the settings document did not parse at this start (module header). */
+  kind?: 'settings-unreadable';
 }
 
 export interface OpsLogInit {
   read: () => Promise<SettingsDoc>;
   update: SettingsWriter;
   now?: () => number;
+  /** The raw text of the settings document, and a write that replaces it without
+   * a read: for a document that does not parse (module header). */
+  readText?: () => Promise<string>;
+  replace?: (doc: SettingsDoc) => Promise<void>;
 }
 
 /** What recovery needs from the platform. */
-export interface OpsRecoveryApi {
-  listLocalRepos(): Promise<string[]>;
-  deleteRepo(repoPath: string): Promise<void>;
+export type OpsRecoveryApi = Pick<
+  ServerApi,
+  | 'listLocalRepos'
+  | 'deleteRepo'
+  | 'listPaths'
+  | 'readIngredient'
+  | 'readIngredientZipped'
+  | 'writeIngredient'
+  | 'deleteIngredient'
+  | 'gitStatus'
+  | 'remakeIngredients'
+  | 'addAndCommit'
+  | 'getMetadataRaw'
+>;
+
+// ---- the sync apply (issue #676, G8; D101) --------------------------------------
+
+/** One name for the WHOLE project path inside `_local_/_archive_/`: `-` becomes
+ * `-d` and `/` becomes `-s`. The encoding is injective, and it adds only `-`,
+ * `d` and `s`, so the name keeps the platform's path rules (no `/`, no `..`;
+ * pankosmia-web a83725b `utils/paths.rs` forbidden_path_strings). For the scratch
+ * copies of a sync (#676) and of an open from Door43 (#677). */
+export const archiveNameOf = (repoPath: string): string => repoPath.replaceAll('-', '-d').replaceAll('/', '-s');
+
+/** The scratch copy of a project's sync. Under `_local_/_archive_/`, which
+ * `list-local-repos` and the summaries skip (#673), so Home never lists it. */
+export const scratchPathOf = (repoPath: string): string => `_local_/_archive_/tc4-sync--${archiveNameOf(repoPath)}`;
+
+/** The apply marker (module header): an ingredient path inside the scratch copy.
+ * The apply never writes it into the project and never removes it from there. */
+export const APPLY_MARKER = 'tc4-sync/apply.json';
+const isMarkerPath = (ipath: string): boolean => ipath.startsWith('tc4-sync/');
+
+/** The sync generation of each project in this process (module header): an
+ * apply moves it on, and a store opened at an older one is stale. A restart
+ * starts again at 0, and no store outlives a restart. */
+const syncGenerations = new Map<string, number>();
+export const syncGenerationOf = (repoPath: string): number => syncGenerations.get(repoPath) ?? 0;
+export const nextSyncGeneration = (repoPath: string): void => {
+  syncGenerations.set(repoPath, syncGenerationOf(repoPath) + 1);
+};
+
+/** Delete a repository; a repository that is not there is not an error. The
+ * platform answers a delete of a missing repository with HTTP 400 "could not
+ * delete repo: No such file or directory (os error 2)", which `isNotFound`
+ * matches [VERIFIED — pankosmia-web 0.18.15 (a83725b, 2026-09-29), rig
+ * 2026-10-13; docs/evidence/sync-transport-spike-2026-10-13.md run 7]. */
+export const deleteIfPresent = async (api: Pick<OpsRecoveryApi, 'deleteRepo'>, repoPath: string): Promise<void> => {
+  try {
+    await api.deleteRepo(repoPath);
+  } catch (error) {
+    if (!isNotFoundError(error)) throw error;
+  }
+};
+
+const JOURNAL_PREFIX = 'checking/journal/';
+const isJournalPath = (ipath: string): boolean => ipath.startsWith(JOURNAL_PREFIX);
+/** The tree an apply makes equal: every ingredient but `audio/`. Round 1 never
+ * reads or writes the one class that can be binary (R-8.7.3), so a teammate's
+ * audio does not reach this project, and own audio stays where it is. */
+const inApplyTree = (ipath: string): boolean => !isUnjournaledIngredient(ipath) && !isMarkerPath(ipath);
+
+/** Each ingredient file of `repoPath` that `keep` keeps, by ingredient path: the
+ * journal in one zipped read (else one read per file), the rest one read per
+ * file. Every file read here is text (R-8.7.1; audio is never read). */
+export async function readIngredientFiles(
+  api: Pick<OpsRecoveryApi, 'listPaths' | 'readIngredient' | 'readIngredientZipped'>,
+  repoPath: string,
+  keep: (ipath: string) => boolean,
+): Promise<Map<string, string>> {
+  const paths = (await api.listPaths(repoPath)).filter((p) => keep(p) && inApplyTree(p)).sort();
+  const zip = paths.some(isJournalPath) ? await readJournalZipOf(api, repoPath) : null;
+  const files = new Map<string, string>();
+  for (const ipath of paths) files.set(ipath, zip?.get(ipath) ?? (await api.readIngredient(repoPath, ipath)));
+  return files;
+}
+
+/** The platform's answer to a delete of an ingredient that is not there: HTTP 400
+ * "No such file: <path>" (pankosmia-web a83725b `post_delete_ingredient.rs:32-36`). */
+const isIngredientGone = (error: unknown): boolean => {
+  const failure = error as { status?: number; reason?: string } | null;
+  return failure?.status === 400 && /^No such file/.test(failure.reason ?? '');
+};
+
+const FLAGS = { updateIngredients: false, keepBak: false } as const;
+
+/** The disk rule of the start recovery that runs now, settled when that rule
+ * ends, either way (#676); the settings read after it does not count. A store
+ * waits for it before an open or a create, so neither races the disk rule.
+ * Before the first recovery it is already settled. */
+let recovering: Promise<void> = Promise.resolve();
+export const recoverySettled = (): Promise<void> => recovering;
+
+/** True while the scratch copy of `repoPath` holds the apply marker (module header). */
+export const isApplyPending = async (api: Pick<OpsRecoveryApi, 'listPaths'>, repoPath: string): Promise<boolean> =>
+  (await api.listPaths(scratchPathOf(repoPath))).includes(APPLY_MARKER);
+
+/** A read failure that damage to a file explains (`isScratchWhole`). */
+const isDamagedRead = (error: unknown): boolean =>
+  error instanceof SyntaxError || isNotFoundError(error)
+  || ((error as { status?: number } | null)?.status === 400 && /did not contain valid UTF-8/.test((error as { reason?: string }).reason ?? ''));
+
+/** True when the scratch copy is the fold of its journal, as the sync verified it
+ * before the push. The marker is not a derived file, so it is the one extra file.
+ * The check also reads each file that the apply reads, with the same read
+ * (`readIngredientFiles`): the fold does not derive `LICENSE.md` or the OBS front
+ * and back matter, so only this read covers them.
+ * A power loss can leave a file that the platform cannot read (PLATFORM-NOTES #51):
+ * a missing file is HTTP 400 "No such file", a file that is not UTF-8 is HTTP 400
+ * "did not contain valid UTF-8", and a torn `metadata.json` does not parse. Such a
+ * copy is not whole. The copy is only a copy of Door43 main after the push, so it
+ * goes with its marker, and the project does not lock. Any other failure (a server
+ * error, no network, a file that another process holds) is no proof of a power
+ * loss: it throws, the marker stays, and the next start or sync runs the rule again. */
+const isScratchWhole = async (api: OpsRecoveryApi, scratch: string): Promise<boolean> => {
+  let verified: Awaited<ReturnType<typeof verifyProjectAgainstJournal>>;
+  try {
+    verified = await verifyProjectAgainstJournal(api, scratch, { skipUnjournaled: true });
+    await readIngredientFiles(api, scratch, () => true);
+  } catch (error) {
+    if (!isDamagedRead(error)) throw error;
+    console.error(`ops log: the platform cannot read the scratch copy ${scratch}, so it is not whole: ${String((error as Error)?.message ?? error)}`);
+    return false;
+  }
+  return verified.projectionFailure === null && verified.invalidSegments.length === 0
+    && verified.metadataProblems.length === 0 && verified.mismatches.every((m) => isMarkerPath(m.ipath));
+};
+
+/** The disk rule (module header): finish an apply that the marker says may have
+ * begun, or delete a scratch copy that has no marker. Safe to run again. A copy
+ * that is not whole (a power loss, PLATFORM-NOTES #51) is not applied: it goes,
+ * with its marker (`'refused'`). */
+export async function finishPendingApply(api: OpsRecoveryApi, repoPath: string): Promise<'applied' | 'refused' | 'deleted' | 'none'> {
+  const scratch = scratchPathOf(repoPath);
+  const paths = await api.listPaths(scratch);
+  if (paths.includes(APPLY_MARKER)) {
+    nextSyncGeneration(repoPath);
+    const whole = await isScratchWhole(api, scratch);
+    if (whole) await applyScratch(api, repoPath, scratch);
+    await deleteIngredientIfPresent(api, scratch, APPLY_MARKER);
+    await deleteIfPresent(api, scratch);
+    return whole ? 'applied' : 'refused';
+  }
+  if (!paths.length) return 'none';
+  await deleteIfPresent(api, scratch);
+  return 'deleted';
+}
+
+/** Delete one ingredient; one that is not there is not an error. */
+export const deleteIngredientIfPresent = async (api: Pick<OpsRecoveryApi, 'deleteIngredient'>, repoPath: string, ipath: string): Promise<void> => {
+  try {
+    await api.deleteIngredient(repoPath, ipath);
+  } catch (error) {
+    if (!isIngredientGone(error)) throw error;
+  }
+};
+
+/** The apply (module header): make the project's `ingredients/`, except
+ * `audio/`, equal to the scratch copy's. Journal files first (a journal file
+ * never changes, R-8.1.4, so a different one is written again only when a stopped
+ * write left it in part), derived files next, removes last (never a journal
+ * file); then a remake and a commit. Safe to run again. */
+export async function applyScratch(api: OpsRecoveryApi, repoPath: string, scratch: string): Promise<{ written: number; removed: number }> {
+  const target = await readIngredientFiles(api, scratch, () => true);
+  // A scratch copy that is gone lists as [] (module header). Its empty tree would
+  // remove each file of the project, so it is not applied.
+  if (!target.size) throw new Error(`the scratch copy ${scratch} holds no file; nothing was applied`);
+  const livePaths = (await api.listPaths(repoPath)).filter(inApplyTree);
+  const live = await readIngredientFiles(api, repoPath, isJournalPath);
+  let written = 0;
+  const write = async (ipath: string, bytes: string): Promise<void> => {
+    await api.writeIngredient(repoPath, ipath, bytes, FLAGS);
+    written += 1;
+  };
+  for (const [ipath, bytes] of target) if (isJournalPath(ipath) && live.get(ipath) !== bytes) await write(ipath, bytes);
+  const present = new Set(livePaths);
+  for (const [ipath, bytes] of target)
+    if (!isJournalPath(ipath) && (!present.has(ipath) || (await api.readIngredient(repoPath, ipath)) !== bytes)) await write(ipath, bytes);
+  let removed = 0;
+  for (const ipath of livePaths) {
+    if (isJournalPath(ipath) || target.has(ipath)) continue;
+    await deleteIngredientIfPresent(api, repoPath, ipath);
+    removed += 1;
+  }
+  if ((await api.gitStatus(repoPath)).length) {
+    await api.remakeIngredients(repoPath);
+    await api.addAndCommit(repoPath, 'Sync with Door43 (tC4)');
+  }
+  return { written, removed };
 }
 
 export class OpsLog implements OpsRecorder {
@@ -115,7 +385,16 @@ export class OpsLog implements OpsRecorder {
     this.read = init.read;
     this.update = init.update;
     this.now = init.now ?? (() => Date.now());
+    this.readText = init.readText ?? null;
+    this.replace = init.replace ?? null;
   }
+
+  private readonly readText: (() => Promise<string>) | null;
+  private readonly replace: ((doc: SettingsDoc) => Promise<void>) | null;
+
+  /** True after `recover()` loaded the log at this start. */
+  recovered = false;
+
 
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
@@ -133,17 +412,82 @@ export class OpsLog implements OpsRecorder {
   }
 
   /** Resolve every record a killed operation left open, and load the log.
-   * Run once, when the app starts, before any operation begins. */
-  async recover(api: OpsRecoveryApi): Promise<OpsEntry[]> {
-    const doc = await this.read();
+   * Run once, when the app starts, before any operation begins. A second call
+   * gets the first run (#676): React StrictMode runs the boot effect twice in a
+   * dev build, and two disk rules at the same time can apply a scratch copy that
+   * the other one deleted. */
+  recover(api: OpsRecoveryApi): Promise<OpsEntry[]> {
+    if (this.recovery) return this.recovery;
+    let settle = (): void => {};
+    recovering = new Promise<void>((resolve) => (settle = resolve));
+    const run = this.recoverOnce(api, () => settle());
+    run.then(settle, settle);
+    this.recovery = run;
+    return run;
+  }
+
+  private recovery: Promise<OpsEntry[]> | null = null;
+
+  /** The disk rule for each repository at any path (a project opened from Door43
+   * can be outside `_local_/_local_/`). The platform lists no `_local_/_archive_/`
+   * folder (list_local_repos.rs, pankosmia-web a83725b), so the scan goes from
+   * each repository to its scratch copy: one GET each, and a missing scratch copy
+   * answers [] with HTTP 200. Returns the failure of the list, or null. */
+  private async runDiskRule(api: OpsRecoveryApi): Promise<unknown> {
+    this.applied = new Set();
+    this.refused = new Set();
+    let repos: string[];
+    try {
+      repos = await api.listLocalRepos();
+    } catch (error) {
+      return error;
+    }
+    for (const repoPath of repos) {
+      try {
+        const outcome = await finishPendingApply(api, repoPath);
+        if (outcome === 'applied') this.applied.add(repoPath);
+        if (outcome === 'refused') this.refused.add(repoPath);
+      } catch (error) {
+        const failure = { id: `apply:${repoPath}`, op: 'sync' as OpsOp, error: `the pending apply of ${repoPath} did not finish: ${String((error as Error)?.message ?? error)}` };
+        this.errors = [...this.errors, failure];
+        console.error(`ops log: ${failure.error}`);
+      }
+    }
+    return null;
+  }
+
+  private async recoverOnce(api: OpsRecoveryApi, diskRuleDone: () => void): Promise<OpsEntry[]> {
+    // The disk rule first, before the settings read: the settings document never
+    // decides it, and a settings read that fails never stops it. Opens and creates
+    // wait only for the disk rule (`recoverySettled`): a settings read that never
+    // answers holds none of them. A failed repo list settles the gate too: the
+    // marker check of each open still refuses a pending apply.
+    let listFailure: unknown;
+    try {
+      listFailure = await this.runDiskRule(api);
+    } finally {
+      diskRuleDone();
+    }
+    const doc = await this.readOrSetAside();
+    // no list, no disk rule: the log does not load (fail closed; a sync refuses)
+    if (listFailure) throw listFailure;
     const resolved: OpsEntry[] = [];
     for (const entry of opsEntriesOf(doc)) {
       // A record this session began is running, not interrupted.
       if (entry.report || this.entries.some((e) => e.id === entry.id)) continue;
-      resolved.push({ ...entry, report: await this.resolve(entry, api) });
+      // One record that cannot be resolved never stops the others: it stays
+      // open and is reported.
+      try {
+        resolved.push({ ...entry, report: await this.resolve(entry, api) });
+      } catch (error) {
+        const failure = { id: entry.id, op: entry.op, error: `recovery failed: ${String((error as Error)?.message ?? error)}` };
+        this.errors = [...this.errors, failure];
+        console.error(`ops log: the ${entry.op} record was not recovered: ${failure.error}`);
+      }
     }
     if (resolved.length) await this.update((latest) => withEntries(latest, resolved));
     this.entries = withEntries(doc, resolved)[OPS_KEY] as OpsEntry[];
+    this.recovered = true;
     this.notify();
     return resolved;
   }
@@ -163,8 +507,59 @@ export class OpsLog implements OpsRecorder {
     }
     if (entry.op === 'export')
       return failedReport('export', entry.startedAt, endedAt, new Error('the export was interrupted; no file was delivered'), facts);
+    if (entry.op === 'sync') return this.resolveSync(entry, api, endedAt);
     return failedReport(entry.op, entry.startedAt, endedAt,
       new Error(`the ${entry.op} was interrupted; the journal replays its staged actions at the next open of the project`), facts);
+  }
+
+  /** The projects whose pending apply this start finished (the disk rule). */
+  private applied = new Set<string>();
+  /** The projects whose scratch copy with the marker was not whole (the disk rule). */
+  private refused = new Set<string>();
+
+  /** The Report of an interrupted sync. The disk rule has already run: a scratch
+   * copy left now has no marker, so it goes, with a fixed clone path that the
+   * record names. */
+  private async resolveSync(entry: OpsEntry, api: OpsRecoveryApi, endedAt: string): Promise<Report> {
+    const facts = { ...entry.facts, interrupted: true };
+    const { phase, repoPath, clonePath } = entry.facts;
+    if (typeof repoPath !== 'string')
+      return failedReport('sync', entry.startedAt, endedAt, new Error('the sync was interrupted before it named its project'), facts);
+    if (phase === 'clone' && typeof clonePath === 'string') await deleteIfPresent(api, clonePath);
+    const outcome = await finishPendingApply(api, repoPath);
+    if (outcome === 'applied') this.applied.add(repoPath);
+    if (outcome === 'refused' || this.refused.has(repoPath))
+      return failedReport('sync', entry.startedAt, endedAt,
+        new Error('the scratch copy of the sync was not whole after the stop, so it was not applied; the next sync brings Door43 main'),
+        { ...facts, scratchNotWhole: true });
+    if (this.applied.has(repoPath)) return okReport('sync', entry.startedAt, endedAt, { ...facts, finishedApply: true });
+    // The record is not a lock. The sync saves the phase `apply` only after the
+    // marker write, and it deletes the marker only after the apply ends. So a
+    // record at `apply` with no marker is an apply that ended (B3): the sync is over.
+    // A stop before the marker write leaves the phase at `push` (or earlier): the
+    // project did not change, and the next sync brings Door43 main to it.
+    // After a power loss that lost the marker, `apply` can be wrong (Ledger #11):
+    // own work stays, the open converges or regenerates forward, and the next sync applies.
+    if (phase === 'apply') return okReport('sync', entry.startedAt, endedAt, { ...facts, applyPending: false });
+    return failedReport('sync', entry.startedAt, endedAt,
+      new Error('the sync was interrupted before the apply; the project did not change'), { ...facts, rolledBack: true });
+  }
+
+  /** The settings document; one that does not parse is kept under
+   * `UNREADABLE_KEY` and replaced by an empty ops log (module header). Any other
+   * failure throws: the log did not load. */
+  private async readOrSetAside(): Promise<SettingsDoc> {
+    try {
+      return await this.read();
+    } catch (error) {
+      if (!(error instanceof SyntaxError) || !this.readText || !this.replace) throw error;
+      const doc: SettingsDoc = { [UNREADABLE_KEY]: [{ at: new Date(this.now()).toISOString(), bytes: await this.readText() }] };
+      await this.replace(doc);
+      const failure: OpsWriteError = { id: 'settings', op: 'open', error: String(error.message), kind: 'settings-unreadable' };
+      this.errors = [...this.errors, failure];
+      console.error(`ops log: the settings document did not parse; its bytes are kept under ${UNREADABLE_KEY}: ${failure.error}`);
+      return doc;
+    }
   }
 
   private current(id: string): OpsEntry {
