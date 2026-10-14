@@ -519,6 +519,57 @@ describe('#676 crash recovery of the sync (G8)', () => {
     expect(w.rig.repos.get(REPO)!.files.get('TIT.usfm')).toContain(lateWork);
   });
 
+  it('[G8] a server failure at swap.copy-previous whose close is not saved keeps the scratch copy: the next start leaves one project with every own file', async () => {
+    const w = await world({ outbox: true });
+    const before = w.own();
+    const staged = new Map([...w.kv.map].filter(([key]) => key.startsWith('outbox:')));
+    // every ops-log write after the failed copy fails (the record stays at swap.copy-previous)
+    let failWrites = false;
+    const ops = new OpsLog({ read: w.settings.read, update: serialSettingsWriter(w.settings.read, async (d) => {
+      if (failWrites) throw new Error('settings write failed');
+      await w.settings.write(d);
+    }), kv: w.kv });
+    await ops.recover(w.api);
+    w.rig.failOn(({ route }) => (failWrites = route.includes('/git/copy/_local_/_local_/prueba')), 1);
+    const report = await sync({ ...w.deps(), ops }, { repoPath: REPO, session: SESSION });
+    expect([report.ok, report.code]).toEqual([false, 'sync.move-failed']);
+    const [entry] = opsEntriesOf(w.settings.get()).filter((e) => e.op === 'sync');
+    expect([entry.report, entry.facts.phase]).toEqual([undefined, 'swap.copy-previous']);
+    expect(w.rig.repos.has(PATHS.scratch)).toBe(true);
+    const resolved = await restart(w, storedOf(w));
+    expect(resolved.map((e) => e.op)).toEqual(['sync']);
+    expect(reportError(resolved[0].report)).toBeNull();
+    await expectOneProjectWithOwnWork(w, before, staged);
+  });
+
+  it('[G8] a kill right after a server failure at swap.copy-previous: the next start leaves one project with every own file', async () => {
+    const w = await world({ outbox: true });
+    const before = w.own();
+    const staged = new Map([...w.kv.map].filter(([key]) => key.startsWith('outbox:')));
+    let killed = false;
+    const failing = (route: string) => route.includes('/git/copy/_local_/_local_/prueba');
+    w.rig.failOn(({ route }) => failing(route), 1);
+    const dying = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (killed) return new Promise<Response>(() => {});
+      try {
+        return await w.rig.fetchFn(input, init);
+      } finally {
+        // the failed copy answers; then the app dies before its next request or write
+        if (failing(new URL(String(input)).pathname)) {
+          killed = true;
+          w.settings.hang();
+        }
+      }
+    }) as typeof fetch });
+    const run = sync(w.deps(dying), { repoPath: REPO, session: SESSION });
+    const done = await Promise.race([run.then(() => true), new Promise((r) => setTimeout(() => r(false), 200))]);
+    expect([killed, done]).toEqual([true, false]);
+    const resolved = await restart(w, storedOf(w));
+    expect(resolved.map((e) => e.op)).toEqual(['sync']);
+    expect(reportError(resolved[0].report)).toBeNull();
+    await expectOneProjectWithOwnWork(w, before, staged);
+  });
+
   it('[G8] a server failure after the project folder is gone is retried once in the same run, and the sync completes', async () => {
     const w = await world({ outbox: true });
     const before = w.own();
