@@ -197,8 +197,9 @@ export function cloneProject(
   source: CloneSource,
   repoPath: string,
   beforeClone?: (clonePath: string) => Promise<unknown>,
+  beforeMove?: (clonePath: string) => Promise<unknown>,
 ): Promise<void> {
-  return withClonePath(clonePathOf(source), () => cloneLocked(api, source, repoPath, beforeClone));
+  return withClonePath(clonePathOf(source), () => cloneLocked(api, source, repoPath, beforeClone, beforeMove));
 }
 
 async function cloneLocked(
@@ -206,6 +207,7 @@ async function cloneLocked(
   source: CloneSource,
   repoPath: string,
   beforeClone?: (clonePath: string) => Promise<unknown>,
+  beforeMove?: (clonePath: string) => Promise<unknown>,
 ): Promise<void> {
   const clonePath = clonePathOf(source);
   if (clonePath === repoPath)
@@ -223,6 +225,8 @@ async function cloneLocked(
     throw refusalForClone(error);
   }
   try {
+    // `beforeMove` runs at the fixed path, before the clone can reach `repoPath`
+    await beforeMove?.(clonePath);
     await api.copyRepo(clonePath, repoPath, true);
   } catch (error) {
     // A clone path the clean-up cannot delete stays on Home and blocks every later
@@ -363,7 +367,12 @@ async function syncOnce(
   const { api } = deps;
   // 2. Door43 main into the scratch copy
   await deleteIfPresent(api, scratch);
-  await cloneProject(api, checked.source, scratch, (clonePath) => note({ phase: 'clone', clonePath, try: tries }));
+  // Door43 content never authorizes an apply: a marker that came with the clone is
+  // deleted at the fixed path, before the move, so the scratch copy holds a marker
+  // only after this sync wrote it (step 7). A kill before the move leaves only the
+  // clone path, which the next clone deletes.
+  await cloneProject(api, checked.source, scratch, (clonePath) => note({ phase: 'clone', clonePath, try: tries }),
+    (clonePath) => deleteIngredientIfPresent(api, clonePath, APPLY_MARKER));
   await note({ phase: 'sync' });
   const remote = await readFiles(api, scratch, () => true, true);
 

@@ -403,8 +403,9 @@ describe('#676 crash recovery of the sync (G8)', () => {
    * that call answers, then every later request and settings write never settles.
    * `inside`: the server is killed DURING the k-th call instead: a copy leaves half
    * of the source's files at the target, a delete leaves half of its files. */
-  async function killAfter(k: number, counts: (route: string, method: string) => boolean, inside = false, teammate = false) {
+  async function killAfter(k: number, counts: (route: string, method: string) => boolean, inside = false, teammate = false, prepare?: (w: World) => void) {
     const w = await world({ outbox: true, teammate });
+    prepare?.(w);
     const from = w.rig.log.length;
     const before = w.own();
     const staged = new Map([...w.kv.map].filter(([key]) => key.startsWith('outbox:')));
@@ -567,6 +568,22 @@ describe('#676 crash recovery of the sync (G8)', () => {
     const stored = { read: async () => structuredClone(w.settings.get()), write: async (d: Record<string, unknown>) => { Object.assign(w.settings.get(), d); } };
     const [entry] = await restart(w, stored);
     expect(entry.report).toMatchObject({ op: 'sync', ok: false, facts: { phase: 'clone', rolledBack: true } });
+    await expectOneProjectWithOwnWork(w, before, staged);
+  });
+
+  it('[G1][G8] a marker that comes from Door43 never authorizes an apply: a kill right after the clone moves to the scratch copy leaves the project as it was (bench round 5)', async () => {
+    // Door43 main carries an apply marker and other bytes at an own journal path
+    const incoming = (w: World) => w.rig.teammatePush(URL_, (remote) => {
+      const ownPath = [...remote.files.keys()].find((p) => p.startsWith(`checking/journal/${w.actor}/segments/`))!;
+      remote.files.set(ownPath, 'not a sealed segment');
+      remote.files.set(APPLY_MARKER, JSON.stringify({ actor: 'someone', at: '2026-10-14T00:00:00.000Z' }));
+    });
+    const { w, before, staged, killed } = await killAfter(1, (route) => route.includes('/git/copy/'), false, false, incoming);
+    expect(killed).toBe(true);
+    expect(w.rig.repos.get(SCRATCH)?.files.has(APPLY_MARKER) ?? false).toBe(false);
+    const project = new Map(w.rig.repos.get(REPO)!.files);
+    await restart(w, storedOf(w));
+    expect(w.rig.repos.get(REPO)!.files).toEqual(project);
     await expectOneProjectWithOwnWork(w, before, staged);
   });
   // ---- escalation fixes (PR #688 rounds 1-5) ------------------------------------
