@@ -51,8 +51,8 @@ function door43Main(tmp: string, repo: string, work: string): BareRemote {
 const actorsOn = (remote: BareRemote): string[] =>
   git(remote.bare, 'ls-tree', '--name-only', `main:${JOURNAL}`).split('\n').filter(Boolean).sort();
 
-/** Nothing of an open is on the rig: no project, no scratch copy, no clone at the fixed path. */
-function expectNothingWritten(repo: string, name: string): void {
+/** No repository of an open is on the rig: no project, no scratch copy, no clone at the fixed path (the platform may keep the empty parent folders; they are not repositories). */
+function expectNoProjectWritten(repo: string, name: string): void {
   expect(fs.existsSync(path.join(RIG_LOCAL_REPOS, name)), `project ${name}`).toBe(false);
   expect(fs.existsSync(scratchDir(name)), `scratch copy of ${name}`).toBe(false);
   expect(fs.existsSync(fixedDir(repo)), `clone of ${repo}`).toBe(false);
@@ -143,7 +143,7 @@ test.describe('J17 — open a project from Door43', () => {
     await page.getByTestId('net-cancel').click();
     await expect(page.getByTestId('net-ask')).toHaveCount(0);
     await expect(page.getByTestId('open-door43-submit')).toBeEnabled();
-    expectNothingWritten(REPO, REPO);
+    expectNoProjectWritten(REPO, REPO);
 
     // ---- Turn on internet: the project opens under its name ----
     await page.getByTestId('open-door43-submit').click();
@@ -189,7 +189,7 @@ test.describe('J17 — open a project from Door43', () => {
     expect(verified.ok, describeVerifierReport(verified)).toBe(true);
   });
 
-  test('[G2] one invalid journal file on Door43 refuses the open, and nothing is written', TAG, async ({ page }, testInfo) => {
+  test('[G2] one invalid journal file on Door43 refuses the open, and no project is written', TAG, async ({ page }, testInfo) => {
     test.setTimeout(180_000);
     await page.goto('/');
     await openDialog(page);
@@ -202,7 +202,7 @@ test.describe('J17 — open a project from Door43', () => {
     await expect(refused).toBeVisible({ timeout: 120_000 });
     await expect(refused).toHaveAttribute('data-code', 'sync.incoming-invalid');
     await shot(page, testInfo, 'g-refused');
-    expectNothingWritten(BAD, BAD);
+    expectNoProjectWritten(BAD, BAD);
     await expect(page.getByTestId(`project-_local_/_local_/${BAD}`)).toHaveCount(0);
   });
 });

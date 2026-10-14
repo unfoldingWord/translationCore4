@@ -60,10 +60,10 @@ describe('#156 the refusal-code table is closed and bound', () => {
     // throws import.name-exists and import.write-failed; the reference writer throws
     // actor.name-already-set (R-8.5.26); the sync core (#675) throws the four sync codes; the
     // sync shell (#676) throws eleven more, and the store and the sync throw opslog.not-loaded; the
-    // open from Door43 (#677) throws open-door43.name-exists and open-door43.no-journal.
+    // open from Door43 (#677) throws open-door43.name-exists, open-door43.no-journal and (the store) open-door43.pending.
     const reserved = /^(import\.damaged\.|share\.|export\.unsupported-kind$)/;
     const live = Object.keys(REFUSAL_CODES).filter((code) => !reserved.test(code));
-    expect(live.length).toBe(48);
+    expect(live.length).toBe(49);
     for (const code of live) expect(t(`refusal.${code}`, undefined, ''), code).not.toBe('');
   });
 

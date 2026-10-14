@@ -74,6 +74,30 @@ describe('#677 — open a project from Door43, the screens', () => {
     expect(actions.closeModal).toHaveBeenCalledTimes(2);
   });
 
+  it('each refusal code of the open shows its own sentence; the rest show the general one', () => {
+    const own: Record<string, string> = {
+      'sync.incoming-invalid': 'openDoor43.refused.invalid',
+      'sync.obs-unsupported': 'openDoor43.refused.obs',
+      'open-door43.no-journal': 'openDoor43.refused.noJournal',
+      'sync.clone-path-exists': 'openDoor43.refused.clonePathExists',
+      'opslog.not-loaded': 'openDoor43.refused.opsNotLoaded',
+      'sync.offline': 'openDoor43.refused.offline',
+      'sync.move-failed': 'openDoor43.refused.moveFailed',
+      'sync.clone-failed': 'openDoor43.refused.other',
+    };
+    const sentences = new Set<string>();
+    for (const [code, key] of Object.entries(own)) {
+      cleanup();
+      state.od = od({ error: { code, reason: 'r' } });
+      render(<OpenFromDoor43 />);
+      const text = screen.getByTestId('open-door43-refused').textContent ?? '';
+      expect(text, code).toContain(t(key));
+      expect(text, code).toContain(t('openDoor43.nothingWritten'));
+      sentences.add(t(key));
+    }
+    expect(sentences.size).toBe(Object.keys(own).length);
+  });
+
   it('a repository with no tC4 journal shows its own sentence and code', () => {
     state.od = od({ error: { code: 'open-door43.no-journal', reason: 'no journal' } });
     render(<OpenFromDoor43 />);
@@ -108,7 +132,7 @@ describe('#677 — open a project from Door43, the screens', () => {
     expect(screen.queryByTestId('open-door43-refused')).toBeNull();
   });
 
-  it('[G2] a refusal shows its code, "Nothing was written", and Ask for help', () => {
+  it('[G2] a refusal shows its code, "No project was added", and Ask for help', () => {
     state.od = od({ error: { code: 'sync.incoming-invalid', reason: '1 journal file(s) on Door43 fail the validator' } });
     render(<OpenFromDoor43 />);
     const callout = screen.getByTestId('open-door43-refused');

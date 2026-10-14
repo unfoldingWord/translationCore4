@@ -313,13 +313,18 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   same as Door43 `main`, and its `origin` is the Door43 repository. The project has a new actor id,
   because identity is per path (D53(c)). Its card shows "Sync with Door43" (#678). The first sync
   needs no other step.
-- MUST NOT: write anything when one journal file on Door43 fails the validator (G2,
-  `sync.incoming-invalid`), when the name is in use (`open-door43.name-exists`), when the
-  repository has no tC4 journal (`open-door43.no-journal`; use Import, #365), or when the
-  repository holds an OBS project (`sync.obs-unsupported`, D98). MUST NOT leave a clone or a part
-  project after a stop: the ops log records each phase, and the next start cleans up
-  (`src/data/journal/opsLog.ts`). Round 1 has no branch choice and no private repository
-  (epic #24).
+- MUST NOT: add a project when a refusal occurs. The refusals are:
+  - one journal file on Door43 fails the validator (G2, `sync.incoming-invalid`);
+  - the name is in use (`open-door43.name-exists`);
+  - the repository has no tC4 journal (`open-door43.no-journal`; use Import, #365);
+  - the repository holds an OBS project (`sync.obs-unsupported`, D98).
+- MUST NOT: leave a clone or a part project after a stop. The ops log records each phase, and the
+  next start cleans up (`src/data/journal/opsLog.ts`). Until then, a part project takes no open
+  and no edit (`open-door43.pending`).
+- MUST NOT: delete a project that opened. Recovery keeps the project when its copy finished.
+- The platform can leave an empty `<host>/<org>/` folder after a clone. It is not a repository,
+  and Home does not show it.
+- Round 1 has no branch choice and no private repository (epic #24).
 - Proof: `e2e/j17-open-from-door43.spec.ts` (`@J17`), on the rig against the #673 stand-in. The
   refusals, the internet question and the crash recovery: `test/sync/openFromDoor43.test.ts`.
   Owner: built (#677).

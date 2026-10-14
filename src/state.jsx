@@ -6351,7 +6351,7 @@ export function AppProvider({ children }) {
       patchOd: (patch) => dispatch({ type: 'set', patch: { od: { ...stateRef.current.od, ...patch } } }),
       /** "Open project". The name check is local and comes first; then, with the
        * internet off, the question (D95): Not now sends nothing. A refusal
-       * shows in the dialog; nothing was written. */
+       * shows in the dialog; no project was added. */
       openDoor43Run: async () => {
         const od = stateRef.current.od;
         if (!od || od.busy) return;
