@@ -32,8 +32,9 @@
 // `.git` are the old ones (#678).
 //
 // The HTTPS answers for a refused token (401) and for no write access (403)
-// are [PENDING — owner run, #673 steps 3 and 4]. `refusalForPush` maps them by
-// the HTTP status in the reason text, as best known.
+// are [PENDING — the owner's run on the Door43 QA server, #673 steps 3 and 4]. Until that
+// run records them, `refusalForPush` maps them by the HTTP status in the reason
+// text, as best known.
 import { checkpointMessage } from '../checkpoint';
 import { Refusal, failedReport, okReport, projectResources, syncCore, type Report } from '../journal/runtime';
 import { JournalStore, readJournalZipOf } from '../journal/journalStore';
@@ -44,6 +45,7 @@ import { verifyProjectAgainstJournal } from '../journal/verify';
 import {
   deleteIfPresent,
   lastSegmentName,
+  nextSwapGeneration,
   previousCopyKey,
   runSwap,
   syncPathsOf,
@@ -150,8 +152,8 @@ const refusalForPush = (error: unknown): Error => {
   if (status === 401 && /offline mode/.test(reason)) return new Refusal('sync.offline', NO_CONSENT, facts);
   if (/NotFastForward/.test(reason))
     return new Refusal('sync.non-fast-forward', 'Door43 main moved while this computer synced', facts);
-  // [PENDING — owner run, #673 steps 3 and 4]: the HTTPS replies for a refused
-  // token and for no write access are not recorded yet. libgit2 names the HTTP
+  // [PENDING — the owner's run on the Door43 QA server, #673 steps 3 and 4]: the HTTPS
+  // replies for a refused token and for no write access are not recorded yet. libgit2 names the HTTP
   // status in its reason, so the status number is the best-known match.
   if (status === 403 || /\b403\b/.test(reason))
     return new Refusal('sync.no-write-access', 'Door43 did not accept the push: no write access', facts);
@@ -167,7 +169,7 @@ const refusalForPush = (error: unknown): Error => {
  * `sync.clone-path-exists`, `sync.offline`, `sync.clone-failed` or `sync.move-failed`.
  * For #677 (open a project from Door43). */
 export async function cloneProject(
-  api: Pick<ServerApi, 'listLocalRepos' | 'cloneRepo' | 'copyRepo' | 'deleteRepo'>,
+  api: Pick<ServerApi, 'listLocalRepos' | 'cloneRepo' | 'copyRepo' | 'deleteRepo' | 'listBranches'>,
   source: CloneSource,
   repoPath: string,
   beforeClone?: (clonePath: string) => Promise<unknown>,
@@ -189,6 +191,16 @@ export async function cloneProject(
   } catch (error) {
     await deleteIfPresent(api, clonePath).catch(() => {});
     throw new Refusal('sync.move-failed', `the clone did not move to ${repoPath}`, { clonePath, ...failureOf(error) });
+  }
+  // Door43 `main` only (G4): the full clone checks out the repository's default
+  // branch, and the push pushes the checked-out branch. The pinned platform has no
+  // route that checks out `main` from `origin` with full history (`git/branch`
+  // needs a local branch, `git/new-branch` branches from HEAD, a `branch` clone is
+  // shallow), so a default branch other than `main` refuses.
+  const head = (await api.listBranches(repoPath)).find((branch) => branch.is_head);
+  if (head?.name !== 'main') {
+    await deleteIfPresent(api, repoPath).catch(() => {});
+    throw new Refusal('sync.not-main', 'the Door43 repository does not have main as its default branch', { branch: head?.name ?? null });
   }
 }
 
@@ -244,7 +256,7 @@ export async function sync(deps: SyncDeps, request: SyncRequest): Promise<Report
     // and a log that did not load at this start can hide one. With no ops log at
     // all, no phase is saved and a stopped swap cannot be recovered: refuse too.
     const ops = deps.ops;
-    if (!ops || ops.recovered === false) {
+    if (!ops || ops.recovered !== true) {
       const at = new Date().toISOString();
       return failedReport('sync', at, at,
         new Refusal('opslog.not-loaded', 'the ops log did not load at this start; restart the app to sync'), { repoPath });
@@ -257,10 +269,9 @@ export async function sync(deps: SyncDeps, request: SyncRequest): Promise<Report
     const record = await ops.begin('sync', { repoPath });
     const recorded = await syncRecorded(deps, request, record);
     const report = withCode(recorded.report);
-    const { open, closed } = recorded;
     // A swap that stopped leaves its record open, so the next start finishes it (G8).
-    // A go-back at swap.copy-previous closed its record itself, before its deletes.
-    if (!open && !closed) await record.close(report);
+    // A close that is not saved keeps the project locked in this session (isOpen).
+    if (!recorded.open) await record.close(report);
     return report;
   });
 }
@@ -419,26 +430,29 @@ async function syncRecorded(
   let phase: SwapPhase = 'swap.copy-previous';
   const swapNote = (next: SwapPhase): Promise<boolean> => {
     phase = next;
-    return note(next === 'swap.copy-previous' ? { phase: next, liveMark } : { phase: next });
+    return note({ phase: next, liveMark });
   };
+  // G1: from here a store opened before this swap is stale (opsLog.ts header)
+  nextSwapGeneration(repoPath);
   try {
     await runSwap(api, paths, 'swap.copy-previous', swapNote);
   } catch (error) {
     // A server failure (not a kill) in this run. Going forward later is valid only
     // when nothing can change the live project meanwhile (opsLog.ts header).
     if (phase === 'swap.copy-previous') {
-      // the live project is still whole at its path: go back now. The record is
-      // closed BEFORE the copies are deleted: a record still saved at
-      // swap.copy-previous makes the next start go forward with the scratch copy,
-      // so the scratch copy must outlive it (G8). If the close is not saved, both
-      // copies stay, and the next start goes forward, or back when the live
-      // project changes before it (the live mark).
-      const refusal = new Refusal('sync.move-failed', 'the swap stopped before the project changed; the project is as it was', failureOf(error));
-      const back = { ...failed(refusal, { tries: facts.tries, phase }), closed: true };
-      if (!(await record.close(back.report))) return back;
+      // the live project is still whole at its path: go back now. The go-back
+      // phase is saved BEFORE the first delete, so a stop after it finishes the
+      // go-back at the next start, never a forward swap without its scratch copy.
+      // When it is not saved, nothing is deleted, and the record stays open: the
+      // project stays locked until the next start goes forward from the saved phase.
+      if (!(await note({ phase: 'swap.go-back', liveMark }))) {
+        const pending = new Refusal('sync.swap-pending', 'the swap stopped, and the ops log did not save the go-back; the next start of the app finishes it', failureOf(error));
+        return { ...failed(pending, { tries: facts.tries, phase }), open: true };
+      }
       await deleteIfPresent(api, paths.previous).catch(() => {});
       await deleteIfPresent(api, paths.scratch).catch(() => {});
-      return back;
+      const refusal = new Refusal('sync.move-failed', 'the swap stopped before the project changed; the project is as it was', failureOf(error));
+      return failed(refusal, { tries: facts.tries, phase: 'swap.go-back' });
     }
     // the live path was touched: run the rest of the swap once more
     try {

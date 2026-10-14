@@ -2,12 +2,13 @@
 // fake rig (test/helpers/journalingRig.ts) answers the #673 routes — clone,
 // copy, push, delete — over an in-memory Door43 repository. Each test asserts
 // codes and the state of the folders, never message text.
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ServerApi } from '../../src/data/serverApi';
 import { JournalingStore, forgetProjectQueues } from '../../src/data/journal/journalingStore';
 import { JournalStore, forgetSharedClocks } from '../../src/data/journal/journalStore';
 import { actorIdFor } from '../../src/data/journal/identity';
-import { OpsLog, opsEntriesOf, previousCopyKey, serialSettingsWriter, syncPathsOf } from '../../src/data/journal/opsLog';
+import { OpsLog, deletePreviousCopy, opsEntriesOf, previousCopyKey, serialSettingsWriter, syncPathsOf } from '../../src/data/journal/opsLog';
+import { assertRepoPath } from '../../src/data/serverApi';
 import { fold, reportError } from '../../src/data/journal/runtime';
 import { validateSegment, type JournalEvent } from '../../src/data/journal/seal';
 import { sync, SYNC_TRIES, type SyncDeps } from '../../src/data/share/syncOperation';
@@ -260,7 +261,7 @@ describe('#676 the sync shell', () => {
     // the write of TIT.usfm into the scratch copy lands with other bytes
     const garbling = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(String(input));
-      if (init?.method === 'POST' && url.pathname.includes('/ingredient/raw/_local_/_archive_/tc4-sync--prueba') && url.searchParams.get('ipath') === 'TIT.usfm')
+      if (init?.method === 'POST' && url.pathname.includes(`/ingredient/raw/${PATHS.scratch}`) && url.searchParams.get('ipath') === 'TIT.usfm')
         return w.rig.fetchFn(input, { ...init, body: JSON.stringify({ payload: 'not the fold' }) });
       return w.rig.fetchFn(input, init);
     }) as typeof fetch });
@@ -437,7 +438,8 @@ describe('#676 crash recovery of the sync (G8)', () => {
     store.dispose();
   }
 
-  const swapCall = (route: string) => /\/git\/(copy|delete)\/(_local_\/_local_\/prueba|_local_\/_archive_\/tc4-(sync|previous)--prueba)/.test(route);
+  const swapCall = (route: string) =>
+    [REPO, PATHS.scratch, PATHS.previous].some((p) => route.startsWith(`/api/git/copy/${p}`) || route.startsWith(`/api/git/delete/${p}`));
 
   it('[G8] swap kill sweep', async () => {
     // a dry run counts the server calls of the swap
@@ -532,7 +534,9 @@ describe('#676 crash recovery of the sync (G8)', () => {
     await ops.recover(w.api);
     w.rig.failOn(({ route }) => (failWrites = route.includes('/git/copy/_local_/_local_/prueba')), 1);
     const report = await sync({ ...w.deps(), ops }, { repoPath: REPO, session: SESSION });
-    expect([report.ok, report.code]).toEqual([false, 'sync.move-failed']);
+    // the go-back phase is not saved, so nothing is deleted, and the project stays locked until a restart
+    expect([report.ok, report.code]).toEqual([false, 'sync.swap-pending']);
+    expect(ops.isOpen('sync', REPO)).toBe(true);
     const [entry] = opsEntriesOf(w.settings.get()).filter((e) => e.op === 'sync');
     expect([entry.report, entry.facts.phase]).toEqual([undefined, 'swap.copy-previous']);
     expect(w.rig.repos.has(PATHS.scratch)).toBe(true);
@@ -574,7 +578,7 @@ describe('#676 crash recovery of the sync (G8)', () => {
     const w = await world({ outbox: true });
     const before = w.own();
     const staged = new Map([...w.kv.map].filter(([key]) => key.startsWith('outbox:')));
-    w.rig.failOn(({ route }) => route.includes('/git/copy/_local_/_archive_/tc4-sync--prueba'), 1);
+    w.rig.failOn(({ route }) => route.includes(`/git/copy/${PATHS.scratch}`), 1);
     const report = await sync(w.deps(), { repoPath: REPO, session: SESSION });
     expect([report.ok, report.code]).toEqual([true, undefined]);
     const [entry] = opsEntriesOf(w.settings.get()).filter((e) => e.op === 'sync');
@@ -588,7 +592,7 @@ describe('#676 crash recovery of the sync (G8)', () => {
     const w = await world({ outbox: true });
     const before = w.own();
     const staged = new Map([...w.kv.map].filter(([key]) => key.startsWith('outbox:')));
-    w.rig.failOn(({ route }) => route.includes('/git/copy/_local_/_archive_/tc4-sync--prueba'), 2);
+    w.rig.failOn(({ route }) => route.includes(`/git/copy/${PATHS.scratch}`), 2);
     const report = await sync(w.deps(), { repoPath: REPO, session: SESSION });
     expect([report.ok, report.code]).toEqual([false, 'sync.swap-pending']);
     const [open] = opsEntriesOf(w.settings.get()).filter((e) => e.op === 'sync');
@@ -625,7 +629,7 @@ describe('#676 crash recovery of the sync (G8)', () => {
     const w = await world();
     await w.ops.begin('sync', { repoPath: REPO, phase: 'swap.copy-live' });
     await w.ops.begin('export', { repoPath: REPO });
-    const throwing = { listLocalRepos: async () => [], listPaths: async () => [], deleteRepo: async () => {}, copyRepo: async () => { throw new Error('copy refused'); } };
+    const throwing = { listLocalRepos: async () => [], listPaths: async () => [], readIngredient: async () => '', writeIngredient: async () => {}, deleteRepo: async () => {}, copyRepo: async () => { throw new Error('copy refused'); } };
     const stored = storedOf(w);
     const next = new OpsLog({ read: stored.read, update: serialSettingsWriter(stored.read, stored.write), kv: w.kv });
     const resolved = await next.recover(throwing);
@@ -682,7 +686,7 @@ describe('#676 crash recovery of the sync (G8)', () => {
   });
 
   it('[G1][G8] killed inside swap.copy-live; the next start cannot load the ops log: the part copy takes no open and no edit; the third start goes forward and nothing is lost', async () => {
-    const { w, before, staged, killed, cut } = await killAfter(1, (route) => route.startsWith('/api/git/copy/_local_/_archive_/tc4-sync--prueba'), true);
+    const { w, before, staged, killed, cut } = await killAfter(1, (route) => route.startsWith(`/api/git/copy/${PATHS.scratch}`), true);
     expect([killed, cut]).toEqual([true, true]);
     expect(w.rig.repos.has(REPO)).toBe(true); // a part copy of the scratch copy is at the live path
     const stored = storedOf(w);
@@ -759,4 +763,210 @@ describe('#676 crash recovery of the sync (G8)', () => {
     expect(entry.report).toMatchObject({ op: 'sync', ok: false, facts: { phase: 'clone', rolledBack: true } });
     await expectOneProjectWithOwnWork(w, before, staged);
   });
+  // ---- escalation fixes (PR #688 rounds 1-5) ------------------------------------
+
+  it('[G1] a store opened before a swap is stale after it: a save queued during the sync and a later checkpoint are refused, and the previous copy stays', async () => {
+    const w = await world();
+    const store = new JournalingStore({ api: w.api, kv: w.kv, ops: w.ops });
+    await store.open(REPO);
+    const syncing = sync(w.deps(), { repoPath: REPO, session: SESSION });
+    const queued = store.writeBook('TIT', usfm('Pablo.', 'GUARDADO EN COLA')); // queued behind the sync
+    expect((await syncing).ok).toBe(true);
+    await expect(queued).rejects.toMatchObject({ code: 'sync.project-replaced' });
+    await expect(store.commit('stale save (tC4)')).rejects.toMatchObject({ code: 'sync.project-replaced' });
+    store.dispose();
+    expect(w.rig.repos.has(PATHS.previous)).toBe(true);
+    expect([...w.rig.repos.get(REPO)!.files.values()].some((b) => b.includes('GUARDADO EN COLA'))).toBe(false);
+    // a store opened after the swap saves, and its checkpoint deletes the previous copy
+    const fresh = new JournalingStore({ api: w.api, kv: w.kv, ops: w.ops });
+    await fresh.open(REPO);
+    await fresh.commit('save after the sync (tC4)');
+    fresh.dispose();
+    expect(w.rig.repos.has(PATHS.previous)).toBe(false);
+  });
+
+  it('[G8] an open holds the project queue to its end: a sync starts no git call while an open runs', async () => {
+    const w = await world();
+    let release = (): void => {};
+    const gate = new Promise<void>((r) => (release = r));
+    let paused = false;
+    const slow = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (!paused && String(input).includes('/burrito/metadata/summary/')) {
+        paused = true;
+        await gate;
+      }
+      return w.rig.fetchFn(input, init);
+    }) as typeof fetch });
+    const gitCalls: string[] = [];
+    const watching = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes('/git/')) gitCalls.push(new URL(String(input)).pathname);
+      return w.rig.fetchFn(input, init);
+    }) as typeof fetch });
+    const store = new JournalingStore({ api: slow, kv: w.kv, ops: w.ops });
+    const opening = store.open(REPO);
+    await vi.waitFor(() => expect(paused).toBe(true));
+    const syncing = sync(w.deps(watching), { repoPath: REPO, session: SESSION });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(gitCalls).toEqual([]);
+    release();
+    await opening;
+    store.dispose();
+    expect((await syncing).ok).toBe(true);
+  });
+
+  /** Kill the sync INSIDE the delete of the project (half of its files go), and,
+   * just before, a writer that the gate does not see (another process) changes
+   * the project: the live mark moves on. */
+  async function killInsideProjectDelete(w: World) {
+    let killed = false;
+    const dying = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (killed) return new Promise<Response>(() => {});
+      const url = new URL(String(input));
+      if (init?.method === 'POST' && url.pathname === `/api/git/delete/${REPO}`) {
+        killed = true;
+        w.settings.hang();
+        forgetProjectQueues(); // another process: it does not share this queue
+        const ungated = new JournalingStore({ api: w.api, kv: w.kv });
+        await ungated.open(REPO);
+        await ungated.writeBook('TIT', usfm('Pablo.', lateWork));
+        ungated.dispose();
+        const project = w.rig.repos.get(REPO)!;
+        const keep = [...project.files].filter(([p, b]) => b.includes(lateWork) || p.startsWith('checking/journal/'));
+        const rest = [...project.files].filter(([p, b]) => !(b.includes(lateWork) || p.startsWith('checking/journal/')));
+        project.files = new Map([...keep, ...rest.slice(0, Math.floor(rest.length / 2))]); // a part delete
+        return new Promise<Response>(() => {});
+      }
+      return w.rig.fetchFn(input, init);
+    }) as typeof fetch });
+    void sync(w.deps(dying), { repoPath: REPO, session: SESSION });
+    await vi.waitFor(() => expect(killed).toBe(true));
+    await new Promise((r) => setTimeout(r, 50));
+  }
+
+  it('[G1][G8] a go-back at swap.delete-project restores the project from the previous copy, keeps the later work, and keeps the previous copy', async () => {
+    const w = await world({ outbox: true });
+    const before = w.own();
+    const preSync = new Map(w.rig.repos.get(REPO)!.files);
+    await killInsideProjectDelete(w);
+    const [entry] = await restart(w, storedOf(w));
+    expect(entry.report).toMatchObject({ op: 'sync', ok: false, code: 'sync.move-failed', facts: { wentBack: true, restored: true } });
+    const live = w.rig.repos.get(REPO)!.files;
+    for (const p of preSync.keys()) expect(live.has(p), p).toBe(true); // whole again
+    for (const [p, bytes] of before) expect(live.get(p), p).toBe(bytes);
+    expect([...live].some(([p, b]) => p.startsWith(`checking/journal/${w.actor}/segments/`) && b.includes(lateWork))).toBe(true);
+    expect(w.rig.repos.has(PATHS.scratch)).toBe(false);
+    expect(w.rig.repos.has(PATHS.previous)).toBe(true);
+    // the project opens, and the later work is in it
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const store = new JournalingStore({ api: w.api, kv: w.kv });
+    await store.open(REPO);
+    expect((await store.readBook('TIT'))?.usfm ?? '').toContain(lateWork);
+    store.dispose();
+  });
+
+  it('[G1][G8] a restore that fails keeps the record open and the project locked, and never deletes the previous copy; the next start finishes it', async () => {
+    const w = await world({ outbox: true });
+    await killInsideProjectDelete(w);
+    const stored = storedOf(w);
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const failing = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) =>
+      String(input).includes(`/git/copy/${PATHS.previous}`)
+        ? new Response(JSON.stringify({ is_good: false, reason: 'copy refused' }), { status: 500 })
+        : w.rig.fetchFn(input, init)) as typeof fetch });
+    const ops2 = new OpsLog({ read: stored.read, update: serialSettingsWriter(stored.read, stored.write), kv: w.kv });
+    expect(await ops2.recover(failing)).toEqual([]);
+    expect(ops2.errors.map((e) => e.op)).toEqual(['sync']);
+    expect(w.rig.repos.has(PATHS.previous)).toBe(true);
+    expect(ops2.isOpen('sync', REPO)).toBe(true);
+    expect((await sync({ ...w.deps(), ops: ops2 }, { repoPath: REPO, session: SESSION })).code).toBe('sync.swap-pending');
+    const locked = new JournalingStore({ api: w.api, kv: w.kv, ops: ops2 });
+    await expect(locked.open(REPO)).rejects.toMatchObject({ code: 'sync.swap-pending' });
+    locked.dispose();
+    const [entry] = await restart(w, stored);
+    expect(entry.report).toMatchObject({ ok: false, code: 'sync.move-failed', facts: { restored: true } });
+    expect([...w.rig.repos.get(REPO)!.files.values()].some((b) => b.includes(lateWork))).toBe(true);
+  });
+
+  it('[G1][G8] a go-back after a server failure at swap.copy-previous saves its phase before any delete: a kill after that save, then a restart, finishes the go-back', async () => {
+    const w = await world({ outbox: true });
+    const before = w.own();
+    const staged = new Map([...w.kv.map].filter(([key]) => key.startsWith('outbox:')));
+    const project = new Map(w.rig.repos.get(REPO)!.files);
+    let killed = false;
+    const ops = new OpsLog({ read: w.settings.read, update: serialSettingsWriter(w.settings.read, async (d) => {
+      await w.settings.write(d);
+      if (opsEntriesOf(d).some((e) => e.op === 'sync' && e.facts.phase === 'swap.go-back')) {
+        killed = true;
+        w.settings.hang();
+      }
+    }), kv: w.kv });
+    await ops.recover(w.api);
+    w.rig.failOn(({ route }) => route.includes(`/git/copy/${REPO}`), 1);
+    const dying = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) =>
+      killed ? new Promise<Response>(() => {}) : w.rig.fetchFn(input, init)) as typeof fetch });
+    void sync({ ...w.deps(dying), ops }, { repoPath: REPO, session: SESSION });
+    await vi.waitFor(() => expect(killed).toBe(true));
+    expect(w.rig.repos.has(PATHS.scratch)).toBe(true); // nothing deleted before the phase was saved
+    const [entry] = await restart(w, storedOf(w));
+    expect(entry.report).toMatchObject({ op: 'sync', ok: false, code: 'sync.move-failed', facts: { wentBack: true } });
+    expect(w.rig.repos.get(REPO)!.files).toEqual(project);
+    expect(w.rig.repos.has(PATHS.previous)).toBe(false);
+    await expectOneProjectWithOwnWork(w, before, staged);
+  });
+
+  it('[G8] a go-back whose close is not saved keeps the lock: a second sync is refused, and the restart leaves one project with every own file (round 5)', async () => {
+    const w = await world({ outbox: true });
+    const before = w.own();
+    const staged = new Map([...w.kv.map].filter(([key]) => key.startsWith('outbox:')));
+    let failClose = false;
+    const ops = new OpsLog({ read: w.settings.read, update: serialSettingsWriter(w.settings.read, async (d) => {
+      if (failClose && opsEntriesOf(d).some((e) => e.op === 'sync' && e.report)) throw new Error('settings write failed');
+      await w.settings.write(d);
+    }), kv: w.kv });
+    await ops.recover(w.api);
+    w.rig.failOn(({ route }) => (failClose = route.includes(`/git/copy/${REPO}`)), 1);
+    const first = await sync({ ...w.deps(), ops }, { repoPath: REPO, session: SESSION });
+    expect(first.ok).toBe(false);
+    failClose = false;
+    const second = await sync({ ...w.deps(), ops }, { repoPath: REPO, session: SESSION });
+    expect([second.ok, second.code]).toEqual([false, 'sync.swap-pending']);
+    await restart(w, storedOf(w));
+    await expectOneProjectWithOwnWork(w, before, staged);
+  });
+
+  it('[G4] a Door43 repository whose default branch is not main is refused (sync.not-main); nothing changes on Door43 or here', async () => {
+    const w = await world();
+    w.rig.remotes.get(URL_)!.defaultBranch = 'other';
+    const project = new Map(w.rig.repos.get(REPO)!.files);
+    const report = await sync(w.deps(), { repoPath: REPO, session: SESSION });
+    expect([report.ok, report.code]).toEqual([false, 'sync.not-main']);
+    expect(w.rig.remotes.get(URL_)!.version).toBe(1);
+    expect(w.rig.repos.get(REPO)!.files).toEqual(project);
+    expect(w.rig.repos.has(PATHS.scratch)).toBe(false);
+  });
+
+  it('the archive names come from the whole project path: no two paths share them, and each passes the path rules', () => {
+    const paths = ['_local_/_local_/prueba', 'qa.door43.org/facilitator/prueba', '_local_/_local_/a-sb', '_local_/_local_-s/b', '_local_/_local_/a_b'];
+    const names = paths.flatMap((p) => [syncPathsOf(p).scratch, syncPathsOf(p).previous]);
+    expect(new Set(names).size).toBe(names.length);
+    for (const name of names) expect(() => assertRepoPath(name)).not.toThrow();
+    for (const name of names) expect(name.includes('..')).toBe(false);
+  });
+
+  it('a recorder that does not say it recovered is not loaded: the sync is refused', async () => {
+    const w = await world();
+    const loose = { begin: w.ops.begin.bind(w.ops), isOpen: () => false };
+    const report = await sync({ ...w.deps(), ops: loose }, { repoPath: REPO, session: SESSION });
+    expect([report.ok, report.code]).toEqual([false, 'opslog.not-loaded']);
+  });
+
+  it('deletePreviousCopy deletes only the previous-copy path of its own project', async () => {
+    const w = await world();
+    await w.kv.set(previousCopyKey(REPO), REPO);
+    await expect(deletePreviousCopy(w.api, w.kv, REPO)).rejects.toThrow();
+    expect(w.rig.repos.has(REPO)).toBe(true);
+  });
 });
+

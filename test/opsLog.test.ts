@@ -142,7 +142,7 @@ describe('#374 a kill between the two leaves a record the next start resolves', 
     const before = appStart(settings);
     await before.begin('export', { producer: 'pdf' });
     await before.begin('open', { repoPath: '_local_/_local_/prueba' });
-    const api = { listLocalRepos: vi.fn(async () => ['_local_/_local_/prueba']), deleteRepo: vi.fn(async () => {}), copyRepo: vi.fn(async () => {}), listPaths: vi.fn(async () => []) };
+    const api = { listLocalRepos: vi.fn(async () => ['_local_/_local_/prueba']), deleteRepo: vi.fn(async () => {}), copyRepo: vi.fn(async () => {}), listPaths: vi.fn(async () => []), readIngredient: vi.fn(async () => ''), writeIngredient: vi.fn(async () => {}) };
     const resolved = await appStart(settings).recover(api);
     expect(resolved.map((e) => [e.op, e.report?.ok, e.report?.facts.interrupted])).toEqual([['export', false, true], ['open', false, true]]);
     expect(api.deleteRepo).not.toHaveBeenCalled();
@@ -166,7 +166,7 @@ describe('#374 a kill between the two leaves a record the next start resolves', 
     expect(report).toMatchObject({ ok: false, code: 'import.write-failed', facts: { repoPath: REPO, rolledBack: true } });
     expect(rig.repos.has(REPO)).toBe(false);
     expect(opsEntriesOf(settings.get())).toEqual([expect.objectContaining({ op: 'import', report })]);
-    const recovery = { listLocalRepos: vi.fn(async () => [...rig.repos.keys()]), deleteRepo: vi.fn(async () => {}), copyRepo: vi.fn(async () => {}), listPaths: vi.fn(async () => []) };
+    const recovery = { listLocalRepos: vi.fn(async () => [...rig.repos.keys()]), deleteRepo: vi.fn(async () => {}), copyRepo: vi.fn(async () => {}), listPaths: vi.fn(async () => []), readIngredient: vi.fn(async () => ''), writeIngredient: vi.fn(async () => {}) };
     expect(await appStart(settings).recover(recovery)).toEqual([]);
     expect(recovery.deleteRepo).not.toHaveBeenCalled();
     error.mockRestore();
@@ -188,7 +188,7 @@ describe('#374 a kill between the two leaves a record the next start resolves', 
     const settings = settingsDoc();
     const ops = appStart(settings);
     await ops.begin('checkpoint', {});
-    expect(await ops.recover({ listLocalRepos: async () => [], deleteRepo: async () => {}, copyRepo: async () => {}, listPaths: async () => [] })).toEqual([]);
+    expect(await ops.recover({ listLocalRepos: async () => [], deleteRepo: async () => {}, copyRepo: async () => {}, listPaths: async () => [], readIngredient: async () => '', writeIngredient: async () => {} })).toEqual([]);
   });
 });
 

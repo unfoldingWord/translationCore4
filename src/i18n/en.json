@@ -140,6 +140,8 @@
   "refusal.sync.push-failed": "The app could not send your changes to Door43. Sync again. If this occurs again, ask for help. Nothing changed.",
   "refusal.opslog.not-loaded": "The app could not read its record of unfinished work. Close the app and open it again. Until then, you cannot open, change or sync a project.",
   "refusal.sync.failed": "The sync stopped because of an error. Your project did not change. Sync again. If this occurs again, ask for help.",
+  "refusal.sync.project-replaced": "This project was synced, so the app must open it again. Close the project and open it again. Then make your last change again.",
+  "refusal.sync.not-main": "The Door43 repository of this project does not have main as its default branch. Ask the project owner to make main the default branch on Door43. Nothing changed.",
   "refusal.sync.swap-pending": "A sync of this project did not finish. Close the app and open it again. The app then finishes the sync. Until then, you cannot open or change this project.",
   "home.book": "book",
   "home.books": "books",

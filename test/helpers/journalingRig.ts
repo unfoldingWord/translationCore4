@@ -58,6 +58,8 @@ export interface RigProject {
   /** #676: the `origin` url, and the version of that fake remote this repository last cloned or pushed. */
   origin?: string;
   pulled?: number;
+  /** #676: the checked-out branch (default 'main'). */
+  branch?: string;
 }
 
 /** #676: a Door43 repository behind the git routes: `main` as files + metadata, and
@@ -68,6 +70,8 @@ export interface FakeRemote {
   version: number;
   /** false: a push answers as Door43 does without write access ([PENDING — owner run, #673 step 4]). */
   writable: boolean;
+  /** The branch its HEAD names, which a clone checks out (default 'main'). */
+  defaultBranch?: string;
 }
 
 export interface FailureRule {
@@ -142,6 +146,7 @@ export const journalingRig = () => {
     dirty: new Set(project.dirty),
     origin: project.origin,
     pulled: project.pulled,
+    branch: project.branch,
   });
   /** Share `repoPath` to a fake Door43 repository at `url`: its `main` is the project now. */
   const publish = (repoPath: string, url: string): FakeRemote => {
@@ -416,6 +421,13 @@ export const journalingRig = () => {
       return ok({ is_good: true, payload: { remotes: project.origin ? [{ name: 'origin', url: project.origin }] : [] } });
     }
 
+    if (parts[1] === 'git' && parts[2] === 'branches') {
+      const repo = repoAt(3);
+      const project = repos.get(repo);
+      if (!project) return new Response(JSON.stringify({ is_good: false, reason: `Could not open repo: ${repo}` }), { status: 500 });
+      return ok({ is_good: true, payload: { branches: [{ name: project.branch ?? 'main', is_head: true }] } });
+    }
+
     if (parts[1] === 'git' && parts[2] === 'clone-repo') {
       const repo = repoAt(3);
       maybeFail({ method, route, repo });
@@ -425,7 +437,7 @@ export const journalingRig = () => {
       const url = `https://${repo}`;
       const remote = remotes.get(url);
       if (!remote) return notFound(`could not clone repo: unexpected http status code: 404; class=Http (34)`);
-      repos.set(repo, { files: new Map(remote.files), meta: structuredClone(remote.meta), commits: ['clone'], dirty: new Set(), origin: url, pulled: remote.version });
+      repos.set(repo, { files: new Map(remote.files), meta: structuredClone(remote.meta), commits: ['clone'], dirty: new Set(), origin: url, pulled: remote.version, branch: remote.defaultBranch ?? 'main' });
       return ok();
     }
 

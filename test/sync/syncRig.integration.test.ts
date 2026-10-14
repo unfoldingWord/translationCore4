@@ -168,4 +168,35 @@ describe.skipIf(!rigUp)('#676 one full sync against the live rig and the #673 st
     expect(opsEntriesOf(doc).find((e) => e.op === 'sync')?.report).toEqual(report);
     console.log(`[syncRig] main ${before.slice(0, 7)} -> ${after.slice(0, 7)}; facts ${JSON.stringify({ tries: report.facts.tries, carried: report.facts.carried, received: report.facts.received, names: report.facts.names })}`);
   }, 120_000);
+
+  it('[G4] a Door43 repository whose HEAD names another branch is refused (sync.not-main): Door43 and the project do not change', async () => {
+    // Door43's default branch becomes `other`; the stand-in mirror is cloned again, so it checks that branch out
+    git(bare, 'branch', 'other', 'main');
+    git(bare, 'symbolic-ref', 'HEAD', 'refs/heads/other');
+    await api.deleteRepo(MIRROR);
+    execFileSync('git', ['clone', '-q', pathToFileURL(bare).href, dir(MIRROR)]);
+    git(dir(MIRROR), 'config', 'user.name', 'rig');
+    git(dir(MIRROR), 'config', 'user.email', 'rig@localhost');
+    const branches = await api.listBranches(MIRROR);
+    expect(branches.find((b) => b.is_head)?.name).toBe('other');
+    const mainBefore = git(bare, 'rev-parse', 'main');
+    const otherBefore = git(bare, 'rev-parse', 'other');
+    const headBefore = git(dir(REPO), 'rev-parse', 'HEAD');
+    const deps: SyncDeps = {
+      api: Object.assign(Object.create(api) as ServerApi, { cloneRepo: standInCloneRepo(api) }),
+      kv,
+      door43Server: 'https://qa.door43.org',
+      coverage: {},
+      ops,
+      allowFileRemote: true,
+    };
+    const report = await sync(deps, { repoPath: REPO, session: SESSION });
+    expect([report.ok, report.code], JSON.stringify(report)).toEqual([false, 'sync.not-main']);
+    expect(report.facts).toMatchObject({ refusal: { branch: 'other' } });
+    expect([git(bare, 'rev-parse', 'main'), git(bare, 'rev-parse', 'other')]).toEqual([mainBefore, otherBefore]);
+    expect(git(dir(REPO), 'rev-parse', 'HEAD')).toBe(headBefore);
+    expect(fs.existsSync(dir(PATHS.scratch))).toBe(false);
+    expect(fs.existsSync(dir(FIXED))).toBe(false);
+    console.log(`[syncRig] default branch other: ${report.code}; main ${mainBefore.slice(0, 7)} and other ${otherBefore.slice(0, 7)} unchanged`);
+  }, 120_000);
 });

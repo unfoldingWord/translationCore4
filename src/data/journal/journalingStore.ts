@@ -50,7 +50,7 @@ import { idbKvStore, type KvStore } from './identity';
 import { sealAction, type JournalEvent } from './seal';
 import { defaultFoldRunner, type FoldRunner } from './foldRunner';
 import { verseConflicts, type VerseConflict } from './verseConflicts';
-import { deletePreviousCopy, type OpsRecorder } from './opsLog';
+import { deletePreviousCopy, swapGenerationOf, type OpsRecorder } from './opsLog';
 import {
   applyStoryState,
   completePartialPins,
@@ -524,18 +524,27 @@ export class JournalingStore implements BurritoStore {
     const repoPath = this.mustRepo();
     return inProjectQueue(repoPath, () => {
       this.refusePendingSwap(repoPath);
+      // #676 (G1): a store opened before a swap holds the old fold and `.git`; it
+      // takes no edit and no checkpoint after the swap (so it never deletes the
+      // previous copy). The caller opens the project again.
+      if (this.openedGeneration !== swapGenerationOf(repoPath))
+        throw new Refusal('sync.project-replaced', `${repoPath} was synced after this store opened it; open it again`, { repoPath });
       return fn();
     });
   }
+
+  /** The swap generation of the project when this store opened it (#676). */
+  private openedGeneration = 0;
 
   /** #676 (G8): a sync whose swap did not finish leaves its ops record open;
    * until `recover()` finishes it at the next start, the project takes no open
    * and no edit. When the log did not load at this start, an open record cannot
    * be seen, so NO project opens or takes an edit (an open writes too: it replays
-   * the outbox and installs derived files) until a start loads it. Checked inside
-   * the project queue, so a sync that is running finishes first. */
+   * the outbox and installs derived files) until a start loads it. A recorder
+   * that does not say it recovered is not loaded. Checked inside the project
+   * queue, so a sync that is running finishes first. */
   private refusePendingSwap(repoPath: string): void {
-    if (this.ops?.recovered === false)
+    if (this.ops && this.ops.recovered !== true)
       throw new Refusal('opslog.not-loaded', `the ops log did not load at this start; restart the app before you change ${repoPath}`, { repoPath });
     if (this.ops?.isOpen?.('sync', repoPath))
       throw new Refusal('sync.swap-pending', `the sync of ${repoPath} did not finish; restart the app to finish it`, { repoPath });
@@ -1251,7 +1260,19 @@ export class JournalingStore implements BurritoStore {
     startedAt: string,
     phases: Report[],
   ): Promise<ProjectSummary> {
-    await inProjectQueue(repoPath, async () => this.refusePendingSwap(repoPath)); // #676, before any write
+    // #676 (G8): the check, the reads and the writes of an open are ONE turn of
+    // the project queue, so no sync swap runs between them.
+    return inProjectQueue(repoPath, () => this.openInQueue(repoPath, options, hooks, startedAt, phases));
+  }
+
+  private async openInQueue(
+    repoPath: string,
+    options: OpenOptions,
+    hooks: OpenHooks,
+    startedAt: string,
+    phases: Report[],
+  ): Promise<ProjectSummary> {
+    this.refusePendingSwap(repoPath);
     const summary = await this.raw.open(repoPath); // binds raw + setCurrentProject
     this.boundRepoPath = repoPath;
     this.journal = new JournalStore({ api: this.api, repoPath, kv: this.kv, now: this.now });
@@ -1265,11 +1286,10 @@ export class JournalingStore implements BurritoStore {
     // journal once, not twice (issue #95); the journal store refuses to mint a
     // ts until that read completes (R-8.2.4).
     await this.journal.open({ ratchet: 'deferred' });
-    return inProjectQueue(repoPath, async () => {
-      const facts = await this.recoverAndConverge(options, hooks);
-      this.lastReport = okReport('open', startedAt, this.isoNow(), { ...facts, phases });
-      return summary;
-    });
+    const facts = await this.recoverAndConverge(options, hooks);
+    this.openedGeneration = swapGenerationOf(repoPath);
+    this.lastReport = okReport('open', startedAt, this.isoNow(), { ...facts, phases });
+    return summary;
   }
 
   private isoNow(): string {

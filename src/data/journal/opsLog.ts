@@ -29,6 +29,17 @@
 //   swap.delete-project  delete the project.                   Recovery: resume here.
 //   swap.copy-live       copy `scratch` to the project path.   Recovery: resume here.
 //   swap.delete-scratch  delete `scratch`.                     Recovery: resume here.
+//   swap.go-back         a server failure at swap.copy-previous: the live project
+//                        is whole; delete `previous` and `scratch`. The phase is
+//                        saved BEFORE the first delete. Recovery: finish it.
+//   swap.restore         a go-back at swap.delete-project: the live project can be
+//                        part deleted, and `previous` is the whole old tree. The
+//                        phase saves `carry` (the live journal files newer than the
+//                        live mark) BEFORE any delete; then the project is copied
+//                        again from `previous`, `carry` is written into it, and it
+//                        is checked: every file of `previous` is there. Recovery:
+//                        resume here. A restore that fails stays open (the project
+//                        is locked, `sync.swap-pending`) and `previous` stays.
 //   live                 the copy is live; the outbox entries it carried are being
 //                        cleared. Recovery: nothing. The next open replays any entry
 //                        that is left: its bytes are at its path, so the replay
@@ -38,8 +49,9 @@
 // project's queue for its whole run, so in the same run that is true. A server
 // failure in the swap is handled in that run (syncOperation.ts): at
 // swap.copy-previous the live project is still whole, so the sync goes back now
-// (it closes its record failed, then deletes the scratch and previous copies; a
-// close that is not saved keeps both copies, so the next start can go forward); at a
+// (it saves swap.go-back, then deletes the scratch and previous copies, then
+// closes its record failed; a go-back phase that is not saved deletes nothing and
+// keeps the record open, so the next start goes forward); at a
 // later phase it runs the rest of the swap once more. Only when that also fails
 // does the record stay open, and then the project cannot open, take an edit or
 // start a sync (`sync.swap-pending`) until `recover()` at the next start.
@@ -52,12 +64,17 @@
 //   - the live mark: at swap.copy-previous the sync saves `liveMark`, the greatest
 //     journal segment name in the live project. Each change writes a new segment,
 //     and its name is greater than every segment that the writer saw (R-8.2.4); a
-//     part delete only removes names. At swap.copy-previous or
-//     swap.delete-project, when the live project is there and holds a greater
-//     name, someone changed it after the swap began: recovery goes back (it
-//     deletes the scratch copy, keeps the live project, and closes the record
-//     failed, `sync.move-failed`). Otherwise it goes forward with the scratch
-//     copy, which is pushed and complete.
+//     part delete only removes names. Each swap phase saves it. When the live
+//     project is there and holds a greater name, someone changed it after the
+//     swap began: at swap.copy-previous recovery goes back (swap.go-back); at
+//     swap.delete-project it restores (swap.restore). Otherwise it goes forward
+//     with the scratch copy, which is pushed and complete.
+// A record whose last write was not saved counts as open in this session
+// (`isOpen`): its saved phase is unknown, so the project stays locked until a
+// start recovers it.
+// A store opened before a swap is stale after it (JournalingStore): each swap
+// moves the project's swap generation on, and a store whose generation is older
+// refuses every edit and checkpoint (`sync.project-replaced`).
 // Each swap step is safe to run again when the
 // step after it has not run: it first deletes the target that a stopped copy
 // can leave in part. Two kill sweeps in test/sync/syncOperation.test.ts prove
@@ -65,6 +82,7 @@
 // stops with a part copy or a part delete). Recovery saves each phase before
 // its step, like the sync.
 import { Refusal, failedReport, okReport, type Report } from './runtime';
+import type { WriteIngredientFlags } from '../serverApi';
 import { isNotFoundError } from '../serverApi';
 import { idbKvStore, type KvStore } from './identity';
 
@@ -161,6 +179,8 @@ export interface OpsRecoveryApi {
   deleteRepo(repoPath: string): Promise<void>;
   copyRepo(src: string, target: string, deleteSrc?: boolean): Promise<void>;
   listPaths(repoPath: string): Promise<string[]>;
+  readIngredient(repoPath: string, ipath: string): Promise<string>;
+  writeIngredient(repoPath: string, ipath: string, payload: string, flags?: WriteIngredientFlags): Promise<void>;
 }
 
 /** The live mark (module header): the greatest journal segment name in a path listing, or ''. */
@@ -177,6 +197,8 @@ export const lastSegmentName = (paths: string[]): string => {
 
 /** The swap phases, in order. See the module header for each recovery rule. */
 export const SWAP_PHASES = ['swap.copy-previous', 'swap.delete-project', 'swap.copy-live', 'swap.delete-scratch'] as const;
+/** The two phases that go back instead of forward (module header). */
+export type BackPhase = 'swap.go-back' | 'swap.restore';
 export type SwapPhase = (typeof SWAP_PHASES)[number];
 export const isSwapPhase = (phase: unknown): phase is SwapPhase => SWAP_PHASES.includes(phase as SwapPhase);
 
@@ -186,11 +208,27 @@ export interface SwapPaths {
   previous: string;
 }
 
+/** One name for the WHOLE project path inside `_local_/_archive_/`: `-` becomes
+ * `-d` and `/` becomes `-s`. The encoding is injective, and it adds only `-`,
+ * `d` and `s`, so the name keeps the platform's path rules (no `/`, no `..`;
+ * pankosmia-web a83725b `utils/paths.rs` forbidden_path_strings). For the archive
+ * copies of a sync (#676) and of an open from Door43 (#677). */
+export const archiveNameOf = (repoPath: string): string => repoPath.replaceAll('-', '-d').replaceAll('/', '-s');
+
 /** The scratch copy and the previous copy of a project. Under `_local_/_archive_/`,
  * which `list-local-repos` and the summaries skip (#673), so Home never lists them. */
 export const syncPathsOf = (repoPath: string): SwapPaths => {
-  const name = repoPath.split('/')[2];
+  const name = archiveNameOf(repoPath);
   return { repoPath, scratch: `_local_/_archive_/tc4-sync--${name}`, previous: `_local_/_archive_/tc4-previous--${name}` };
+};
+
+/** The swap generation of each project in this process (module header): a swap
+ * moves it on, and a store opened at an older one is stale. A restart starts
+ * again at 0, and no store outlives a restart. */
+const swapGenerations = new Map<string, number>();
+export const swapGenerationOf = (repoPath: string): number => swapGenerations.get(repoPath) ?? 0;
+export const nextSwapGeneration = (repoPath: string): void => {
+  swapGenerations.set(repoPath, swapGenerationOf(repoPath) + 1);
 };
 
 /** Delete a repository; a repository that is not there is not an error. The
@@ -234,6 +272,26 @@ export async function runSwap(
   }
 }
 
+/** swap.restore (module header): the project again from `previous`, the later
+ * work written back into it, then checked. Safe to run again: it first deletes
+ * the project folder that a stopped copy can leave in part. `previous` is never
+ * deleted here. */
+export async function restoreFromPrevious(
+  api: Pick<OpsRecoveryApi, 'deleteRepo' | 'copyRepo' | 'listPaths' | 'writeIngredient'>,
+  paths: SwapPaths,
+  carry: Record<string, string>,
+): Promise<void> {
+  const { repoPath, scratch, previous } = paths;
+  await deleteIfPresent(api, repoPath);
+  await api.copyRepo(previous, repoPath);
+  for (const [ipath, bytes] of Object.entries(carry))
+    await api.writeIngredient(repoPath, ipath, bytes, { updateIngredients: false, keepBak: false });
+  const live = new Set(await api.listPaths(repoPath));
+  const missing = [...(await api.listPaths(previous)), ...Object.keys(carry)].filter((p) => !live.has(p));
+  if (missing.length) throw new Error(`the restored project lacks ${missing.length} file(s) of the previous copy`);
+  await deleteIfPresent(api, scratch);
+}
+
 /** The installation-store key that names the previous copy of a project after a sync. */
 export const previousCopyKey = (repoPath: string): string => `sync-previous:${repoPath}`;
 
@@ -246,6 +304,8 @@ export const deletePreviousCopy = async (
 ): Promise<void> => {
   const previous = await kv.get(previousCopyKey(repoPath));
   if (previous === undefined) return;
+  if (previous !== syncPathsOf(repoPath).previous)
+    throw new Error(`refuse to delete ${previous}: it is not the previous copy of ${repoPath}`);
   await deleteIfPresent(api, previous);
   await kv.delete(previousCopyKey(repoPath));
 };
@@ -272,8 +332,11 @@ export class OpsLog implements OpsRecorder {
   /** True after `recover()` loaded the log at this start. */
   recovered = false;
 
+  /** The ids of the records whose last write was not saved (module header). */
+  private readonly unsaved = new Set<string>();
+
   isOpen(op: OpsOp, repoPath: string): boolean {
-    return this.entries.some((e) => e.op === op && !e.report && e.facts.repoPath === repoPath);
+    return this.entries.some((e) => e.op === op && e.facts.repoPath === repoPath && (!e.report || this.unsaved.has(e.id)));
   }
 
   subscribe(listener: () => void): () => void {
@@ -343,17 +406,28 @@ export class OpsLog implements OpsRecorder {
     if (typeof repoPath !== 'string')
       return failedReport('sync', entry.startedAt, endedAt, new Error('the sync was interrupted before it named its project'), facts);
     const paths = syncPathsOf(repoPath);
-    if ((phase === 'swap.copy-previous' || phase === 'swap.delete-project') && typeof entry.facts.liveMark === 'string'
+    const reportFacts: Record<string, unknown> = { ...facts };
+    delete reportFacts.carry; // the later work stays in the project, not in the Report
+    const wentBack = (more: Record<string, unknown>): Report => failedReport('sync', entry.startedAt, endedAt,
+      new Refusal('sync.move-failed', 'the swap did not finish; the sync went back, and the project is whole'),
+      { ...reportFacts, wentBack: true, ...more });
+    const changed = async (): Promise<boolean> => typeof entry.facts.liveMark === 'string'
       && (await api.listLocalRepos()).includes(repoPath)
-      && lastSegmentName(await api.listPaths(repoPath)) > entry.facts.liveMark) {
-      // the live project changed after the swap began: go back and keep it
+      && lastSegmentName(await api.listPaths(repoPath)) > entry.facts.liveMark;
+    if (phase === 'swap.go-back' || (phase === 'swap.copy-previous' && (await changed()))) {
+      // the live project is whole: delete the copies and keep it
       await deleteIfPresent(api, paths.scratch);
-      // at swap.delete-project the previous copy may hold files that a part delete
-      // removed from the live project, so it stays (and no checkpoint deletes it)
-      if (phase === 'swap.copy-previous') await deleteIfPresent(api, paths.previous);
-      return failedReport('sync', entry.startedAt, endedAt,
-        new Refusal('sync.move-failed', 'the project changed after the swap began; the sync went back and kept the project'),
-        { ...facts, wentBack: true });
+      await deleteIfPresent(api, paths.previous);
+      return wentBack({});
+    }
+    if (phase === 'swap.restore' || (phase === 'swap.delete-project' && (await changed()))) {
+      const carry = phase === 'swap.restore'
+        ? ((entry.facts.carry as Record<string, string> | undefined) ?? {})
+        : await this.saveRestorePhase(entry, api, repoPath);
+      await restoreFromPrevious(api, paths, carry);
+      nextSwapGeneration(repoPath);
+      await this.kvStore().set(previousCopyKey(repoPath), paths.previous);
+      return wentBack({ restored: true });
     }
     if (isSwapPhase(phase)) {
       let saved = entry;
@@ -363,7 +437,8 @@ export class OpsLog implements OpsRecorder {
         return true;
       });
       // the next successful checkpoint deletes the previous copy, as after a sync that ran to its end
-      await (this.kv ?? idbKvStore()).set(previousCopyKey(repoPath), paths.previous);
+      nextSwapGeneration(repoPath);
+      await this.kvStore().set(previousCopyKey(repoPath), paths.previous);
       return okReport('sync', entry.startedAt, endedAt, { ...facts, phase: 'live', finishedSwap: true });
     }
     if (phase === 'live') return okReport('sync', entry.startedAt, endedAt, facts);
@@ -371,6 +446,21 @@ export class OpsLog implements OpsRecorder {
     await deleteIfPresent(api, paths.scratch);
     return failedReport('sync', entry.startedAt, endedAt,
       new Error('the sync was interrupted before the swap; the project did not change'), { ...facts, rolledBack: true });
+  }
+
+  /** swap.restore: save the later work (`carry`) and the phase BEFORE any delete. */
+  private async saveRestorePhase(entry: OpsEntry, api: OpsRecoveryApi, repoPath: string): Promise<Record<string, string>> {
+    const carry: Record<string, string> = {};
+    const mark = entry.facts.liveMark as string;
+    for (const ipath of await api.listPaths(repoPath))
+      if (lastSegmentName([ipath]) > mark) carry[ipath] = await api.readIngredient(repoPath, ipath);
+    const saved = { ...entry, facts: { ...entry.facts, phase: 'swap.restore', carry } };
+    await this.update((doc) => withEntries(doc, [saved]));
+    return carry;
+  }
+
+  private kvStore(): KvStore {
+    return this.kv ?? idbKvStore();
   }
 
   private current(id: string): OpsEntry {
@@ -383,8 +473,10 @@ export class OpsLog implements OpsRecorder {
     this.notify();
     try {
       await this.update((doc) => withEntries(doc, [entry]));
+      this.unsaved.delete(entry.id);
       return true;
     } catch (error) {
+      this.unsaved.add(entry.id);
       const failure = { id: entry.id, op: entry.op, error: String((error as Error)?.message ?? error) };
       this.errors = [...this.errors, failure];
       console.error(`ops log: the ${entry.op} record was not saved: ${failure.error}`);
