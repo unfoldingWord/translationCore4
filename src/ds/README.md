@@ -44,7 +44,7 @@ in the file:
   included" badge and installed counts there, which are part of the row's
   accessible name.
 - `tokens/fonts.css`: the Google Fonts `@import` is removed. The app works
-  offline, so Mulish, Charis SIL, Noto Serif, Noto Serif Hebrew and Amiri are
+  offline, so Mulish, Noto Sans Arabic (#686), Charis SIL, Noto Serif, Noto Serif Hebrew and Amiri are
   `@font-face` rules over `.woff2` files in `assets/fonts/`, with their OFL
   licence texts (#3). Noto Nastaliq Urdu is not fetched.
 - `primitives/Layer`: new `scrimProps`, spread onto the scrim element, so a

@@ -27,6 +27,9 @@
 //      Cancel restores; English reads left to right again with no restart
 //   i  #657: scripture follows the project: the seeded left-to-right project keeps its
 //      direction under Arabic, and a right-to-left project keeps its direction under English
+//   j  #686: with the internet off, the browser paints Arabic interface text in the bundled
+//      Noto Sans Arabic at each weight the interface shows; Latin text stays in Mulish; the
+//      Pashto, Sindhi and Kurdish names of the shipped language list show in it too
 // The shared recorder (helpers/externalRequests.ts) writes each request log, and the
 // screenshots, into the test's output folder (and attaches them).
 import fs from 'node:fs';
@@ -743,5 +746,136 @@ test.describe('#522 — App language in the account menu', () => {
     expect(rtl.editor).toEqual([{ dir: 'rtl', direction: 'rtl' }]);
     expect(rtl.note).toEqual([{ dir: 'rtl', direction: 'rtl' }]);
     expect(seen.checkComment).toEqual({ latin: [{ dir: 'auto', direction: 'ltr' }], arabic: [{ dir: 'auto', direction: 'rtl' }] });
+  });
+
+  // ---- j · #686: Arabic interface text is in the bundled Noto Sans Arabic ----
+  type Face = { family: string; bundled: boolean; glyphs: number };
+  const ARABIC = 'Noto Sans Arabic';
+  /** The faces the browser painted the text of `loc` with, as Chromium reports them
+   * (CSS.getPlatformFontsForNode): the computed `font-family` is only the list asked for. */
+  const faces = async (page: Page, loc: Locator): Promise<Face[]> => {
+    const cdp = await page.context().newCDPSession(page);
+    try {
+      await loc.evaluate((el) => el.setAttribute('data-face-probe', ''));
+      await cdp.send('DOM.enable');
+      await cdp.send('CSS.enable');
+      const { root } = await cdp.send('DOM.getDocument');
+      const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector: '[data-face-probe]' });
+      const { fonts } = await cdp.send('CSS.getPlatformFontsForNode', { nodeId });
+      // A variable face reports the name of its default instance ("Mulish ExtraLight"): keep the family.
+      const family = (name: string): string => [ARABIC, 'Mulish'].find((known) => name.startsWith(known)) ?? name;
+      return fonts.map((f) => ({ family: family(f.familyName), bundled: f.isCustomFont, glyphs: f.glyphCount }))
+        .sort((a, b) => a.family.localeCompare(b.family));
+    } finally {
+      await loc.evaluate((el) => el.removeAttribute('data-face-probe'));
+      await cdp.send('CSS.disable');
+      await cdp.send('DOM.disable');
+      await cdp.detach();
+    }
+  };
+  const families = (list: Face[]): string[] => list.map((f) => f.family);
+  /** The characters of `text` that the Arabic face must paint: the Arabic block. */
+  const arabicLetters = (text: string): number => [...text].filter((c) => /[؀-ۿ]/.test(c)).length;
+
+  test('j. #686: with the internet off, Arabic interface text is painted in the bundled Noto Sans Arabic at each weight; Latin text stays in Mulish; Pashto, Sindhi and Kurdish names show in it too', TAG, async ({ page }, testInfo) => {
+    const external = recordExternal(page);
+    const seen: Record<string, unknown> = {};
+    // The control: English, where every face is Mulish.
+    await page.goto('/');
+    await expectLanguage(page, 'en');
+    seen.latin = await faces(page, heading(page));
+    // Arabic, applied.
+    await openDialog(page);
+    await choose(page, 'ar');
+    await apply(page).click();
+    await expect(dialog(page)).toHaveCount(0);
+    await expectLanguage(page, 'ar');
+    await page.evaluate(() => document.fonts.ready);
+    // Each weight that an element with Arabic text of its own has, on Home and in Report a problem.
+    const mark = (): Promise<number[]> => page.evaluate(() => {
+      const weights = new Set<number>();
+      for (const el of Array.from(document.querySelectorAll<HTMLElement>('body *'))) {
+        const own = Array.from(el.childNodes).filter((n) => n.nodeType === 3).map((n) => n.textContent ?? '').join('').trim();
+        if (!/[؀-ۿ]/.test(own) || !el.getClientRects().length) continue;
+        const weight = Number(getComputedStyle(el).fontWeight);
+        if (!weights.has(weight) && !document.querySelector(`[data-face-weight="${weight}"]`)) el.setAttribute('data-face-weight', String(weight));
+        weights.add(weight);
+      }
+      return Array.from(document.querySelectorAll('[data-face-weight]')).map((el) => Number(el.getAttribute('data-face-weight'))).sort();
+    });
+    const byWeight: Record<string, Face[]> = {};
+    const probeWeights = async (): Promise<void> => {
+      for (const weight of await mark()) {
+        if (byWeight[weight]) continue;
+        byWeight[weight] = (await faces(page, page.locator(`[data-face-weight="${weight}"]`))).filter((f) => f.family !== 'Mulish');
+      }
+    };
+    await probeWeights();
+    await openMenu(page);
+    await page.getByTestId('account-report').click();
+    await expect(page.getByTestId('feedback')).toBeVisible();
+    await probeWeights();
+    await page.getByTestId('feedback-cancel').click();
+    seen.arabicByWeight = byWeight;
+    // A label with Arabic and Latin text: each script in its own face, read right to left.
+    const share = page.getByRole('button', { name: BY_ID.ar['home.share'], exact: true }).first();
+    seen.mixed = { faces: await faces(page, share), direction: await share.evaluate((el) => getComputedStyle(el).direction) };
+    await shot(page, testInfo, 'arabic-face-home');
+    // A placeholder is interface text too, also in a field that is in the scripture face.
+    await openTitus(page);
+    const noteField = page.getByPlaceholder(BY_ID.ar['understand.commentsPlaceholder']).first();
+    await expect(noteField).toBeVisible();
+    seen.placeholder = {
+      asked: await noteField.evaluate((el) => getComputedStyle(el, '::placeholder').fontFamily),
+      faces: await faces(page, noteField),
+    };
+    await shot(page, testInfo, 'arabic-face-placeholder');
+    await page.getByTestId('project-switch').click();
+    await expectLanguage(page, 'ar');
+    // The names of Pashto, Sindhi and Kurdish, from the language list the app ships.
+    const names = JSON.parse(fs.readFileSync(path.join(TC4_ROOT, 'src', 'data', 'langnames.json'), 'utf8')) as Array<{ lc: string; ln: string; ang: string }>;
+    await page.getByTestId('add-project').click();
+    await page.getByTestId('add-project-bible').click();
+    const samples: Record<string, { name: string; letters: number; faces: Face[] }> = {};
+    for (const code of ['ps', 'sd', 'ckb']) {
+      const row = names.find((r) => r.lc === code)!;
+      await page.getByLabel(BY_ID.ar['newBible.langName']).fill(row.ang.split(',')[0]);
+      const name = page.getByRole('option').getByText(row.ln, { exact: true }).first();
+      await expect(name).toBeVisible();
+      samples[code] = { name: row.ln, letters: arabicLetters(row.ln), faces: await faces(page, name) };
+    }
+    await shot(page, testInfo, 'arabic-face-names');
+    seen.samples = samples;
+    seen.external = external.external();
+    const file = testInfo.outputPath('interface-faces.json');
+    fs.writeFileSync(file, `${JSON.stringify(seen, null, 2)}\n`);
+    await testInfo.attach('interface-faces', { path: file, contentType: 'application/json' });
+    await external.save(testInfo);
+
+    expect(seen.latin).toEqual([{ family: 'Mulish', bundled: true, glyphs: EN['home.yourProjects'].length }]);
+    // 400 to 900 are the weights of the tokens; each one the interface shows is checked.
+    expect(Object.keys(byWeight).length).toBeGreaterThan(2);
+    for (const [weight, list] of Object.entries(byWeight)) {
+      expect(families(list), `weight ${weight}`).toEqual([ARABIC]);
+      expect(list[0].bundled, `weight ${weight}`).toBe(true);
+    }
+    const mixed = seen.mixed as { faces: Face[]; direction: string };
+    expect(families(mixed.faces)).toEqual(['Mulish', ARABIC]);
+    expect(mixed.faces.every((f) => f.bundled)).toBe(true);
+    expect(mixed.direction).toBe('rtl');
+    const placeholder = seen.placeholder as { asked: string; faces: Face[] };
+    expect(placeholder.asked).toContain(ARABIC);
+    expect(families(placeholder.faces.filter((f) => f.family !== 'Mulish'))).toEqual([ARABIC]);
+    // No tofu box: the bundled Arabic face paints the Arabic letters of each name itself (a
+    // letter is one glyph or more). A name in Arabic script only has no other face. The
+    // Sindhi name has a Devanagari part too, which the system paints.
+    for (const [code, sample] of Object.entries(samples)) {
+      const arabic = sample.faces.find((f) => f.family === ARABIC);
+      expect(arabic?.bundled, `${code}: ${sample.name}`).toBe(true);
+      expect(arabic?.glyphs, `${code}: ${sample.name}`).toBeGreaterThanOrEqual(sample.letters);
+      if (sample.letters === [...sample.name].length) expect(families(sample.faces), `${code}: ${sample.name}`).toEqual([ARABIC]);
+    }
+    expect(samples.ps.letters === [...samples.ps.name].length && samples.ckb.letters === [...samples.ckb.name].length).toBe(true);
+    expect(external.external()).toEqual([]);
   });
 });
