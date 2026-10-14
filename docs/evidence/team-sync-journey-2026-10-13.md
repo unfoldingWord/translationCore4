@@ -249,7 +249,7 @@ in the J26 runs above, or in `node validate-journal.mjs` (JC-35, PASS).
 | G4 | `[G4] a push that is not a fast-forward starts again, and the second try lands` (`test/sync/syncOperation.test.ts`) |
 | G5 | `[G5] same path and actor` (`test/sync/syncOperation.test.ts`) |
 | G6 | `[G6] same journals same files` (`test/sync/syncCore.test.ts`); `[G6] at the end the three projects have the same project files, and no verse has a conflict` (J26) |
-| G7 | `[G7] counts a non-text conflict once` (`test/sync/syncCore.test.ts`); `[G7] lists only verse text: …` (`test/conflictReview.test.tsx`) |
+| G7 | `[G7] counts a non-text conflict once` (`test/sync/syncCore.test.ts`); `[G7] a verse changed two ways appears once in textConflicts` (`test/sync/syncCore.test.ts`) |
 | G8 | `[G8] swap kill sweep` (`test/sync/syncOperation.test.ts`) |
 
 ## What the journey does not prove
@@ -257,8 +257,8 @@ in the J26 runs above, or in `node validate-journal.mjs` (JC-35, PASS).
 - The check result. The fixture's check result is the sample's first translationWords record,
   `a9p2` (the word "apostle" in TIT 1:1). The rig pins `es-419_twl` v18, whose list gives that
   word the id `sda6`. So the UI sets the same word in the same verse, and its register key is
-  `dec|translationWords|sda6|tit|1|1|1`, not the key in `cases.json`. [FLAG: the fixture's check
-  id is not in the pinned list; the fork has the same shape.]
+  `dec|translationWords|sda6|tit|1|1|1`, not the key in `cases.json`. The fork has the same
+  shape: two check results from the same base, and the newest one wins.
 - The pair that changes TIT 1:4. The issue gives the verse to B and C. The fixture's case
   `verse-two-ways` gives it to A and B. The journey follows the issue and uses the key and the two
   texts of the fixture.
