@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 // #679 — the state glue of the conflict review, on the fake rig: the Home count
 // is folded read-only from the project's journal (never a stored Report), and
-// "Keep this version" calls resolveVerse with the kept head, reads the open
-// book again and lists the conflicts the new fold shows.
+// "Keep this version" unloads the open book, calls resolveVerse with the kept
+// head, and reads the list and the outcome from the new fold.
 import { describe, expect, it, vi } from 'vitest';
 import { ServerApi } from '../src/data/serverApi';
 import { JournalingStore, forgetProjectQueues } from '../src/data/journal/journalingStore';
@@ -11,8 +11,8 @@ import { fold } from '../src/data/journal/runtime';
 import { sealAction, segmentName, validateSegment, type JournalEvent } from '../src/data/journal/seal';
 import { journalingRig, memKv, tickingNow } from './helpers/journalingRig';
 import { SaveScheduler } from '../src/data/saveScheduler';
-import { spliceVerse, verseBody } from '../src/data/usfm/splice';
-import { editorBookText, __performKeepVersionForTests as keepVersion, __performLoadConflictsForTests as loadConflicts, __reducerForTests as reducer } from '../src/state.jsx';
+import { spliceVerse } from '../src/data/usfm/splice';
+import { loadEditorBook, __performKeepVersionForTests as keepVersion, __performLoadConflictsForTests as loadConflicts, __reducerForTests as reducer } from '../src/state.jsx';
 
 const REPO = '_local_/_local_/prueba';
 const TIT_USFM = ['\\id TIT prueba', '\\h Tito', '\\mt Tito', '\\c 1', '\\p', '\\v 1 Pablo, siervo de Dios.', '\\v 2 ___', ''].join('\n');
@@ -85,26 +85,61 @@ describe('#679 the Home count is folded from the journal', () => {
   });
 });
 
+/** The open book as the app holds it: a real SaveScheduler over the real store,
+ * loaded through the one editor load path, and the keep's context. */
+const session = async (store: JournalingStore, conflict: unknown, extra: Record<string, unknown> = {}) => {
+  const manual = { setTimeout: () => 0, clearTimeout: () => {} };
+  const scheduler = new SaveScheduler({ writeBook: (book, whole) => store.writeBook(book, whole), splice: spliceVerse, clock: manual });
+  const raw = await loadEditorBook(store, 'TIT');
+  scheduler.loadBook('TIT', raw);
+  const rawRef = { current: raw as string | null };
+  const { box, dispatch } = recorder({ project: { repoPath: REPO }, book: 'TIT', bookRaw: raw, conflictReview: { key: KEY, error: null }, conflictsByProject: { [REPO]: { TIT: 1 } }, verseConflicts: [conflict], ...extra });
+  const stateRef = { get current() { return box.state; } };
+  const ctx = { storeRef: { current: store }, stateRef, schedulerRef: { current: scheduler }, rawRef, saveRefs: [], dispatch, conflictsGen: new Map() };
+  /** Leave the review: the keepVersion action loads an unloaded book again, as openBook does. */
+  const leave = async () => {
+    if (rawRef.current !== null) return;
+    const text = await loadEditorBook(store, 'TIT');
+    scheduler.loadBook('TIT', text);
+    rawRef.current = text;
+  };
+  /** An edit of verse 2 in Translate, saved. */
+  const editVerseTwo = async (text: string) => {
+    scheduler.markDirty('TIT', 1, '2', text);
+    expect(await scheduler.drain()).toBe(true);
+  };
+  return { box, ctx, scheduler, rawRef, leave, editVerseTwo };
+};
+
+/** The journal's last text.verse.set of TIT 1:1, by ts. */
+const lastOnVerseOne = async (own: () => Promise<JournalEvent[]>) =>
+  (await own()).filter((e) => e.op === 'text.verse.set' && e.chapter === '1' && e.verse === '1').sort((a, b) => (a.ts < b.ts ? -1 : 1)).at(-1)!;
+
+// "Keep this version" never meets a loaded book (bench rounds 1–6): the book is
+// unloaded before the store writes, the truth is read from the fold after any
+// outcome, and the book loads again through loadEditorBook (openBook's path).
 describe('#679 "Keep this version"', () => {
-  it('calls resolveVerse with the kept head, reads the open book again, and the conflict leaves the list and the Home count', async () => {
+  it('keeps the chosen version: the book is unloaded while the store writes; the list, the Home count and the outcome come from the fold', async () => {
     const { store } = await conflicted();
     const [conflict] = store.readVerseConflicts();
     const mine = conflict.versions.find((v) => v.actor === store.actorId)!;
-    const resolve = vi.spyOn(store, 'resolveVerse');
-    const loadBook = vi.fn();
-    const rawRef = { current: 'stale' };
-    const { box, dispatch } = recorder({ project: { repoPath: REPO }, book: 'TIT', conflictReview: { key: KEY, error: null }, conflictsByProject: { [REPO]: { TIT: 1 } }, verseConflicts: [conflict] });
-    const stateRef = { get current() { return box.state; } };
-    const ok = await keepVersion({ storeRef: { current: store }, stateRef, schedulerRef: { current: { loadBook, isDirty: () => false, bookText: () => 'clean' } }, rawRef, saveRefs: [], dispatch, conflictsGen: new Map() }, KEY, mine.ts);
-    expect(ok).toBe(true);
-    expect(resolve).toHaveBeenCalledWith(KEY, mine.ts);
+    const { box, ctx, scheduler, rawRef, leave } = await session(store, conflict);
+    const real = store.resolveVerse.bind(store);
+    const atWrite: Array<string | null> = [];
+    vi.spyOn(store, 'resolveVerse').mockImplementation(async (key, head) => {
+      atWrite.push(scheduler.bookText('TIT'), rawRef.current);
+      expect(() => scheduler.markDirty('TIT', 1, '2', 'x')).toThrow(/not loaded/); // no edit can reach the book now
+      return real(key, head);
+    });
+    expect(await keepVersion(ctx, KEY, mine.ts)).toBe(true);
+    expect(store.resolveVerse).toHaveBeenCalledWith(KEY, mine.ts);
+    expect(atWrite).toEqual([null, null]);
+    expect(box.state.bookRaw).toBeNull();
     expect(box.state.verseConflicts).toEqual([]);
     expect(box.state.conflictsByProject).toEqual({ [REPO]: {} });
-    expect(rawRef.current).toContain('\\v 1 Pablo, siervo de Dios (mío).');
-    expect(loadBook).toHaveBeenCalledWith('TIT', rawRef.current);
-    expect(box.state.bookRaw).toBe(rawRef.current);
-    // No conflict is left: the review stays open on the kept key and shows that none is open.
     expect(box.state.conflictReview).toEqual({ key: KEY, error: null });
+    await leave();
+    expect(scheduler.bookText('TIT')).toContain('\\v 1 Pablo, siervo de Dios (mío).');
   });
 
   it('the review moves to the conflict after the kept one', async () => {
@@ -115,8 +150,8 @@ describe('#679 "Keep this version"', () => {
     const [before, after] = [other('text|TIT|1:0'), other('text|TIT|1:9')];
     const { box, dispatch } = recorder({ project: { repoPath: REPO }, book: 'JON', conflictReview: { key: KEY, error: null }, conflictsByProject: {}, verseConflicts: [before, conflict, after] });
     const stateRef = { get current() { return box.state; } };
-    // The store's fold after the keep lists the two others (stand-ins: the rig project has one conflict).
-    vi.spyOn(store, 'readVerseConflicts').mockReturnValue([before, after]);
+    // The fold before the keep lists all three; after it, the two others (stand-ins: the rig project has one conflict).
+    vi.spyOn(store, 'readVerseConflicts').mockReturnValueOnce([before, conflict, after]).mockReturnValue([before, after]);
     const mine = conflict.versions.find((v) => v.actor === store.actorId)!;
     await keepVersion({ storeRef: { current: store }, stateRef, schedulerRef: { current: null }, rawRef: { current: null }, saveRefs: [], dispatch, conflictsGen: new Map() }, KEY, mine.ts);
     expect(box.state.conflictReview).toEqual({ key: 'text|TIT|1:9', error: null });
@@ -132,10 +167,10 @@ describe('#679 "Keep this version"', () => {
     expect(store.readVerseConflicts().map((c) => c.key)).toEqual([KEY]);
   });
 
-  // Review finding (Frank, round 4): a keep that failed after it was staged is
-  // replayed by the next store mutation. A second keep of ANOTHER version then
-  // finds no conflict; that is not proof that the version it asked for was kept.
-  it('a failed keep of Mine, then a keep of the teammate version: the review reports that Mine was kept, never success', async () => {
+  // Frank, round 5: a keep that failed after it was staged is replayed by the
+  // next store mutation. A second keep of ANOTHER version then finds no
+  // conflict; the reported result must match the fold, which holds the first.
+  it('a failed keep of Mine, then a keep of the teammate version: the reported result matches the fold', async () => {
     const { store, rig } = await conflicted();
     const [conflict] = store.readVerseConflicts();
     const mine = conflict.versions.find((v) => v.actor === store.actorId)!;
@@ -149,15 +184,13 @@ describe('#679 "Keep this version"', () => {
     expect(store.readVerseConflicts().map((c) => c.key)).toEqual([KEY]); // positive control: the first keep is not in the fold
     // Keep the teammate's version: the store replays the staged Mine first.
     expect(await keepVersion(ctx, KEY, theirs.ts)).toBe(false);
-    const { error } = box.state.conflictReview as { error: string | null };
-    expect(error).toMatch(/another version/);
-    // The recovered outcome is shown: the conflict left the list and the Home count, and the fold holds Mine.
+    expect((box.state.conflictReview as { error: string | null }).error).toMatch(/another version/i);
     expect(box.state.verseConflicts).toEqual([]);
     expect(box.state.conflictsByProject).toEqual({ [REPO]: {} });
     expect(store.projectedVerse('TIT', '1', '1')).toBe(mine.text);
   });
 
-  it('negative control: a keep whose regeneration fails, but whose chosen text the fold holds, is still success', async () => {
+  it('a keep whose regeneration fails, but whose chosen text the fold holds, is success', async () => {
     const { store } = await conflicted();
     const [conflict] = store.readVerseConflicts();
     const theirs = conflict.versions.find((v) => v.actor === TEAMMATE)!;
@@ -170,128 +203,67 @@ describe('#679 "Keep this version"', () => {
   });
 });
 
-// Review finding B1 (2026-10-13): a keep must never leave the text from before
-// the keep in the editor. A later save of that book diffs against the fold and
-// would write the replaced version back as a new edit: the keep is undone in
-// silence, and the next sync sends that to the team.
-describe('#679 a keep cannot be undone by the next save', () => {
-  /** The open book as the app holds it: the real SaveScheduler over the real store. */
-  const openBook = async (store: JournalingStore) => {
-    const { usfm } = await store.readBook('TIT');
-    const scheduler = new SaveScheduler({ writeBook: (book, whole) => store.writeBook(book, whole), splice: spliceVerse });
-    scheduler.loadBook('TIT', usfm);
-    return { scheduler, rawRef: { current: usfm as string | null } };
-  };
-  /** Edit another verse of the book and save it, as Translate does. */
-  const editVerseTwo = async (scheduler: SaveScheduler) => {
-    scheduler.markDirty('TIT', 1, '2', 'otro versículo');
-    expect(await scheduler.drain()).toBe(true);
-  };
-  const keptText = async (store: JournalingStore) => (await store.readBook('TIT')).usfm;
-
-  it('a book read that fails after the keep: the editor holds the kept text, and the next save keeps it', async () => {
-    const { store } = await conflicted();
+// Frank, round 6: a staged keep whose publish failed was undone by the next
+// save of another verse — the editor's buffer still held the text from before
+// the keep, and the save replayed the keep and then diffed the old text over it.
+describe('#679 no save after a keep can undo it', () => {
+  it('a keep of Mine whose segment write fails; leave the review, edit and save verse 2: verse 1 holds the fold\'s truth, and the edit is saved', async () => {
+    const { store, rig, own } = await conflicted();
     const [conflict] = store.readVerseConflicts();
     const mine = conflict.versions.find((v) => v.actor === store.actorId)!;
-    const { scheduler, rawRef } = await openBook(store);
-    expect(rawRef.current).toContain('(suyo)'); // positive control: the editor holds the provisional text
-    vi.spyOn(store, 'readBook').mockRejectedValue(new Error('read failed'));
-    const { box, dispatch } = recorder({ project: { repoPath: REPO }, book: 'TIT', bookRaw: rawRef.current, conflictReview: { key: KEY, error: null }, conflictsByProject: {}, verseConflicts: [conflict] });
-    const stateRef = { get current() { return box.state; } };
-    expect(await keepVersion({ storeRef: { current: store }, stateRef, schedulerRef: { current: scheduler }, rawRef, saveRefs: [], dispatch, conflictsGen: new Map() }, KEY, mine.ts)).toBe(true);
-    // The editor holds the kept text, or no text at all (unloaded); never the replaced one.
-    for (const held of [rawRef.current, scheduler.bookText('TIT'), box.state.bookRaw as string | null])
-      if (held !== null) expect(held).not.toContain('(suyo)');
-    vi.mocked(store.readBook).mockRestore();
-    if (scheduler.bookText('TIT') !== null) await editVerseTwo(scheduler);
+    const { box, ctx, leave, editVerseTwo } = await session(store, conflict);
+    rig.failOn((c: { method: string; ipath?: string }) => c.method === 'POST' && (c.ipath ?? '').includes('/segments/'), 1);
+    expect(await keepVersion(ctx, KEY, mine.ts)).toBe(false);
+    expect((box.state.conflictReview as { error: string | null }).error).toBeTruthy(); // not kept, and the review says so
+    await leave();
+    await editVerseTwo('editado después');
+    // The staged keep is published by the load; nothing wrote the replaced version back.
     expect(store.readVerseConflicts()).toEqual([]);
-    expect(await keptText(store)).toContain('\\v 1 Pablo, siervo de Dios (mío).');
-  });
-
-  it('regeneration that fails after the publish: the keep is reported, the list refreshes, and the next save keeps it', async () => {
-    const { store } = await conflicted();
-    const [conflict] = store.readVerseConflicts();
-    const mine = conflict.versions.find((v) => v.actor === store.actorId)!;
-    const { scheduler, rawRef } = await openBook(store);
-    vi.spyOn(store as unknown as { installAndConverge: () => Promise<void> }, 'installAndConverge').mockRejectedValueOnce(new Error('converge failed'));
-    const { box, dispatch } = recorder({ project: { repoPath: REPO }, book: 'TIT', bookRaw: rawRef.current, conflictReview: { key: KEY, error: null }, conflictsByProject: { [REPO]: { TIT: 1 } }, verseConflicts: [conflict] });
-    const stateRef = { get current() { return box.state; } };
-    const ok = await keepVersion({ storeRef: { current: store }, stateRef, schedulerRef: { current: scheduler }, rawRef, saveRefs: [], dispatch, conflictsGen: new Map() }, KEY, mine.ts);
-    expect(ok).toBe(true);
-    expect((box.state.conflictReview as { error: string | null }).error).toBeNull();
-    expect(box.state.verseConflicts).toEqual([]);
-    expect(box.state.conflictsByProject).toEqual({ [REPO]: {} });
-    expect(scheduler.bookText('TIT')).toContain('\\v 1 Pablo, siervo de Dios (mío).');
-    await editVerseTwo(scheduler);
-    expect(store.readVerseConflicts()).toEqual([]);
-    expect(await keptText(store)).toContain('\\v 1 Pablo, siervo de Dios (mío).');
-  });
-});
-
-// Re-review finding (2026-10-13): an edit can reach the verse scheduler while
-// resolveVerse is in flight. Its buffer was built on the text before the keep;
-// installing the kept text must move that buffer onto the new base, never drop
-// the edit, and never let the old text of the kept verse be saved.
-describe('#679 an edit made while the keep is in flight', () => {
-  it('keeps both: the kept version stays in the fold and the journal, and the other verse edit is saved', async () => {
-    const { store, own } = await conflicted();
-    const [conflict] = store.readVerseConflicts();
-    const mine = conflict.versions.find((v) => v.actor === store.actorId)!;
-    const { usfm } = await store.readBook('TIT');
-    const manual = { setTimeout: () => 0, clearTimeout: () => {} };
-    const scheduler = new SaveScheduler({ writeBook: (book, whole) => store.writeBook(book, whole), splice: spliceVerse, clock: manual });
-    scheduler.loadBook('TIT', usfm);
-    const rawRef = { current: usfm as string | null };
-    const { box, dispatch } = recorder({ project: { repoPath: REPO }, book: 'TIT', bookRaw: usfm, conflictReview: { key: KEY, error: null }, conflictsByProject: {}, verseConflicts: [conflict] });
-    const stateRef = { get current() { return box.state; } };
-    const keep = keepVersion({ storeRef: { current: store }, stateRef, schedulerRef: { current: scheduler }, rawRef, saveRefs: [], dispatch, conflictsGen: new Map() }, KEY, mine.ts);
-    // Before resolveVerse settles: an edit of verse 2 on the buffer from before the keep.
-    scheduler.markDirty('TIT', 1, '2', 'editado durante el keep');
-    expect(await keep).toBe(true);
-    expect(await scheduler.drain()).toBe(true);
-    expect(store.readVerseConflicts()).toEqual([]);
+    expect(store.projectedVerse('TIT', '1', '1')).toBe(mine.text);
+    expect((await lastOnVerseOne(own)).text).toBe(mine.text);
     const disk = (await store.readBook('TIT')).usfm;
     expect(disk).toContain('\\v 1 Pablo, siervo de Dios (mío).');
-    expect(disk).toContain('\\v 2 editado durante el keep');
-    // The journal's last event for the kept verse carries the kept text.
-    const last = (await own()).filter((e) => e.op === 'text.verse.set' && e.chapter === '1' && e.verse === '1').sort((a, b) => (a.ts < b.ts ? -1 : 1)).at(-1)!;
-    expect(last.text).toBe(mine.text);
-    expect(box.state.conflictReview).toEqual({ key: KEY, error: null });
+    expect(disk).toContain('\\v 2 editado después');
   });
 
-  // Bench review round 1 (George #2): a projection without the kept verse is
-  // "no answer". It must not rebase the dirty buffer onto an empty verse,
-  // whose next save would publish '' over the keep.
-  it('a projection without the kept verse: no empty verse is rebased, and the review shows the error', async () => {
+  it('a keep whose regeneration fails; leave the review, edit and save verse 2: the keep survives', async () => {
     const { store, own } = await conflicted();
     const [conflict] = store.readVerseConflicts();
     const mine = conflict.versions.find((v) => v.actor === store.actorId)!;
-    const { usfm } = await store.readBook('TIT');
-    const manual = { setTimeout: () => 0, clearTimeout: () => {} };
-    const scheduler = new SaveScheduler({ writeBook: (book, whole) => store.writeBook(book, whole), splice: spliceVerse, clock: manual });
-    scheduler.loadBook('TIT', usfm);
-    const rawRef = { current: usfm as string | null };
-    const real = store.projectedBook.bind(store);
-    // The fold's text of TIT with verse 1 missing: verseBody returns null for it.
-    vi.spyOn(store, 'projectedBook').mockImplementation((code) => real(code)?.replace(/\\v 1 [^\n]*\n/, '') ?? null);
-    const { box, dispatch } = recorder({ project: { repoPath: REPO }, book: 'TIT', bookRaw: usfm, conflictReview: { key: KEY, error: null }, conflictsByProject: {}, verseConflicts: [conflict] });
+    const { ctx, leave, editVerseTwo } = await session(store, conflict);
+    vi.spyOn(store as unknown as { installAndConverge: () => Promise<void> }, 'installAndConverge').mockRejectedValueOnce(new Error('converge failed'));
+    expect(await keepVersion(ctx, KEY, mine.ts)).toBe(true);
+    expect((await store.readBook('TIT')).usfm).toContain('(suyo)'); // positive control: the disk file is stale
+    await leave();
+    await editVerseTwo('editado después');
+    expect(store.readVerseConflicts()).toEqual([]);
+    expect((await lastOnVerseOne(own)).text).toBe(mine.text);
+    expect((await store.readBook('TIT')).usfm).toContain('\\v 2 editado después');
+  });
+
+  it('a keep in a book that is not open, regeneration fails; then open it, edit, save: the keep survives', async () => {
+    const { store, own } = await conflicted();
+    const [conflict] = store.readVerseConflicts();
+    const mine = conflict.versions.find((v) => v.actor === store.actorId)!;
+    vi.spyOn(store as unknown as { installAndConverge: () => Promise<void> }, 'installAndConverge').mockRejectedValueOnce(new Error('converge failed'));
+    const { box, dispatch } = recorder({ project: { repoPath: REPO }, book: null, conflictReview: { key: KEY, error: null }, conflictsByProject: {}, verseConflicts: [conflict] });
     const stateRef = { get current() { return box.state; } };
-    const keep = keepVersion({ storeRef: { current: store }, stateRef, schedulerRef: { current: scheduler }, rawRef, saveRefs: [], dispatch, conflictsGen: new Map() }, KEY, mine.ts);
-    scheduler.markDirty('TIT', 1, '2', 'editado durante el keep');
-    expect(await keep).toBe(true);
-    // Positive control: the buffer still holds verse 1, and it is not the empty verse.
-    expect(verseBody(scheduler.bookText('TIT')!, 1, '1')).not.toBeNull();
-    expect(verseBody(scheduler.bookText('TIT')!, 1, '1')!.trim()).not.toBe('');
-    expect((box.state.conflictReview as { error: string | null }).error).toMatch(/holds no verse 1:1/);
-    expect(box.state.bookRaw).toBeNull();
-    // The keep is the journal's last event for the verse; nothing wrote an empty verse.
-    const last = (await own()).filter((e) => e.op === 'text.verse.set' && e.chapter === '1' && e.verse === '1').sort((a, b) => (a.ts < b.ts ? -1 : 1)).at(-1)!;
-    expect(last.text).toBe(mine.text);
+    expect(await keepVersion({ storeRef: { current: store }, stateRef, schedulerRef: { current: null }, rawRef: { current: null }, saveRefs: [], dispatch, conflictsGen: new Map() }, KEY, mine.ts)).toBe(true);
+    const { editVerseTwo } = await session(store, conflict); // opening the book: loadEditorBook
+    await editVerseTwo('editado después');
+    expect(store.readVerseConflicts()).toEqual([]);
+    expect((await lastOnVerseOne(own)).text).toBe(mine.text);
+  });
+
+  it('normal case: the editor\'s text is byte-identical to the regenerated file; a book the fold lacks is an error', async () => {
+    const { store } = await conflicted();
+    expect(await loadEditorBook(store, 'TIT')).toBe((await store.readBook('TIT')).usfm);
+    await expect(loadEditorBook(store, 'JON')).rejects.toThrow(/JON/);
   });
 });
 
-describe('#679 SaveScheduler.unloadBook and rebaseBook refuse a retained failed write', () => {
-  it('a failed write of the book is kept: unload and rebase throw, the buffer stays', async () => {
+describe('#679 SaveScheduler.unloadBook refuses a retained failed write', () => {
+  it('a failed write of the book is kept: unload throws, the buffer stays', async () => {
     const manual = { setTimeout: () => 0, clearTimeout: () => {} };
     const scheduler = new SaveScheduler({ writeBook: async () => { throw new Error('disk full'); }, splice: spliceVerse, clock: manual });
     scheduler.loadBook('TIT', TIT_USFM);
@@ -299,77 +271,11 @@ describe('#679 SaveScheduler.unloadBook and rebaseBook refuse a retained failed 
     await scheduler.flushOnBlur();
     expect(scheduler.getState()).toBe('error');
     expect(() => scheduler.unloadBook('TIT')).toThrow(/unsaved work/);
-    expect(() => scheduler.rebaseBook('TIT', TIT_USFM, TIT_USFM)).toThrow(/in flight or failed/);
     expect(scheduler.bookText('TIT')).toContain('nuevo');
     // The buffer edited back to the stored text is clean, but the failed write is still retained:
     // a retry() would write its snapshot, so the book still cannot be unloaded.
     scheduler.markDirty('TIT', 1, '2', '___');
     expect(scheduler.isDirty('TIT')).toBe(false);
     expect(() => scheduler.unloadBook('TIT')).toThrow(/unsaved work/);
-  });
-});
-
-// Third review (2026-10-13): after a keep whose regeneration failed, the USFM
-// file on disk still holds the replaced text. A book opened later must take
-// its text from the fold (editorBookText, the read path of openBook), or its
-// next save diffs that old text against the fold and undoes the keep.
-describe('#679 a book opened after a keep starts from the fold, not the disk file', () => {
-  const failConvergeOnce = (store: JournalingStore) =>
-    vi.spyOn(store as unknown as { installAndConverge: () => Promise<void> }, 'installAndConverge').mockRejectedValueOnce(new Error('converge failed'));
-  /** openBook's load, an edit of verse 2, and the save. */
-  const openEditSave = async (store: JournalingStore) => {
-    const manual = { setTimeout: () => 0, clearTimeout: () => {} };
-    const scheduler = new SaveScheduler({ writeBook: (book, whole) => store.writeBook(book, whole), splice: spliceVerse, clock: manual });
-    scheduler.loadBook('TIT', await editorBookText(store, 'TIT'));
-    scheduler.markDirty('TIT', 1, '2', 'editado después');
-    expect(await scheduler.drain()).toBe(true);
-  };
-  const assertKept = async (store: JournalingStore, own: () => Promise<JournalEvent[]>, kept: string) => {
-    expect(store.readVerseConflicts()).toEqual([]);
-    const last = (await own()).filter((e) => e.op === 'text.verse.set' && e.chapter === '1' && e.verse === '1').sort((a, b) => (a.ts < b.ts ? -1 : 1)).at(-1)!;
-    expect(last.text).toBe(kept);
-    const disk = (await store.readBook('TIT')).usfm; // after the save's own regeneration
-    expect(disk).toContain('\\v 1 Pablo, siervo de Dios (mío).');
-    expect(disk).toContain('\\v 2 editado después');
-  };
-
-  it('normal case: the fold projection is byte-identical to the regenerated file', async () => {
-    const { store } = await conflicted();
-    expect(await editorBookText(store, 'TIT')).toBe((await store.readBook('TIT')).usfm);
-    await expect(async () => editorBookText(store, 'JON')).rejects.toThrow(/JON/);
-  });
-
-  it('(a) keep in a book that is not open, regeneration fails; then open it, edit, save: the keep survives', async () => {
-    const { store, own } = await conflicted();
-    const [conflict] = store.readVerseConflicts();
-    const mine = conflict.versions.find((v) => v.actor === store.actorId)!;
-    failConvergeOnce(store);
-    const { box, dispatch } = recorder({ project: { repoPath: REPO }, book: null, conflictReview: { key: KEY, error: null }, conflictsByProject: {}, verseConflicts: [conflict] });
-    const stateRef = { get current() { return box.state; } };
-    expect(await keepVersion({ storeRef: { current: store }, stateRef, schedulerRef: { current: null }, rawRef: { current: null }, saveRefs: [], dispatch, conflictsGen: new Map() }, KEY, mine.ts)).toBe(true);
-    expect((await store.readBook('TIT')).usfm).toContain('(suyo)'); // positive control: the disk file is stale
-    await openEditSave(store);
-    await assertKept(store, own, mine.text);
-  });
-
-  it('(b) keep in the open book, regeneration fails; switch book and back, edit, save: the keep survives', async () => {
-    const { store, own } = await conflicted();
-    const [conflict] = store.readVerseConflicts();
-    const mine = conflict.versions.find((v) => v.actor === store.actorId)!;
-    const first = await (async () => {
-      const manual = { setTimeout: () => 0, clearTimeout: () => {} };
-      const s = new SaveScheduler({ writeBook: (book, whole) => store.writeBook(book, whole), splice: spliceVerse, clock: manual });
-      s.loadBook('TIT', await editorBookText(store, 'TIT'));
-      return s;
-    })();
-    failConvergeOnce(store);
-    const { box, dispatch } = recorder({ project: { repoPath: REPO }, book: 'TIT', conflictReview: { key: KEY, error: null }, conflictsByProject: {}, verseConflicts: [conflict] });
-    const stateRef = { get current() { return box.state; } };
-    expect(await keepVersion({ storeRef: { current: store }, stateRef, schedulerRef: { current: first }, rawRef: { current: null }, saveRefs: [], dispatch, conflictsGen: new Map() }, KEY, mine.ts)).toBe(true);
-    expect(first.bookText('TIT')).toContain('(mío)'); // the open book took the kept text
-    expect((await store.readBook('TIT')).usfm).toContain('(suyo)'); // the disk file is stale
-    // Switch away and back: openBook loads TIT again.
-    await openEditSave(store);
-    await assertKept(store, own, mine.text);
   });
 });

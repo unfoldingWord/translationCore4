@@ -247,6 +247,15 @@ describe('#679 the conflict review', () => {
     expect(actions.openConflictReview).toHaveBeenCalledWith();
   });
 
+  it('the outcome of the last keep shows even when no conflict is left (bench round 6, P3)', () => {
+    review(readUnion(nodePath.join(FIXTURE, 'journals')), VERSE.key);
+    state.verseConflicts = [];
+    state.conflictReview = { key: VERSE.key, error: 'Another version of this verse is kept.' };
+    render(<ConflictReview />);
+    expect(screen.getByTestId('conflict-none')).toBeTruthy();
+    expect(screen.getByTestId('conflict-error').textContent).toContain('Another version of this verse is kept.');
+  });
+
   it('shows the ULT verse above the versions when Translate has it for the open book; else nothing', () => {
     review(teamEvents(), VERSE.key);
     state.sources = { ult: { raw: '', chapters: { 1: { 4: { verseObjects: [{ type: 'text', text: 'ULT verse four' }] } } } } };

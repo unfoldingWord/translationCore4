@@ -171,6 +171,12 @@ export default function ConflictReview() {
       </div>
 
       <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '22px 24px' }}>
+        {/* The outcome of the last keep shows with or without a conflict left (bench round 6, P3). */}
+        {s.conflictReview?.error && (
+          <Callout tone="warn" role="alert" data-testid="conflict-error" style={{ ...MEASURE, marginBottom: 12, overflowWrap: 'anywhere' }}>
+            <strong>{t('conflicts.keepError')}</strong> {s.conflictReview.error}
+          </Callout>
+        )}
         {conflict ? (
           <ConflictVersions s={s} conflict={conflict} versions={versions} team={team} label={label} selected={selected} onSelect={setSelected} />
         ) : (
@@ -185,7 +191,7 @@ export default function ConflictReview() {
   );
 }
 
-/** One conflict: the verse, its versions newest first, and a refused keep. */
+/** One conflict: the verse and its versions, newest first. */
 function ConflictVersions({ s, conflict, versions, team, label, selected, onSelect }) {
   const ref = `${bookName(conflict.book)} ${conflict.chapter}:${conflict.verse}`;
   const type = targetTypeFor(s, 'md');
@@ -216,11 +222,6 @@ function ConflictVersions({ s, conflict, versions, team, label, selected, onSele
             onSelect={() => onSelect(v.ts)} />
         ))}
       </div>
-      {s.conflictReview?.error && (
-        <Callout tone="warn" role="alert" data-testid="conflict-error" style={{ overflowWrap: 'anywhere' }}>
-          <strong>{t('conflicts.keepError')}</strong> {s.conflictReview.error}
-        </Callout>
-      )}
     </div>
   );
 }
