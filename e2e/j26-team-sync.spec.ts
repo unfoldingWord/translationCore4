@@ -113,6 +113,21 @@ function projectFiles(repo: string): Map<string, Buffer> {
   return out;
 }
 
+/** `metadata.json` without the three stamps the platform writes at each remake and commit on
+ * one computer: `meta.dateCreated`, and `revision` and `timestamp` of each primary identity.
+ * A sync applies Door43 main in place (#676, D100), so each project keeps its own stamps;
+ * every other field (the ingredients map too) stays in the comparison. */
+function withoutStamps(bytes: Buffer): unknown {
+  const metadata = JSON.parse(bytes.toString('utf8'));
+  delete metadata.meta?.dateCreated;
+  for (const ids of Object.values(metadata.identification?.primary ?? {}) as Array<Record<string, Record<string, unknown>>>)
+    for (const id of Object.values(ids)) {
+      delete id.revision;
+      delete id.timestamp;
+    }
+  return metadata;
+}
+
 /** The text of one verse in a project's TIT.usfm on disk (the line after `\v n `). */
 function verseOnDisk(repo: string, chapter: string, verse: string): string {
   const usfm = fs.readFileSync(path.join(rigRepo(repo), 'ingredients', 'TIT.usfm'), 'utf8');
@@ -485,7 +500,9 @@ test.describe('J26 — three translators sync one project through Door43', () =>
     for (const [i, files] of others.entries()) {
       const t = [B, C][i];
       expect([...files.keys()].sort(), `the file list of ${t.label}`).toEqual([...a.keys()].sort());
-      for (const [p, bytes] of a) expect(files.get(p)!.equals(bytes), `${t.label} ${p}`).toBe(true);
+      for (const [p, bytes] of a)
+        if (p === 'metadata.json') expect(withoutStamps(files.get(p)!), `${t.label} ${p} (but its stamps)`).toEqual(withoutStamps(bytes));
+        else expect(files.get(p)!.equals(bytes), `${t.label} ${p}`).toBe(true);
     }
     for (const [p, bytes] of [...a].sort(([x], [y]) => (x < y ? -1 : 1))) lines.push(`${bytes.length}\t${p}`);
     for (const t of TRANSLATORS) {

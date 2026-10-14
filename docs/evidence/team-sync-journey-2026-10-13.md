@@ -161,7 +161,10 @@ Note (2026-10-14, D100): a sync now applies Door43 `main` in place (#676), so th
 is not `main`. The test no longer checks `HEAD`. It checks that the `ingredients/` files of each
 project (but `audio/`) are the same as the tree of Door43 `main`, byte for byte. The file
 comparison of the three projects does not include the `*.bak` files: they are local backups that
-the project's `.gitignore` keeps out of each commit, and the sync does not change them. Step 5 also checks
+the project's `.gitignore` keeps out of each commit, and the sync does not change them. In
+`metadata.json`, the comparison does not include three stamps: `meta.dateCreated`, and `revision`
+and `timestamp` of each primary identity. The platform writes them at each remake and commit on one
+computer, so each project has its own. All other fields of `metadata.json` must be the same. Step 5 also checks
 that the first open of each project after the last sync is `converged`. The run below is the run
 at `58a69e8`, before this change.
 
