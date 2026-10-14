@@ -246,6 +246,9 @@ test.describe('J26 — three translators sync one project through Door43', () =>
   let tmp: string;
   let keptText = '';
   let checkId = '';
+  // True only after the guard below passed: the teardown's git call then acts on the seeded
+  // project's own repository, not on the checkout's (afterAll runs even when beforeAll throws).
+  let seededIsOwnRepo = false;
 
   test.beforeAll(async () => {
     // A's start: the seeded project as the seed made it (one commit). An earlier journey of
@@ -257,6 +260,7 @@ test.describe('J26 — three translators sync one project through Door43', () =>
     const top = fs.existsSync(seeded) ? fs.realpathSync(git(seeded, 'rev-parse', '--show-toplevel')) : null;
     if (top === null || top !== fs.realpathSync(seeded))
       throw new Error(`J26: ${seeded} is not its own git repository (its top level is ${top}); reseed the rig (dev-env/scripts/seed.zsh). Nothing was reset.`);
+    seededIsOwnRepo = true;
     git(seeded, 'reset', '-q', '--hard', git(seeded, 'rev-list', '--max-parents=0', 'HEAD'));
     git(seeded, 'clean', '-qfdx');
     dropOrigin(SEEDED_PROJECT);
@@ -279,7 +283,7 @@ test.describe('J26 — three translators sync one project through Door43', () =>
     };
   });
   test.afterAll(async () => {
-    dropOrigin(SEEDED_PROJECT);
+    if (seededIsOwnRepo) dropOrigin(SEEDED_PROJECT);
     for (const t of [B, C]) {
       fs.rmSync(rigRepo(t.repo), { recursive: true, force: true });
       fs.rmSync(scratchDir(t.repo), { recursive: true, force: true });
