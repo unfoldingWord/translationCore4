@@ -95,7 +95,7 @@ const actorOf = (t: Translator): string | undefined =>
 
 /** Every project file of a rig repository, path -> bytes; `.git` is not a project file, and
  * neither is a `*.bak` file: the platform's local backup, which the project's `.gitignore`
- * (`**\/*.bak`) keeps out of every commit. A sync applies Door43 main in place (#676, D100),
+ * (`**\/*.bak`) keeps out of every commit. A sync applies Door43 main in place (#676, D101),
  * so it never touches the backups of one computer. */
 function projectFiles(repo: string): Map<string, Buffer> {
   const root = rigRepo(repo);
@@ -115,7 +115,7 @@ function projectFiles(repo: string): Map<string, Buffer> {
 
 /** `metadata.json` without the three stamps the platform writes at each remake and commit on
  * one computer: `meta.dateCreated`, and `revision` and `timestamp` of each primary identity.
- * A sync applies Door43 main in place (#676, D100), so each project keeps its own stamps;
+ * A sync applies Door43 main in place (#676, D101), so each project keeps its own stamps;
  * every other field (the ingredients map too) stays in the comparison. */
 function withoutStamps(bytes: Buffer): unknown {
   const metadata = JSON.parse(bytes.toString('utf8'));
@@ -440,7 +440,7 @@ test.describe('J26 — three translators sync one project through Door43', () =>
       await syncAs(page, A);
       expect(await counts(page)).toEqual({ received: 0, newest: 0, conflicts: 0 });
       expect(remote.main()).not.toBe(mainBefore);
-      // D100 (#676): the sync applies main's tree in place; A's HEAD is not main's
+      // D101 (#676): the sync applies main's tree in place; A's HEAD is not main's
       expectIngredientsEqualMain(remote.bare, A.repo);
       await page.getByTestId('sync-dismiss').click();
     });
@@ -506,7 +506,7 @@ test.describe('J26 — three translators sync one project through Door43', () =>
     }
     for (const [p, bytes] of [...a].sort(([x], [y]) => (x < y ? -1 : 1))) lines.push(`${bytes.length}\t${p}`);
     for (const t of TRANSLATORS) {
-      // D100 (#676): each project's ingredients/ (but audio/) are Door43 main's tree, byte for byte
+      // D101 (#676): each project's ingredients/ (but audio/) are Door43 main's tree, byte for byte
       expectIngredientsEqualMain(remote.bare, t.repo);
       const forks = foldOf(t.repo).forks.filter((f) => f.key.startsWith('text|'));
       expect(forks, `${t.label}: no verse has a conflict`).toEqual([]);
