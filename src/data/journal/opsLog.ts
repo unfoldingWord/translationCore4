@@ -37,6 +37,15 @@
 // Recovery only goes forward, and the apply never removes a journal file, so work
 // saved in the project after the apply began stays: its derived files rebuild at
 // the next open (the journal is ahead of them, so the open regenerates forward).
+// The apply repairs a journal file that a stopped write left in part by writing
+// it again: the ingredient POST replaces the whole file [VERIFIED — rig 0.18.15
+// (a83725b), 2026-10-14: a write of "second" over "first bytes" reads back
+// "second", and no .bak is made with `no_bak`].
+// `recover()` runs the disk rule before it reads the settings document, so a
+// settings read that fails never stops it. A store waits for the start recovery
+// (`recoverySettled`) before an open or a create, and it opens or creates only a
+// project path (`_local_/_local_/<name>`): the fixed clone path of a sync is a
+// listed repository for a moment, and the sync deletes it.
 // The sync record in this log is only the Report for the dev Inspector; its
 // `phase` fact says how far the sync got.
 // A store opened before an apply is stale after it (JournalingStore): the sync
@@ -47,7 +56,7 @@
 // `clients.rs` creates the file, then writes it) cannot lock anything, because no
 // record in it can be read. `recover()` keeps its bytes under `unreadableSettings`,
 // starts an empty ops log, and reports the incident; any other read failure fails
-// closed (`opslog.not-loaded`).
+// closed after the disk rule (`opslog.not-loaded`: no sync starts).
 import { Refusal, failedReport, isUnjournaledIngredient, okReport, type Report } from './runtime';
 import type { ServerApi } from '../serverApi';
 import { isNotFoundError } from '../serverApi';
@@ -231,6 +240,12 @@ const isIngredientGone = (error: unknown): boolean => {
 
 const FLAGS = { updateIngredients: false, keepBak: false } as const;
 
+/** The start recovery that runs now, settled either way (#676). A store waits
+ * for it before an open or a create, so neither races the disk rule. Before the
+ * first recovery it is already settled. */
+let recovering: Promise<void> = Promise.resolve();
+export const recoverySettled = (): Promise<void> => recovering;
+
 /** True while the scratch copy of `repoPath` holds the apply marker (module header). */
 export const isApplyPending = async (api: Pick<OpsRecoveryApi, 'listPaths'>, repoPath: string): Promise<boolean> =>
   (await api.listPaths(scratchPathOf(repoPath))).includes(APPLY_MARKER);
@@ -335,16 +350,26 @@ export class OpsLog implements OpsRecorder {
 
   /** Resolve every record a killed operation left open, and load the log.
    * Run once, when the app starts, before any operation begins. */
-  async recover(api: OpsRecoveryApi): Promise<OpsEntry[]> {
-    const doc = await this.readOrSetAside();
-    // The disk rule first, for each repository at any path (a project opened from
-    // Door43 can be outside `_local_/_local_/`): the settings document never
-    // decides it. The platform lists no `_local_/_archive_/` folder
-    // (list_local_repos.rs, pankosmia-web a83725b), so the scan goes from each
-    // repository to its scratch copy: one GET each, and a missing scratch copy
-    // answers [] with HTTP 200.
+  recover(api: OpsRecoveryApi): Promise<OpsEntry[]> {
+    const run = this.recoverOnce(api);
+    recovering = run.then(() => undefined, () => undefined);
+    return run;
+  }
+
+  /** The disk rule for each repository at any path (a project opened from Door43
+   * can be outside `_local_/_local_/`). The platform lists no `_local_/_archive_/`
+   * folder (list_local_repos.rs, pankosmia-web a83725b), so the scan goes from
+   * each repository to its scratch copy: one GET each, and a missing scratch copy
+   * answers [] with HTTP 200. Returns the failure of the list, or null. */
+  private async runDiskRule(api: OpsRecoveryApi): Promise<unknown> {
     this.applied = new Set();
-    for (const repoPath of await api.listLocalRepos()) {
+    let repos: string[];
+    try {
+      repos = await api.listLocalRepos();
+    } catch (error) {
+      return error;
+    }
+    for (const repoPath of repos) {
       try {
         if ((await finishPendingApply(api, repoPath)) === 'applied') this.applied.add(repoPath);
       } catch (error) {
@@ -353,6 +378,16 @@ export class OpsLog implements OpsRecorder {
         console.error(`ops log: ${failure.error}`);
       }
     }
+    return null;
+  }
+
+  private async recoverOnce(api: OpsRecoveryApi): Promise<OpsEntry[]> {
+    // The disk rule first, before the settings read: the settings document never
+    // decides it, and a settings read that fails never stops it.
+    const listFailure = await this.runDiskRule(api);
+    const doc = await this.readOrSetAside();
+    // no list, no disk rule: the log does not load (fail closed; a sync refuses)
+    if (listFailure) throw listFailure;
     const resolved: OpsEntry[] = [];
     for (const entry of opsEntriesOf(doc)) {
       // A record this session began is running, not interrupted.

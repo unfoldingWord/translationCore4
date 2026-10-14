@@ -512,17 +512,16 @@ async function syncRecorded(
   }
 
   // 8. the apply is done: the marker goes first (one file), then the scratch copy
+  // A failure from here on is after the apply: the sync is done, and the next
+  // start or sync ends the clean-up (a marker left there applies again, which
+  // changes nothing).
   try {
     await deleteIngredientIfPresent(api, scratch, APPLY_MARKER);
-  } catch (error) {
-    const refusal = new Refusal('sync.apply-pending', 'the apply finished, but its marker was not deleted; the next start ends it', failureOf(error));
-    return failed(refusal, { tries: facts.tries, phase: 'apply' });
-  }
-  try {
     await mine.journal.clearCarried(mine.outbox);
     await deleteIfPresent(api, scratch);
   } catch (error) {
-    return failed(error, { tries: facts.tries, applied: true }); // a coded `sync.failed` (withCode)
+    const refusal = new Refusal('sync.cleanup-failed', 'the sync is done; its clean-up did not finish, and the next start or sync ends it', failureOf(error));
+    return failed(refusal, { tries: facts.tries, applied: true });
   }
   return { report: okReport('sync', startedAt, new Date().toISOString(), { ...facts, repoPath }), open: false };
 }

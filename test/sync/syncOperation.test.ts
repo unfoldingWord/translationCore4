@@ -444,7 +444,13 @@ describe('#676 crash recovery of the sync (G8)', () => {
       return response;
     }) as typeof fetch });
     const run = sync(w.deps(dying), { repoPath: REPO, session: SESSION });
-    const done = await Promise.race([run.then(() => true), new Promise((r) => setTimeout(() => r(false), 200))]);
+    // wait for the end of the sync or for the kill, not for a fixed time: a full
+    // parallel suite can make the k-th call come later than any fixed wait
+    let poll: ReturnType<typeof setInterval> | undefined;
+    const done = await Promise.race([
+      run.then(() => true),
+      new Promise<boolean>((r) => { poll = setInterval(() => { if (killed) r(false); }, 2); }),
+    ]).finally(() => clearInterval(poll));
     return { w, before, staged, killed, done, cut, from };
   }
 
@@ -998,6 +1004,72 @@ describe('#676 crash recovery of the sync (G8)', () => {
     const store = new JournalingStore({ api: w.api, kv: w.kv, ops: w.ops });
     await expect(store.open(REPO)).rejects.toMatchObject({ code: 'sync.apply-pending' });
     await store.open(REPO); // the next check answers: the project opens
+    store.dispose();
+  });
+
+  it('[G8] a settings read that fails with no parse error (TypeError) does not stop the disk rule: the pending apply finishes, and a later start that loads opens the project', async () => {
+    const w = await teammateTextWorld();
+    await killInApply(w, w.ops);
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const broken = new OpsLog({ read: async () => { throw new TypeError('fetch failed'); }, update: serialSettingsWriter(async () => ({}), async () => {}),
+      readText: async () => '', replace: async () => {} });
+    await expect(broken.recover(w.api)).rejects.toThrow('fetch failed');
+    expect(broken.recovered).toBe(false); // the log did not load: a sync refuses
+    expect(w.rig.repos.has(SCRATCH)).toBe(false); // the apply finished, then the marker and the scratch copy went
+    expect(await restart(w, storedOf(w))).toBeDefined();
+    await expectTeammateKept(w);
+  });
+
+  it('[G8] a clean-up failure after a finished apply is sync.cleanup-failed, not sync.failed: the project has the apply and opens', async () => {
+    const w = await teammateTextWorld();
+    // the scratch delete after the push (Door43 main is at version 3 then)
+    w.rig.failOn(({ method, route }) => method === 'POST' && route === `/api/git/delete/${SCRATCH}` && w.rig.remotes.get(URL_)!.version > 2, 1);
+    const report = await sync(w.deps(), { repoPath: REPO, session: SESSION });
+    expect([report.ok, report.code]).toEqual([false, 'sync.cleanup-failed']);
+    expect(report.facts).toMatchObject({ applied: true });
+    await expectTeammateKept(w);
+  });
+
+  it('[G8] a create waits for the start recovery: it does not race the apply', async () => {
+    const w = await teammateTextWorld();
+    await killInApply(w, w.ops);
+    forgetSharedClocks();
+    forgetProjectQueues();
+    let release = (): void => {};
+    const gate = new Promise<void>((r) => (release = r));
+    let paused = false;
+    const slow = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (!paused && String(input).includes(`/burrito/ingredient/raw/${REPO}`) && init?.method === 'POST') {
+        paused = true;
+        await gate;
+      }
+      return w.rig.fetchFn(input, init);
+    }) as typeof fetch });
+    const stored = storedOf(w);
+    const recovering = new OpsLog({ read: stored.read, update: serialSettingsWriter(stored.read, stored.write) }).recover(slow);
+    await vi.waitFor(() => expect(paused).toBe(true)); // the apply runs
+    const store = new JournalingStore({ api: w.api, kv: memKv() });
+    let created = false;
+    const creating = store.createProject({ content_name: 'Nuevo', content_abbr: 'nuevo', content_language_code: 'es', add_book: false, versification: 'eng' })
+      .then(() => { created = true; });
+    await new Promise((r) => setTimeout(r, 50));
+    expect([created, w.rig.repos.has('_local_/_local_/nuevo')]).toEqual([false, false]);
+    release();
+    await recovering;
+    await creating;
+    expect(created).toBe(true);
+    store.dispose();
+    await expectTeammateKept(w);
+  });
+
+  it('a repository outside _local_/_local_/ is not a project: an open of the fixed clone path refuses open.not-a-project, and the project opens', async () => {
+    const w = await world();
+    w.rig.createRepo(CLONE_PATH, Object.fromEntries(w.rig.repos.get(REPO)!.files));
+    forgetProjectQueues();
+    const store = new JournalingStore({ api: w.api, kv: w.kv });
+    await expect(store.open(CLONE_PATH)).rejects.toMatchObject({ code: 'open.not-a-project' });
+    await store.open(REPO);
     store.dispose();
   });
 });

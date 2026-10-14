@@ -2752,7 +2752,11 @@ signature check), `docs/PACKAGING.md` (Signing), and `scripts/README-windows.txt
    (any bytes) gets the same apply again, then the marker and the scratch copy are deleted;
    a scratch copy with no marker is deleted, because the project did not change; no scratch
    copy means nothing is pending. While the marker is there, the project takes no open
-   (`sync.apply-pending`). The apply compares before it writes, so it is safe to run again.
+   (`sync.apply-pending`). The rule runs before the settings read, so a settings read that
+   fails never stops it. An open or a create waits for the start recovery, and opens or
+   creates only a project path (`_local_/_local_/<name>`; `open.not-a-project`). A failure in
+   the clean-up after a finished apply is `sync.cleanup-failed`: the sync is done.
+   The apply compares before it writes, so it is safe to run again.
    Recovery only goes forward. The sync record in the ops log is only the Report for the dev
    Inspector.
 3. **G8, new text.** A crash during the apply never makes the project unopenable, never loses
