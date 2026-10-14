@@ -544,7 +544,7 @@ export class JournalingStore implements BurritoStore {
   /** The sync generation of the project when this store opened it (#676). */
   private openedGeneration = 0;
 
-  /** #676 (G8, D100): while the project's scratch copy holds the apply marker, an
+  /** #676 (G8, D101): while the project's scratch copy holds the apply marker, an
    * apply may be half done; the project takes no open until a start or a sync
    * finishes it. The disk decides, never the settings document. Edits need no
    * check: a store opens only when no apply is pending, and an apply in this

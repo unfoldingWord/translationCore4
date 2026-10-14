@@ -1,4 +1,4 @@
-// The sync shell (issue #676; layer 3 of epic #24, D98, D100). The thin part that
+// The sync shell (issue #676; layer 3 of epic #24, D98, D101). The thin part that
 // touches the server, beside the share operation. One sync of one project:
 //
 //   1. checks: a Door43 username and token (`sync.auth-failed`, before any
@@ -21,7 +21,7 @@
 //   6. push. Not a fast-forward: start again at step 2; after three tries stop
 //      with `sync.non-fast-forward` (G4). Never a force push: the platform push
 //      has no force form.
-//   7. the apply (G8, D100): write the apply marker into the scratch copy, move
+//   7. the apply (G8, D101): write the apply marker into the scratch copy, move
 //      the project's sync generation on (a store opened before it is stale), and
 //      `applyScratch` makes the project's `ingredients/`, except `audio/`, equal
 //      to the pushed scratch copy: journal files, then derived files, then
@@ -39,7 +39,7 @@
 //
 // Audio: round 1 never reads or writes `ingredients/audio/` (the one class that
 // can be binary, R-8.7.3). A teammate's audio does not reach this project, and
-// own audio stays where it is (D100).
+// own audio stays where it is (D101).
 //
 // The HTTPS answer for a refused token is recorded: HTTP 500 with
 // `code=Auth (-16)` (docs/evidence/sync-transport-spike-2026-10-13.md, owner run
@@ -182,7 +182,10 @@ export const clonePathOf = (source: CloneSource): string => `${source.host}/${so
  * a stale folder at the path to the move off the path, so two clones of the same
  * repository (a sync, and #677 open from Door43) never meet there. `cloneProject`
  * takes it; other code that uses the fixed path takes it too. The key has its
- * own prefix, so it never waits on a project queue. */
+ * own prefix, so it never waits on a project queue.
+ * Lock order: the project queue (`inProjectQueue`) first, then this lock; never
+ * the reverse. A sync holds its project queue when it clones; code that holds
+ * this lock must never wait on a project queue, or the two can deadlock. */
 export const withClonePath = <T>(clonePath: string, fn: () => Promise<T>): Promise<T> =>
   inProjectQueue(`clone-path:${clonePath}`, fn);
 
@@ -300,7 +303,7 @@ export async function sync(deps: SyncDeps, request: SyncRequest): Promise<Report
       return failedReport('sync', at, at,
         new Refusal('opslog.not-loaded', 'the ops log did not load at this start; restart the app to sync'), { repoPath });
     }
-    // G8 (D100): an apply that the marker says may have begun is finished first
+    // G8 (D101): an apply that the marker says may have begun is finished first
     try {
       await finishPendingApply(deps.api, repoPath);
     } catch (error) {
@@ -403,7 +406,7 @@ async function syncOnce(
     await api.remakeIngredients(scratch);
     await api.addAndCommit(scratch, message);
   }
-  const verified = await verifyProjectAgainstJournal(api, scratch);
+  const verified = await verifyProjectAgainstJournal(api, scratch, { skipUnjournaled: true }); // audio/ is never read
   if (!verified.ok)
     throw new Refusal('sync.verify-failed', 'the copy is not the fold of its journal; nothing was pushed', {
       projectionFailure: verified.projectionFailure,
@@ -488,7 +491,7 @@ async function syncRecorded(
   if ('result' in tried) return tried.result;
   const { facts } = tried;
 
-  // 7. the apply (G8, D100): the marker in the scratch copy is the record, and it is
+  // 7. the apply (G8, D101): the marker in the scratch copy is the record, and it is
   // there before the first write to the project (opsLog.ts header)
   await note({ phase: 'apply' });
   try {

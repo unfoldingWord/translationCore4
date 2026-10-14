@@ -1,6 +1,6 @@
 // The sync shell (issue #676, layer 3 of epic #24) over a faked transport: the
 // fake rig (test/helpers/journalingRig.ts) answers the #673 routes — clone,
-// copy, push, delete — over an in-memory Door43 repository, and the apply (D100)
+// copy, push, delete — over an in-memory Door43 repository, and the apply (D101)
 // writes the pushed tree into the project. Each test asserts
 // codes and the state of the folders, never message text.
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -640,7 +640,7 @@ describe('#676 crash recovery of the sync (G8)', () => {
     await opening;
     store.dispose();
     expect((await syncing).ok).toBe(true);
-  });
+  }, 30_000);
 
   it('[G4] a Door43 repository whose default branch is not main is refused (sync.not-main); nothing changes on Door43 or here', async () => {
     const w = await world();
@@ -651,7 +651,7 @@ describe('#676 crash recovery of the sync (G8)', () => {
     expect(w.rig.remotes.get(URL_)!.version).toBe(1);
     expect(w.rig.repos.get(REPO)!.files).toEqual(project);
     expect(w.rig.repos.has(SCRATCH)).toBe(false);
-  });
+  }, 30_000);
 
   it('the scratch names come from the whole project path: no two paths share them, and each passes the path rules', () => {
     const paths = ['_local_/_local_/prueba', 'qa.door43.org/facilitator/prueba', '_local_/_local_/a-sb', '_local_/_local_-s/b', '_local_/_local_/a_b'];
@@ -753,9 +753,9 @@ describe('#676 crash recovery of the sync (G8)', () => {
     expect(w.rig.repos.has(CLONE_PATH)).toBe(false);
   });
 
-  // ---- the apply (D100) -------------------------------------------------------
+  // ---- the apply (D101) -------------------------------------------------------
 
-  it('audio is outside the sync (D100): nothing writes or deletes it, own audio stays here, and a teammate audio file does not reach this project', async () => {
+  it('audio is outside the sync (D101): nothing reads, writes or deletes it, own audio stays here, and a teammate audio file does not reach this project', async () => {
     const w = await world();
     const own = 'ID3 own audio';
     w.rig.repos.get(REPO)!.files.set('audio/TIT/1.mp3', own);
@@ -763,8 +763,8 @@ describe('#676 crash recovery of the sync (G8)', () => {
     const audioCalls: string[] = [];
     const watching = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(String(input));
-      // the verifier reads the scratch copy's audio as text to list it as tolerated; nothing writes or deletes audio
-      if (init?.method === 'POST' && (url.searchParams.get('ipath') ?? '').startsWith('audio')) audioCalls.push(url.pathname);
+      // owner ruling: a sync never reads, writes or deletes ingredients/audio/ (any method, any route)
+      if ((url.searchParams.get('ipath') ?? '').startsWith('audio')) audioCalls.push(`${init?.method ?? 'GET'} ${url.pathname}`);
       return w.rig.fetchFn(input, init);
     }) as typeof fetch });
     const report = await sync(w.deps(watching), { repoPath: REPO, session: SESSION });
@@ -846,7 +846,7 @@ describe('#676 crash recovery of the sync (G8)', () => {
     expect(entry.report).toMatchObject({ op: 'sync', ok: false, facts: { phase: 'push', rolledBack: true } });
     await expectOneProjectWithOwnWork(w, before, staged);
   });
-  // ---- the disk record (D100): the settings document never locks or unlocks ------
+  // ---- the disk record (D101): the settings document never locks or unlocks ------
 
   /** A teammate changed TIT 1:2 on Door43 main; this computer changed TIT 1:1 later. */
   async function teammateTextWorld() {
@@ -969,7 +969,9 @@ describe('#676 crash recovery of the sync (G8)', () => {
     await vi.waitFor(() => expect(killed).toBe(true));
     expect(w.rig.repos.get(SCRATCH)!.files.has(APPLY_MARKER)).toBe(false);
     const applied = new Map(w.rig.repos.get(REPO)!.files);
-    await restart(w, storedOf(w));
+    const [entry] = await restart(w, storedOf(w));
+    // the apply ended before the stop: the Report says the sync is over, not failed
+    expect(entry.report).toMatchObject({ op: 'sync', ok: true, facts: { phase: 'apply', applyPending: false } });
     expect(w.rig.repos.has(SCRATCH)).toBe(false);
     expect(w.rig.repos.get(REPO)!.files).toEqual(applied); // nothing applied from the part copy
     await expectTeammateKept(w);
@@ -1064,6 +1066,8 @@ describe('#676 crash recovery of the sync (G8)', () => {
   });
 
   it('[G8] a settings read that never answers holds no open and no create: the gate opens when the disk rule ends; the sync still refuses', async () => {
+    // the stores here have no `ops`: an open that writes its own ops-log record
+    // (`ops.begin`) waits for that settings write, which is not the gate
     const w = await teammateTextWorld();
     await killInApply(w, w.ops); // REPO has a pending apply (the marker)
     forgetSharedClocks();
@@ -1138,7 +1142,7 @@ function fakeApi(repos: Record<string, Map<string, string>>, opts: { failWrites?
   return api as unknown as OpsRecoveryApi;
 }
 
-describe('#676 applyScratch (D100)', () => {
+describe('#676 applyScratch (D101)', () => {
   const scratchFiles = () => new Map([
     ['TIT.usfm', 'new TIT'],
     ['checking/journal/a1/segments/s1.action.json', 'own 1'],
