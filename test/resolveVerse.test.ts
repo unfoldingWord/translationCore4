@@ -112,3 +112,64 @@ describe('#679 resolveVerse keeps one version', () => {
     expect(store.readVerseConflicts().map((c) => c.key)).toEqual([KEY]);
   });
 });
+
+// Bench finding P2 (PR #687): a verse head can come from a structural action. A
+// teammate renumbers Titus 1 while another edits 1:2 from the state before it; the
+// review lists the fork, and keeping either version through the store resolves it.
+describe('#679 resolveVerse keeps a version of a renumber conflict', () => {
+  const RENUMBERER = 'teammate-renumber';
+  const EDITOR = 'teammate-editor';
+  const RKEY = 'text|TIT|1:2';
+  const withRenumberConflict = async () => {
+    const { shiftChapter } = await import('../conformance/fixtures/renumber.mjs');
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const rig = journalingRig();
+    const kv = memKv();
+    const clock = tickingNow('2026-10-13T09:00:00.000Z');
+    const api = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: rig.fetchFn });
+    const first = new JournalingStore({ api, kv, now: () => clock.advance(13) });
+    await first.createProject({ content_name: 'Prueba', content_abbr: 'prueba', content_language_code: 'es', add_book: false, versification: 'eng' });
+    await first.addBook({ book_code: 'TIT', book_title: 'Tito', book_abbr: 'TIT', add_cv: true, initialUsfm: TIT_USFM.replace('\\v 2 ___', '\\v 2 Segundo versículo.') });
+    const files = rig.repos.get(REPO)!.files;
+    const own = async (): Promise<JournalEvent[]> => {
+      const out: JournalEvent[] = [];
+      for (const path of [...files.keys()].filter((p) => SEGMENT.test(p)).sort()) {
+        const verdict = await validateSegment(files.get(path)!);
+        if (!verdict.ok) throw new Error(`invalid segment ${path}: ${verdict.reason}`);
+        out.push(...verdict.events);
+      }
+      return out;
+    };
+    const before = fold(await own());
+    const renumber = shiftChapter(before, 'TIT', 1, { actor: RENUMBERER, ts: `2026-10-13T12:00:00.000Z|0000|${RENUMBERER}` }) as JournalEvent;
+    const edit: JournalEvent = {
+      v: 1, op: 'text.verse.set', actor: EDITOR, ts: `2026-10-13T12:01:00.000Z|0000|${EDITOR}`,
+      base: before.headsTs[RKEY], book: 'TIT', chapter: '1', verse: '2', text: 'Segundo, editado.\n',
+    };
+    for (const [actor, e] of [[RENUMBERER, renumber], [EDITOR, edit]] as const) {
+      files.set(`checking/journal/${actor}/segments/${segmentName(e.ts)}`, await sealAction([e]));
+      files.set(`checking/journal/${actor}/actor.json`, `${JSON.stringify({ schemaVersion: 1, actorId: actor, createdAt: '2026-10-13T08:00:00.000Z', device: 'teammate' }, null, 2)}\n`);
+    }
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const store = new JournalingStore({ api, kv, now: () => clock.advance(29) });
+    await store.open(REPO);
+    return { api, store, renumber, edit };
+  };
+
+  for (const which of ['renumber', 'edit'] as const)
+    it(`keeping the ${which} version removes the conflict; the book holds the kept text`, async () => {
+      const { api, store, renumber, edit } = await withRenumberConflict();
+      const conflict = store.readVerseConflicts().find((c) => c.key === RKEY);
+      // Positive control: the review lists the structural fork with both versions.
+      expect(conflict?.versions.map((v) => v.ts)).toEqual([renumber.ts, edit.ts]);
+      const kept = conflict!.versions.find((v) => v.ts === (which === 'renumber' ? renumber.ts : edit.ts))!;
+      expect(kept.text).toBe(which === 'renumber' ? 'Pablo, siervo de Dios.\n' : edit.text);
+      await store.resolveVerse(RKEY, kept.ts);
+      expect(store.readVerseConflicts().map((c) => c.key)).not.toContain(RKEY);
+      expect((await store.readBook('TIT')).usfm).toContain(`\\v 2 ${kept.text.trim()}`);
+      const report = await verifyProjectAgainstJournal(api, REPO);
+      expect(report.ok, describeVerifierReport(report)).toBe(true);
+    });
+});

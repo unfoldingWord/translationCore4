@@ -4,9 +4,10 @@
 // head, but the review shows verse text only (`text|` keys, G7) — a check-result
 // or alignment fork projects its newest head and is not reviewed here. A fork
 // names its heads by ts alone, so each head's actor and text come from the
-// journal event with that ts.
+// journal event with that ts — the text by the fold's own rule (verseHeadText),
+// because a structural action makes verse heads too.
 import { BOOK_CODES } from '../../../journal/grammar.mjs';
-import type { FoldOutput } from './runtime';
+import { verseHeadText, type FoldOutput } from './runtime';
 import type { JournalEvent } from './seal';
 
 /** One version of a verse in a conflict: one live head of its `text|` register. */
@@ -62,9 +63,10 @@ export const verseConflicts = (foldOut: FoldOutput, events: readonly JournalEven
       const versions = fork.heads.map((ts): VerseVersion => {
         const e = byTs.get(ts);
         // A fork head the event set does not hold means the fold and the events disagree.
-        if (!e || e.op !== 'text.verse.set' || typeof e.text !== 'string')
-          throw new Error(`fork ${fork.key}: head ${ts} is not a text.verse.set in the event set`);
-        return { ts, actor: e.actor, text: e.text, provisional: ts === fork.provisional };
+        if (!e) throw new Error(`fork ${fork.key}: head ${ts} is not in the event set`);
+        // A head is a verse edit, a book.add slot or a structural post-image (a
+        // renumber, split or merge); its text follows the fold's own rule.
+        return { ts, actor: e.actor, text: verseHeadText(e, `${chapter}:${verse}`), provisional: ts === fork.provisional };
       });
       return { key: fork.key, book, chapter, verse, versions };
     });

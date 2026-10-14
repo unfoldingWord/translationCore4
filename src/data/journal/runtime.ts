@@ -11,7 +11,7 @@
 //
 // Types are deliberately loose-but-named (the vendor.d.ts discipline): shapes are
 // asserted behaviorally by the conformance suite, not re-invented here.
-import { fold as foldRef, verseTextMd5 as verseTextMd5Ref } from '../../../journal/fold.mjs';
+import { fold as foldRef, verseTextMd5 as verseTextMd5Ref, verseHeadText as verseHeadTextRef } from '../../../journal/fold.mjs';
 import { decompose as decomposeRef, recompose as recomposeRef, slotKeysOf as slotKeysOfRef, SLOT as SLOT_REF } from '../../../journal/skeleton.mjs';
 import {
   derivedProjections as derivedProjectionsRef,
@@ -92,6 +92,11 @@ export interface FoldOutput {
 
 /** §8.6: the pure fold of an event SET. Throws on a corrupt/malformed union. */
 export const fold = foldRef as (events: JournalEvent[]) => FoldOutput;
+
+/** §8.5: the text a verse register head holds for slot `vkey` — the fold's own rule
+ * for a verse edit, a book.add and a structural post-image (#679). Throws for an op
+ * that makes no verse head. */
+export const verseHeadText = verseHeadTextRef as (event: JournalEvent, vkey: string) => string;
 
 /** §5.1 plain-text validity hash of ONE content slot (I-3). */
 export const verseTextMd5 = verseTextMd5Ref as (content: string) => string;
