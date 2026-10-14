@@ -386,7 +386,8 @@ Preparation:
 
 Commands. Each call has `--max-time 120`, so that a credential loop cannot stop the run. The
 `call` function prints each request with `pass_key` replaced by `***`. No line prints the token,
-so you can paste the output into this record.
+so you can paste the output into this record. `curl` reads the body from stdin, so the token is
+not in the process list.
 
 The order matters. Steps 3 and 4 push while the local `main` is one commit ahead of Door43
 `main`, so a fast-forward is possible. Thus a refusal there comes from the sign-in or the
@@ -400,7 +401,7 @@ Record the reason exactly as it comes.
 
 ```zsh
 P=http://localhost:19673/api; R=qa.door43.org/$U/tc4-sync-spike; S=_local_/_local_/sync_spike
-call() { print -r -- "> POST $1 $(print -r -- "${2:-}" | sed -E 's/("pass_key":")[^"]*/\1***/')"; curl -s --max-time 120 -w '\n< HTTP %{http_code}\n' -X POST -H 'Content-Type: application/json' ${2:+-d} ${2:+"$2"} "$P$1"; }
+call() { print -r -- "> POST $1 $(print -r -- "${2:-}" | sed -E 's/("pass_key":")[^"]*/\1***/g')"; print -rn -- "${2:-}" | curl -s --max-time 120 -w '\n< HTTP %{http_code}\n' -X POST -H 'Content-Type: application/json' ${2:+--data-binary} ${2:+@-} "$P$1"; }
 push() { call "/git/push/$S" "{\"remote\":\"$1\",\"cred_type\":\"https\",\"username\":\"$U\",\"pass_key\":\"$2\"}"; }
 commit() { call "/burrito/ingredient/raw/$S?ipath=ingredients/spike.txt&no_bak" "{\"payload\":\"$1\"}"; call "/git/add-and-commit/$S" "{\"commit_message\":\"$1\"}"; }
 call /net/enable
@@ -448,6 +449,11 @@ to the bare remote moved `main`. Step 7 put a copy of the mirror at the fixed pa
 
 Every push line printed `"pass_key":"***"`. `grep -c SECRET-TOKEN-VALUE` on the whole output
 gave 0, and `grep -c not-a-token` gave 0.
+
+After review, `call` changed to send the body on stdin (`--data-binary @-`). The rig dry run used
+the earlier `-d` form. The new `call` and `push` ran against a local echo server on 2026-10-13:
+the server got the full body with the token, stdout and the `curl` argv in `ps` held neither
+token, and the earlier `-d` form showed the token in `ps` (negative control).
 
 ### Replies
 
