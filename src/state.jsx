@@ -64,6 +64,7 @@ import { currentSession, hasKeptToken, resumeKeptSession, signIn as door43SignIn
 import { desktopKeychain } from './data/share/keychain';
 import { share as door43Share, repositoryOf } from './data/share/shareOperation';
 import { standInCloneRepo, sync as door43Sync } from './data/share/syncOperation';
+import { projectSyncs } from './data/share/syncs';
 import { organizationChoices } from './data/share/recommend';
 import { applyVersions, carryOverNeeds, resolveVersions, unresolvedSlots } from './data/import/tc3';
 import { PARSERS } from './data/import/parsers';
@@ -5890,8 +5891,12 @@ export function AppProvider({ children }) {
        * #530: Upload changes on a shared card opens its dialog and sends
        * nothing; its steps start when the upload, or its sign-in, is sent. */
       shareProject: (project) => {
+        const known = stateRef.current.remoteByProject[project.id];
+        // #678: a project that syncs never runs the share push after its first
+        // share (its history differs from Door43 main after a sync): it syncs.
+        if (projectSyncs(project, known)) return a.syncProject(project);
         // The click starts the flow of this Share or Upload changes (#530).
-        if (stateRef.current.remoteByProject[project.id]) return a.openUpload(project, startShareFlow('upload'));
+        if (known) return a.openUpload(project, startShareFlow('upload'));
         const flow = startShareFlow('share');
         // A flow that opened no dialog (Cancel on the question, or a failure
         // before the first dialog) ends here.
@@ -5973,8 +5978,8 @@ export function AppProvider({ children }) {
       },
       /** Share, or Upload changes. No token: the sign-in step first, then back
        * here. A shared project (an `origin`) opens the upload dialog on its
-       * review step (#530); a first share opens the dialog on the
-       * where-it-goes step and reads the organizations (D84 point 3). */
+       * review step (#530), or syncs when it is a project that syncs (#678);
+       * a first share opens the dialog on the where-it-goes step and reads the organizations (D84 point 3). */
       startShare: async (project, flow) => {
         let session = currentSession();
         if (!session) {
@@ -5996,6 +6001,10 @@ export function AppProvider({ children }) {
         // first-share dialog, so a shared project never asks again (#362 AC 2, 7).
         const shared = stateRef.current.remoteByProject[project.id] || (await a.loadShared(project, true));
         if (flow.closed) return;
+        // #678: the same rule as shareProject, for a remote read only now (the
+        // card had not read it, or the sign-in step came first). The sync runs
+        // in this flow, so it closes this flow's sign-in step.
+        if (projectSyncs(project, shared)) return a.syncRun(project, flow);
         if (shared) return a.openUpload(project, flow);
         flow.dialog = true;
         dispatch({

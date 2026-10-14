@@ -10,6 +10,7 @@ import { useApp } from '../state.jsx';
 import { t } from '../i18n';
 import { bookName } from '../data/bookNames';
 import { locationOf } from '../data/dcsServer';
+import { projectSyncs } from '../data/share/syncs';
 import { Card, BookTile, Button, Overline, Badge, Callout, Toast } from '../ds/index.js';
 import SyncResult from './SyncResult.jsx';
 
@@ -55,7 +56,7 @@ function ShareAction({ p }) {
     actions.loadShared(p);
   }, [p.id]);
   const shared = s.remoteByProject[p.id] || null;
-  const syncs = !!shared && p.flavor !== 'textStories';
+  const syncs = projectSyncs(p, shared);
   const running = s.syncing === p.id;
   const label = t(running ? 'home.syncing' : syncs ? 'home.sync' : shared ? 'home.uploadChanges' : 'home.share');
   return (
