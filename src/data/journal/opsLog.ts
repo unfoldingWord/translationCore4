@@ -38,7 +38,8 @@
 // project's queue for its whole run, so in the same run that is true. A server
 // failure in the swap is handled in that run (syncOperation.ts): at
 // swap.copy-previous the live project is still whole, so the sync goes back now
-// (it deletes the scratch and previous copies and closes its record failed); at a
+// (it closes its record failed, then deletes the scratch and previous copies; a
+// close that is not saved keeps both copies, so the next start can go forward); at a
 // later phase it runs the rest of the swap once more. Only when that also fails
 // does the record stay open, and then the project cannot open, take an edit or
 // start a sync (`sync.swap-pending`) until `recover()` at the next start.
