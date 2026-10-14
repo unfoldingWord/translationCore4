@@ -38,6 +38,9 @@ function door43Main(tmp: string, repo: string, work: string): BareRemote {
   execFileSync('git', ['init', '-q', '--bare', '-b', 'main', bare]);
   git(work, 'push', '-q', pathToFileURL(bare).href, 'HEAD:main');
   execFileSync('git', ['clone', '-q', pathToFileURL(bare).href, mirrorDir(repo)]);
+  // The server's own clone writes a local identity; add-and-commit panics without one (#676).
+  execFileSync('git', ['-C', mirrorDir(repo), 'config', 'user.name', 'rig']);
+  execFileSync('git', ['-C', mirrorDir(repo), 'config', 'user.email', 'rig@localhost']);
   return {
     tmp,
     bare,
