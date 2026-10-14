@@ -167,3 +167,78 @@ describe('#679 the conflict review selector', () => {
     expect(() => verseConflicts(out, events.filter((e) => e.ts !== headB.ts))).toThrow();
   });
 });
+
+// Bench finding P2 (PR #687): the fold also makes verse heads from a structural
+// action (a renumber, split or merge post-image). A renumber and a concurrent
+// verse edit give a valid `text|` fork; the selector must list it, with the
+// structural head's text by the fold's own rule (verseHeadText), never throw.
+describe('#679 a conflict between a renumber and a verse edit', () => {
+  const RENUMBER_TS = '2026-10-13T11:00:00.000Z|0000|translator-a';
+  const EDIT_TS = '2026-10-13T11:01:00.000Z|0000|translator-c';
+  const KEY = 'text|JON|1:2';
+  /** The fixture, then A renumbers Jonah 1 (every verse up one, the conformance
+   * renumber fixture) while C edits Jonah 1:2 from the state before it. */
+  const forked = async () => {
+    const { shiftChapter } = await import('../conformance/fixtures/renumber.mjs');
+    const events = union();
+    const before = fold(events);
+    const renumber = shiftChapter(before, 'JON', 1, { actor: 'translator-a', ts: RENUMBER_TS }) as JournalEvent;
+    const edit: JournalEvent = {
+      v: 1, op: 'text.verse.set', actor: 'translator-c', ts: EDIT_TS, base: before.headsTs[KEY],
+      book: 'JON', chapter: '1', verse: '2', text: 'C edita Jonás 1:2\n',
+    };
+    // The one validator accepts the renumber as a sealed action (positive control on its shape).
+    expect((await validateSegment(await sealAction([renumber]))).ok).toBe(true);
+    const all = [...events, renumber, edit];
+    return { all, before, renumber, edit, after: fold(all) };
+  };
+
+  it('the fold accepts the renumber and reports the verse fork; the selector lists it with both versions', async () => {
+    const { all, before, renumber, edit, after } = await forked();
+    expect(after.pendingStructural).toEqual([]);
+    expect(after.forks.find((f) => f.key === KEY)?.heads).toEqual([RENUMBER_TS, EDIT_TS]);
+    const conflict = verseConflicts(after, all).find((c) => c.key === KEY);
+    expect(conflict?.versions).toEqual([
+      // The renumber's post-image on 1:2 holds the old 1:1 text (its transition text).
+      { ts: RENUMBER_TS, actor: 'translator-a', text: (renumber as unknown as { transitions: Record<string, { text: string }> }).transitions['1:2'].text, provisional: false },
+      { ts: EDIT_TS, actor: 'translator-c', text: edit.text, provisional: true },
+    ]);
+    expect(conflict!.versions[0].text).toBe(before.books.JON.verses['1:1']);
+  });
+
+  for (const which of ['the renumbered text', 'the verse edit'] as const)
+    it(`keeping ${which} removes the fork; both versions stay in history`, async () => {
+      const { all, after } = await forked();
+      const conflict = verseConflicts(after, all).find((c) => c.key === KEY)!;
+      const kept = conflict.versions[which === 'the renumbered text' ? 0 : 1];
+      // The resolving edit: the kept text, supersedes every head, and its base on the
+      // renumber's head — the head whose structural ancestry holds the other one.
+      const resolving: JournalEvent = {
+        v: 1, op: 'text.verse.set', actor: 'translator-b', ts: '2026-10-13T11:05:00.000Z|0000|translator-b',
+        base: RENUMBER_TS, supersedes: conflict.versions.map((v) => v.ts),
+        book: 'JON', chapter: '1', verse: '2', text: kept.text,
+      };
+      const resolved = fold([...all, resolving]);
+      expect(resolved.forks.map((f) => f.key)).not.toContain(KEY);
+      expect(resolved.supersedeRefused).toEqual([]);
+      expect(resolved.books.JON.verses['1:2']).toBe(kept.text);
+      expect(resolved.retained.filter((r) => r.key === KEY)).toEqual(
+        conflict.versions.map((v) => ({ key: KEY, ts: v.ts, reason: 'superseded' })),
+      );
+      expect(verseConflicts(resolved, [...all, resolving]).map((c) => c.key)).not.toContain(KEY);
+    });
+
+  it('negative control: a resolving edit based on the provisional edit cannot supersede the renumber head', async () => {
+    // Why resolveVerse lets the fold choose the base: the edit was made before the
+    // renumber, so the renumber's head is not on its structural chain (§8.3).
+    const { all, after } = await forked();
+    expect(after.headsTs[KEY]).toBe(EDIT_TS);
+    const conflict = verseConflicts(after, all).find((c) => c.key === KEY)!;
+    const resolving: JournalEvent = {
+      v: 1, op: 'text.verse.set', actor: 'translator-b', ts: '2026-10-13T11:05:00.000Z|0000|translator-b',
+      base: EDIT_TS, supersedes: conflict.versions.map((v) => v.ts),
+      book: 'JON', chapter: '1', verse: '2', text: conflict.versions[1].text,
+    };
+    expect(fold([...all, resolving]).supersedeRefused).toEqual([{ key: KEY, ts: RENUMBER_TS, by: resolving.ts }]);
+  });
+});
