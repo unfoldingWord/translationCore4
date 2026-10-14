@@ -137,7 +137,7 @@ describe.skipIf(!rigUp)('#676 one full sync against the live rig and the #673 st
     };
     const report = await sync(deps, { repoPath: REPO, session: SESSION });
     expect(reportError(report)).toBeNull();
-    expect([report.ok, report.code]).toEqual([true, undefined]);
+    expect([report.ok, report.code], JSON.stringify(report)).toEqual([true, undefined]);
     expect(report.facts).toMatchObject({ tries: 1, received: { [TEAMMATE]: 1 }, names: { [actor]: 'facilitator', [TEAMMATE]: 'teammate' } });
 
     // G4: Door43 main moved forward, and it is the live project's HEAD
