@@ -62,7 +62,7 @@ import { Door43Api } from './data/share/door43Api';
 import { InternetSwitch, ensureGate, startGate } from './data/internet';
 import { currentSession, hasKeptToken, resumeKeptSession, signIn as door43SignIn, signOut as door43SignOut } from './data/share/session';
 import { desktopKeychain } from './data/share/keychain';
-import { share as door43Share, repositoryOf } from './data/share/shareOperation';
+import { share as door43Share, remoteAllowed, repositoryOf } from './data/share/shareOperation';
 import { standInCloneRepo, sync as door43Sync } from './data/share/syncOperation';
 import { projectSyncs } from './data/share/syncs';
 import { organizationChoices } from './data/share/recommend';
@@ -126,6 +126,21 @@ const readSavedLocale = (cs) => (isLocale(cs?.appLocale) ? cs.appLocale : 'en');
 export const door43 = new Door43Api({ allowed: () => internet.on });
 /** Whether the internet is on, as the share and sign-in code asks for it. */
 const internetAllowed = async () => internet.on;
+/** #678: whether Door43 `main` exists for a shared project. A `file://` origin
+ * (the rig's stand-in, development builds only) has no Door43 API: the sync
+ * clones it. An answer other than 200 or 404 is unknown: the sync runs, and
+ * its Report says what Door43 answered. */
+const mainOnDoor43 = async (shared, session) => {
+  if (!remoteAllowed(shared.url, door43.server)) return true;
+  const [owner, repo] = shared.repository.split('/');
+  return door43.hasBranch(session, owner, repo, 'main').catch(() => true);
+};
+/** #678: whether a Share or Sync flow runs the sync now. A project that syncs
+ * never runs the share push after its first share; it syncs once Door43 main
+ * exists. Until then (a first share whose push failed) its upload retries that
+ * push. A sync with no `origin` runs, and says so. */
+const syncsNow = async (project, shared, kind, session) =>
+  shared ? projectSyncs(project, shared) && mainOnDoor43(shared, session) : kind === 'sync';
 /** D95: the answer to the open "Turn on the internet?" dialog — true for Turn on. */
 let pendingAsk = null;
 /** #378: a Feedback send is running. Set at the click, before any await, so a
@@ -5893,7 +5908,8 @@ export function AppProvider({ children }) {
       shareProject: (project) => {
         const known = stateRef.current.remoteByProject[project.id];
         // #678: a project that syncs never runs the share push after its first
-        // share (its history differs from Door43 main after a sync): it syncs.
+        // share (its history differs from Door43 main after a sync): it takes
+        // the sync's flow, and startShare decides by Door43 main.
         if (projectSyncs(project, known)) return a.syncProject(project);
         // The click starts the flow of this Share or Upload changes (#530).
         if (known) return a.openUpload(project, startShareFlow('upload'));
@@ -5994,17 +6010,16 @@ export function AppProvider({ children }) {
           a.openSignIn(project, false, flow);
           return;
         }
-        // #678: a sync needs no dialog; it runs now.
-        if (flow.kind === 'sync') return a.syncRun(project, flow);
         // "Not shared" in the cache can be a read still running, a failed read,
         // or a create whose push failed: read `origin` again before the
         // first-share dialog, so a shared project never asks again (#362 AC 2, 7).
         const shared = stateRef.current.remoteByProject[project.id] || (await a.loadShared(project, true));
         if (flow.closed) return;
-        // #678: the same rule as shareProject, for a remote read only now (the
-        // card had not read it, or the sign-in step came first). The sync runs
-        // in this flow, so it closes this flow's sign-in step.
-        if (projectSyncs(project, shared)) return a.syncRun(project, flow);
+        // #678: a sync needs no dialog. It runs in this flow, so it closes
+        // this flow's sign-in step.
+        const syncNow = await syncsNow(project, shared, flow.kind, session);
+        if (flow.closed) return;
+        if (syncNow) return a.syncRun(project, flow);
         if (shared) return a.openUpload(project, flow);
         flow.dialog = true;
         dispatch({

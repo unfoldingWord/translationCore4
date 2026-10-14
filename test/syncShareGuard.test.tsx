@@ -20,6 +20,7 @@ import { AppProvider, useApp, api, door43, internet } from '../src/state.jsx';
 import { resumeSession, signOut } from '../src/data/share/session';
 import { sync } from '../src/data/share/syncOperation';
 import { JournalingStore } from '../src/data/journal/journalingStore';
+import { Door43Api } from '../src/data/share/door43Api';
 
 const BIBLE = { id: '_local_/_local_/equipo', name: 'Equipo', languageTag: 'es', flavor: 'textTranslation', bookCodes: ['TIT'] };
 const OBS = { id: '_local_/_local_/historias', name: 'Historias', languageTag: 'es', flavor: 'textStories', bookCodes: [] };
@@ -43,6 +44,7 @@ function Probe() {
 let push: ReturnType<typeof vi.fn>;
 let listRemotes: ReturnType<typeof vi.fn>;
 let createRepository: ReturnType<typeof vi.fn>;
+let hasBranch: ReturnType<typeof vi.fn>;
 
 const mount = async () => {
   render(<AppProvider><Probe /></AppProvider>);
@@ -72,6 +74,9 @@ beforeEach(() => {
   vi.spyOn(api, 'getClientSettings').mockResolvedValue({} as never);
   vi.spyOn(api, 'setClientSettings').mockResolvedValue(undefined as never);
   vi.spyOn(door43, 'createRepository').mockImplementation(createRepository as never);
+  // Door43 main exists, unless a test empties the repository (a first push that failed).
+  hasBranch = vi.fn(async () => true);
+  vi.spyOn(door43, 'hasBranch').mockImplementation(hasBranch as never);
   // Door43 answers after a render, as a real request does.
   vi.spyOn(door43, 'listOrganizations').mockImplementation(() => new Promise((r) => setTimeout(() => r([]), 5)) as never);
   vi.spyOn(JournalingStore.prototype, 'open').mockResolvedValue(undefined as never);
@@ -102,6 +107,8 @@ describe('#678 — a project that syncs never runs the share push', () => {
     expect(app.s.syncResult?.repoPath).toBe(BIBLE.id);
     expect(vi.mocked(sync)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(sync).mock.calls[0][1]).toMatchObject({ repoPath: BIBLE.id });
+    // it asked Door43 whether main exists before it chose the sync
+    expect(hasBranch).toHaveBeenCalledWith(expect.objectContaining({ username: 'facilitator' }), 'facilitator', 'equipo', 'main');
   });
 
   it('a shared Bible project whose remote is read: Share runs the sync, never api.push', async () => {
@@ -146,5 +153,60 @@ describe('#678 — a project that syncs never runs the share push', () => {
     expect(push).toHaveBeenCalledTimes(1);
     expect(push.mock.calls[0][0]).toBe(BIBLE.id);
     expect(vi.mocked(sync)).not.toHaveBeenCalled();
+  });
+
+  // A first share that created the repository but whose push failed leaves an
+  // `origin` and no Door43 main. The project syncs only once main exists:
+  // until then its Share or Sync retries the first push (the upload).
+  const retried = async () => {
+    await waitFor(() => expect(app.s.sh?.mode).toBe('upload'));
+    expect(app.s.modal).toBe('share');
+    const done = press(() => app.actions.uploadChanges(BIBLE));
+    await waitFor(() => expect(app.s.sh?.step).toBe('done'));
+    await done;
+    expect(push).toHaveBeenCalledTimes(1);
+    expect(push.mock.calls[0][0]).toBe(BIBLE.id);
+    expect(createRepository).not.toHaveBeenCalled();
+    expect(vi.mocked(sync)).not.toHaveBeenCalled();
+    expect(hasBranch).toHaveBeenCalledWith(expect.anything(), 'facilitator', 'equipo', 'main');
+  };
+
+  it('origin set and Door43 main absent, remote not read yet: Share retries the first push once, no sync', async () => {
+    hasBranch.mockResolvedValue(false);
+    await mount();
+    await press(() => app.actions.shareProject(BIBLE));
+    await retried();
+  });
+
+  it('origin set and Door43 main absent, remote read (the card says Sync): Sync retries the first push once, no sync', async () => {
+    hasBranch.mockResolvedValue(false);
+    await mount();
+    await press(() => app.actions.loadShared(BIBLE));
+    await waitFor(() => expect(app.s.remoteByProject[BIBLE.id]).toBeTruthy());
+    await press(() => app.actions.syncProject(BIBLE));
+    await retried();
+  });
+});
+
+describe('#678 — Door43Api.hasBranch', () => {
+  const SESSION = { username: 'facilitator', token: 'tok-1' };
+  const answering = (status: number) => {
+    const calls: string[] = [];
+    const client = new Door43Api({
+      server: 'https://qa.door43.org',
+      fetchFn: (async (url: string) => {
+        calls.push(url);
+        return new Response(JSON.stringify(status === 200 ? { name: 'main' } : { message: 'not found' }), { status });
+      }) as unknown as typeof fetch,
+    });
+    return { client, calls };
+  };
+
+  it('200 is true, 404 (no branch, or an empty repository) is false, any other answer throws', async () => {
+    const ok = answering(200);
+    expect(await ok.client.hasBranch(SESSION, 'facilitator', 'equipo', 'main')).toBe(true);
+    expect(ok.calls).toEqual(['https://qa.door43.org/api/v1/repos/facilitator/equipo/branches/main']);
+    expect(await answering(404).client.hasBranch(SESSION, 'facilitator', 'equipo', 'main')).toBe(false);
+    await expect(answering(500).client.hasBranch(SESSION, 'facilitator', 'equipo', 'main')).rejects.toThrow(/HTTP 500/);
   });
 });
