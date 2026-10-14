@@ -889,7 +889,8 @@ test.describe('#522 — App language in the account menu', () => {
     const seen: Record<string, unknown> = {};
     const one = async (loc: Locator): Promise<{ dir: string | null; direction: string }> => {
       await expect(loc.first()).toBeVisible({ timeout: 20_000 });
-      return (await textDirections(loc.first()))[0];
+      // On the one element, so a list that renders again between the two reads is waited for.
+      return loc.first().evaluate((el) => ({ dir: el.getAttribute('dir'), direction: getComputedStyle(el).direction }));
     };
     writeStoredLocale('ar');
     await page.goto('/');
@@ -900,6 +901,7 @@ test.describe('#522 — App language in the account menu', () => {
     seen.note = await one(page.getByTestId('helps-note'));
     await helps(page).getByRole('button', { name: AR['understand.academyLink'], exact: true }).first().click();
     seen.article = await one(page.getByTestId('understand-article'));
+    seen.articleTitle = await one(page.getByTestId('helps-article-title'));
     await shot(page, testInfo, 'helps-ltr-under-arabic');
     await page.getByTestId('helps-article-close').click();
     await helps(page).getByRole('tab', { name: AR['helps.words'], exact: true }).click();
@@ -914,6 +916,7 @@ test.describe('#522 — App language in the account menu', () => {
     seen.checkNote = await one(page.getByTestId('check-note-text'));
     await page.getByTestId('open-academy').click();
     seen.checkArticle = await one(page.getByTestId('academy-drawer').getByTestId('article-panel'));
+    seen.checkArticleTitle = await one(page.getByTestId('drawer-title'));
     // The drawer slides in: the picture is of its final state.
     const picture = testInfo.outputPath('check-helps-ltr-under-arabic.png');
     await page.screenshot({ path: picture, animations: 'disabled' });
@@ -924,7 +927,7 @@ test.describe('#522 — App language in the account menu', () => {
     await testInfo.attach('helps-direction', { path: file, contentType: 'application/json' });
     // The interface stays right to left; each help states its own direction.
     expect(seen.interface).toEqual({ html: 'rtl', root: 'rtl' });
-    for (const part of ['note', 'article', 'word', 'question', 'simplified', 'checkNote', 'checkArticle']) {
+    for (const part of ['note', 'article', 'articleTitle', 'word', 'question', 'simplified', 'checkNote', 'checkArticle', 'checkArticleTitle']) {
       expect(seen[part], part).toEqual({ dir: 'ltr', direction: 'ltr' });
     }
   });

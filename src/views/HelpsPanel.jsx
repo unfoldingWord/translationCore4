@@ -66,7 +66,7 @@ export function ArticleView({ article, onClose, onRetry }) {
     // cards stop and the article starts.
     <div data-testid="helps-article-pane" style={{ borderTop: 'var(--stroke) solid var(--border-strong)', maxHeight: '45%', flex: 'none', display: 'flex', flexDirection: 'column', background: '#fff' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', flex: 'none', background: 'var(--surface-muted)', borderBottom: 'var(--stroke-hair) solid var(--border-hair)' }}>
-        <span data-testid="helps-article-title" style={{ flex: 1, fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)' }}>
+        <span data-testid="helps-article-title" dir={article.found?.title && !article.loading ? article.dir : undefined} style={{ flex: 1, fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)' }}>
           {article.loading ? t('check.articleLoading') : article.found?.title ?? ''}
         </span>
         <IconButton data-testid="helps-article-close" size={26} title={t('common.close')} onClick={onClose}>✕</IconButton>

@@ -340,7 +340,8 @@ function AcademyDrawer({ article, cat, resource, onClose }) {
   return (
     <Drawer data-testid="academy-drawer" width="var(--drawer-width)" onClose={onClose} closeLabel={t('common.close')}
       eyebrow={t('check.academyEyebrow', { cat })}
-      title={article?.found?.title ?? t('check.academyFallback')}>
+      title={article?.found?.title ?? t('check.academyFallback')}
+      titleDir={article?.found?.title ? helpsDir(s, resource?.languageSet) : undefined}>
       <ArticleBody article={article} dir={helpsDir(s, resource?.languageSet)} />
     </Drawer>
   );
