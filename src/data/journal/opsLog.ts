@@ -35,7 +35,8 @@
 //                                     marker write may still have begun an apply.
 //                                     Only a copy that is the fold of its journal
 //                                     is applied; a copy that is not whole goes
-//                                     with its marker, not applied.
+//                                     with its marker, not applied. A check that
+//                                     cannot read the copy counts as not whole.
 //   scratch copy with no marker    -> delete it; the project did not change.
 //   no scratch copy                -> nothing is pending.
 // A power loss is not a kill: the platform calls no fsync (PLATFORM-NOTES #51), so
@@ -275,9 +276,19 @@ export const isApplyPending = async (api: Pick<OpsRecoveryApi, 'listPaths'>, rep
   (await api.listPaths(scratchPathOf(repoPath))).includes(APPLY_MARKER);
 
 /** True when the scratch copy is the fold of its journal, as the sync verified it
- * before the push. The marker is not a derived file, so it is the one extra file. */
+ * before the push. The marker is not a derived file, so it is the one extra file.
+ * A check that throws counts as not whole: a power loss can leave a file that the
+ * platform cannot read (a missing or torn `metadata.json` is HTTP 400 or bytes that
+ * do not parse; a file that is not UTF-8 is HTTP 400). The copy is only a copy of
+ * Door43 main after the push, so it goes with its marker, and the project does not
+ * lock. A server error during the check has the same result: one more sync. */
 const isScratchWhole = async (api: OpsRecoveryApi, scratch: string): Promise<boolean> => {
-  const verified = await verifyProjectAgainstJournal(api, scratch, { skipUnjournaled: true });
+  let verified: Awaited<ReturnType<typeof verifyProjectAgainstJournal>>;
+  try {
+    verified = await verifyProjectAgainstJournal(api, scratch, { skipUnjournaled: true });
+  } catch {
+    return false;
+  }
   return verified.projectionFailure === null && verified.invalidSegments.length === 0
     && verified.metadataProblems.length === 0 && verified.mismatches.every((m) => isMarkerPath(m.ipath));
 };

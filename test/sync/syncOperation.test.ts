@@ -1232,6 +1232,44 @@ describe('#676 crash recovery of the sync (G8)', () => {
     await expectNextSyncKeepsTeammate(w);
   });
 
+  // A power loss that tears one file of the scratch copy, as the platform answers a read
+  // of it [VERIFIED — pankosmia-web 0.18.15 (a83725b), source read 2026-10-14]:
+  // raw_metadata.rs and raw_text_ingredient.rs call read_to_string, so a missing file is
+  // HTTP 400, a torn metadata.json is HTTP 200 with its bytes, and a file that is not
+  // UTF-8 is HTTP 400. The fake rig answers from whole objects, so the test answers here.
+  const tornScratch: Record<string, (route: string, ipath: string | null) => Response | null> = {
+    'metadata.json is missing': (route) => route === `/api/burrito/metadata/raw/${SCRATCH}`
+      ? new Response(JSON.stringify({ is_good: false, reason: 'could not read metadata: No such file or directory (os error 2)' }), { status: 400 }) : null,
+    'metadata.json is torn': (route) => route === `/api/burrito/metadata/raw/${SCRATCH}`
+      ? new Response('{"format":"scripture burrito","meta":{"categ', { status: 200 }) : null,
+    'TIT.usfm is not UTF-8': (route, ipath) => route === `/api/burrito/ingredient/raw/${SCRATCH}` && ipath === 'TIT.usfm'
+      ? new Response(JSON.stringify({ is_good: false, reason: 'could not read ingredient content: stream did not contain valid UTF-8' }), { status: 400 }) : null,
+  };
+  for (const [form, answer] of Object.entries(tornScratch))
+    it(`[G8] a power loss that keeps the marker and a scratch copy whose ${form}: the start does not lock the project; it deletes the copy with its marker, the Report is not ok, and the next sync brings the teammate text (bench round 8, F1)`, async () => {
+      const w = await teammateTextWorld();
+      const project = new Map(w.rig.repos.get(REPO)!.files);
+      await killInApply(w, w.ops, () => true); // no apply write lands
+      expect(w.rig.repos.get(SCRATCH)!.files.has(APPLY_MARKER)).toBe(true);
+      const torn = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = new URL(String(input));
+        const read = (init?.method ?? 'GET') === 'GET' && w.rig.repos.has(SCRATCH);
+        return (read && answer(decodeURIComponent(url.pathname), url.searchParams.get('ipath'))) || w.rig.fetchFn(input, init);
+      }) as typeof fetch });
+      forgetSharedClocks();
+      forgetProjectQueues();
+      const stored = storedOf(w);
+      const next = new OpsLog({ read: stored.read, update: serialSettingsWriter(stored.read, stored.write) });
+      const [entry] = await next.recover(torn);
+      expect(next.errors).toEqual([]);
+      expect(entry.report).toMatchObject({ op: 'sync', ok: false, facts: { scratchNotWhole: true } });
+      expect(w.rig.repos.has(SCRATCH)).toBe(false);
+      expect(w.rig.repos.get(REPO)!.files).toEqual(project);
+      expect(await reopened(w)).toBe('converged');
+      expect(await outOfBandEvents(w)).toEqual([]);
+      await expectNextSyncKeepsTeammate(w);
+    });
+
   it('[G8] control: after a sync that ended, an edit of the teammate verse in another tool is still reconciled as an own edit (R-8.8.1)', async () => {
     const w = await teammateTextWorld();
     const report = await sync(w.deps(), { repoPath: REPO, session: SESSION });
