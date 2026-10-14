@@ -106,20 +106,6 @@ export class SaveScheduler {
     this.notify();
   }
 
-  /** Move a book onto a new stored base (#679, "Keep this version"): the
-   * stored text is now `persistedRaw`, and the unsaved text becomes
-   * `currentRaw` — the caller's edits replayed onto that base. A dirty buffer
-   * then saves the new text, never the old base. Refused while a write is in
-   * flight or a failed write is retained: that snapshot holds the old base. */
-  rebaseBook(book: string, persistedRaw: string, currentRaw: string): void {
-    if (this.writing > 0 || this.failure)
-      throw new Error(`SaveScheduler: refusing to rebase "${book}" while a write is in flight or failed`);
-    this.persisted.set(book, persistedRaw);
-    this.current.set(book, currentRaw);
-    this.reverted.delete(book);
-    this.notify();
-  }
-
   /** Seed a book's raw text (from the store read). Resets its dirty state.
    *
    * Guard (review findings B3/M1, 2026-07-30): loading over unsaved work is

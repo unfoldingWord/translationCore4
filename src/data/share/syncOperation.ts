@@ -441,9 +441,10 @@ export async function sync(deps: SyncDeps, request: SyncRequest): Promise<Report
     const record = await ops.begin('sync', { repoPath });
     const recorded = await syncRecorded(deps, request, record);
     const report = withCode(recorded.report);
-    const { open } = recorded;
+    const { open, closed } = recorded;
     // A swap that stopped leaves its record open, so the next start finishes it (G8).
-    if (!open) await record?.close(report);
+    // A go-back at swap.copy-previous closed its record itself, before its deletes.
+    if (!open && !closed) await record.close(report);
     return report;
   });
 }
@@ -548,14 +549,14 @@ async function syncOnce(
 async function syncRecorded(
   deps: SyncDeps,
   request: SyncRequest,
-  record: OpsHandle | undefined,
-): Promise<{ report: Report; open: boolean }> {
+  record: OpsHandle,
+): Promise<{ report: Report; open: boolean; closed?: boolean }> {
   const startedAt = new Date().toISOString();
   const { api } = deps;
   const { repoPath } = request;
   const kv = deps.kv ?? idbKvStore();
   const paths = syncPathsOf(repoPath);
-  const note = (facts: Record<string, unknown>): Promise<boolean> => record?.note(facts) ?? Promise.resolve(true);
+  const note = (facts: Record<string, unknown>): Promise<boolean> => record.note(facts);
   const failed = (error: unknown, facts: Record<string, unknown> = {}): { report: Report; open: boolean } => ({
     report: failedReport('sync', startedAt, new Date().toISOString(), error, { repoPath, ...facts }),
     open: false,
@@ -610,11 +611,18 @@ async function syncRecorded(
     // A server failure (not a kill) in this run. Going forward later is valid only
     // when nothing can change the live project meanwhile (opsLog.ts header).
     if (phase === 'swap.copy-previous') {
-      // the live project is still whole at its path: go back now
+      // the live project is still whole at its path: go back now. The record is
+      // closed BEFORE the copies are deleted: a record still saved at
+      // swap.copy-previous makes the next start go forward with the scratch copy,
+      // so the scratch copy must outlive it (G8). If the close is not saved, both
+      // copies stay, and the next start goes forward, or back when the live
+      // project changes before it (the live mark).
+      const refusal = new Refusal('sync.move-failed', 'the swap stopped before the project changed; the project is as it was', failureOf(error));
+      const back = { ...failed(refusal, { tries: facts.tries, phase }), closed: true };
+      if (!(await record.close(back.report))) return back;
       await deleteIfPresent(api, paths.previous).catch(() => {});
       await deleteIfPresent(api, paths.scratch).catch(() => {});
-      const refusal = new Refusal('sync.move-failed', 'the swap stopped before the project changed; the project is as it was', failureOf(error));
-      return failed(refusal, { tries: facts.tries, phase });
+      return back;
     }
     // the live path was touched: run the rest of the swap once more
     try {

@@ -944,6 +944,8 @@
   "conflicts.cancel": "Скасувати",
   "conflicts.keep": "Зберегти цю версію",
   "conflicts.keepError": "Версію не збережено.",
+  "conflicts.otherKept": "Збережено іншу версію цього вірша.",
+  "conflicts.bookNotLoaded": "Книга не відкрилася знову. Поверніться на головну сторінку й відкрийте проєкт знову.",
   "conflicts.reviewOne": "1 конфлікт · Переглянути",
   "conflicts.reviewMany": "Конфлікти: {n} · Переглянути",
   "conflicts.marker": "Версії: {n} · Переглянути",

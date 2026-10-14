@@ -944,6 +944,8 @@
   "conflicts.cancel": "Batal",
   "conflicts.keep": "Simpan versi ini",
   "conflicts.keepError": "Versi tidak disimpan.",
+  "conflicts.otherKept": "Versi lain dari ayat ini yang disimpan.",
+  "conflicts.bookNotLoaded": "Kitab tidak terbuka lagi. Kembali ke Beranda dan buka proyek lagi.",
   "conflicts.reviewOne": "1 konflik · Tinjau",
   "conflicts.reviewMany": "{n} konflik · Tinjau",
   "conflicts.marker": "{n} versi · Tinjau",
