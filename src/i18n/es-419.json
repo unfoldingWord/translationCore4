@@ -989,7 +989,6 @@
   "syncResult.error.noWriteAccess": "Pida al dueño del proyecto acceso de escritura en Door43.",
   "syncResult.error.pushFailed": "Door43 no aceptó los cambios. El proyecto en esta computadora no cambió. Inténtelo de nuevo.",
   "syncResult.error.opsLogNotLoaded": "tC4 no pudo leer su registro de operaciones al iniciar. Cierre tC4, ábralo de nuevo y luego sincronice.",
-  "syncResult.error.swapPending": "La sincronización no terminó. Cierre tC4 y ábralo de nuevo para terminarla.",
   "syncResult.error.other": "La sincronización se detuvo: {reason}",
   "shareDialog.teamAccess": "Los miembros del equipo necesitan acceso de escritura en Door43 para sincronizar. El dueño del proyecto lo da en Door43."
 }

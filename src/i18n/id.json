@@ -989,7 +989,6 @@
   "syncResult.error.noWriteAccess": "Mintalah akses tulis di Door43 kepada pemilik proyek.",
   "syncResult.error.pushFailed": "Door43 tidak menerima perubahan. Proyek di komputer ini tidak berubah. Coba lagi.",
   "syncResult.error.opsLogNotLoaded": "tC4 tidak dapat membaca catatan operasinya saat mulai. Tutup tC4 dan buka lagi, lalu sinkronkan.",
-  "syncResult.error.swapPending": "Sinkronisasi tidak selesai. Tutup tC4 dan buka lagi untuk menyelesaikannya.",
   "syncResult.error.other": "Sinkronisasi berhenti: {reason}",
   "shareDialog.teamAccess": "Anggota tim memerlukan akses tulis di Door43 untuk sinkronisasi. Pemilik proyek memberikannya di Door43."
 }

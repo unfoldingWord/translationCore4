@@ -989,7 +989,6 @@
   "syncResult.error.noWriteAccess": "Hãy xin chủ dự án quyền ghi trên Door43.",
   "syncResult.error.pushFailed": "Door43 không nhận các thay đổi. Dự án trên máy tính này không thay đổi. Hãy thử lại.",
   "syncResult.error.opsLogNotLoaded": "tC4 không đọc được bản ghi thao tác khi khởi động. Hãy đóng tC4 và mở lại, rồi đồng bộ.",
-  "syncResult.error.swapPending": "Việc đồng bộ chưa xong. Hãy đóng tC4 và mở lại để hoàn tất.",
   "syncResult.error.other": "Việc đồng bộ đã dừng: {reason}",
   "shareDialog.teamAccess": "Các thành viên nhóm cần quyền ghi trên Door43 để đồng bộ. Chủ dự án cấp quyền này trên Door43."
 }

@@ -989,7 +989,6 @@
   "syncResult.error.noWriteAccess": "اطلب من مالك المشروع صلاحية الكتابة على Door43.",
   "syncResult.error.pushFailed": "لم يقبل Door43 التغييرات. لم يتغير المشروع على هذا الكمبيوتر. حاول مرة أخرى.",
   "syncResult.error.opsLogNotLoaded": "تعذر على tC4 قراءة سجل عملياته عند البدء. أغلق tC4 وشغّله مرة أخرى، ثم قم بالمزامنة.",
-  "syncResult.error.swapPending": "لم تكتمل المزامنة. أغلق tC4 وشغّله مرة أخرى لإكمالها.",
   "syncResult.error.other": "توقفت المزامنة: {reason}",
   "shareDialog.teamAccess": "يحتاج زملاء الفريق إلى صلاحية الكتابة على Door43 للمزامنة. يمنحها مالك المشروع على Door43."
 }

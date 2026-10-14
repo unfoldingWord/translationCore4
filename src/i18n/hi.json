@@ -989,7 +989,6 @@
   "syncResult.error.noWriteAccess": "परियोजना के मालिक से Door43 पर लिखने की अनुमति माँगें।",
   "syncResult.error.pushFailed": "Door43 ने बदलाव स्वीकार नहीं किए। इस कंप्यूटर पर परियोजना नहीं बदली। फिर से कोशिश करें।",
   "syncResult.error.opsLogNotLoaded": "tC4 शुरू होते समय अपना संचालन रिकॉर्ड नहीं पढ़ सका। tC4 बंद करें और फिर से शुरू करें, फिर सिंक करें।",
-  "syncResult.error.swapPending": "सिंक पूरा नहीं हुआ। इसे पूरा करने के लिए tC4 बंद करें और फिर से शुरू करें।",
   "syncResult.error.other": "सिंक रुक गया: {reason}",
   "shareDialog.teamAccess": "सिंक करने के लिए टीम के सदस्यों को Door43 पर लिखने की अनुमति चाहिए। परियोजना का मालिक यह Door43 पर देता है।"
 }

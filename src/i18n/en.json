@@ -989,7 +989,6 @@
   "syncResult.error.noWriteAccess": "Ask the project owner for write access on Door43.",
   "syncResult.error.pushFailed": "Door43 did not accept the changes. The project on this computer did not change. Try again.",
   "syncResult.error.opsLogNotLoaded": "tC4 could not read its operations record at start. Close tC4 and start it again, then sync.",
-  "syncResult.error.swapPending": "The sync did not finish. Close tC4 and start it again to finish it.",
   "syncResult.error.other": "The sync stopped: {reason}",
   "shareDialog.teamAccess": "Teammates need write access on Door43 to sync. The project owner gives it on Door43."
 }
