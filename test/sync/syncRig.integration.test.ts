@@ -50,6 +50,8 @@ if (!rigUp)
     : '[syncRig.integration] no rig named (set TC4_RIG_PORT, or run it from npm run prove) — the live-rig suite is skipped.');
 
 const git = (cwd: string, ...args: string[]): string => execFileSync('git', args, { cwd, stdio: 'pipe' }).toString().trim();
+/** git output as it is, for a byte compare (no trim). */
+const gitRaw = (cwd: string, ...args: string[]): string => execFileSync('git', args, { cwd, stdio: 'pipe' }).toString();
 
 const RUN = Date.now();
 const ABBR = `sync676_${RUN}`;
@@ -150,15 +152,15 @@ describe.skipIf(!rigUp)('#676 one full sync against the live rig and the #673 st
     expect(git(bare, 'merge-base', '--is-ancestor', before, after)).toBe('');
     const mainPaths = git(bare, 'ls-tree', '-r', '--name-only', 'main').split('\n').filter((p) => p.startsWith('ingredients/'));
     expect(mainPaths.some((p) => p.startsWith(`ingredients/checking/journal/${actor}/segments/`))).toBe(true);
-    // D100: the project's ingredients/ (but audio/) equal Door43 main's tree, byte for byte
-    const doorTree = new Map(mainPaths.filter((p) => !p.startsWith('ingredients/audio/')).map((p) => [p, git(bare, 'show', `main:${p}`)]));
+    // D101: the project's ingredients/ (but audio/) equal Door43 main's tree, byte for byte
+    const doorTree = new Map(mainPaths.filter((p) => !p.startsWith('ingredients/audio/')).map((p) => [p, gitRaw(bare, 'show', `main:${p}`)]));
     const liveTree = new Map<string, string>();
     const walk = (folder: string, prefix: string): void => {
       for (const entry of fs.readdirSync(folder, { withFileTypes: true })) {
         if (entry.name.startsWith('.') || entry.name.endsWith('.bak')) continue;
         const rel = `${prefix}/${entry.name}`;
         if (entry.isDirectory()) walk(path.join(folder, entry.name), rel);
-        else if (!rel.startsWith('ingredients/audio/')) liveTree.set(rel, fs.readFileSync(path.join(folder, entry.name), 'utf8').trim());
+        else if (!rel.startsWith('ingredients/audio/')) liveTree.set(rel, fs.readFileSync(path.join(folder, entry.name), 'utf8'));
       }
     };
     walk(path.join(dir(REPO), 'ingredients'), 'ingredients');

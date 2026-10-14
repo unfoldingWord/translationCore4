@@ -65,8 +65,9 @@ const okSync = (facts: Record<string, unknown> = {}) =>
 const refused = (code: string) => failedReport('sync', AT, AT, new Refusal(code as RefusalCode, 'diagnosis for the log'), { repoPath: BIBLE.id });
 const result = (report: Report, missingPins = 0) => ({ repoPath: BIBLE.id, name: BIBLE.name, report, missingPins });
 
-/** Every refusal code a sync can return: the sync core, the sync shell, and the ops log. */
-const SYNC_CODES = Object.keys(REFUSAL_CODES).filter((code) => /^(sync|opslog)\./.test(code));
+/** Every refusal code a sync can return: the sync core, the sync shell, and the ops log;
+ * and the store's project-path guard (#676), which the result maps too. */
+const SYNC_CODES = Object.keys(REFUSAL_CODES).filter((code) => /^(sync|opslog)\./.test(code) || code === 'open.not-a-project');
 
 beforeEach(() => {
   cleanup();

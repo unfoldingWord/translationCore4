@@ -387,12 +387,12 @@ _Avoid_: error code, error message (as the thing a test checks)
 
 The ops log keeps the Report of a sync (**Ops record**, **ops log** above), but it never locks
 a project. The **apply marker**, `ingredients/tc4-sync/apply.json` in the scratch copy, is the
-record of an apply that may have begun: the next start or sync finishes that apply (D100).
+record of an apply that may have begun: the next start or sync finishes that apply (D101).
 
 **Sync**:
 One press of "Sync with Door43" after the first share. It gets Door43 main, checks each incoming
 journal file, adds the own journal files of this computer, and rebuilds the project files from
-all journals. Then it pushes, and applies the pushed tree to the project in place (D100). BURRITO-SPEC §8.7 holds
+all journals. Then it pushes, and applies the pushed tree to the project in place (D101). BURRITO-SPEC §8.7 holds
 its rules (R-8.7.7–R-8.7.12). Round 1 syncs Bible projects only.
 _Avoid_: merge (a sync merges no project file), pull, receive (the word of the long-term plan),
 upload changes (the label before D98)
