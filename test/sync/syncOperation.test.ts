@@ -702,6 +702,16 @@ describe('#676 crash recovery of the sync (G8)', () => {
     expect(w.rig.log.length).toBe(requests);
   });
 
+  it('[G8] a sync with no ops log is refused before any request: no scratch copy, no copy call', async () => {
+    const w = await world();
+    const requests = w.rig.log.length;
+    const report = await sync({ ...w.deps(), ops: undefined }, { repoPath: REPO, session: SESSION });
+    expect([report.ok, report.code]).toEqual([false, 'opslog.not-loaded']);
+    expect(w.rig.log.length).toBe(requests);
+    expect(w.rig.repos.has(PATHS.scratch)).toBe(false);
+    expect(w.rig.repos.has(CLONE_PATH)).toBe(false);
+  });
+
   it('[G8] a kill after the push and before the swap leaves the project as it was', async () => {
     const { w, before, staged, killed } = await killAfter(1, (route) => route.includes('/git/push/'));
     expect(killed).toBe(true);

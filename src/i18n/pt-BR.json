@@ -954,7 +954,7 @@
   "home.bookConflictsMany": "{n} conflitos",
   "home.sync": "Sincronizar com o Door43",
   "home.syncing": "Sincronizando…",
-  "net.ask.sync": "iniciar sessão no Door43 se necessário e sincronizar este projeto com o Door43.",
+  "net.ask.sync": "receber do Door43 as alterações da sua equipe e enviar ao Door43 as alterações deste projeto. Se necessário, o tC4 inicia sessão no Door43 primeiro.",
   "syncResult.done": "Sincronizado com o Door43",
   "syncResult.receivedOne": "1 alteração da equipe",
   "syncResult.receivedMany": "{n} alterações da equipe",

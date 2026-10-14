@@ -30,7 +30,7 @@ import { BOOK_NAMES, bookName } from './data/bookNames';
 import { GATEWAYS, gatewayKey, gatewayDisplayName, DCS_HOST, orgForRepoName } from './data/gateways';
 import { dcsReleases, fetchAndInstallPin, latestReleaseTag, identifyExistingInstall, releaseCommitSha, rezip, unwrapExport, verifySideload } from './data/resourceFetch';
 import { isNotFoundError } from './data/serverApi';
-import { readInstalled, recordInstalled, coverageFromLocal, languageSetFromInstalled, gatewayBiblesFromInstalled, mergeOptionalPins, isPinLocal, unsatisfiedProjectPinFor, pinsPreferringInstalled, localRepoPathFromRepoPath, installedPathFor, discoverOnDisk, flavorOfMetadata } from './data/installed';
+import { readInstalled, recordInstalled, coverageFromLocal, languageSetFromInstalled, gatewayBiblesFromInstalled, mergeOptionalPins, isPinLocal, missingPinCount, unsatisfiedProjectPinFor, pinsPreferringInstalled, localRepoPathFromRepoPath, installedPathFor, discoverOnDisk, flavorOfMetadata } from './data/installed';
 import { OBS_TOOL_SLOT, TOOL_SLOT, coverageFor, oldTwlPin, preflightObsTool, preflightToolBook, recordMatchesResolution, resolutionRecord, resolveObsSetSlot, resolveToolBook, resolveSetSlot, samePath } from './data/resolve';
 import {
   deriveForProject,
@@ -1844,30 +1844,19 @@ function retryOwedCheckpoint({ store, storeRef, stateRef, dispatch }, repoPath) 
  * already open again. Only the latest failure is remembered: an earlier
  * project's pending work is durable in its journal and commits at its own
  * next checkpoint. */
-/** #678 (D88 point 6): the pins (with a commit) of the project at `repoPath`,
- * read from its pin file; [] when it cannot be read. */
-async function projectPinsOf(repoPath) {
+/** #678 (D88 point 6): after a sync, how many pins of the project at
+ * `repoPath` name a version that this computer does not have. Derived at result
+ * time, never stored; 0 when the pin file cannot be read. */
+async function missingPinsAfterSync(repoPath, actions) {
   try {
     const reader = new ProjectReader({ api });
     await reader.open(repoPath);
     const resources = await reader.readResources();
-    return [
-      ...Object.values(resources?.languageSets ?? {}).flatMap((set) => Object.values(set ?? {})),
-      ...Object.values(resources?.resources?.originalLanguage ?? {}),
-    ].filter((pin) => pin && typeof pin === 'object' && pin.repoPath && pin.sha);
+    const { installed } = await actions.resolutionContext();
+    return missingPinCount(resources, installed);
   } catch {
-    return [];
+    return 0;
   }
-}
-
-/** #678 (D88 point 6): how many pins the sync brought (not in `before`) name a
- * version that this computer does not have. Derived at result time, never stored. */
-async function missingPinCount(repoPath, before, actions) {
-  const known = new Set(before.map((pin) => `${pin.repoPath}@${pin.sha}`));
-  const brought = (await projectPinsOf(repoPath)).filter((pin) => !known.has(`${pin.repoPath}@${pin.sha}`));
-  if (!brought.length) return 0;
-  const { installed } = await actions.resolutionContext();
-  return brought.filter((pin) => !isPinLocal(installed, pin)).length;
 }
 
 /** #678, #677: the platform for a sync and for an open from Door43. `getNetEnabled`
@@ -2593,7 +2582,12 @@ function installKeptBook({ stateRef, schedulerRef, rawRef, dispatch }, store, ke
       // Unsaved edits of OTHER verses stay; the kept verse takes the fold's
       // text. The buffer moves onto the new base, so its next save carries
       // the kept version, never the one it replaced.
-      text = spliceVerse(sched.bookText(book), chapter, verse, verseBody(raw, chapter, verse) ?? '');
+      // A kept verse the projection does not hold is "no answer", never an
+      // empty verse: rebasing '' would make the next save publish an empty
+      // verse over the keep. It goes to keptBookNotInstalled instead.
+      const kept = verseBody(raw, chapter, verse);
+      if (kept === null) throw new Error(`the fold's ${book} holds no verse ${chapter}:${verse}`);
+      text = spliceVerse(sched.bookText(book), chapter, verse, kept);
       sched.rebaseBook(book, raw, text);
     } else {
       sched?.loadBook(book, raw);
@@ -6109,11 +6103,9 @@ export function AppProvider({ children }) {
         const repoPath = project.id;
         dispatch({ type: 'set', patch: { syncing: repoPath, syncResult: null } });
         let report;
-        let pinsBefore = [];
         try {
           // The checkpoint of a project the user just left goes first.
           await leaveCheckpoints.get(repoPath);
-          pinsBefore = await projectPinsOf(repoPath);
           const { coverage } = await a.resolutionContext();
           const dev = import.meta.env.DEV === true;
           report = await door43Sync(
@@ -6124,17 +6116,17 @@ export function AppProvider({ children }) {
           report = { op: 'sync', ok: false, facts: { error: String(e?.reason || e?.message || e) } };
         }
         // The result shows, and the button comes back, whatever the reads after the sync did.
-        const missingPins = await a.afterSyncReport(project, report, pinsBefore);
+        const missingPins = await a.afterSyncReport(project, report);
         dispatch({ type: 'set', patch: { syncing: null, syncResult: { repoPath, name: project.name, report, missingPins } } });
         return report;
       },
       /** The steps after one sync. Resolves to the D88 point 6 count; never rejects:
        * the sync itself is done, and a failed read shows at the next read of the card. */
-      afterSyncReport: async (project, report, pinsBefore) => {
+      afterSyncReport: async (project, report) => {
         try {
           if (report.ok) {
             await a.afterSync(project);
-            return await missingPinCount(project.id, pinsBefore, a);
+            return await missingPinsAfterSync(project.id, a);
           }
           if (report.code === 'sync.auth-failed') {
             // Door43 refused the token: forget it, so the next press asks for the password (#467).

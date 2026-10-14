@@ -3,7 +3,8 @@
 //   - goes to any host other than the dev client (localhost on the lane's vite port, which proxies /api to
 //     the rig), or
 //   - goes to the dev client on a platform route that makes the server use the
-//     internet: /api/gitea/... or /api/git/push/... (src/data/internet.ts OUTBOUND_ROUTES).
+//     internet: /api/gitea/..., /api/git/push/..., /api/git/clone-repo/... or
+//     /api/git/pull-repo/... (src/data/internet.ts OUTBOUND_ROUTES).
 // `data:`, `blob:` and `about:` URLs leave nothing on the network and are not recorded.
 // The log is written as JSON into the test's output folder and attached to the report,
 // so each run leaves a repeatable artifact.
@@ -12,7 +13,7 @@ import type { Page, TestInfo } from '@playwright/test';
 import { lane } from '../lane.mjs';
 
 export const CLIENT_HOST = lane().clientHost;
-const OUTBOUND_PATHS = ['/api/gitea/', '/api/git/push/'];
+const OUTBOUND_PATHS = ['/api/gitea/', '/api/git/push/', '/api/git/clone-repo/', '/api/git/pull-repo/'];
 
 export interface RecordedRequest {
   kind: 'request' | 'websocket';
