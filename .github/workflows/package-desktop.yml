@@ -246,8 +246,12 @@ jobs:
     needs: package-preflight
     runs-on: windows-2025
     timeout-minutes: 90
-    # #456: id-token lets a signed run ask GitHub for an OIDC token, which Azure
-    # Artifact Signing trusts. A run whose subject Azure does not trust cannot sign.
+    # #456: a manual run on main or a release/* branch runs in the windows-signing
+    # environment. Azure trusts that environment's OIDC subject, and the
+    # environment's branch rules allow only main and release/*. Every other run
+    # uses no environment and builds unsigned. Keep this condition equal to the
+    # AZURE_SIGNING_ENDPOINT one below.
+    environment: ${{ github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')) && 'windows-signing' || '' }}
     permissions:
       contents: read
       id-token: write
@@ -298,9 +302,9 @@ jobs:
         env:
           TC_HELP_DESK_TOKEN: ${{ secrets.TC_HELP_DESK_TOKEN }}
           TC_HELP_DESK_EMAIL: ${{ secrets.TC_HELP_DESK_EMAIL }}
-          # #456: a manual run on main or a release/* branch signs with Azure Artifact
-          # Signing, when the repository variable AZURE_SIGNING_ENDPOINT is set. A
-          # non-empty endpoint is the switch; every other run builds unsigned.
+          # #456: a manual run on main or a release/* branch (the windows-signing
+          # environment above) signs with Azure Artifact Signing, when the variable
+          # AZURE_SIGNING_ENDPOINT is set. A non-empty endpoint is the switch.
           AZURE_SIGNING_ENDPOINT: ${{ github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')) && vars.AZURE_SIGNING_ENDPOINT || '' }}
           AZURE_SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
           AZURE_SIGNING_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}

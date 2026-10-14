@@ -2660,10 +2660,11 @@ Electronite graphics DLLs by hand removed the failure on that machine.
    Arabic work is ready]
 
 7. **Credential.** CI signs in to Azure with GitHub OIDC: an Entra app registration with
-   the Signer role on `uw-public-prod`, and one federated credential for each branch that
-   signs (`main`, `release/4.0`). No secret is stored. A manual run on a branch other
-   than `main` or `release/*` builds unsigned. A manual run on a `release/*` branch with
-   no federated credential stops in its first minute. [decided 2026-10-14 — owner, on #456]
+   the Signer role on `uw-public-prod`, and one federated credential for the GitHub
+   environment `windows-signing`. No secret is stored. A manual run on `main` or a
+   `release/*` branch runs in that environment; the environment's branch rules allow only
+   those branches. Every other run uses no environment and builds unsigned. A new release
+   branch signs with no Azure change. [decided 2026-10-14 — owner, on #456]
 
 Ruling 6 changes #546, which says that v4.0.0 promotes the rc.2 artifact without a new build.
 
