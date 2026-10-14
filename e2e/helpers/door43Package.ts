@@ -17,25 +17,24 @@ export interface CachedRepo {
   repo: string;
   /** The release tag that is cached, e.g. `v6.1`. */
   tag: string;
-  /** The catalogue's flavor. By default the flavor the cached export declares in its metadata
-   * (`x-bcvnotes` for tN): the app takes the role of tN from it, not from the name. */
-  flavor?: string;
+  /** The catalogue's own fields for the repository, as Door43 reports them (record them from
+   * `/api/v1/catalog/search?owner=<owner>`; the export's metadata can say another flavor):
+   * the app takes the role of tN from `flavor`, and offers only a repository with `tc-ready`. */
+  flavor: string;
+  topics: string[];
   /** The books the catalogue says the repository covers (book-scoped roles). */
-  books?: string[];
+  books: string[];
 }
 
 /** The cached unwrapped zip of a release. */
 export const cachedZip = (repo: string, tag: string): string =>
   path.join(TC4_ROOT, 'dev-env', 'resources-cache', `${repo}-${tag}-unwrapped.zip`);
 
-/** The commit and the flavor a cached export declares in its metadata. */
-function cachedIdentity(zip: string): { sha: string; flavor: string } {
+/** The commit a cached export declares (its metadata's `revision`). */
+function cachedRevision(zip: string): string {
   const files = unzipSync(new Uint8Array(fs.readFileSync(zip)), { filter: (f) => f.name === 'metadata.json' });
-  const meta = JSON.parse(strFromU8(files['metadata.json'])) as {
-    identification: { primary: { dcs: Record<string, { revision: string }> } };
-    type: { flavorType: { flavor: { name: string } } };
-  };
-  return { sha: Object.values(meta.identification.primary.dcs)[0].revision, flavor: meta.type.flavorType.flavor.name };
+  const meta = JSON.parse(strFromU8(files['metadata.json'])) as { identification: { primary: { dcs: Record<string, { revision: string }> } } };
+  return Object.values(meta.identification.primary.dcs)[0].revision;
 }
 
 /** Serve `owner`'s package from the cache. Returns a function that removes the routes. */
@@ -43,15 +42,14 @@ export async function mockDoor43Package(page: Page, owner: string, repos: Cached
   const cors = { 'access-control-allow-origin': '*' };
   const byName = new Map(repos.map((r) => {
     const zip = cachedZip(r.repo, r.tag);
-    const own = cachedIdentity(zip);
-    return [r.repo, { ...r, zip, sha: own.sha, flavor: r.flavor ?? own.flavor }];
+    return [r.repo, { ...r, zip, sha: cachedRevision(zip) }];
   }));
   const catalogue = new RegExp(`/gitea/remote-repos/git\\.door43\\.org/${owner}$`);
   await page.route(catalogue, (route) => route.fulfill({
     status: 200,
     contentType: 'application/json',
     body: JSON.stringify([...byName.values()].map((r) => ({
-      name: r.repo, description: '', flavor: r.flavor, flavor_type: '', topics: ['tc-ready'], book_codes: r.books ?? [],
+      name: r.repo, description: '', flavor: r.flavor, flavor_type: '', topics: r.topics, book_codes: r.books,
     }))),
   }));
   const door43 = /^https:\/\/git\.door43\.org\//;

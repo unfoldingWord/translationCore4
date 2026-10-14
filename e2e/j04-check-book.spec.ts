@@ -668,12 +668,16 @@ test.afterAll(async () => {
 // The seed then builds `arabic_burrito` (scripts/seed-arabic-project.mjs), and Door43 is held
 // still for BSOJ from the resource cache (helpers/door43Package.ts). The interface is English.
 const ARABIC_PROJECT = 'arabic_burrito';
+// BSOJ's catalogue entries as Door43 reports them [VERIFIED — git.door43.org
+// /api/v1/catalog/search?owner=BSOJ&lang=ar&stage=latest, 2026-10-14]: flavor and topics as
+// listed; the book lists cut to the rig's books. The catalogue also lists three Bibles
+// (ar_avd, ar_arst, ar_nav: textTranslation, tc-ready) and ar_glt/ar_gst (no topics).
 const BSOJ: CachedRepo[] = [
-  { repo: 'ar_tn', tag: 'v6.1', books: ['tit', 'jon'] },
-  { repo: 'ar_twl', tag: 'v5.1', books: ['tit', 'jon'] },
-  { repo: 'ar_tw', tag: 'v5' },
-  { repo: 'ar_ta', tag: 'v3' },
-  { repo: 'ar_tq', tag: 'v3.1', books: ['tit', 'jon'] },
+  { repo: 'ar_tn', tag: 'v6.1', flavor: 'x-bcvnotes', topics: ['tc-ready'], books: ['tit', 'jon'] },
+  { repo: 'ar_twl', tag: 'v5.1', flavor: 'x-bcvarticles', topics: ['tc-ready'], books: ['tit', 'jon'] },
+  { repo: 'ar_tw', tag: 'v5', flavor: 'x-peripheralArticles', topics: ['tc-ready'], books: [] },
+  { repo: 'ar_ta', tag: 'v3', flavor: 'x-peripheralArticles', topics: ['tc-ready'], books: [] },
+  { repo: 'ar_tq', tag: 'v3.1', flavor: 'x-bcvquestions', topics: ['tc-ready'], books: ['tit', 'jon'] },
 ];
 // The catalogue held still lists the helps only. A Bible row is always downloaded, and
 // served from the route the 90 MB ar_avd export closed the test's browser; a checking set
@@ -769,6 +773,11 @@ test.describe.serial('J4 — the Arabic package, in an Arabic right-to-left proj
     await page.getByTestId('helps-article-close').click();
     await helps.getByRole('tab', { name: 'Words', exact: true }).click();
     seen.word = await directionOf(page.getByTestId('helps-word'));
+    await helps.getByRole('button', { name: 'Read the article →', exact: true }).first().click();
+    seen.wordArticle = await directionOf(page.getByTestId('understand-article'));
+    seen.wordArticleTitle = await directionOf(page.getByTestId('helps-article-title'));
+    seen.wordArticleText = (await page.getByTestId('understand-article').textContent())?.slice(0, 80);
+    await page.getByTestId('helps-article-close').click();
     const understandPicture = testInfo.outputPath('arabic-helps-understand.png');
     await page.screenshot({ path: understandPicture });
     await testInfo.attach('arabic-helps-understand', { path: understandPicture, contentType: 'image/png' });
@@ -784,6 +793,10 @@ test.describe.serial('J4 — the Arabic package, in an Arabic right-to-left proj
     const twSource = page.getByText(/git\.door43\.org\/BSOJ\/ar_twl/);
     await expect(twSource).toBeVisible({ timeout: 30_000 });
     seen.twSource = (await twSource.textContent())?.trim();
+    seen.twProgress = (await page.getByTestId('check-progress').textContent())?.trim();
+    await page.getByTestId('open-academy').click();
+    seen.checkWordArticle = await directionOf(page.getByTestId('academy-drawer').getByTestId('article-panel'));
+    seen.checkWordArticleText = (await page.getByTestId('academy-drawer').getByTestId('article-panel').textContent())?.slice(0, 80);
     const checkPicture = testInfo.outputPath('arabic-helps-check.png');
     await page.screenshot({ path: checkPicture, animations: 'disabled' });
     await testInfo.attach('arabic-helps-check', { path: checkPicture, contentType: 'image/png' });
@@ -795,10 +808,14 @@ test.describe.serial('J4 — the Arabic package, in an Arabic right-to-left proj
     await external.save(testInfo);
 
     expect(seen.document).toBe('ltr');
-    for (const part of ['note', 'article', 'articleTitle', 'word', 'checkNote', 'checkArticle']) {
+    for (const part of ['note', 'article', 'articleTitle', 'word', 'wordArticle', 'wordArticleTitle', 'checkNote', 'checkArticle', 'checkWordArticle']) {
       expect(seen[part], part).toEqual({ dir: 'rtl', direction: 'rtl' });
     }
     expect(seen.twSource).toContain('git.door43.org/BSOJ/ar_twl');
+    // The tW list has items: "0 of N resolved", N > 0.
+    expect(Number(/of (\d+)/.exec(String(seen.twProgress))?.[1] ?? 0)).toBeGreaterThan(0);
+    // The tW articles are Arabic text.
+    for (const part of ['wordArticleText', 'checkWordArticleText']) expect(String(seen[part]), part).toMatch(/[\u0600-\u06FF]/);
     expect(seen.external).toEqual([]);
   });
 });
