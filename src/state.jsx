@@ -6503,7 +6503,9 @@ export function AppProvider({ children }) {
       openConflictReview: (key) => {
         const st = stateRef.current;
         const store = storeRef.current;
-        if (!store || !st.project) return;
+        // Bench P1: never over an open editing card — the section card's draft
+        // lives in the card and would be lost (its entries are disabled too).
+        if (!store || !st.project || st.editing) return;
         const conflicts = adoptConflicts({ store, repoPath: st.project.repoPath, dispatch });
         const at = conflicts.find((c) => c.key === key) ?? conflicts[0];
         if (!at) return;
