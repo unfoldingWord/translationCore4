@@ -122,7 +122,7 @@ function KeepBar({ versions, kept, keptName, busy, onCancel, onKeep }) {
         {kept && (
           <Button variant="secondary" data-testid="conflict-cancel" onClick={onCancel}>{t('conflicts.cancel')}</Button>
         )}
-        <Button variant="ocean" data-testid="conflict-keep" disabled={!kept || busy} onClick={onKeep}>{t('conflicts.keep')}</Button>
+        <Button data-testid="conflict-keep" disabled={!kept || busy} onClick={onKeep}>{t('conflicts.keep')}</Button>
       </div>
     </div>
   );
