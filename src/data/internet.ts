@@ -54,8 +54,9 @@ export class InternetSwitch {
   on = false;
 }
 
-/** The platform routes that make the server use the internet. */
-const OUTBOUND_ROUTES = ['/gitea/', '/git/push/'];
+/** The platform routes that make the server use the internet. #678: the sync
+ * gets Door43 main with a clone and a pull (syncOperation.ts). */
+const OUTBOUND_ROUTES = ['/gitea/', '/git/push/', '/git/clone-repo/', '/git/pull-repo/'];
 
 /** Whether a request uses the internet: any other origin, and the platform's
  * own outbound routes. Every other local request is not internet. */
