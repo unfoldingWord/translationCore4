@@ -577,7 +577,7 @@ for three days, so a signature without a timestamp stops being valid
 Signing", page dated 2026-05-14, read 2026-10-13].
 
 The build signs in to Azure with GitHub OIDC. No secret is stored [decided
-2026-10-13 — D98 ruling 7]. The `windows-x64` job has `id-token: write`. Before each
+2026-10-14 — D98 ruling 7]. The `windows-x64` job has `id-token: write`. Before each
 `signtool` run, `sign-windows.ps1` asks GitHub for a fresh OIDC token, because the
 token expires after minutes and signing runs late in a long build. The Azure
 `WorkloadIdentityCredential` reads it from `AZURE_FEDERATED_TOKEN_FILE`. The build
@@ -604,10 +604,15 @@ Set up Azure once:
    created 2026-08-04, owner ID 6601424, repository ID 1323470539 from
    `gh api repos/unfoldingWord/translationCore4`, 2026-10-14]. The portal's
    **GitHub Actions** scenario may build the older form without IDs. The subject
-   must match exactly. A signed run prints `GitHub OIDC subject:` in its log. If
-   Azure refuses the token, compare that line with the federated credential.
+   must match exactly [VERIFIED — `gh api
+   repos/unfoldingWord/translationCore4/actions/oidc/customization/sub` returns
+   `use_immutable_subject: true` and the prefix
+   `repo:unfoldingWord@6601424/translationCore4@1323470539`, 2026-10-14].
+   At the start of a signed run, the setup step prints `GitHub OIDC subject:` and
+   asks Entra to accept the token. If Entra refuses it, the run stops in the first
+   minute and prints Entra's reason.
 4. A new release branch, for example `release/4.1`, needs its own federated
-   credential before it can sign.
+   credential. Without one, a manual run on that branch stops in the first minute.
 
 Then set these repository variables. None of them is secret:
 

@@ -40,6 +40,12 @@
 #   opens a real window on the runner's desktop (#181).
 set -e
 
+# #456: the GitHub OIDC request values go to the signing calls only, never to
+# node, npm, cargo or the smoke test: keep them in unexported shell variables.
+SIGN_OIDC_URL=${ACTIONS_ID_TOKEN_REQUEST_URL:-}
+SIGN_OIDC_TOKEN=${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}
+unset ACTIONS_ID_TOKEN_REQUEST_URL ACTIONS_ID_TOKEN_REQUEST_TOKEN
+
 REPO=${0:a:h:h}
 BUILD="$REPO/dist-desktop"
 PACK="$BUILD/pack"
@@ -186,11 +192,6 @@ esac
 # Windows signing (#456). The build signs when AZURE_SIGNING_ENDPOINT is set: the
 # workflow sets it on manual runs only. Without it the build is unsigned, and the
 # artifact names say -unsigned. scripts/sign-windows.ps1 holds the signing pins.
-# The GitHub OIDC request values go to the signing calls only, never to npm,
-# cargo or the smoke test: keep them in unexported shell variables.
-SIGN_OIDC_URL=${ACTIONS_ID_TOKEN_REQUEST_URL:-}
-SIGN_OIDC_TOKEN=${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}
-unset ACTIONS_ID_TOKEN_REQUEST_URL ACTIONS_ID_TOKEN_REQUEST_TOKEN
 SIGNED=false
 NAME_SUFFIX="-unsigned"
 if [ "$OS" = windows ] && [ -n "${AZURE_SIGNING_ENDPOINT:-}" ]; then

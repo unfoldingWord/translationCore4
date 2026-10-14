@@ -45,7 +45,11 @@ $TokenFile = Join-Path $ToolDir 'github-oidc-token'
 # from AZURE_FEDERATED_TOKEN_FILE.
 function Write-FederatedToken {
   $uri = "$env:ACTIONS_ID_TOKEN_REQUEST_URL&audience=api://AzureADTokenExchange"
-  $token = (Invoke-RestMethod -Uri $uri -Headers @{ Authorization = "bearer $env:ACTIONS_ID_TOKEN_REQUEST_TOKEN" }).value
+  $headers = @{ Authorization = "bearer $env:ACTIONS_ID_TOKEN_REQUEST_TOKEN" }
+  for ($try = 1; ; $try++) {
+    try { $token = (Invoke-RestMethod -Uri $uri -Headers $headers).value; break }
+    catch { if ($try -ge 5) { throw "GitHub OIDC token request failed $try times: $($_.Exception.Message)" }; Start-Sleep -Seconds (5 * $try) }
+  }
   if (-not $token) { throw 'GitHub returned no OIDC token' }
   [System.IO.File]::WriteAllText($TokenFile, $token)
   $env:AZURE_FEDERATED_TOKEN_FILE = $TokenFile
@@ -59,14 +63,33 @@ if ($Setup) {
   $missing = @($required | Where-Object { -not [Environment]::GetEnvironmentVariable($_) })
   if ($missing.Count) { throw "Signing is on, but these values are empty: $($missing -join ', ')" }
 
-  # Print the token's subject (not secret): the Azure federated credential must
-  # match it exactly, and a mismatch is the usual first-run failure.
+  # Check the trust now, not an hour into the build. Print the token's subject
+  # (not secret), then ask Entra to exchange the token. A wrong subject, audience,
+  # tenant or client id fails here. (The Signer role is proven only by signing.)
   New-Item -ItemType Directory -Force -Path $ToolDir | Out-Null
-  $payload = (Write-FederatedToken).Split('.')[1].Replace('-', '+').Replace('_', '/')
-  $payload += '=' * ((4 - $payload.Length % 4) % 4)
-  $claims = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($payload)) | ConvertFrom-Json
-  Remove-Item -LiteralPath $TokenFile -Force
-  Write-Host "GitHub OIDC subject: $($claims.sub)"
+  try {
+    $token = Write-FederatedToken
+    $payload = $token.Split('.')[1].Replace('-', '+').Replace('_', '/')
+    $payload += '=' * ((4 - $payload.Length % 4) % 4)
+    $claims = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($payload)) | ConvertFrom-Json
+    Write-Host "GitHub OIDC subject: $($claims.sub)"
+    try {
+      Invoke-RestMethod -Method Post -Uri "https://login.microsoftonline.com/$env:AZURE_TENANT_ID/oauth2/v2.0/token" -Body @{
+        client_id             = $env:AZURE_CLIENT_ID
+        grant_type            = 'client_credentials'
+        scope                 = 'https://management.azure.com/.default'
+        client_assertion_type = 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer'
+        client_assertion      = $token
+      } | Out-Null
+    } catch {
+      $detail = $_.ErrorDetails.Message
+      if ($detail) { try { $detail = ($detail | ConvertFrom-Json).error_description } catch {} }
+      throw "Azure refused the GitHub OIDC token for subject $($claims.sub): $detail"
+    }
+    Write-Host 'Azure accepts the GitHub OIDC token'
+  } finally {
+    if (Test-Path -LiteralPath $TokenFile) { Remove-Item -LiteralPath $TokenFile -Force }
+  }
 
   Add-Type -AssemblyName System.IO.Compression.FileSystem
   foreach ($p in $Packages) {
