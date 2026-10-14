@@ -2734,3 +2734,33 @@ Ruling 6 changes #546, which says that v4.0.0 promotes the rc.2 artifact without
 Where it lands: `scripts/sign-windows.ps1`, `scripts/package-desktop.zsh`, `scripts/tc4.iss`,
 `.github/workflows/package-desktop.yml` (the signing values and the `smoke-windows-x64`
 signature check), `docs/PACKAGING.md` (Signing), and `scripts/README-windows.txt`.
+
+## D100 (2026-10-14, project-owner ruling) **ar_gt leaves the gateway registry. BSOJ is the only Arabic package. D97 ruling 7 now applies to `Door43-Catalog` for `ml` and `ur-deva`. Amends D97 ruling 7.** [owner ruling on #650, 2026-10-14; evidence in #650 and pull request #697]
+
+Context. D97 ruling 7 named `ar_gt` as one of the gateway organizations with no `_twl`
+repository, and as the worked example of an Arabic set that pins the bundled `en_twl` with
+its own `ar_tw`. The #650 work found that ar_gt is not a usable Arabic package: in
+`ar_gt/ar_tw` v3, 420 of the 422 articles are Persian under the tag `ar`; `ar_gt/ar_tn` v3.2
+holds only `tn_3JN.tsv`; and no ar_gt repository has the `tc-ready` topic, so the Source
+texts screen never offers it for download [VERIFIED — Door43 API reads, 2026-10-14].
+
+1. **The registry has no ar_gt entry.** `src/data/gateways.ts` lists one Arabic package,
+   `BSOJ` (`hasTwl: true`).
+2. **Ruling 7 stands, with other examples.** A gateway with `hasTwl: false` still pins the
+   bundled `en_twl` with its own `<lang>_tw`. Those gateways are now `Door43-Catalog` for
+   `ml` and `ur-deva` [`Door43-Catalog/ur-deva_twl` answers HTTP 404, read 2026-10-14]. The
+   tests of ruling 7 that read the registry use `ur-deva`; the test that two organizations
+   of one language decide separately uses a test-only gateway object, since no registry
+   pair shows that difference any more. D97 itself is not rewritten.
+3. **Two behavior changes.** (1) A tC3 import that recorded `ar_gt/ar_tw` leaves its tW slot
+   unresolved: the import no longer finds ar_gt in the registry, so it looks for
+   `ar_gt/ar_twl`, which does not exist. (2) `orgForRepoName('ar_tn')` returns `BSOJ`, where
+   it returned null while two organizations claimed `ar`. So an older Arabic install whose
+   path carries no owner (`_sideloaded_/ar_tn`) is read as BSOJ's, even one that came from
+   ar_gt. No user could download ar_gt in the app, so neither case comes from a normal
+   install.
+
+Where it lands: `src/data/gateways.ts`, `test/gatewayTwl.test.ts`, `test/import/tc3.test.ts`,
+`test/installed.test.ts`, and the J4 Arabic run (`e2e/j04-check-book.spec.ts`). Tests that
+use ar_gt only as pin data stay: `test/oldTwlPin.test.ts`, `test/resourceFetch.test.ts` and
+`conformance/validate.mjs`.

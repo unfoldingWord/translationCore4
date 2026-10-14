@@ -288,27 +288,28 @@ describe('#21 the tC3 parser', { timeout: 60_000 }, () => {
 describe('#646 the tW version of a tC3 import pins its own _twl release (D97 ruling 8)', () => {
   const EN_TW = 'git.door43.org/unfoldingWord/en_tw';
   const EN_TWL = 'git.door43.org/unfoldingWord/en_twl';
-  const AR_TW = 'git.door43.org/ar_gt/ar_tw';
-  const AR_TWL = 'git.door43.org/ar_gt/ar_twl';
+  const UR_TW = 'git.door43.org/Door43-Catalog/ur-deva_tw';
+  const UR_TWL = 'git.door43.org/Door43-Catalog/ur-deva_twl';
   const EN_TW_V90 = '014524aebf4f997c123777e952856d24e3b246d2';
   const EN_TWL_V91 = '7cbb3419f79780ce84b92ad7d42bd476cc5d8a64';
   const EN_TWL_V90 = '5429bf17520c4c0bc1be7f4454c36adaeed75485';
   const EN_TWL_V89 = '4bf5ba649b489a906d68f89477d83204b7c79b61';
-  const AR_TW_V3 = '0ff22d80c6bca067554128c5b5e793ca0965eccb';
+  const UR_TW_V83 = 'cb2ed7b86a183da372036f02165f3fceab2321ef';
   /** The DCS tags and releases these cases name [VERIFIED — git.door43.org tags
-   * and releases APIs, 2026-10-13; `ar_gt/ar_twl` answers HTTP 404 as the control]. */
+   * and releases APIs, 2026-10-13; `Door43-Catalog/ur-deva_tw` v8.3 and its release, and
+   * `Door43-Catalog/ur-deva_twl` answering HTTP 404 as the control, 2026-10-14]. */
   const TAGS: Record<string, string> = {
     [`${EN_TW}@v90`]: EN_TW_V90,
     [`${EN_TWL}@v91`]: EN_TWL_V91,
     [`${EN_TWL}@v90`]: EN_TWL_V90,
     [`${EN_TWL}@v89`]: EN_TWL_V89,
-    [`${AR_TW}@v3`]: AR_TW_V3,
+    [`${UR_TW}@v8.3`]: UR_TW_V83,
   };
   const RELEASES: Record<string, DcsRelease[] | null> = {
     [EN_TW]: [{ version: 'v91', createdAt: '2026-09-26T15:47:38Z' }, { version: 'v90', createdAt: '2026-08-14T20:41:43Z' }, { version: 'v89', createdAt: '2026-06-23T22:01:45Z' }],
     [EN_TWL]: [{ version: 'v91', createdAt: '2026-09-26T15:47:29Z' }, { version: 'v90', createdAt: '2026-08-15T10:12:43Z' }, { version: 'v89', createdAt: '2026-06-23T22:01:33Z' }],
-    [AR_TW]: [{ version: 'v3', createdAt: '2024-03-02T17:11:47Z' }],
-    [AR_TWL]: null, // HTTP 404: no such repository
+    [UR_TW]: [{ version: 'v8.3', createdAt: '2021-02-23T20:10:54Z' }],
+    [UR_TWL]: null, // HTTP 404: no such repository
   };
   const tags = async (repoPath: string, version: string) => TAGS[`${repoPath}@${version}`] ?? null;
   const releases = async (repoPath: string) => RELEASES[repoPath];
@@ -344,15 +345,15 @@ describe('#646 the tW version of a tC3 import pins its own _twl release (D97 rul
     expect(found.translationWordsLinks).toEqual({ repoPath: EN_TWL, version: 'v91', sha: EN_TWL_V91 });
   });
 
-  it('a gateway with no _twl repository (ar_gt, hasTwl: false) pins the bundled en_twl and asks DCS for no _twl (ruling 7)', async () => {
+  it('a gateway with no _twl repository (ur-deva, hasTwl: false) pins the bundled en_twl and asks DCS for no _twl (ruling 7)', async () => {
     const asked: string[] = [];
-    const found = await resolveVersions(twRequest(AR_TW, 'v3'), tags, async (repoPath) => (asked.push(repoPath), RELEASES[repoPath]));
-    expect(found.translationWords).toEqual({ repoPath: AR_TW, version: 'v3', sha: AR_TW_V3 });
+    const found = await resolveVersions(twRequest(UR_TW, 'v8.3'), tags, async (repoPath) => (asked.push(repoPath), RELEASES[repoPath]));
+    expect(found.translationWords).toEqual({ repoPath: UR_TW, version: 'v8.3', sha: UR_TW_V83 });
     const bundled = INSTALLED_SUITE.languageSets.fallback.translationWordsLinks;
     expect(found.translationWordsLinks).toEqual({ repoPath: bundled.repoPath, version: bundled.version, sha: bundled.sha });
-    expect(asked).not.toContain(AR_TWL);
+    expect(asked).not.toContain(UR_TWL);
     const { primary, fallback } = pinsOf(found);
-    expect(primary.translationWords).toMatchObject({ repoPath: AR_TW, version: 'v3', sha: AR_TW_V3 });
+    expect(primary.translationWords).toMatchObject({ repoPath: UR_TW, version: 'v8.3', sha: UR_TW_V83 });
     expect(primary.translationWordsLinks).toMatchObject({ repoPath: bundled.repoPath, sha: bundled.sha });
     expect(primary.translationWordsLinks.repoPath).toBe(fallback.translationWordsLinks.repoPath);
     // D41: the books tC3 checked are a fact about the commit it checked against, not about a pin that was never looked up
