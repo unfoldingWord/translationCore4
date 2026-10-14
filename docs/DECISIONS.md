@@ -2675,7 +2675,7 @@ This table is the home of the guarantees; epic #24 links here.
 |---|---|---|---|---|
 | G1 | Own work is never lost: each own journal file and outbox entry from before a sync is in the result, byte for byte, or the sync changes nothing. | 2 | R-8.7.7 | #674 (JC-35), #675 |
 | G2 | Incoming files are checked: each journal file from Door43 passes the one validator. One failure stops the sync. | 2 | R-8.7.8 | #674 (JC-35), #675, #677 |
-| G3 | Derived files are rebuilt, never trusted: each project file that tC4 writes is the projection of the fold over the base inputs of R-8.7.9. `metadata.json` belongs to the server: a sync never writes its content, and the remake and the commit of the apply make the platform stamp it again (PLATFORM-NOTES #48). | 2 | R-8.7.9, R-8.7.10 | #674 (JC-35), #675 |
+| G3 | Derived files are rebuilt, never trusted: each project file that tC4 writes is the projection of the fold over the base inputs of R-8.7.9. `metadata.json` belongs to the server: a sync never writes its content, and the remake and the commit of the apply make the platform stamp it again (PLATFORM-NOTES #48). [amended 2026-10-14 — D101] | 2 | R-8.7.9, R-8.7.10 | #674 (JC-35), #675 |
 | G4 | Door43 `main` only moves forward: never a force push; a push that is not a fast-forward starts the sync again. | 3 | app rule (§8.7) | #676 |
 | G5 | Identity holds: after a sync, the project is at the same path with the same actor id. | 3 | app rule (§8.7) | #676 |
 | G6 | Same journals, same project: two computers with the same journals have the same project files. | 2 | R-8.7.11 | #674 (JC-35), #675 |
