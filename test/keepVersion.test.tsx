@@ -11,7 +11,7 @@ import { fold } from '../src/data/journal/runtime';
 import { sealAction, segmentName, validateSegment, type JournalEvent } from '../src/data/journal/seal';
 import { journalingRig, memKv, tickingNow } from './helpers/journalingRig';
 import { SaveScheduler } from '../src/data/saveScheduler';
-import { spliceVerse } from '../src/data/usfm/splice';
+import { spliceVerse, verseBody } from '../src/data/usfm/splice';
 import { editorBookText, __performKeepVersionForTests as keepVersion, __performLoadConflictsForTests as loadConflicts, __reducerForTests as reducer } from '../src/state.jsx';
 
 const REPO = '_local_/_local_/prueba';
@@ -220,6 +220,36 @@ describe('#679 an edit made while the keep is in flight', () => {
     const last = (await own()).filter((e) => e.op === 'text.verse.set' && e.chapter === '1' && e.verse === '1').sort((a, b) => (a.ts < b.ts ? -1 : 1)).at(-1)!;
     expect(last.text).toBe(mine.text);
     expect(box.state.conflictReview).toEqual({ key: KEY, error: null });
+  });
+
+  // Bench review round 1 (George #2): a projection without the kept verse is
+  // "no answer". It must not rebase the dirty buffer onto an empty verse,
+  // whose next save would publish '' over the keep.
+  it('a projection without the kept verse: no empty verse is rebased, and the review shows the error', async () => {
+    const { store, own } = await conflicted();
+    const [conflict] = store.readVerseConflicts();
+    const mine = conflict.versions.find((v) => v.actor === store.actorId)!;
+    const { usfm } = await store.readBook('TIT');
+    const manual = { setTimeout: () => 0, clearTimeout: () => {} };
+    const scheduler = new SaveScheduler({ writeBook: (book, whole) => store.writeBook(book, whole), splice: spliceVerse, clock: manual });
+    scheduler.loadBook('TIT', usfm);
+    const rawRef = { current: usfm as string | null };
+    const real = store.projectedBook.bind(store);
+    // The fold's text of TIT with verse 1 missing: verseBody returns null for it.
+    vi.spyOn(store, 'projectedBook').mockImplementation((code) => real(code)?.replace(/\\v 1 [^\n]*\n/, '') ?? null);
+    const { box, dispatch } = recorder({ project: { repoPath: REPO }, book: 'TIT', bookRaw: usfm, conflictReview: { key: KEY, error: null }, conflictsByProject: {}, verseConflicts: [conflict] });
+    const stateRef = { get current() { return box.state; } };
+    const keep = keepVersion({ storeRef: { current: store }, stateRef, schedulerRef: { current: scheduler }, rawRef, saveRefs: [], dispatch, conflictsGen: new Map() }, KEY, mine.ts);
+    scheduler.markDirty('TIT', 1, '2', 'editado durante el keep');
+    expect(await keep).toBe(true);
+    // Positive control: the buffer still holds verse 1, and it is not the empty verse.
+    expect(verseBody(scheduler.bookText('TIT')!, 1, '1')).not.toBeNull();
+    expect(verseBody(scheduler.bookText('TIT')!, 1, '1')!.trim()).not.toBe('');
+    expect((box.state.conflictReview as { error: string | null }).error).toMatch(/holds no verse 1:1/);
+    expect(box.state.bookRaw).toBeNull();
+    // The keep is the journal's last event for the verse; nothing wrote an empty verse.
+    const last = (await own()).filter((e) => e.op === 'text.verse.set' && e.chapter === '1' && e.verse === '1').sort((a, b) => (a.ts < b.ts ? -1 : 1)).at(-1)!;
+    expect(last.text).toBe(mine.text);
   });
 });
 

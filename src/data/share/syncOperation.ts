@@ -84,7 +84,8 @@ export interface SyncDeps {
   door43Server: string;
   /** The book coverage of the installed resources (`resolutionContext`), for `resolve`. */
   coverage: Coverage;
-  /** The ops log the sync writes its record and its phases to. */
+  /** The ops log the sync writes its record and its phases to. Without it the
+   * sync refuses (`opslog.not-loaded`) before any request (G8). */
   ops?: OpsRecorder;
   /** Accept a `file://` origin (the rig stand-in). Production leaves it unset. */
   allowFileRemote?: boolean;
@@ -401,25 +402,27 @@ export async function sync(deps: SyncDeps, request: SyncRequest): Promise<Report
   }
   return inProjectQueue(repoPath, async () => {
     // G8: one sync record per project. An open one is a swap that did not finish,
-    // and a log that did not load at this start can hide one.
-    if (deps.ops?.recovered === false) {
+    // and a log that did not load at this start can hide one. With no ops log at
+    // all, no phase is saved and a stopped swap cannot be recovered: refuse too.
+    const ops = deps.ops;
+    if (!ops || ops.recovered === false) {
       const at = new Date().toISOString();
       return failedReport('sync', at, at,
         new Refusal('opslog.not-loaded', 'the ops log did not load at this start; restart the app to sync'), { repoPath });
     }
-    if (deps.ops?.isOpen?.('sync', repoPath)) {
+    if (ops.isOpen?.('sync', repoPath)) {
       const at = new Date().toISOString();
       return failedReport('sync', at, at,
         new Refusal('sync.swap-pending', `the sync of ${repoPath} did not finish; restart the app to finish it`), { repoPath });
     }
     // An open from Door43 that stopped at move.copy can leave a part copy here,
     // which the next start may delete: no sync until that start finishes it.
-    if (deps.ops?.isOpen?.('open-door43', repoPath, 'move.copy')) {
+    if (ops.isOpen?.('open-door43', repoPath, 'move.copy')) {
       const at = new Date().toISOString();
       return failedReport('sync', at, at,
         new Refusal('open-door43.pending', `the open from Door43 of ${repoPath} did not finish; restart the app to finish it`), { repoPath });
     }
-    const record = await deps.ops?.begin('sync', { repoPath });
+    const record = await ops.begin('sync', { repoPath });
     const { report, open } = await syncRecorded(deps, request, record);
     // A swap that stopped leaves its record open, so the next start finishes it (G8).
     if (!open) await record?.close(report);
