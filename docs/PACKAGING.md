@@ -156,8 +156,8 @@ of the window. Linux keeps the native frame.
   `data-title-bar="hidden"` on macOS, `data-title-bar="overlay"` on Windows,
   no mark on Linux. With a mark, `src/ui.css` makes the header move the
   window and keeps each header control clickable. The room for the window
-  controls is physical, because an RTL project mirrors the page and not the
-  window: `hidden` keeps 88px at the left of the header for the traffic
+  controls is physical, because a right-to-left app language mirrors the page
+  and not the window (#657): `hidden` keeps 88px at the left of the header for the traffic
   lights; `overlay` pads both sides of the header from the title bar area
   that the Window Controls Overlay environment reports
   (`env(titlebar-area-x)`, `env(titlebar-area-width)`: the part of the top
