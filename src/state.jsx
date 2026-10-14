@@ -3341,7 +3341,13 @@ function waitForState(stateRef, holds, ms = 5_000) {
   const deadline = Date.now() + ms;
   return new Promise((resolve) => {
     const tick = () => {
-      if (holds(stateRef.current) || Date.now() >= deadline) {
+      if (holds(stateRef.current)) {
+        resolve();
+        return;
+      }
+      if (Date.now() >= deadline) {
+        // Never silent: a caller that reads stateRef next sees the old state.
+        console.error(`waitForState: the rendered state did not arrive in ${ms} ms`);
         resolve();
         return;
       }
