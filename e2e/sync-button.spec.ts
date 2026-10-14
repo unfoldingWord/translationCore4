@@ -125,6 +125,9 @@ test.describe('#678 — Sync with Door43', () => {
     expect(shared, 'the first share pushed main').not.toBeNull();
     // the stand-in mirror the sync clone copies (never committed to)
     execFileSync('git', ['clone', '-q', pathToFileURL(remote.bare).href, MIRROR_DIR]);
+    // The server's own clone writes a local identity; add-and-commit panics without one (#676).
+    execFileSync('git', ['-C', MIRROR_DIR, 'config', 'user.name', 'rig']);
+    execFileSync('git', ['-C', MIRROR_DIR, 'config', 'user.email', 'rig@localhost']);
     await expect(page.getByTestId(`share-card-${ID}`)).toHaveAttribute('data-action', 'sync');
     await expect(button(page)).toHaveText('Sync with Door43');
     await shot(page, testInfo, 'sync-button');
