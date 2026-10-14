@@ -17,6 +17,7 @@ import {
   derivedProjections as derivedProjectionsRef,
   classifyDivergence as classifyDivergenceRef,
   isUnjournaledIngredient as isUnjournaledIngredientRef,
+  isRemovableDerivedClass as isRemovableDerivedClassRef,
   projectAlignments as projectAlignmentsRef,
   projectResources as projectResourcesRef,
   projectSettings as projectSettingsRef,
@@ -43,6 +44,7 @@ import {
   refusalCodeOf as refusalCodeOfRef,
   reportError as reportErrorRef,
 } from '../../../journal/report.mjs';
+import { syncCore as syncCoreRef } from '../../../journal/sync.mjs';
 import type { JournalEvent } from './seal';
 import type { Story } from '../burritoStore';
 
@@ -164,6 +166,9 @@ export const classifyDivergence = classifyDivergenceRef as (
 /** §8.5: a tolerated unjournaled ingredient class (ingredients/audio/). */
 export const isUnjournaledIngredient = isUnjournaledIngredientRef as (ipath: string) => boolean;
 
+/** A derived path class whose projection can disappear (books, alignment and decision sidecars). */
+export const isRemovableDerivedClass = isRemovableDerivedClassRef as (ipath: string) => boolean;
+
 export const projectAlignments = projectAlignmentsRef as (foldOut: FoldOutput, book: string) => string;
 export const projectResources = projectResourcesRef as (pins: FoldOutput['pins']) => string;
 export const projectSettings = projectSettingsRef as (settings: FoldOutput['settings']) => string;
@@ -239,7 +244,7 @@ export const normalizeEvent = normalizeEventRef as (event: JournalEvent) => Jour
 // throws is a Refusal carrying one code from REFUSAL_CODES.
 export const REFUSAL_CODES = REFUSAL_CODES_REF as Readonly<Record<RefusalCode, string | null>>;
 export type RefusalCode = keyof typeof REFUSAL_CODES_REF;
-export type ReportOp = 'open' | 'checkpoint' | 'seed' | 'reconcile' | 'pin-complete' | 'export' | 'import' | 'share';
+export type ReportOp = 'open' | 'checkpoint' | 'seed' | 'reconcile' | 'pin-complete' | 'export' | 'import' | 'share' | 'sync';
 
 export interface Report<F extends Record<string, unknown> = Record<string, unknown>> {
   op: ReportOp;
@@ -281,3 +286,37 @@ export const failedReport = failedReportRef as (
   facts?: Record<string, unknown>,
 ) => Report;
 export const refusalCodeOf = refusalCodeOfRef as (error: unknown) => RefusalCode | null;
+
+// ---- the sync core (issue #675, team sync round 1 — D98) ----------------------
+/** One verse-text fork for the conflict review (R-8.7.12). */
+export interface SyncTextConflict {
+  key: string;
+  heads: Array<{ actor: string | null; ts: string; text: string | null }>;
+  /** the ts of the newest head, which the fold projects */
+  provisional: string;
+}
+/** The facts of an ok sync Report. */
+export interface SyncFacts extends Record<string, unknown> {
+  carried: number;
+  /** teammate journal files this computer held and Door43 main lacked, carried back */
+  restored: number;
+  received: Record<string, number>;
+  textConflicts: SyncTextConflict[];
+  newestWins: Array<{ key: string; kind: string; winner: string }>;
+  names: Record<string, string>;
+}
+/** The one validator the core reads: journal/files.mjs (Node) or ./seal (the app). */
+export interface SyncFileLayer {
+  validateSegment(raw: string): { ok: boolean; reason?: string; events?: unknown[] } | Promise<{ ok: boolean; reason?: string; events?: unknown[] }>;
+  validateActorDoc(raw: string, actorId: string): { ok: boolean; reason?: string };
+  segmentName(ts: string): string;
+}
+/** The sync core: Door43 main + this computer's journal → the files to write + one
+ * Report (`op: 'sync'`). Pure; a refusal returns an empty `write` and `remove`.
+ * `remove`: the derived files on Door43 main that the fold no longer projects, sorted. */
+export const syncCore = syncCoreRef as (input: {
+  remote: Map<string, string>;
+  mine: { actor: string; journal: Map<string, string>; outbox: Map<string, string> };
+  resolve: (tool: string, book: string, pins: FoldOutput['pins']) => Record<string, unknown>;
+  files: SyncFileLayer;
+}) => Promise<{ write: Map<string, string>; remove: string[]; report: Report }>;

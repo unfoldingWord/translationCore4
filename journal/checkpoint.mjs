@@ -204,6 +204,16 @@ export const projectMetadata = (foldOut, baseMetadata) => {
 // §8.5: unjournaled ingredient classes — canonical on disk, outside the vocabulary.
 export const isUnjournaledIngredient = (ipath) => ipath.startsWith('audio/');
 
+// Is this a derived path CLASS whose projection can legitimately disappear (and whose stale
+// file must then be removed)? Books (book.remove), alignment and decision sidecars
+// (structural retirement) — never resources/settings (they project the §8.7 EMPTY document
+// instead) and never vrs.json (creation-only, retained forever). ONE predicate: the app
+// checkpoint (journalingStore.ts) and the sync core (sync.mjs) both read it.
+export const isRemovableDerivedClass = (ipath) =>
+  /^[A-Z0-9]{3}\.usfm$/.test(ipath) ||
+  /^checking\/alignments\/[A-Z0-9]{3}\.json$/.test(ipath) ||
+  /^checking\/(translationWords|translationNotes)\/[A-Z0-9]{3}\.json$/.test(ipath);
+
 // The §8.7 regeneration set: EVERY journal-derived shared file, as {ipath: bytes} —
 // USFM per book, alignment + decision sidecar mirrors, resources.json, settings.json,
 // vrs.json, and metadata.json. The set is EXHAUSTIVE, so its inputs are MANDATORY:

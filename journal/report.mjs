@@ -65,8 +65,8 @@ export const REFUSAL_CODES = Object.freeze({
   'share.push-failed': null,
   'share.server-unavailable': null, // Door43 answered the sign-in with a 5xx (#203)
   'share.sign-in-rejected': null, // Door43 refused the sign-in for a reason other than the password (#203)
-  // Team sync round 1 (D98, epic #24): the format-facing refusals, reserved for the sync
-  // core (#675) and the name writer (#680).
+  // Team sync round 1 (D98, epic #24): the sync core (journal/sync.mjs, #675) throws the
+  // four sync codes; the reference writer (journal/files.mjs) throws actor.name-already-set.
   'sync.own-file-differs': 'R-8.7.7', // (G1) Door43 main holds a different file at an own path
   'sync.incoming-invalid': 'R-8.7.8', // (G2) an incoming journal file fails the one validator
   'sync.metadata-overlay': 'R-8.7.10', // (G3) the fold carries a project.meta.set overlay; a sync never writes metadata.json
@@ -82,7 +82,7 @@ export const isRefusalCode = (code) => typeof code === 'string' && Object.hasOwn
 // classified, what checkpoint wrote, ...); `startedAt`/`endedAt` are ISO-8601
 // UTC. A failed Report MAY carry a code (a refusal) or none (any other error);
 // its `rule` is the table's binding for that code and is absent for an app rule.
-export const REPORT_OPS = Object.freeze(['open', 'checkpoint', 'seed', 'reconcile', 'pin-complete', 'export', 'import', 'share']);
+export const REPORT_OPS = Object.freeze(['open', 'checkpoint', 'seed', 'reconcile', 'pin-complete', 'export', 'import', 'share', 'sync']);
 
 const REPORT_KEYS = new Set(['op', 'ok', 'code', 'rule', 'facts', 'startedAt', 'endedAt']);
 const isObj = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);

@@ -62,6 +62,7 @@ import {
   STORY_BOOK_ID,
   STORY_FILE,
   isUnjournaledIngredient,
+  isRemovableDerivedClass,
   normalizeEvent,
   projectAlignments,
   projectResources,
@@ -649,16 +650,10 @@ export class JournalingStore implements BurritoStore {
   }
 
   /** Is this a derived path CLASS whose projection can legitimately disappear
-   * (and whose stale file must then be removed)? Books (book.remove),
-   * alignment and decision sidecars (structural retirement) — never
-   * resources/settings (they project the §8.7 EMPTY document instead) and
-   * never vrs.json (creation-only, retained forever). */
+   * (and whose stale file must then be removed)? The one predicate lives in
+   * journal/checkpoint.mjs; the sync core (#675) reads it too. */
   private static isRemovableDerivedClass(ipath: string): boolean {
-    return (
-      /^[A-Z0-9]{3}\.usfm$/.test(ipath) ||
-      /^checking\/alignments\/[A-Z0-9]{3}\.json$/.test(ipath) ||
-      /^checking\/(translationWords|translationNotes)\/[A-Z0-9]{3}\.json$/.test(ipath)
-    );
+    return isRemovableDerivedClass(ipath);
   }
 
   /** The projection bytes of ONE derived path under a given fold. Returns null
