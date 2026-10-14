@@ -65,7 +65,7 @@ import { Refusal, failedReport, isUnjournaledIngredient, okReport, type Report }
 import type { ServerApi } from '../serverApi';
 import { isNotFoundError } from '../serverApi';
 import { readJournalZipOf } from './journalStore';
-import { OPEN_MARKER, archiveNameOf, openRunning, openScratchOf } from '../openCopyMarks';
+import { OPEN_MARKER, archiveNameOf, isReservedIngredient, openRunning, openScratchOf } from '../openCopyMarks';
 
 /** The settings key that keeps the bytes of a settings document that did not parse. */
 export const UNREADABLE_KEY = 'unreadableSettings';
@@ -192,7 +192,9 @@ export const scratchPathOf = (repoPath: string): string => `_local_/_archive_/tc
 /** The apply marker (module header): an ingredient path inside the scratch copy.
  * The apply never writes it into the project and never removes it from there. */
 export const APPLY_MARKER = 'tc4-sync/apply.json';
-const isMarkerPath = (ipath: string): boolean => ipath.startsWith('tc4-sync/');
+/** The reserved marker folders, `tc4-sync/` and `tc4-open/` (#677): one definition,
+ * src/data/openCopyMarks.ts. The apply never writes or removes a file there. */
+const isMarkerPath = isReservedIngredient;
 
 /** The sync generation of each project in this process (module header): an
  * apply moves it on, and a store opened at an older one is stale. A restart
@@ -382,6 +384,14 @@ export const deleteIngredientIfPresent = async (api: Pick<OpsRecoveryApi, 'delet
   } catch (error) {
     if (!isIngredientGone(error)) throw error;
   }
+};
+
+/** Delete every file in the reserved marker folders (`isReservedIngredient`) of
+ * `repoPath`. A clone of Door43 content runs this at the fixed clone path before the
+ * move (#677, as #676 deletes APPLY_MARKER there), so a marker that came with Door43
+ * never reaches a scratch copy or a project. */
+export const deleteReservedIngredients = async (api: Pick<OpsRecoveryApi, 'listPaths' | 'deleteIngredient'>, repoPath: string): Promise<void> => {
+  for (const ipath of (await api.listPaths(repoPath)).filter(isReservedIngredient)) await deleteIngredientIfPresent(api, repoPath, ipath);
 };
 
 /** The apply (module header): make the project's `ingredients/`, except

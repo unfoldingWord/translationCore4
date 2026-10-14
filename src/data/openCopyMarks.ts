@@ -15,6 +15,14 @@ export const openScratchOf = (repoPath: string): string => `_local_/_archive_/tc
 /** The marker of an unfinished copy (opsLog.ts, the open section), as an ingredient path. */
 export const OPEN_MARKER = 'tc4-open/move.json';
 
+/** The folders under `ingredients/` that tC4 keeps for its own markers: `tc4-open/`
+ * (#677, OPEN_MARKER) and `tc4-sync/` (#676, APPLY_MARKER). The one definition: a
+ * file there that comes with Door43 content is deleted at the fixed clone path before
+ * the move (the open), and the sync's apply never writes or removes one in a project. */
+export const RESERVED_INGREDIENT_FOLDERS = ['tc4-open/', 'tc4-sync/'] as const;
+export const isReservedIngredient = (ipath: string): boolean =>
+  RESERVED_INGREDIENT_FOLDERS.some((folder) => ipath.startsWith(folder));
+
 /** The projects whose open from Door43 runs in this app now. */
 const runningOpens = new Set<string>();
 export const openRunning = {
