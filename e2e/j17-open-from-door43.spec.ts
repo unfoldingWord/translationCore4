@@ -13,7 +13,7 @@ import { execFileSync } from 'node:child_process';
 import type { Page } from '@playwright/test';
 import { test, expect } from './helpers/test';
 import { SEEDED_PROJECT, RIG_LOCAL_REPOS, rigRepo, writePlace } from './helpers/rig';
-import { USER, fakeShare, git, shot, signIn, gateOff, type BareRemote } from './helpers/door43Share';
+import { USER, expectConvergedOpen, expectIngredientsEqualMain, fakeShare, git, opsIds, shot, signIn, gateOff, type BareRemote } from './helpers/door43Share';
 import { lane } from './lane.mjs';
 import { ServerApi } from '../src/data/serverApi';
 import { describeVerifierReport, verifyProjectAgainstJournal } from '../src/data/journal/verify';
@@ -191,7 +191,13 @@ test.describe('J17 — open a project from Door43', () => {
     const actorsAfter = actorsOn(remote);
     const added = actorsAfter.filter((a) => !actorsBefore.includes(a));
     expect(added, 'one new actor on Door43 main: this computer in this project').toHaveLength(1);
-    expect(git(opened, 'rev-parse', 'HEAD')).toBe(remote.main());
+    // D100 (#676): the sync applies main's tree in place; the project's HEAD is not main's
+    expectIngredientsEqualMain(remote.bare, REPO);
+    const beforeOpen = opsIds();
+    await page.getByTestId('sync-dismiss').click();
+    await page.getByTestId(`project-${ID}`).getByRole('button', { name: /Titus/ }).click();
+    await expect(page.getByRole('heading', { name: /^Titus \d+$/ })).toBeVisible({ timeout: 120_000 });
+    await expectConvergedOpen(ID, beforeOpen);
     // the opened project is the fold of its journal (the #62 verifier)
     const verified = await verifyProjectAgainstJournal(new ServerApi({ baseUrl: lane().rigApi }), ID);
     expect(verified.ok, describeVerifierReport(verified)).toBe(true);
