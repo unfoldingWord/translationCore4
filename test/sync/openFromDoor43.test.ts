@@ -882,3 +882,76 @@ describe('#677 a stale open never blocks a project made later at that path (the 
     expect(w.rig.repos.get(SCRATCH)!.files.has(MARKER)).toBe(true);
   });
 });
+
+describe('#677 reserved folders that come with Door43 content never reach the project (parity with #676 beforeMove)', () => {
+  const SYNC_MARKER = 'tc4-sync/apply.json';
+  const RESERVED = [MARKER, 'tc4-open/other.json', SYNC_MARKER];
+  /** Door43 main carries files in the reserved folders (a repository someone pushed them to). */
+  async function door43WithReservedFiles() {
+    const w = await world();
+    const remote = w.rig.remotes.get(URL_)!;
+    for (const ipath of RESERVED) remote.files.set(ipath, '{"from":"door43"}');
+    return w;
+  }
+  const reservedIn = (w: World, repo: string) => [...(w.rig.repos.get(repo)?.files.keys() ?? [])].filter((p) => p.startsWith('tc4-'));
+
+  it('the opened project holds no file of tc4-open/ or tc4-sync/, and it opens', async () => {
+    const w = await door43WithReservedFiles();
+    const settings = settingsDoc();
+    const { ops } = await startApp(settings, w.api);
+    expect(await openFromDoor43({ api: w.api, ops }, { source: SOURCE, name: 'prueba_b' })).toEqual({ repoPath: OPENED });
+    expect(reservedIn(w, OPENED)).toEqual([]);
+    expect(w.rig.repos.has(SCRATCH)).toBe(false);
+    expect(w.rig.repos.has(CLONE_PATH)).toBe(false);
+    forgetProjectQueues();
+    const store = new JournalingStore({ api: w.api, kv: w.kvB, ops });
+    await store.open(OPENED);
+    store.dispose();
+  });
+
+  for (const after of ['kept', 'erased'] as const)
+    it(`a kill right after the clone's move (settings ${after}): the scratch copy holds no marker that came with Door43, and nothing is mis-settled`, async () => {
+      const w = await door43WithReservedFiles();
+      const settings = settingsDoc();
+      const { ops } = await startApp(settings, w.api);
+      let killed = false;
+      const dying = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (killed) return new Promise<Response>(() => {});
+        const response = await w.rig.fetchFn(input, init);
+        // the move of the clone off the fixed path: the copy from the clone path to the scratch copy
+        if (new URL(String(input)).pathname.startsWith(`/api/git/copy/${CLONE_PATH}`)) {
+          killed = true;
+          settings.hang();
+        }
+        return response;
+      }) as typeof fetch });
+      void openFromDoor43({ api: dying, ops }, { source: SOURCE, name: 'prueba_b' });
+      await new Promise((r) => setTimeout(r, 200));
+      expect(killed).toBe(true);
+      expect(w.rig.repos.has(SCRATCH)).toBe(true);
+      // the one file that could make a scratch copy look like an unfinished copy did not come along
+      expect(reservedIn(w, SCRATCH)).toEqual([]);
+      // the next start, with the settings record kept or lost
+      const stored = structuredClone(settings.get()) as { opsLog?: unknown };
+      if (after === 'erased') delete stored.opsLog;
+      const doc = settingsDoc();
+      await doc.write(stored as Record<string, unknown>);
+      forgetProjectQueues();
+      const { ops: ops2 } = await startApp(doc, w.api);
+      // the translator makes a project under that name: it is made and opens, and stays
+      const clock = tickingNow('2026-10-14T09:00:00.000Z');
+      const mine = new JournalingStore({ api: w.api, kv: w.kvB, ops: ops2, now: () => clock.advance(7) });
+      await mine.createProject({ content_name: 'Mine', content_abbr: 'prueba_b', content_language_code: 'es', add_book: false, versification: 'eng' });
+      mine.dispose();
+      const before = new Map(w.rig.repos.get(OPENED)!.files);
+      forgetProjectQueues();
+      const again = new JournalingStore({ api: w.api, kv: w.kvB, ops: ops2 });
+      await again.open(OPENED);
+      again.dispose();
+      for (const [ipath, bytes] of before) expect(w.rig.repos.get(OPENED)!.files.get(ipath), ipath).toBe(bytes);
+      // and the repository opens under another name, with no reserved file
+      forgetProjectQueues();
+      expect(await openFromDoor43({ api: w.api, ops: ops2 }, { source: SOURCE, name: 'prueba_c' })).toEqual({ repoPath: '_local_/_local_/prueba_c' });
+      expect(reservedIn(w, '_local_/_local_/prueba_c')).toEqual([]);
+    });
+});

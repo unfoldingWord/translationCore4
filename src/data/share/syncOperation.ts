@@ -58,6 +58,7 @@ import {
   applyScratch,
   deleteIfPresent,
   deleteIngredientIfPresent,
+  deleteReservedIngredients,
   finishPendingApply,
   nextSyncGeneration,
   readIngredientFiles,
@@ -443,8 +444,13 @@ export async function openFromDoor43(deps: OpenDeps, request: { source: CloneSou
       // The fixed clone path is shared with the sync (#676): `cloneProject` runs under its
       // one lock (`withClonePath`) and first deletes a clone that a stop left there, so a
       // left clone never blocks the next open of the repository.
+      // Door43 content never brings a marker: every file in the reserved folders
+      // (`tc4-open/`, `tc4-sync/`) is deleted at the fixed path, before the move, as the
+      // sync deletes its apply marker there. So the scratch copy holds a marker only after
+      // this open writes it (`copyMarked`), and the project holds none of them.
       const clonePath = clonePathOf(request.source);
-      await cloneProject(api, request.source, scratch, () => phase('clone', { clonePath }).then(() => true));
+      await cloneProject(api, request.source, scratch, () => phase('clone', { clonePath }).then(() => true),
+        (fixed) => deleteReservedIngredients(api, fixed));
       await phase('check');
       await checkOpenCopy(api, scratch, repoPath);
       // a project made at this path meanwhile refuses with the name code
