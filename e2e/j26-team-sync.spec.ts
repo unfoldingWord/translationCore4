@@ -137,12 +137,26 @@ async function openTitus(page: Page, t: Translator): Promise<void> {
   await expect(page.getByRole('heading', { name: /^Titus 1$/ })).toBeVisible({ timeout: 120_000 });
 }
 
-/** The translator's own segment files on disk now (every actor folder). */
-const segmentCount = (t: Translator) => segmentsOnDisk(t.repo).length;
+/** N3: every segment file a translator's own write step put on disk, as [translator, path].
+ * A new file after a local write is the translator's own: teammates' files come only by a sync. */
+const WRITTEN: Array<{ t: Translator; path: string; bytes: Buffer }> = [];
+
+/** Wait for the segment of one write step on the translator's disk, and record it as written. */
+async function ownWrite(t: Translator, before: string[]): Promise<void> {
+  await expect.poll(() => segmentsOnDisk(t.repo).length, { timeout: 15_000 }).toBeGreaterThan(before.length);
+  for (const p of segmentsOnDisk(t.repo))
+    if (!before.includes(p)) WRITTEN.push({ t, path: p, bytes: fs.readFileSync(path.join(rigRepo(t.repo), JOURNAL, p)) });
+}
+
+/** The status of the projected check result `checkId` in a project's translationWords TIT.json. */
+function checkStatus(repo: string, checkId: string): string | undefined {
+  const file = JSON.parse(fs.readFileSync(path.join(rigRepo(repo), 'ingredients', 'checking', 'translationWords', 'TIT.json'), 'utf8')) as { decisions: Array<{ status?: string; contextId: { checkId: string } }> };
+  return file.decisions.find((d) => d.contextId.checkId === checkId)?.status;
+}
 
 /** Revise one drafted verse of Titus 1 in Verse mode, and wait for its segment on disk. */
 async function draftVerse(page: Page, t: Translator, event: Event): Promise<void> {
-  const before = segmentCount(t);
+  const before = segmentsOnDisk(t.repo);
   await page.getByRole('tab', { name: 'Verse', exact: true }).click();
   const current = verseOnDisk(t.repo, event.chapter!, event.verse!);
   const words = current.split(/\s+/).slice(0, 4).join(' ');
@@ -152,18 +166,23 @@ async function draftVerse(page: Page, t: Translator, event: Event): Promise<void
   await editor.blur();
   await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 15_000 });
   await expect.poll(() => verseOnDisk(t.repo, event.chapter!, event.verse!), { timeout: 15_000 }).toBe(event.text!.trim());
-  await expect.poll(() => segmentCount(t), { timeout: 15_000 }).toBeGreaterThan(before);
+  await ownWrite(t, before);
 }
 
-/** Set the fixture's translationWords check result in Check, and wait for its segment on disk. */
-async function checkWord(page: Page, t: Translator, status: 'valid' | 'todo'): Promise<void> {
-  const before = segmentCount(t);
+/** Set the fixture's translationWords check result in Check, and wait for its segment on disk.
+ * Returns the check id of the row in the pinned list. */
+async function checkWord(page: Page, t: Translator, status: 'valid' | 'todo'): Promise<string> {
+  const before = segmentsOnDisk(t.repo);
   await page.getByRole('tab', { name: 'Check', exact: true }).click();
   await page.getByTestId('open-translationWords').click();
   await expect(page.getByTestId('check-progress')).toBeVisible({ timeout: 60_000 });
-  await page.getByTestId('check-list').locator(CHECK_ROW).first().click({ timeout: 30_000 });
+  const row = page.getByTestId('check-list').locator(CHECK_ROW).first();
+  await row.click({ timeout: 30_000 });
+  const checkId = (await row.getAttribute('data-check-id'))!;
   await page.getByTestId(`mark-${status}`).click();
-  await expect.poll(() => segmentCount(t), { timeout: 15_000 }).toBeGreaterThan(before);
+  await ownWrite(t, before);
+  await expect.poll(() => checkStatus(t.repo, checkId), { timeout: 15_000 }).toBe(status);
+  return checkId;
 }
 
 /** Press "Sync with Door43" on the translator's card: the internet question and the sign-in
@@ -226,11 +245,18 @@ test.describe('J26 — three translators sync one project through Door43', () =>
   let remote: BareRemote;
   let tmp: string;
   let keptText = '';
+  let checkId = '';
 
   test.beforeAll(async () => {
     // A's start: the seeded project as the seed made it (one commit). An earlier journey of
-    // the run can leave teammates and conflicts in it (e2e/sync-button.spec.ts does).
+    // the run can leave drafts and a journal in it (J2 drafts in it; J17 opens it).
     const seeded = rigRepo(SEEDED_PROJECT);
+    // The reset below MUST act on the seeded project's own repository. Without its `.git`,
+    // git walks up to the checkout's repository: the reset would move this branch and the
+    // clean would delete untracked files of the checkout.
+    const top = fs.existsSync(seeded) ? fs.realpathSync(git(seeded, 'rev-parse', '--show-toplevel')) : null;
+    if (top === null || top !== fs.realpathSync(seeded))
+      throw new Error(`J26: ${seeded} is not its own git repository (its top level is ${top}); reseed the rig (dev-env/scripts/seed.zsh). Nothing was reset.`);
     git(seeded, 'reset', '-q', '--hard', git(seeded, 'rev-list', '--max-parents=0', 'HEAD'));
     git(seeded, 'clean', '-qfdx');
     dropOrigin(SEEDED_PROJECT);
@@ -272,13 +298,13 @@ test.describe('J26 — three translators sync one project through Door43', () =>
       await openTitus(page, A);
       await draftVerse(page, A, A11);
       // A's check: the first open check result of the book (not the fixture's check, which B and C set)
-      const before = segmentCount(A);
+      const before = segmentsOnDisk(A.repo);
       await page.getByRole('tab', { name: 'Check', exact: true }).click();
       await page.getByTestId('open-translationWords').click();
       await expect(page.getByTestId('check-progress')).toBeVisible({ timeout: 60_000 });
       await page.getByTestId('check-list').locator(`button[data-decided="0"]:not(${CHECK_ROW.slice('button'.length)})`).first().click();
       await page.getByTestId('mark-valid').click();
-      await expect.poll(() => segmentCount(A), { timeout: 15_000 }).toBeGreaterThan(before);
+      await ownWrite(A, before);
 
       await homeAs(page, context, remote, A);
       await expect(page.getByTestId(`share-card-${idOf(A)}`)).toHaveAttribute('data-action', 'share');
@@ -306,7 +332,7 @@ test.describe('J26 — three translators sync one project through Door43', () =>
       await openTitus(page, B);
       await draftVerse(page, B, B12);
       await draftVerse(page, B, TWO_14);
-      await checkWord(page, B, B_CHECK.decision!.status as 'valid');
+      checkId = await checkWord(page, B, B_CHECK.decision!.status as 'valid');
       await homeAs(page, context, remote, B);
       const before = segmentsOnMain(remote);
       await syncAs(page, B);
@@ -322,7 +348,7 @@ test.describe('J26 — three translators sync one project through Door43', () =>
       await openTitus(page, C);
       await draftVerse(page, C, C13);
       await draftVerse(page, C, ONE_14);
-      await checkWord(page, C, C_CHECK.decision!.status as 'todo');
+      expect(await checkWord(page, C, C_CHECK.decision!.status as 'todo'), 'B and C set the same check result').toBe(checkId);
       await homeAs(page, context, remote, C);
       const before = segmentsOnMain(remote);
       await syncAs(page, C);
@@ -352,6 +378,8 @@ test.describe('J26 — three translators sync one project through Door43', () =>
       expect(expected[cActor], 'segments of C').toBeGreaterThan(0);
       expect(got.conflicts, 'TIT 1:4 changed two ways').toBe(1);
       expect(got.newest, 'the check result set two ways').toBeGreaterThanOrEqual(1);
+      // check-two-ways: the newest head (C's `todo`) is the projected check result (G7)
+      expect(checkStatus(A.repo, checkId), 'the check result C set last').toBe(C_CHECK.decision!.status);
       await expect(page.getByTestId('sync-received-from')).toContainText(B.user.username);
       await expect(page.getByTestId('sync-received-from')).toContainText(C.user.username);
       await expect(page.getByTestId(`conflicts-${idOf(A)}`)).toHaveAttribute('data-count', '1');
@@ -371,10 +399,10 @@ test.describe('J26 — three translators sync one project through Door43', () =>
       // A keeps B's version
       await versions.filter({ hasText: TWO_14.text!.trim() }).click();
       await expect(page.getByTestId('conflict-consequence')).toContainText(B.user.username);
-      const beforeKeep = segmentCount(A);
+      const beforeKeep = segmentsOnDisk(A.repo);
       await page.getByTestId('conflict-keep').click();
       await expect(page.getByTestId('conflict-none')).toBeVisible({ timeout: 30_000 });
-      await expect.poll(() => segmentCount(A), { timeout: 15_000 }).toBeGreaterThan(beforeKeep);
+      await ownWrite(A, beforeKeep);
       keptText = TWO_14.text!.trim();
       await expect.poll(() => verseOnDisk(A.repo, '1', '4'), { timeout: 15_000 }).toBe(keptText);
       await shot(page, testInfo, '3c-A-kept');
@@ -413,7 +441,22 @@ test.describe('J26 — three translators sync one project through Door43', () =>
         await shot(page, testInfo, `5-${t.label}-titus-1`);
       }
       await page.goto('/');
-      for (const t of TRANSLATORS) await expect(page.getByTestId(`conflicts-${idOf(t)}`)).toHaveCount(0);
+      // a UI-level G6: once every book tile has read its progress, the three cards show the same
+      // percent for each book
+      const percents: string[][] = [];
+      for (const t of TRANSLATORS) {
+        await expect(page.getByTestId(`conflicts-${idOf(t)}`)).toHaveCount(0);
+        const row: string[] = [];
+        for (const book of ['TIT', 'JON']) {
+          const tile = page.getByTestId(`project-${idOf(t)}`).getByTestId(`book-tile-${book}`);
+          await expect(tile).toContainText(/\d+%/, { timeout: 30_000 });
+          row.push(`${book} ${(await tile.textContent())!.match(/\d+%/)![0]}`);
+        }
+        percents.push(row);
+      }
+      expect(percents[1], 'B shows the percents of A').toEqual(percents[0]);
+      expect(percents[2], 'C shows the percents of A').toEqual(percents[0]);
+      record(testInfo, 'home-percents.json', JSON.stringify(Object.fromEntries(TRANSLATORS.map((t, i) => [t.label, percents[i]])), null, 2));
       await shot(page, testInfo, '5-home');
       await verifyAllJournaledProjects();
     });
@@ -452,6 +495,15 @@ test.describe('J26 — three translators sync one project through Door43', () =>
         expect(shared.equals(local), `${t.label} ${p} byte for byte`).toBe(true);
       }
     }
+    // N3: every segment of every write step (A's draft, check and keep; B's and C's drafts and
+    // check results) is on main with the bytes it had when it was written
+    for (const label of ['A', 'B', 'C']) expect(WRITTEN.filter((w) => w.t.label === label).length, `${label} write steps`).toBeGreaterThanOrEqual(3);
+    for (const w of WRITTEN) {
+      expect(onMain, `${w.t.label} ${w.path} on main`).toContain(w.path);
+      const shared = execFileSync('git', ['-C', remote.bare, 'show', `main:${JOURNAL}/${w.path}`]);
+      expect(shared.equals(w.bytes), `${w.t.label} ${w.path} byte for byte as written`).toBe(true);
+    }
+    record(testInfo, 'g1-written.txt', `${WRITTEN.map((w) => `${w.t.label}\t${w.path}`).join('\n')}\n`);
     record(testInfo, 'g1-main-journal.txt', `${git(remote.bare, 'ls-tree', '-r', '--name-only', `main:${JOURNAL}`)}\n`);
   });
 });
