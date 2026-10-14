@@ -10,6 +10,8 @@ import { articleMarks } from './helpers/articleMarks';
 import { gateOff, turnOnInternet } from './helpers/door43Share';
 import { cachedZip, mockDoor43Package, type CachedRepo } from './helpers/door43Package';
 import { recordExternal } from './helpers/externalRequests';
+import { unzipSync, strFromU8 } from 'fflate';
+import { deriveTwlItems, twArticlesOf } from '../src/data/derive';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -682,6 +684,8 @@ const BSOJ: CachedRepo[] = [
 // The catalogue held still lists the helps only. A Bible row is always downloaded, and
 // served from the route the 90 MB ar_avd export closed the test's browser; a checking set
 // needs tN, TWL, tW and tA (D17), not a Bible.
+/** ar_gt's tW, which the AC3 case counts the articles of (the seed sideloads ar_gt from the cache). */
+const AR_GT_TW_ZIP = cachedZip('ar_tw', 'v3');
 const arabicMissing = (): string | null => {
   if (process.env.TC4_ARABIC_FIXTURE !== '1') return 'the Arabic fixture is not selected: run with TC4_ARABIC_FIXTURE=1';
   const absent = BSOJ.filter((r) => !fs.existsSync(cachedZip(r.repo, r.tag))).map((r) => `${r.repo} ${r.tag}`);
@@ -817,5 +821,62 @@ test.describe.serial('J4 — the Arabic package, in an Arabic right-to-left proj
     // The tW articles are Arabic text.
     for (const part of ['wordArticleText', 'checkWordArticleText']) expect(String(seen[part]), part).toMatch(/[\u0600-\u06FF]/);
     expect(seen.external).toEqual([]);
+  });
+  test('AC3: choosing ar_gt gives a complete set: the bundled en_twl with ar_gt/ar_tw; tW lists only the English TWL rows with an ar_tw article, and an article opens right to left @J4', async ({ page }, testInfo) => {
+    test.setTimeout(180_000);
+    test.skip(!fs.existsSync(AR_GT_TW_ZIP), `ar_gt/ar_tw v3 is not cached under dev-env/resources-cache — see dev-env/README.md`);
+    // The count the app must show, from the app's own functions over the cached files:
+    // the Titus rows of en_twl v91 whose article ar_gt's ar_tw v3 carries (#643).
+    const twlZip = unzipSync(new Uint8Array(fs.readFileSync(cachedZip('en_twl', 'v91'))), { filter: (f) => f.name === 'ingredients/TIT.tsv' });
+    const twMeta = unzipSync(new Uint8Array(fs.readFileSync(AR_GT_TW_ZIP)), { filter: (f) => f.name === 'metadata.json' });
+    const articles = twArticlesOf(JSON.parse(strFromU8(twMeta['metadata.json'])));
+    const rows = deriveTwlItems(strFromU8(twlZip['ingredients/TIT.tsv']), 'TIT');
+    const expected = rows.filter((item) => articles.has(`${item.category}/${item.contextId.groupId}`)).length;
+    // Project settings: the Arabic package of ar_gt, then the confirm.
+    await page.goto('/');
+    await page.getByTestId(`project-_local_/_local_/${ARABIC_PROJECT}`).getByRole('button', { name: 'Settings' }).click();
+    await page.getByTestId('settings-gateway-ar::ar_gt').click();
+    await expect(page.getByTestId('gateway-change')).toBeVisible({ timeout: 60_000 });
+    await page.getByTestId('gateway-confirm').click();
+    await expect(page.getByTestId('gateway-change').or(page.getByTestId('gateway-error'))).toHaveCount(0, { timeout: 60_000 });
+    const primary = readProjectPins(ARABIC_PROJECT).languageSets.primary as Record<string, { repoPath?: string; sha?: string }> & { gatewayLanguage: unknown };
+    // The tW tool of Titus.
+    await openArabicTitus(page);
+    await page.getByRole('tab', { name: 'Check', exact: true }).click();
+    await page.getByTestId('open-translationWords').click();
+    const progress = page.getByTestId('check-progress');
+    await expect(progress).toBeVisible({ timeout: 30_000 });
+    const listed = Number(/of (\d+)/.exec((await progress.textContent()) ?? '')?.[1] ?? -1);
+    await page.getByTestId('open-academy').click();
+    const article = page.getByTestId('academy-drawer').getByTestId('article-panel');
+    const seen = {
+      primary,
+      rows: rows.length,
+      expected,
+      listed,
+      article: await directionOf(article),
+      articleText: (await article.textContent())?.slice(0, 80),
+    };
+    const picture = testInfo.outputPath('ar-gt-check.png');
+    await page.screenshot({ path: picture, animations: 'disabled' });
+    await testInfo.attach('ar-gt-check', { path: picture, contentType: 'image/png' });
+    const file = testInfo.outputPath('ar-gt-set.json');
+    fs.writeFileSync(file, `${JSON.stringify(seen, null, 2)}\n`);
+    await testInfo.attach('ar-gt-set', { path: file, contentType: 'application/json' });
+
+    expect(primary.gatewayLanguage).toEqual({ languageId: 'ar', owner: 'ar_gt' });
+    expect(primary.translationWordsLinks?.repoPath).toMatch(/\/unfoldingWord\/en_twl$/);
+    expect(primary.translationWords?.repoPath).toMatch(/\/ar_gt\/ar_tw$/);
+    for (const slot of ['translationNotes', 'translationWordsLinks', 'translationWords', 'translationAcademy']) {
+      expect(primary[slot]?.sha, slot).toMatch(/^[0-9a-f]{40}$/);
+    }
+    // Some rows have no ar_tw article, so the gate takes some out, and the list is exactly the rest.
+    expect(expected).toBeGreaterThan(0);
+    expect(expected).toBeLessThan(rows.length);
+    expect(listed).toBe(expected);
+    expect(seen.article).toEqual({ dir: 'rtl', direction: 'rtl' });
+    // Arabic script, which is what a test can check. The language is the package's: ar_gt's
+    // ar_tw v3 declares `ar`, and 420 of its 422 articles are written in Persian.
+    expect(String(seen.articleText)).toMatch(/[؀-ۿ]/);
   });
 });
