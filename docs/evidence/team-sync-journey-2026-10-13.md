@@ -6,10 +6,10 @@ passing test whose name starts with its id".
 
 ## What ran
 
-- Branch `issue-681-team-sync-journey` at `c25f2d8`. This commit merges round 1: #674, #675,
-  #676, #679, #678, #680 (`origin/issue-680-door43-names` at `80360cb`) and #677
-  (`origin/issue-677-open-from-door43` at `089ccf8`), and holds the J26 spec. The commit that
-  adds this record changes only this record.
+- Branch `issue-681-team-sync-journey` at `58a69e8`. This commit merges round 1 with the fixed
+  heads: #674, #675, #676, #679 (with the fix of the Check-resume regression and the `openBook`
+  wait), #678, #680 and #677, and holds the J26 spec (last spec change `c25f2d8`). The commit
+  that adds this record changes only this record.
 - The rig: `GET /api/version` gives `pkg_version` `0.18.15`. The HTTP API reports no hash. The
   server binary is the build of the pinned revision `a83725b67593b018f815fdb25a3920ce03e833e7`
   (`dev-env/server/Cargo.toml`) [VERIFIED — pankosmia-web 0.18.15 (a83725b, 2026-10-13)].
@@ -59,8 +59,8 @@ on Door43 `main`), and the Home percents at the end:
     "conflicts": 1
   },
   "expectedReceived": {
-    "a46026339d1c5916": 4,
-    "ae11b220b194f7cb": 4
+    "a4c8e89c3aef5310": 4,
+    "a870e78bede5f0f2": 4
   }
 }
 {
@@ -79,82 +79,81 @@ on Door43 `main`), and the Home percents at the end:
 }
 ```
 
-## Results at `c25f2d8`
+## Results at `58a69e8`
 
-J26, two runs:
+The rig was reseeded, and J17 ran first as a throwaway run (2 passed). J26, one run:
 
 ```
-== run 1
-  ✓  1 e2e/j26-team-sync.spec.ts:292:3 › J26 — three translators sync one project through Door43 › A shares; B and C open it from Door43; each drafts, checks and syncs; A keeps one version of the conflict; all three end with the same text @J26 (45.5s)
-  ✓  2 e2e/j26-team-sync.spec.ts:469:3 › J26 — three translators sync one project through Door43 › [G6] at the end the three projects have the same project files, and no verse has a conflict @J26 (758ms)
-  ✓  3 e2e/j26-team-sync.spec.ts:487:3 › J26 — three translators sync one project through Door43 › [G1] every journal file that any translator wrote is on the stand-in's main @J26 (1.0s)
-  3 passed (1.1m)
-== run 2
-  ✓  1 e2e/j26-team-sync.spec.ts:292:3 › J26 — three translators sync one project through Door43 › A shares; B and C open it from Door43; each drafts, checks and syncs; A keeps one version of the conflict; all three end with the same text @J26 (44.8s)
-  ✓  2 e2e/j26-team-sync.spec.ts:469:3 › J26 — three translators sync one project through Door43 › [G6] at the end the three projects have the same project files, and no verse has a conflict @J26 (741ms)
-  ✓  3 e2e/j26-team-sync.spec.ts:487:3 › J26 — three translators sync one project through Door43 › [G1] every journal file that any translator wrote is on the stand-in's main @J26 (1.0s)
-  3 passed (59.5s)
+  ✓  1 e2e/j26-team-sync.spec.ts:292:3 › J26 — three translators sync one project through Door43 › A shares; B and C open it from Door43; each drafts, checks and syncs; A keeps one version of the conf
+  ✓  2 e2e/j26-team-sync.spec.ts:469:3 › J26 — three translators sync one project through Door43 › [G6] at the end the three projects have the same project files, and no verse has a conflict @J26 (694
+  ✓  3 e2e/j26-team-sync.spec.ts:487:3 › J26 — three translators sync one project through Door43 › [G1] every journal file that any translator wrote is on the stand-in's main @J26 (925ms)
+  3 passed (48.0s)
 ```
 
-The three journeys that touch sync, together:
+The three journeys that failed at `c25f2d8` (see below), one run of their files:
 
 ```bash
-TC4_RIG_PORT=19681 TC4_VITE_PORT=5281 npm run journeys -- --grep "@J17|@sync-button|@J26"
+TC4_RIG_PORT=19681 TC4_VITE_PORT=5281 npm run journeys -- e2e/check-project-switch.spec.ts e2e/j04-check-book.spec.ts e2e/j08-resume.spec.ts
 ```
 
 ```
-  ✓  1 e2e/j17-open-from-door43.spec.ts:87:3 › J17 — open a project from Door43 › another translator opens the project from Door43, and it syncs @J17 (12.8s)
-  ✓  2 e2e/j17-open-from-door43.spec.ts:192:3 › J17 — open a project from Door43 › [G2] one invalid journal file on Door43 refuses the open, and no project is written @J17 (2.9s)
-  ✓  3 e2e/j26-team-sync.spec.ts:292:3 › J26 — three translators sync one project through Door43 › A shares; B and C open it from Door43; each drafts, checks and syncs; A keeps one version of the conflict; all three end with the same text @J26 (48.3s)
-  ✓  4 e2e/j26-team-sync.spec.ts:469:3 › J26 — three translators sync one project through Door43 › [G6] at the end the three projects have the same project files, and no verse has a conflict @J26 (723ms)
-  ✓  5 e2e/j26-team-sync.spec.ts:487:3 › J26 — three translators sync one project through Door43 › [G1] every journal file that any translator wrote is on the stand-in's main @J26 (1.0s)
-  ✓  6 e2e/sync-button.spec.ts:107:3 › #678 — Sync with Door43 › sync with no teammate change, then with one @sync-button (19.0s)
-  ✓  7 e2e/sync-button.spec.ts:231:3 › #678 — Sync with Door43 › no write access: one plain message, and nothing changes @sync-button (4.6s)
-  7 passed (1.7m)
+  ✓   1 e2e/check-project-switch.spec.ts:67:1 › Check resolves the open project's own pins after a switch: stories → Bible → stories in one session (#434) @J4 @J22 @434 (5.5s)
+  ✓   2 e2e/check-project-switch.spec.ts:105:1 › a Home tile that resumes into Check opens the tool with the open project's own pin after a switch: Bible ↔ stories (#434) @J4 @J22 @J8 @434 (5.3s)
+  ✓   3 e2e/j04-check-book.spec.ts:91:3 › J4 — a checker works a book › writeProjectPins carries the seed document forward: resources groups, extraScripture, and same-gateway optional slots survive a 
+  ✓   4 e2e/j04-check-book.spec.ts:121:3 › J4 — a checker works a book › opening a checking session derives the item list from the pinned TSV — the list is never stored (FR-13) @inc2 @J4 (2.6s)
+  ✓   5 e2e/j04-check-book.spec.ts:161:3 › J4 — a checker works a book › a full checking session emits no missing-i18n-key console warning (issue #12) @inc2 @J4 (2.3s)
+  ✓   6 e2e/j04-check-book.spec.ts:194:3 › J4 — a checker works a book › a missing local resource at session open shows the guided fix screen, not a crash (FR-5) @inc2 @J4 (2.7s)
+  ✓   7 e2e/j04-check-book.spec.ts:219:3 › J4 — a checker works a book › triage and nothing-to-select persist as full §5.2 records through the store — no browser-local layer (FR-16, FR-17, C2.7) @inc2
+  ✓   8 e2e/j04-check-book.spec.ts:279:3 › J4 — a checker works a book › progress is reconstructed from the derived list + saved decisions after a restart (FR-18) @inc2 @J4 (5.0s)
+  ✓   9 e2e/j04-check-book.spec.ts:339:3 › J4 — a checker works a book › tapping the target word(s) that render the quote and marking valid persists a §5.2 selection (B23, D2) @inc2 @J4 (4.2s)
+  ✓  10 e2e/j04-check-book.spec.ts:400:3 › J4 — a checker works a book › an Invalid triage is decided in BOTH the progress meter and the item list — never one but not the other (B23) @inc2 @J4 (2.9s)
+  ✓  11 e2e/j04-check-book.spec.ts:447:3 › J4 — a checker works a book › a pinned primary that is not installed opens the English fallback but WARNS and offers to fetch it — never silent (B20, D41) @i
+  ✓  12 e2e/j04-check-book.spec.ts:513:3 › J4 — a checker works a book › a bookmark and a check comment persist in the §5.2 record, filter the rail, move no progress, and touch no text (#50, D72 point
+  ✓  13 e2e/j04-check-book.spec.ts:599:3 › J4 — a checker works a book › the tW tool derives its list from the en_twl pin and shows the article from the en_tw pin (D96, FR-15) @inc2 @J4 (3.0s)
+  ✓  14 e2e/j08-resume.spec.ts:112:3 › J8 — a translator resumes where they left off › after a restart, all projects are listed and the last position (project/book/chapter/mode) is restored (FR-29, #1
+  ✓  15 e2e/j08-resume.spec.ts:150:3 › J8 — a translator resumes where they left off › resume into a project with a large journal shows the open progress, then lands on the remembered chapter (#184, #
+  ✓  16 e2e/j08-resume.spec.ts:193:3 › J8 — a translator resumes where they left off › commits happen at exactly the checkpoints — a mode switch and leaving the project commit pending work; a switch w
+  ✓  17 e2e/j08-resume.spec.ts:231:3 › J8 — a translator resumes where they left off › typing never produces a commit (FR-34) @inc4 @J8 (4.9s)
+  ✓  18 e2e/j08-resume.spec.ts:249:3 › J8 — a translator resumes where they left off › a section save that makes a verse span names the span on Resume; a save that breaks it names the first verse of t
+  ✓  19 e2e/j08-resume.spec.ts:357:3 › J8 — the Increment 4 journey: open, resume, and share a project (#185) › open the project, draft, mark one check, leave (a checkpoint commits), reload, resume in
+  ✓  20 e2e/j08-resume.spec.ts:432:3 › J8 — the Increment 4 journey: open, resume, and share a project (#185) › share for the first time: Share on the Home card runs the J11 flow (sign in, the account
+  ✓  21 e2e/j08-resume.spec.ts:485:3 › #329 — a Home tile returns to the place last worked › a book tile: Understand on Titus 2 is where the Titus tile reopens; a never-opened book opens at chapter 1 
+  ✓  22 e2e/j08-resume.spec.ts:513:3 › #329 — a Home tile returns to the place last worked › a story tile: Understand on story 3, frame 4 is where the story-3 tile reopens @inc7 @J8 @j25 (9.0s)
+  22 passed (2.0m)
 ```
 
-Before the last merges, J26 also passed in three runs in a row with the spec of `d1151b9` (on
-`1859571`), and in two runs with the code of each of `cca5356`, `ad56440` and `54f6dc9`. No J26 run log has a
-`[vite]` reload line during the tests (the one `[vite]` line is the dependency optimization at
-start).
+At `c25f2d8` (the J26 spec is the same), J26 passed in two runs, and
+`--grep "@J17|@sync-button|@J26"` gave 7 passed. Before that, J26 passed in three runs in a row
+with the spec of `d1151b9`, and in two runs with the code of each of `cca5356`, `ad56440` and
+`54f6dc9`. No J26 run log has a `[vite]` reload line during the tests (the one `[vite]` line of
+a run is the dependency optimization at start).
 
 ## The full journeys suite
 
-`npm run journeys` (all specs) ran once at `54f6dc9`, on the same lane, after a reseed:
+`npm run journeys` (all specs) ran once at `58a69e8`, on the same lane, after a reseed:
 
 ```
-  ✘   14 e2e/check-project-switch.spec.ts:105:1 › a Home tile that resumes into Check opens the tool with the open project's own pin after a switch: Bible ↔ stories (#434) @J4 @J22 @J8 @434 (1.1m)
-  ✘   86 e2e/j04-check-book.spec.ts:279:3 › J4 — a checker works a book › progress is reconstructed from the derived list + saved decisions after a restart (FR-18) @inc2 @J4 (10.8s)
-  ✘  126 e2e/j08-resume.spec.ts:357:3 › J8 — the Increment 4 journey: open, resume, and share a project (#185) › open the project, draft, mark one check, leave (a checkpoint commits), reload, resume i
-  ✘  163 e2e/j11-share.spec.ts:285:5 › J11 — a facilitator shares the project to Door43 › sign in (#203) › 7c. a kept token: no Door43 request at start, and none when the upload dialog opens; the dial
-  ✘  168 e2e/j11-share.spec.ts:585:5 › J11 — a facilitator shares the project to Door43 › share (#362) › 2. the shared card after a new session reads its state from origin; Upload changes opens the di
-  ✘  169 e2e/j11-share.spec.ts:678:5 › J11 — a facilitator shares the project to Door43 › share (#362) › 2b. with "Stay signed in", Upload changes in a new app session asks no sign-in (#366 test 1; #5
   ✘  203 e2e/j13-gateway-change.spec.ts:1178:1 › Project settings settles its Checking language row on each of 30 opens, and the last open saves @inc9 @J13 (3.1m)
-  7 failed
+  1 failed
   8 skipped
-  216 passed (54.3m)
+  222 passed (38.4m)
 ```
 
-J26 ran as tests 217 to 219, after each failure, so J26 did not cause them. Then each failing
-file ran alone:
+The one failure, `j13-gateway-change.spec.ts:1178` (the Checking language row in Project
+settings, 30 opens), passed when its file ran alone (`21 passed`). So it fails only in the full
+run, after the earlier specs. It also failed in the full run at `54f6dc9`, and passed alone there.
+Because it passed alone, no control at `origin/main` ran for it.
 
-| Run | Commit | Result |
-|---|---|---|
-| `check-project-switch`, `j04`, `j08`, `j11`, `j13` | `c25f2d8` (this branch) | 61 passed, 3 failed, 1 skipped. Failed: `check-project-switch.spec.ts:105`, `j04-check-book.spec.ts:279`, `j08-resume.spec.ts:357`. J11 and J13 passed. |
-| `check-project-switch`, `j04`, `j08` | `origin/main` `7531ea3` (control) | 22 passed |
-| the same | `origin/issue-676-sync-shell` `5e6a753` | 22 passed |
-| the same | `origin/issue-679-conflict-review` `d5df17c` | 19 passed, the same 3 failed |
-| the same | `origin/issue-678-sync-button` `7ead38d` | 19 passed, the same 3 failed |
-
-So the three failures come with the #679 branch, not with J26. In each failure a Check tool
-does not open: `check-progress`, `check-session` or `check-rail` is not found. The J11 failures
-(7c, 2, 2b) and the J13 failure (`j13-gateway-change.spec.ts:1178`) of the full run did not come
-back when their files ran alone.
+The three failures of the full run at `54f6dc9` (`check-project-switch.spec.ts:105`,
+`j04-check-book.spec.ts:279`, `j08-resume.spec.ts:357`) came with the #679 branch (they passed at
+`origin/main` `7531ea3` and at `origin/issue-676-sync-shell` `5e6a753`). The #679 fix removes them:
+they pass at `58a69e8`, alone and in the full run. The J11 failures of that run (7c, 2, 2b) did not
+come back.
 
 ## G6: the three projects have the same project files
 
-The test `[G6] at the end the three projects have the same project files, and no verse has a
-conflict` compares every file of the three repositories (all files except `.git`) byte for byte.
+In the J26 run at `58a69e8`, the test `[G6] at the end the three projects have the same project
+files, and no verse has a conflict` compares every file of the three repositories (all files except `.git`) byte for byte.
 It also checks that each `HEAD` is the same as Door43 `main`, and that the fold of each journal
 has no `text|` fork. The file list (bytes, path), the same in the three projects:
 
@@ -163,24 +162,24 @@ has no `text|` fork. The file list (bytes, path), the same in the three projects
 744	ingredients/JON.usfm
 1147	ingredients/TIT.usfm
 7300	ingredients/checking/alignments/TIT.json
-134	ingredients/checking/journal/a32cf07508b42b30/actor.json
-68953	ingredients/checking/journal/a32cf07508b42b30/segments/2020-01-01T00_00_00.000Z,0001,a32cf07508b42b30.action.json
-8326	ingredients/checking/journal/a32cf07508b42b30/segments/2026-10-14T01_45_52.437Z,0000,a32cf07508b42b30.action.json
-505	ingredients/checking/journal/a32cf07508b42b30/segments/2026-10-14T01_45_52.938Z,0000,a32cf07508b42b30.action.json
-3966	ingredients/checking/journal/a32cf07508b42b30/segments/2026-10-14T01_45_54.980Z,0000,a32cf07508b42b30.action.json
-836	ingredients/checking/journal/a32cf07508b42b30/segments/2026-10-14T01_45_55.713Z,0000,a32cf07508b42b30.action.json
-292	ingredients/checking/journal/a32cf07508b42b30/segments/2026-10-14T01_46_15.536Z,0000,a32cf07508b42b30.action.json
-611	ingredients/checking/journal/a32cf07508b42b30/segments/2026-10-14T01_46_16.661Z,0000,a32cf07508b42b30.action.json
-134	ingredients/checking/journal/a46026339d1c5916/actor.json
-472	ingredients/checking/journal/a46026339d1c5916/segments/2026-10-14T01_46_04.456Z,0000,a46026339d1c5916.action.json
-492	ingredients/checking/journal/a46026339d1c5916/segments/2026-10-14T01_46_04.684Z,0000,a46026339d1c5916.action.json
-889	ingredients/checking/journal/a46026339d1c5916/segments/2026-10-14T01_46_05.165Z,0000,a46026339d1c5916.action.json
-292	ingredients/checking/journal/a46026339d1c5916/segments/2026-10-14T01_46_07.151Z,0000,a46026339d1c5916.action.json
-134	ingredients/checking/journal/ae11b220b194f7cb/actor.json
-481	ingredients/checking/journal/ae11b220b194f7cb/segments/2026-10-14T01_46_10.048Z,0000,ae11b220b194f7cb.action.json
-476	ingredients/checking/journal/ae11b220b194f7cb/segments/2026-10-14T01_46_10.288Z,0000,ae11b220b194f7cb.action.json
-888	ingredients/checking/journal/ae11b220b194f7cb/segments/2026-10-14T01_46_10.765Z,0000,ae11b220b194f7cb.action.json
-292	ingredients/checking/journal/ae11b220b194f7cb/segments/2026-10-14T01_46_12.756Z,0000,ae11b220b194f7cb.action.json
+134	ingredients/checking/journal/a42bd2acbdeaf0a8/actor.json
+68953	ingredients/checking/journal/a42bd2acbdeaf0a8/segments/2020-01-01T00_00_00.000Z,0001,a42bd2acbdeaf0a8.action.json
+8326	ingredients/checking/journal/a42bd2acbdeaf0a8/segments/2026-10-14T02_42_39.862Z,0000,a42bd2acbdeaf0a8.action.json
+505	ingredients/checking/journal/a42bd2acbdeaf0a8/segments/2026-10-14T02_42_40.072Z,0000,a42bd2acbdeaf0a8.action.json
+3966	ingredients/checking/journal/a42bd2acbdeaf0a8/segments/2026-10-14T02_42_42.105Z,0000,a42bd2acbdeaf0a8.action.json
+836	ingredients/checking/journal/a42bd2acbdeaf0a8/segments/2026-10-14T02_42_42.732Z,0000,a42bd2acbdeaf0a8.action.json
+292	ingredients/checking/journal/a42bd2acbdeaf0a8/segments/2026-10-14T02_42_57.699Z,0000,a42bd2acbdeaf0a8.action.json
+611	ingredients/checking/journal/a42bd2acbdeaf0a8/segments/2026-10-14T02_42_58.754Z,0000,a42bd2acbdeaf0a8.action.json
+134	ingredients/checking/journal/a4c8e89c3aef5310/actor.json
+481	ingredients/checking/journal/a4c8e89c3aef5310/segments/2026-10-14T02_42_53.380Z,0000,a4c8e89c3aef5310.action.json
+476	ingredients/checking/journal/a4c8e89c3aef5310/segments/2026-10-14T02_42_53.600Z,0000,a4c8e89c3aef5310.action.json
+888	ingredients/checking/journal/a4c8e89c3aef5310/segments/2026-10-14T02_42_53.949Z,0000,a4c8e89c3aef5310.action.json
+292	ingredients/checking/journal/a4c8e89c3aef5310/segments/2026-10-14T02_42_55.515Z,0000,a4c8e89c3aef5310.action.json
+134	ingredients/checking/journal/a870e78bede5f0f2/actor.json
+472	ingredients/checking/journal/a870e78bede5f0f2/segments/2026-10-14T02_42_48.959Z,0000,a870e78bede5f0f2.action.json
+492	ingredients/checking/journal/a870e78bede5f0f2/segments/2026-10-14T02_42_49.110Z,0000,a870e78bede5f0f2.action.json
+889	ingredients/checking/journal/a870e78bede5f0f2/segments/2026-10-14T02_42_49.517Z,0000,a870e78bede5f0f2.action.json
+292	ingredients/checking/journal/a870e78bede5f0f2/segments/2026-10-14T02_42_51.132Z,0000,a870e78bede5f0f2.action.json
 13028	ingredients/checking/resources.json
 555	ingredients/checking/settings.json
 2595	ingredients/checking/translationNotes/TIT.json
@@ -202,44 +201,45 @@ two sets:
 The write steps (translator, path):
 
 ```
-A	a32cf07508b42b30/segments/2026-10-14T01_45_52.938Z,0000,a32cf07508b42b30.action.json
-A	a32cf07508b42b30/segments/2026-10-14T01_45_54.980Z,0000,a32cf07508b42b30.action.json
-A	a32cf07508b42b30/segments/2026-10-14T01_45_55.713Z,0000,a32cf07508b42b30.action.json
-B	a46026339d1c5916/segments/2026-10-14T01_46_04.456Z,0000,a46026339d1c5916.action.json
-B	a46026339d1c5916/segments/2026-10-14T01_46_04.684Z,0000,a46026339d1c5916.action.json
-B	a46026339d1c5916/segments/2026-10-14T01_46_05.165Z,0000,a46026339d1c5916.action.json
-C	ae11b220b194f7cb/segments/2026-10-14T01_46_10.048Z,0000,ae11b220b194f7cb.action.json
-C	ae11b220b194f7cb/segments/2026-10-14T01_46_10.288Z,0000,ae11b220b194f7cb.action.json
-C	ae11b220b194f7cb/segments/2026-10-14T01_46_10.765Z,0000,ae11b220b194f7cb.action.json
-A	a32cf07508b42b30/segments/2026-10-14T01_46_16.661Z,0000,a32cf07508b42b30.action.json
+A	a42bd2acbdeaf0a8/segments/2026-10-14T02_42_39.862Z,0000,a42bd2acbdeaf0a8.action.json
+A	a42bd2acbdeaf0a8/segments/2026-10-14T02_42_40.072Z,0000,a42bd2acbdeaf0a8.action.json
+A	a42bd2acbdeaf0a8/segments/2026-10-14T02_42_42.105Z,0000,a42bd2acbdeaf0a8.action.json
+A	a42bd2acbdeaf0a8/segments/2026-10-14T02_42_42.732Z,0000,a42bd2acbdeaf0a8.action.json
+B	a870e78bede5f0f2/segments/2026-10-14T02_42_48.959Z,0000,a870e78bede5f0f2.action.json
+B	a870e78bede5f0f2/segments/2026-10-14T02_42_49.110Z,0000,a870e78bede5f0f2.action.json
+B	a870e78bede5f0f2/segments/2026-10-14T02_42_49.517Z,0000,a870e78bede5f0f2.action.json
+C	a4c8e89c3aef5310/segments/2026-10-14T02_42_53.380Z,0000,a4c8e89c3aef5310.action.json
+C	a4c8e89c3aef5310/segments/2026-10-14T02_42_53.600Z,0000,a4c8e89c3aef5310.action.json
+C	a4c8e89c3aef5310/segments/2026-10-14T02_42_53.949Z,0000,a4c8e89c3aef5310.action.json
+A	a42bd2acbdeaf0a8/segments/2026-10-14T02_42_58.754Z,0000,a42bd2acbdeaf0a8.action.json
 ```
 
 The journal on `main` (`git ls-tree -r --name-only main:ingredients/checking/journal`):
 
 ```
-a32cf07508b42b30/actor.json
-a32cf07508b42b30/segments/2020-01-01T00_00_00.000Z,0001,a32cf07508b42b30.action.json
-a32cf07508b42b30/segments/2026-10-14T01_45_52.437Z,0000,a32cf07508b42b30.action.json
-a32cf07508b42b30/segments/2026-10-14T01_45_52.938Z,0000,a32cf07508b42b30.action.json
-a32cf07508b42b30/segments/2026-10-14T01_45_54.980Z,0000,a32cf07508b42b30.action.json
-a32cf07508b42b30/segments/2026-10-14T01_45_55.713Z,0000,a32cf07508b42b30.action.json
-a32cf07508b42b30/segments/2026-10-14T01_46_15.536Z,0000,a32cf07508b42b30.action.json
-a32cf07508b42b30/segments/2026-10-14T01_46_16.661Z,0000,a32cf07508b42b30.action.json
-a46026339d1c5916/actor.json
-a46026339d1c5916/segments/2026-10-14T01_46_04.456Z,0000,a46026339d1c5916.action.json
-a46026339d1c5916/segments/2026-10-14T01_46_04.684Z,0000,a46026339d1c5916.action.json
-a46026339d1c5916/segments/2026-10-14T01_46_05.165Z,0000,a46026339d1c5916.action.json
-a46026339d1c5916/segments/2026-10-14T01_46_07.151Z,0000,a46026339d1c5916.action.json
-ae11b220b194f7cb/actor.json
-ae11b220b194f7cb/segments/2026-10-14T01_46_10.048Z,0000,ae11b220b194f7cb.action.json
-ae11b220b194f7cb/segments/2026-10-14T01_46_10.288Z,0000,ae11b220b194f7cb.action.json
-ae11b220b194f7cb/segments/2026-10-14T01_46_10.765Z,0000,ae11b220b194f7cb.action.json
-ae11b220b194f7cb/segments/2026-10-14T01_46_12.756Z,0000,ae11b220b194f7cb.action.json
+a42bd2acbdeaf0a8/actor.json
+a42bd2acbdeaf0a8/segments/2020-01-01T00_00_00.000Z,0001,a42bd2acbdeaf0a8.action.json
+a42bd2acbdeaf0a8/segments/2026-10-14T02_42_39.862Z,0000,a42bd2acbdeaf0a8.action.json
+a42bd2acbdeaf0a8/segments/2026-10-14T02_42_40.072Z,0000,a42bd2acbdeaf0a8.action.json
+a42bd2acbdeaf0a8/segments/2026-10-14T02_42_42.105Z,0000,a42bd2acbdeaf0a8.action.json
+a42bd2acbdeaf0a8/segments/2026-10-14T02_42_42.732Z,0000,a42bd2acbdeaf0a8.action.json
+a42bd2acbdeaf0a8/segments/2026-10-14T02_42_57.699Z,0000,a42bd2acbdeaf0a8.action.json
+a42bd2acbdeaf0a8/segments/2026-10-14T02_42_58.754Z,0000,a42bd2acbdeaf0a8.action.json
+a4c8e89c3aef5310/actor.json
+a4c8e89c3aef5310/segments/2026-10-14T02_42_53.380Z,0000,a4c8e89c3aef5310.action.json
+a4c8e89c3aef5310/segments/2026-10-14T02_42_53.600Z,0000,a4c8e89c3aef5310.action.json
+a4c8e89c3aef5310/segments/2026-10-14T02_42_53.949Z,0000,a4c8e89c3aef5310.action.json
+a4c8e89c3aef5310/segments/2026-10-14T02_42_55.515Z,0000,a4c8e89c3aef5310.action.json
+a870e78bede5f0f2/actor.json
+a870e78bede5f0f2/segments/2026-10-14T02_42_48.959Z,0000,a870e78bede5f0f2.action.json
+a870e78bede5f0f2/segments/2026-10-14T02_42_49.110Z,0000,a870e78bede5f0f2.action.json
+a870e78bede5f0f2/segments/2026-10-14T02_42_49.517Z,0000,a870e78bede5f0f2.action.json
+a870e78bede5f0f2/segments/2026-10-14T02_42_51.132Z,0000,a870e78bede5f0f2.action.json
 ```
 
 ## The epic's acceptance check: each guarantee has a passing test
 
-`git grep -n "\[G[1-8]\]" -- ':!docs/evidence'` at `c25f2d8`:
+`git grep -n "\[G[1-8]\]" -- ':!docs/evidence'` at `58a69e8`:
 
 ```
 CONTEXT.md:406:a guarantee starts its name with the id, for example `[G1] keeps every own file`. A
@@ -259,7 +259,7 @@ docs/BURRITO-SPEC.md:663:JC-1 HLC ordering/ratchet/overflow · JC-2 skeleton cod
 docs/DECISIONS.md:2669:the id, for example `[G1] keeps every own file`, so `git grep "\[G1\]"` lists every proof.
 docs/RISKS.md:19:| 11 | Power loss or a kill during the swap of a sync (G8). The swap is four server calls: copy, delete, copy, delete. A copy on the server is a copy and a delete, not one rename (#673). A stop between two calls, or in one call, can leave two copies or a part folder | The ops log saves each swap phase before its step. A recovery goes forward only when nothing can have changed the live project since that phase. A server failure at `swap.copy-previous` goes back at once, and the project stays as it was. A server failure at a later phase runs the rest of the swap once more. If that also fails, the record stays open, and the project takes no open, no edit and no sync (`sync.swap-pending`) until `recover()` finishes the swap at the next start. No sync starts, and no project opens or takes an edit, until `recover()` loads the ops log at that start (`opslog.not-loaded`); a restart loads it again. As a second guard, the sync saves the live mark (the greatest journal segment name) when the swap begins. At `swap.copy-previous` or `swap.delete-project`, a recovery that finds a greater name goes back and keeps the live project. After a go-back at `swap.delete-project`, a live project that is part deleted can fail to open. The full old copy then stays in the previous copy, and no checkpoint deletes it. The next sync gets the own files back from Door43. Each step first deletes a part folder that a stopped copy can leave (`src/data/journal/opsLog.ts`, #676). Proof: the `[G8]` tests in `test/sync/syncOperation.test.ts`: the two kill sweeps, and the three server-failure tests |
 docs/RISKS.md:20:| 12 | A sync loses own work (G1): an own journal file or outbox entry from before the sync is not in the project after the sync | The sync core puts each own file in the result byte for byte, or it refuses and changes nothing (`journal/sync.mjs`, R-8.7.7). The sync shell clears an outbox entry only after the copy is live (#676). Proof: the `[G1]` tests in `test/sync/syncCore.test.ts`, `[G1] JC-35` in `conformance/validate-journal.mjs`, and `[G1] after a sync, every own file and outbox entry is in the live project` in `test/sync/syncOperation.test.ts` |
-e2e/j17-open-from-door43.spec.ts:192:  test('[G2] one invalid journal file on Door43 refuses the open, and no project is written', TAG, async ({ page }, testInfo) => {
+e2e/j17-open-from-door43.spec.ts:195:  test('[G2] one invalid journal file on Door43 refuses the open, and no project is written', TAG, async ({ page }, testInfo) => {
 e2e/j26-team-sync.spec.ts:5:// page would mint a new secret and a fourth actor. The [G6] and [G1] tests read only the disk
 e2e/j26-team-sync.spec.ts:469:  test('[G6] at the end the three projects have the same project files, and no verse has a conflict', TAG, async ({}, testInfo) => {
 e2e/j26-team-sync.spec.ts:487:  test('[G1] every journal file that any translator wrote is on the stand-in\'s main', TAG, async ({}, testInfo) => {
@@ -302,9 +302,9 @@ test/sync/syncOperation.test.ts:744:  it('[G8] a kill after the clone deletes th
 test/verseConflicts.test.ts:122:  it('[G7] lists only verse text: the verse conflict with each head\'s actor and text, never the check-result conflict', () => {
 ```
 
-One passing test for each guarantee. Each one passed at `c25f2d8` in
+One passing test for each guarantee. Each one passed at `58a69e8` in
 `TC4_RIG_PORT=19899 npx vitest run test/sync test/conflictReview.test.tsx test/verseConflicts.test.ts test/openFromDoor43Dialog.test.tsx`
-(7 files passed, 1 skipped: the rig integration file, with no rig on 19899; 118 tests passed), or
+(7 files passed, 1 skipped: the rig integration file, with no rig on 19899; 122 tests passed), or
 in the J17 and J26 runs above.
 
 | Id | A passing test |
