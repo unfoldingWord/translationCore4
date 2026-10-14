@@ -1,5 +1,5 @@
 :root {
-  --font-ui:        "Mulish","Avenir Next","Avenir",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  --font-ui:        "Mulish","Noto Sans Arabic","Avenir Next","Avenir",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
   --font-scripture: "Charis SIL","PT Serif",Georgia,"Times New Roman",serif;
   --font-greek:     "Noto Serif","Charis SIL",Georgia,serif;  /* Koine — Charis has no Greek */
   --font-hebrew:    "Noto Serif Hebrew","Noto Serif",serif;
@@ -126,8 +126,10 @@
 
 /* Devanagari has no capitals, so uppercase does nothing there, and letterspacing
    breaks the headline stroke between letters. The optical curve is drawn for the
-   Latin face, so Hindi takes none of it either (#612). */
-html:lang(hi) {
+   Latin face, so Hindi takes none of it either (#612). Arabic letters join, and
+   letterspacing breaks the joins, so Arabic takes none of it (#649). */
+html:lang(hi),
+html:lang(ar) {
   --track-9: 0;
   --track-10: 0;
   --track-11: 0;
@@ -157,3 +159,8 @@ html:lang(hi) {
   --tracking-overline: 0;
   --tracking-eyebrow:  0;
 }
+
+/* #686: a placeholder is interface text. A field in the scripture face (a note, a
+   verse) asks for a face with no Arabic, so with the Arabic interface its placeholder
+   takes the interface face. */
+html:lang(ar) ::placeholder { font-family: var(--font-ui); }

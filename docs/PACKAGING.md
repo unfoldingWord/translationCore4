@@ -9,7 +9,7 @@ signing, notarization, and the remaining platform installer work.
 D89 point 4 supersedes the signing part of that ruling. v4.0.0 ships macOS unsigned and not notarized. Linux stays
 an unsigned zip. [decided 2026-10-03 — D89 point 4] Windows v4.0.0 ships signed:
 signing is a release gate, because an unsigned build can start with no window and
-no warning (see Signing). [decided 2026-10-13 — D98, overrules D89 point 4 for Windows]
+no warning (see Signing). [decided 2026-10-13 — D99, overrules D89 point 4 for Windows]
 
 ## What the pipeline does
 
@@ -157,8 +157,8 @@ of the window. Linux keeps the native frame.
   `data-title-bar="hidden"` on macOS, `data-title-bar="overlay"` on Windows,
   no mark on Linux. With a mark, `src/ui.css` makes the header move the
   window and keeps each header control clickable. The room for the window
-  controls is physical, because an RTL project mirrors the page and not the
-  window: `hidden` keeps 88px at the left of the header for the traffic
+  controls is physical, because a right-to-left app language mirrors the page
+  and not the window (#657): `hidden` keeps 88px at the left of the header for the traffic
   lights; `overlay` pads both sides of the header from the title bar area
   that the Window Controls Overlay environment reports
   (`env(titlebar-area-x)`, `env(titlebar-area-width)`: the part of the top
@@ -542,7 +542,7 @@ Get-AuthenticodeSignature .\tC4-<version>-windows-x64.exe | Format-List Status,S
 
 Why: an unsigned build can start with no window and no warning on a machine with
 Windows Security **App & browser control** on and Smart App Control off
-(`docs/evidence/windows-unsigned-silent-start-2026-10-13.md`, D98).
+(`docs/evidence/windows-unsigned-silent-start-2026-10-13.md`, D99).
 
 The build signs with Azure Artifact Signing. It signs only on a manual run
 (**Run workflow** on `package-desktop`) on `main` or a `release/*` branch, and only
@@ -577,7 +577,7 @@ for three days, so a signature without a timestamp stops being valid
 Signing", page dated 2026-05-14, read 2026-10-13].
 
 The build signs in to Azure with GitHub OIDC. No secret is stored [decided
-2026-10-14 — D98 ruling 7]. The `windows-x64` job has `id-token: write`. Before each
+2026-10-14 — D99 ruling 7]. The `windows-x64` job has `id-token: write`. Before each
 `signtool` run, `sign-windows.ps1` asks GitHub for a fresh OIDC token, because the
 token expires after minutes and signing runs late in a long build. The Azure
 `WorkloadIdentityCredential` reads it from `AZURE_FEDERATED_TOKEN_FILE`. The build
@@ -881,8 +881,8 @@ between runs; it does not replace the run.
 | 9b | From alpha.7 (Increment 7, D74): on Home, `+ Add a project` › `New Open Bible Stories`: name, language, `Create stories →`. Open the story 1 tile: story 1 opens in `Understand`. Mode tab `Translate`: story 1 shows with the gateway text on the left. `Draft frame 1`, type, click outside the card. `Understand`; select frame 1. `Check` › Translation Notes › `Start checking`; pick one item; `✓ Mark valid`. | The gateway frame text and the picture of frame 1 show from the bundled `en_obs` and picture pack with the network off. The frame marker for frame 1 turns drafted. Understand lists the notes and word links of frame 1. The check item is decided. A missing picture or gateway story is a new finding: file its issue. |
 | 10 | Quit the app. Turn the network on again. | |
 
-Look at the screen fonts during the run. With the network off, the interface shows Mulish,
-and scripture shows Charis SIL, Noto Serif (Greek), Noto Serif Hebrew and Amiri (Arabic).
+Look at the screen fonts during the run. With the network off, the interface shows Mulish
+(Noto Sans Arabic for Arabic script), and scripture shows Charis SIL, Noto Serif (Greek), Noto Serif Hebrew and Amiri (Arabic).
 A system font in their place is a new finding: file its issue.
 
 ### Record the run
@@ -1015,6 +1015,25 @@ Alignment suggestions (D72 point 3) add three exact-pinned packages to the clien
 | main entry chunks (`index-*.js`) | 1020 kB + 1048 kB | 1042.79 kB + 1082.25 kB | +57 kB |
 
 Measured locally on 2026-09-12 (macOS arm64, Node 22); the desktop artifact grows by the same client bytes and nothing else.
+
+## Release branches
+
+[decided 2026-10-13 — owner]
+
+- Each minor release has one release branch, named `release/<major>.<minor>`. The first is
+  `release/4.0`. It was cut from `main` at `17f4cbc` on 2026-10-13, with all checks green.
+- All work merges to `main` first, through the merge queue. `main` does not wait for a release.
+- A release branch gets fixes only. Do not put a feature on a release branch.
+- To put a fix in a release, merge it to `main` first. Then open a pull request to the release
+  branch that holds `git cherry-pick -x <commit>`. The `-x` line records the commit on `main`.
+- If a fix cannot apply to `main` (the code on `main` changed), write the fix on the release
+  branch. Write the reason in the pull request.
+- Tag each release (`vX.Y.Z`) on its release branch. Build the installers from that tag. The
+  packaging workflow runs automatically on a push to `main` only, so run it by hand
+  (`workflow_dispatch`) on the release branch. The tag rule of epic #59 still applies.
+- Stop cherry-picks to a release branch when the next minor release ships.
+- The repository ruleset "release branches" protects every `release/*` branch: a pull request
+  with one approval and the `verify` check, no force push, and no delete.
 
 ## Known limits (start of the pipeline, not the end)
 

@@ -63,6 +63,16 @@ export const tsError = (v) =>
 export const isActorSlug = (v) => isStr(v) && ACTOR_RE.test(v);
 export const actorSlugError = (v) =>
   isActorSlug(v) ? null : `"${v}" is not an §8.1 actor slug [a-z0-9-]{4,32}`;
+// §8.5 (R-8.5.25, D98): a Door43 username — the payload of `actor.name.set`. Door43's own
+// account rule, both halves, and its length cap [VERIFIED — unfoldingWord/dcs main 7005c81
+// (2026-10-13): modules/validation/helpers.go:32-33 and :106-111 (IsValidUsername = the
+// positive pattern AND NOT the negative one), services/forms/user_form.go:75 MaxSize(40)].
+// ASCII only (`\w` without the `u` flag), so the value is NFC by construction.
+export const DOOR43_USERNAME_RE = /^[A-Za-z0-9][-.\w]*$/;
+export const DOOR43_USERNAME_INVALID_RE = /[-._]{2,}|[-._]$/; // no doubled or trailing non-alphanumeric
+export const door43UsernameError = (v) =>
+  isStr(v) && v.length <= 40 && DOOR43_USERNAME_RE.test(v) && !DOOR43_USERNAME_INVALID_RE.test(v) ? null
+  : `${JSON.stringify(v)} is not a Door43 username (^[A-Za-z0-9][-.\\w]*$, no doubled or trailing - . _, at most 40 characters — §8.5)`;
 export const isoInstantError = (v) =>
   isCalendarInstant(v) ? null : `"${v}" is not a fixed-width ISO-8601 UTC calendar instant (§8.2)`;
 

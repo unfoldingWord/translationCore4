@@ -1,7 +1,7 @@
 # Windows: the unsigned build starts with no window (2026-10-13)
 
 Owner observation on a Windows test machine (user profile `tc-win-test`), reported
-2026-10-13 on #456. This record is the evidence for D98.
+2026-10-13 on #456. This record is the evidence for D99.
 
 ## What the user sees
 

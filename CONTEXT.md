@@ -270,13 +270,15 @@ _Avoid_: Door43 bar, profile menu
 
 **Share**:
 The push of a project's working `main` branch to a repository under the user's Door43
-account or one of the user's organizations, created by the app on the first share. Send only; receiving and team sync are Phase 2.
-_Avoid_: sync, send, upload, publish (for Door43)
+account or one of the user's organizations, created by the app on the first share. Send only.
+After the first share, the next step is a sync, which also receives (D98).
+_Avoid_: sync (for the first share), send, upload, publish (for Door43)
 
 **Share-born main**:
 A Door43 `main` branch created by a first share, holding one actor's working history, as
 opposed to a team main built by integrate. The sync plan's X8 scenario proves the two behave
-the same.
+the same. In round 1 (D98) there is no integrate: each sync moves the share-born main forward,
+and it becomes the Door43 main of the team.
 
 **Door43 adapter**:
 The one module that calls the Door43 API (`src/data/share/door43Api.ts`): sign in (mint the
@@ -380,3 +382,63 @@ The stable name a refused operation returns in its `Report` (for example `share.
 `REFUSAL_CODES` in `journal/report.mjs` is closed: a thrown `Refusal` carries one code from it.
 Tests assert codes, never message strings.
 _Avoid_: error code, error message (as the thing a test checks)
+
+## Team sync (D98, 2026-10-13)
+
+The ops log of a sync is the **Ops record**, **ops log** above: the next start finishes or
+undoes an operation that a crash stopped.
+
+**Sync**:
+One press of "Sync with Door43" after the first share. It gets Door43 main, checks each incoming
+journal file, adds the own journal files of this computer, and rebuilds the project files from
+all journals. Then it pushes, and swaps the result in at the same path. BURRITO-SPEC §8.7 holds
+its rules (R-8.7.7–R-8.7.12). Round 1 syncs Bible projects only.
+_Avoid_: merge (a sync merges no project file), pull, receive (the word of the long-term plan),
+upload changes (the label before D98)
+
+**Door43 main**:
+The `main` branch of the one public Door43 repository that a team shares. It only moves
+forward: a sync never force-pushes (G4).
+_Avoid_: team main (the built branch of the long-term plan), remote, origin (the git remote name)
+
+**Guarantee**:
+One promise of team sync, with an id from `G1` to `G8` (the table in D98). Each test that proves
+a guarantee starts its name with the id, for example `[G1] keeps every own file`. A
+format-facing guarantee is also an `R-8.7.x` rule.
+_Avoid_: invariant (the `I-n` of the format), requirement
+
+**Journal**:
+The record of each change to a project. Each change is one sealed file in the translator's own
+folder, `ingredients/checking/journal/<actor>/segments/`. Files are never changed or deleted
+(BURRITO-SPEC §8.1).
+_Avoid_: log, history (for the files)
+
+**Actor**:
+One translator on one computer, in one project. The id comes from the installation secret and
+the project path (`src/data/journal/identity.ts`). An actor may record its Door43 username
+once, with the name action (`actor.name.set`, R-8.5.25).
+_Avoid_: user, device, author
+
+**Fold**:
+The step that reads all journals and builds the project state (`journal/fold.mjs`,
+BURRITO-SPEC §8.6).
+_Avoid_: merge, replay
+
+**Conflict**:
+Two translators changed the same item from the same starting point. The specification says
+"fork". The fold keeps both versions and shows the newest one. Only a verse-text conflict goes
+to a person for review (G7).
+_Avoid_: merge conflict (git's word for a different thing)
+
+**Outbox**:
+Changes saved on this computer that are not yet written into the project repository. A sync
+keeps each outbox entry (G1).
+_Avoid_: queue, pending changes
+
+**Rig**:
+The local Pankosmia server that the tests and journeys run against.
+_Avoid_: test server, dev server
+
+**Scratch copy**:
+A temporary repository that a sync builds, then swaps in or deletes.
+_Avoid_: temp clone, staging repository

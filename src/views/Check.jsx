@@ -10,9 +10,11 @@
 //                   an error, and it never blocks drafting or other books
 //   unpinned      — the project has no pins for this tool yet
 //   not-covered   — pins are local, but neither rung covers this book
+//   old-twl       — the twl pin is the pre-release one-repo form (D97 ruling
+//                   6): never read; the project must be created again
 import React from 'react';
 import { useApp } from '../state.jsx';
-import { TOOL_SLOT } from '../data/resolve';
+import { TOOL_SLOT, oldTwlPin } from '../data/resolve';
 import { isDecided, locatorOf, referenceParts, textKeyOf } from '../data/derive';
 import { STORY_FILE } from '../data/journal/runtime';
 import { bookName } from '../data/bookNames';
@@ -26,6 +28,7 @@ import { absenceMessageKey, isSourceAbsent } from '../data/sourceState';
 import { BlockText, ExpandableNote, Quoted, glTitleFor } from './HelpsPanel.jsx';
 import { RAIL_FILTERS, RAIL_FILTER_ORDER, hasComment, isBookmarked, railCounts } from './checkFilters.js';
 import { t } from '../i18n';
+import { helpsDir, projectDir } from './scriptStyle.js';
 import { Button, Callout, Drawer, Overline, ProgressBar } from '../ds/index.js';
 
 const TOOLS = Object.keys(TOOL_SLOT);
@@ -67,6 +70,7 @@ const TONE = {
   unavailable: { bg: 'var(--surface-warm)', border: 'rgba(229,157,51,.4)', fg: 'var(--tc-warn-text)' },
   unpinned: { bg: 'var(--surface-app)', border: 'var(--border-input)', fg: 'var(--text-secondary)' },
   'not-covered': { bg: 'var(--surface-app)', border: 'var(--border-input)', fg: 'var(--text-secondary)' },
+  'old-twl': { bg: 'var(--surface-warm)', border: 'rgba(229,157,51,.4)', fg: 'var(--tc-warn-text)' },
 };
 
 /** The not-ready half of a tool card: which resource the tool wants, and the
@@ -240,6 +244,19 @@ function ToolCard({ tool, pre, label, progress, titleOf }) {
   );
 }
 
+/** D97 ruling 6 (#646): the project's twl pin comes from a pre-release build
+ * (its repository name does not end in `_twl`). Stated once for the whole
+ * picker — an OBS project has no tW card for this pin — and there is no
+ * in-app fix: the project is created again. Nothing while the pin is legal. */
+function OldTwlNotice({ pin }) {
+  if (!pin) return null;
+  return (
+    <Callout tone="warn" role="alert" data-testid="pins-old-twl" style={{ marginBottom: 16, overflowWrap: 'anywhere' }}>
+      {t('check.oldTwl')} {pin.repoPath}
+    </Callout>
+  );
+}
+
 /** B20 warned fallback (D41): the resolver opened the installed fallback
  * because the pinned PRIMARY is not on this computer. That is not silent —
  * say which primary is missing and offer to download it. The card still
@@ -265,7 +282,7 @@ function FallbackWarning({ tool, missing }) {
 /** The help article behind the active item (C2.5), read from the installed
  * burrito — presented as the mockup's right-side Drawer (F1, INVENTORY §6),
  * not an inline card. Absence is stated, never rendered as an empty panel. */
-function ArticleBody({ article }) {
+function ArticleBody({ article, dir }) {
   if (!article || article.loading) {
     return <p style={{ fontSize: 'var(--fs-caption-lg)', color: 'var(--text-tertiary)', margin: 0 }}>{t('check.articleLoading')}</p>;
   }
@@ -286,7 +303,7 @@ function ArticleBody({ article }) {
   // already exceeds the old 40-block cap.
   const blocks = renderArticleBlocks(article.found.body);
   return (
-    <div data-testid="article-panel">
+    <div data-testid="article-panel" dir={dir}>
       {blocks.map((b, i) => {
         if (b.kind === 'h') {
           return (
@@ -316,13 +333,16 @@ function ArticleBody({ article }) {
 }
 
 /* The design system's own end-edge slide-over ('Translation Academy' is its
- * documented purpose); the article prose inherits the document direction. */
-function AcademyDrawer({ article, cat, onClose }) {
+ * documented purpose); the article prose reads in the direction of its gateway
+ * package (#650). */
+function AcademyDrawer({ article, cat, resource, onClose }) {
+  const { s } = useApp();
   return (
     <Drawer data-testid="academy-drawer" width="var(--drawer-width)" onClose={onClose} closeLabel={t('common.close')}
       eyebrow={t('check.academyEyebrow', { cat })}
-      title={article?.found?.title ?? t('check.academyFallback')}>
-      <ArticleBody article={article} />
+      title={article?.found?.title ?? t('check.academyFallback')}
+      titleDir={article?.found?.title ? helpsDir(s, resource?.languageSet) : undefined}>
+      <ArticleBody article={article} dir={helpsDir(s, resource?.languageSet)} />
     </Drawer>
   );
 }
@@ -603,6 +623,8 @@ function CheckDetail({ cs, item, title, sources, sourcePanes, sourceStory, words
   const { c, v } = referenceParts(item.contextId.reference);
   const quote = title;
   const idx = cs.activeIndex;
+  const { s } = useApp();
+  const helpDir = helpsDir(s, cs.resource?.languageSet);
   const canPrev = idx > 0;
   const canNext = idx < cs.items.length - 1;
   const navStyle = (enabled) => ({
@@ -636,7 +658,7 @@ function CheckDetail({ cs, item, title, sources, sourcePanes, sourceStory, words
       {item.contextId.occurrenceNote && (
         <div data-testid="check-note" style={{ maxWidth: '62ch', marginBottom: 8, borderRadius: 'var(--radius-lg)', padding: '16px 18px', background: 'var(--surface-warm)', border: 'var(--stroke) solid var(--tc-warn-border)' }}>
           <Overline style={{ color: 'var(--tc-warn-text-2)' }}>{t('check.whatToCheck')}</Overline>
-          <div style={{ fontSize: 'var(--fs-title-sm)', letterSpacing: 'var(--track-16)', lineHeight: 'var(--lh-body)', fontWeight: 'var(--fw-medium)', color: 'var(--uw-ink)', margin: '7px 0 0' }}>
+          <div dir={helpDir} data-testid="check-note-text" style={{ fontSize: 'var(--fs-title-sm)', letterSpacing: 'var(--track-16)', lineHeight: 'var(--lh-body)', fontWeight: 'var(--fw-medium)', color: 'var(--uw-ink)', margin: '7px 0 0' }}>
             {/* Keyed by item: the expanded/collapsed state must not leak from
               * one check to the next. */}
             <ExpandableNote key={idx} text={item.contextId.occurrenceNote} />
@@ -788,7 +810,7 @@ function CheckMarks({ item, idx, onBookmark, onComment }) {
       {open && (
         <div data-testid="comment-editor" style={{ marginTop: 12, background: 'var(--surface-card)', border: 'var(--stroke) solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '14px 16px' }}>
           <Overline tone="accent">{t('check.comment.title')}</Overline>
-          <textarea data-testid="comment-text" rows={3} value={draft} onChange={(e) => setDraft(e.target.value)}
+          <textarea data-testid="comment-text" rows={3} dir="auto" value={draft} onChange={(e) => setDraft(e.target.value)}
             placeholder={t('check.comment.placeholder')}
             style={{ width: '100%', boxSizing: 'border-box', marginTop: 8, border: 'var(--stroke) solid var(--border-input)', borderRadius: 'var(--radius-md)', padding: '10px 12px', fontFamily: 'inherit', fontSize: 'var(--fs-ui-md)', lineHeight: 'var(--lh-body)', color: 'var(--text-body)', background: 'var(--surface-app)', resize: 'vertical' }} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
@@ -1059,7 +1081,8 @@ function AlignRail({ index, activeRef, filter, setFilter, onSelect }) {
               <span style={{ fontSize: 'var(--fs-badge)', letterSpacing: 'var(--track-10)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
                 {it.ref}
               </span>
-              <span style={{ flex: 1, fontSize: 'var(--fs-ui-sm)', fontWeight: 'var(--fw-bold)', color: 'var(--text-body)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: undrafted ? 'italic' : 'normal' }}>
+              {/* #657: the verse is the project's text; the cut keeps its start. */}
+              <span dir={undrafted ? undefined : projectDir(s)} style={{ flex: 1, fontSize: 'var(--fs-ui-sm)', fontWeight: 'var(--fw-bold)', color: 'var(--text-body)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: undrafted ? 'italic' : 'normal' }}>
                 {undrafted ? t('align.notDraftedShort') : it.text}
               </span>
             </button>
@@ -1262,7 +1285,7 @@ function CheckSession() {
         )}
       </main>
       {academyOpen && (
-        <AcademyDrawer article={cs.article} cat={item?.category} onClose={() => setAcademyOpen(false)} />
+        <AcademyDrawer article={cs.article} cat={item?.category} resource={cs.resource} onClose={() => setAcademyOpen(false)} />
       )}
     </div>
   );
@@ -1398,6 +1421,7 @@ export default function Check() {
             </Button>
           </Callout>
         )}
+        <OldTwlNotice pin={oldTwlPin(s.projectPins)} />
 
         {pre === null && !s.preflightError && (
           <p style={{ fontSize: 'var(--fs-ui)', color: 'var(--text-tertiary)' }}>{t('check.checking')}</p>

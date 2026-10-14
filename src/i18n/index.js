@@ -3,12 +3,13 @@
 // so a later switch to platform i18n (/api/i18n, pankosmia i18nContext) is a
 // resolver swap, not a call-site rewrite.
 //
-// #522, #622: the catalogs in LOCALES ship with the app, and the active one is a small external
+// #522, #622, #649: the catalogs in LOCALES ship with the app, and the active one is a small external
 // store. `setLocale` notifies its listeners, and `useLocale` subscribes a React
 // tree to it, so a preview and a rollback refresh every visible string without
 // a reload, a remount or a locale-based key. `t(key, vars, fallback)` stays for
 // every caller, React or not.
 import { useSyncExternalStore } from 'react';
+import ar from './ar.json';
 import en from './en.json';
 import es419 from './es-419.json';
 import fr from './fr.json';
@@ -19,15 +20,24 @@ import ru from './ru.json';
 import uk from './uk.json';
 import vi from './vi.json';
 
-export { LOCALES } from './locales.js';
+import { LOCALES } from './locales.js';
+
+export { LOCALES };
 export const DEFAULT_LOCALE = 'en';
 
-const catalogs = { en, 'es-419': es419, fr, hi, 'pt-BR': ptBR, id, uk, ru, vi };
+const catalogs = { en, 'es-419': es419, fr, hi, 'pt-BR': ptBR, id, uk, ru, vi, ar };
 let current = DEFAULT_LOCALE;
 const listeners = new Set();
-// The document's lang is the displayed locale from the first paint (index.html
-// says `en` too, for a page that never loads this module).
-if (typeof document !== 'undefined') document.documentElement.lang = current;
+/** #657: the interface (top bar, side panels, dialogs) reads in the direction of the
+ * app language. Scripture sets its own `dir` from the project. */
+function showOnDocument(locale) {
+  if (typeof document === 'undefined') return;
+  document.documentElement.lang = locale;
+  document.documentElement.dir = LOCALES.find((l) => l.id === locale).dir;
+}
+// The document's lang and dir are the displayed locale's from the first paint
+// (index.html says `en` too, for a page that never loads this module).
+showOnDocument(current);
 
 /** True for an id the app can show. A saved value that is not one of these is
  * treated as absent (English). */
@@ -38,13 +48,13 @@ export function getLocale() {
 }
 
 /** Make `locale` the active catalog and tell every subscriber. An unknown id
- * changes nothing. The document's `lang` follows, so the browser picks a face
+ * changes nothing. The document's `lang` and `dir` follow, so the browser picks a face
  * for the script (Devanagari has no bundled face: --font-ui falls back to the
  * system's). */
 export function setLocale(locale) {
   if (!isLocale(locale) || locale === current) return;
   current = locale;
-  if (typeof document !== 'undefined') document.documentElement.lang = locale;
+  showOnDocument(locale);
   for (const fn of listeners) fn(locale);
 }
 

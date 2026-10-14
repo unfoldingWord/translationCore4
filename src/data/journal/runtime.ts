@@ -78,6 +78,10 @@ export interface FoldOutput {
   scope: Record<string, string[]>;
   vrs: { name: string; bytes: string } | null;
   vrsRejected: string[];
+  /** §8.5 (R-8.5.25, D98): actor -> its Door43 username, from the first `actor.name.set` */
+  names: Record<string, string>;
+  /** R-8.5.26: the ts of each later name event of an actor — surfaced, never applied */
+  namesRejected: string[];
   pendingStructural: Array<{ ts: string; book: string; status: string; detail: string[] }>;
   /** resolved head ts per register key (`book|`, `skel|`, `text|`, `align|`, `dec|`, `pin|`, `meta|`, `set|`) */
   headsTs: Record<string, string>;
