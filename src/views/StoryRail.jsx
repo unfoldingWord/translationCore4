@@ -2,6 +2,7 @@ import React from 'react';
 import { useApp } from '../state.jsx';
 import { BookTile } from '../ds/index.js';
 import { t } from '../i18n';
+import { projectDir } from './scriptStyle.js';
 import { RailGroup, RailNumberButton, RailNumbers, RailShell } from './railChrome.jsx';
 
 /** A frame is drafted exactly when its paragraph is non-empty (#289) — the one
@@ -31,7 +32,7 @@ export default function StoryRail({ numbers = [], active, story, onSelect, curre
         const pct = byNumber.get(number)?.pct;
         return (
           <RailGroup key={number} active={selected}>
-            <BookTile layout="row" active={selected} data-testid={`story-${number}`} aria-current={selected ? 'page' : undefined}
+            <BookTile layout="row" active={selected} data-testid={`story-${number}`} aria-current={selected ? 'page' : undefined} dir={projectDir(s)}
               name={rowName(number)} percent={typeof pct === 'number' ? pct : 0} meta={typeof pct === 'number' ? `${pct}%` : ''}
               onClick={() => onSelect(number)} />
             {selected && story && (

@@ -320,6 +320,8 @@ export function Layer({
         ...(anchored ? {
           position: 'fixed', zIndex: z,
           top: pos ? pos.top : -9999,
+          /* Physical on purpose (#657): place() measured the anchor in window
+             coordinates and already turned start and end by its direction. */
           left: pos ? pos.left : 0,
           visibility: pos ? undefined : 'hidden',
         } : null),
