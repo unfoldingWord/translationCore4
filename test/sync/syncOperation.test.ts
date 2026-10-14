@@ -1063,6 +1063,29 @@ describe('#676 crash recovery of the sync (G8)', () => {
     await expectTeammateKept(w);
   });
 
+  it('[G8] a settings read that never answers holds no open and no create: the gate opens when the disk rule ends; the sync still refuses', async () => {
+    const w = await teammateTextWorld();
+    await killInApply(w, w.ops); // REPO has a pending apply (the marker)
+    forgetSharedClocks();
+    forgetProjectQueues();
+    const hung = new OpsLog({ read: () => new Promise<Record<string, unknown>>(() => {}), update: serialSettingsWriter(async () => ({}), async () => {}) });
+    void hung.recover(w.api);
+    const within = <T,>(p: Promise<T>) => Promise.race([p.then(() => 'done'), new Promise((r) => setTimeout(() => r('held'), 2000))]);
+    // the project with the marker: the disk rule applied it, so it opens with the teammate text
+    const store = new JournalingStore({ api: w.api, kv: w.kv });
+    expect(await within(store.open(REPO))).toBe('done');
+    store.dispose();
+    expect(w.rig.repos.has(SCRATCH)).toBe(false);
+    expect(w.rig.repos.get(REPO)!.files.get('TIT.usfm')).toContain('TEAMMATE TEXT');
+    // a create goes on too
+    const creator = new JournalingStore({ api: w.api, kv: memKv() });
+    expect(await within(creator.createProject({ content_name: 'Nuevo', content_abbr: 'nuevo', content_language_code: 'es', add_book: false, versification: 'eng' }))).toBe('done');
+    creator.dispose();
+    // the log did not load: a sync refuses (fail closed)
+    const report = await sync({ ...w.deps(), ops: hung }, { repoPath: REPO, session: SESSION });
+    expect([report.ok, report.code]).toEqual([false, 'opslog.not-loaded']);
+  });
+
   it('a repository outside _local_/_local_/ is not a project: an open of the fixed clone path refuses open.not-a-project, and the project opens', async () => {
     const w = await world();
     w.rig.createRepo(CLONE_PATH, Object.fromEntries(w.rig.repos.get(REPO)!.files));

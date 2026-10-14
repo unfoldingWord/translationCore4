@@ -42,8 +42,9 @@
 // (a83725b), 2026-10-14: a write of "second" over "first bytes" reads back
 // "second", and no .bak is made with `no_bak`].
 // `recover()` runs the disk rule before it reads the settings document, so a
-// settings read that fails never stops it. A store waits for the start recovery
-// (`recoverySettled`) before an open or a create, and it opens or creates only a
+// settings read that fails never stops it. A store waits for the disk rule of the
+// start recovery (`recoverySettled`), not for the settings read, before an open or
+// a create, and it opens or creates only a
 // project path (`_local_/_local_/<name>`): the fixed clone path of a sync is a
 // listed repository for a moment, and the sync deletes it.
 // The sync record in this log is only the Report for the dev Inspector; its
@@ -240,9 +241,10 @@ const isIngredientGone = (error: unknown): boolean => {
 
 const FLAGS = { updateIngredients: false, keepBak: false } as const;
 
-/** The start recovery that runs now, settled either way (#676). A store waits
- * for it before an open or a create, so neither races the disk rule. Before the
- * first recovery it is already settled. */
+/** The disk rule of the start recovery that runs now, settled when that rule
+ * ends, either way (#676); the settings read after it does not count. A store
+ * waits for it before an open or a create, so neither races the disk rule.
+ * Before the first recovery it is already settled. */
 let recovering: Promise<void> = Promise.resolve();
 export const recoverySettled = (): Promise<void> => recovering;
 
@@ -351,8 +353,10 @@ export class OpsLog implements OpsRecorder {
   /** Resolve every record a killed operation left open, and load the log.
    * Run once, when the app starts, before any operation begins. */
   recover(api: OpsRecoveryApi): Promise<OpsEntry[]> {
-    const run = this.recoverOnce(api);
-    recovering = run.then(() => undefined, () => undefined);
+    let settle = (): void => {};
+    recovering = new Promise<void>((resolve) => (settle = resolve));
+    const run = this.recoverOnce(api, () => settle());
+    run.then(settle, settle);
     return run;
   }
 
@@ -381,10 +385,18 @@ export class OpsLog implements OpsRecorder {
     return null;
   }
 
-  private async recoverOnce(api: OpsRecoveryApi): Promise<OpsEntry[]> {
+  private async recoverOnce(api: OpsRecoveryApi, diskRuleDone: () => void): Promise<OpsEntry[]> {
     // The disk rule first, before the settings read: the settings document never
-    // decides it, and a settings read that fails never stops it.
-    const listFailure = await this.runDiskRule(api);
+    // decides it, and a settings read that fails never stops it. Opens and creates
+    // wait only for the disk rule (`recoverySettled`): a settings read that never
+    // answers holds none of them. A failed repo list settles the gate too: the
+    // marker check of each open still refuses a pending apply.
+    let listFailure: unknown;
+    try {
+      listFailure = await this.runDiskRule(api);
+    } finally {
+      diskRuleDone();
+    }
     const doc = await this.readOrSetAside();
     // no list, no disk rule: the log does not load (fail closed; a sync refuses)
     if (listFailure) throw listFailure;

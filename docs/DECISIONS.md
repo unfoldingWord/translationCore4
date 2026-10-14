@@ -2753,8 +2753,8 @@ signature check), `docs/PACKAGING.md` (Signing), and `scripts/README-windows.txt
    a scratch copy with no marker is deleted, because the project did not change; no scratch
    copy means nothing is pending. While the marker is there, the project takes no open
    (`sync.apply-pending`). The rule runs before the settings read, so a settings read that
-   fails never stops it. An open or a create waits for the start recovery, and opens or
-   creates only a project path (`_local_/_local_/<name>`; `open.not-a-project`). A failure in
+   fails never stops it. An open or a create waits for the disk rule of the start recovery
+   (not for the settings read), and opens or creates only a project path (`_local_/_local_/<name>`; `open.not-a-project`). A failure in
    the clean-up after a finished apply is `sync.cleanup-failed`: the sync is done.
    The apply compares before it writes, so it is safe to run again.
    Recovery only goes forward. The sync record in the ops log is only the Report for the dev
