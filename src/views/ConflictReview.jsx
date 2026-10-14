@@ -174,7 +174,8 @@ export default function ConflictReview() {
         {/* The outcome of the last keep shows with or without a conflict left (bench round 6, P3). */}
         {s.conflictReview?.error && (
           <Callout tone="warn" role="alert" data-testid="conflict-error" style={{ ...MEASURE, marginBottom: 12, overflowWrap: 'anywhere' }}>
-            <strong>{t('conflicts.keepError')}</strong> {s.conflictReview.error}
+            {/* A keep that worked can still report a book that did not load again: no "not kept" then. */}
+            {!s.conflictReview.kept && <strong>{t('conflicts.keepError')}</strong>} {s.conflictReview.error}
           </Callout>
         )}
         {conflict ? (

@@ -926,6 +926,8 @@
   "conflicts.cancel": "Annuler",
   "conflicts.keep": "Garder cette version",
   "conflicts.keepError": "La version n’a pas été gardée.",
+  "conflicts.otherKept": "Une autre version de ce verset est gardée.",
+  "conflicts.bookNotLoaded": "Le livre ne s’est pas rouvert. Revenez à l’accueil et rouvrez le projet.",
   "conflicts.reviewOne": "1 conflit · Examiner",
   "conflicts.reviewMany": "{n} conflits · Examiner",
   "conflicts.marker": "{n} versions · Examiner",

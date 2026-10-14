@@ -256,6 +256,16 @@ describe('#679 the conflict review', () => {
     expect(screen.getByTestId('conflict-error').textContent).toContain('Another version of this verse is kept.');
   });
 
+  it('a kept version whose book did not open again: the message says so, and never "not kept"', () => {
+    review(readUnion(nodePath.join(FIXTURE, 'journals')), VERSE.key);
+    state.verseConflicts = [];
+    state.conflictReview = { key: VERSE.key, error: 'The book did not open again. Go back to Home and open the project again.', kept: true };
+    render(<ConflictReview />);
+    const message = screen.getByTestId('conflict-error').textContent!;
+    expect(message).toContain('The book did not open again.');
+    expect(message).not.toContain('The version was not kept.');
+  });
+
   it('shows the ULT verse above the versions when Translate has it for the open book; else nothing', () => {
     review(teamEvents(), VERSE.key);
     state.sources = { ult: { raw: '', chapters: { 1: { 4: { verseObjects: [{ type: 'text', text: 'ULT verse four' }] } } } } };

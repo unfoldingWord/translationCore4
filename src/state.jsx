@@ -2480,41 +2480,60 @@ async function performLoadConflicts({ project, stateRef, dispatch, conflictsGen,
  * save diffs against the fold, so any copy older than the keep writes the
  * replaced version back (bench rounds 1–6). So: every pending save is on disk
  * first (a failure refuses the keep), the book of the verse is unloaded (the
- * review has no editor), and only then does the store write the keep. Whatever
- * resolveVerse does — returns, throws, or stages and fails — the truth is then
- * read from the fold: the list, the Home count, and the outcome. The chosen
- * version is kept when the fold has no conflict on the verse and projects the
- * chosen text. The keepVersion action then loads the book again through
- * openBook, the one editor load path (loadEditorBook). Returns whether the
- * chosen version is kept. */
+ * review has no editor), the store writes the keep, and the book loads again
+ * through the one editor load path (ctx.reloadBook → openBook →
+ * loadEditorBook), which first publishes any action the store staged and could
+ * not publish. Only THEN is the outcome decided, once, from the fold: the
+ * list, the Home count, and kept or not. The chosen version is the one the
+ * person saw in the review when they pressed (s.verseConflicts). Returns
+ * whether the chosen version is kept. */
 async function performKeepVersion(ctx, key, keptTs) {
   const { storeRef, stateRef, saveRefs } = ctx;
   if (!(await drainSchedulers(saveRefs))) return false;
   const store = storeRef.current;
   const repoPath = stateRef.current.project?.repoPath;
   if (!store || !repoPath) return false;
-  const position = (stateRef.current.verseConflicts ?? []).findIndex((c) => c.key === key);
-  const chosen = store.readVerseConflicts().find((c) => c.key === key)?.versions.find((v) => v.ts === keptTs)?.text;
-  if (!unloadEditorBook(ctx, parseVerseKey(key).book)) return false;
+  const seen = stateRef.current.verseConflicts ?? [];
+  const position = seen.findIndex((c) => c.key === key);
+  const chosen = seen[position]?.versions.find((v) => v.ts === keptTs)?.text;
+  const { book } = parseVerseKey(key);
+  const wasOpen = stateRef.current.book === book;
+  if (!unloadEditorBook(ctx, book)) return false;
   const failure = await store.resolveVerse(key, keptTs).then(() => null, (e) => e);
   if (storeRef.current !== store) return false;
-  return keepOutcome(ctx, store, { key, repoPath, position, chosen, failure });
+  const loaded = await reloadAfterKeep(ctx, store, book, wasOpen);
+  if (storeRef.current !== store) return false;
+  return keepOutcome(ctx, store, { key, repoPath, position, chosen, failure, loaded });
 }
 
-/** After the store's write, whatever it did: the list, the Home count and the
- * outcome from the fold. Kept ⇔ no conflict on the verse and the fold projects
- * the chosen text. The review stays at its place: the conflict after the kept one. */
-function keepOutcome({ stateRef, dispatch, conflictsGen }, store, { key, repoPath, position, chosen, failure }) {
+/** After the store's write: the open book loads again (ctx.reloadBook, the
+ * keepVersion action's openBook); for a book that is not open, the store
+ * publishes its staged actions all the same. Returns false when the open book
+ * could not load. */
+async function reloadAfterKeep({ rawRef, reloadBook }, store, book, wasOpen) {
+  if (wasOpen) {
+    await reloadBook(book);
+    return rawRef.current !== null;
+  }
+  await store.reconcileStaged().catch((e) => console.error(`keepVersion: staged actions not published: ${failureText(e)}`));
+  return true;
+}
+
+/** The outcome, from the fold after the reload. Kept ⇔ no conflict on the
+ * verse and the fold projects the chosen text. The review stays at its place
+ * (the conflict after the kept one) and says what did not happen. */
+function keepOutcome({ stateRef, dispatch, conflictsGen }, store, { key, repoPath, position, chosen, failure, loaded }) {
   const { book, chapter, verse } = parseVerseKey(key);
   conflictsGen.set(repoPath, (conflictsGen.get(repoPath) || 0) + 1);
   const left = adoptConflicts({ store, repoPath, dispatch });
   const open = left.some((c) => c.key === key);
   const kept = !open && chosen !== undefined && store.projectedVerse(book, chapter, verse) === chosen;
-  const error = kept ? null : [open ? null : 'Another version of this verse is kept.', failure && failureText(failure)].filter(Boolean).join(' ');
+  const notes = kept ? [] : [open ? null : t('conflicts.otherKept'), failure && failureText(failure)];
+  const error = [...notes, loaded ? null : t('conflicts.bookNotLoaded')].filter(Boolean).join(' ') || null;
   if (failure) console[kept ? 'warn' : 'error'](`keepVersion(${key}): ${kept ? 'kept' : 'not kept'}; the store reported: ${failureText(failure)}`);
   if (stateRef.current.conflictReview) {
     const next = left[Math.min(Math.max(position, 0), left.length - 1)];
-    dispatch({ type: 'set', patch: { conflictReview: { key: next?.key ?? key, error } } });
+    dispatch({ type: 'set', patch: { conflictReview: { key: next?.key ?? key, error, kept } } });
   }
   return kept;
 }
@@ -6530,19 +6549,15 @@ export function AppProvider({ children }) {
 
       /** "Keep this version": the kept head `keptTs` replaces every version of `key`. */
       keepVersion: (key, keptTs) => {
-        const run = (async () => {
-          const kept = await performKeepVersion({ storeRef, stateRef, schedulerRef, rawRef, saveRefs, dispatch, conflictsGen }, key, keptTs);
-          // The keep unloaded the open book; it loads again through the one
-          // editor load path, at the chapter it was on. (openBook does not wait
-          // for the pending keep: this IS the pending keep.)
-          const st = stateRef.current;
-          if (st.book && rawRef.current === null) {
-            const { book, chapter } = st;
-            await a.openBook(book);
-            if (stateRef.current.book === book && chapter !== 1) dispatch({ type: 'set', patch: { chapter } });
-          }
-          return kept;
-        })();
+        // The keep unloads the open book; it loads again through the one editor
+        // load path, at the chapter it was on. (openBook does not wait for the
+        // pending keep: this IS the pending keep.)
+        const reloadBook = async (book) => {
+          const { chapter } = stateRef.current;
+          await a.openBook(book);
+          if (rawRef.current !== null && chapter !== 1) dispatch({ type: 'set', patch: { chapter } });
+        };
+        const run = performKeepVersion({ storeRef, stateRef, schedulerRef, rawRef, saveRefs, dispatch, conflictsGen, reloadBook }, key, keptTs);
         keepPendingRef.current = run;
         return run.finally(() => {
           if (keepPendingRef.current === run) keepPendingRef.current = null;

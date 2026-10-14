@@ -926,6 +926,8 @@
   "conflicts.cancel": "Отмена",
   "conflicts.keep": "Сохранить эту версию",
   "conflicts.keepError": "Версия не сохранена.",
+  "conflicts.otherKept": "Сохранена другая версия этого стиха.",
+  "conflicts.bookNotLoaded": "Книга не открылась снова. Вернитесь на главную страницу и откройте проект снова.",
   "conflicts.reviewOne": "1 конфликт · Просмотреть",
   "conflicts.reviewMany": "Конфликты: {n} · Просмотреть",
   "conflicts.marker": "Версии: {n} · Просмотреть",

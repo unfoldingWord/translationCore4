@@ -926,6 +926,8 @@
   "conflicts.cancel": "إلغاء",
   "conflicts.keep": "الاحتفاظ بهذه النسخة",
   "conflicts.keepError": "لم يتم الاحتفاظ بالنسخة.",
+  "conflicts.otherKept": "تم الاحتفاظ بنسخة أخرى من هذه الآية.",
+  "conflicts.bookNotLoaded": "لم يُفتح الكتاب مرة أخرى. ارجع إلى الصفحة الرئيسية وافتح المشروع من جديد.",
   "conflicts.reviewOne": "تعارض واحد · مراجعة",
   "conflicts.reviewMany": "التعارضات: {n} · مراجعة",
   "conflicts.marker": "النسخ: {n} · مراجعة",

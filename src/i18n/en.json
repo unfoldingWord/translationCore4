@@ -926,6 +926,8 @@
   "conflicts.cancel": "Cancel",
   "conflicts.keep": "Keep this version",
   "conflicts.keepError": "The version was not kept.",
+  "conflicts.otherKept": "Another version of this verse is kept.",
+  "conflicts.bookNotLoaded": "The book did not open again. Go back to Home and open the project again.",
   "conflicts.reviewOne": "1 conflict · Review",
   "conflicts.reviewMany": "{n} conflicts · Review",
   "conflicts.marker": "{n} versions · Review",
