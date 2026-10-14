@@ -552,6 +552,18 @@ export class ServerApi {
     await this.post(`/git/copy/${encodeRepoPath(src)}?${query}`);
   }
 
+  /** GET /git/branches/<repoPath> — the local and remote-tracking branches,
+   * `{name, is_head}` each, under the `payload` wrapper. `is_head` marks the
+   * checked-out branch [VERIFIED — pankosmia-web 0.18.15 (a83725b, 2026-09-29),
+   * `endpoints/git2/branches.rs`, read 2026-10-14; the reply shape on the rig in
+   * test/sync/syncRig.integration.test.ts]. */
+  async listBranches(repoPath: string): Promise<Array<{ name: string; is_head?: boolean }>> {
+    const body = await this.requestJson<{ payload?: { branches?: Array<{ name: string; is_head?: boolean }> } }>(
+      `/git/branches/${encodeRepoPath(repoPath)}`,
+    );
+    return body.payload?.branches ?? [];
+  }
+
   /** POST /git/pull-repo/<remote>/<repoPath> — fetch and merge `remote`. Used
    * only by the rig stand-in for Door43 (#673 "The rig stand-in"); with a named
    * remote the route has no network gate [VERIFIED — pankosmia-web 0.18.15
@@ -661,6 +673,14 @@ export class ServerApi {
   async getClientSettings(storageId: string): Promise<Record<string, unknown>> {
     assertSafeSegment(storageId, `storage id ${JSON.stringify(storageId)}`);
     return this.requestJson(`/client-settings/${encodeURIComponent(storageId)}`);
+  }
+
+  /** GET /client-settings/<storage_id> as text: the bytes of the file, even when
+   * they do not parse (the platform returns the file as it is, `clients.rs`
+   * get_client_settings). For the ops log's unreadable-settings case (#676). */
+  async getClientSettingsText(storageId: string): Promise<string> {
+    assertSafeSegment(storageId, `storage id ${JSON.stringify(storageId)}`);
+    return this.requestText(`/client-settings/${encodeURIComponent(storageId)}`);
   }
 
   /** POST /client-settings/<storage_id> body {"settings": {...}} — the value

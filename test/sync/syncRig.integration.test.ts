@@ -16,7 +16,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ServerApi } from '../../src/data/serverApi';
 import { JournalingStore, forgetProjectQueues } from '../../src/data/journal/journalingStore';
 import { forgetSharedClocks } from '../../src/data/journal/journalStore';
-import { OpsLog, opsEntriesOf, serialSettingsWriter, syncPathsOf } from '../../src/data/journal/opsLog';
+import { OpsLog, opsEntriesOf, scratchPathOf, serialSettingsWriter } from '../../src/data/journal/opsLog';
 import { makeClock, reportError } from '../../src/data/journal/runtime';
 import { sealAction, segmentName } from '../../src/data/journal/seal';
 import { verifyProjectAgainstJournal, describeVerifierReport } from '../../src/data/journal/verify';
@@ -57,7 +57,7 @@ const REPO = `_local_/_local_/${ABBR}`;
 const ORG = 'facilitator';
 const MIRROR = `_local_/_archive_/${ORG}--${ABBR}`;
 const FIXED = `file/${ORG}/${ABBR}`;
-const PATHS = syncPathsOf(REPO);
+const SCRATCH = scratchPathOf(REPO);
 const TEAMMATE = 'b676teammate0001';
 const usfm = (v1: string) => ['\\id TIT sync', '\\h Tito', '\\mt Tito', '\\c 1', '\\p', `\\v 1 ${v1}`, '\\v 2 ___', ''].join('\n');
 
@@ -125,7 +125,7 @@ describe.skipIf(!rigUp)('#676 one full sync against the live rig and the #673 st
   afterAll(async () => {
     if (netWas === false) await api.disableNet().catch(() => {});
     // `list-local-repos` skips _local_/_archive_/, so each path is deleted by name
-    for (const repoPath of [REPO, PATHS.scratch, PATHS.previous, MIRROR, FIXED]) await api.deleteRepo(repoPath).catch(() => {});
+    for (const repoPath of [REPO, SCRATCH, MIRROR, FIXED]) await api.deleteRepo(repoPath).catch(() => {});
     if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
   });
 
@@ -144,16 +144,30 @@ describe.skipIf(!rigUp)('#676 one full sync against the live rig and the #673 st
     expect([report.ok, report.code], JSON.stringify(report)).toEqual([true, undefined]);
     expect(report.facts).toMatchObject({ tries: 1, received: { [TEAMMATE]: 1 }, names: { [actor]: 'facilitator', [TEAMMATE]: 'teammate' } });
 
-    // G4: Door43 main moved forward, and it is the live project's HEAD
+    // G4: Door43 main moved forward, and it holds this actor's segments
     const after = git(bare, 'rev-parse', 'main');
     expect(after).not.toBe(before);
     expect(git(bare, 'merge-base', '--is-ancestor', before, after)).toBe('');
-    expect(git(dir(REPO), 'rev-parse', 'HEAD')).toBe(after);
-    // G5: the same path; the scratch copy and the fixed clone path are gone; the previous copy waits for the next save
+    const mainPaths = git(bare, 'ls-tree', '-r', '--name-only', 'main').split('\n').filter((p) => p.startsWith('ingredients/'));
+    expect(mainPaths.some((p) => p.startsWith(`ingredients/checking/journal/${actor}/segments/`))).toBe(true);
+    // D100: the project's ingredients/ (but audio/) equal Door43 main's tree, byte for byte
+    const doorTree = new Map(mainPaths.filter((p) => !p.startsWith('ingredients/audio/')).map((p) => [p, git(bare, 'show', `main:${p}`)]));
+    const liveTree = new Map<string, string>();
+    const walk = (folder: string, prefix: string): void => {
+      for (const entry of fs.readdirSync(folder, { withFileTypes: true })) {
+        if (entry.name.startsWith('.') || entry.name.endsWith('.bak')) continue;
+        const rel = `${prefix}/${entry.name}`;
+        if (entry.isDirectory()) walk(path.join(folder, entry.name), rel);
+        else if (!rel.startsWith('ingredients/audio/')) liveTree.set(rel, fs.readFileSync(path.join(folder, entry.name), 'utf8').trim());
+      }
+    };
+    walk(path.join(dir(REPO), 'ingredients'), 'ingredients');
+    expect([...liveTree.keys()].sort()).toEqual([...doorTree.keys()].sort());
+    for (const [p, bytes] of doorTree) expect(liveTree.get(p), p).toBe(bytes);
+    // G5: the same path; the scratch copy and the fixed clone path are gone
     expect(fs.existsSync(dir(REPO))).toBe(true);
-    expect(fs.existsSync(dir(PATHS.scratch))).toBe(false);
+    expect(fs.existsSync(dir(SCRATCH))).toBe(false);
     expect(fs.existsSync(dir(FIXED))).toBe(false);
-    expect(fs.existsSync(dir(PATHS.previous))).toBe(true);
     // the teammate's file and the own name are in the project; the store opens it with the same actor
     expect(fs.existsSync(path.join(dir(REPO), 'ingredients', teammatePath))).toBe(true);
     forgetSharedClocks();
@@ -161,11 +175,43 @@ describe.skipIf(!rigUp)('#676 one full sync against the live rig and the #673 st
     const reopened = new JournalingStore({ api, kv });
     await reopened.open(REPO);
     expect(reopened.actorId).toBe(actor);
+    expect(reopened.lastReport?.facts.classification).toBe('converged');
     reopened.dispose();
     const verified = await verifyProjectAgainstJournal(api, REPO);
     expect(verified.ok, describeVerifierReport(verified)).toBe(true);
     // the Report is the closed ops record
     expect(opsEntriesOf(doc).find((e) => e.op === 'sync')?.report).toEqual(report);
     console.log(`[syncRig] main ${before.slice(0, 7)} -> ${after.slice(0, 7)}; facts ${JSON.stringify({ tries: report.facts.tries, carried: report.facts.carried, received: report.facts.received, names: report.facts.names })}`);
+  }, 120_000);
+
+  it('[G4] a Door43 repository whose HEAD names another branch is refused (sync.not-main): Door43 and the project do not change', async () => {
+    // Door43's default branch becomes `other`; the stand-in mirror is cloned again, so it checks that branch out
+    git(bare, 'branch', 'other', 'main');
+    git(bare, 'symbolic-ref', 'HEAD', 'refs/heads/other');
+    await api.deleteRepo(MIRROR);
+    execFileSync('git', ['clone', '-q', pathToFileURL(bare).href, dir(MIRROR)]);
+    git(dir(MIRROR), 'config', 'user.name', 'rig');
+    git(dir(MIRROR), 'config', 'user.email', 'rig@localhost');
+    const branches = await api.listBranches(MIRROR);
+    expect(branches.find((b) => b.is_head)?.name).toBe('other');
+    const mainBefore = git(bare, 'rev-parse', 'main');
+    const otherBefore = git(bare, 'rev-parse', 'other');
+    const headBefore = git(dir(REPO), 'rev-parse', 'HEAD');
+    const deps: SyncDeps = {
+      api: Object.assign(Object.create(api) as ServerApi, { cloneRepo: standInCloneRepo(api) }),
+      kv,
+      door43Server: 'https://qa.door43.org',
+      coverage: {},
+      ops,
+      allowFileRemote: true,
+    };
+    const report = await sync(deps, { repoPath: REPO, session: SESSION });
+    expect([report.ok, report.code], JSON.stringify(report)).toEqual([false, 'sync.not-main']);
+    expect(report.facts).toMatchObject({ refusal: { branch: 'other' } });
+    expect([git(bare, 'rev-parse', 'main'), git(bare, 'rev-parse', 'other')]).toEqual([mainBefore, otherBefore]);
+    expect(git(dir(REPO), 'rev-parse', 'HEAD')).toBe(headBefore);
+    expect(fs.existsSync(dir(SCRATCH))).toBe(false);
+    expect(fs.existsSync(dir(FIXED))).toBe(false);
+    console.log(`[syncRig] default branch other: ${report.code}; main ${mainBefore.slice(0, 7)} and other ${otherBefore.slice(0, 7)} unchanged`);
   }, 120_000);
 });

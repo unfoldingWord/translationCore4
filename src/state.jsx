@@ -110,7 +110,13 @@ const settingsWriter = serialSettingsWriter(
   (doc) => api.setClientSettings(STORAGE_ID, doc),
 );
 /** #374: the ops log — one record per store operation, in the same document. */
-export const opsLog = new OpsLog({ read: () => api.getClientSettings(STORAGE_ID), update: settingsWriter });
+export const opsLog = new OpsLog({
+  read: () => api.getClientSettings(STORAGE_ID),
+  update: settingsWriter,
+  // #676: a document that does not parse is kept and replaced, never a lock forever
+  readText: () => api.getClientSettingsText(STORAGE_ID),
+  replace: (doc) => api.setClientSettings(STORAGE_ID, doc),
+});
 /** #362/#203: the one Door43 adapter; its server is the build's `dcsServer`. */
 // D95 (#559): the one on/off internet state of the app session. main.jsx
 // guards every client request with it (guardFetch), and the Door43 adapter
