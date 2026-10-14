@@ -29,6 +29,11 @@ export const SYNC_REFUSALS = {
   'sync.project-replaced': 'refusal.sync.project-replaced',
   'sync.not-main': 'refusal.sync.not-main',
   'sync.apply-pending': 'refusal.sync.apply-pending',
+  'sync.cleanup-failed': 'refusal.sync.cleanup-failed',
+  // The store's project-path guard (#676); a sync Report does not carry it today. A refusal
+  // code, not a catalog key: the template literal keeps the i18n key scan (whose `open.`
+  // namespace it shares) from reading it as one.
+  [`open.not-a-project`]: 'refusal.open.not-a-project',
 };
 
 /** The message of a failed sync Report: the text of its code, else the reason. */
