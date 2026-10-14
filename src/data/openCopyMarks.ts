@@ -1,12 +1,12 @@
 // The names of an open from Door43 (#677) that both the ops log (src/data/journal/opsLog.ts,
 // the open section) and the platform's create routes (src/data/serverApi.ts) read. No
-// imports, so the server API can use them without a cycle.
+// imports, so the server API can use them without a cycle. `archiveNameOf` is the one
+// definition for the scratch copies of a sync (#676) and of an open from Door43 (#677).
 
 /** One name for the WHOLE project path inside `_local_/_archive_/`: `-` becomes
  * `-d` and `/` becomes `-s`. The encoding is injective, and it adds only `-`,
- * `d` and `s`, so the name keeps the platform's path rules. The same function as
- * #676's `archiveNameOf` (issue-676 branch, opsLog.ts), written here until the
- * branches merge. */
+ * `d` and `s`, so the name keeps the platform's path rules (no `/`, no `..`;
+ * pankosmia-web a83725b `utils/paths.rs` forbidden_path_strings). */
 export const archiveNameOf = (repoPath: string): string => repoPath.replaceAll('-', '-d').replaceAll('/', '-s');
 
 /** The scratch copy of an open from Door43. Under `_local_/_archive_/`, so Home never lists it. */

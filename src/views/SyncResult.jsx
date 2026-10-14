@@ -25,8 +25,10 @@ export const SYNC_REFUSALS = {
   'sync.no-write-access': 'syncResult.error.noWriteAccess',
   'sync.push-failed': 'syncResult.error.pushFailed',
   'opslog.not-loaded': 'syncResult.error.opsLogNotLoaded',
-  'sync.swap-pending': 'syncResult.error.swapPending',
   'sync.failed': 'refusal.sync.failed',
+  'sync.project-replaced': 'refusal.sync.project-replaced',
+  'sync.not-main': 'refusal.sync.not-main',
+  'sync.apply-pending': 'refusal.sync.apply-pending',
 };
 
 /** The message of a failed sync Report: the text of its code, else the reason. */

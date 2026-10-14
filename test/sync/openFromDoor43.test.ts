@@ -11,7 +11,7 @@ import { OpsLog, forgetRunningOpens, openRunning, serialSettingsWriter } from '.
 import { runImport } from '../../src/data/import/shell';
 import { FAKE_PARSER } from '../../src/data/import/parsers';
 import { reportError } from '../../src/data/journal/runtime';
-import { openDefaultName, openFromDoor43, openFromDoor43Asking, openRepoPathOf, openSourceOf, forgetClonePathLocks, sync, withClonePathLock, type CloneSource } from '../../src/data/share/syncOperation';
+import { openDefaultName, openFromDoor43, openFromDoor43Asking, openRepoPathOf, openSourceOf, sync, withClonePath, type CloneSource } from '../../src/data/share/syncOperation';
 import { journalingRig, memKv, tickingNow, type JournalingRig } from '../helpers/journalingRig';
 
 const REPO = '_local_/_local_/prueba';
@@ -65,11 +65,14 @@ const refusalOf = async (run: Promise<unknown>) => {
   throw new Error('the open did not refuse');
 };
 
+/** True while the log holds an open record of the open of `repoPath` (at `phase`, when given). */
+const openRecord = (ops: OpsLog, repoPath: string, phase?: string): boolean =>
+  ops.entries.some((e) => e.op === 'open-door43' && !e.report && e.facts.repoPath === repoPath && (phase === undefined || e.facts.phase === phase));
+
 afterEach(() => {
   forgetSharedClocks();
   forgetProjectQueues();
   forgetRunningOpens();
-  forgetClonePathLocks();
 });
 
 describe('#677 open a project from Door43', () => {
@@ -250,7 +253,7 @@ function settingsDoc() {
 }
 const startApp = async (settings: ReturnType<typeof settingsDoc>, api: ServerApi) => {
   forgetRunningOpens(); // a start is a new process
-  forgetClonePathLocks();
+  forgetProjectQueues(); // and its locks (the clone-path lock is a project-queue key)
   const ops = new OpsLog({ read: settings.read, update: serialSettingsWriter(settings.read, settings.write) });
   const resolved = await ops.recover(api);
   return { ops, resolved };
@@ -391,7 +394,7 @@ function failingSettingsDoc() {
   return { read, write, get: () => doc, fail: (on: boolean) => (failing = on) };
 }
 const appOver = (s: { read: () => Promise<Record<string, unknown>>; write: (d: Record<string, unknown>) => Promise<void> }) =>
-  (forgetRunningOpens(), forgetClonePathLocks(), new OpsLog({ read: s.read, update: serialSettingsWriter(s.read, s.write) }));
+  (forgetRunningOpens(), forgetProjectQueues(), new OpsLog({ read: s.read, update: serialSettingsWriter(s.read, s.write) }));
 
 describe('#677 the open never loses a project that opened (review B1, B2)', () => {
   it('[B1] the ops writes fail after the copy: the open is ok, the user edits, and the next start keeps the edited project', async () => {
@@ -440,7 +443,7 @@ describe('#677 the open never loses a project that opened (review B1, B2)', () =
     };
     expect((await refusalOf(openFromDoor43({ api, ops }, { source: SOURCE, name: 'prueba_b' }))).code).toBe('sync.incoming-invalid');
     expect(w.rig.repos.has(SCRATCH)).toBe(true);
-    expect(ops.isOpen('open-door43', OPENED)).toBe(true);
+    expect(openRecord(ops, OPENED)).toBe(true);
     const resolved = await appOver(s).recover(w.api);
     expect(resolved.map((e) => [e.op, e.report?.ok])).toEqual([['open-door43', false]]);
     expect(w.rig.repos.has(SCRATCH)).toBe(false);
@@ -465,7 +468,7 @@ describe('#677 the open never loses a project that opened (review B1, B2)', () =
       return w.api.deleteRepo(p);
     };
     expect((await refusalOf(openFromDoor43({ api, ops }, { source: SOURCE, name: 'prueba_b' }))).code).toBe('sync.move-failed');
-    expect(ops.isOpen('open-door43', OPENED, 'move.copy')).toBe(true);
+    expect(openRecord(ops, OPENED, 'move.copy')).toBe(true);
     // the next start, with a healthy server: the part project is not certified
     forgetProjectQueues();
     const ops2 = appOver(s);
@@ -492,7 +495,7 @@ describe('#677 the open never loses a project that opened (review B1, B2)', () =
     };
     expect((await refusalOf(openFromDoor43({ api, ops }, { source: SOURCE, name: 'prueba_b' }))).code).toBe('sync.move-failed');
     expect(w.rig.repos.has(CLONE_PATH)).toBe(true);
-    expect(ops.isOpen('open-door43', OPENED, 'clone')).toBe(true);
+    expect(openRecord(ops, OPENED, 'clone')).toBe(true);
     forgetProjectQueues();
     const ops2 = appOver(s);
     const resolved = await ops2.recover(w.api);
@@ -680,14 +683,11 @@ describe('#677 the open recovers from the disk only', () => {
     }
     if (!opened) {
       forgetProjectQueues();
-      // the same repository opens again; the one exception is a clone path left with no record
-      try {
-        expect(await openFromDoor43({ api: w.api, ops }, { source: SOURCE, name: 'prueba_b' }), label).toEqual({ repoPath: OPENED });
-        expect(sameFiles(w, OPENED), label).toBe(true);
-      } catch (error) {
-        expect((error as { code?: string }).code, label).toBe('sync.clone-path-exists');
-        expect(w.rig.repos.has(CLONE_PATH), label).toBe(true);
-      }
+      // the same repository opens again, also over a clone path left with no record:
+      // the clone (#676 `cloneProject`) deletes it under the clone-path lock
+      expect(await openFromDoor43({ api: w.api, ops }, { source: SOURCE, name: 'prueba_b' }), label).toEqual({ repoPath: OPENED });
+      expect(sameFiles(w, OPENED), label).toBe(true);
+      expect(w.rig.repos.has(CLONE_PATH), label).toBe(false);
     }
     return opened;
   }
@@ -765,20 +765,42 @@ describe('#677 the open recovers from the disk only', () => {
   });
 });
 
-describe('#677 the clone-path lock (shared with the sync, #676)', () => {
+describe('#677 a clone left at the fixed path', () => {
+  it('a clone left with no record (a stop, then the record lost) does not block the next open of the repository', async () => {
+    const w = await world();
+    const { ops } = await startApp(settingsDoc(), w.api);
+    // a stop between the clone and its move, and the settings lost: a folder at the
+    // fixed clone path that no record names
+    expect(await openFromDoor43({ api: w.api, ops }, { source: SOURCE, name: 'prueba_b' })).toEqual({ repoPath: OPENED });
+    w.rig.repos.set(CLONE_PATH, structuredClone(w.rig.repos.get(OPENED)!));
+    await w.api.deleteRepo(OPENED);
+    expect((await w.api.listLocalRepos()).includes(CLONE_PATH)).toBe(true);
+    expect(ops.entries.filter((e) => !e.report)).toEqual([]);
+    // control: the left folder blocks a plain clone (the platform answers code=Exists)
+    const blocked = (await refusalOf(w.api.cloneRepo(SOURCE.host, SOURCE.org, SOURCE.repo))) as { reason?: string; message?: string };
+    expect(`${blocked.reason ?? ''} ${blocked.message ?? ''}`).toMatch(/code=Exists/);
+    // the next open of the same repository succeeds, and the left clone is gone
+    const { ops: next } = await startApp(settingsDoc(), w.api);
+    expect(await openFromDoor43({ api: w.api, ops: next }, { source: SOURCE, name: 'prueba_b' })).toEqual({ repoPath: OPENED });
+    expect(w.rig.repos.has(CLONE_PATH)).toBe(false);
+    expect(w.rig.repos.get(OPENED)!.files).toEqual(w.rig.remotes.get(URL_)!.files);
+  });
+});
+
+describe('#677 the clone-path lock (#676 `withClonePath`, shared with the sync)', () => {
   it('calls for one clone path run one at a time, a failure frees the lock, and another path does not wait', async () => {
     const order: string[] = [];
     let release: () => void = () => {};
     const gate = new Promise<void>((r) => (release = r));
-    const first = withClonePathLock('qa.door43.org/facilitator/prueba', async () => {
+    const first = withClonePath('qa.door43.org/facilitator/prueba', async () => {
       order.push('first start');
       await gate;
       order.push('first end');
       throw new Error('first failed');
     });
-    const second = withClonePathLock('qa.door43.org/facilitator/prueba', async () => void order.push('second'));
+    const second = withClonePath('qa.door43.org/facilitator/prueba', async () => void order.push('second'));
     // control: another clone path does not wait for the first
-    await withClonePathLock('qa.door43.org/facilitator/otra', async () => void order.push('other path'));
+    await withClonePath('qa.door43.org/facilitator/otra', async () => void order.push('other path'));
     expect(order).toEqual(['first start', 'other path']);
     release();
     await expect(first).rejects.toThrow('first failed');

@@ -38,12 +38,21 @@ describe('#374 the dev Inspector', () => {
     expect(screen.getByTestId('dev-inspector-errors').textContent).toContain('The checkpoint record was not saved: client-settings write refused');
   });
 
+  it('#676 shows the incident of a settings document that did not parse', () => {
+    const ops = { entries: [], errors: [{ id: 'settings', op: 'open', error: 'Unterminated string in JSON', kind: 'settings-unreadable' }] };
+    render(<InspectorPanel ops={ops} />);
+    const text = screen.getByTestId('dev-inspector-errors').textContent ?? '';
+    expect(text).toContain('unreadableSettings');
+    expect(text).toContain('Unterminated string in JSON');
+    expect(text).not.toContain('record was not saved');
+  });
+
   it('#676 shows a sync Report: the ok one and a refusal with its code', () => {
     const synced = okReport('sync', at(7), at(9), { repoPath: '_local_/_local_/prueba', tries: 1, carried: 2, restored: 0, received: {}, textConflicts: [], newestWins: [], names: {} });
     const refused = failedReport('sync', at(10), at(11), new Refusal('sync.no-write-access', 'x'), { repoPath: '_local_/_local_/prueba', tries: 1 });
     const ops = {
       entries: [
-        { id: 'd', op: 'sync', startedAt: at(7), facts: { repoPath: '_local_/_local_/prueba', phase: 'live' }, report: synced },
+        { id: 'd', op: 'sync', startedAt: at(7), facts: { repoPath: '_local_/_local_/prueba', phase: 'apply' }, report: synced },
         { id: 'e', op: 'sync', startedAt: at(10), facts: { repoPath: '_local_/_local_/prueba', phase: 'push' }, report: refused },
       ],
       errors: [],

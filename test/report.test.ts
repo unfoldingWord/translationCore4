@@ -63,7 +63,7 @@ describe('#156 the refusal-code table is closed and bound', () => {
     // open from Door43 (#677) throws open-door43.name-exists, open-door43.no-journal, and (its disk gate) open-door43.pending and open-door43.removed.
     const reserved = /^(import\.damaged\.|share\.|export\.unsupported-kind$)/;
     const live = Object.keys(REFUSAL_CODES).filter((code) => !reserved.test(code));
-    expect(live.length).toBe(51);
+    expect(live.length).toBe(53);
     for (const code of live) expect(t(`refusal.${code}`, undefined, ''), code).not.toBe('');
   });
 

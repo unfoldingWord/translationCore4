@@ -2646,8 +2646,9 @@ this computer does not have, rebuilds, and pushes [VERIFIED — `journal/fold.mj
 1. **Door43 only, public repositories only.** USB transport and private repositories come later.
 2. **The project owner gives teammates write access on Door43.** tC4 does not manage access.
 3. **"Upload changes" becomes "Sync with Door43" after the first share.** One press gets Door43
-   `main`, adds the own journal files, rebuilds the project files, pushes, and swaps the
-   project in at the same path.
+   `main`, adds the own journal files, rebuilds the project files, pushes, and applies the
+   pushed tree to the project in place. [amended 2026-10-14 — D100: no swap, no second
+   project folder]
 4. **The conflict review follows translationStudio's design**, verse by verse, with the shading
    set by the owner of each version, not by its position.
 5. **Versions show each teammate's Door43 username.** This amends D85 point 1: Door43 already
@@ -2679,7 +2680,7 @@ This table is the home of the guarantees; epic #24 links here.
 | G5 | Identity holds: after a sync, the project is at the same path with the same actor id. | 3 | app rule (§8.7) | #676 |
 | G6 | Same journals, same project: two computers with the same journals have the same project files. | 2 | R-8.7.11 | #674 (JC-35), #675 |
 | G7 | Only verse text reaches a person: other conflicts keep the newest version, and the result counts each one once. | 1, 2, 4 | R-8.7.12 | #674 (JC-35), #675, #679 |
-| G8 | A crash during the swap never leaves two projects and never loses own work. | 3 | app rule (§8.7) | #676 |
+| G8 | A crash during the apply never makes the project unopenable, never loses own work, and never reverts or re-attributes teammate work; the next start finishes the apply. [amended 2026-10-14 — D100] | 3 | app rule (§8.7) | #676 |
 
 The refusal codes of the format-facing rules are in `journal/report.mjs`:
 `sync.own-file-differs` (R-8.7.7), `sync.incoming-invalid` (R-8.7.8), `sync.metadata-overlay`
@@ -2734,3 +2735,41 @@ Ruling 6 changes #546, which says that v4.0.0 promotes the rc.2 artifact without
 Where it lands: `scripts/sign-windows.ps1`, `scripts/package-desktop.zsh`, `scripts/tc4.iss`,
 `.github/workflows/package-desktop.yml` (the signing values and the `smoke-windows-x64`
 signature check), `docs/PACKAGING.md` (Signing), and `scripts/README-windows.txt`.
+
+## D100 (2026-10-14, project-owner ruling) **The sync applies Door43 main to the project in place. There is no swap, no previous copy and no second project folder. Amends D98 point 3 and the G8 row of D98.** [owner ruling of 2026-10-14 on #676, PR #688]
+
+1. **The apply.** After the push, the sync makes the project's `ingredients/` folder, except
+   `ingredients/audio/`, equal to the tree that it pushed. It writes the journal files first,
+   then the derived files. Then it removes each file that the pushed tree does not hold (never
+   a journal file). Then it remakes the ingredients and commits. The project keeps its folder,
+   its `.git` and its path, so it keeps its actor id (G5).
+2. **Crash recovery.** The disk is the record. The settings document never locks or unlocks
+   a project: many writers write it in place, and it has no compare-and-set. After the push,
+   the sync writes one marker file, `ingredients/tc4-sync/apply.json`, into the scratch copy.
+   Then it applies. Then it deletes the marker, then the scratch copy. At each start (for each
+   repository that `list-local-repos` names, at any path), and at the start of each sync of
+   the project, this rule runs: a scratch copy with the marker
+   (any bytes) gets the same apply again, then the marker and the scratch copy are deleted;
+   a scratch copy with no marker is deleted, because the project did not change; no scratch
+   copy means nothing is pending. While the marker is there, the project takes no open
+   (`sync.apply-pending`). The apply compares before it writes, so it is safe to run again.
+   Recovery only goes forward. The sync record in the ops log is only the Report for the dev
+   Inspector.
+3. **G8, new text.** A crash during the apply never makes the project unopenable, never loses
+   own work, and never reverts or re-attributes teammate work; the next start finishes the
+   apply.
+4. **Stale stores.** The sync moves the project's sync generation on before the first write to
+   the project. A store that opened the project before that refuses every edit and every
+   checkpoint (`sync.project-replaced`). The app opens the project again after a sync.
+5. **Audio.** Round 1 never reads or writes `ingredients/audio/`. A teammate's audio does not
+   reach this project, and own audio stays where it is. The audio design stays open.
+6. **Cost.** The apply writes only the files that differ. One write costs 0.33 ms to 0.43 ms:
+   1000 writes of about 1 KB took 325 ms to 426 ms [VERIFIED — pankosmia-web 0.18.15
+   (a83725b, 2026-09-29), rig on an Apple M2 Pro, three runs, 2026-10-14;
+   `scripts/measure-sync-writes.mjs`].
+
+The swap, the previous copy, the go-back and the restore of the earlier #676 design are
+deleted with their tests. Where it lands: `src/data/share/syncOperation.ts`,
+`src/data/journal/opsLog.ts` (`applyScratch` and the recovery rule),
+`src/data/journal/journalingStore.ts`, BURRITO-SPEC §8.7, `docs/RISKS.md` (Ledger #11 and #12),
+and `CONTEXT.md`.
