@@ -159,7 +159,9 @@ has no `text|` fork. The file list (bytes, path), the same in the three projects
 
 Note (2026-10-14, D100): a sync now applies Door43 `main` in place (#676), so the `HEAD` of a project
 is not `main`. The test no longer checks `HEAD`. It checks that the `ingredients/` files of each
-project (but `audio/`) are the same as the tree of Door43 `main`, byte for byte. Step 5 also checks
+project (but `audio/`) are the same as the tree of Door43 `main`, byte for byte. The file
+comparison of the three projects does not include the `*.bak` files: they are local backups that
+the project's `.gitignore` keeps out of each commit, and the sync does not change them. Step 5 also checks
 that the first open of each project after the last sync is `converged`. The run below is the run
 at `58a69e8`, before this change.
 

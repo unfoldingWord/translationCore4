@@ -93,7 +93,10 @@ const foldOf = (repo: string) => fold(readUnion(path.join(rigRepo(repo), JOURNAL
 const actorOf = (t: Translator): string | undefined =>
   Object.entries(foldOf(t.repo).names).find(([, name]) => name === t.user.username)?.[0];
 
-/** Every project file of a rig repository, path -> bytes; `.git` is not a project file. */
+/** Every project file of a rig repository, path -> bytes; `.git` is not a project file, and
+ * neither is a `*.bak` file: the platform's local backup, which the project's `.gitignore`
+ * (`**\/*.bak`) keeps out of every commit. A sync applies Door43 main in place (#676, D100),
+ * so it never touches the backups of one computer. */
 function projectFiles(repo: string): Map<string, Buffer> {
   const root = rigRepo(repo);
   const out = new Map<string, Buffer>();
@@ -101,6 +104,7 @@ function projectFiles(repo: string): Map<string, Buffer> {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, entry.name);
       if (entry.name === '.git' && dir === root) continue;
+      if (entry.isFile() && entry.name.endsWith('.bak')) continue;
       if (entry.isDirectory()) walk(full);
       else out.set(path.relative(root, full).split(path.sep).join('/'), fs.readFileSync(full));
     }
