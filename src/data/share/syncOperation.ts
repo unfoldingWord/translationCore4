@@ -116,7 +116,12 @@ export const cloneSourceOf = (url: string, allowFileRemote = false): CloneSource
 
 /** The rig stand-in for the Door43 clone (#673 "The rig stand-in"): copy the
  * never-committed mirror `_local_/_archive_/<org>--<repo>` to the fixed path,
- * then pull `origin`. Only the development build and the rig tests use it. */
+ * then pull `origin`. Only the development build and the rig tests use it.
+ * The mirror MUST carry a local `user.name` and `user.email`, as the server's own
+ * clone writes them (`clone_repo.rs:84-93`): the platform commit panics without a
+ * git identity [VERIFIED — pankosmia-web 0.18.15 (a83725b, 2026-09-29),
+ * `add_and_commit.rs:157` `repo.signature().expect("signature")`, rig with no
+ * global git config, 2026-10-14]. */
 export const standInCloneRepo =
   (api: ServerApi) =>
   async (host: string, org: string, repo: string): Promise<void> => {
@@ -250,12 +255,26 @@ export async function sync(deps: SyncDeps, request: SyncRequest): Promise<Report
         new Refusal('sync.swap-pending', `the sync of ${repoPath} did not finish; restart the app to finish it`), { repoPath });
     }
     const record = await ops.begin('sync', { repoPath });
-    const { report, open } = await syncRecorded(deps, request, record);
+    const recorded = await syncRecorded(deps, request, record);
+    const report = withCode(recorded.report);
+    const { open } = recorded;
     // A swap that stopped leaves its record open, so the next start finishes it (G8).
     if (!open) await record?.close(report);
     return report;
   });
 }
+
+/** Every failed sync Report carries a code (tests assert codes, never text): a
+ * failure that is no refusal (a server error, a panic answered as HTTP 500)
+ * becomes `sync.failed`, and its diagnosis stays in `facts.error`. */
+const withCode = (report: Report): Report => {
+  if (report.ok || report.code) return report;
+  const facts: Record<string, unknown> = { ...report.facts };
+  const error = facts.error;
+  delete facts.error;
+  delete facts.refusal;
+  return failedReport('sync', report.startedAt, report.endedAt, new Refusal('sync.failed', String(error ?? 'the sync failed')), facts);
+};
 
 /** What the checks find: the Door43 repository and the credentials. Throws a Refusal. */
 async function preflight(deps: SyncDeps, request: SyncRequest): Promise<{ source: CloneSource; username: string; token: string }> {

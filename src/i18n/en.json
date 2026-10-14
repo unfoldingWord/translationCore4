@@ -139,6 +139,7 @@
   "refusal.sync.no-write-access": "Door43 did not let you send changes to this project. Ask the project owner for write access. Nothing changed.",
   "refusal.sync.push-failed": "The app could not send your changes to Door43. Sync again. If this occurs again, ask for help. Nothing changed.",
   "refusal.opslog.not-loaded": "The app could not read its record of unfinished work. Close the app and open it again. Until then, you cannot open, change or sync a project.",
+  "refusal.sync.failed": "The sync stopped because of an error. Your project did not change. Sync again. If this occurs again, ask for help.",
   "refusal.sync.swap-pending": "A sync of this project did not finish. Close the app and open it again. The app then finishes the sync. Until then, you cannot open or change this project.",
   "home.book": "book",
   "home.books": "books",
