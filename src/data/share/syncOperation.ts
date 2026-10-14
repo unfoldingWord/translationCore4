@@ -359,13 +359,28 @@ export async function openFromDoor43(deps: OpenDeps, request: { source: CloneSou
     if (!cleanupFailed) await record?.close(failedReport('open-door43', startedAt, new Date().toISOString(), error, { repoPath, source }));
     throw error;
   }
-  // The copy finished, so the project is whole and the open succeeded. Then the
-  // scratch copy goes. When this phase does not save, the saved phase stays
-  // `move.copy`, and recovery keeps the project because the scratch copy is gone.
-  await record?.note({ phase: 'move.delete-scratch' });
-  await cleanup(scratch);
-  if (!cleanupFailed) await record?.close(okReport('open-door43', startedAt, new Date().toISOString(), { repoPath, source }));
+  const deleted = async (path: string): Promise<boolean> => (await cleanup(path), !cleanupFailed);
+  if (await finishOpen(record, () => deleted(scratch)))
+    await record?.close(okReport('open-door43', startedAt, new Date().toISOString(), { repoPath, source }));
   return { repoPath };
+}
+
+/** The end of an open whose copy finished: the project is whole. Save
+ * `move.delete-scratch`, then delete the scratch copy. Answers true when the record can
+ * close ok; false when the scratch delete failed (the record stays open, and the next
+ * start deletes the scratch copy). When this phase does not save, the saved phase stays
+ * `move.copy`, and recovery keeps the project only because the scratch copy is gone.
+ * So when neither is on disk, the next start deletes the project, and the open is not
+ * ok: it throws, and the record goes back to `move.copy` in memory too (a failed note
+ * changes it there), so the project takes no open, no edit and no sync until that start. */
+async function finishOpen(record: OpsHandle | undefined, deleteScratch: () => Promise<boolean>): Promise<boolean> {
+  const saved = (await (record?.note({ phase: 'move.delete-scratch' }) ?? true)) !== false;
+  const scratchGone = await deleteScratch();
+  if (!saved && !scratchGone) {
+    await record?.note({ phase: 'move.copy' });
+    throw new Error('the ops log did not save the phase move.delete-scratch, and the scratch copy was not deleted; the next start removes the project');
+  }
+  return scratchGone;
 }
 
 
