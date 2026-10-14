@@ -1,5 +1,25 @@
 # Team sync plan — epic #24
 
+## Round 1
+
+Round 1 is simpler than this plan, and it ships first (4.1.0). Three or more translators sync
+one Bible project with one public Door43 repository, on its `main` branch, with one button.
+It has no publication branches, no integrator and no legibility gate [decided 2026-10-13 —
+D98].
+
+- The work items, the layers and the order are in epic
+  [#24](https://github.com/unfoldingWord/translationCore4/issues/24).
+- The rulings and the guarantees G1–G8 are in [D98](../DECISIONS.md).
+- The normative rules are BURRITO-SPEC §8.7 (R-8.7.7–R-8.7.12) and the name action in §8.5
+  (R-8.5.25, R-8.5.26).
+- The shared fixture is
+  [`conformance/fixtures/team-sync/`](../../conformance/fixtures/team-sync/README.md).
+
+The rest of this document is the long-term plan of 2026-09-03. It stays the reference for later
+rounds. Its checks (JC-18–JC-20, transport T1–T4) stay as they are. The ids `R-8.7.7` to `R-8.7.12` now name the
+round-1 rules (D98). Below, the long-term rules carry the placeholder ids `R-LT-1` to `R-LT-6`
+(once `R-8.7.7` to `R-8.7.12`); they get new `R-8.7.x` ids when the long-term protocol is ratified.
+
 Status: [PROPOSED] plan, adopted as the shape of epic #24 by D67 (2026-09-02). Rules
 named here become normative only when the S1 change set lands them in
 `docs/BURRITO-SPEC.md` with their checks (§9). Written against `main` after the audit of
@@ -76,9 +96,9 @@ rule id.
 | `segment.misnamed` | R-8.1.2 | yes | refuse the contribution |
 | `checkpoint.divergence` | R-8.7.5 | yes | reopen to reconcile |
 | `seed.mismatch` | R-8.8.2 | yes | stop; show the mismatch set |
-| `intake.shared-path` | R-8.7.9 (S1; I5) | no | refuse the contribution |
-| `receive.own-ts-missing` | R-8.7.11 (S1; I4) | no | keep the working repository; report the missing `ts` |
-| `swap.incomplete` | R-8.7.12 (S1; I6) | no | finish forward or roll back on open |
+| `intake.shared-path` | R-LT-3 (S1; I5) | no | refuse the contribution |
+| `receive.own-ts-missing` | R-LT-5 (S1; I4) | no | keep the working repository; report the missing `ts` |
+| `swap.incomplete` | R-LT-6 (S1; I6) | no | finish forward or roll back on open |
 
 Today the normative gate (`conformance/normative/check.mjs`) proves that each `R-` id
 is claimed by a live check; per-rule mutation proof is an open D55 residual. How
@@ -121,7 +141,7 @@ renders the same `Report` and `explain` output.
 ## 2. Invariants
 
 Format-facing invariants bind the stored bytes and the receive result. They become
-`R-8.7.7` to `R-8.7.12` in S1 and get conformance checks. App-facing invariants bind
+`R-LT-1` to `R-LT-6` in S1 and get conformance checks. App-facing invariants bind
 the application, not the stored format; under the D55 addendum of 2026-08-18 an app
 rule carries no `R-` id, is marked "(D53, app rule)" in place, and is tested by the
 app increment that implements it.
@@ -130,12 +150,12 @@ app increment that implements it.
 
 | Invariant | Rule id in S1 | Refusal code |
 |---|---|---|
-| I1 | R-8.7.7 | none (S2 spy test) |
-| I2 | R-8.7.8 | none (S2 flush test) |
-| I5 | R-8.7.9 | `intake.shared-path`; the four segment codes |
-| I3 | R-8.7.10 | none (S5 kill sweep) |
-| I4 | R-8.7.11 | `receive.own-ts-missing` |
-| I6 | R-8.7.12 | `swap.incomplete` |
+| I1 | R-LT-1 | none (S2 spy test) |
+| I2 | R-LT-2 | none (S2 flush test) |
+| I5 | R-LT-3 | `intake.shared-path`; the four segment codes |
+| I3 | R-LT-4 | none (S5 kill sweep) |
+| I4 | R-LT-5 | `receive.own-ts-missing` |
+| I6 | R-LT-6 | `swap.incomplete` |
 
 - I1 Publication isolation. Every commit the `<actorId>` branch adds after its branch
   point touches only the actor's own `ingredients/checking/journal/<actor>/` and the
@@ -324,7 +344,7 @@ as if it were a publication, and `docs/RISKS.md` row 5 records the result.
 
 ### S1 — Ratify §8.7 as rules and scenarios
 
-One change set per §9: BURRITO-SPEC §8.7 gains `R-8.7.7` to `R-8.7.12` (Section 2.1)
+One change set per §9: BURRITO-SPEC §8.7 gains `R-LT-1` to `R-LT-6` (Section 2.1)
 and lists the refusal codes; the `[PROPOSED]` mark on the sync block is removed; §1 is
 amended to name the publication and team main mirrors (Section 4); the version bumps.
 Harness: the X2 scenario files, the JC-32 two-device property (D55 calls it JC-32f) gains a
@@ -461,7 +481,7 @@ back the swap; no own byte is missing.
 
 ## 7. Epic acceptance
 
-- §8.7 sync block is normative with `R-8.7.7` to `R-8.7.12`, §1 is amended, and the
+- §8.7 sync block is normative with `R-LT-1` to `R-LT-6`, §1 is amended, and the
   normative gate passes (S1).
 - The journey passes as an e2e on the rig, and transport T5–T7 are green (S8).
 - `verifyProjectAgainstJournal` holds on every working repository and team main mirror

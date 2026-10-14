@@ -114,6 +114,7 @@
   "refusal.segment.bad-path": "Ứng dụng đã dừng để bảo vệ dự án của bạn. Đây là sự cố trong ứng dụng. Hãy yêu cầu trợ giúp.",
   "refusal.segment.differs-from-accepted": "Ứng dụng đã dừng để bảo vệ dự án của bạn. Đây là sự cố trong ứng dụng. Hãy yêu cầu trợ giúp.",
   "refusal.outbox.different-action": "Ứng dụng đã dừng để bảo vệ dự án của bạn. Đây là sự cố trong ứng dụng. Hãy yêu cầu trợ giúp.",
+  "refusal.actor.name-already-set": "Ứng dụng đã dừng để bảo vệ dự án của bạn. Đây là sự cố trong ứng dụng. Hãy yêu cầu trợ giúp.",
   "refusal.checkpoint.unsafe-path": "Ứng dụng đã dừng để bảo vệ dự án của bạn. Đây là sự cố trong ứng dụng. Hãy yêu cầu trợ giúp.",
   "refusal.checkpoint.too-deep": "Ứng dụng đã dừng để bảo vệ dự án của bạn. Đây là sự cố trong ứng dụng. Hãy yêu cầu trợ giúp.",
   "refusal.export.checkpoint-failed": "Ứng dụng không thể lưu điểm kiểm tra trước khi xuất, vì vậy không xuất được gì. Công việc của bạn đã được lưu. Hãy thử xuất lại.",

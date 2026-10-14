@@ -114,6 +114,7 @@
   "refusal.segment.bad-path": "Aplikasi berhenti untuk melindungi proyek Anda. Ini adalah masalah dalam aplikasi. Minta bantuan.",
   "refusal.segment.differs-from-accepted": "Aplikasi berhenti untuk melindungi proyek Anda. Ini adalah masalah dalam aplikasi. Minta bantuan.",
   "refusal.outbox.different-action": "Aplikasi berhenti untuk melindungi proyek Anda. Ini adalah masalah dalam aplikasi. Minta bantuan.",
+  "refusal.actor.name-already-set": "Aplikasi berhenti untuk melindungi proyek Anda. Ini adalah masalah dalam aplikasi. Minta bantuan.",
   "refusal.checkpoint.unsafe-path": "Aplikasi berhenti untuk melindungi proyek Anda. Ini adalah masalah dalam aplikasi. Minta bantuan.",
   "refusal.checkpoint.too-deep": "Aplikasi berhenti untuk melindungi proyek Anda. Ini adalah masalah dalam aplikasi. Minta bantuan.",
   "refusal.export.checkpoint-failed": "Aplikasi tidak dapat menyimpan titik pemeriksaan sebelum ekspor, sehingga tidak mengekspor apa pun. Pekerjaan Anda tersimpan. Coba ekspor lagi.",

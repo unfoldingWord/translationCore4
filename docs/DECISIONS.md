@@ -1933,6 +1933,10 @@ in every time".
 `docs/PLATFORM-NOTES.md` #47 and `CONTEXT.md` (Door43 session) carry this decision. The bodies of
 #203, #366 and epic #372 were edited to match on 2026-09-28.
 
+[amended 2026-10-13 — D98 ruling 5: Door43 already stores and shows each username, so the project
+journal may hold it (the name action, BURRITO-SPEC R-8.5.25). Points 1 and 2 change for that one
+value only.]
+
 ## D86 (2026-09-30, project-owner rulings) **The top bar shows "Internet" or "Local" beside "Saved" at all times. The words tell what tC4 may do, not whether the computer is connected. Local stays after a restart, and tC4 then sends nothing. Door43 sign-in happens only in Share; Home has no Door43 bar.** [owner sessions 2026-09-29 and 2026-09-30, on the owner's mockup `tC4 Share on Door43 v2.html`; issue #486, epic #372; amends D30 points 4 and 5, D72 point 5, D79 point 12, D82 point 2, D84 points 1 and 2, and D85 point 4]
 
 Context. The platform has one network gate. When the gate is off, every Door43 route of the platform
@@ -2626,3 +2630,62 @@ Where slice 1 lands: `docs/BURRITO-SPEC.md` §5.2 and §5.3 (version 1.22),
 samples and `sample-burrito-obs/.../resources.json`, `conformance/validate-journal.mjs`
 (the tW resource fixture), `conformance/generate.mjs` and `conformance/README.md`, and
 `test/export/relationships.test.ts`.
+
+## D98 (2026-10-13, project-owner rulings) **Team sync round 1: three or more translators sync one Bible project through one public Door43 repository, on its `main` branch, with one button. Eight guarantees bind it. The project may hold each translator's Door43 username. Amends D85 points 1 and 2, and D67(3) (its planned ids R-8.7.7–R-8.7.12 now name the round-1 rules). Sets aside, for round 1, the publication branches and the integrator (D16, D67(1), D67(4b)) and the legibility gate (D67(2)).** [owner rulings of 2026-10-13 in epic #24, "Decided for round 1"; issue #674; the owner's design notes of the same day]
+
+Context. Each change is already one sealed file in the translator's own journal folder, and two
+translators never write the same file (R-8.1.16). The fold already combines journals: different
+verses combine with no conflict, and the same verse changed two ways becomes a fork that keeps
+both versions (R-8.3.2, R-8.6.4). Every other project file is rebuilt from the journals
+(R-8.7.1). So a sync needs no git merge of project files. It copies in the journal files that
+this computer does not have, rebuilds, and pushes [VERIFIED — `journal/fold.mjs` and
+`journal/checkpoint.mjs` at 3e333fe, 2026-10-13; the fixture checks of JC-35]. The long-term plan
+(`docs/plans/TEAM-SYNC-PLAN.md`, D67) stays the reference for later rounds.
+
+1. **Door43 only, public repositories only.** USB transport and private repositories come later.
+2. **The project owner gives teammates write access on Door43.** tC4 does not manage access.
+3. **"Upload changes" becomes "Sync with Door43" after the first share.** One press gets Door43
+   `main`, adds the own journal files, rebuilds the project files, pushes, and swaps the
+   project in at the same path.
+4. **The conflict review follows translationStudio's design**, verse by verse, with the shading
+   set by the owner of each version, not by its position.
+5. **Versions show each teammate's Door43 username.** This amends D85 point 1: Door43 already
+   stores and shows each username, so the project may hold it. A translator records the
+   username once, in the journal, with the name action `actor.name.set` (BURRITO-SPEC
+   R-8.5.25, R-8.5.26). The name action is the one op of journal `v: 3` (R-8.5.1). The same
+   change applies to the words "or anywhere else" of D85 point 2: the project journal may hold
+   the username. The client settings and the keychain still hold no name, email or login.
+6. **Bible projects only.** A sync of an OBS project refuses (`sync.obs-unsupported`).
+7. **No publication branches, no integrator role, no legibility gate.** Issues #23, #26, #157,
+   #158 and #159 are closed. For round 1 this sets aside the per-actor publication branch of
+   D16 and D67(1), the integrator of D67(4b), and the order rule of D67(2). The rule ids
+   `R-8.7.7`–`R-8.7.12` that D67(3) planned for the long-term protocol are now the round-1
+   rules. The long-term plan marks its rules `R-LT-1` to `R-LT-6` until a later round gives
+   them new ids.
+8. **Check results and alignments: the newest wins.** Only verse text goes to the conflict
+   review. Each other fork keeps its newest head, and the sync result counts it once.
+
+**The guarantees.** Each guarantee has an id. Each test that proves one starts its name with
+the id, for example `[G1] keeps every own file`, so `git grep "\[G1\]"` lists every proof.
+This table is the home of the guarantees; epic #24 links here.
+
+| Id | Guarantee | Layer | Rule | Proven in |
+|---|---|---|---|---|
+| G1 | Own work is never lost: each own journal file and outbox entry from before a sync is in the result, byte for byte, or the sync changes nothing. | 2 | R-8.7.7 | #674 (JC-35), #675 |
+| G2 | Incoming files are checked: each journal file from Door43 passes the one validator. One failure stops the sync. | 2 | R-8.7.8 | #674 (JC-35), #675, #677 |
+| G3 | Derived files are rebuilt, never trusted: each project file that tC4 writes is the projection of the fold over the base inputs of R-8.7.9. `metadata.json` belongs to the server and a sync never writes it. | 2 | R-8.7.9, R-8.7.10 | #674 (JC-35), #675 |
+| G4 | Door43 `main` only moves forward: never a force push; a push that is not a fast-forward starts the sync again. | 3 | app rule (§8.7) | #676 |
+| G5 | Identity holds: after a sync, the project is at the same path with the same actor id. | 3 | app rule (§8.7) | #676 |
+| G6 | Same journals, same project: two computers with the same journals have the same project files. | 2 | R-8.7.11 | #674 (JC-35), #675 |
+| G7 | Only verse text reaches a person: other conflicts keep the newest version, and the result counts each one once. | 1, 2, 4 | R-8.7.12 | #674 (JC-35), #675, #679 |
+| G8 | A crash during the swap never leaves two projects and never loses own work. | 3 | app rule (§8.7) | #676 |
+
+The refusal codes of the format-facing rules are in `journal/report.mjs`:
+`sync.own-file-differs` (R-8.7.7), `sync.incoming-invalid` (R-8.7.8), `sync.metadata-overlay`
+(R-8.7.10), `sync.obs-unsupported` (app rule) and `actor.name-already-set` (R-8.5.26). Tests
+assert codes, never message text.
+
+Where it lands: `docs/BURRITO-SPEC.md` §8.5 and §8.7 (version 1.23); `journal/schema.mjs`,
+`journal/grammar.mjs` and `journal/fold.mjs` (the name action and `names`); `journal/report.mjs`
+(the codes); the shared fixture `conformance/fixtures/team-sync/`; the journal suite group
+JC-35; `CONTEXT.md` (the terms); and the "Round 1" section of `docs/plans/TEAM-SYNC-PLAN.md`.

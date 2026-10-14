@@ -114,6 +114,7 @@
   "refusal.segment.bad-path": "L’application s’est arrêtée pour protéger votre projet. C’est un problème de l’application. Demandez de l’aide.",
   "refusal.segment.differs-from-accepted": "L’application s’est arrêtée pour protéger votre projet. C’est un problème de l’application. Demandez de l’aide.",
   "refusal.outbox.different-action": "L’application s’est arrêtée pour protéger votre projet. C’est un problème de l’application. Demandez de l’aide.",
+  "refusal.actor.name-already-set": "L’application s’est arrêtée pour protéger votre projet. C’est un problème de l’application. Demandez de l’aide.",
   "refusal.checkpoint.unsafe-path": "L’application s’est arrêtée pour protéger votre projet. C’est un problème de l’application. Demandez de l’aide.",
   "refusal.checkpoint.too-deep": "L’application s’est arrêtée pour protéger votre projet. C’est un problème de l’application. Demandez de l’aide.",
   "refusal.export.checkpoint-failed": "L’application n’a pas pu enregistrer un point de contrôle avant l’exportation ; elle n’a donc rien exporté. Votre travail est enregistré. Relancez l’exportation.",
