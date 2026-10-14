@@ -19,6 +19,7 @@ import { bookName } from '../data/bookNames';
 import { tokenizeVerse } from '../data/sourceHighlight';
 import { verseText } from './verseText.js';
 import { isSourceAbsent } from '../data/sourceState';
+import { literalPaneId } from '../data/gatewayChange';
 import { t } from '../i18n';
 import { Button, Overline, WordChip } from '../ds/index.js';
 
@@ -141,7 +142,7 @@ function WordCard({ card, armed, mode, gwTokens, suggested = [], onPlace, onRemo
  * stream. Only an eng-framed project may index the pane by the session ref
  * (#131 class); null when the pane, verse, or alignment data is absent. */
 function gatewayPaneVerse(sources, sourcePanes, c, v) {
-  const paneId = sourcePanes?.includes('ult') ? 'ult' : sourcePanes?.[0];
+  const paneId = literalPaneId(sourcePanes);
   const src = paneId ? sources?.[paneId] : undefined;
   return src && !isSourceAbsent(src) && !src.error ? src.chapters?.[String(c)]?.[String(v)] : null;
 }

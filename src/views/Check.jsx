@@ -25,6 +25,7 @@ import { targetWords, selectionsFromTokens, tokenIndicesFromSelections } from '.
 import { tokenizeVerse, matchQuote, tokenizePlain, matchPlainQuote } from '../data/sourceHighlight';
 import { verseText } from './verseText.js';
 import { absenceMessageKey, isSourceAbsent } from '../data/sourceState';
+import { literalPaneId } from '../data/gatewayChange';
 import { BlockText, ExpandableNote, Quoted, glTitleFor } from './HelpsPanel.jsx';
 import { RAIL_FILTERS, RAIL_FILTER_ORDER, hasComment, isBookmarked, railCounts } from './checkFilters.js';
 import { t } from '../i18n';
@@ -454,10 +455,11 @@ const ultVerseObj = (source, crossFrame, c, v) =>
 
 /** The compare card's GATEWAY row: the project's §5.3 extraScripture verse
  * with the quote's tokens highlighted through the alignment (same matcher as
- * the helps panel). Pane ids are the project's own — 'ult' is preferred when
- * present, otherwise the first declared pane; a project with none states so. */
+ * the helps panel). Pane ids are the project's own — the literal pane ('ult',
+ * else 'glt') is preferred when present, otherwise the first declared pane; a
+ * project with none states so. */
 function UltPane({ sources, sourcePanes, item, c, v, crossFrame }) {
-  const paneId = sourcePanes?.includes('ult') ? 'ult' : sourcePanes?.[0];
+  const paneId = literalPaneId(sourcePanes);
   const source = paneId ? sources?.[paneId] : undefined;
   const vObj = ultVerseObj(source, crossFrame, c, v);
   const tokens = React.useMemo(() => (vObj ? tokenizeVerse(vObj) : []), [vObj]);
@@ -1156,7 +1158,7 @@ const quoteOf = (item) =>
  * result on (sources, sourcePanes, understand): the caches live as long as it does. */
 export function gatewayTitleFor(sources, sourcePanes, understand) {
   if (!understand || understand.loading) return quoteOf;
-  const paneId = sourcePanes?.includes('ult') ? 'ult' : sourcePanes?.[0];
+  const paneId = literalPaneId(sourcePanes);
   const src = paneId ? sources?.[paneId] : undefined;
   const perChapter = new Map();
   return (item) => {

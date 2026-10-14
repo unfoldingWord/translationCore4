@@ -48,7 +48,7 @@ import { revalidateAgainstDraft, resolutionWarning } from './data/revalidate';
 import { bootstrapVerse, linkWord, unlinkWord, moveWord, mergeAlignments, splitAlignment, stampTargetVerse, alignmentIsStale, reflowAlignment, settleDone, markDone } from './data/align/edit';
 import { linksFor, rebindSuggestions, sessionInputFor, trainingVerseOf, trainingVersesFor } from './data/align/suggest';
 import { SuggestScheduler } from './data/align/suggestScheduler';
-import { consequencesOfGatewayChange, applyGatewayChange, completeLanguageSets, uncoveredByChange, sourcePanesForGateway, gatewaysCoveringProject } from './data/gatewayChange';
+import { consequencesOfGatewayChange, applyGatewayChange, completeLanguageSets, uncoveredByChange, sourcePanesForGateway, gatewaysCoveringProject, literalPaneId } from './data/gatewayChange';
 import { carryOverDecisions } from './data/carryOver';
 import { applyTextUpgrade, applyUpgrade, invalidateAlignments, invalidatedTestaments, latestReleasesForSet, offerForSet, offerIsStale, repinOffer, textOfferIsStale, textOffers, textPinOf } from './data/upgrade';
 import { LADDER } from './data/burritoStore';
@@ -2814,8 +2814,9 @@ function loadSourcePanes({ store, code, seq, openSeqRef, stateRef, dispatch, pin
     type: 'set',
     patch: {
       sourcePanes: ids,
-      // Keep the tab valid: an imported project may name panes differently.
-      ...(ids.length > 0 && !ids.includes(st.sourceTab) && !(st.sourceTab === 'orig' && origPin) ? { sourceTab: ids[0] } : {}),
+      // Keep the tab valid: an imported project may name panes differently,
+      // and a gateway change may replace the literal pane (#704).
+      ...(ids.length > 0 && !ids.includes(st.sourceTab) && !(st.sourceTab === 'orig' && origPin) ? { sourceTab: literalPaneId(ids) } : {}),
     },
   });
   loadOrigPane({ store, origPin, code, seq, openSeqRef, stateRef, dispatch, testament });
@@ -2885,9 +2886,11 @@ async function seedInitialUsfm({ store, code, projName }) {
   // #574: the pins of the project the book goes INTO, read through its own
   // store. The open project's state pins were null when the book was added
   // from Home or right after New Bible, so every such book got the server
-  // skeleton. extraScripture[0] is the literal pane, which follows the
-  // gateway (#412): its \h name is the gateway's book name.
-  const seedPin = (await store.readResources())?.extraScripture?.[0];
+  // skeleton. The literal pane follows the gateway (#412): its \h name is the
+  // gateway's book name. It is read by its id, because the saved order is
+  // not literal-first after a change that replaces only that pane (#704).
+  const panes = (await store.readResources())?.extraScripture;
+  const seedPin = panes?.find((e) => e.id === literalPaneId(panes.map((p) => p.id)));
   if (!seedPin) return undefined;
   try {
     const src = await store.readSourceBook(localSourceRepo(seedPin), code);
@@ -2901,6 +2904,7 @@ async function seedInitialUsfm({ store, code, projName }) {
     return undefined;
   }
 }
+export const __seedInitialUsfmForTests = (...args) => seedInitialUsfm(...args);
 
 /** Returns the outcome of the pins read, `{ pins, failed }` (never rejects), so
  * a story open can wait for it (#312): `pins` is the document or null when

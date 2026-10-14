@@ -195,10 +195,19 @@ type PaneEntry = NonNullable<ResourcesFile['extraScripture']>[number];
 const LITERAL_PANES = ['ult', 'glt'];
 const SIMPLIFIED_PANES = ['ust', 'gst'];
 
+/** The pane a view reads as the gateway text: the literal pane, else the first
+ * pane. The saved order is not the literal pane first: a change that keeps the
+ * simplified pane and replaces the literal one stores the new pane after it
+ * (#704: `[ust, glt]` for BSOJ, whose package has no simplified Bible). */
+export const literalPaneId = (ids: string[] | null | undefined): string | undefined =>
+  LITERAL_PANES.find((id) => ids?.includes(id)) ?? ids?.[0];
+
 /** A Bible project's source panes after a gateway change (#412, owner Q3/Q5):
  * the literal pane takes the package's literal Bible and the simplified pane its
  * simplified Bible; a pane the package cannot fill takes the English one. The
- * pane id is the repository's suffix (`es-419_glt` → `glt`). A pane that already
+ * pane id is the repository's suffix (`es-419_glt` → `glt`); a Bible with another
+ * name takes `glt` or `gst` (#704: `ar_avd`), so the next change still finds its
+ * pane. A pane that already
  * pins the chosen repository keeps its pin. Entries that are not gateway panes
  * stay as they are, and a project with no gateway panes gets none (absence is
  * legal, §5.3). */
@@ -212,7 +221,8 @@ export const sourcePanesForGateway = (
     const was = current.find((e) => ids.includes(e.id));
     if (!was) return null;
     if (was.repoPath.toLowerCase() === pin.repoPath.toLowerCase()) return was;
-    const id = (pin.repoPath.split('/').pop() ?? '').split('_').pop()!.toLowerCase();
+    const suffix = (pin.repoPath.split('/').pop() ?? '').split('_').pop()!.toLowerCase();
+    const id = ids.includes(suffix) ? suffix : ids[1];
     return { id, repoPath: pin.repoPath, ...(pin.version ? { version: pin.version } : {}), sha: pin.sha, flavor: pin.flavor } as PaneEntry;
   };
   const literal = pane(LITERAL_PANES, bibles.literal ?? english.literal);

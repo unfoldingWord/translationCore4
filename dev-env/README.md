@@ -268,7 +268,8 @@ MSYS2 zsh window of the [Windows](#windows) section.
 
    For the Arabic cases of J4 (#650), cache the Arabic package of BSOJ and its Bible too.
    The journey serves the four helps and tQ as a held-still Door43 download; the seed
-   reads Titus from `ar_avd` for the Arabic right-to-left project:
+   reads Titus from `ar_avd` for the Arabic right-to-left project, and sideloads `ar_avd`
+   itself as BSOJ's literal Bible (#704), with its install record:
 
    ```bash
    zsh dev-env/scripts/cache-resource.zsh BSOJ/ar_tn v6.1 14400d4155ddd066d4335fbea602f00d9243b666
