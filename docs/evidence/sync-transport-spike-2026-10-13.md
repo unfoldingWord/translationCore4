@@ -106,7 +106,8 @@ the Door43 server itself (a protected branch, a 403 after the pack) is not prove
 
 The text of the `code=Auth (-16)` reply is misleading. Door43 answers rejected credentials with
 HTTP 401 and no `WWW-Authenticate` header. libgit2 then reports "authentication that we do not
-support" (`transports/http.c`, `handle_remote_auth`). A request with no credentials gets
+support" (libgit2 1.9.4, from `libgit2-sys` 0.18.5+1.9.4 in `dev-env/server/Cargo.lock`:
+`src/libgit2/transports/http.c:182-183`, `handle_remote_auth`, source read 2026-10-14). A request with no credentials gets
 `WWW-Authenticate: Basic realm="Gitea"`. [VERIFIED — `curl -D -` on `info/refs?service=git-receive-pack`
 at qa.door43.org and git.door43.org with no credentials and with a fake token, 2026-10-14;
 github.com sends `Basic` in both cases.] Match on the code, not on the text.
@@ -155,8 +156,9 @@ Limits of the stand-in:
   before the clone, as `share()` does. A rig test cannot prove `sync.offline` for the clone.
 - `pull-repo` picks `FETCH_HEAD` by order, not by `HEAD` (PLATFORM-NOTES #21 and
   `docs/evidence/transport-rig-2026-07-18.md`). Keep the bare remote to one branch, `main`.
-- The stand-in cannot give the HTTPS replies: 401, 403, and the panic without credentials. Those
-  come from the owner run only.
+- The stand-in cannot give the HTTPS replies: 401, 403, and the panic without credentials. The
+  owner run gave the refused-token reply. The 403 reply is for #676. No run measured the panic
+  without credentials over HTTPS.
 - A rejected alternative: a test helper that runs `git clone` into the fixed path. The app calls
   the clone at run time, from the browser, so a helper cannot run at that moment.
 
@@ -404,8 +406,8 @@ makes the non-fast-forward case.
 
 How to read steps 3 and 4: a reply that holds `code=NotFastForward (-11)` comes from the libgit2
 ref check, not from Door43's access check. Then the probe failed: for step 4, choose another
-repository. An access refusal is expected to name the HTTP status (401 or 403) in the reason.
-Record the reason exactly as it comes.
+repository. Record the reason exactly as it comes. Step 3 showed that a refused token does not
+name the status: the reason holds `code=Auth (-16)` (see the refusal table).
 
 ```zsh
 P=http://localhost:19673/api; R=qa.door43.org/$U/tc4-sync-spike; S=_local_/_local_/sync_spike
@@ -465,21 +467,25 @@ token, and the earlier `-d` form showed the token in `ps` (negative control).
 
 ### The owner run of 2026-10-14
 
-The owner ran a script form of the commands above, from `issue-673-sync-transport-spike` at
+The run started at 2026-10-14T01:35:16Z (2026-10-13, 21:35 local time). The owner ran a script form of the commands above, from `issue-673-sync-transport-spike` at
 `de6b3f4`, against `birch/tc4-sync-spike` on qa.door43.org (Gitea `28.1.0+dcs.47-gb4768a2512`).
 The script used the same `call` function and the same requests, with these changes:
 
 - Step 0 is new. The test repository was empty. The script copied `sample_burrito` on the rig,
   added `origin`, and pushed it with the token. This filled Door43 `main` at `048fcd1`.
-- Step 4 did not run. The owner account is a site admin on qa.door43.org, and a site admin can
-  write to every repository. The push would not be refused, and it would write to another
-  account's repository.
+- Step 4 did not run. The owner account is a site admin on qa.door43.org. The owner chose to
+  skip the step, because Gitea lets a site admin write to every repository. [FLAG: Gitea
+  behavior, not measured here.] Thus the push could write to another account's repository.
 - Step 6 used no web edit. A second `clone-repo` to the fixed path, a commit there and a push
   moved Door43 `main` first. Then the push from the scratch path was not a fast-forward.
+- Step 7 called `clone-repo` once. The clone from step 6 was still at the fixed path.
+- The scratch path and the seed copy have a time suffix (`sync_spike_213334`,
+  `spike_seed_213334`).
 - At the end the script deleted the fixed path, the scratch path and the seed copy.
 
 The output, with `<repo_dir>` for the rig repository directory. The script printed every
-`pass_key` as `***`. `grep` for the token in the output file gave 0 lines.
+`pass_key` as `***`. The script then counted the lines of the output file that hold the token, and printed the
+count in the terminal: 0.
 
 ```text
 (run start) #673 owner run 2026-10-14T01:35:16Z, rig {"os":"macos","pkg_version":"0.18.15","product_date_time":"2026-07-18T00:00:00Z","product_homepage":"uw-tc4","product_name":"tC4 dev rig","product_resources":[],"product_short_name":"tc4rig","product_version":"0.1.0"}
@@ -579,8 +585,8 @@ door43 main: 4190cde5ce6c256d17e2547bc02d4293774ab4d9	refs/heads/main
 
 | Step | Reply | Door43 `main` after |
 |---|---|---|
-| 1 clone (full), shallow? | HTTP 200; `--is-shallow-repository` `false`, branch `main` | `048fcd1` |
-| 1 move | HTTP 200 | `048fcd1` |
+| 1 clone (full), shallow? | HTTP 200; `--is-shallow-repository` `false`, branch `main` | `048fcd1` (from step 0) |
+| 1 move | HTTP 200 | `048fcd1` (from step 0) |
 | 2 push, fast-forward | HTTP 200 | `e1bbdd4` |
 | 3 push, bad token (HTTPS) | HTTP 500 `Could not push repo: server requires authentication that we do not support; class=Http (34); code=Auth (-16)` | `e1bbdd4` (no change) |
 | 4 push, no write access (HTTPS 403) | Not run: the owner account is a site admin. `[PENDING — #676]` | |
