@@ -139,7 +139,7 @@
   "refusal.sync.non-fast-forward": "Đồng đội của bạn đã gửi thay đổi lên Door43 trong lúc bạn đồng bộ. Hãy đồng bộ lại. Không có gì thay đổi.",
   "refusal.sync.no-write-access": "Door43 không cho bạn gửi thay đổi vào dự án này. Hãy xin chủ dự án quyền ghi. Không có gì thay đổi.",
   "refusal.sync.push-failed": "Ứng dụng không gửi được các thay đổi của bạn lên Door43. Hãy đồng bộ lại. Nếu lỗi này xảy ra lần nữa, hãy nhờ giúp đỡ. Không có gì thay đổi.",
-  "refusal.opslog.not-loaded": "Ứng dụng không đọc được bản ghi các việc chưa xong. Hãy đóng ứng dụng và mở lại. Trước lúc đó, bạn không thể mở, thay đổi hay đồng bộ một dự án.",
+  "refusal.opslog.not-loaded": "Ứng dụng không đọc được bản ghi các việc chưa xong. Hãy đóng ứng dụng và mở lại. Trước lúc đó, bạn không thể đồng bộ một dự án.",
   "refusal.sync.failed": "Việc đồng bộ đã dừng vì một lỗi. Dự án của bạn không thay đổi. Hãy đồng bộ lại. Nếu lỗi này xảy ra lần nữa, hãy nhờ giúp đỡ.",
   "refusal.sync.project-replaced": "Dự án này đã được đồng bộ, nên ứng dụng phải mở lại nó. Hãy đóng dự án và mở lại. Rồi hãy thực hiện lại thay đổi cuối cùng của bạn.",
   "refusal.sync.not-main": "Kho Door43 của dự án này không dùng main làm nhánh mặc định. Hãy nhờ chủ dự án đặt main làm nhánh mặc định trên Door43. Không có gì thay đổi.",

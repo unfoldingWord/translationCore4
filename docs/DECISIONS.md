@@ -2680,7 +2680,7 @@ This table is the home of the guarantees; epic #24 links here.
 | G5 | Identity holds: after a sync, the project is at the same path with the same actor id. | 3 | app rule (§8.7) | #676 |
 | G6 | Same journals, same project: two computers with the same journals have the same project files. | 2 | R-8.7.11 | #674 (JC-35), #675 |
 | G7 | Only verse text reaches a person: other conflicts keep the newest version, and the result counts each one once. | 1, 2, 4 | R-8.7.12 | #674 (JC-35), #675, #679 |
-| G8 | A crash during the apply never makes the project unopenable, never loses own work, and never reverts or re-attributes teammate work; the next start finishes the apply. [amended 2026-10-14 — D101] | 3 | app rule (§8.7) | #676 |
+| G8 | A crash during the apply never makes the project unopenable, never loses own work, and never reverts or re-attributes teammate work; the next start finishes the apply. [amended 2026-10-14 — D101] After a power loss, the start applies a scratch copy only when it is the fold of its journal. If it is not, the next sync brings Door43 main (D101 point 2, Ledger #11). [PROPOSED 2026-10-14 — PR #688; the owner confirms or re-words] | 3 | app rule (§8.7) | #676 |
 
 The refusal codes of the format-facing rules are in `journal/report.mjs`:
 `sync.own-file-differs` (R-8.7.7), `sync.incoming-invalid` (R-8.7.8), `sync.metadata-overlay`
@@ -2778,10 +2778,18 @@ use ar_gt only as pin data stay: `test/oldTwlPin.test.ts`, `test/resourceFetch.t
    the sync writes one marker file, `ingredients/tc4-sync/apply.json`, into the scratch copy.
    Then it applies. Then it deletes the marker, then the scratch copy. At each start (for each
    repository that `list-local-repos` names, at any path), and at the start of each sync of
-   the project, this rule runs: a scratch copy with the marker
-   (any bytes) gets the same apply again, then the marker and the scratch copy are deleted;
-   a scratch copy with no marker is deleted, because the project did not change; no scratch
-   copy means nothing is pending. While the marker is there, the project takes no open
+   the project, this rule runs. A scratch copy with the marker (any bytes in the marker file)
+   gets the same apply again if the copy is whole (below) [PROPOSED 2026-10-14 — PR #688; the
+   owner confirms or re-words]. Then the marker and the scratch copy are deleted. A scratch
+   copy with no marker is deleted, because the project did not change. No scratch copy means
+   nothing is pending. A scratch copy with the marker that is not the fold of its journal is
+   from a power loss (PLATFORM-NOTES #51). A copy that the platform cannot read is also from a
+   power loss. Such a copy gets no apply: the rule deletes it and its marker. At a start, the
+   Report of its open sync record is not ok (`scratchNotWhole`), and the next sync brings
+   Door43 main (Ledger #11). At the start of a sync, that sync goes on and brings Door43 main.
+   Any other failure of the check of the copy, such as a server error, is no proof of a power
+   loss. Then the marker stays, and the rule runs again at the next start or sync. [PROPOSED
+   2026-10-14 — PR #688; the owner confirms or re-words] While the marker is there, the project takes no open
    (`sync.apply-pending`). The rule runs before the settings read, so a settings read that
    fails never stops it. An open or a create waits for the disk rule of the start recovery
    (not for the settings read), and opens or creates only a project path (`_local_/_local_/<name>`; `open.not-a-project`). An open that writes its own record to the ops log (a store with `ops`, as in the app) still writes the settings document in `ops.begin`, so such an open waits for that write. A failure in
@@ -2791,7 +2799,9 @@ use ar_gt only as pin data stay: `test/oldTwlPin.test.ts`, `test/resourceFetch.t
    Inspector.
 3. **G8, new text.** A crash during the apply never makes the project unopenable, never loses
    own work, and never reverts or re-attributes teammate work; the next start finishes the
-   apply.
+   apply. After a power loss, the start applies a scratch copy only when it is the fold of its
+   journal. If it is not, the next sync brings Door43 main (point 2, Ledger #11). [PROPOSED
+   2026-10-14 — PR #688; the owner confirms or re-words]
 4. **Stale stores.** The sync moves the project's sync generation on before the first write to
    the project. A store that opened the project before that refuses every edit and every
    checkpoint (`sync.project-replaced`). The app opens the project again after a sync.
