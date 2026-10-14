@@ -1,22 +1,27 @@
 // @vitest-environment jsdom
 // The section editing card (#141) keeps its draft in its own state until Save.
-// Three exits from Translate unmount the card: a chapter in the rail, a book in
-// the rail, and a mode tab (Understand/Translate/Check). setChapter and
-// openBook set `editing: null` (state.jsx), so the card closes; go(view)
-// changes `view`, so App unmounts Draft, and on return a new card opens from
-// the stored verses. Each exit lost the typed text.
+// Five exits from Translate unmount the card and lose the typed text:
+// - a chapter or a book in the rail: setChapter and openBook set
+//   `editing: null` (state.jsx), so the card closes;
+// - "Draft section" on another row: startSection opens that row's card in
+//   place of this one;
+// - a mode tab (Understand/Check): go(view) changes `view`, so App unmounts
+//   Draft, and on return a new card opens from the stored verses;
+// - the header's project button: backToProjects unmounts Draft too.
 // The rule the app already has is the Section/Verse switch's (#238): the
 // control is off while an editing card is open, and a press keeps the focus in
 // the card. The exits now follow it. The translator saves or cancels first.
 // The mock actions below apply the same patches as the real actions in
-// state.jsx (setChapter, openBook, go); no test renders the real provider.
+// state.jsx. sectionDraftLeaveProject.test.tsx uses the real provider.
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 
 const verse = { n: '1', drafted: true, para: true, text: 'Pablo, siervo de Dios', body: 'Pablo, siervo de Dios' };
 const verse2 = { n: '2', drafted: false, para: false, text: '', body: '' };
-const CHUNKED = '\\id TIT\n\\c 1\n\\p\n\\v 1 a\n\\v 2 b\n\\c 2\n\\p\n\\v 1 c\n';
+const verse3 = { n: '3', drafted: false, para: false, text: '', body: '' };
+// The source chunks chapter 1 as 1–2 | 3.
+const CHUNKED = '\\id TIT\n\\c 1\n\\p\n\\v 1 a\n\\v 2 b\n\\ts\\*\n\\v 3 c\n\\c 2\n\\p\n\\v 1 c\n';
 type Editing = { key: string; keys?: string[]; before?: string } | null;
 const fresh = () => ({
   view: 'draft',
@@ -38,15 +43,15 @@ const fresh = () => ({
   helpsActive: null,
 });
 let state = fresh();
-const bookModel = { code: 'TIT', chapterNums: [1, 2], draftPct: 50, byChapter: { '1': [verse, verse2], '2': [{ ...verse, text: 'c', body: 'c' }] } };
+const bookModel = { code: 'TIT', chapterNums: [1, 2], draftPct: 50, byChapter: { '1': [verse, verse2, verse3], '2': [{ ...verse, text: 'c', body: 'c' }] } };
 // The patches of the real actions (state.jsx): setChapter and openBook close
 // the card (`editing: null`); go changes the view only.
 const actions = {
   setChapter: vi.fn((chapter: number) => { state = { ...state, chapter, editing: null, helpsHover: null, helpsActive: null }; }),
   openBook: vi.fn((code: string) => { state = { ...state, book: code, chapter: 1, editing: null, helpsHover: null, helpsActive: null }; }),
   go: vi.fn((view: string) => { state = { ...state, view }; }),
-  // backToProjects leaves `editing` as it is.
-  backToProjects: vi.fn(() => { state = { ...state, view: 'home' }; }),
+  startSection: vi.fn((chapter: number, keys: string[]) => { state = { ...state, editing: { key: `${chapter}:s${keys[0]}`, keys } }; }),
+  backToProjects: vi.fn(() => { state = { ...state, view: 'home', editing: null }; }),
   saveSection: vi.fn(),
   blurVerse: vi.fn(),
 };
@@ -103,12 +108,17 @@ describe('a typed section draft is not lost on an exit from Translate', () => {
     const { rerender } = render(<App />);
     press(chapter2(), rerender);
     press(book(/Philemon/), rerender);
+    press(screen.getByRole('button', { name: 'Draft section 3' }), rerender);
+    // That opened a card: close it (as Cancel does) before the next exits.
+    state = { ...state, editing: null };
+    rerender(<App />);
     press(tab('Understand'), rerender);
     press(screen.getByTestId('project-switch'), rerender);
     expect(screen.getByTestId('home-view')).toBeTruthy();
     expect(actions.setChapter).toHaveBeenCalledWith(2);
     expect(actions.openBook).toHaveBeenCalledWith('PHM');
     expect(actions.go).toHaveBeenCalledWith('read');
+    expect(actions.startSection).toHaveBeenCalledWith(1, ['3']);
   });
 
   it('chapter: the chapter button is off and the draft stays in the card', () => {
@@ -150,5 +160,15 @@ describe('a typed section draft is not lost on an exit from Translate', () => {
     expect(screen.queryByTestId('home-view')).toBeNull();
     expect(card()?.value).toBe(TYPED);
     expect(actions.backToProjects).not.toHaveBeenCalled();
+  });
+
+  it('another section: its Draft section button is off and the draft stays in the card', () => {
+    const { rerender } = typeDraft();
+    const other = screen.getByRole('button', { name: 'Draft section 3' });
+    press(other, rerender);
+    expect(card()?.value).toBe(TYPED);
+    expect(actions.startSection).not.toHaveBeenCalled();
+    expect((other as HTMLButtonElement).disabled).toBe(true);
+    expect(fireEvent.pointerDown(other)).toBe(false);
   });
 });
