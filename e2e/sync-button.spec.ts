@@ -18,7 +18,7 @@ import { execFileSync } from 'node:child_process';
 import type { Page } from '@playwright/test';
 import { test, expect } from './helpers/test';
 import { SEEDED_PROJECT, RIG_LOCAL_REPOS, rigRepo, writePlace } from './helpers/rig';
-import { USER, dropOrigin, fakeShare, git, head, shot, signIn, gateOff, type BareRemote } from './helpers/door43Share';
+import { USER, dropOrigin, expectConvergedOpen, expectIngredientsEqualMain, fakeShare, git, head, mainIngredients, opsIds, shot, signIn, gateOff, type BareRemote } from './helpers/door43Share';
 import { recordExternal } from './helpers/externalRequests';
 import { verifyAllJournaledProjects } from './helpers/journal';
 import { makeClock } from '../journal/hlc.mjs';
@@ -185,12 +185,27 @@ test.describe('#678 — Sync with Door43', () => {
     await expect(page.getByTestId('sync-review')).toHaveCount(0);
     await expect(page.getByTestId('share-signin')).toHaveCount(0);
     const afterFirst = remote.main();
-    // G4: main moved forward (the actor's name action), and it is the project's HEAD
+    // G4: main moved forward, and it holds this actor's new segments (the actor's name action)
     expect(afterFirst).not.toBe(shared);
     expect(git(remote.bare, 'merge-base', '--is-ancestor', shared!, afterFirst!)).toBe('');
-    expect(head(SEEDED_PROJECT)).toBe(afterFirst);
+    const segmentsOf = (rev: string) =>
+      git(remote.bare, 'ls-tree', '-r', '--name-only', rev, 'ingredients/checking/journal').split('\n').filter((p) => p.includes('/segments/'));
+    const sharedSegments = new Set(segmentsOf(shared!));
+    const newActors = [...new Set(segmentsOf(afterFirst!).filter((p) => !sharedSegments.has(p)).map((p) => p.split('/')[3]))];
+    expect(newActors, 'main holds new segments of one actor only').toHaveLength(1);
+    const actor = newActors[0];
+    expect(fs.existsSync(path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking', 'journal', actor)), 'the actor is this project\'s').toBe(true);
+    // D100: the project's ingredients/ (but audio/) equal main's tree, byte for byte
+    expectIngredientsEqualMain(remote.bare, SEEDED_PROJECT);
     await page.getByTestId('sync-dismiss').click();
     await expect(first).toHaveCount(0);
+    // a reopen of the project classifies converged: the disk is the fold of its journal
+    const beforeOpen = opsIds();
+    await page.getByTestId(`project-${ID}`).getByRole('button', { name: /Titus/ }).click();
+    await expect(page.getByRole('heading', { name: /^Titus \d+$/ })).toBeVisible({ timeout: 120_000 });
+    await expectConvergedOpen(ID, beforeOpen);
+    await page.goto('/');
+    await expect(button(page)).toHaveText('Sync with Door43');
 
     // ---- sync 2: two teammates changed TIT 1:1 on Door43 ----
     teammatesChangeOneVerse(remote);
@@ -216,7 +231,8 @@ test.describe('#678 — Sync with Door43', () => {
     await shot(page, testInfo, 'sync-result-counts');
     const afterSecond = remote.main();
     expect(git(remote.bare, 'merge-base', '--is-ancestor', teammatesMain!, afterSecond!)).toBe('');
-    expect(head(SEEDED_PROJECT)).toBe(afterSecond);
+    expect(mainIngredients(remote.bare).some((p) => p.startsWith(`ingredients/checking/journal/${actor}/segments/`)), 'main holds this actor\'s segments').toBe(true);
+    expectIngredientsEqualMain(remote.bare, SEEDED_PROJECT);
     const secondCalls = gitCalls.slice(callsBefore);
     expect(secondCalls.filter((c) => c.includes('/api/git/push/')), 'one push for a double press').toHaveLength(1);
     expect(secondCalls.filter((c) => c.includes('/api/git/pull-repo/')), 'one clone (copy, then pull) for a double press').toHaveLength(1);

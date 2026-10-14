@@ -13,7 +13,7 @@
 // #43), which leaves the git-init debris of PLATFORM-NOTES #28.
 import type { KvStore } from '../../src/data/journal/identity';
 import { withLocalizedNames } from '../../scripts/fix-obs-template.mjs';
-import { unzipSync } from 'fflate';
+import { strToU8, unzipSync, zipSync } from 'fflate';
 
 // Real node builtins via the runtime (the app's polyfill plugin aliases them).
 const nodeFs = process.getBuiltinModule('node:fs');
@@ -58,6 +58,8 @@ export interface RigProject {
   /** #676: the `origin` url, and the version of that fake remote this repository last cloned or pushed. */
   origin?: string;
   pulled?: number;
+  /** #676: the checked-out branch (default 'main'). */
+  branch?: string;
 }
 
 /** #676: a Door43 repository behind the git routes: `main` as files + metadata, and
@@ -68,6 +70,8 @@ export interface FakeRemote {
   version: number;
   /** false: a push answers as Door43 does without write access ([PENDING — owner run, #673 step 4]). */
   writable: boolean;
+  /** The branch its HEAD names, which a clone checks out (default 'main'). */
+  defaultBranch?: string;
 }
 
 export interface FailureRule {
@@ -142,6 +146,7 @@ export const journalingRig = () => {
     dirty: new Set(project.dirty),
     origin: project.origin,
     pulled: project.pulled,
+    branch: project.branch,
   });
   /** Share `repoPath` to a fake Door43 repository at `url`: its `main` is the project now. */
   const publish = (repoPath: string, url: string): FakeRemote => {
@@ -267,7 +272,9 @@ export const journalingRig = () => {
       const repo = repoAt(3);
       maybeFail({ method, route, repo });
       const project = repos.get(repo);
-      if (!project) return notFound(`no such repo ${repo}`);
+      // a missing repository answers [] with HTTP 200, as the platform does
+      // [VERIFIED — pankosmia-web 0.18.15 (a83725b), rig GET of a missing _local_/_archive_/ path, 2026-10-13]
+      if (!project) return ok([]);
       return ok([...project.files.keys()].sort());
     }
 
@@ -400,7 +407,10 @@ export const journalingRig = () => {
     }
 
     if (parts[1] === 'git' && parts[2] === 'list-local-repos') {
-      return ok([...repos.keys()].sort());
+      // the platform skips these three folders [VERIFIED — pankosmia-web 0.18.15
+      // (a83725b) src/endpoints/git2/list_local_repos.rs:48-50, source read 2026-10-14]
+      const hidden = ['_local_/_quarantine_/', '_local_/_archive_/', '_local_/_updates_/'];
+      return ok([...repos.keys()].filter((p) => !hidden.some((h) => p.startsWith(h))).sort());
     }
 
     if (parts[1] === 'net' && parts[2] === 'status') {
@@ -416,6 +426,13 @@ export const journalingRig = () => {
       return ok({ is_good: true, payload: { remotes: project.origin ? [{ name: 'origin', url: project.origin }] : [] } });
     }
 
+    if (parts[1] === 'git' && parts[2] === 'branches') {
+      const repo = repoAt(3);
+      const project = repos.get(repo);
+      if (!project) return new Response(JSON.stringify({ is_good: false, reason: `Could not open repo: ${repo}` }), { status: 500 });
+      return ok({ is_good: true, payload: { branches: [{ name: project.branch ?? 'main', is_head: true }] } });
+    }
+
     if (parts[1] === 'git' && parts[2] === 'clone-repo') {
       const repo = repoAt(3);
       maybeFail({ method, route, repo });
@@ -425,7 +442,7 @@ export const journalingRig = () => {
       const url = `https://${repo}`;
       const remote = remotes.get(url);
       if (!remote) return notFound(`could not clone repo: unexpected http status code: 404; class=Http (34)`);
-      repos.set(repo, { files: new Map(remote.files), meta: structuredClone(remote.meta), commits: ['clone'], dirty: new Set(), origin: url, pulled: remote.version });
+      repos.set(repo, { files: new Map(remote.files), meta: structuredClone(remote.meta), commits: ['clone'], dirty: new Set(), origin: url, pulled: remote.version, branch: remote.defaultBranch ?? 'main' });
       return ok();
     }
 
@@ -463,8 +480,21 @@ export const journalingRig = () => {
 
     if (parts[1] === 'git' && parts[2] === 'delete') {
       const repo = repoAt(3);
+      maybeFail({ method, route, repo });
       repos.delete(repo);
       return ok();
+    }
+
+    // one ingredient directory as one zip, entry names relative to it. Only audio/
+    // (#676): the journal suites keep the per-file read they were written for.
+    if (parts[1] === 'burrito' && parts[2] === 'ingredient' && parts[3] === 'zipped' && url.searchParams.get('ipath') === 'audio') {
+      const repo = repoAt(4);
+      const dir = `${decodeURIComponent(url.searchParams.get('ipath') ?? '')}/`;
+      const project = repos.get(repo);
+      if (!project) return notFound(`no such repo ${repo}`);
+      const entries = Object.fromEntries([...project.files].filter(([p]) => p.startsWith(dir)).map(([p, text]) => [p.slice(dir.length), strToU8(text, true)]));
+      if (!Object.keys(entries).length) return notFound('could not locate repo or ingredient directory');
+      return new Response(zipSync(entries) as unknown as BodyInit, { status: 200 });
     }
 
     if (parts[1] === 'app-state' && parts[2] === 'current-project') {

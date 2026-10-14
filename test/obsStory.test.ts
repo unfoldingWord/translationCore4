@@ -154,7 +154,8 @@ describe('OBS story pictures (#289)', () => {
     const presentation = await read();
     expect(Object.values(presentation.images).map((image) => image.source)).toEqual(fileNames.map(() => 'missing'));
     expect(presentation.imagePacks).toHaveLength(1);
-    expect(presentation.imagePacks[0]).toMatchObject({ pin: DEFAULT_OBS_IMAGES, localPath: DEFAULT_OBS_IMAGES_LOCAL, via: null, files: 0 });
+    // the server lists a missing repository as [] with HTTP 200 (journalingRig), so the listing answers, with no file
+    expect(presentation.imagePacks[0]).toMatchObject({ pin: DEFAULT_OBS_IMAGES, localPath: DEFAULT_OBS_IMAGES_LOCAL, via: 'paths', files: 0 });
     expect(presentation.imageNote).toEqual({ wanted: fileNames.length, packs: presentation.imagePacks });
   });
 
