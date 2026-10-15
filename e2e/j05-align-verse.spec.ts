@@ -281,6 +281,19 @@ test.describe('J5 — a translator aligns a verse', () => {
       // A header has no aria-label, so its number must stay readable (review round 1).
       await expect(page.locator('[data-testid^="align-card-"] [lang="el"] sup[aria-hidden]')).toHaveCount(0);
 
+      // The number does not push its word down: a numbered chip is as tall as a
+      // plain one beside it, in the bank and on the cards.
+      const heights = (sel: string) => page.locator(sel).evaluateAll((els) =>
+        els.map((el) => ({ sup: !!el.querySelector('sup'), h: Math.round(el.getBoundingClientRect().height) })));
+      for (const sel of ['[data-testid="align-bank"] button', '[data-testid^="align-card-"] button[data-word]']) {
+        const chips = await heights(sel);
+        const withSup = chips.filter((c) => c.sup).map((c) => c.h);
+        const plain = chips.filter((c) => !c.sup).map((c) => c.h);
+        expect(withSup.length).toBeGreaterThan(0);
+        expect(plain.length).toBeGreaterThan(0);
+        expect(new Set([...withSup, ...plain]).size).toBe(1);
+      }
+
       const shot = testInfo.outputPath('j05-735-occurrences.png');
       await page.getByTestId('align-session').screenshot({ path: shot });
       await testInfo.attach('j05-735-occurrences.png', { path: shot, contentType: 'image/png' });

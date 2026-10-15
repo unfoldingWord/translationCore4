@@ -39,7 +39,11 @@ const allowDrop = (e) => e.preventDefault();
 const repeated = (w) => Number(w.occurrences) > 1;
 // `named`: the host's aria-label already carries the number, so hide the <sup>;
 // elsewhere (card headers, the generic-span suggested chip) the <sup> is the name.
-const Occurrence = ({ w, named = false }) => (repeated(w) ? <sup aria-hidden={named ? 'true' : undefined}>{Number(w.occurrence)}</sup> : null);
+// lineHeight 0 keeps the raised number out of the line box, so a numbered word
+// stays level with its neighbours and its chip keeps their height.
+const Occurrence = ({ w, named = false }) => (repeated(w)
+  ? <sup aria-hidden={named ? 'true' : undefined} style={{ lineHeight: 0 }}>{Number(w.occurrence)}</sup>
+  : null);
 const occurrenceName = (w) => (repeated(w) ? `${w.word} ${Number(w.occurrence)}` : undefined);
 
 /** The ULT word(s) this card's original word(s) are aligned to — the gateway
