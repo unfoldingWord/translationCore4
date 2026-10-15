@@ -374,6 +374,20 @@ function firstDraftedRef(bookRaw) {
   return keys.length ? keys[0] : null;
 }
 
+/** #136: where Align resumes — the remembered verse, else the picker's next
+ * unaligned verse, if its draft is not empty (review round 1: an emptied
+ * remembered verse falls through). Null while the book text loads (#722). */
+function resumeAlignRef(st) {
+  const texts = verseTextIndex(st.bookRaw);
+  return [st.toolPos?.[`align:${st.book}`], st.pickerProgress?.align?.nextRef].find((ref) => ref && texts[ref]) ?? null;
+}
+
+/** The verse Align opens: the one chosen, else where it resumes (a tool
+ * opened before the text arrived has chosen none yet), else the first drafted. */
+function openingAlignRef(st) {
+  return st.alignVerse ?? resumeAlignRef(st) ?? firstDraftedRef(st.bookRaw);
+}
+
 const initial = () => ({
   view: 'home', // home | read (Understand) | draft (Translate) | check | publish (Community Checking)
   projects: null, // null = loading; [] = none
@@ -5013,7 +5027,7 @@ export function AppProvider({ children }) {
         // in the store queue), not a book with no draft. The Align view opens
         // the session again when the text arrives. A failed load is stated (D30).
         if (st.bookRaw == null) return settle(st.bookError ? { error: st.bookError } : { loading: true });
-        const ref = st.alignVerse ?? firstDraftedRef(st.bookRaw);
+        const ref = openingAlignRef(st);
         if (!ref) return settle({ unavailable: 'undrafted' });
         settle({ loading: true });
         // Catch-to-absence sweep review: the try covers the WHOLE load —
@@ -5060,17 +5074,10 @@ export function AppProvider({ children }) {
 
       startAligning: () => {
         alignSessionSeq++;
-        // #136: open at the remembered verse, else the picker's next
-        // unaligned verse, else the default (first drafted, via openAlign).
-        // A remembered verse whose draft was since emptied is skipped
-        // (review round 1) — resuming it would open an unavailable session
-        // instead of falling through the chain.
-        const st = stateRef.current;
-        const texts = verseTextIndex(st.bookRaw);
-        const alignVerse =
-          [st.toolPos?.[`align:${st.book}`], st.pickerProgress?.align?.nextRef].find(
-            (ref) => ref && texts[ref],
-          ) ?? null;
+        // #136: open at the remembered verse (resumeAlignRef), else the
+        // default (first drafted, via openAlign). While the book text loads
+        // there is none yet; openAlign resumes when the text arrives (#722).
+        const alignVerse = resumeAlignRef(stateRef.current);
         dispatch({ type: 'set', patch: { aligning: true, alignSession: null, alignVerse } });
         // #516 (D93 point 3): the booster retrains each time the Align tool opens.
         a.trainAlignSuggestions();
