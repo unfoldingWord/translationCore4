@@ -991,14 +991,21 @@ async function gatewayChangePlan({ consequences, next, coverage, installed, stor
   return { plan, blocked };
 }
 
+/** The open book's text, or null while it loads. rawRef owns synchronous
+ * edits; bookRaw being null means the new book is loading, and then rawRef
+ * still holds the PREVIOUS book (#722: since #679 the load waits in the
+ * store queue). A null answer means "read this book from the store". */
+function openBookText(st, rawRef) {
+  return st.bookRaw == null ? null : rawRef.current;
+}
+
 /** Drafts remain editable while the resource reads are in flight. Count
  * against one live snapshot, then retry if an edit/book switch changed it
- * during any await, including a later book's derive. rawRef owns synchronous
- * edits; bookRaw being null means the new book is loading. */
+ * during any await, including a later book's derive. */
 async function liveGatewayChangePlan({ store, storeRef, stateRef, rawRef, obsProject, ...args }) {
   const snapshot = () => {
     const live = stateRef.current;
-    return { book: live.book, raw: live.bookRaw == null ? null : rawRef.current, story: live.story };
+    return { book: live.book, raw: openBookText(live, rawRef), story: live.story };
   };
   for (;;) {
     if (storeRef.current !== store) throw new Error(t('gateway.otherProject'));
@@ -1084,17 +1091,19 @@ async function prepareAlignmentSource(store, st, ref) {
 /** #1: the training corpus for one testament — every verse with a placed
  * word across the project's books of that testament, as the engine's
  * positional view (suggest.ts). The open book reads from the live draft and
- * the align buffer; the other books from disk. */
+ * the align buffer; the other books from disk, and the open book too while
+ * its text has not arrived (`bookRaw` null: openBookText). */
 async function collectTrainingVerses({ store, sched, project, book, bookRaw, testament }) {
   const codes = (project?.bookCodes || []).filter((code) => (isOldTestament(code) ? 'ot' : 'nt') === testament);
   const out = [];
   for (const code of codes) {
-    const raw = code === book ? bookRaw : (await store.readBook(code)).usfm;
+    const raw = code === book && bookRaw != null ? bookRaw : (await store.readBook(code)).usfm;
     const { file } = code === book ? await alignFileFor(store, sched, code) : await alignFileFor(store, null, code);
     out.push(...trainingVersesFor(code, file, verseTextIndex(raw)));
   }
   return out;
 }
+export const __trainingTextForTests = { collectTrainingVerses, openBookText };
 
 /** #213: reflow the alignment records of the verses a draft save changed.
  * One buffered read of the §5.1 file, then one staged record per verse that
@@ -5232,7 +5241,7 @@ export function AppProvider({ children }) {
           testament: () => (stateRef.current.book ? (isOldTestament(stateRef.current.book) ? 'ot' : 'nt') : null),
           collect: (testament) => {
             const st = stateRef.current;
-            return collectTrainingVerses({ store: storeRef.current, sched: alignSchedulerRef.current, project: st.project, book: st.book, bookRaw: rawRef.current, testament });
+            return collectTrainingVerses({ store: storeRef.current, sched: alignSchedulerRef.current, project: st.project, book: st.book, bookRaw: openBookText(st, rawRef), testament });
           },
           postAnswer: post(
             'answering',
