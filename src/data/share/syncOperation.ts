@@ -541,7 +541,8 @@ export async function sync(deps: SyncDeps, request: SyncRequest): Promise<Report
       await guardOpenCopy(deps.api, repoPath);
     } catch (error) {
       const at = new Date().toISOString();
-      return failedReport('sync', at, at, error, { repoPath });
+      // a failure that is no refusal (a server error) also gets a code (`withCode`)
+      return withCode(failedReport('sync', at, at, error, { repoPath }));
     }
     const record = await ops.begin('sync', { repoPath });
     const recorded = await syncRecorded(deps, request, record);
