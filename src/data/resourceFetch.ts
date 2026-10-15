@@ -30,6 +30,7 @@ import type { ResourcePin } from './burritoStore';
 import { localRepoPathFromRepoPath } from './installed';
 import { ServerApi } from './serverApi';
 import { NO_CONSENT } from './internet';
+import { installableFiles } from './resourceArchive.mjs';
 
 /** DCS serves the export cross-origin: a direct browser GET returns
  * `response.type === 'cors'` with a readable body [VERIFIED live 2026-08-03,
@@ -442,7 +443,8 @@ export const fetchAndInstallPin = async (
   await verifyExportRevision(pin, downloaded.version, downloaded.revision, doFetch);
 
   const repoPath = opts.targetRepoPath ?? localRepoPathFor(pin);
-  await opts.api.postZippedBurrito(repoPath, rezip(downloaded.files));
+  const files = await installableFiles(pin, downloaded.files, downloaded.revision);
+  await opts.api.postZippedBurrito(repoPath, rezip(files));
   return { repoPath, revision: downloaded.revision, bytes: downloaded.bytes };
 };
 

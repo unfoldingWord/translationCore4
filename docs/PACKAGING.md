@@ -260,6 +260,10 @@ The development rig and explicit external-server mode (`START_SERVER=false`)
 retain their caller-provided resource selector and profile. Resource binding
 and bundled installation share the same bootstrap on all three packaged OS
 entry points, under Electron's singleton lock and before the server starts.
+Resource preparation runs in a bundled Node worker after a local preparation
+window loads (#740). Closing that window terminates the worker before quitting
+and releasing the singleton lock. The template starts only after preparation
+reports success; the preparation window stays until its app window is ready.
 
 The recipe follows the Pankosmia
 [desktop-app-template](https://github.com/pankosmia/desktop-app-template)
@@ -386,7 +390,7 @@ translationCore4.app/
 ```
 
 The pinned startup retains `Contents/Resources` as its server working directory;
-only the Mac executable path changes to `../MacOS/server.bin`. First-run copying
+only the Mac executable path changes to `../MacOS/server.bin`. First-run preparation
 runs under the existing singleton lock, before startup, and leaves existing
 resources/projects alone. Completed copies are renamed into place so a failed
 copy can be retried. Runtime state remains under HOME. The package payload contains
@@ -939,23 +943,25 @@ The nine `unfoldingWord` repos are fetched as the DCS sb-zip export `/sb/<tag>.z
 
 ## Bundled English suite (#163, #218, #504, #644)
 
-Per D70, D75 (and its #331 amendment), #163, #218, #288 and #644 (D96), the desktop artifact bundles sixteen repos: the eleven-resource English Bible suite, `en_obs`, `en_obs-tn`, `en_obs-twl`, `en_obs-tq`, and `uW/obs_images_360`. Translation Words and Translation Academy are shared by Bible and OBS sets. The unpacker stages normal resources at `<APPDIR>/resources/<owner lowercased>--<repo>/` and the untagged default image pack at `uw--obs_images_360--7146d5b504f6`.
+Per D70, D75 (and its #331 amendment), #163, #218, #288 and #644 (D96), the desktop artifact bundles sixteen repos: the eleven-resource English Bible suite, `en_obs`, `en_obs-tn`, `en_obs-twl`, `en_obs-tq`, and `uW/obs_images_360`. Translation Words and Translation Academy are shared by Bible and OBS sets. Since #740 the payload stages one `<APPDIR>/resources/<owner lowercased>--<repo>.zip` per resource. The manifest's `archive` names that file and `zip_sha256` hashes the actual shipped bytes. The installer installs these archives; it does not expand their thousands of entries into the application directory.
 
 At each packaged start (#528), the shared bootstrap checks `BUILD-MANIFEST.json`
-against the bundled metadata's repo, full SHA and factual flavor. When a copy
-is about to be made from a bundled resource, it first verifies every declared
-ingredient's size and checksum for DCS exports. The three
+against the bundled metadata's repo, full SHA and factual flavor. When an
+installation is needed, it reads the archive once and verifies its whole hash,
+paths, identity and entry inventories in memory. It writes each destination
+file once to staging, with bounded concurrency, and does not re-read the
+destination files. DCS exports retain their declared ingredient checksums. The three
 sha-only commit archives have authored metadata with no DCS identity; the
 lexicons' ingredient tables also omit payload files and have stale README
 checksums. Packaging preserves the fetcher's verified Gitea archive-comment
-identity in `.tc4-bundled-identity.json`, hashes every extracted file, and binds
+identity in `.tc4-bundled-identity.json`, hashes every stored file, and binds
 that receipt's SHA-256 in the build manifest. The copy is verified against that complete
 tree, including metadata and otherwise unlisted payloads. A legacy archive
 copy is reused only with an exact saved identity or matching SHA-qualified
 path and a byte-identical verified tree. A distinct release is installed
 at `$HOME/pankosmia/tc4-projects/_local_/_sideloaded_/<owner lowercased>--<repo>--<full SHA>`.
 Copy staging is outside discovery, on the same filesystem, and published by a
-directory rename. A complete exact release already installed at a legacy,
+directory rename. A complete exact non-lexicon release already installed at a legacy,
 short-SHA or full-SHA path is reused at its actual path. "Complete" is decided
 against the copy's own inventory, not the build's: a DCS export is complete when
 every ingredient in its own `metadata.json` is present with the declared size and
@@ -981,6 +987,23 @@ old releases. Existing project pins retain their exact identity, while current
 bundled identities win default selection for new projects regardless of folder
 or record order. A second launch with correct records makes no resource or
 install-record writes. Debug uses the same policy in its separate store.
+
+The two lexicons use `lexicon-archive-v1`: `metadata.json`,
+`ingredients/source.zip`, and the identity receipt. `source.zip` retains every
+original source file, including its original metadata and attribution. The outer
+metadata keeps its factual flavor and attribution and inventories the archive's
+actual size and SHA-256. The same `installableFiles` function builds this shape
+for the package cache and for in-app downloads. No lexicon reader is added here
+(#703 owns that). A compact install uses `<owner>--<repo>--<full SHA>--compact-v1`.
+Existing expanded developer/tester copies remain untouched and are not scanned
+or marked verified during conversion. The bootstrap independently verifies a
+compact sibling from the bundle, records both copies, and the client explicitly
+prefers that compact sibling for the same exact pin. Project pins do not change.
+
+The timing gate is shortcut click to a visible, usable Home in a signed installed
+Windows build with Defender enabled, separately for an empty profile and an
+upgrade. A preparation-only benchmark cannot establish that gate. See the
+[#740 evidence and remaining witness steps](evidence/startup-740.md).
 
 ### The release tags and the weekly check (#504)
 

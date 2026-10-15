@@ -21,7 +21,7 @@ done
 if [ "$VARIANT" = debug ]; then mv "$APPDIR/debug-seeds" "$RESOURCES/debug-seeds"; fi
 cp "$REPO/scripts/README-macos.txt" "$APPDIR/README.txt"
 cp "$REPO/scripts/README-macos.txt" "$RESOURCES/README.txt"
-cp "$REPO/scripts/desktop-bootstrap.cjs" "$RESOURCES/app/tc4-bootstrap.cjs"
+node "$REPO/scripts/build-desktop-bootstrap.cjs" "$RESOURCES/app"
 cp "$REPO/branding/icon.icns" "$RESOURCES/electron.icns"
 
 # Carry the native libraries' license texts from the exact Cargo inputs used by

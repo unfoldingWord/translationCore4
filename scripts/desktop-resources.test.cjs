@@ -68,6 +68,161 @@ function writeSettings(f, doc) {
   fs.writeFileSync(f.settings, JSON.stringify(doc));
 }
 
+// #740 failure inventory before archive installation: a wrong archive hash,
+// unsafe or missing entries, wrong identity, incomplete writes, interrupted
+// publication and failed settings writes must never certify a partial release.
+// Source and destination ingredients must not be opened individually on a
+// fresh archive install; a repeat start must not read the archive payload.
+function archiveBundle(f) {
+  const { zipSync } = require('fflate');
+  const entries = Object.fromEntries(Object.entries(files(f.source)).map(([name, value]) => [name, Buffer.from(value, 'base64')]));
+  const archive = path.basename(f.source) + '.zip';
+  const bytes = zipSync(entries, { level: 0 });
+  const file = path.join(f.options.resourcesDir, 'resources', archive);
+  fs.writeFileSync(file, bytes);
+  const manifest = settingsDocument(path.join(f.options.resourcesDir, 'BUILD-MANIFEST.json'));
+  manifest.bundled_resources[0].archive = archive;
+  manifest.bundled_resources[0].zip_sha256 = createHash('sha256').update(bytes).digest('hex');
+  fs.writeFileSync(path.join(f.options.resourcesDir, 'BUILD-MANIFEST.json'), JSON.stringify(manifest));
+  fs.rmSync(f.source, { recursive: true });
+  return { file, entries, bytes };
+}
+function settingsDocument(file) { return JSON.parse(fs.readFileSync(file, 'utf8')); }
+
+test('#740: an archive installs verified bytes once, without ingredient reads or recursive copies', async (t) => {
+  const f = fixture(t);
+  const ingredient = path.join(f.source, 'ingredients/TIT.tsv');
+  const correct = fs.readFileSync(ingredient);
+  fs.appendFileSync(ingredient, 'damaged');
+  assert.throws(() => bootstrap(f.options), /size|checksum/); // real-fixture negative control
+  fs.writeFileSync(ingredient, correct);
+  const bundle = archiveBundle(f);
+  const read = fs.readFileSync, copy = fs.cpSync;
+  let archives = 0;
+  fs.readFileSync = (file, ...args) => {
+    if (file === bundle.file) archives++;
+    if (typeof file === 'string' && file.split(path.sep).includes('ingredients')) throw Error('ingredient reopened');
+    return read(file, ...args);
+  };
+  fs.cpSync = () => { throw Error('recursive resource copy'); };
+  try { await bootstrap(f.options); }
+  finally { fs.readFileSync = read; fs.cpSync = copy; }
+  assert.equal(archives, 1);
+  for (const [name, bytes] of Object.entries(bundle.entries)) assert.deepEqual(fs.readFileSync(path.join(f.destination, name)), Buffer.from(bytes));
+  assert.deepEqual(settingsAt(f).installedResources[f.key], f.pin);
+  fs.readFileSync = (file, ...args) => {
+    if (file === bundle.file) throw Error('archive payload reopened on repeat start');
+    return read(file, ...args);
+  };
+  try { await bootstrap(f.options); }
+  finally { fs.readFileSync = read; }
+});
+
+for (const damage of ['archive hash', 'ingredient checksum', 'missing ingredient', 'unsafe entry', 'wrong revision']) {
+  test(`#740: ${damage} cannot publish an archive or a success receipt`, async (t) => {
+    const f = fixture(t);
+    const bundle = archiveBundle(f);
+    const { zipSync } = require('fflate');
+    if (damage === 'archive hash') fs.appendFileSync(bundle.file, 'damage');
+    else {
+      if (damage === 'ingredient checksum') bundle.entries['ingredients/TIT.tsv'][0] ^= 1;
+      if (damage === 'missing ingredient') delete bundle.entries['ingredients/TIT.tsv'];
+      if (damage === 'unsafe entry') bundle.entries['../escape'] = Buffer.from('escape');
+      if (damage === 'wrong revision') {
+        const meta = JSON.parse(bundle.entries['metadata.json']);
+        Object.values(meta.identification.primary.dcs)[0].revision = 'wrong';
+        bundle.entries['metadata.json'] = Buffer.from(JSON.stringify(meta));
+      }
+      const bytes = zipSync(bundle.entries, { level: 0 });
+      fs.writeFileSync(bundle.file, bytes);
+      const manifestFile = path.join(f.options.resourcesDir, 'BUILD-MANIFEST.json');
+      const manifest = settingsDocument(manifestFile);
+      manifest.bundled_resources[0].zip_sha256 = createHash('sha256').update(bytes).digest('hex');
+      fs.writeFileSync(manifestFile, JSON.stringify(manifest));
+    }
+    await assert.rejects(bootstrap(f.options), /checksum|Incomplete|Invalid|revision/);
+    assert.deepEqual(files(f.local), {});
+    assert.equal(fs.existsSync(f.settings), false);
+  });
+}
+
+test('#740: archive write and settings failures drain writes, clean staging and recover', async (t) => {
+  const f = fixture(t);
+  archiveBundle(f);
+  writeSettings(f, { independent: 'keep', installedResources: {} });
+  const write = fs.promises.writeFile;
+  fs.promises.writeFile = async (file, ...args) => {
+    if (file.endsWith('TIT.tsv')) throw Error('disk full');
+    return write.call(fs.promises, file, ...args);
+  };
+  try { await assert.rejects(bootstrap(f.options), /disk full/); }
+  finally { fs.promises.writeFile = write; }
+  assert.deepEqual(files(f.local), {});
+  assert.deepEqual(settingsAt(f), { independent: 'keep', installedResources: {} });
+  const rename = fs.renameSync;
+  fs.renameSync = (source, destination) => {
+    if (destination === f.settings) throw Error('settings unavailable');
+    return rename(source, destination);
+  };
+  try { await assert.rejects(bootstrap(f.options), /settings unavailable/); }
+  finally { fs.renameSync = rename; }
+  assert.equal(fs.existsSync(f.destination), true);
+  assert.deepEqual(settingsAt(f), { independent: 'keep', installedResources: {} });
+  await bootstrap(f.options);
+  assert.equal(settingsAt(f).independent, 'keep');
+  assert.deepEqual(settingsAt(f).installedResources[f.key], f.pin);
+  assert.ok(settingsAt(f).verifiedResources[f.key]);
+});
+
+test('#740: archive packaging reuses an installed DCS export against its own inventory and preserves older releases', async (t) => {
+  const f = fixture(t);
+  const legacyKey = '_local_/_sideloaded_/en_tn';
+  const legacy = path.join(f.store, legacyKey);
+  fs.cpSync(f.source, legacy, { recursive: true });
+  const ingredient = path.join(legacy, 'ingredients/TIT.tsv');
+  fs.appendFileSync(ingredient, '\n');
+  const bytes = fs.readFileSync(ingredient);
+  const metadataFile = path.join(legacy, 'metadata.json');
+  const meta = settingsDocument(metadataFile);
+  meta.ingredients['ingredients/TIT.tsv'].size = bytes.length;
+  meta.ingredients['ingredients/TIT.tsv'].checksum.md5 = createHash('md5').update(bytes).digest('hex');
+  fs.writeFileSync(metadataFile, JSON.stringify(meta));
+  const oldKey = '_local_/_sideloaded_/en_tn-v86';
+  const old = path.join(f.store, oldKey);
+  const oldPin = exportFixture('v86', old);
+  const before = files(f.local);
+  writeSettings(f, { installedResources: { [oldKey]: oldPin }, independent: true });
+  const bundle = archiveBundle(f);
+  const read = fs.readFileSync;
+  fs.readFileSync = (file, ...args) => {
+    if (file === bundle.file) throw Error('archive read despite a complete existing export');
+    return read(file, ...args);
+  };
+  try { await bootstrap(f.options); await bootstrap(f.options); }
+  finally { fs.readFileSync = read; }
+  assert.deepEqual(files(f.local), before);
+  assert.deepEqual(settingsAt(f).installedResources, { [oldKey]: oldPin, [legacyKey]: f.pin });
+  assert.equal(settingsAt(f).independent, true);
+});
+
+for (const phase of ['before-publish', 'after-publish']) {
+  test(`#740: interrupted archive ${phase} recovers`, async (t) => {
+    const f = fixture(t);
+    archiveBundle(f);
+    const script = `const fs = require('node:fs'); const rename = fs.renameSync; fs.renameSync = (src, dest) => {
+      if (dest === ${JSON.stringify(f.destination)} && ${JSON.stringify(phase)} === 'before-publish') process.exit(77);
+      rename(src, dest);
+      if (dest === ${JSON.stringify(f.destination)} && ${JSON.stringify(phase)} === 'after-publish') process.exit(77);
+    }; require(${JSON.stringify(path.join(__dirname, 'desktop-bootstrap.cjs'))}).bootstrap(${JSON.stringify(f.options)}).catch(e => { console.error(e); process.exit(1); });`;
+    const child = spawnSync(process.execPath, ['-e', script], { encoding: 'utf8' });
+    assert.equal(child.status, 77, child.stderr);
+    assert.equal(fs.existsSync(f.settings), false);
+    await bootstrap(f.options);
+    assert.deepEqual(settingsAt(f).installedResources[f.key], f.pin);
+    assert.deepEqual(fs.readdirSync(f.local), [path.basename(f.destination)]);
+  });
+}
+
 // Additional failure inventory (CI): Gitea commit archives have no metadata
 // DCS revision; metadata omits lexicon payload files; a missing/wrong receipt
 // or a changed unlisted payload must never certify a revision. Provenance
@@ -95,6 +250,53 @@ async function archiveFixture(t) {
   f.destination = path.join(f.store, f.key);
   return f;
 }
+
+test('#740: compact lexicons preserve all source bytes and attribution, and leave expanded developer installs alone', async (t) => {
+  const f = await archiveFixture(t);
+  const sourceFiles = Object.fromEntries(Object.entries(files(f.source)).filter(([name]) => name !== '.tc4-bundled-identity.json').map(([name, bytes]) => [name, Buffer.from(bytes, 'base64')]));
+  const { installableFiles } = await import('../src/data/resourceArchive.mjs');
+  await assert.rejects(installableFiles(f.pin, sourceFiles, 'wrong revision'), /revision/);
+  const compact = await installableFiles(f.pin, sourceFiles, f.pin.sha);
+  const { unzipSync } = require('fflate');
+  const restored = unzipSync(compact['ingredients/source.zip']);
+  assert.deepEqual(Object.keys(restored).sort(), Object.keys(sourceFiles).sort());
+  for (const [name, bytes] of Object.entries(sourceFiles)) assert.deepEqual(Buffer.from(restored[name]), bytes);
+  const meta = JSON.parse(Buffer.from(compact['metadata.json']));
+  assert.deepEqual(meta.copyright, JSON.parse(sourceFiles['metadata.json']).copyright);
+  assert.equal(meta.ingredients['ingredients/source.zip'].size, compact['ingredients/source.zip'].length);
+  // Old expanded data is retained without opening even a single payload.
+  fs.mkdirSync(f.local, { recursive: true });
+  fs.cpSync(f.source, f.destination, { recursive: true });
+  const before = files(f.destination);
+  writeSettings(f, { installedResources: { [f.key]: f.pin }, projectSetting: 'preserved' });
+  fs.rmSync(f.source, { recursive: true });
+  fs.mkdirSync(f.source);
+  for (const [name, bytes] of Object.entries(compact)) {
+    fs.mkdirSync(path.dirname(path.join(f.source, name)), { recursive: true });
+    fs.writeFileSync(path.join(f.source, name), bytes);
+  }
+  const manifestFile = path.join(f.options.resourcesDir, 'BUILD-MANIFEST.json');
+  const manifest = settingsDocument(manifestFile);
+  manifest.bundled_resources[0].archive_receipt_sha256 = createHash('sha256').update(compact['.tc4-bundled-identity.json']).digest('hex');
+  manifest.bundled_resources[0].storage = 'lexicon-archive-v1';
+  fs.writeFileSync(manifestFile, JSON.stringify(manifest));
+  archiveBundle(f);
+  const read = fs.promises.readFile;
+  fs.promises.readFile = (file, ...args) => {
+    if (file.startsWith(f.destination + path.sep)) throw Error('expanded legacy payload reopened');
+    return read.call(fs.promises, file, ...args);
+  };
+  try { await bootstrap(f.options); await bootstrap(f.options); }
+  finally { fs.promises.readFile = read; }
+  assert.deepEqual(files(f.destination), before);
+  assert.deepEqual(settingsAt(f).installedResources[f.key], f.pin);
+  const compactKey = f.key + '--compact-v1';
+  assert.deepEqual(settingsAt(f).installedResources[compactKey], f.pin);
+  assert.equal(settingsAt(f).projectSetting, 'preserved');
+  assert.ok(settingsAt(f).verifiedResources[compactKey]);
+  assert.equal(settingsAt(f).verifiedResources[f.key], undefined);
+  assert.equal(Object.keys(files(path.join(f.store, compactKey))).length, 3);
+});
 
 test('real commit archive without DCS metadata installs from a verified receipt, records no invented version, and reuses a recorded legacy copy', async (t) => {
   const f = await archiveFixture(t);
