@@ -80,6 +80,10 @@ async function proveWrap(page: Page, ids: string[], info: TestInfo, name: string
   return boxes;
 }
 
+// Leave the next journey in the seeded interface language after Arabic.
+// afterAll runs after the fixture has drained the page's pending writes.
+test.afterAll(() => resetClientSettings());
+
 for (const locale of ['en', 'ar']) {
   test.describe(`#726 / #728 — ${locale}`, () => {
     test.setTimeout(60_000);
