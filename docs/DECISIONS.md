@@ -2824,8 +2824,9 @@ team sync and Arabic [VERIFIED — `git rev-list` and `git diff --stat 17f4cbc o
 2026-10-15]. To cherry-pick that much work is not a fix-only change. No v4.0.0 has shipped,
 so the first release can still hold these features.
 
-1. **Scope.** Epics #24 and #658 and their open follow-ups (#710, #723, #724, #725) move to
-   the milestone "Increment 9 — ship". 4.0.0 is no longer a single-translator release.
+1. **Scope.** Epics #24 and #658 move to the milestone "Increment 9 — ship", with the
+   follow-ups #723 and #725 (data safety) and #730 (Arabic strings). The follow-ups #724 and
+   #710 move to 4.0.1. 4.0.0 is no longer a single-translator release.
 2. **The re-cut.** When both epics close, one pull request merges `main` into `release/4.0`.
    The ruleset "release branches" applies unchanged: one approval, the `verify` check, no
    force push, no delete. This is one exception to "fixes only" (`docs/PACKAGING.md`,
@@ -2838,4 +2839,4 @@ so the first release can still hold these features.
 
 Where it lands: `docs/ROADMAP.md`, `docs/PACKAGING.md` ("Release branches"),
 `docs/JOURNEYS.md` (J11 owner row), `docs/plans/TEAM-SYNC-PLAN.md` (Round 1),
-`docs/VISION.md`, and the milestones of #24, #658, #710, #723, #724 and #725.
+`docs/VISION.md`, and the milestones of #24, #658, #723, #725, #730, #724 and #710.
