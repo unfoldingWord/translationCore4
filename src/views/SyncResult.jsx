@@ -19,7 +19,8 @@ export const SYNC_REFUSALS = {
   'sync.not-shared': 'syncResult.error.notShared',
   'sync.clone-path-exists': 'syncResult.error.clonePathExists',
   'sync.clone-failed': 'syncResult.error.cloneFailed',
-  'sync.move-failed': 'syncResult.error.moveFailed',
+  // D101: the move is the clone's move to the scratch copy; the project folder is never replaced
+  'sync.move-failed': 'refusal.sync.move-failed',
   'sync.verify-failed': 'syncResult.error.verifyFailed',
   'sync.non-fast-forward': 'syncResult.error.nonFastForward',
   'sync.no-write-access': 'syncResult.error.noWriteAccess',
