@@ -7,6 +7,7 @@
 // from every saved verse without a retrain in the way.
 import { test, expect } from './helpers/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
+import { holdCheckpoints } from './helpers/checkpointHold';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -559,6 +560,81 @@ test.describe('J5 — a translator aligns a verse', () => {
       const unavailable = page.getByTestId('align-unavailable');
       await expect(unavailable).toBeVisible();
       await expect(unavailable).toContainText(/original-language/i);
+    },
+  );
+
+  test(
+    'Align opened before the book text arrives lists the verses when it arrives (#722: since #679 the book load waits for a checkpoint)',
+    { tag: ['@inc2', '@J5'] },
+    async ({ page }) => {
+      writePinsWithOriginal();
+      await page.goto('/');
+      await page
+        .getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`)
+        .getByRole('button', { name: /Titus/ })
+        .click();
+      // The book rail row (Home's book tiles have the same name until the project opens).
+      const titusRow = page.getByRole('complementary').getByRole('button', { name: /^Titus \d+%/ });
+      await expect(titusRow).toBeVisible();
+
+      // Hold the checkpoint that the next mode switch starts: the book load
+      // (openBook → reconcileStaged) waits behind it, so s.bookRaw stays null.
+      const hold = await holdCheckpoints(page);
+      await page.getByRole('tab', { name: 'Check', exact: true }).click();
+      await expect.poll(hold.held).toBeGreaterThan(0);
+      await expect(page.getByTestId('open-align')).toBeVisible();
+      await page.getByRole('tab', { name: 'Translate', exact: true }).click();
+      await expect(page.getByRole('tab', { name: 'Translate', exact: true })).toHaveAttribute('aria-selected', 'true');
+      await titusRow.click();
+      await expect(page.getByText('Loading book…')).toBeVisible(); // the window: no book text
+      await page.getByRole('tab', { name: 'Check', exact: true }).click();
+      await page.getByTestId('open-align').click();
+      // In the window: no book text yet, so the rail has no rows, and the
+      // session says it is opening (never "Nothing to align yet").
+      await expect(page.getByTestId('align-verse-list').locator('button')).toHaveCount(0);
+      await expect.soft(page.getByText('Opening the alignment…')).toBeVisible();
+
+      hold.release();
+      await expect(page.getByTestId('align-verse-list').locator('button[data-ref="1:1"]')).toBeVisible();
+      await expect(page.getByTestId('align-session')).toBeVisible();
+    },
+  );
+
+  test(
+    'Align opened before the book text arrives resumes at the remembered verse when it arrives (#722 class)',
+    { tag: ['@inc2', '@J5'] },
+    async ({ page }) => {
+      writePinsWithOriginal();
+      await page.goto('/');
+      await page
+        .getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`)
+        .getByRole('button', { name: /Titus/ })
+        .click();
+      const titusRow = page.getByRole('complementary').getByRole('button', { name: /^Titus \d+%/ });
+      await expect(titusRow).toBeVisible();
+      await page.getByRole('tab', { name: 'Check', exact: true }).click();
+      await page.getByTestId('open-align').click();
+      await expect(page.getByTestId('align-session')).toBeVisible();
+      // The remembered place (#136): the translator picks 1:3, then leaves the tool.
+      const row13 = page.getByTestId('align-verse-list').locator('button[data-ref="1:3"]');
+      await row13.click();
+      await expect(row13).toHaveAttribute('data-selected', 'true');
+      await page.getByTestId('align-rail').getByRole('button', { name: '← All checking tools' }).click();
+      await expect(page.getByTestId('open-align')).toBeVisible();
+
+      const hold = await holdCheckpoints(page);
+      await page.getByRole('tab', { name: 'Translate', exact: true }).click();
+      await expect.poll(hold.held).toBeGreaterThan(0);
+      await titusRow.click();
+      await expect(page.getByText('Loading book…')).toBeVisible(); // the window: no book text
+      await page.getByRole('tab', { name: 'Check', exact: true }).click();
+      await page.getByTestId('open-align').click();
+      await expect(page.getByTestId('align-verse-list').locator('button')).toHaveCount(0);
+
+      hold.release();
+      await expect(page.getByTestId('align-session')).toBeVisible();
+      await expect(row13).toHaveAttribute('data-selected', 'true');
+      await expect(page.getByTestId('align-verse-list').locator('button[data-ref="1:1"]')).not.toHaveAttribute('data-selected', 'true');
     },
   );
 });

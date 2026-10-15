@@ -25,6 +25,7 @@ import { targetWords, selectionsFromTokens, tokenIndicesFromSelections } from '.
 import { tokenizeVerse, matchQuote, tokenizePlain, matchPlainQuote } from '../data/sourceHighlight';
 import { verseText } from './verseText.js';
 import { absenceMessageKey, isSourceAbsent } from '../data/sourceState';
+import { literalPaneId } from '../data/gatewayChange';
 import { BlockText, ExpandableNote, Quoted, glTitleFor } from './HelpsPanel.jsx';
 import { RAIL_FILTERS, RAIL_FILTER_ORDER, hasComment, isBookmarked, railCounts } from './checkFilters.js';
 import { t } from '../i18n';
@@ -454,10 +455,11 @@ const ultVerseObj = (source, crossFrame, c, v) =>
 
 /** The compare card's GATEWAY row: the project's §5.3 extraScripture verse
  * with the quote's tokens highlighted through the alignment (same matcher as
- * the helps panel). Pane ids are the project's own — 'ult' is preferred when
- * present, otherwise the first declared pane; a project with none states so. */
+ * the helps panel). Pane ids are the project's own — the literal pane ('ult',
+ * else 'glt') is preferred when present, otherwise the first declared pane; a
+ * project with none states so. */
 function UltPane({ sources, sourcePanes, item, c, v, crossFrame }) {
-  const paneId = sourcePanes?.includes('ult') ? 'ult' : sourcePanes?.[0];
+  const paneId = literalPaneId(sourcePanes);
   const source = paneId ? sources?.[paneId] : undefined;
   const vObj = ultVerseObj(source, crossFrame, c, v);
   const tokens = React.useMemo(() => (vObj ? tokenizeVerse(vObj) : []), [vObj]);
@@ -1108,10 +1110,11 @@ function AlignWorkspace() {
   const { s, actions } = useApp();
   const [filter, setFilter] = React.useState('all');
   // The rail's statuses derive from the sidecar + the draft: refresh when the
-  // verse changes and after each edit lands on the session record.
+  // verse changes, after each edit lands on the session record, and when the
+  // book text arrives (#722: the tool can open while the book still loads).
   React.useEffect(() => {
     actions.loadAlignIndex();
-  }, [s.book, s.alignVerse, s.alignSession?.record]);
+  }, [s.book, s.alignVerse, s.alignSession?.record, s.bookRaw == null]);
 
   const activeRef = s.alignVerse ?? s.alignSession?.ref ?? null;
   return (
@@ -1156,7 +1159,7 @@ const quoteOf = (item) =>
  * result on (sources, sourcePanes, understand): the caches live as long as it does. */
 export function gatewayTitleFor(sources, sourcePanes, understand) {
   if (!understand || understand.loading) return quoteOf;
-  const paneId = sourcePanes?.includes('ult') ? 'ult' : sourcePanes?.[0];
+  const paneId = literalPaneId(sourcePanes);
   const src = paneId ? sources?.[paneId] : undefined;
   const perChapter = new Map();
   return (item) => {
@@ -1338,6 +1341,17 @@ function PickerGrid({ s, pre, story, unitLabel, pickerTitleOf }) {
   );
 }
 
+/** #722 class: a session can open before its book text arrives (since #679
+ * the load waits in the store queue); it then holds no draft copy. Read the
+ * draft again when the text arrives (#532's refresh). Once more for a session
+ * opened with the text is harmless: known invalidations stay. */
+function useDraftArrival(s, actions, unitLoaded) {
+  const sessionReady = Boolean(s.checkSession?.items);
+  React.useEffect(() => {
+    if (unitLoaded && sessionReady) actions.refreshCheckDraft();
+  }, [unitLoaded, sessionReady]);
+}
+
 export default function Check() {
   const { s, actions } = useApp();
   const pre = s.preflight;
@@ -1376,6 +1390,7 @@ export default function Check() {
   React.useEffect(() => {
     if (pre && atPicker && unitLoaded) actions.loadPickerProgress();
   }, [pre, atPicker, unitLoaded, s.story]);
+  useDraftArrival(s, actions, unitLoaded);
 
   // The picker's "Next: …" line shows the gateway title too [decided
   // 2026-08-31]; the frame verdict is the understand load's (sourceRefs).

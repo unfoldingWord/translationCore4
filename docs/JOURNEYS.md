@@ -44,8 +44,8 @@ Owner of increment numbers: the GitHub milestones, mirrored in `docs/ROADMAP.md`
 | J14 | — | — | retired: isolation is a MUST NOT row on J1 and J2 | retired | `e2e/j14-join-isolation.spec.ts` stays |
 | J15 | — | — | retired: slow open is a quality requirement on opening a project | retired | `e2e/j15-slow-open.spec.ts` stays, cited by a FR |
 | J16 | translator | Understand | Read a passage with helps and record a user comment | shipped alpha.5 | `e2e/j16-understand.spec.ts` |
-| J17 | translator | Exchange | Receive a project and continue offline | Phase 2 | none |
-| J18 | translator | Check | Resolve a verse fork | Phase 2 | none |
+| J17 | translator | Exchange | Open a shared project from Door43 on another computer | built (2026-10-13, #677; epic #24) | `e2e/j17-open-from-door43.spec.ts` (`@J17`, on the rig against the #673 stand-in) |
+| J18 | translator | Translate | Keep one version of a verse in conflict | built (2026-10-13, #679; the journey proof is step 3 of J26, #681) | `e2e/j26-team-sync.spec.ts` (`@J26`, step 3) |
 | J19 | consultant | Check | Record findings on a translation | Phase 2 | none |
 | J20 | facilitator | Start | Create an OBS project | shipped alpha.7 (#287; D74) | `e2e/j20-obs-create.spec.ts` |
 | J21 | translator | Translate | Translate a story frame by frame | shipped alpha.7 (#289, #292; D74) | `e2e/j21-obs-draft.spec.ts` |
@@ -53,6 +53,7 @@ Owner of increment numbers: the GitHub milestones, mirrored in `docs/ROADMAP.md`
 | J23 | facilitator | Deliver | Export an OBS project as Markdown and PDF | shipped rc.1 (with J7, one PDF path; #360, #359, layouts #11; D74, D79) | `e2e/j07-publish.spec.ts` (`@inc8 @J23`) |
 | J24 | facilitator | Exchange | Share an OBS project to Door43 | shipped rc.1 (rides J11; D79 point 12) | `e2e/j11-share.spec.ts` (the OBS case, `@J24`) |
 | J25 | translator | Understand | Read a story with helps and record a user comment | shipped alpha.7 (#290, #292; D74) | `e2e/j25-obs-understand.spec.ts` |
+| J26 | translator | Exchange | Sync one project with two teammates through Door43 | built (2026-10-13, #681; epic #24) | `e2e/j26-team-sync.spec.ts` (`@J26`, on the rig against the #673 stand-in) |
 
 ## Entries
 
@@ -138,7 +139,8 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   memory at once, Suggest keeps answering while any retrain runs in the background).
 - Proof: `e2e/j05-align-verse.spec.ts`, LTR and RTL; the suggestion cases are added by #1,
   the growth case (align verse A, open verse B, Suggest answers in 2 s with no "learning"
-  wait) by #516.
+  wait) by #516, and the late-book case (Align opens before the book text arrives; the verse
+  list and the session show when it arrives) by #722.
   Pending: a direct before-and-after compare of the book bytes (same as J4). Owner: shipped
   alpha.2 (manual form); revised end state shipped alpha.6 (#262: #255, #134, #213, #1).
 
@@ -296,12 +298,72 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
 - Term: the user-facing word is "user comment". The journal op stays `note.add` (BURRITO-SPEC §8.5).
 - Proof: `e2e/j16-understand.spec.ts` (#117 adds the non-eng frame axis). Owner: built Increment 4 (#104); proof Increment 5 (#197).
 
-### J17–J19 (Phase 2)
+### J17 Open a shared project from Door43 on another computer
 
-- J17 translator receives a project and continues offline.
-- J18 translator resolves a verse fork through the reviewQueue.
+- Actor: translator. Activity: Exchange.
+- Precondition: a teammate shared a Bible project to a public Door43 repository (J11). This
+  computer does not have the project.
+- Steps:
+  1. On Home, click "+ Add a project". Then click "Open a project from Door43".
+  2. Type the Door43 repository as `owner/repository`, or paste its link. The project name is the
+     repository name. You can change the name.
+  3. Click "Open project". When the internet is off, tC4 asks to turn it on (D95). "Not now" stops
+     the step, and tC4 sends nothing.
+  4. tC4 gets a full copy of Door43 `main` and checks each journal file. Then the new card shows on
+     Home.
+- End state: one new git repository at `_local_/_local_/<name>`. Its files and its `HEAD` are the
+  same as Door43 `main`, and its `origin` is the Door43 repository. The project has a new actor id,
+  because identity is per path (D53(c)). Its card shows "Sync with Door43" (#678). The first sync
+  needs no other step.
+- MUST NOT: add a project when a refusal occurs. The refusals are:
+  - one journal file on Door43 fails the validator (G2, `sync.incoming-invalid`);
+  - the name is in use (`open-door43.name-exists`);
+  - the repository has no tC4 journal (`open-door43.no-journal`; use Import, #365);
+  - the repository holds an OBS project (`sync.obs-unsupported`, D98).
+- MUST NOT: open a part project after a stop. A marker file goes with the copy. Before the
+  project opens or syncs, the app reads the disk: it finishes a whole copy, or it removes a part
+  copy (`open-door43.removed`). The settings document is not used for this
+  (`src/data/journal/opsLog.ts`).
+- MUST NOT: delete a project that opened. When the copy finished, the project stays. A project
+  that is not proved to be the copy is never deleted (`open-door43.pending`).
+- The platform can leave an empty `<host>/<org>/` folder after a clone. It is not a repository,
+  and Home does not show it.
+- Round 1 has no branch choice and no private repository (epic #24).
+- Proof: `e2e/j17-open-from-door43.spec.ts` (`@J17`), on the rig against the #673 stand-in. The
+  refusals, the internet question and the crash recovery: `test/sync/openFromDoor43.test.ts`.
+  Owner: built (#677).
+
+### J19 (Phase 2)
+
 - J19 consultant records findings without drafting.
-- End states: defined when the §8 sync operations ratify (issue #22).
+- End state: defined when the §8 sync operations ratify (issue #22).
+
+### J18 Keep one version of a verse in conflict
+
+- Actor: translator. Activity: Translate.
+- Precondition: the project has a verse-text conflict. Two translators changed the same verse
+  from the same base, and a sync put the two versions in one journal (epic #24).
+- Steps:
+  1. On Home, find the project card. It shows "N conflicts · Review". Each book tile shows its count.
+  2. Click "N conflicts · Review" on the card. In Translate, you can also click the marker on a verse.
+     You can also click the toolbar button "N conflicts · Review".
+  3. The review shows one verse at a time. It shows "Conflict n of m" and each version, newest first.
+     Each version shows its owner and its date. The ULT verse shows when Translate has it for that book.
+  4. Click one version. The other versions fade.
+  5. Click "Keep this version".
+  6. Click Previous or Next to go to the other conflicts.
+  7. To leave the review, click "Back to …". You can leave at any time.
+- End state: for each kept verse, one `text.verse.set` segment of this actor. Its `supersedes`
+  names every version of the verse (R-8.3.5). The fold shows no conflict for the verse, and the
+  other versions stay in `retained[]` with reason `superseded` (R-8.3.6). The verse shows the
+  kept text. The Home count and the Translate markers show only the conflicts that stay open.
+  The next sync sends the edit to the team.
+- MUST NOT: list a check-result or alignment conflict (G7); give a version a color by its
+  position ("Mine" is light blue on every conflict, and each teammate's version is cream);
+  start a sync; write when the translator leaves the review.
+- Proof: the component tests `test/conflictReview.test.tsx` and `test/keepVersion.test.tsx`,
+  and the fold test "confirm supersedes all heads" in `test/verseConflicts.test.ts`. The journey
+  proof is step 3 of J26: `e2e/j26-team-sync.spec.ts` (`@J26`, #681). Owner: #679.
 
 ### J20 Create an OBS project
 
@@ -365,6 +427,39 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   same story.
 - MUST NOT: change progress; write into the story file.
 - Proof: `e2e/j25-obs-understand.spec.ts` (#292). Owner: shipped alpha.7 (#290).
+
+### J26 Sync one project with two teammates through Door43
+
+- Actor: translator. Activity: Exchange. Three translators, A, B and C, each on their own
+  computer. On the rig, three project paths are three actors, because the actor id comes from
+  the project path (`src/data/journal/identity.ts`, D53(c)).
+- Precondition: A has a Bible project. Each translator has a Door43 account. The project owner
+  gave B and C write access on Door43 (epic #24).
+- Steps:
+  1. A drafts and checks. Then A shares the project to Door43 (J11).
+  2. B and C open the project from Door43 under their own names (J17). Each drafts and checks.
+     B and C change one verse in different ways. Each clicks "Sync with Door43".
+  3. A clicks "Sync with Door43". The result shows the changes from B and C, and their Door43
+     usernames. A clicks "Review" and keeps one version of the verse (J18). Then A syncs again.
+  4. B and C click "Sync with Door43". They get the version that A kept, and no conflict.
+  5. All three projects show the same text.
+- End state: the three projects on disk have the same project files, byte for byte (G6). Two
+  local parts are outside this comparison (owner OK 2026-10-14): the `*.bak` backups, which the
+  project's `.gitignore` keeps out of every commit, and the three stamps that the platform writes
+  into `metadata.json` at each remake and commit. Each project's `ingredients/`, except `audio/`,
+  equals the tree of Door43 `main`. Its `HEAD` is its own commit, because the sync applies Door43 `main` in place
+  (D101). The fold of each journal has no verse-text conflict. Each journal
+  file that a translator wrote is on Door43 `main`, byte for byte (G1). Each version in the
+  review shows the Door43 username of its owner (#680).
+- The verses come from the shared fixture `conformance/fixtures/team-sync/` (D98), so a journey
+  failure can be reproduced in a core test: `different-verses` (A TIT 1:1, B 1:2, C 1:3),
+  `verse-two-ways` (TIT 1:4, the two texts of the fixture), `check-two-ways` (one
+  translationWords check result in TIT 1:1: B sets `valid`, then C sets `todo`), and `names`
+  (the three usernames).
+- MUST NOT: lose a journal file of a translator (G1); show a check-result conflict to a person
+  (G7); leave a verse conflict open after A keeps one version.
+- Proof: `e2e/j26-team-sync.spec.ts` (`@J26`), on the rig against the #673 stand-in. The run
+  record: `docs/evidence/team-sync-journey-2026-10-13.md`. Owner: built (#681).
 
 ## Retired numbers
 

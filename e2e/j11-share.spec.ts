@@ -22,7 +22,7 @@ import { TC4_ROOT, SEEDED_PROJECT, readClientSettingsDoc, resetClientSettings, r
 import {
   QA_SERVER, RIG_API, RIG_STATE, USER, type BareRemote,
   addOrigin, commitLocally, dropOrigin, expectCleanCard, fakeFor, fakeShare, filesHolding, git, head, loginsHolding, makeBareRemote, pressShare,
-  shareFirstTime, shot, signIn, turnOnInternet, gateOff, fakeKeychain, uploadChanges,
+  shareFirstTime, shot, signIn, turnOnInternet, gateOff, fakeKeychain, uploadChanges, makeObsProject, deleteRigProject,
 } from './helpers/door43Share';
 
 const AUTHOR_NOTICE = /signed with the account name of this computer/;
@@ -48,6 +48,9 @@ const SHARING_AS = `Sharing as @${USER.username} · Change`;
 const KEPT = 'Signed in · Change';
 const NOT_KEPT = /Stay signed in is not available on this computer/;
 const SEEDED_ID = `_local_/_local_/${SEEDED_PROJECT}`;
+// #678: the Upload changes cases (#530) run on this OBS project; a shared Bible card syncs.
+const OBS = 'obs_upload_j11';
+const OBS_ID = `_local_/_local_/${OBS}`;
 
 /** Press Share on the seeded card, which is not shared, and wait for the sign-in step. */
 async function openSignIn(page: Page): Promise<void> {
@@ -55,9 +58,9 @@ async function openSignIn(page: Page): Promise<void> {
   await expect(page.getByTestId('share-signin')).toBeVisible();
 }
 
-/** The repository location the seeded card shows after "Shared at ". */
-const cardLocation = async (page: Page): Promise<string> =>
-  ((await page.getByTestId(`share-state-${SEEDED_ID}`).textContent()) ?? '').replace(/^Shared at /, '');
+/** The repository location a card shows after "Shared at " (the seeded card unless named). */
+const cardLocation = async (page: Page, id = SEEDED_ID): Promise<string> =>
+  ((await page.getByTestId(`share-state-${id}`).textContent()) ?? '').replace(/^Shared at /, '');
 
 /** The push requests the page sent to the platform (POST /api/git/push/...). */
 const watchPushes = (page: Page): Request[] => {
@@ -309,11 +312,13 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
 
         // D86 point 8: a new app session sends no request to Door43 at start. The keychain is
         // read (locally). #530: the shared card says nothing about the sign-in.
-        addOrigin(SEEDED_PROJECT, remote);
+        // #678: a shared Bible card syncs; the upload dialog is proved on a shared OBS card.
+        await makeObsProject(OBS);
+        addOrigin(OBS, remote);
         const before = fake.calls.length;
         const reads = keychain.calls.length;
         await page.reload();
-        await expectCleanCard(page, SEEDED_ID);
+        await expectCleanCard(page, OBS_ID);
         await turnOnInternet(page);
         // Only reads (the development build mounts twice under React StrictMode).
         expect(keychain.calls.slice(reads).length).toBeGreaterThan(0);
@@ -323,7 +328,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
 
         // #530: Upload changes opens the dialog. The kept sign-in is not resumed yet, so the
         // dialog names no username, and opening it sent nothing to Door43 and pushed nothing.
-        await page.getByTestId(`share-${SEEDED_ID}`).click();
+        await page.getByTestId(`share-${OBS_ID}`).click();
         await expect(page.getByTestId('share-upload')).toBeVisible();
         await expect(page.getByTestId('share-signin')).toHaveCount(0);
         const account = page.getByTestId('share-account');
@@ -336,16 +341,16 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
         await page.getByTestId('share-submit').click();
         await expect(page.getByTestId('share-done')).toBeVisible({ timeout: 30_000 });
         await expect(page.getByTestId('share-signin')).toHaveCount(0);
-        expect(remote.main()).toBe(head(SEEDED_PROJECT));
+        expect(remote.main()).toBe(head(OBS));
         const resumed = fake.calls.slice(before);
         expect(resumed.map((c) => `${c.method} ${c.url}`)).toEqual([`GET ${QA_SERVER}/api/v1/user`]);
         expect(resumed[0].headers.authorization ?? resumed[0].headers.Authorization).toBe(`token ${token}`);
         expect(resumed[0].url).not.toContain(token);
         await page.getByTestId('share-close').click();
-        await expectCleanCard(page, SEEDED_ID);
+        await expectCleanCard(page, OBS_ID);
 
         // The sign-in is resumed now: the next dialog names the account.
-        await page.getByTestId(`share-${SEEDED_ID}`).click();
+        await page.getByTestId(`share-${OBS_ID}`).click();
         await expect(account).toHaveText(SHARING_AS);
 
         // Test 4, D86 point 7: Change in the dialog signs out (the keychain is emptied) and opens
@@ -359,14 +364,14 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
         await page.getByTestId('signin-cancel').click();
         expect(remote.main()).toBe(pushed);
         await page.reload();
-        await expect(page.getByTestId(`share-${SEEDED_ID}`)).toHaveText('Upload changes');
-        await expectCleanCard(page, SEEDED_ID);
-        await page.getByTestId(`share-${SEEDED_ID}`).click();
+        await expect(page.getByTestId(`share-${OBS_ID}`)).toHaveText('Upload changes');
+        await expectCleanCard(page, OBS_ID);
+        await page.getByTestId(`share-${OBS_ID}`).click();
         await expect(page.getByTestId('share-signin')).toBeVisible();
         await expect(page.getByLabel('Password', { exact: true })).toHaveValue('');
         await expect(page.getByTestId('signin-reason')).toHaveText(SESSION_NOTE);
       } finally {
-        dropOrigin(SEEDED_PROJECT);
+        await deleteRigProject(OBS);
         remote.dispose();
       }
     });
@@ -465,8 +470,9 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       await expect(page.getByTestId(`share-${SEEDED_ID}`)).toBeVisible();
       await turnOnInternet(page); // D95, as in the sign-in block
     });
-    test.afterEach(() => {
+    test.afterEach(async () => {
       remote.dispose();
+      await deleteRigProject(OBS); // #678
     });
 
     test('1. Share beside Settings: sign in, the account, the check step, one progress line, the end; the remote main equals the local main; the token is nowhere; Community Checking has no Share', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
@@ -562,11 +568,11 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       expect(logs.filter((line) => line.includes(token))).toEqual([]);
 
       // The card now (test 2): the "On Door43" badge beside the name, "Shared at" and the
-      // repository path on the meta line, and Upload changes (D86 point 6).
+      // repository path on the meta line, and Sync with Door43 (D86 point 6; #678).
       await expect(page.getByTestId(`share-card-${SEEDED_ID}`)).toHaveAttribute('data-shared', '1');
       await expect(page.getByTestId(`share-badge-${SEEDED_ID}`)).toHaveText('On Door43');
       await expect(page.getByTestId(`share-state-${SEEDED_ID}`)).toHaveText(`Shared at qa.door43.org/${USER.username}/${SEEDED_PROJECT}`);
-      await expect(page.getByTestId(`share-${SEEDED_ID}`)).toHaveText('Upload changes');
+      await expect(page.getByTestId(`share-${SEEDED_ID}`)).toHaveText('Sync with Door43');
 
       // Community Checking has no Share action.
       await card.getByRole('button', { name: /Titus/ }).click();
@@ -577,11 +583,15 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
     });
 
     test('2. the shared card after a new session reads its state from origin; Upload changes opens the dialog: the repository, the account and the books; Cancel pushes nothing; Upload changes pushes the new commit to the same repository; the second time asks no sign-in (#203 7b; #530); the installation store holds no remote', { tag: ['@inc85', '@J11'] }, async ({ page, context }, testInfo) => {
+      // #678: a shared Bible card syncs; the upload dialog (#530) is proved on a shared OBS card.
+      await makeObsProject(OBS);
+      await page.reload();
+      await turnOnInternet(page);
       await fakeShare(context, remote);
       const pushes = watchPushes(page);
-      await shareFirstTime(page, SEEDED_ID);
+      await shareFirstTime(page, OBS_ID);
       const first = remote.main();
-      expect(first).toBe(head(SEEDED_PROJECT));
+      expect(first).toBe(head(OBS));
 
       // A new app session: the card's state is derived from the repository's own origin (D84
       // point 1) — here the spec's bare `file://` remote, read back as its path (`.git` dropped);
@@ -591,25 +601,25 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       // filesystem path: on Windows the URL's pathname is `/C:/…` with forward slashes.
       await page.reload();
       await turnOnInternet(page);
-      await expect(page.getByTestId(`share-state-${SEEDED_ID}`)).toHaveText(`Shared at ${pathToFileURL(remote.bare).pathname.replace(/^\//, '').replace(/\.git$/, '')}`);
-      await expect(page.getByTestId(`share-${SEEDED_ID}`)).toHaveText('Upload changes');
-      expect((await remotesOf(SEEDED_ID)).map((r) => r.name)).toEqual(['origin']);
+      await expect(page.getByTestId(`share-state-${OBS_ID}`)).toHaveText(`Shared at ${pathToFileURL(remote.bare).pathname.replace(/^\//, '').replace(/\.git$/, '')}`);
+      await expect(page.getByTestId(`share-${OBS_ID}`)).toHaveText('Upload changes');
+      expect((await remotesOf(OBS_ID)).map((r) => r.name)).toEqual(['origin']);
       // The installation store (the rig's client settings) holds nothing about the remote.
       expect(JSON.stringify(readClientSettingsDoc() ?? {})).not.toContain(remote.bare);
       expect(JSON.stringify(readClientSettingsDoc() ?? {})).not.toContain('origin');
 
       // #530: the shared card shows the action and nothing under it.
-      await expectCleanCard(page, SEEDED_ID);
+      await expectCleanCard(page, OBS_ID);
       await shot(page, testInfo, 'upload-card-clean');
-      const location = await cardLocation(page);
-      const origin = (await remotesOf(SEEDED_ID)).find((r) => r.name === 'origin')!.url;
+      const location = await cardLocation(page, OBS_ID);
+      const origin = (await remotesOf(OBS_ID)).find((r) => r.name === 'origin')!.url;
       const pushedBefore = pushes.length;
 
       // A new local commit, then Upload changes: the token is asked (a new session, D85), then
       // the dialog opens on its review step. Nothing is pushed yet.
-      const second = commitLocally(SEEDED_PROJECT, 'local edit 1');
+      const second = commitLocally(OBS, 'local edit 1');
       expect(second).not.toBe(first);
-      await pressShare(page, SEEDED_ID);
+      await pressShare(page, OBS_ID);
       const dialog = page.getByTestId('share-dialog');
       await expect(page.getByTestId('share-upload')).toBeVisible();
       await expect(dialog).toContainText('Upload changes');
@@ -619,7 +629,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       await expect(page.getByTestId('share-where')).toHaveText(location);
       await expect(page.getByLabel('Repository name')).toHaveCount(0);
       await expect(page.getByTestId('share-account')).toHaveText(SHARING_AS);
-      await expect(page.getByTestId('share-items')).toHaveText('Jonah, Titus');
+      await expect(page.getByTestId('share-items')).toHaveText('Stories 1 to 50');
       await expect(dialog.getByRole('checkbox')).toHaveCount(0);
       await expect(dialog.getByRole('radio')).toHaveCount(0);
       await expect(page.getByTestId('share-submit')).toHaveText('Upload changes');
@@ -631,11 +641,11 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       await page.waitForTimeout(500);
       expect(pushes.length, 'Cancel sends no push').toBe(pushedBefore);
       expect(remote.main()).toBe(first);
-      expect((await remotesOf(SEEDED_ID)).find((r) => r.name === 'origin')!.url).toBe(origin);
-      await expectCleanCard(page, SEEDED_ID);
+      expect((await remotesOf(OBS_ID)).find((r) => r.name === 'origin')!.url).toBe(origin);
+      await expectCleanCard(page, OBS_ID);
 
       // Upload changes in the dialog: one progress line, then the end with the link actions.
-      await page.getByTestId(`share-${SEEDED_ID}`).click();
+      await page.getByTestId(`share-${OBS_ID}`).click();
       await expect(page.getByTestId('share-signin')).toHaveCount(0);
       await page.getByTestId('share-submit').click();
       const done = page.getByTestId('share-done');
@@ -649,14 +659,14 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       // The push went to the same repository: the remote has the new commit, the origin is the same.
       expect(remote.main()).toBe(second);
       expect(pushes.length).toBe(pushedBefore + 1);
-      expect((await remotesOf(SEEDED_ID)).find((r) => r.name === 'origin')!.url).toBe(origin);
+      expect((await remotesOf(OBS_ID)).find((r) => r.name === 'origin')!.url).toBe(origin);
       await page.getByTestId('share-close').click();
       await expect(dialog).toHaveCount(0);
-      await expectCleanCard(page, SEEDED_ID);
+      await expectCleanCard(page, OBS_ID);
 
       // The same session again (#203 test 7b): no sign-in is asked; the dialog, then pushed.
-      const third = commitLocally(SEEDED_PROJECT, 'local edit 2');
-      await uploadChanges(page, SEEDED_ID);
+      const third = commitLocally(OBS, 'local edit 2');
+      await uploadChanges(page, OBS_ID);
       expect(remote.main()).toBe(third);
 
       // The artifact: the push requests of this test, in order.
@@ -666,11 +676,15 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
     });
 
     test('2b. with "Stay signed in", Upload changes in a new app session asks no sign-in (#366 test 1; #530)', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
+      // #678: a shared Bible card syncs; the upload dialog (#530) is proved on a shared OBS card.
+      await makeObsProject(OBS);
+      await page.reload();
+      await turnOnInternet(page);
       const fake = await fakeShare(context, remote);
       const keychain = await fakeKeychain(context);
       await page.goto('/');
       await turnOnInternet(page);
-      await page.getByTestId(`share-${SEEDED_ID}`).click();
+      await page.getByTestId(`share-${OBS_ID}`).click();
       await page.getByLabel('Stay signed in on this computer').check();
       await signIn(page);
       await page.getByTestId('share-next').click();
@@ -678,16 +692,16 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       await expect(page.getByTestId('share-done')).toBeVisible({ timeout: 30_000 });
       await page.getByTestId('share-close').click();
       const first = remote.main();
-      expect(first).toBe(head(SEEDED_PROJECT));
+      expect(first).toBe(head(OBS));
       expect(keychain.held).toBe(fake.tokens.get('translationCore'));
 
       // A new app session, a new local commit: the upload dialog says a sign-in is kept, asks no
       // sign-in, and pushes after Upload changes.
       await page.reload();
       await turnOnInternet(page);
-      await expectCleanCard(page, SEEDED_ID);
-      const second = commitLocally(SEEDED_PROJECT, 'local edit 1');
-      await page.getByTestId(`share-${SEEDED_ID}`).click();
+      await expectCleanCard(page, OBS_ID);
+      const second = commitLocally(OBS, 'local edit 1');
+      await page.getByTestId(`share-${OBS_ID}`).click();
       await expect(page.getByTestId('share-upload')).toBeVisible();
       await expect(page.getByTestId('share-account')).toHaveText(KEPT);
       expect(remote.main()).toBe(first);
@@ -700,17 +714,19 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
     });
 
     test('2d. a kept token Door43 refuses when the upload is sent: nothing is pushed, the token is forgotten, the sign-in step opens, and the new sign-in returns to the review; the upload waits for its own click (#530; #366 test 5)', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
+      // #678: a shared Bible card syncs; the upload dialog (#530) is proved on a shared OBS card.
+      await makeObsProject(OBS);
       // The fake knows no token, so the kept one is revoked (the upload leg of case 7d).
       const fake = await fakeShare(context, remote);
       const keychain = await fakeKeychain(context, 'revoked-token');
       const pushes = watchPushes(page);
-      addOrigin(SEEDED_PROJECT, remote);
+      addOrigin(OBS, remote);
       await page.reload();
       await turnOnInternet(page);
-      await expectCleanCard(page, SEEDED_ID);
+      await expectCleanCard(page, OBS_ID);
 
       // The dialog opens on the kept sign-in, and sends nothing.
-      await page.getByTestId(`share-${SEEDED_ID}`).click();
+      await page.getByTestId(`share-${OBS_ID}`).click();
       await expect(page.getByTestId('share-upload')).toBeVisible();
       await expect(page.getByTestId('share-account')).toHaveText(KEPT);
       await page.waitForTimeout(500);
@@ -739,7 +755,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       await page.getByTestId('share-submit').click();
       await expect(page.getByTestId('share-done')).toBeVisible({ timeout: 30_000 });
       expect(pushes.length).toBe(1);
-      expect(remote.main()).toBe(head(SEEDED_PROJECT));
+      expect(remote.main()).toBe(head(OBS));
     });
 
     test('2c. a token kept by an earlier version without the create scopes: the share asks the password once, says why, replaces the token, and shares (#467)', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
@@ -809,12 +825,16 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
     });
 
     test('6. refusals: the name exists on the account and on an organization; a non-fast-forward push; each with its code, nothing pushed, and in the ops log', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {
+      // #678: a shared Bible card syncs; the upload dialog (#530) is proved on a shared OBS card.
+      await makeObsProject(OBS);
+      await page.reload();
+      await turnOnInternet(page);
       const fake = await fakeShare(context, remote, {
         organizations: [ORGS[0]],
-        existingRepositories: [`${USER.username}/${SEEDED_PROJECT}`, `orgA/${SEEDED_PROJECT}`],
+        existingRepositories: [`${USER.username}/${OBS}`, `orgA/${OBS}`],
       });
       const before = opsCodes().length;
-      await pressShare(page, SEEDED_ID);
+      await pressShare(page, OBS_ID);
       await expect(page.getByTestId('share-orgs-loading')).toHaveCount(0);
       await page.getByTestId('share-next').click();
       await page.getByTestId('share-submit').click();
@@ -823,7 +843,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       await expect(error).toContainText('That name exists on this account or organization; pick another.');
       await expect(page.getByTestId('share-check')).toBeVisible();
       expect(remote.main()).toBeNull();
-      expect((await remotesOf(SEEDED_ID)).find((r) => r.name === 'origin')).toBeUndefined();
+      expect((await remotesOf(OBS_ID)).find((r) => r.name === 'origin')).toBeUndefined();
       // The same name on the organization.
       await page.getByTestId('share-back').click();
       await page.getByTestId('share-org-orgA').click();
@@ -833,11 +853,11 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       expect(remote.main()).toBeNull();
       expect(fake.repositories.size).toBe(2);
       // Another name shares.
-      await page.getByLabel('Repository name').fill(`${SEEDED_PROJECT}_2`);
+      await page.getByLabel('Repository name').fill(`${OBS}_2`);
       await page.getByTestId('share-submit').click();
-      await expect(page.getByTestId('share-url')).toHaveText(`${QA_SERVER}/orgA/${SEEDED_PROJECT}_2`, { timeout: 30_000 });
+      await expect(page.getByTestId('share-url')).toHaveText(`${QA_SERVER}/orgA/${OBS}_2`, { timeout: 30_000 });
       await page.getByTestId('share-close').click();
-      const shared = head(SEEDED_PROJECT);
+      const shared = head(OBS);
       expect(remote.main()).toBe(shared);
 
       // Another device pushes; this device commits; Upload changes is refused, the remote keeps theirs.
@@ -849,10 +869,10 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       git(other, 'push', '-q', 'origin', 'main');
       const theirs = remote.main();
       expect(theirs).not.toBe(shared);
-      commitLocally(SEEDED_PROJECT, 'local edit');
+      commitLocally(OBS, 'local edit');
       // #530: the refusal shows in the upload dialog. A second try cannot change it, so the
       // dialog offers Close alone; the card stays clean.
-      await page.getByTestId(`share-${SEEDED_ID}`).click();
+      await page.getByTestId(`share-${OBS_ID}`).click();
       await page.getByTestId('share-submit').click();
       await expect(error).toHaveAttribute('data-code', 'share.non-fast-forward', { timeout: 30_000 });
       await expect(error).toContainText('Not uploaded.');
@@ -862,7 +882,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       expect(remote.main()).toBe(theirs);
       await page.getByTestId('share-close').click();
       await expect(page.getByTestId('share-dialog')).toHaveCount(0);
-      await expectCleanCard(page, SEEDED_ID);
+      await expectCleanCard(page, OBS_ID);
       // Each refusal is in the ops log (#374, test 13).
       await expect.poll(() => opsCodes().slice(before)).toEqual(['share.name-exists', 'share.name-exists', 'share.non-fast-forward']);
     });
@@ -913,12 +933,16 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
     });
 
     test('13. the upload dialog: a failed upload shows there with Try again, and a second try uploads; two fast clicks send one push; the keyboard opens and cancels it; it does not close during the upload (#530)', { tag: ['@inc85', '@J11'] }, async ({ page, context }, testInfo) => {
+      // #678: a shared Bible card syncs; the upload dialog (#530) is proved on a shared OBS card.
+      await makeObsProject(OBS);
+      await page.reload();
+      await turnOnInternet(page);
       await fakeShare(context, remote);
       const pushes = watchPushes(page);
-      await shareFirstTime(page, SEEDED_ID);
+      await shareFirstTime(page, OBS_ID);
       const first = remote.main();
-      const second = commitLocally(SEEDED_PROJECT, 'local edit 1');
-      const action = page.getByTestId(`share-${SEEDED_ID}`);
+      const second = commitLocally(OBS, 'local edit 1');
+      const action = page.getByTestId(`share-${OBS_ID}`);
       const dialog = page.getByTestId('share-dialog');
       const submit = page.getByTestId('share-submit');
 
@@ -978,7 +1002,7 @@ test.describe('J11 — a facilitator shares the project to Door43', () => {
       expect(pushes.length).toBe(sent + 1);
       expect(remote.main()).toBe(second);
       await page.getByTestId('share-close').click();
-      await expectCleanCard(page, SEEDED_ID);
+      await expectCleanCard(page, OBS_ID);
     });
 
     test('12. The internet off: Share opens one "Turn on the internet?" dialog; Not now sends nothing; Turn on internet goes to the sign-in step, and the share needs no second dialog (D95)', { tag: ['@inc85', '@J11'] }, async ({ page, context }) => {

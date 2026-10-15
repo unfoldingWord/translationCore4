@@ -385,13 +385,14 @@ _Avoid_: error code, error message (as the thing a test checks)
 
 ## Team sync (D98, 2026-10-13)
 
-The ops log of a sync is the **Ops record**, **ops log** above: the next start finishes or
-undoes an operation that a crash stopped.
+The ops log keeps the Report of a sync (**Ops record**, **ops log** above), but it never locks
+a project. The **apply marker**, `ingredients/tc4-sync/apply.json` in the scratch copy, is the
+record of an apply that may have begun: the next start or sync finishes that apply (D101).
 
 **Sync**:
 One press of "Sync with Door43" after the first share. It gets Door43 main, checks each incoming
 journal file, adds the own journal files of this computer, and rebuilds the project files from
-all journals. Then it pushes, and swaps the result in at the same path. BURRITO-SPEC §8.7 holds
+all journals. Then it pushes, and applies the pushed tree to the project in place (D101). BURRITO-SPEC §8.7 holds
 its rules (R-8.7.7–R-8.7.12). Round 1 syncs Bible projects only.
 _Avoid_: merge (a sync merges no project file), pull, receive (the word of the long-term plan),
 upload changes (the label before D98)
@@ -430,6 +431,21 @@ Two translators changed the same item from the same starting point. The specific
 to a person for review (G7).
 _Avoid_: merge conflict (git's word for a different thing)
 
+**Conflict review**:
+The screen where a translator looks at each verse-text conflict, one verse at a time (#679). It
+shows each version of the verse with its owner and date. It reads the fold
+(`src/data/journal/verseConflicts.ts`) and does not start a sync. The translator can stop the
+review at any time. The conflicts that stay open stay on the list.
+_Avoid_: merge screen, diff view
+
+**Keep a version**:
+The action that ends one verse-text conflict. The translator selects one version and confirms.
+The store then writes one verse edit with the text of that version (`resolveVerse`). The edit
+names all versions of the verse in `supersedes` (R-8.3.5). The fold then shows no conflict for
+the verse. The other versions stay in the history (`retained[]`, reason `superseded`, R-8.3.6).
+The next sync sends the edit to the team.
+_Avoid_: accept, merge, resolve (for the person's action), choose a winner
+
 **Outbox**:
 Changes saved on this computer that are not yet written into the project repository. A sync
 keeps each outbox entry (G1).
@@ -440,5 +456,5 @@ The local Pankosmia server that the tests and journeys run against.
 _Avoid_: test server, dev server
 
 **Scratch copy**:
-A temporary repository that a sync builds, then swaps in or deletes.
+A temporary repository that a sync builds from Door43 main, pushes, applies to the project, then deletes.
 _Avoid_: temp clone, staging repository

@@ -2,7 +2,7 @@
 // record before its first side effect and closes it with its Report; a record a
 // killed operation left open is resolved at the next start of the app.
 import { describe, expect, it, vi } from 'vitest';
-import { OpsLog, opsEntriesOf, serialSettingsWriter } from '../src/data/journal/opsLog';
+import { OpsLog, opsEntriesOf, serialSettingsWriter, type OpsRecoveryApi } from '../src/data/journal/opsLog';
 import { reportError } from '../src/data/journal/runtime';
 import { runImport } from '../src/data/import/shell';
 import { FAKE_PARSER } from '../src/data/import/parsers';
@@ -91,6 +91,7 @@ describe('#374 each operation writes and closes an ops record', () => {
     const rig = journalingRig();
     const api = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: rig.fetchFn });
     const clock = tickingNow('2026-09-27T09:00:00.000Z');
+    await ops.recover(api); // the app recovers at each start before any store opens
     const store = new JournalingStore({ api, kv: memKv(), now: () => clock.advance(13), ops });
     await store.createProject({ content_name: 'Prueba', content_abbr: 'prueba', content_language_code: 'es', add_book: false, versification: 'eng' });
     await store.commit('Project created (tC4)');
@@ -142,7 +143,7 @@ describe('#374 a kill between the two leaves a record the next start resolves', 
     await before.begin('export', { producer: 'pdf' });
     await before.begin('open', { repoPath: '_local_/_local_/prueba' });
     const api = { listLocalRepos: vi.fn(async () => ['_local_/_local_/prueba']), deleteRepo: vi.fn(async () => {}) };
-    const resolved = await appStart(settings).recover(api);
+    const resolved = await appStart(settings).recover(api as unknown as OpsRecoveryApi);
     expect(resolved.map((e) => [e.op, e.report?.ok, e.report?.facts.interrupted])).toEqual([['export', false, true], ['open', false, true]]);
     expect(api.deleteRepo).not.toHaveBeenCalled();
   });
@@ -166,7 +167,7 @@ describe('#374 a kill between the two leaves a record the next start resolves', 
     expect(rig.repos.has(REPO)).toBe(false);
     expect(opsEntriesOf(settings.get())).toEqual([expect.objectContaining({ op: 'import', report })]);
     const recovery = { listLocalRepos: vi.fn(async () => [...rig.repos.keys()]), deleteRepo: vi.fn(async () => {}) };
-    expect(await appStart(settings).recover(recovery)).toEqual([]);
+    expect(await appStart(settings).recover(recovery as unknown as OpsRecoveryApi)).toEqual([]);
     expect(recovery.deleteRepo).not.toHaveBeenCalled();
     error.mockRestore();
   });
@@ -187,7 +188,7 @@ describe('#374 a kill between the two leaves a record the next start resolves', 
     const settings = settingsDoc();
     const ops = appStart(settings);
     await ops.begin('checkpoint', {});
-    expect(await ops.recover({ listLocalRepos: async () => [], deleteRepo: async () => {} })).toEqual([]);
+    expect(await ops.recover({ listLocalRepos: async () => [], deleteRepo: async () => {} } as unknown as OpsRecoveryApi)).toEqual([]);
   });
 });
 
@@ -202,6 +203,19 @@ describe('#374 the one settings writer', () => {
     ]);
     expect(settings.get().draftUnits).toEqual({ 'x|TIT': 'verse' });
     expect(opsEntriesOf(settings.get())).toHaveLength(1);
+  });
+
+  it('#676: a whole-document replace goes through the same queue: it waits for a queued update, and the update after it reads its document', async () => {
+    const settings = settingsDoc();
+    const update = serialSettingsWriter(settings.read, settings.write);
+    const order: string[] = [];
+    await Promise.all([
+      update((doc) => { order.push('update 1'); return { ...doc, a: 1 }; }),
+      update.replace({ replaced: true }).then(() => order.push('replace')),
+      update((doc) => { order.push('update 2'); return { ...doc, b: 2 }; }),
+    ]);
+    expect(order).toEqual(['update 1', 'replace', 'update 2']);
+    expect(settings.get()).toEqual({ replaced: true, b: 2 });
   });
 
   it('a failed ops write is reported, never dropped', async () => {

@@ -6,6 +6,7 @@
 // §5.2 sidecar with its resolution record.
 import { test, expect } from './helpers/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
+import { holdCheckpoints } from './helpers/checkpointHold';
 import { articleMarks } from './helpers/articleMarks';
 import { gateOff, turnOnInternet } from './helpers/door43Share';
 import { cachedZip, mockDoor43Package, type CachedRepo } from './helpers/door43Package';
@@ -648,6 +649,37 @@ test.describe('J4 — a checker works a book', () => {
       await testInfo.attach('check-article-academy', { path: shot, contentType: 'image/png' });
     },
   );
+
+  test(
+    'a notes check opened before the book text arrives shows the draft when it arrives (#722 class)',
+    { tag: ['@inc2', '@J4'] },
+    async ({ page }) => {
+      writeProjectPins(SEEDED_PROJECT, PINS());
+      await page.goto('/');
+      await page.getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`).getByTestId('book-tile-JON').click();
+      const rail = page.getByRole('complementary');
+      await expect(rail.getByRole('button', { name: /^Jonah \d+%/ })).toBeVisible();
+
+      // Jonah → Titus while a checkpoint is held: the Titus check session is
+      // new (a book switch closes the old one) and is built before the text.
+      const hold = await holdCheckpoints(page);
+      await page.getByRole('tab', { name: 'Check', exact: true }).click();
+      await expect.poll(hold.held).toBeGreaterThan(0);
+      await expect(page.getByTestId('open-translationNotes')).toBeVisible();
+      await page.getByRole('tab', { name: 'Translate', exact: true }).click();
+      await rail.getByRole('button', { name: /^Titus \d+%/ }).click();
+      await expect(page.getByText('Loading book…')).toBeVisible(); // the window: no book text
+      await page.getByRole('tab', { name: 'Check', exact: true }).click();
+      await page.getByTestId('open-translationNotes').click();
+      await expect(page.getByTestId('check-progress')).toBeVisible();
+      await page.getByTestId('check-list').locator('button[data-ref="1:1"]').first().click();
+      const target = page.getByTestId('check-target');
+      await expect(target).toHaveAttribute('data-drafted', '0'); // built without the text
+
+      hold.release();
+      await expect(target).toHaveAttribute('data-drafted', '1'); // TIT 1:1 is drafted in the sample
+    },
+  );
 });
 
 // Issue #62 teardown: after this journey's mutations, every journaled local
@@ -681,7 +713,8 @@ const BSOJ: CachedRepo[] = [
 ];
 // The catalogue held still lists the helps only. A Bible row is always downloaded, and
 // served from the route the 90 MB ar_avd export closed the test's browser; a checking set
-// needs tN, TWL, tW and tA (D17), not a Bible.
+// needs tN, TWL, tW and tA (D17), not a Bible. The seed sideloads ar_avd instead (#704),
+// so the gateway change finds BSOJ's literal Bible on the machine.
 const arabicMissing = (): string | null => {
   if (process.env.TC4_ARABIC_FIXTURE !== '1') return 'the Arabic fixture is not selected: run with TC4_ARABIC_FIXTURE=1';
   const absent = BSOJ.filter((r) => !fs.existsSync(cachedZip(r.repo, r.tag))).map((r) => `${r.repo} ${r.tag}`);
@@ -689,6 +722,10 @@ const arabicMissing = (): string | null => {
   if (!fs.existsSync(rigRepo(ARABIC_PROJECT))) return `the seed did not build ${ARABIC_PROJECT}`;
   return null;
 };
+// #704: a phrase of Titus 1:1 in each source Bible, NFC as the app may render either form.
+const nfc = (s: string | null | undefined): string => (s ?? '').normalize('NFC');
+const AR_AVD_TIT_1_1 = nfc('عَبْدُ ٱللهِ');
+const EN_ULT_TIT_1_1 = 'a servant of God';
 /** `dir` and the computed direction of each match of `loc`. */
 const directionsOf = (loc: import('@playwright/test').Locator) =>
   loc.evaluateAll((els) => els.map((el) => ({ dir: el.getAttribute('dir'), direction: getComputedStyle(el).direction })));
@@ -736,6 +773,9 @@ test.describe.serial('J4 — the Arabic package, in an Arabic right-to-left proj
       await page.getByTestId('settings-manage-sources').click();
       const sources = page.getByTestId('sources-modal');
       await expect(sources).toBeVisible({ timeout: 60_000 });
+      // AC6 (D100): the language step lists one Arabic package, BSOJ's.
+      await expect(sources.getByText('العربية', { exact: true })).toHaveCount(1);
+      await expect(sources.getByText(/^(BSOJ|ar_gt) · /)).toHaveText([/^BSOJ · /]);
       await sources.getByText(/^BSOJ · /).click();
       await page.getByTestId('sources-download').click();
       await expect(page.getByTestId('sources-done')).toBeVisible({ timeout: 240_000 });
@@ -756,6 +796,14 @@ test.describe.serial('J4 — the Arabic package, in an Arabic right-to-left proj
       expect(primary[slot]?.repoPath, slot).toMatch(new RegExp(`/BSOJ/${repo}$`));
       expect(primary[slot]?.sha, slot).toMatch(/^[0-9a-f]{40}$/);
     }
+    // #704 AC1: the literal source pane names BSOJ's Bible (the seed installs ar_avd).
+    const panes = (readProjectPins(ARABIC_PROJECT) as { extraScripture?: Array<{ id: string; repoPath: string; sha?: string }> }).extraScripture ?? [];
+    const panesFile = testInfo.outputPath('arabic-source-panes.json');
+    fs.writeFileSync(panesFile, `${JSON.stringify(panes, null, 2)}\n`);
+    await testInfo.attach('arabic-source-panes', { path: panesFile, contentType: 'application/json' });
+    const literal = panes.find((p) => p.id === 'ult' || p.id === 'glt');
+    expect(literal?.repoPath).toMatch(/\/BSOJ\/ar_avd$/);
+    expect(literal?.sha).toMatch(/^[0-9a-f]{40}$/);
   });
 
   test('AC2 and AC4: with the internet off and an English interface, the Arabic helps read right to left, the tW list comes from ar_twl, and nothing leaves the computer @J4', async ({ page }, testInfo) => {
@@ -781,10 +829,24 @@ test.describe.serial('J4 — the Arabic package, in an Arabic right-to-left proj
     const understandPicture = testInfo.outputPath('arabic-helps-understand.png');
     await page.screenshot({ path: understandPicture });
     await testInfo.attach('arabic-helps-understand', { path: understandPicture, contentType: 'image/png' });
+    // #704 AC2: Translate's source pane shows BSOJ's Arabic Bible, not the English ULT.
+    await page.getByRole('tab', { name: 'Translate', exact: true }).click();
+    const source = page.getByTestId('draft-source-text');
+    await expect(source.first()).toBeVisible({ timeout: 30_000 });
+    seen.translateSource = nfc(await source.first().textContent());
+    const translatePicture = testInfo.outputPath('arabic-source-translate.png');
+    await page.screenshot({ path: translatePicture });
+    await testInfo.attach('arabic-source-translate', { path: translatePicture, contentType: 'image/png' });
     // Check: tN, then tW.
     await page.getByRole('tab', { name: 'Check', exact: true }).click();
     await page.getByTestId('open-translationNotes').click();
     seen.checkNote = await directionOf(page.getByTestId('check-note-text'));
+    // #704 AC2: the Check view's gateway row shows the same Bible.
+    await expect(page.getByTestId('ult-pane-text')).toBeVisible({ timeout: 30_000 });
+    seen.checkGatewayRow = nfc(await page.getByTestId('ult-pane-text').textContent());
+    const sourcePicture = testInfo.outputPath('arabic-source-check.png');
+    await page.screenshot({ path: sourcePicture, animations: 'disabled' });
+    await testInfo.attach('arabic-source-check', { path: sourcePicture, contentType: 'image/png' });
     await page.getByTestId('open-academy').click();
     seen.checkArticle = await directionOf(page.getByTestId('academy-drawer').getByTestId('article-panel'));
     await page.keyboard.press('Escape');
@@ -817,5 +879,10 @@ test.describe.serial('J4 — the Arabic package, in an Arabic right-to-left proj
     // The tW articles are Arabic text.
     for (const part of ['wordArticleText', 'checkWordArticleText']) expect(String(seen[part]), part).toMatch(/[\u0600-\u06FF]/);
     expect(seen.external).toEqual([]);
+    // #704 AC2: Titus 1:1 in BSOJ's ar_avd v6.9 and in the English ULT v91 (both from their cached exports).
+    for (const part of ['translateSource', 'checkGatewayRow']) {
+      expect(String(seen[part]), part).toContain(AR_AVD_TIT_1_1);
+      expect(String(seen[part]), part).not.toContain(EN_ULT_TIT_1_1);
+    }
   });
 });

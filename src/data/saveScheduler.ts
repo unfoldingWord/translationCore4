@@ -95,6 +95,17 @@ export class SaveScheduler {
     this.reconcile = options.reconcile;
   }
 
+  /** Forget a clean book (#679): a later edit of it throws "book not loaded"
+   * until loadBook installs new text. Refused over unsaved work, as loadBook is. */
+  unloadBook(book: string): void {
+    if (this.writing > 0 || this.isDirty(book) || this.failure?.book === book)
+      throw new Error(`SaveScheduler: refusing to unload "${book}" over unsaved work (drain() first)`);
+    this.current.delete(book);
+    this.persisted.delete(book);
+    this.reverted.delete(book);
+    this.notify();
+  }
+
   /** Seed a book's raw text (from the store read). Resets its dirty state.
    *
    * Guard (review findings B3/M1, 2026-07-30): loading over unsaved work is

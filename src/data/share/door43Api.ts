@@ -229,6 +229,28 @@ export class Door43Api {
     return Number(raw);
   }
 
+  /** #678: whether the repository `owner/repo` has the branch `branch`.
+   * `GET /repos/{owner}/{repo}/branches/{branch}` answers 200 for a branch and
+   * 404 when there is none: an empty repository, or no such repository
+   * [VERIFIED — the Door43 QA server, 28.1.0+dcs.47-gb4768a2512, read-only calls,
+   * 2026-10-14: en_ult main 200, a made-up branch 404, an empty repository's
+   * main 404]. Any other answer throws. */
+  async hasBranch(session: Door43Session, owner: string, repo: string, branch: string): Promise<boolean> {
+    assertName(owner, 'owner');
+    assertName(repo, 'repository name');
+    assertName(branch, 'branch');
+    try {
+      await this.request(
+        `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/branches/${encodeURIComponent(branch)}`,
+        session,
+      );
+      return true;
+    } catch (error) {
+      if (error instanceof Door43ApiError && error.status === 404) return false;
+      throw error;
+    }
+  }
+
   /** Create the repository `name` under the account or the organization. */
   async createRepository(
     session: Door43Session,

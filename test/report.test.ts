@@ -56,12 +56,16 @@ describe('#156 the refusal-code table is closed and bound', () => {
 
   it('every live code has the recovery sentence the Home banner looks up; the reserved codes wait for their issues', () => {
     // Live = every code in the table except the kernels still to come (#41, #362, #203), the
-    // team sync codes (D98: the sync core #675) and the export code no producer throws yet
-    // (export.unsupported-kind). The import shell (#361) throws import.name-exists and
-    // import.write-failed; the reference writer throws actor.name-already-set (R-8.5.26).
-    const reserved = /^(import\.damaged\.|share\.|sync\.|export\.unsupported-kind$)/;
+    // export code no producer throws yet (export.unsupported-kind). The import shell (#361)
+    // throws import.name-exists and import.write-failed; the reference writer throws
+    // actor.name-already-set (R-8.5.26); the sync core (#675) throws the four sync codes; the
+    // sync shell (#676) throws twelve more (sync.cleanup-failed is the twelfth), the sync
+    // throws opslog.not-loaded, and the store throws open.not-a-project (#676); the open from
+    // Door43 (#677) throws open-door43.name-exists, open-door43.no-journal, and (its disk gate)
+    // open-door43.pending and open-door43.removed.
+    const reserved = /^(import\.damaged\.|share\.|export\.unsupported-kind$)/;
     const live = Object.keys(REFUSAL_CODES).filter((code) => !reserved.test(code));
-    expect(live.length).toBe(30);
+    expect(live.length).toBe(55);
     for (const code of live) expect(t(`refusal.${code}`, undefined, ''), code).not.toBe('');
   });
 
