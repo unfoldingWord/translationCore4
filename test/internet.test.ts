@@ -74,6 +74,9 @@ describe('the request boundary', () => {
     'http://127.0.0.1:19998/api/net/status', // another origin is not the local server
     '/api/gitea/remote-repos/git.door43.org/unfoldingWord',
     `${ORIGIN}/api/git/push/_local_/_local_/p`,
+    // #678: the sync gets Door43 main with a clone and a pull
+    `${ORIGIN}/api/git/clone-repo/git.door43.org/org/repo`,
+    `${ORIGIN}/api/git/pull-repo/origin/_local_/_local_/p`,
   ];
 
   it('starts off, and refuses the internet before it is sent', async () => {
@@ -84,6 +87,17 @@ describe('the request boundary', () => {
     for (const url of external) await expect(guarded(url), url).rejects.toThrow(NO_CONSENT);
     await expect(guarded(new Request('https://qa.door43.org/x'))).rejects.toThrow(NO_CONSENT);
     expect(seen).toEqual([]);
+  });
+
+  it('#678: while the internet is off, the sync clone and pull of Door43 main are refused; the local copy of the stand-in is sent', async () => {
+    const { seen, fetchFn } = recorder();
+    const guarded = guardFetch(fetchFn, new InternetSwitch(), ORIGIN);
+    await expect(guarded(`${ORIGIN}/api/git/clone-repo/git.door43.org/org/repo`, { method: 'POST' })).rejects.toThrow(NO_CONSENT);
+    await expect(guarded('/api/git/pull-repo/origin/_local_/_local_/p', { method: 'POST' })).rejects.toThrow(NO_CONSENT);
+    expect(seen).toEqual([]);
+    // control: the stand-in's copy of the local mirror is a local request
+    await guarded('/api/git/copy/_local_/_archive_/org--repo?target_path=file/org/repo', { method: 'POST' });
+    expect(seen).toHaveLength(1);
   });
 
   it('sends local requests to the platform at any time', async () => {

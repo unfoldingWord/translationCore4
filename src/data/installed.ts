@@ -269,6 +269,34 @@ export const installedPathFor = (installed: InstalledMap, pin: ResourcePin): str
 export const isPinLocal = (installed: InstalledMap, pin: ResourcePin): boolean =>
   installedEntry(installed, pin) !== undefined;
 
+/** #678 (D88 point 6): how many pins of a project's pin file name a version
+ * that this computer does not have: each language-set pin, each original-
+ * language pin and each source Bible pane pin (`extraScripture`, #412) that
+ * carries a commit (D59: a pin with no sha is satisfiable by no install, so it is
+ * not counted as a version to download). */
+export const missingPinCount = (
+  resources:
+    | {
+        languageSets?: Record<string, LanguageSet>;
+        resources?: { originalLanguage?: { nt?: ResourcePin; ot?: ResourcePin } };
+        extraScripture?: ResourcePin[];
+      }
+    | null
+    | undefined,
+  installed: InstalledMap,
+): number => {
+  const pins: unknown[] = [
+    ...Object.values(resources?.languageSets ?? {}).flatMap((set) => Object.values(set ?? {})),
+    ...Object.values(resources?.resources?.originalLanguage ?? {}),
+    ...(resources?.extraScripture ?? []),
+  ];
+  return pins.filter(
+    (pin): pin is ResourcePin =>
+      Boolean(pin && typeof pin === 'object' && 'repoPath' in pin && (pin as ResourcePin).sha) &&
+      !isPinLocal(installed, pin as ResourcePin),
+  ).length;
+};
+
 /** The open project's pinned identity for one local install target, when no
  * install on this machine satisfies it. This is what a download of that repo
  * must fetch: identity is (repoPath, sha) — D58 — so downloading the catalog's
@@ -297,26 +325,22 @@ export const unsatisfiedProjectPinFor = (
     | {
         languageSets?: Record<string, LanguageSet>;
         resources?: { originalLanguage?: { nt?: ResourcePin; ot?: ResourcePin } };
+        extraScripture?: ResourcePin[];
       }
     | null
     | undefined,
   localRepoPath: string,
   installed: InstalledMap,
 ): ResourcePin | null => {
-  for (const rung of ['primary', 'fallback']) {
-    const set = resources?.languageSets?.[rung];
-    for (const pin of Object.values(set ?? {})) {
-      if (isMatchingUnsatisfiedPin(pin, localRepoPath, installed)) return pin;
-    }
-  }
   const orig = resources?.resources?.originalLanguage;
-  if (orig) {
-    for (const testament of ['nt', 'ot'] as const) {
-      const pin = orig[testament];
-      if (isMatchingUnsatisfiedPin(pin, localRepoPath, installed)) return pin;
-    }
-  }
-  return null;
+  const pins: unknown[] = [
+    ...['primary', 'fallback'].flatMap((rung) => Object.values(resources?.languageSets?.[rung] ?? {})),
+    orig?.nt,
+    orig?.ot,
+    // the source Bible panes (#412): the pins that `missingPinCount` counts (#678)
+    ...(resources?.extraScripture ?? []),
+  ];
+  return pins.find((pin): pin is ResourcePin => isMatchingUnsatisfiedPin(pin, localRepoPath, installed)) ?? null;
 };
 
 /** Re-point a pin at the version this machine actually has, when it has one.
@@ -469,18 +493,19 @@ const preferredNamedPin = (pins: ResourcePin[], name: string): ResourcePin | und
 };
 
 /** The Bibles one gateway package supplies for the Translate source panes (#412):
- * its literal text (`<lang>_ult`, else `<lang>_glt`) and its simplified text
- * (`<lang>_ust`, else `<lang>_gst`), each only when installed with its identity. */
+ * its literal text (the Bible its registry entry names as `literal`, else
+ * `<lang>_ult`, else `<lang>_glt`) and its simplified text (`<lang>_ust`, else
+ * `<lang>_gst`), each only when installed with its identity. */
 export const gatewayBiblesFromInstalled = (
   installed: InstalledMap,
-  gateway: { id: string; org: string },
+  gateway: { id: string; org: string; literal?: string },
 ): { literal?: ResourcePin; simplified?: ResourcePin } => {
   const org = gateway.org.toLowerCase();
   const ofOrg = Object.values(installed).filter((p) =>
     !!p.sha && !!p.flavor && p.repoPath.toLowerCase().includes(`/${org}/`));
   const byName = (name: string) => preferredNamedPin(ofOrg, name);
   return {
-    literal: byName(`${gateway.id}_ult`) ?? byName(`${gateway.id}_glt`),
+    literal: (gateway.literal ? byName(gateway.literal) : undefined) ?? byName(`${gateway.id}_ult`) ?? byName(`${gateway.id}_glt`),
     simplified: byName(`${gateway.id}_ust`) ?? byName(`${gateway.id}_gst`),
   };
 };

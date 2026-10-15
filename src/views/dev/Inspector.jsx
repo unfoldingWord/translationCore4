@@ -21,7 +21,9 @@ export function InspectorPanel({ ops }) {
       <strong style={{ color: 'var(--uw-ocean)' }}>{t('inspector.title')}</strong>
       {ops.errors.length > 0 && (
         <ul data-testid="dev-inspector-errors" style={{ margin: 0, paddingInlineStart: 18, color: 'var(--tc-warn-text)', fontSize: 'var(--fs-caption-lg)' }}>
-          {ops.errors.map((e, i) => <li key={`${e.id}:${i}`}>{t('inspector.writeFailed', { op: e.op, error: e.error })}</li>)}
+          {ops.errors.map((e, i) => <li key={`${e.id}:${i}`}>{e.kind === 'settings-unreadable'
+            ? t('inspector.settingsUnreadable', { error: e.error })
+            : t('inspector.writeFailed', { op: e.op, error: e.error })}</li>)}
         </ul>
       )}
       <span style={{ fontWeight: 'var(--fw-bold)', fontSize: 'var(--fs-ui-sm)' }}>{t('inspector.lastReport')}</span>

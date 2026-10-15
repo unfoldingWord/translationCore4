@@ -44,7 +44,7 @@ in the file:
   included" badge and installed counts there, which are part of the row's
   accessible name.
 - `tokens/fonts.css`: the Google Fonts `@import` is removed. The app works
-  offline, so Mulish, Charis SIL, Noto Serif, Noto Serif Hebrew and Amiri are
+  offline, so Mulish, Noto Sans Arabic (#686), Charis SIL, Noto Serif, Noto Serif Hebrew and Amiri are
   `@font-face` rules over `.woff2` files in `assets/fonts/`, with their OFL
   licence texts (#3). Noto Nastaliq Urdu is not fetched.
 - `primitives/Layer`: new `scrimProps`, spread onto the scrim element, so a
@@ -101,6 +101,8 @@ in the file:
   children as it did when they were the callout's direct children.
 - `Divider`: the ignored `inverse` prop is destructured as `_inverse`, and
   `Menu` drops an unused `Stack` import — both for the repository's lint.
+- `BookTile` (#679): `children` render below the progress bar. The Home book
+  tile shows its count of verse conflicts there.
 
 Dropped with this version: the local `--tc-invalid-inverse` token (#FF8B8B).
 The package now ships `--tc-invalid-on-dark` (#F2938A) for the same purpose,

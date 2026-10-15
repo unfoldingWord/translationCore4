@@ -66,6 +66,13 @@ Bible suite, with real Door43 identities. `npm run validate` runs the `OBS` grou
 journal semantics of §10 are JC-33 in `npm run validate:journal`. Each OBS check also fires
 on a deliberately broken copy.
 
+## The team-sync fixture (`fixtures/team-sync/`, D98)
+
+`npm run generate` also rebuilds `fixtures/team-sync/` (`fixtures/team-sync/generate.mjs`):
+the journals of three translators on one project, and two broken files kept apart. Its
+README names each case. The journal suite group JC-35 reads it, and the team sync issues
+of epic #24 use the same cases.
+
 Two more scripts exist here but are rig-gated: `npm run validate:transport` and
 `npm run validate:roundtrip` need a running Pankosmia rig (set `RIG_REPOS` to its
 repos directory). Do not run them on a clean clone.

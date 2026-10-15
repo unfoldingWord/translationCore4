@@ -47,9 +47,10 @@ import { INSTALLED_SUITE } from '../installedSuite';
 import { withBookHeader } from '../seed';
 import { JournalStore } from './journalStore';
 import { idbKvStore, type KvStore } from './identity';
-import { sealAction, type JournalEvent } from './seal';
+import { sealAction, segmentName, type JournalEvent } from './seal';
 import { defaultFoldRunner, type FoldRunner } from './foldRunner';
-import type { OpsRecorder } from './opsLog';
+import { verseConflicts, type VerseConflict } from './verseConflicts';
+import { guardOpenCopy, isApplyPending, recoverySettled, syncGenerationOf, type OpsRecorder } from './opsLog';
 import {
   applyStoryState,
   completePartialPins,
@@ -62,6 +63,7 @@ import {
   STORY_BOOK_ID,
   STORY_FILE,
   isUnjournaledIngredient,
+  isRemovableDerivedClass,
   normalizeEvent,
   projectAlignments,
   projectResources,
@@ -91,6 +93,16 @@ import {
 
 /** App-created projects live under this org (same constant as HttpStore). */
 const APP_ORG = '_local_/_local_';
+
+/** #676: a tC4 project lives only at `_local_/_local_/<name>` (httpStore.ts). A
+ * repository at another path is not a project: a resource, or the fixed clone
+ * path `<host>/<org>/<repo>` of a sync, which the sync deletes. No open and no
+ * create may bind it. */
+const refuseNonProjectPath = (repoPath: string): void => {
+  const name = repoPath.startsWith(`${APP_ORG}/`) ? repoPath.slice(APP_ORG.length + 1) : '';
+  if (!name || name.includes('/'))
+    throw new Refusal('open.not-a-project', `${repoPath} is not a tC4 project path (${APP_ORG}/<name>)`, { repoPath });
+};
 
 const TOOL_IDS = ['translationWords', 'translationNotes'] as const;
 
@@ -231,7 +243,9 @@ const spanMapping = (oldSlots: string[], newSlots: string[]): Array<{ from: stri
 // ---------------------------------------------------------------------------
 
 const projectQueues = new Map<string, Promise<unknown>>();
-const inProjectQueue = <T>(repoPath: string, fn: () => Promise<T>): Promise<T> => {
+/** Run `fn` after every queued mutation of `repoPath` settles. Exported for the
+ * sync (#676), which holds the project for its whole run, apply included. */
+export const inProjectQueue = <T>(repoPath: string, fn: () => Promise<T>): Promise<T> => {
   const prior = projectQueues.get(repoPath) ?? Promise.resolve();
   const run = prior.then(fn, fn);
   // A settled-either-way marker keeps the chain alive across rejections.
@@ -517,7 +531,36 @@ export class JournalingStore implements BurritoStore {
   }
 
   private queue<T>(fn: () => Promise<T>): Promise<T> {
-    return inProjectQueue(this.mustRepo(), fn);
+    const repoPath = this.mustRepo();
+    return inProjectQueue(repoPath, () => {
+      // #676 (G1): a store opened before a sync's apply holds the old fold; it
+      // takes no edit and no checkpoint after it. The caller opens the project again.
+      if (this.openedGeneration !== syncGenerationOf(repoPath))
+        throw new Refusal('sync.project-replaced', `${repoPath} was synced after this store opened it; open it again`, { repoPath });
+      return fn();
+    });
+  }
+
+  /** The sync generation of the project when this store opened it (#676). */
+  private openedGeneration = 0;
+
+  /** #676 (G8, D101): while the project's scratch copy holds the apply marker, an
+   * apply may be half done; the project takes no open until a start or a sync
+   * finishes it. The disk decides, never the settings document. Edits need no
+   * check: a store opens only when no apply is pending, and a sync in this
+   * process that may leave the marker on disk makes every older store stale. */
+  private async refusePendingApply(repoPath: string): Promise<void> {
+    let pending: boolean;
+    try {
+      pending = await isApplyPending(this.api, repoPath);
+    } catch (error) {
+      // no answer is no proof that no apply is pending: refuse (fail closed)
+      const failure = error as { status?: number; message?: string } | null;
+      throw new Refusal('sync.apply-pending', `the app could not check for an unfinished sync of ${repoPath}`,
+        { repoPath, status: failure?.status ?? 0, reason: failure?.message ?? String(error) });
+    }
+    if (pending)
+      throw new Refusal('sync.apply-pending', `the app is finishing a sync of ${repoPath}; open it again soon`, { repoPath });
   }
 
   // ---- raw read delegation ---------------------------------------------------
@@ -649,16 +692,10 @@ export class JournalingStore implements BurritoStore {
   }
 
   /** Is this a derived path CLASS whose projection can legitimately disappear
-   * (and whose stale file must then be removed)? Books (book.remove),
-   * alignment and decision sidecars (structural retirement) — never
-   * resources/settings (they project the §8.7 EMPTY document instead) and
-   * never vrs.json (creation-only, retained forever). */
+   * (and whose stale file must then be removed)? The one predicate lives in
+   * journal/checkpoint.mjs; the sync core (#675) reads it too. */
   private static isRemovableDerivedClass(ipath: string): boolean {
-    return (
-      /^[A-Z0-9]{3}\.usfm$/.test(ipath) ||
-      /^checking\/alignments\/[A-Z0-9]{3}\.json$/.test(ipath) ||
-      /^checking\/(translationWords|translationNotes)\/[A-Z0-9]{3}\.json$/.test(ipath)
-    );
+    return isRemovableDerivedClass(ipath);
   }
 
   /** The projection bytes of ONE derived path under a given fold. Returns null
@@ -1132,7 +1169,9 @@ export class JournalingStore implements BurritoStore {
    * the creation seed. A crash between the two is healed by the SAME code path:
    * universal seeding on first open. */
   async createProject(params: CreateProjectParams): Promise<{ repoPath: string }> {
+    await recoverySettled(); // #676: a create never races the start recovery
     const repoPath = `${APP_ORG}/${params.content_abbr}`;
+    refuseNonProjectPath(repoPath);
     // Pre-check the name (PLATFORM-NOTES #28): creation git-inits BEFORE it
     // validates, so never attempt a create over an existing path, and delete
     // debris only when this listing POSITIVELY confirmed absence.
@@ -1172,7 +1211,9 @@ export class JournalingStore implements BurritoStore {
    * verbatim. A failure leaves no half-made project: the pre-check proved the
    * path absent, so the delete removes only our own debris (PLATFORM-NOTES #28). */
   async createObsProject(params: CreateObsProjectParams): Promise<{ repoPath: string }> {
+    await recoverySettled(); // #676: a create never races the start recovery
     const repoPath = `${APP_ORG}/${params.content_abbr}`;
+    refuseNonProjectPath(repoPath);
     const existing = await this.api.listLocalRepos();
     if (existing.includes(repoPath))
       throw new ServerApiError('/git/new-obs-resource', 0, `project ${repoPath} already exists`);
@@ -1236,6 +1277,24 @@ export class JournalingStore implements BurritoStore {
     startedAt: string,
     phases: Report[],
   ): Promise<ProjectSummary> {
+    // #676 (G8): the check, the reads and the writes of an open are ONE turn of
+    // the project queue, so no sync apply runs between them.
+    return inProjectQueue(repoPath, () => this.openInQueue(repoPath, options, hooks, startedAt, phases));
+  }
+
+  private async openInQueue(
+    repoPath: string,
+    options: OpenOptions,
+    hooks: OpenHooks,
+    startedAt: string,
+    phases: Report[],
+  ): Promise<ProjectSummary> {
+    refuseNonProjectPath(repoPath);
+    await recoverySettled(); // #676: an open never races the start recovery
+    await this.refusePendingApply(repoPath);
+    // #677: a project whose copy from Door43 is not proved finished never opens
+    // (disk only, opsLog.ts `settleOpenCopy`): the gate finishes it or removes it.
+    await guardOpenCopy(this.api, repoPath);
     const summary = await this.raw.open(repoPath); // binds raw + setCurrentProject
     this.boundRepoPath = repoPath;
     this.journal = new JournalStore({ api: this.api, repoPath, kv: this.kv, now: this.now });
@@ -1249,11 +1308,10 @@ export class JournalingStore implements BurritoStore {
     // journal once, not twice (issue #95); the journal store refuses to mint a
     // ts until that read completes (R-8.2.4).
     await this.journal.open({ ratchet: 'deferred' });
-    return inProjectQueue(repoPath, async () => {
-      const facts = await this.recoverAndConverge(options, hooks);
-      this.lastReport = okReport('open', startedAt, this.isoNow(), { ...facts, phases });
-      return summary;
-    });
+    const facts = await this.recoverAndConverge(options, hooks);
+    this.openedGeneration = syncGenerationOf(repoPath);
+    this.lastReport = okReport('open', startedAt, this.isoNow(), { ...facts, phases });
+    return summary;
   }
 
   private isoNow(): string {
@@ -1943,25 +2001,72 @@ export class JournalingStore implements BurritoStore {
   ): Promise<boolean> {
     const maxPrefix = 8;
     for (let drop = 1; drop <= Math.min(maxPrefix, actions.length); drop += 1) {
-      const prefixEvents = actions.slice(0, actions.length - drop).flatMap((action) => action.events);
-      let prefixFold: FoldOutput;
-      try {
-        prefixFold = await this.runner.fold(prefixEvents);
-      } catch {
-        break;
-      }
-      if (resolutionRecords.length === 0 && this.compareDisk(prefixFold, disk).length === 0) return true;
-      if (resolutionRecords.length === 0) continue;
-      const prefixTs = new Set(prefixEvents.map((event) => event.ts));
-      const prefixResolutions = new Map(harvested);
-      for (const record of resolutionRecords)
-        if (record.kind !== 'unconditional' && prefixTs.has(record.ts))
-          for (const [key, resource] of Object.entries(record.resolutions!))
-            prefixResolutions.set(key, resource);
-      if (this.withResolutions(prefixResolutions, () => this.compareDisk(prefixFold, disk).length === 0))
-        return true;
+      const behind = await this.divergenceFrom(actions.slice(0, actions.length - drop), resolutionRecords, harvested, disk);
+      if (behind === null) break;
+      if (behind.length === 0) return true;
     }
     return false;
+  }
+
+  /** The paths where the disk is not the projection of the fold of `actions`,
+   * under the resolutions the disk holds and those of the ledger records that the
+   * actions gate; null when the fold refuses the actions. */
+  private async divergenceFrom(
+    actions: Array<{ actor: string; ts: string; events: JournalEvent[] }>,
+    resolutionRecords: IntentRecord[],
+    harvested: Map<string, Record<string, unknown>>,
+    disk: DiskInventory,
+  ): Promise<DivergedPath[] | null> {
+    const events = actions.flatMap((action) => action.events);
+    let partFold: FoldOutput;
+    try {
+      partFold = await this.runner.fold(events);
+    } catch {
+      return null;
+    }
+    if (resolutionRecords.length === 0) return this.compareDisk(partFold, disk);
+    const partTs = new Set(events.map((event) => event.ts));
+    const partResolutions = new Map(harvested);
+    for (const record of resolutionRecords)
+      if (record.kind !== 'unconditional' && partTs.has(record.ts))
+        for (const [key, resource] of Object.entries(record.resolutions!))
+          partResolutions.set(key, resource);
+    return this.withResolutions(partResolutions, () => this.compareDisk(partFold, disk));
+  }
+
+  /** G8 (#676): a sync apply that stopped before all its derived writes, with its
+   * marker lost (a power loss, PLATFORM-NOTES #51), leaves teammate journal files
+   * that no commit holds. Only the apply writes a teammate journal file, and it
+   * commits last. So a teammate segment that `GET /git/status` lists is from an
+   * apply that did not end. When each `unexplained` path on the disk is the
+   * projection of the journal without those segments, the apply did not write it
+   * yet: the journal is ahead, and the open regenerates forward. A reconcile would
+   * journal the old text as an own edit over the teammate's. `unexplained` holds
+   * the diverged paths that the ledger does not explain as journal-ahead: the
+   * path of an own outbox entry that the sync carried has a record, so it is
+   * journal-ahead too. A status read that fails stops the open: no reconcile runs
+   * on a guess. */
+  private async stoppedApplyExplains(
+    unexplained: DivergedPath[],
+    actions: Array<{ actor: string; ts: string; events: JournalEvent[] }>,
+    resolutionRecords: IntentRecord[],
+    harvested: Map<string, Record<string, unknown>>,
+    disk: DiskInventory,
+  ): Promise<boolean> {
+    const own = this.mustJournal().actorId;
+    if (actions.every((action) => action.actor === own)) return false;
+    // A new folder is one entry that ends in '/': libgit2 does not recurse into an
+    // untracked folder [VERIFIED — rig 0.18.15 (a83725b), status.rs, 2026-10-14].
+    const changed = (await this.api.gitStatus(this.mustRepo())).map((change) => change.path);
+    const uncommitted = (ipath: string): boolean =>
+      changed.some((path) => path === ipath || (path.endsWith('/') && ipath.startsWith(path)));
+    const kept = actions.filter((action) =>
+      action.actor === own || !uncommitted(`ingredients/checking/journal/${action.actor}/segments/${segmentName(action.ts)}`));
+    if (kept.length === actions.length) return false;
+    const behind = await this.divergenceFrom(kept, resolutionRecords, harvested, disk);
+    if (behind === null) return false;
+    const notWritten = new Set(behind.map((d) => d.ipath));
+    return unexplained.every((d) => !notWritten.has(d.ipath));
   }
 
   private reconciliationPaths(after: FoldOutput, disk: DiskInventory): string[] {
@@ -2131,12 +2236,23 @@ export class JournalingStore implements BurritoStore {
       return;
     }
 
+    // The diverged paths that no gate-satisfied ledger record explains as
+    // journal-ahead: (b2) and (c) decide only these.
+    const remainder = diverged.filter((d) => !aheadExplained(d.ipath));
+
+    // (b2) G8 (#676): a sync apply that stopped with teammate journal files that no
+    // commit holds, and each remainder path as it was before the apply -> regenerate
+    // forward.
+    if (await this.stoppedApplyExplains(remainder, actions, resolutionRecords, harvested, disk)) {
+      await regenerateForward();
+      return;
+    }
+
     // (c) Every UNEXPLAINED diverged path is a book USFM (edited or created
     // out-of-band) -> §8.8 reconcile those - and ONLY those (round-5 rule 2,
     // M3): a path a gate-satisfied ledger record already explains as
     // journal-ahead is NEVER re-journaled from its (stale) disk bytes; those
     // paths regenerate forward in the same recovery's convergence below.
-    const remainder = diverged.filter((d) => !aheadExplained(d.ipath));
     const usfmOnly = remainder.every((d) => /^[A-Z0-9]{3}\.usfm$/.test(d.ipath));
     if (usfmOnly) {
       const reconcile = await this.reconcileDivergence(remainder, disk);
@@ -2252,6 +2368,96 @@ export class JournalingStore implements BurritoStore {
         });
       }
       await this.publishAndRegenerate(events, [bookIpath(code)]);
+    });
+  }
+
+  /** The verse-text conflicts of the open project (#679, G7), in canonical
+   * verse order — what the conflict review lists. */
+  readVerseConflicts(): VerseConflict[] {
+    return verseConflicts(this.foldNow(), this.events);
+  }
+
+  /** The text of `book` as the current fold projects it (#679): the bytes its
+   * regenerated USFM file holds, from memory, with no HTTP read that can fail.
+   * Null when the fold projects no such book. */
+  projectedBook(book: string): string | null {
+    return this.foldNow().books[book.toUpperCase()]?.usfm ?? null;
+  }
+
+  /** The text of one verse as the current fold projects it (#679), in the form
+   * a VerseConflict version's `text` has: the value resolveVerse checks a
+   * candidate against. Null when the fold projects no such verse. */
+  projectedVerse(book: string, chapter: string, verse: string): string | null {
+    return this.foldNow().books[book.toUpperCase()]?.verses[`${chapter}:${verse}`] ?? null;
+  }
+
+  /** The team as the fold knows it (#679): each actor's recorded Door43 name
+   * (`FoldOutput.names`, #674) and every actor id of the event set, sorted —
+   * the order the "Teammate n" labels number by (actorLabel). */
+  readTeam(): Team {
+    return teamOf(this.foldNow(), this.events);
+  }
+
+  /** Keep one version of a verse in conflict (#679): ONE text.verse.set with
+   * the kept head's text whose `supersedes` names every head of the fork
+   * (R-8.3.5), so the fold shows no conflict and keeps the other versions in
+   * history (`retained[]`, reason `superseded`, R-8.3.6). `key` and `keptHead`
+   * come from readVerseConflicts(); anything else is a caller defect.
+   * `shownHeads` (bench round 6): the heads the person saw when they chose.
+   * When given, a fork whose heads are not exactly those (a save or any other
+   * action landed after the screen was drawn) is refused, never superseded —
+   * a version nobody saw is not replaced. */
+  async resolveVerse(key: string, keptHead: string, shownHeads?: readonly string[]): Promise<void> {
+    return this.queue(async () => {
+      await this.replayOwnStagedBeforeDiff(); // round-5 rule 1: REPLAY-BEFORE-DIFF
+      const journal = this.mustJournal();
+      const foldOut = await this.ensureFold();
+      const conflict = verseConflicts(foldOut, this.events).find((c) => c.key === key);
+      if (!conflict) throw new Error(`resolveVerse(${key}): the fold shows no verse-text conflict on this key`);
+      const heads = conflict.versions.map((v) => v.ts);
+      if (shownHeads && (shownHeads.length !== heads.length || !heads.every((h) => shownHeads.includes(h)))) {
+        throw new Error(`resolveVerse(${key}): the versions of this verse changed after the review showed them; nothing was kept`);
+      }
+      const kept = conflict.versions.find((v) => v.ts === keptHead);
+      if (!kept) throw new Error(`resolveVerse(${key}): ${keptHead} is not a head of this conflict`);
+      const ts = journal.issueTs();
+      const eventOn = (base: string): JournalEvent => ({
+        v: 1,
+        op: 'text.verse.set',
+        actor: journal.actorId,
+        ts,
+        base,
+        supersedes: conflict.versions.map((v) => v.ts),
+        book: conflict.book,
+        chapter: conflict.chapter,
+        verse: conflict.verse,
+        text: kept.text,
+      });
+      // The base must be a head whose structural ancestry holds every other head,
+      // or the fold refuses to supersede the heads off it (§8.3 ancestry rule): a
+      // renumber's post-image against an edit made before the renumber is such a
+      // case. The fold decides: try the projected (provisional) head first, the
+      // state this person reviewed, then the others, newest first, and publish
+      // the first edit whose fold has no conflict on the key, refuses no
+      // supersede, and projects the kept text. Usually one dry fold.
+      const candidates = [foldOut.headsTs[key], ...conflict.versions.map((v) => v.ts).reverse()]
+        .filter((base, i, all) => all.indexOf(base) === i);
+      const vkey = `${conflict.chapter}:${conflict.verse}`;
+      for (const base of candidates) {
+        const event = eventOn(base);
+        const after = await this.runner.fold([...this.events, normalizeEvent(event)]);
+        const resolved =
+          !after.forks.some((f) => f.key === key) &&
+          !after.supersedeRefused.some((r) => r.by === ts) &&
+          after.books[conflict.book]?.verses[vkey] === kept.text;
+        if (!resolved) continue;
+        await this.publishAndRegenerate([event], [bookIpath(conflict.book)]);
+        return;
+      }
+      throw new Error(
+        `resolveVerse(${key}): no single verse edit resolves this conflict — its versions lie on ` +
+          `structural branches that do not meet (a structural conflict on ${conflict.book})`,
+      );
     });
   }
 
@@ -3197,10 +3403,30 @@ export class JournalingStore implements BurritoStore {
   }
 }
 
+/** The kv of a JournalStore that never opens (ProjectReader): no identity, no
+ * outbox, so any use is a defect. */
+const refuseKv = (): never => {
+  throw new Error('ProjectReader: a read-only journal read touched the kv');
+};
+const NO_KV: KvStore = { get: refuseKv, set: refuseKv, setIfAbsent: refuseKv, keys: refuseKv, delete: refuseKv };
+
 /** Read-only project access for surfaces that must not mutate and must not run
  * recovery (the Home progress bars, the settings dialog's read half, project
  * listing). Deliberately NOT a BurritoStore: it has no mutation surface at all,
  * and it never claims the platform's current-project slot. */
+/** The team of one journal (#679, #680): each actor's recorded Door43 name
+ * (`FoldOutput.names`, #674) and every actor id of the event set, sorted — the
+ * order the "Teammate n" labels number by (actorLabel). The one derivation of
+ * the open store (readTeam) and the read-only reader (readConflictsAndTeam). */
+export interface Team {
+  names: Record<string, string>;
+  actors: string[];
+}
+export const teamOf = (foldOut: { names: Record<string, string> }, events: readonly { actor: string }[]): Team => ({
+  names: foldOut.names,
+  actors: [...new Set(events.map((e) => e.actor))].sort(),
+});
+
 export class ProjectReader {
   private readonly raw: HttpStore;
   private repo: string | null = null;
@@ -3241,6 +3467,26 @@ export class ProjectReader {
 
   readResources(): Promise<ResourcesFile | null> {
     return this.boundRaw().readResources();
+  }
+
+  /** #679: the open verse-text conflicts, folded read-only from the journal
+   * (no open, no recovery, no write) — the Home card's count — and (#680) the
+   * team of the same fold, which the sync result labels teammates by. Null
+   * when the journal holds a file the union refuses: then the count is
+   * unknown (D30), never a false 0. */
+  async readConflictsAndTeam(): Promise<{ conflicts: VerseConflict[]; team: Team } | null> {
+    if (this.repo === null) throw new Error('ProjectReader: call open(repoPath) first');
+    const journal = new JournalStore({ api: this.raw.api, repoPath: this.repo, kv: NO_KV });
+    const { events, refused } = await journal.readAcceptedEvents();
+    if (refused !== 0) return null;
+    if (events.length === 0) return { conflicts: [], team: { names: {}, actors: [] } };
+    const runner = defaultFoldRunner();
+    try {
+      const foldOut = await runner.fold(events);
+      return { conflicts: verseConflicts(foldOut, events), team: teamOf(foldOut, events) };
+    } finally {
+      runner.dispose();
+    }
   }
 
   /** Bytes only — a reader has no journal, so it cannot supply the name. The

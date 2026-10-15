@@ -25,10 +25,11 @@ import { targetWords, selectionsFromTokens, tokenIndicesFromSelections } from '.
 import { tokenizeVerse, matchQuote, tokenizePlain, matchPlainQuote } from '../data/sourceHighlight';
 import { verseText } from './verseText.js';
 import { absenceMessageKey, isSourceAbsent } from '../data/sourceState';
+import { literalPaneId } from '../data/gatewayChange';
 import { BlockText, ExpandableNote, Quoted, glTitleFor } from './HelpsPanel.jsx';
 import { RAIL_FILTERS, RAIL_FILTER_ORDER, hasComment, isBookmarked, railCounts } from './checkFilters.js';
 import { t } from '../i18n';
-import { projectDir } from './scriptStyle.js';
+import { helpsDir, projectDir } from './scriptStyle.js';
 import { Button, Callout, Drawer, Overline, ProgressBar } from '../ds/index.js';
 
 const TOOLS = Object.keys(TOOL_SLOT);
@@ -282,7 +283,7 @@ function FallbackWarning({ tool, missing }) {
 /** The help article behind the active item (C2.5), read from the installed
  * burrito — presented as the mockup's right-side Drawer (F1, INVENTORY §6),
  * not an inline card. Absence is stated, never rendered as an empty panel. */
-function ArticleBody({ article }) {
+function ArticleBody({ article, dir }) {
   if (!article || article.loading) {
     return <p style={{ fontSize: 'var(--fs-caption-lg)', color: 'var(--text-tertiary)', margin: 0 }}>{t('check.articleLoading')}</p>;
   }
@@ -303,7 +304,7 @@ function ArticleBody({ article }) {
   // already exceeds the old 40-block cap.
   const blocks = renderArticleBlocks(article.found.body);
   return (
-    <div data-testid="article-panel">
+    <div data-testid="article-panel" dir={dir}>
       {blocks.map((b, i) => {
         if (b.kind === 'h') {
           return (
@@ -333,13 +334,16 @@ function ArticleBody({ article }) {
 }
 
 /* The design system's own end-edge slide-over ('Translation Academy' is its
- * documented purpose); the article prose inherits the document direction. */
-function AcademyDrawer({ article, cat, onClose }) {
+ * documented purpose); the article prose reads in the direction of its gateway
+ * package (#650). */
+function AcademyDrawer({ article, cat, resource, onClose }) {
+  const { s } = useApp();
   return (
     <Drawer data-testid="academy-drawer" width="var(--drawer-width)" onClose={onClose} closeLabel={t('common.close')}
       eyebrow={t('check.academyEyebrow', { cat })}
-      title={article?.found?.title ?? t('check.academyFallback')}>
-      <ArticleBody article={article} />
+      title={article?.found?.title ?? t('check.academyFallback')}
+      titleDir={article?.found?.title ? helpsDir(s, resource?.languageSet) : undefined}>
+      <ArticleBody article={article} dir={helpsDir(s, resource?.languageSet)} />
     </Drawer>
   );
 }
@@ -451,10 +455,11 @@ const ultVerseObj = (source, crossFrame, c, v) =>
 
 /** The compare card's GATEWAY row: the project's §5.3 extraScripture verse
  * with the quote's tokens highlighted through the alignment (same matcher as
- * the helps panel). Pane ids are the project's own — 'ult' is preferred when
- * present, otherwise the first declared pane; a project with none states so. */
+ * the helps panel). Pane ids are the project's own — the literal pane ('ult',
+ * else 'glt') is preferred when present, otherwise the first declared pane; a
+ * project with none states so. */
 function UltPane({ sources, sourcePanes, item, c, v, crossFrame }) {
-  const paneId = sourcePanes?.includes('ult') ? 'ult' : sourcePanes?.[0];
+  const paneId = literalPaneId(sourcePanes);
   const source = paneId ? sources?.[paneId] : undefined;
   const vObj = ultVerseObj(source, crossFrame, c, v);
   const tokens = React.useMemo(() => (vObj ? tokenizeVerse(vObj) : []), [vObj]);
@@ -620,6 +625,8 @@ function CheckDetail({ cs, item, title, sources, sourcePanes, sourceStory, words
   const { c, v } = referenceParts(item.contextId.reference);
   const quote = title;
   const idx = cs.activeIndex;
+  const { s } = useApp();
+  const helpDir = helpsDir(s, cs.resource?.languageSet);
   const canPrev = idx > 0;
   const canNext = idx < cs.items.length - 1;
   const navStyle = (enabled) => ({
@@ -653,7 +660,7 @@ function CheckDetail({ cs, item, title, sources, sourcePanes, sourceStory, words
       {item.contextId.occurrenceNote && (
         <div data-testid="check-note" style={{ maxWidth: '62ch', marginBottom: 8, borderRadius: 'var(--radius-lg)', padding: '16px 18px', background: 'var(--surface-warm)', border: 'var(--stroke) solid var(--tc-warn-border)' }}>
           <Overline style={{ color: 'var(--tc-warn-text-2)' }}>{t('check.whatToCheck')}</Overline>
-          <div style={{ fontSize: 'var(--fs-title-sm)', letterSpacing: 'var(--track-16)', lineHeight: 'var(--lh-body)', fontWeight: 'var(--fw-medium)', color: 'var(--uw-ink)', margin: '7px 0 0' }}>
+          <div dir={helpDir} data-testid="check-note-text" style={{ fontSize: 'var(--fs-title-sm)', letterSpacing: 'var(--track-16)', lineHeight: 'var(--lh-body)', fontWeight: 'var(--fw-medium)', color: 'var(--uw-ink)', margin: '7px 0 0' }}>
             {/* Keyed by item: the expanded/collapsed state must not leak from
               * one check to the next. */}
             <ExpandableNote key={idx} text={item.contextId.occurrenceNote} />
@@ -1103,10 +1110,11 @@ function AlignWorkspace() {
   const { s, actions } = useApp();
   const [filter, setFilter] = React.useState('all');
   // The rail's statuses derive from the sidecar + the draft: refresh when the
-  // verse changes and after each edit lands on the session record.
+  // verse changes, after each edit lands on the session record, and when the
+  // book text arrives (#722: the tool can open while the book still loads).
   React.useEffect(() => {
     actions.loadAlignIndex();
-  }, [s.book, s.alignVerse, s.alignSession?.record]);
+  }, [s.book, s.alignVerse, s.alignSession?.record, s.bookRaw == null]);
 
   const activeRef = s.alignVerse ?? s.alignSession?.ref ?? null;
   return (
@@ -1151,7 +1159,7 @@ const quoteOf = (item) =>
  * result on (sources, sourcePanes, understand): the caches live as long as it does. */
 export function gatewayTitleFor(sources, sourcePanes, understand) {
   if (!understand || understand.loading) return quoteOf;
-  const paneId = sourcePanes?.includes('ult') ? 'ult' : sourcePanes?.[0];
+  const paneId = literalPaneId(sourcePanes);
   const src = paneId ? sources?.[paneId] : undefined;
   const perChapter = new Map();
   return (item) => {
@@ -1280,7 +1288,7 @@ function CheckSession() {
         )}
       </main>
       {academyOpen && (
-        <AcademyDrawer article={cs.article} cat={item?.category} onClose={() => setAcademyOpen(false)} />
+        <AcademyDrawer article={cs.article} cat={item?.category} resource={cs.resource} onClose={() => setAcademyOpen(false)} />
       )}
     </div>
   );
@@ -1333,6 +1341,17 @@ function PickerGrid({ s, pre, story, unitLabel, pickerTitleOf }) {
   );
 }
 
+/** #722 class: a session can open before its book text arrives (since #679
+ * the load waits in the store queue); it then holds no draft copy. Read the
+ * draft again when the text arrives (#532's refresh). Once more for a session
+ * opened with the text is harmless: known invalidations stay. */
+function useDraftArrival(s, actions, unitLoaded) {
+  const sessionReady = Boolean(s.checkSession?.items);
+  React.useEffect(() => {
+    if (unitLoaded && sessionReady) actions.refreshCheckDraft();
+  }, [unitLoaded, sessionReady]);
+}
+
 export default function Check() {
   const { s, actions } = useApp();
   const pre = s.preflight;
@@ -1371,6 +1390,7 @@ export default function Check() {
   React.useEffect(() => {
     if (pre && atPicker && unitLoaded) actions.loadPickerProgress();
   }, [pre, atPicker, unitLoaded, s.story]);
+  useDraftArrival(s, actions, unitLoaded);
 
   // The picker's "Next: …" line shows the gateway title too [decided
   // 2026-08-31]; the frame verdict is the understand load's (sourceRefs).

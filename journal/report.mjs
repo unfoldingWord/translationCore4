@@ -27,6 +27,7 @@ export const REFUSAL_CODES = Object.freeze({
   'journal.clock-not-ratcheted': 'R-8.2.4', // a ts was requested before the union read ratcheted the clock
   'ledger.unreadable': null, // an intent-ledger record in the installation store does not parse
   // The open path (live today, thrown by JournalingStore.open).
+  'open.not-a-project': null, // (#676) the path is not `_local_/_local_/<name>`: a resource or a sync's fixed clone path is never opened as a project
   'open.scope-unreadable': null, // the project scope cannot be read; a defaulted scope would journal a widened scope
   'open.unexplained-divergence': 'R-8.7.5', // derived state no journal prefix or §8.8 reconcile explains
   'open.story-divergence': 'R-10.7.5', // an out-of-band story edit; reconcile is not defined for stories
@@ -65,6 +66,37 @@ export const REFUSAL_CODES = Object.freeze({
   'share.push-failed': null,
   'share.server-unavailable': null, // Door43 answered the sign-in with a 5xx (#203)
   'share.sign-in-rejected': null, // Door43 refused the sign-in for a reason other than the password (#203)
+  // Team sync round 1 (D98, epic #24): the sync core (journal/sync.mjs, #675) throws the
+  // four sync codes; the reference writer (journal/files.mjs) throws actor.name-already-set.
+  'sync.own-file-differs': 'R-8.7.7', // (G1) Door43 main holds a different file at an own path
+  'sync.incoming-invalid': 'R-8.7.8', // (G2) an incoming journal file fails the one validator
+  'sync.metadata-overlay': 'R-8.7.10', // (G3) the fold carries a project.meta.set overlay; a sync never writes metadata.json
+  'sync.obs-unsupported': null, // round 1 syncs Bible projects only (D98)
+  'actor.name-already-set': 'R-8.5.26', // the actor already wrote its actor.name.set
+  // The sync shell (src/data/share/syncOperation.ts, #676): the transport refusals of the
+  // #673 contract (docs/evidence/sync-transport-spike-2026-10-13.md), all app rules.
+  'sync.auth-failed': null, // no Door43 username or token (checked before any request), or Door43 refused the token
+  'sync.offline': null, // the internet is off (D95)
+  'sync.not-shared': null, // the project has no `origin` on the Door43 server: share it first
+  'sync.clone-path-exists': null, // the project or the clone's target is at the fixed clone path `<host>/<org>/<repo>`, or the server found a folder there
+  'sync.clone-failed': null, // Door43 main did not clone
+  'sync.move-failed': null, // a copy or a delete of a repository failed; the project did not change
+  'sync.verify-failed': null, // the copy on disk is not the fold of its journal; nothing was pushed
+  'sync.non-fast-forward': null, // (G4) Door43 main moved during three tries; never a force push
+  'sync.no-write-access': null, // Door43 refused the push: no write access
+  'sync.push-failed': null, // any other push failure
+  'opslog.not-loaded': null, // (G8) the ops log did not load at this start: no sync starts until it loads
+  'sync.failed': null, // a sync failure that is no other refusal (a server error) before the apply; the project did not change; facts.error holds the diagnosis
+  'sync.project-replaced': null, // (G1) a store opened before a sync's apply takes no edit and no checkpoint after it; open the project again
+  'sync.not-main': null, // (G4) the Door43 repository's default branch is not main
+  'sync.apply-pending': null, // (G8) an apply may not have finished; the project takes no open until the next start or sync decides it
+  'sync.cleanup-failed': null, // (G8) the sync and its apply are done; the clean-up after them did not finish, and the next start or sync ends it
+  // Open a project from Door43 (src/data/share/syncOperation.ts, #677). Its other refusals are the
+  // sync codes above: sync.offline, the clone codes, sync.obs-unsupported and (G2) sync.incoming-invalid.
+  'open-door43.name-exists': null, // a project with the chosen name is on this computer already; nothing was written
+  'open-door43.no-journal': null, // the repository holds no tC4 journal, so it is not a tC4 project (an import, #365); no project was written
+  'open-door43.pending': null, // an open from Door43 of the project runs now, or its marked copy is not proved to be this project; no open
+  'open-door43.removed': null, // an open from Door43 did not finish; the gate removed its part copy, so the project did not open
 });
 
 export const isRefusalCode = (code) => typeof code === 'string' && Object.hasOwn(REFUSAL_CODES, code);
@@ -75,7 +107,7 @@ export const isRefusalCode = (code) => typeof code === 'string' && Object.hasOwn
 // classified, what checkpoint wrote, ...); `startedAt`/`endedAt` are ISO-8601
 // UTC. A failed Report MAY carry a code (a refusal) or none (any other error);
 // its `rule` is the table's binding for that code and is absent for an app rule.
-export const REPORT_OPS = Object.freeze(['open', 'checkpoint', 'seed', 'reconcile', 'pin-complete', 'export', 'import', 'share']);
+export const REPORT_OPS = Object.freeze(['open', 'checkpoint', 'seed', 'reconcile', 'pin-complete', 'export', 'import', 'share', 'sync', 'open-door43']);
 
 const REPORT_KEYS = new Set(['op', 'ok', 'code', 'rule', 'facts', 'startedAt', 'endedAt']);
 const isObj = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);

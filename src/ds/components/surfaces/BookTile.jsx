@@ -10,8 +10,9 @@ import { Stack } from '../primitives/Stack.jsx';
 import { Text } from '../primitives/Text.jsx';
 import { Progress } from '../primitives/Progress.jsx';
 
-/** Book button with its drafting progress. */
-export function BookTile({ name, percent = 0, meta, metaTitle, layout = 'tile', active, onClick, style, ...rest }) {
+/** Book button with its drafting progress.
+ * tC4 local (#679): `children` render below the progress bar. */
+export function BookTile({ name, percent = 0, meta, metaTitle, layout = 'tile', active, onClick, style, children, ...rest }) {
   const row = layout === 'row';
   return (
     <Surface as="button" tone="accent" interactive={row ? 'row' : 'choice'} selected={active}
@@ -23,6 +24,7 @@ export function BookTile({ name, percent = 0, meta, metaTitle, layout = 'tile', 
         <Text role="labelNum" title={metaTitle}>{meta != null ? meta : percent + '%'}</Text>
       </Stack>
       <Progress value={percent} height={row ? 5 : 4} />
+      {children}
     </Surface>
   );
 }

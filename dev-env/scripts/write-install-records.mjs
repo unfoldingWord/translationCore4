@@ -26,7 +26,7 @@ if (!work) {
 }
 
 const ES_419 = ['es-419_tn', 'es-419_twl', 'es-419_tw', 'es-419_ta', 'es-419_glt', 'es-419_gst', 'es-419_obs', 'es-419_obs-tn', 'es-419_obs-twl'];
-const ORG = Object.fromEntries(ES_419.map((name) => [name, 'es-419_gl']));
+const ORG = { ...Object.fromEntries(ES_419.map((name) => [name, 'es-419_gl'])), ar_avd: 'BSOJ' };
 const VERSIONS = {
   // The English suite at the tags seed.zsh sideloads (the shipped pins, src/data/installedSuite.js — #504).
   en_ult: 'v91',
@@ -49,6 +49,8 @@ const VERSIONS = {
   'es-419_obs': 'v2',
   'es-419_obs-tn': 'v2',
   'es-419_obs-twl': 'v2',
+  // #704: BSOJ's literal Bible, sideloaded only with the Arabic fixture (TC4_ARABIC_FIXTURE=1).
+  ar_avd: 'v6.9',
 };
 
 const installed = {};

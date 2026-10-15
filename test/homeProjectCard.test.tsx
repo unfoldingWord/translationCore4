@@ -6,10 +6,11 @@ import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 
-const actions = { loadProgress: vi.fn(), openProjectAt: vi.fn(), openSettings: vi.fn(), openAddBook: vi.fn(), loadShared: vi.fn() };
+const actions = { loadProgress: vi.fn(), loadConflicts: vi.fn(), openProjectAt: vi.fn(), openSettings: vi.fn(), openAddBook: vi.fn(), loadShared: vi.fn() };
 const PROJECT = { id: '_local_/_local_/en_ult', name: 'English ULT', languageTag: 'en', scriptDirection: 'ltr', bookCodes: ['TIT', 'RUT'] };
 const state = {
   progressByProject: {} as Record<string, unknown>,
+  conflictsByProject: {} as Record<string, unknown>,
   remoteByProject: {} as Record<string, unknown>,
   netEnabled: true,
   importedRepo: null,

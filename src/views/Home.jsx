@@ -10,7 +10,9 @@ import { useApp } from '../state.jsx';
 import { t } from '../i18n';
 import { bookName } from '../data/bookNames';
 import { locationOf } from '../data/dcsServer';
+import { projectSyncs } from '../data/share/syncs';
 import { Card, BookTile, Button, Overline, Badge, Callout, Toast } from '../ds/index.js';
+import SyncResult, { syncTeam } from './SyncResult.jsx';
 
 // Above this many books a card shows only its in-progress books until expanded.
 const COLLAPSE_ABOVE = 12;
@@ -45,17 +47,23 @@ function SharedBadge({ p }) {
 // loadShared, never a stored record (D85) — "Upload changes", which opens the
 // upload dialog. #530: the card shows nothing under the action; the account,
 // the progress, the result and a refusal are in the dialog (ShareDialog.jsx).
+// #678: a shared Bible project reads "Sync with Door43" instead; one press
+// syncs, and the result shows on Home (SyncResult). Round 1 syncs Bible
+// projects only (D98), so a shared OBS project keeps "Upload changes".
 function ShareAction({ p }) {
   const { s, actions } = useApp();
   useEffect(() => {
     actions.loadShared(p);
   }, [p.id]);
   const shared = s.remoteByProject[p.id] || null;
-  const label = t(shared ? 'home.uploadChanges' : 'home.share');
+  const syncs = projectSyncs(p, shared);
+  const running = s.syncing === p.id;
+  const label = t(running ? 'home.syncing' : syncs ? 'home.sync' : shared ? 'home.uploadChanges' : 'home.share');
   return (
-    <div data-testid={`share-card-${p.id}`} data-shared={shared ? '1' : '0'}>
+    <div data-testid={`share-card-${p.id}`} data-shared={shared ? '1' : '0'} data-action={syncs ? 'sync' : shared ? 'upload' : 'share'}>
       {/* D88: a Share is one internet task; it asks first when the preference says so. An upload asks in its dialog (#530). */}
-      <Button variant="outline" size="sm" data-testid={`share-${p.id}`} title={label} onClick={() => actions.shareProject(p)}>
+      <Button variant="outline" size="sm" data-testid={`share-${p.id}`} title={label} aria-busy={running || undefined}
+        disabled={syncs && !!s.syncing} onClick={() => (syncs ? actions.syncProject(p) : actions.shareProject(p))}>
         {label}
       </Button>
     </div>
@@ -145,6 +153,50 @@ export function ObsProjectCard({ p }) {
   );
 }
 
+// #679: the conflict count of the card and of each book tile, from the fold of
+// the project's journal (loadConflicts) — never from a stored sync Report — so
+// it goes down as conflicts are kept. Unknown (D30) or none: nothing shows.
+// The owner's mockup (artboard 0) draws the chip and the tile line in a darker
+// warn brown on a Kindle tint; no token holds these two values.
+const conflictWarn = { color: '#7A4A06', fontWeight: 'var(--fw-heavy)', fontFamily: 'var(--font-ui)' };
+
+function ConflictsChip({ p, total }) {
+  const { actions } = useApp();
+  if (!total) return null;
+  return (
+    <button type="button" data-testid={`conflicts-${p.id}`} data-count={total}
+      aria-label={t('home.conflictsLabel', { n: total })} onClick={() => actions.openProjectConflicts(p.id)}
+      style={{ ...conflictWarn, boxSizing: 'border-box', display: 'inline-flex', alignItems: 'center', gap: 6, height: 24, padding: '0 10px 0 8px', borderRadius: 'var(--radius-pill)', border: 'var(--stroke-hair) solid var(--uw-kindle)', background: '#FDF1DE', fontSize: 'var(--fs-meta)', lineHeight: 1, cursor: 'pointer' }}>
+      <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none', display: 'block' }}>
+        <path d="M6 3v12" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="6" r="3" /><path d="M18 9a9 9 0 0 1-9 9" />
+      </svg>
+      {t(total === 1 ? 'home.conflictsOne' : 'home.conflictsMany', { n: total })}
+    </button>
+  );
+}
+
+function BookConflicts({ code, n }) {
+  if (!n) return null;
+  return (
+    <span data-testid={`book-conflicts-${code}`} data-count={n}
+      style={{ ...conflictWarn, display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 8, fontSize: '10.5px' }}>
+      <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: 'var(--radius-pill)', background: 'var(--uw-kindle)', flex: 'none' }} />
+      {t(n === 1 ? 'home.bookConflictsOne' : 'home.bookConflictsMany', { n })}
+    </span>
+  );
+}
+
+/** The card's conflict counts by book (none while unknown) and their total; read once per project. */
+function useConflictCounts(p) {
+  const { s, actions } = useApp();
+  const known = p.id in s.conflictsByProject;
+  useEffect(() => {
+    actions.loadConflicts(p);
+  }, [p.id, known]);
+  const counts = s.conflictsByProject[p.id] || {};
+  return { counts, total: Object.values(counts).reduce((sum, n) => sum + n, 0) };
+}
+
 // D30: the summary states the in-progress count only when every book's
 // progress is known; before that it is an em-dash, as on the tiles.
 const inProgressText = (allKnown, n) => t('home.inProgress', { n: allKnown ? n : '—' });
@@ -153,6 +205,7 @@ export function ProjectCard({ p }) {
   const { s, actions } = useApp();
   const [expanded, setExpanded] = useState(false);
   const prog = s.progressByProject[p.id] || {};
+  const { counts: conflicts, total: conflictTotal } = useConflictCounts(p);
   // loadProgress caches by repoPath and no-ops on a fully-known cache. It
   // runs again when the cache is dropped (an edit, a new book) and on each
   // new mount (a later Home visit). A cache with an unknown entry from a
@@ -184,6 +237,7 @@ export function ProjectCard({ p }) {
             <Badge size="sm" tone={dir === 'rtl' ? 'warn' : 'neutral'} style={dir === 'rtl' ? undefined : { color: 'var(--text-secondary)' }}>{dir.toUpperCase()}</Badge>
             {s.importedRepo === p.id && <Badge size="sm" tone="accentSoft" data-testid="imported-badge">{t('importer.badge')}</Badge>}
             <SharedBadge p={p} />
+            <ConflictsChip p={p} total={conflictTotal} />
           </div>
           <span style={{ fontSize: 'var(--fs-ui-sm)', color: 'var(--text-tertiary)', fontWeight: 'var(--fw-medium)' }}>
             <span data-testid="project-summary">
@@ -206,8 +260,10 @@ export function ProjectCard({ p }) {
           // yet read, or the read failed) — an em-dash, never a false 0% bar
           // claiming "no drafting has been done".
           return (
-            <BookTile key={code} name={bookName(code)} percent={hasPct ? pct : 0}
-              meta={hasPct ? undefined : '—'} onClick={() => actions.openProjectAt(p.id, code)} />
+            <BookTile key={code} data-testid={`book-tile-${code}`} name={bookName(code)} percent={hasPct ? pct : 0}
+              meta={hasPct ? undefined : '—'} onClick={() => actions.openProjectAt(p.id, code)}>
+              <BookConflicts code={code} n={conflicts[code]} />
+            </BookTile>
           );
         })}
         <button type="button" onClick={() => actions.openAddBook(p)} data-i="choice" data-tone="accent"
@@ -341,9 +397,17 @@ export default function Home() {
           {projects && projects.map((p) => (p.flavor === 'textStories' ? <ObsProjectCard key={p.id} p={p} /> : <ProjectCard key={p.id} p={p} />))}
         </div>
       </div>
+      {s.syncResult && (
+        <div style={{ position: 'fixed', insetBlockEnd: s.importToast ? 88 : 24, insetInlineStart: '50%', transform: 'translateX(-50%)', zIndex: 90, width: 'max-content', maxWidth: 'calc(100% - 48px)' }}>
+          <SyncResult result={s.syncResult} team={syncTeam(s, s.syncResult.repoPath)}
+            onReview={() => { const { repoPath } = s.syncResult; actions.dismissSyncResult(); actions.openProjectConflicts(repoPath); }}
+            onDownload={() => actions.syncDownload(s.syncResult.repoPath)}
+            onDismiss={actions.dismissSyncResult} />
+        </div>
+      )}
       {s.importToast && (
         <div style={{ position: 'fixed', insetBlockEnd: 24, insetInlineStart: '50%', transform: 'translateX(-50%)', zIndex: 90, width: 'max-content', maxWidth: 'calc(100% - 48px)' }}>
-          <Toast tone="success" data-testid="import-toast" message={t('importer.done', s.importToast)} onDismiss={actions.dismissImportToast} dismissLabel={t('common.dismiss')} />
+          <Toast tone="success" data-testid="import-toast" message={t(s.importToast.key ?? 'importer.done', s.importToast)} onDismiss={actions.dismissImportToast} dismissLabel={t('common.dismiss')} />
         </div>
       )}
     </main>

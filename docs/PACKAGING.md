@@ -6,9 +6,10 @@ single-layer download. Issue #181 added Windows x64 (Increment 5). Issue #243
 adds the unsigned Mac installer and app icons (Increment 5.5). Issue #44 retains
 signing, notarization, and the remaining platform installer work.
 [decided 2026-09-10 — owner clarification on #243]
-D89 point 4 supersedes the signing part of that ruling. v4.0.0 ships macOS unsigned and not notarized. Windows is signed only if the #456
-credential works in CI by 2026-10-08; if not, Windows ships unsigned. Linux stays
-an unsigned zip. [decided 2026-10-03 — D89 point 4]
+D89 point 4 supersedes the signing part of that ruling. v4.0.0 ships macOS unsigned and not notarized. Linux stays
+an unsigned zip. [decided 2026-10-03 — D89 point 4] Windows v4.0.0 ships signed:
+signing is a release gate, because an unsigned build can start with no window and
+no warning (see Signing). [decided 2026-10-13 — D99, overrules D89 point 4 for Windows]
 
 ## What the pipeline does
 
@@ -483,8 +484,9 @@ On a failure the job uploads `dist-desktop/smoke-*.log` as
 ## Windows x64 (#181)
 
 The `windows-x64` job runs the same script on `windows-2025`, under MSYS2's
-`zsh`. Only the host-specific steps differ. Nothing is signed. Windows signing
-is #456 (D89 point 4). Issue #242 adds the Windows installer.
+`zsh`. Only the host-specific steps differ. A manual run signs the build (#456,
+see Signing below); every other run builds unsigned. Issue #242 adds the
+Windows installer.
 
 ### Artifact layout
 
@@ -500,12 +502,13 @@ the debug variant). That folder holds:
 | `lib\`, `resources\` | clients, app resources, templates, webfonts; the bundled English suite (#163) |
 | `Rocket.toml`, `LICENSE`, `licenses\`, `THIRD-PARTY-NOTICES.md`, `BUILD-MANIFEST.json` | the same as macOS and Linux |
 | `smoke-installed.ps1`, `smoke-api.cjs`, `smoke-journal.cjs` | post-install proof using PowerShell and the bundled runtime; the latter is the bundled production `JournalingStore` lifecycle |
-| `icon.ico`, `README.txt` | tC4 icon and unsigned pilot instructions |
+| `icon.ico`, `README.txt` | tC4 icon and pilot instructions |
 
 ### Install and launch
 
 The production build emits `tC4-<version>-windows-x64-unsigned.exe` and the
-portable zip. The installer uses the same tested staged payload, excluding the
+portable zip. A signed build emits `tC4-<version>-windows-x64.exe` and
+`tC4-<version>-windows-x64.zip` (see Signing below). The installer uses the same tested staged payload, excluding the
 batch launcher and POSIX smoke script. Debug builds remain portable zips.
 
 1. Download the `.exe` installer from the workflow run and open it.
@@ -517,11 +520,113 @@ batch launcher and POSIX smoke script. Debug builds remain portable zips.
    directly without a batch console. To keep it on the taskbar, use Windows'
    **Pin to taskbar** command.
 
-The app is unsigned. If Windows shows **Windows protected your PC**, select
-**More info**, then **Run anyway**, if available and you trust the source.
-Organizational policy may block this route. Record actual prompts in the pilot
-witness; a fixed warning count is not promised. The interactive Windows 11
-witness remains pending (see `docs/evidence/windows-installer-242.md`).
+A signed build names **unfoldingWord** as the publisher. The certificate subject
+is `CN=unfoldingWord, O=unfoldingWord, L=Orlando, S=Florida, C=US` [VERIFIED —
+`Get-AuthenticodeSignature` on a `vulkan-1.dll` that the owner signed by hand
+with the `uw-public-prod` profile, 2026-10-13; #456 Q3]. SmartScreen can still show
+**Windows protected your PC** while the publisher builds reputation. Then
+**More info** shows the publisher name, and **Run anyway** continues. An
+unsigned build shows **Unknown publisher**. Organizational policy may block
+unsigned applications. Record actual prompts in the pilot witness; a fixed
+warning count is not promised. The interactive Windows 11 witness remains
+pending (see `docs/evidence/windows-installer-242.md`).
+
+To check a signature, open the installer's **Properties → Digital Signatures**,
+or run this in PowerShell:
+
+```powershell
+Get-AuthenticodeSignature .\tC4-<version>-windows-x64.exe | Format-List Status,SignerCertificate,TimeStamperCertificate
+```
+
+### Signing (#456)
+
+Why: an unsigned build can start with no window and no warning on a machine with
+Windows Security **App & browser control** on and Smart App Control off
+(`docs/evidence/windows-unsigned-silent-start-2026-10-13.md`, D99).
+
+The build signs with Azure Artifact Signing. It signs only on a manual run
+(**Run workflow** on `package-desktop`) on `main` or a `release/*` branch, and only
+when the repository variable `AZURE_SIGNING_ENDPOINT` is set. Every other run,
+including every pull request and every merge to `main`, builds unsigned.
+
+What a signed run does:
+
+1. Before step 1, `scripts/sign-windows.ps1 -Setup` downloads two pinned NuGet
+   packages, checks their SHA-256, and writes `metadata.json`. The packages are
+   `Microsoft.Windows.SDK.BuildTools` 10.0.26100.4188 (for `signtool.exe`) and
+   `Microsoft.ArtifactSigning.Client` 1.0.128 (the signtool dlib).
+2. After `brand-windows.mjs` changes `electron.exe`, the script signs every
+   `.exe`, `.dll` and `.node` file in the staged folder that has no signature.
+   It does not sign over a valid signature, so the Microsoft runtime DLLs keep
+   Microsoft's signature. Any other signature status stops the build.
+3. The manifest then hashes the signed `server.exe`, and the smoke test runs the
+   signed files.
+4. Inno Setup signs the installer and its uninstaller through the same script
+   (`SignTool=tc4sign`, `SignedUninstaller=yes`).
+5. The artifacts drop `-unsigned` from their names, and `BUILD-MANIFEST.json`
+   records `"signed": true`.
+6. `smoke-windows-x64` fails if the installer, or any installed `.exe`, `.dll`
+   or `.node` file, is not `Valid`. It also fails if the manifest and the file
+   name do not agree, or if the installer, `electron.exe`, `server.exe` or
+   `unins000.exe` has a signer subject other than the one above.
+
+Every signature carries an RFC 3161 timestamp from
+`http://timestamp.acs.microsoft.com`. An Artifact Signing certificate is valid
+for three days, so a signature without a timestamp stops being valid
+[VERIFIED — Microsoft Learn, "Set up signing integrations to use Artifact
+Signing", page dated 2026-05-14, read 2026-10-13].
+
+The build signs in to Azure with GitHub OIDC. No secret is stored [decided
+2026-10-14 — D99 ruling 7]. The `windows-x64` job has `id-token: write`. Before each
+`signtool` run, `sign-windows.ps1` asks GitHub for a fresh OIDC token, because the
+token expires after minutes and signing runs late in a long build. The Azure
+`WorkloadIdentityCredential` reads it from `AZURE_FEDERATED_TOKEN_FILE`. The build
+gives the token request values only to the signing calls, not to npm, cargo or the
+smoke test.
+
+Set up Azure once:
+
+1. Create an Entra app registration, for example `tc4-github-signing`.
+2. On the certificate profile `uw-public-prod`, give the app registration the
+   **Artifact Signing Certificate Profile Signer** role.
+3. In the app registration, add one federated credential for the GitHub
+   environment `windows-signing`. Use the **Other issuer** scenario:
+
+   | Field | Value |
+   |---|---|
+   | Issuer | `https://token.actions.githubusercontent.com` |
+   | Subject | `repo:unfoldingWord@6601424/translationCore4@1323470539:environment:windows-signing` |
+   | Audience | `api://AzureADTokenExchange` |
+
+   This repository was created on 2026-08-04. GitHub gives a repository created
+   after 2026-07-15 the immutable subject form, with the owner and repository IDs
+   [VERIFIED — GitHub Docs, "OpenID Connect reference", read 2026-10-14; `gh api
+   repos/unfoldingWord/translationCore4/actions/oidc/customization/sub` returns
+   `use_immutable_subject: true` and the prefix
+   `repo:unfoldingWord@6601424/translationCore4@1323470539`, 2026-10-14]. The
+   portal's **GitHub Actions** scenario may build the older form without IDs. The
+   subject must match exactly. At the start of a signed run, the setup step prints
+   `GitHub OIDC subject:` and asks Entra to accept the token. If Entra refuses it,
+   the run stops in the first minute and prints Entra's reason.
+4. The GitHub environment `windows-signing` decides which branches can sign. Its
+   deployment branch rules allow `main` and `release/*`. A new release branch,
+   for example `release/4.1`, signs with no change in Azure or GitHub.
+
+Then set these repository variables. None of them is secret:
+
+| Name | Value |
+|---|---|
+| `AZURE_SIGNING_ENDPOINT` | `https://eus.codesigning.azure.net/` |
+| `AZURE_SIGNING_ACCOUNT` | `unfoldingWordSigning` |
+| `AZURE_SIGNING_PROFILE` | `uw-public-prod` |
+| `AZURE_TENANT_ID` | the Entra tenant ID |
+| `AZURE_CLIENT_ID` | the app registration's client ID |
+
+The endpoint must match the region of the account. A wrong region gives a 403
+error [VERIFIED — same Microsoft Learn page, read 2026-10-13].
+
+If `AZURE_SIGNING_ENDPOINT` is set but another value is empty, a manual run
+fails at the start. It does not build unsigned.
 
 Portable fallback: extract the zip once and run `start-tc4.cmd`. The installed
 and portable production copies use the same store. Close one before opening
@@ -608,9 +713,10 @@ checks reinstall/uninstall preserve a project that it wrote through the app.
 
 ### Known limits
 
-- **Unsigned.** Windows signing is #456 (D89 point 4). Security prompts and icon appearance still
-  need a browser-download witness on Windows 11. The earlier Windows 10 zip
-  witness does not prove this installer.
+- **Signed on manual runs only.** Merges to `main` and pull requests build
+  unsigned (#456). A signed build still needs a browser-download witness on
+  Windows 11 for its security prompts and icon appearance. The earlier Windows
+  10 zip witness does not prove this installer.
 - **CI is Windows Server 2025.** The installed-app job uses a fresh runner and
   profile, validates shortcuts and project persistence, and removes developer
   tools from PATH. It does not represent every DLL/runtime configuration of a
@@ -775,8 +881,8 @@ between runs; it does not replace the run.
 | 9b | From alpha.7 (Increment 7, D74): on Home, `+ Add a project` › `New Open Bible Stories`: name, language, `Create stories →`. Open the story 1 tile: story 1 opens in `Understand`. Mode tab `Translate`: story 1 shows with the gateway text on the left. `Draft frame 1`, type, click outside the card. `Understand`; select frame 1. `Check` › Translation Notes › `Start checking`; pick one item; `✓ Mark valid`. | The gateway frame text and the picture of frame 1 show from the bundled `en_obs` and picture pack with the network off. The frame marker for frame 1 turns drafted. Understand lists the notes and word links of frame 1. The check item is decided. A missing picture or gateway story is a new finding: file its issue. |
 | 10 | Quit the app. Turn the network on again. | |
 
-Look at the screen fonts during the run. With the network off, the interface shows Mulish,
-and scripture shows Charis SIL, Noto Serif (Greek), Noto Serif Hebrew and Amiri (Arabic).
+Look at the screen fonts during the run. With the network off, the interface shows Mulish
+(Noto Sans Arabic for Arabic script), and scripture shows Charis SIL, Noto Serif (Greek), Noto Serif Hebrew and Amiri (Arabic).
 A system font in their place is a new finding: file its issue.
 
 ### Record the run

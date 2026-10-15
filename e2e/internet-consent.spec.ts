@@ -38,7 +38,8 @@ import { test, expect } from './helpers/test';
 import type { Page, TestInfo } from '@playwright/test';
 import { SEEDED_PROJECT, readClientSettingsDoc, resetClientSettings, resetPlaces, resetSeededChecking } from './helpers/rig';
 import {
-  QA_SERVER, RIG_API, USER, addOrigin, commitLocally, dropOrigin, expectCleanCard, fakeFor, fakeKeychain, fakeShare, gateOff, head, makeBareRemote, signIn,
+  QA_SERVER, RIG_API, USER, addOrigin, commitLocally, deleteRigProject, dropOrigin, expectCleanCard, fakeFor, fakeKeychain, fakeShare, gateOff, head, makeBareRemote,
+  makeObsProject, signIn,
   turnOnInternet,
 } from './helpers/door43Share';
 import { recordExternal } from './helpers/externalRequests';
@@ -50,6 +51,9 @@ import { TC4_ROOT } from './helpers/root';
 const TAG = { tag: ['@internet-consent', '@inc85'] };
 const NO_CONSENT = 'tC4 has no permission to use the internet for this task';
 const SEEDED_ID = `_local_/_local_/${SEEDED_PROJECT}`;
+// #678: a shared Bible card syncs, so the Upload changes cases (#530) run on a shared OBS card.
+const OBS_PROJECT = 'obs_upload_consent';
+const OBS_ID = `_local_/_local_/${OBS_PROJECT}`;
 const TOOLTIP_ON = 'The internet is on. Click to turn it off.';
 const UNTIL = 'tC4 will use the internet until you turn it off in the account menu, or close tC4.';
 
@@ -576,13 +580,14 @@ test.describe('D95 — the internet is one on/off state for the app session, and
     const remote = makeBareRemote();
     try {
       const fake = await fakeShare(context, remote);
-      addOrigin(SEEDED_PROJECT, remote);
+      await makeObsProject(OBS_PROJECT);
+      addOrigin(OBS_PROJECT, remote);
       await countAsks(page);
       const recorder = recordExternal(page);
       await page.goto('/');
-      const action = page.getByTestId(`share-${SEEDED_ID}`);
+      const action = page.getByTestId(`share-${OBS_ID}`);
       await expect(action).toHaveText('Upload changes');
-      await expectCleanCard(page, SEEDED_ID);
+      await expectCleanCard(page, OBS_ID);
       await shot(page, testInfo, 'upload-card-clean');
 
       // Signed out: the click opens the sign-in step. No question yet, and nothing is sent.
@@ -613,9 +618,9 @@ test.describe('D95 — the internet is one on/off state for the app session, and
       await page.getByTestId('share-submit').click();
       await expect(page.getByTestId('share-done')).toBeVisible({ timeout: 30_000 });
       expect(await asksSeen(page), 'one Not now and one Turn on internet').toBe(2);
-      expect(remote.main()).toBe(head(SEEDED_PROJECT));
+      expect(remote.main()).toBe(head(OBS_PROJECT));
       await page.getByTestId('share-close').click();
-      await expectCleanCard(page, SEEDED_ID);
+      await expectCleanCard(page, OBS_ID);
       await recorder.save(testInfo, 'd-upload-signed-out-requests');
 
       // Signed in, the internet turned off in the menu, a new upload: the dialog opens with no
@@ -624,7 +629,7 @@ test.describe('D95 — the internet is one on/off state for the app session, and
       recorder.reset();
       await page.evaluate(() => { (window as unknown as { __asks: number }).__asks = 0; });
       const pushed = remote.main();
-      const next = commitLocally(SEEDED_PROJECT, 'a local edit for the internet journey');
+      const next = commitLocally(OBS_PROJECT, 'a local edit for the internet journey');
       await action.click();
       await expect(page.getByTestId('share-upload')).toBeVisible();
       await page.waitForTimeout(500);
@@ -647,7 +652,7 @@ test.describe('D95 — the internet is one on/off state for the app session, and
       await expect(page.getByTestId('share-dialog')).toHaveCount(0);
       expect(recorder.external()).toEqual([]);
       expect(remote.main()).toBe(pushed);
-      await expectCleanCard(page, SEEDED_ID);
+      await expectCleanCard(page, OBS_ID);
       await expectInternet(page, false);
 
       // Upload changes, then Turn on internet: one question, and the push.
@@ -662,7 +667,7 @@ test.describe('D95 — the internet is one on/off state for the app session, and
       await shot(page, testInfo, 'upload-dialog-done');
       await recorder.save(testInfo, 'd-upload-signed-in-requests');
     } finally {
-      dropOrigin(SEEDED_PROJECT);
+      await deleteRigProject(OBS_PROJECT);
       remote.dispose();
     }
   });
@@ -677,7 +682,8 @@ test.describe('D95 — the internet is one on/off state for the app session, and
     try {
       const fake = await fakeShare(context, remote, { tokens: [KEPT_TOKEN] });
       await fakeKeychain(context, KEPT_TOKEN);
-      addOrigin(SEEDED_PROJECT, remote);
+      await makeObsProject(OBS_PROJECT);
+      addOrigin(OBS_PROJECT, remote);
       // Hold Door43's answer to the check of the saved sign-in until the journey releases it.
       let release!: () => void;
       const held = new Promise<void>((resolve) => { release = resolve; });
@@ -690,7 +696,7 @@ test.describe('D95 — the internet is one on/off state for the app session, and
       const pushes = watchPushes(page);
       await countAsks(page);
       await page.goto('/');
-      const action = page.getByTestId(`share-${SEEDED_ID}`);
+      const action = page.getByTestId(`share-${OBS_ID}`);
       await expect(action).toHaveText('Upload changes');
 
       // Upload changes, Turn on internet: the check of the saved sign-in is sent, and held.
@@ -723,12 +729,12 @@ test.describe('D95 — the internet is one on/off state for the app session, and
       await expect(page.getByTestId('share-done')).toBeVisible({ timeout: 30_000 });
       expect(await asksSeen(page), 'one question in all').toBe(1);
       expect(pushes.length).toBe(1);
-      expect(remote.main()).toBe(head(SEEDED_PROJECT));
+      expect(remote.main()).toBe(head(OBS_PROJECT));
       const log = testInfo.outputPath('d-upload-cancel-reopen.json');
       fs.writeFileSync(log, JSON.stringify({ savedSignInChecks: checks, door43Calls: fake.calls.map((c) => `${c.method} ${c.url}`), pushes: pushes.length, asks: await asksSeen(page) }, null, 2));
       await testInfo.attach('d-upload-cancel-reopen', { path: log, contentType: 'application/json' });
     } finally {
-      dropOrigin(SEEDED_PROJECT);
+      await deleteRigProject(OBS_PROJECT);
       remote.dispose();
     }
   });
@@ -739,11 +745,12 @@ test.describe('D95 — the internet is one on/off state for the app session, and
       const fake = await fakeShare(context, remote);
       const keychain = await fakeKeychain(context);
       const forgets = () => keychain.calls.filter((call) => call === 'forget').length;
-      addOrigin(SEEDED_PROJECT, remote);
+      await makeObsProject(OBS_PROJECT);
+      addOrigin(OBS_PROJECT, remote);
       const signIns = await holdSignIns(page, (n) => n === 1);
       await countAsks(page);
       await page.goto('/');
-      const action = page.getByTestId(`share-${SEEDED_ID}`);
+      const action = page.getByTestId(`share-${OBS_ID}`);
       await expect(action).toHaveText('Upload changes');
 
       // Signed out: the sign-in step. Sign in, Turn on internet: the sign-in is sent, and held.
@@ -778,7 +785,7 @@ test.describe('D95 — the internet is one on/off state for the app session, and
       expect(remote.main(), 'the sign-in pushed nothing').toBeNull();
       expect(fake.tokens.size).toBeGreaterThan(0);
     } finally {
-      dropOrigin(SEEDED_PROJECT);
+      await deleteRigProject(OBS_PROJECT);
       remote.dispose();
     }
   });
@@ -797,13 +804,14 @@ test.describe('D95 — the internet is one on/off state for the app session, and
         const fake = await fakeShare(context, remote, refused ? {} : { tokens: [KEPT_TOKEN] });
         const keychain = await fakeKeychain(context, KEPT_TOKEN);
         const forgets = () => keychain.calls.filter((call) => call === 'forget').length;
-        addOrigin(SEEDED_PROJECT, remote);
+        await makeObsProject(OBS_PROJECT);
+        addOrigin(OBS_PROJECT, remote);
         const signIns = await holdSignIns(page, (n) => n === 1);
         const pushes = watchPushes(page);
         if (!refused) await page.route('**/api/git/push/**', (route) => route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ is_good: false, reason: 'the journey refused this push' }) }));
         await countAsks(page);
         await page.goto('/');
-        const action = page.getByTestId(`share-${SEEDED_ID}`);
+        const action = page.getByTestId(`share-${OBS_ID}`);
         await expect(action).toHaveText('Upload changes');
 
         // Upload changes, Turn on internet: the one question of this session.
@@ -850,7 +858,7 @@ test.describe('D95 — the internet is one on/off state for the app session, and
         fs.writeFileSync(log, JSON.stringify({ way, signIns: signIns.events, pushes: pushes.length, door43Calls: fake.calls.length }, null, 2));
         await testInfo.attach('d-upload-sign-in-cancel', { path: log, contentType: 'application/json' });
       } finally {
-        dropOrigin(SEEDED_PROJECT);
+        await deleteRigProject(OBS_PROJECT);
         remote.dispose();
       }
     });
@@ -865,7 +873,8 @@ test.describe('D95 — the internet is one on/off state for the app session, and
     try {
       const fake = await fakeShare(context, remote, { tokens: [KEPT_TOKEN] });
       await fakeKeychain(context, KEPT_TOKEN);
-      addOrigin(SEEDED_PROJECT, remote);
+      await makeObsProject(OBS_PROJECT);
+      addOrigin(OBS_PROJECT, remote);
       // Hold Door43's answer to the check of the saved sign-in (`token …`); a sign-in passes.
       const isCheck = (authorization: string | undefined) => (authorization ?? '').startsWith('token ');
       let release!: () => void;
@@ -880,7 +889,7 @@ test.describe('D95 — the internet is one on/off state for the app session, and
       const pushes = watchPushes(page);
       await countAsks(page);
       await page.goto('/');
-      const action = page.getByTestId(`share-${SEEDED_ID}`);
+      const action = page.getByTestId(`share-${OBS_ID}`);
       await expect(action).toHaveText('Upload changes');
 
       // Upload changes, Turn on internet: the check of the saved sign-in is sent, and held.
@@ -914,13 +923,13 @@ test.describe('D95 — the internet is one on/off state for the app session, and
       await page.getByTestId('share-submit').click();
       await expect(page.getByTestId('share-done')).toBeVisible({ timeout: 30_000 });
       expect(pushes.length, 'one push for the one click').toBe(1);
-      expect(remote.main()).toBe(head(SEEDED_PROJECT));
+      expect(remote.main()).toBe(head(OBS_PROJECT));
       expect(await asksSeen(page), 'one question').toBe(1);
       const log = testInfo.outputPath('d-upload-change-while-checking.json');
       fs.writeFileSync(log, JSON.stringify({ savedSignInChecks: checks, door43Calls: fake.calls.map((c) => `${c.method} ${c.url}`), pushes: pushes.length }, null, 2));
       await testInfo.attach('d-upload-change-while-checking', { path: log, contentType: 'application/json' });
     } finally {
-      dropOrigin(SEEDED_PROJECT);
+      await deleteRigProject(OBS_PROJECT);
       remote.dispose();
     }
   });
@@ -934,12 +943,13 @@ test.describe('D95 — the internet is one on/off state for the app session, and
     try {
       const fake = await fakeShare(context, remote, { tokens: [KEPT_TOKEN] });
       await fakeKeychain(context, KEPT_TOKEN);
-      addOrigin(SEEDED_PROJECT, remote);
+      await makeObsProject(OBS_PROJECT);
+      addOrigin(OBS_PROJECT, remote);
       const gate = await holdFirstGateRead(page);
       const pushes = watchPushes(page);
       await countAsks(page);
       await page.goto('/');
-      const action = page.getByTestId(`share-${SEEDED_ID}`);
+      const action = page.getByTestId(`share-${OBS_ID}`);
       await expect(action).toHaveText('Upload changes');
 
       // Upload changes, Turn on internet: the gate is read, and the answer is held.
@@ -979,7 +989,7 @@ test.describe('D95 — the internet is one on/off state for the app session, and
       fs.writeFileSync(log, JSON.stringify({ gateReads: gate.reads(), asks: await asksSeen(page), door43Calls: fake.calls.map((c) => `${c.method} ${c.url}`), pushes: pushes.length }, null, 2));
       await testInfo.attach('d-upload-change-while-gate-checked', { path: log, contentType: 'application/json' });
     } finally {
-      dropOrigin(SEEDED_PROJECT);
+      await deleteRigProject(OBS_PROJECT);
       remote.dispose();
     }
   });
@@ -990,12 +1000,13 @@ test.describe('D95 — the internet is one on/off state for the app session, and
     const remote = makeBareRemote();
     try {
       const fake = await fakeShare(context, remote);
-      addOrigin(SEEDED_PROJECT, remote);
+      await makeObsProject(OBS_PROJECT);
+      addOrigin(OBS_PROJECT, remote);
       const gate = await holdFirstGateRead(page);
       const recorder = recordExternal(page);
       await page.goto('/');
       await turnOnInternet(page);
-      const action = page.getByTestId(`share-${SEEDED_ID}`);
+      const action = page.getByTestId(`share-${OBS_ID}`);
       await expect(action).toHaveText('Upload changes');
 
       // The sign-in step; Sign in twice while the first gate read is held.
@@ -1024,7 +1035,7 @@ test.describe('D95 — the internet is one on/off state for the app session, and
       fs.writeFileSync(log, JSON.stringify({ gateReads: gate.reads(), gateReadsFinished: gate.finished(), door43Calls: fake.calls.length, external: recorder.external() }, null, 2));
       await testInfo.attach('d-upload-two-submits-while-gate-checked', { path: log, contentType: 'application/json' });
     } finally {
-      dropOrigin(SEEDED_PROJECT);
+      await deleteRigProject(OBS_PROJECT);
       remote.dispose();
     }
   });
@@ -1035,11 +1046,12 @@ test.describe('D95 — the internet is one on/off state for the app session, and
     const remote = makeBareRemote();
     try {
       await fakeShare(context, remote);
-      addOrigin(SEEDED_PROJECT, remote);
+      await makeObsProject(OBS_PROJECT);
+      addOrigin(OBS_PROJECT, remote);
       const signIns = await holdSignIns(page, (n) => n === 1);
       await page.goto('/');
       await turnOnInternet(page); // no questions here: the order of the sign-ins is the subject
-      const action = page.getByTestId(`share-${SEEDED_ID}`);
+      const action = page.getByTestId(`share-${OBS_ID}`);
       await expect(action).toHaveText('Upload changes');
 
       // The first sign-in is sent and held. Cancel, open the step again, and sign in again.
@@ -1062,12 +1074,12 @@ test.describe('D95 — the internet is one on/off state for the app session, and
       await page.getByTestId('share-submit').click();
       await expect(page.getByTestId('share-done')).toBeVisible({ timeout: 30_000 });
       await expect(page.getByTestId('share-signin')).toHaveCount(0);
-      expect(remote.main()).toBe(head(SEEDED_PROJECT));
+      expect(remote.main()).toBe(head(OBS_PROJECT));
       const log = testInfo.outputPath('d-upload-sign-in-order.json');
       fs.writeFileSync(log, JSON.stringify(signIns.events, null, 2));
       await testInfo.attach('d-upload-sign-in-order', { path: log, contentType: 'application/json' });
     } finally {
-      dropOrigin(SEEDED_PROJECT);
+      await deleteRigProject(OBS_PROJECT);
       remote.dispose();
     }
   });

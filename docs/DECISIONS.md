@@ -1933,6 +1933,10 @@ in every time".
 `docs/PLATFORM-NOTES.md` #47 and `CONTEXT.md` (Door43 session) carry this decision. The bodies of
 #203, #366 and epic #372 were edited to match on 2026-09-28.
 
+[amended 2026-10-13 — D98 ruling 5: Door43 already stores and shows each username, so the project
+journal may hold it (the name action, BURRITO-SPEC R-8.5.25). Points 1 and 2 change for that one
+value only.]
+
 ## D86 (2026-09-30, project-owner rulings) **The top bar shows "Internet" or "Local" beside "Saved" at all times. The words tell what tC4 may do, not whether the computer is connected. Local stays after a restart, and tC4 then sends nothing. Door43 sign-in happens only in Share; Home has no Door43 bar.** [owner sessions 2026-09-29 and 2026-09-30, on the owner's mockup `tC4 Share on Door43 v2.html`; issue #486, epic #372; amends D30 points 4 and 5, D72 point 5, D79 point 12, D82 point 2, D84 points 1 and 2, and D85 point 4]
 
 Context. The platform has one network gate. When the gate is off, every Door43 route of the platform
@@ -2183,7 +2187,8 @@ kept most of the product work and ruled on the order, the gates and the cut rule
    Windows signing is #456. Its credential must work in CI by 2026-10-08. If it does not, rc.2
    and v4.0.0 ship Windows unsigned with the documented SmartScreen steps. #456 then moves to
    4.0.1.
-   Linux stays an unsigned zip.
+   Linux stays an unsigned zip. [superseded by D99, 2026-10-13 — Windows v4.0.0 ships signed;
+   signing is a release gate and is not deferred to 4.0.1]
 5. **Witnesses.** A clean-machine witness of the Windows installer is a gate for rc.2. The clean
    macOS witness is not a gate for rc.2.
 6. **The server pin.** #461 moves the pin from pankosmia-web 0.18.5 to 0.18.14 first, with a
@@ -2626,3 +2631,186 @@ Where slice 1 lands: `docs/BURRITO-SPEC.md` §5.2 and §5.3 (version 1.22),
 samples and `sample-burrito-obs/.../resources.json`, `conformance/validate-journal.mjs`
 (the tW resource fixture), `conformance/generate.mjs` and `conformance/README.md`, and
 `test/export/relationships.test.ts`.
+
+## D98 (2026-10-13, project-owner rulings) **Team sync round 1: three or more translators sync one Bible project through one public Door43 repository, on its `main` branch, with one button. Eight guarantees bind it. The project may hold each translator's Door43 username. Amends D85 points 1 and 2, and D67(3) (its planned ids R-8.7.7–R-8.7.12 now name the round-1 rules). Sets aside, for round 1, the publication branches and the integrator (D16, D67(1), D67(4b)) and the legibility gate (D67(2)).** [owner rulings of 2026-10-13 in epic #24, "Decided for round 1"; issue #674; the owner's design notes of the same day]
+
+Context. Each change is already one sealed file in the translator's own journal folder, and two
+translators never write the same file (R-8.1.16). The fold already combines journals: different
+verses combine with no conflict, and the same verse changed two ways becomes a fork that keeps
+both versions (R-8.3.2, R-8.6.4). Every other project file is rebuilt from the journals
+(R-8.7.1). So a sync needs no git merge of project files. It copies in the journal files that
+this computer does not have, rebuilds, and pushes [VERIFIED — `journal/fold.mjs` and
+`journal/checkpoint.mjs` at 3e333fe, 2026-10-13; the fixture checks of JC-35]. The long-term plan
+(`docs/plans/TEAM-SYNC-PLAN.md`, D67) stays the reference for later rounds.
+
+1. **Door43 only, public repositories only.** USB transport and private repositories come later.
+2. **The project owner gives teammates write access on Door43.** tC4 does not manage access.
+3. **"Upload changes" becomes "Sync with Door43" after the first share.** One press gets Door43
+   `main`, adds the own journal files, rebuilds the project files, pushes, and applies the
+   pushed tree to the project in place. [amended 2026-10-14 — D101: no swap, no second
+   project folder]
+4. **The conflict review follows translationStudio's design**, verse by verse, with the shading
+   set by the owner of each version, not by its position.
+5. **Versions show each teammate's Door43 username.** This amends D85 point 1: Door43 already
+   stores and shows each username, so the project may hold it. A translator records the
+   username once, in the journal, with the name action `actor.name.set` (BURRITO-SPEC
+   R-8.5.25, R-8.5.26). The name action is the one op of journal `v: 3` (R-8.5.1). The same
+   change applies to the words "or anywhere else" of D85 point 2: the project journal may hold
+   the username. The client settings and the keychain still hold no name, email or login.
+6. **Bible projects only.** A sync of an OBS project refuses (`sync.obs-unsupported`).
+7. **No publication branches, no integrator role, no legibility gate.** Issues #23, #26, #157,
+   #158 and #159 are closed. For round 1 this sets aside the per-actor publication branch of
+   D16 and D67(1), the integrator of D67(4b), and the order rule of D67(2). The rule ids
+   `R-8.7.7`–`R-8.7.12` that D67(3) planned for the long-term protocol are now the round-1
+   rules. The long-term plan marks its rules `R-LT-1` to `R-LT-6` until a later round gives
+   them new ids.
+8. **Check results and alignments: the newest wins.** Only verse text goes to the conflict
+   review. Each other fork keeps its newest head, and the sync result counts it once.
+
+**The guarantees.** Each guarantee has an id. Each test that proves one starts its name with
+the id, for example `[G1] keeps every own file`, so `git grep "\[G1\]"` lists every proof.
+This table is the home of the guarantees; epic #24 links here.
+
+| Id | Guarantee | Layer | Rule | Proven in |
+|---|---|---|---|---|
+| G1 | Own work is never lost: each own journal file and outbox entry from before a sync is in the result, byte for byte, or the sync changes nothing. | 2 | R-8.7.7 | #674 (JC-35), #675 |
+| G2 | Incoming files are checked: each journal file from Door43 passes the one validator. One failure stops the sync. | 2 | R-8.7.8 | #674 (JC-35), #675, #677 |
+| G3 | Derived files are rebuilt, never trusted: each project file that tC4 writes is the projection of the fold over the base inputs of R-8.7.9. `metadata.json` belongs to the server: a sync never writes its content, and the remake and the commit of the apply make the platform stamp it again (PLATFORM-NOTES #48). [amended 2026-10-14 — D101] | 2 | R-8.7.9, R-8.7.10 | #674 (JC-35), #675 |
+| G4 | Door43 `main` only moves forward: never a force push; a push that is not a fast-forward starts the sync again. | 3 | app rule (§8.7) | #676 |
+| G5 | Identity holds: after a sync, the project is at the same path with the same actor id. | 3 | app rule (§8.7) | #676 |
+| G6 | Same journals, same project: two computers with the same journals have the same project files. | 2 | R-8.7.11 | #674 (JC-35), #675 |
+| G7 | Only verse text reaches a person: other conflicts keep the newest version, and the result counts each one once. | 1, 2, 4 | R-8.7.12 | #674 (JC-35), #675, #679 |
+| G8 | A crash during the apply never makes the project unopenable, never loses own work, and never reverts or re-attributes teammate work; the next start finishes the apply. [amended 2026-10-14 — D101] After a power loss, the start applies a scratch copy only when it is the fold of its journal. If it is not, the next sync brings Door43 main (D101 point 2, Ledger #11). [decided 2026-10-14 — owner, PR #688] | 3 | app rule (§8.7) | #676 |
+
+The refusal codes of the format-facing rules are in `journal/report.mjs`:
+`sync.own-file-differs` (R-8.7.7), `sync.incoming-invalid` (R-8.7.8), `sync.metadata-overlay`
+(R-8.7.10), `sync.obs-unsupported` (app rule) and `actor.name-already-set` (R-8.5.26). Tests
+assert codes, never message text.
+
+Where it lands: `docs/BURRITO-SPEC.md` §8.5 and §8.7 (version 1.23); `journal/schema.mjs`,
+`journal/grammar.mjs` and `journal/fold.mjs` (the name action and `names`); `journal/report.mjs`
+(the codes); the shared fixture `conformance/fixtures/team-sync/`; the journal suite group
+JC-35; `CONTEXT.md` (the terms); and the "Round 1" section of `docs/plans/TEAM-SYNC-PLAN.md`.
+
+## D99 (2026-10-13 and 2026-10-14, project-owner rulings) **Windows v4.0.0 ships signed. Signing is a release gate: an unsigned Windows build can start with no window and no warning. Overrules D89 point 4 for Windows.** [owner rulings on #456, 2026-10-13 and 2026-10-14; evidence in `docs/evidence/windows-unsigned-silent-start-2026-10-13.md`]
+
+Context. D89 point 4 let Windows ship unsigned if the #456 credential did not work in CI by
+2026-10-08. That date passed with no signed build. On 2026-10-13 the owner found that an
+unsigned build can fail silently: on a machine with Windows Security **App & browser
+control** on and **Smart App Control** off, the shortcut starts translationCore4, Task
+Manager shows it running, and no window and no warning appear [VERIFIED — owner observation,
+2026-10-13]. The documented SmartScreen steps cannot help a user who sees nothing. Signing two
+Electronite graphics DLLs by hand removed the failure on that machine.
+
+1. **Windows v4.0.0 ships signed.** Signing is a release gate. Under D89, a gate that is not
+   green moves the date. #456 stays in Increment 9 and does not move to 4.0.1. macOS and
+   Linux are unchanged from D89 point 4: macOS is unsigned and not notarized, and Linux is an
+   unsigned zip.
+2. **Route and publisher (#456 Q1, Q3).** The build signs with Azure Artifact Signing:
+   account `unfoldingWordSigning`, certificate profile `uw-public-prod`, endpoint
+   `https://eus.codesigning.azure.net/`. The publisher is
+   `CN=unfoldingWord, O=unfoldingWord, L=Orlando, S=Florida, C=US`.
+3. **What is signed.** Every `.exe`, `.dll` and `.node` file that the build ships with no
+   signature, the installer, and its uninstaller. A file that Microsoft or another publisher
+   signed keeps its signature.
+4. **Which builds are signed (#456 Q4).** Manual (`workflow_dispatch`) runs of
+   `package-desktop` only. Merges to `main` and pull requests build unsigned. The v4.0.0
+   Windows artifacts MUST come from a signed manual run.
+5. **Names (#456 Q5).** A signed artifact drops `-unsigned`:
+   `tC4-<version>-windows-x64.exe` and `tC4-<version>-windows-x64.zip`. An unsigned
+   artifact keeps the suffix. `BUILD-MANIFEST.json` records `"signed"`.
+6. **Release path.** rc.2 ships Windows unsigned. A signed rc.3 follows, and v4.0.0
+   promotes the rc.3 artifacts. [decided 2026-10-13 — owner, on #456; rc.2 tags when the
+   Arabic work is ready]
+
+7. **Credential.** CI signs in to Azure with GitHub OIDC: an Entra app registration with
+   the Signer role on `uw-public-prod`, and one federated credential for the GitHub
+   environment `windows-signing`. No secret is stored. A manual run on `main` or a
+   `release/*` branch runs in that environment; the environment's branch rules allow only
+   those branches. Every other run uses no environment and builds unsigned. A new release
+   branch signs with no Azure change. [decided 2026-10-14 — owner, on #456]
+
+Ruling 6 changes #546, which says that v4.0.0 promotes the rc.2 artifact without a new build.
+
+Where it lands: `scripts/sign-windows.ps1`, `scripts/package-desktop.zsh`, `scripts/tc4.iss`,
+`.github/workflows/package-desktop.yml` (the signing values and the `smoke-windows-x64`
+signature check), `docs/PACKAGING.md` (Signing), and `scripts/README-windows.txt`.
+
+## D100 (2026-10-14, project-owner ruling) **ar_gt leaves the gateway registry. BSOJ is the only Arabic package. D97 ruling 7 now applies to `Door43-Catalog` for `ml` and `ur-deva`. Amends D97 ruling 7.** [owner ruling on #650, 2026-10-14; evidence in #650 and pull request #697]
+
+Context. D97 ruling 7 named `ar_gt` as one of the gateway organizations with no `_twl`
+repository, and as the worked example of an Arabic set that pins the bundled `en_twl` with
+its own `ar_tw`. The #650 work found that ar_gt is not a usable Arabic package: in
+`ar_gt/ar_tw` v3, 420 of the 422 articles are Persian under the tag `ar`; `ar_gt/ar_tn` v3.2
+holds only `tn_3JN.tsv`; and no ar_gt repository has the `tc-ready` topic, so the Source
+texts screen never offers it for download [VERIFIED — Door43 API reads, 2026-10-14].
+
+1. **The registry has no ar_gt entry.** `src/data/gateways.ts` lists one Arabic package,
+   `BSOJ` (`hasTwl: true`).
+2. **Ruling 7 stands, with other examples.** A gateway with `hasTwl: false` still pins the
+   bundled `en_twl` with its own `<lang>_tw`. Those gateways are now `Door43-Catalog` for
+   `ml` and `ur-deva` [`Door43-Catalog/ur-deva_twl` answers HTTP 404, read 2026-10-14]. The
+   tests of ruling 7 that read the registry use `ur-deva`; the test that two organizations
+   of one language decide separately uses a test-only gateway object, since no registry
+   pair shows that difference any more. D97 itself is not rewritten.
+3. **Two behavior changes.** (1) A tC3 import that recorded `ar_gt/ar_tw` leaves its tW slot
+   unresolved: the import no longer finds ar_gt in the registry, so it looks for
+   `ar_gt/ar_twl`, which does not exist. (2) `orgForRepoName('ar_tn')` returns `BSOJ`, where
+   it returned null while two organizations claimed `ar`. So an older Arabic install whose
+   path carries no owner (`_sideloaded_/ar_tn`) is read as BSOJ's, even one that came from
+   ar_gt. No user could download ar_gt in the app, so neither case comes from a normal
+   install.
+
+Where it lands: `src/data/gateways.ts`, `test/gatewayTwl.test.ts`, `test/import/tc3.test.ts`,
+`test/installed.test.ts`, and the J4 Arabic run (`e2e/j04-check-book.spec.ts`). Tests that
+use ar_gt only as pin data stay: `test/oldTwlPin.test.ts`, `test/resourceFetch.test.ts` and
+`conformance/validate.mjs`.
+
+## D101 (2026-10-14, project-owner ruling) **The sync applies Door43 main to the project in place. There is no swap, no previous copy and no second project folder. Amends D98 point 3 and the G8 row of D98.** [owner ruling of 2026-10-14 on #676, PR #688]
+
+1. **The apply.** After the push, the sync makes the project's `ingredients/` folder, except
+   `ingredients/audio/`, equal to the tree that it pushed. It writes the journal files first,
+   then the derived files. Then it removes each file that the pushed tree does not hold (never
+   a journal file). Then it remakes the ingredients and commits. The project keeps its folder,
+   its `.git` and its path, so it keeps its actor id (G5).
+2. **Crash recovery.** The disk is the record. The settings document never locks or unlocks
+   a project: many writers write it in place, and it has no compare-and-set. After the push,
+   the sync writes one marker file, `ingredients/tc4-sync/apply.json`, into the scratch copy.
+   Then it applies. Then it deletes the marker, then the scratch copy. At each start (for each
+   repository that `list-local-repos` names, at any path), and at the start of each sync of
+   the project, this rule runs. A scratch copy with the marker (any bytes in the marker file)
+   gets the same apply again if the copy is whole (below) [decided 2026-10-14 — owner, PR #688]. Then the marker and the scratch copy are deleted. A scratch
+   copy with no marker is deleted, because the project did not change. No scratch copy means
+   nothing is pending. A scratch copy with the marker that is not the fold of its journal is
+   from a power loss (PLATFORM-NOTES #51). A copy that the platform cannot read is also from a
+   power loss. Such a copy gets no apply: the rule deletes it and its marker. At a start, the
+   Report of its open sync record is not ok (`scratchNotWhole`), and the next sync brings
+   Door43 main (Ledger #11). At the start of a sync, that sync goes on and brings Door43 main.
+   Any other failure of the check of the copy, such as a server error, is no proof of a power
+   loss. Then the marker stays, and the rule runs again at the next start or sync. [decided 2026-10-14 — owner, PR #688] While the marker is there, the project takes no open
+   (`sync.apply-pending`). The rule runs before the settings read, so a settings read that
+   fails never stops it. An open or a create waits for the disk rule of the start recovery
+   (not for the settings read), and opens or creates only a project path (`_local_/_local_/<name>`; `open.not-a-project`). An open that writes its own record to the ops log (a store with `ops`, as in the app) still writes the settings document in `ops.begin`, so such an open waits for that write. A failure in
+   the clean-up after a finished apply is `sync.cleanup-failed`: the sync is done.
+   The apply compares before it writes, so it is safe to run again.
+   Recovery only goes forward. The sync record in the ops log is only the Report for the dev
+   Inspector.
+3. **G8, new text.** A crash during the apply never makes the project unopenable, never loses
+   own work, and never reverts or re-attributes teammate work; the next start finishes the
+   apply. After a power loss, the start applies a scratch copy only when it is the fold of its
+   journal. If it is not, the next sync brings Door43 main (point 2, Ledger #11). [decided 2026-10-14 — owner, PR #688]
+4. **Stale stores.** The sync moves the project's sync generation on before the first write to
+   the project. A store that opened the project before that refuses every edit and every
+   checkpoint (`sync.project-replaced`). The app opens the project again after a sync.
+5. **Audio.** Round 1 never reads or writes `ingredients/audio/`. A teammate's audio does not
+   reach this project, and own audio stays where it is. The audio design stays open.
+6. **Cost.** The apply writes only the files that differ. One write costs 0.33 ms to 0.43 ms:
+   1000 writes of about 1 KB took 325 ms to 426 ms [VERIFIED — pankosmia-web 0.18.15
+   (a83725b, 2026-09-29), rig on an Apple M2 Pro, three runs, 2026-10-14;
+   `scripts/measure-sync-writes.mjs`].
+
+The swap, the previous copy, the go-back and the restore of the earlier #676 design are
+deleted with their tests. Where it lands: `src/data/share/syncOperation.ts`,
+`src/data/journal/opsLog.ts` (`applyScratch` and the recovery rule),
+`src/data/journal/journalingStore.ts`, BURRITO-SPEC §8.7, `docs/RISKS.md` (Ledger #11 and #12),
+and `CONTEXT.md`.
