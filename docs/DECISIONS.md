@@ -2175,9 +2175,15 @@ kept most of the product work and ruled on the order, the gates and the cut rule
 1. **The release path.** rc.2 tags on 2026-10-12. v4.0.0 ships on 2026-10-16. v4.0.0 promotes
    the rc.2 artifact and does not build it again. The dates of D74 and D79 stand. If a gate is
    not green, the release date moves. If a feature is not green, the feature leaves Increment 9.
+   [amended 2026-10-15 — D102 supersedes the release path and dates above. v4.0.0 also
+   holds epics #24 and #658. There is no rc.2 or rc.3, and no RC artifact is promoted.
+   After the re-cut, v4.0.0 tags on `release/4.0` from a signed build. The ship date is
+   the day the gates are green.]
 2. **What can enter.** Each defect that end-user QA finds is in scope until rc.2. After rc.2,
    only a release blocker can enter: data loss, a project that cannot open, or an install that
    fails. Other defects go to 4.0.1 or 4.1.0.
+   [superseded 2026-10-15 — D102: the re-cut replaces rc.2 as the cutoff. The re-cut
+   takes all of `main` once; after it, only cherry-picked fixes enter.]
 3. **The cut rule.** Each P2 or P3 issue that does not merge by the end of 2026-10-09 moves to
    the 4.0.1 milestone. It then stops blocking the release issue. The owner moves deliberate
    deferrals to 4.1.0. The gates (P1) are #44, #456, #284, #206, #335, #336, #42, #71 and the
@@ -2721,7 +2727,8 @@ Electronite graphics DLLs by hand removed the failure on that machine.
    artifact keeps the suffix. `BUILD-MANIFEST.json` records `"signed"`.
 6. **Release path.** rc.2 ships Windows unsigned. A signed rc.3 follows, and v4.0.0
    promotes the rc.3 artifacts. [decided 2026-10-13 — owner, on #456; rc.2 tags when the
-   Arabic work is ready]
+   Arabic work is ready] [amended 2026-10-15 — D102: no rc.2 and no rc.3; v4.0.0 tags on
+   `release/4.0` from a signed build]
 
 7. **Credential.** CI signs in to Azure with GitHub OIDC: an Entra app registration with
    the Signer role on `uw-public-prod`, and one federated credential for the GitHub
@@ -2814,3 +2821,29 @@ deleted with their tests. Where it lands: `src/data/share/syncOperation.ts`,
 `src/data/journal/opsLog.ts` (`applyScratch` and the recovery rule),
 `src/data/journal/journalingStore.ts`, BURRITO-SPEC §8.7, `docs/RISKS.md` (Ledger #11 and #12),
 and `CONTEXT.md`.
+
+## D102 (2026-10-15, project-owner ruling) **v4.0.0 includes team sync round 1 (epic #24) and Arabic support (epic #658). When both epics close, `release/4.0` takes all of `main` once. Then v4.0.0 tags on `release/4.0`, with no more release candidates. Amends D89 points 1 and 2 and D99 point 6.** [owner rulings of 2026-10-15: "re-cut release/4.0 from main once I get these epics closed" and "We're not doing an RC3. We're just going to go right to 4-0"; epics #24 and #658; release issue #546]
+
+Context. `release/4.0` was cut from `main` at `17f4cbc` on 2026-10-13 and holds no cherry-pick.
+On 2026-10-15, `main` was 239 commits ahead of it (87 merges, 153 files). Most of that is
+team sync and Arabic [VERIFIED — `git rev-list` and `git diff --stat 17f4cbc origin/main`,
+2026-10-15]. To cherry-pick that much work is not a fix-only change. No v4.0.0 has shipped,
+so the first release can still hold these features.
+
+1. **Scope.** Epics #24 and #658 move to the milestone "Increment 9 — ship", with the
+   follow-ups #723 and #725 (data safety) and #730 (Arabic strings). The follow-ups #724 and
+   #710 move to 4.0.1. 4.0.0 is no longer a single-translator release.
+2. **The re-cut.** When both epics close, one pull request merges `main` into `release/4.0`.
+   The ruleset "release branches" applies unchanged: one approval, the `verify` check, no
+   force push, no delete. This is one exception to "fixes only" (`docs/PACKAGING.md`,
+   "Release branches"). After it, the cherry-pick rule applies again.
+3. **The release path.** There is no rc.2 and no rc.3. After the re-cut, v4.0.0 tags on
+   `release/4.0` from a signed manual build (#456, closed 2026-10-15). After the re-cut, only
+   cherry-picked fixes enter. The date of 2026-10-16 moves to the day the gates are green
+   (D89 point 1).
+4. **4.1.0.** The milestone keeps its other items (#364, #365, #55, #139 and the Aquifer
+   epic #711). Team sync and Arabic leave it.
+
+Where it lands: `docs/ROADMAP.md`, `docs/PACKAGING.md` ("Release branches"),
+`docs/JOURNEYS.md` (J11 owner row), `docs/plans/TEAM-SYNC-PLAN.md` (Round 1),
+`docs/VISION.md`, and the milestones of #24, #658, #723, #725, #730, #724 and #710.

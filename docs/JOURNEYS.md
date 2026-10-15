@@ -248,7 +248,7 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   and of Upload changes (it replaces `e2e/internet-local.spec.ts`; D88; #530).
 - Owner: shipped rc.1 (Increment 8.5; D79 point 12, D84, D85): #362 the share operation,
   #203 sign-in, #366 the keychain, #120 the Door43 authority, #185 the journey. Receive and
-  team sync stay Phase 2 (D67; epic #24).
+  team sync come with team sync round 1 in v4.0.0 (D102; epic #24).
 
 ### J12 Upgrade the pinned resources
 

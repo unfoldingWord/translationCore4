@@ -1034,7 +1034,9 @@ Measured locally on 2026-09-12 (macOS arm64, Node 22); the desktop artifact grow
 - Each minor release has one release branch, named `release/<major>.<minor>`. The first is
   `release/4.0`. It was cut from `main` at `17f4cbc` on 2026-10-13, with all checks green.
 - All work merges to `main` first, through the merge queue. `main` does not wait for a release.
-- A release branch gets fixes only. Do not put a feature on a release branch.
+- A release branch gets fixes only. Do not put a feature on a release branch. One exception
+  [decided 2026-10-15 — D102]: when epics #24 and #658 close, one pull request merges `main`
+  into `release/4.0`. After it, the cherry-pick rule applies again.
 - To put a fix in a release, merge it to `main` first. Then open a pull request to the release
   branch that holds `git cherry-pick -x <commit>`. The `-x` line records the commit on `main`.
 - If a fix cannot apply to `main` (the code on `main` changed), write the fix on the release
