@@ -8,7 +8,7 @@ import { bootstrapVerse, linkWord, stampTargetVerse } from '../src/data/align/ed
 import type { AlignedWord, AlignmentFile, AlignmentVerseRecord } from '../src/data/align/zaln';
 import { __trainingTextForTests } from '../src/state.jsx';
 
-const { collectTrainingVerses, openBookText } = __trainingTextForTests;
+const { collectTrainingVerses, trainingCollector } = __trainingTextForTests;
 
 const G = (text: string, strong: string, lemma: string, morph: string) => ({ tag: 'w', type: 'word', text, strong, lemma, morph, occurrence: 1, occurrences: 1 });
 const SOURCE = 'dcs::unfoldingWord/el-x-koine_ugnt@v0.34';
@@ -40,9 +40,25 @@ describe('suggestion training while the open book loads', () => {
     expect(verses[0].target.map((t) => t.text)).toEqual(['Pablo', 'siervo', 'de', 'Dios']);
   });
 
-  it('gives no open-book text while the book loads, even though rawRef still holds the previous book', () => {
-    expect(openBookText({ bookRaw: null }, { current: PHM_USFM })).toBeNull();
+  // The trainer's own wiring: the state says Titus and no text yet, while
+  // rawRef still holds the previous book (Philemon).
+  const collector = (bookRaw: string | null, raw: string) =>
+    trainingCollector({
+      storeRef: { current: store },
+      alignSchedulerRef: { current: null },
+      stateRef: { current: { project: { bookCodes: ['PHM', 'TIT'] }, book: 'TIT', bookRaw } },
+      rawRef: { current: raw },
+    });
+
+  it('never pairs the open book with the previous book\'s text while it loads', async () => {
+    const verses = await collector(null, PHM_USFM)('nt');
+    expect(verses.map((v) => v.ref)).toEqual(['TIT 1:1']);
+    expect(verses[0].target.map((t) => t.text)).toEqual(['Pablo', 'siervo', 'de', 'Dios']);
+  });
+
+  it('with the text there, reads the latest edits from rawRef', async () => {
     const edited = TIT_USFM.replace('Dios', 'Dios nuestro');
-    expect(openBookText({ bookRaw: TIT_USFM }, { current: edited })).toBe(edited); // rawRef owns synchronous edits
+    const verses = await collector(TIT_USFM, edited)('nt');
+    expect(verses[0].target.map((t) => t.text)).toEqual(['Pablo', 'siervo', 'de', 'Dios', 'nuestro']);
   });
 });
