@@ -197,15 +197,20 @@ function useConflictCounts(p) {
   return { counts, total: Object.values(counts).reduce((sum, n) => sum + n, 0) };
 }
 
+// D30: the summary states the in-progress count only when every book's
+// progress is known; before that it is an em-dash, as on the tiles.
+const inProgressText = (allKnown, n) => t('home.inProgress', { n: allKnown ? n : '—' });
+
 export function ProjectCard({ p }) {
   const { s, actions } = useApp();
   const [expanded, setExpanded] = useState(false);
   const prog = s.progressByProject[p.id] || {};
   const { counts: conflicts, total: conflictTotal } = useConflictCounts(p);
   // loadProgress caches by repoPath and no-ops on a fully-known cache. It
-  // re-runs when the cache is dropped (an edit, a new book) or still carries
-  // an unknown entry from a failed read, so a transient failure never pins the
-  // card (Codex review of #138).
+  // runs again when the cache is dropped (an edit, a new book) and on each
+  // new mount (a later Home visit). A cache with an unknown entry from a
+  // failed read is read again then, so a transient failure never pins the
+  // card (Codex review of #138). A re-render alone does not read again.
   const cacheKey = s.progressByProject[p.id] ? `${Object.keys(prog).length}:${Object.values(prog).includes(null)}` : 'none';
   useEffect(() => {
     actions.loadProgress(p);
@@ -235,7 +240,9 @@ export function ProjectCard({ p }) {
             <ConflictsChip p={p} total={conflictTotal} />
           </div>
           <span style={{ fontSize: 'var(--fs-ui-sm)', color: 'var(--text-tertiary)', fontWeight: 'var(--fw-medium)' }}>
-            {p.languageTag} · {p.bookCodes.length} {p.bookCodes.length === 1 ? t('home.book') : t('home.books')} · {t('home.inProgress', { n: inProgress.length })}
+            <span data-testid="project-summary">
+              {p.languageTag} · {p.bookCodes.length} {p.bookCodes.length === 1 ? t('home.book') : t('home.books')} · {inProgressText(allKnown, inProgress.length)}
+            </span>
             <ShareMeta p={p} />
           </span>
         </div>

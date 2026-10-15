@@ -2734,7 +2734,9 @@ async function performLoadProgress(ctx) {
   } catch {
     // Catch-to-absence sweep (D30), reviewed: cache NOTHING on a
     // failed open — Home already renders missing entries as unknown
-    // (em-dash), and the next render retries.
+    // (em-dash). The next Home visit (a new card mount) tries again; a
+    // re-render does not, so a repository that cannot open is not read
+    // again on each render.
     return;
   }
   const pcts = {};
