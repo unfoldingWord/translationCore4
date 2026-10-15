@@ -64,6 +64,16 @@ actual `dev-env/state/work/repos` directory. The full macOS `--zip` packaging
 recipe passed its API, singleton, isolation, restart and journal-lifecycle smoke
 checks and produced an unsigned arm64 artifact. Windows and Linux were not run.
 
+[VERIFIED — local rig, pankosmia-web 0.18.15 `a83725b`, 2026-10-15]
+A compact Greek lexicon was imported through the existing
+`POST /burrito/zipped/<repo>` endpoint into a new temporary sideloaded path.
+The metadata retained the archive inventory. The existing
+`GET /burrito/ingredient/bytes/<repo>?ipath=source.zip` returned the nested
+archive byte-for-byte; it contained all 5,410 source entries. The probe copy
+was deleted afterward. The binary endpoint takes a path relative to the
+resource's `ingredients/` directory; the text `raw` endpoint is unsuitable for
+ZIP bytes. A future #703 reader can use the existing binary endpoint.
+
 Automated checks exercise corrupt archive hashes, damaged/missing entries,
 unsafe paths, incorrect revisions, failed writes, settings publication failure,
 process interruption before and after resource publication, retry, old releases,
