@@ -987,7 +987,6 @@
   "syncResult.error.notShared": "Proyek ini tidak ada di Door43. Bagikan dulu.",
   "syncResult.error.clonePathExists": "Sebuah folder di komputer ini memiliki nama proyek Door43, jadi tC4 tidak dapat menerima proyek. Tidak ada yang berubah. Minta bantuan.",
   "syncResult.error.cloneFailed": "tC4 tidak dapat menerima proyek dari Door43. Tidak ada yang berubah. Coba lagi.",
-  "syncResult.error.moveFailed": "tC4 tidak dapat mengganti folder proyek. Proyek tidak berubah. Coba lagi.",
   "syncResult.error.verifyFailed": "Salinan yang tersinkron tidak lulus pemeriksaannya. Tidak ada yang dikirim ke Door43. Minta bantuan.",
   "syncResult.error.nonFastForward": "Tim mengirim perubahan ke Door43 selama sinkronisasi. Sinkronkan lagi.",
   "syncResult.error.noWriteAccess": "Mintalah akses tulis di Door43 kepada pemilik proyek.",

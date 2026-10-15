@@ -481,6 +481,17 @@ describe('round 20 — unsatisfiedProjectPinFor: a download must satisfy the PRO
     };
     expect(unsatisfiedProjectPinFor(resources, ugntTarget, {})).toEqual(lsPin);
   });
+
+  it('an extraScripture pin (a source Bible pane, #412) whose sha is not local → returned, so the Download of a sync result (#678, D88 point 6) fetches the pinned version', () => {
+    const fs = process.getBuiltinModule('node:fs');
+    const path = process.getBuiltinModule('node:path');
+    const resources = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), 'conformance/sample-burrito/ingredients/checking/resources.json'), 'utf8')) as ResourcesFile;
+    const ult = resources.extraScripture!.find((entry) => entry.id === 'ult')!;
+    const ultTarget = localRepoPathFromRepoPath(ult.repoPath);
+    expect(unsatisfiedProjectPinFor(resources as never, ultTarget, {})).toEqual(ult);
+    // control: the exact identity is installed, so there is nothing to fetch
+    expect(unsatisfiedProjectPinFor(resources as never, ultTarget, { [ultTarget]: { ...ult } })).toBeNull();
+  });
 });
 
 describe('catch-to-absence sweep (D30) — the install-record reads', () => {
