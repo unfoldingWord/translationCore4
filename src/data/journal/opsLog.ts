@@ -436,8 +436,8 @@ export const deleteIngredientIfPresent = async (api: Pick<OpsRecoveryApi, 'delet
 };
 
 /** Delete every file in the reserved marker folders (`isReservedIngredient`) of
- * `repoPath`. A clone of Door43 content runs this at the fixed clone path before the
- * move (#677, as #676 deletes APPLY_MARKER there), so a marker that came with Door43
+ * `repoPath`. Each clone of Door43 content, by the open (#677) and by the sync (#676),
+ * runs this at the fixed clone path before the move, so a marker that came with Door43
  * never reaches a scratch copy or a project. */
 export const deleteReservedIngredients = async (api: Pick<OpsRecoveryApi, 'listPaths' | 'deleteIngredient'>, repoPath: string): Promise<void> => {
   for (const ipath of (await api.listPaths(repoPath)).filter(isReservedIngredient)) await deleteIngredientIfPresent(api, repoPath, ipath);

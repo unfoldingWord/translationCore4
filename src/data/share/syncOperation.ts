@@ -446,8 +446,8 @@ export async function openFromDoor43(deps: OpenDeps, request: { source: CloneSou
       // left clone never blocks the next open of the repository.
       // Door43 content never brings a marker: every file in the reserved folders
       // (`tc4-open/`, `tc4-sync/`) is deleted at the fixed path, before the move, as the
-      // sync deletes its apply marker there. So the scratch copy holds a marker only after
-      // this open writes it (`copyMarked`), and the project holds none of them.
+      // sync does there. So the scratch copy holds a marker only after this open writes
+      // it (`copyMarked`), and the project holds none of them.
       const clonePath = clonePathOf(request.source);
       await cloneProject(api, request.source, scratch, () => phase('clone', { clonePath }).then(() => true),
         (fixed) => deleteReservedIngredients(api, fixed));
@@ -603,12 +603,14 @@ async function syncOnce(
   const { api } = deps;
   // 2. Door43 main into the scratch copy
   await deleteIfPresent(api, scratch);
-  // Door43 content never authorizes an apply: a marker that came with the clone is
-  // deleted at the fixed path, before the move, so the scratch copy holds a marker
-  // only after this sync wrote it (step 7). A kill before the move leaves only the
+  // Door43 content never authorizes an apply: every file in the reserved folders
+  // (`tc4-open/`, `tc4-sync/`) that came with the clone is deleted at the fixed path,
+  // before the move, as the open does (#677). So the scratch copy holds a marker only
+  // after this sync wrote it (step 7), the verify finds no extra file there, and the
+  // push removes those files from Door43 main. A kill before the move leaves only the
   // clone path, which the next clone deletes.
   await cloneProject(api, checked.source, scratch, (clonePath) => note({ phase: 'clone', clonePath, try: tries }),
-    (clonePath) => deleteIngredientIfPresent(api, clonePath, APPLY_MARKER));
+    (clonePath) => deleteReservedIngredients(api, clonePath));
   await note({ phase: 'sync' });
   const remote = await readFiles(api, scratch, () => true, true);
 

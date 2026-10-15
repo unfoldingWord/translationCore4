@@ -18,7 +18,8 @@ export const OPEN_MARKER = 'tc4-open/move.json';
 /** The folders under `ingredients/` that tC4 keeps for its own markers: `tc4-open/`
  * (#677, OPEN_MARKER) and `tc4-sync/` (#676, APPLY_MARKER). The one definition: a
  * file there that comes with Door43 content is deleted at the fixed clone path before
- * the move (the open), and the sync's apply never writes or removes one in a project. */
+ * the move (the open and the sync), and the sync's apply never writes or removes one
+ * in a project. */
 export const RESERVED_INGREDIENT_FOLDERS = ['tc4-open/', 'tc4-sync/'] as const;
 export const isReservedIngredient = (ipath: string): boolean =>
   RESERVED_INGREDIENT_FOLDERS.some((folder) => ipath.startsWith(folder));

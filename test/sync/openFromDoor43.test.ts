@@ -930,6 +930,23 @@ describe('#677 reserved folders that come with Door43 content never reach the pr
     store.dispose();
   });
 
+  it('the opened project syncs: the sync deletes the reserved files of its clone too, and its push removes them from Door43 main', async () => {
+    const w = await door43WithReservedFiles();
+    const { ops } = await startApp(settingsDoc(), w.api);
+    expect(await openFromDoor43({ api: w.api, ops }, { source: SOURCE, name: 'prueba_b' })).toEqual({ repoPath: OPENED });
+    forgetProjectQueues();
+    const store = new JournalingStore({ api: w.api, kv: w.kvB, ops });
+    await store.open(OPENED);
+    store.dispose();
+    const report = await sync(
+      { api: w.api, kv: w.kvB, door43Server: 'https://qa.door43.org', coverage: {}, ops },
+      { repoPath: OPENED, session: { username: 'translator_b', token: 'tok-677' } },
+    );
+    expect([report.ok, report.code]).toEqual([true, undefined]);
+    expect(reservedIn(w, OPENED)).toEqual([]);
+    expect([...w.rig.remotes.get(URL_)!.files.keys()].filter((p) => p.startsWith('tc4-'))).toEqual([]);
+  });
+
   for (const after of ['kept', 'erased'] as const)
     it(`a kill right after the clone's move (settings ${after}): the scratch copy holds no marker that came with Door43, and nothing is mis-settled`, async () => {
       const w = await door43WithReservedFiles();
