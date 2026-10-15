@@ -26,6 +26,11 @@ TC4_RIG_PORT=19681 TC4_VITE_PORT=5681 npx playwright test e2e/sync-button.spec.t
   ✓ e2e/sync-button.spec.ts:107:3 and :247:3 (2 passed)
 ```
 
+- Again on the code that merges, at `b546592` (2026-10-15): this branch with `main` merged in
+  after #692 (`4ad2a71`). Its tree is the tree of `0fd1055`, where `TC4_RIG_PORT=19899 npm run
+  verify` gave 1683 passed, 45 skipped. Fresh seed, lane rig 19681 and vite 5681:
+  `npx playwright test e2e/j26-team-sync.spec.ts e2e/j17-open-from-door43.spec.ts
+  e2e/sync-button.spec.ts` gave 7 passed (1.5m): J26 3, J17 2, the Sync button 2.
 - The guarantee tests at `54e503e`: `TC4_RIG_PORT=19899 npx vitest run -t "\[G[1-8]\]"` gives
   71 passed and 1 skipped. Each id G1–G8 has at least one passed test whose name starts with it
   (G1 17, G2 4, G3 3, G4 3, G5 1, G6 1, G7 5, G8 49). The skipped test is the rig test `[G4] a
