@@ -107,6 +107,15 @@ export const inVerseOrder = (bank: AlignedWord[], targetText: string): AlignedWo
   return [...bank].sort((a, b) => at(a) - at(b));
 };
 
+/** #754: every card's target words in verse order, as tC3 kept them on every
+ * drop and on load. Only `bottomWords` move; the exported USFM is already in
+ * verse order (word-aligner `merge`), so this changes what the card shows and
+ * what the file stores, never the export. */
+export const cardsInVerseOrder = (record: AlignmentVerseRecord, targetText: string): AlignmentVerseRecord => ({
+  ...record,
+  alignments: record.alignments.map((a) => ({ ...a, bottomWords: inVerseOrder(a.bottomWords, targetText) })),
+});
+
 /** Unlink a target word, returning it to the bank in its place in the verse.
  * #734: the whole bank is put in verse order, so a bank stored in another
  * order is restored too. */
