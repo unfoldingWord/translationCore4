@@ -5206,10 +5206,11 @@ export function AppProvider({ children }) {
         });
       },
 
-      /** Select (or clear) the banked word the next card click will place. */
-      armAlignWord: (word) => {
+      /** Select (or clear) the banked words the next card click will place.
+       * #736: `armed` is a list — several words go to one card at once. */
+      armAlignWords: (words) => {
         const a2 = stateRef.current.alignSession;
-        if (a2) dispatch({ type: 'set', patch: { alignSession: { ...a2, armed: word } } });
+        if (a2) dispatch({ type: 'set', patch: { alignSession: { ...a2, armed: words?.length ? words : null } } });
       },
 
       /** #129 (PR #135 review round 1) — ONE path for every alignment edit.
@@ -5245,15 +5246,16 @@ export function AppProvider({ children }) {
       placeAlignWord: (cardIndex) => {
         const armed = stateRef.current.alignSession?.armed;
         if (!armed) return;
-        a.applyAlignEdit((record) => linkWord(record, cardIndex, armed), true);
+        a.applyAlignEdit((record) => armed.reduce((r, w) => linkWord(r, cardIndex, w), record), true);
       },
 
       unplaceAlignWord: (cardIndex, word) =>
         a.applyAlignEdit((record) => unlinkWord(record, cardIndex, word, stateRef.current.alignSession.targetText)),
 
-      /** #129 drag-and-drop: place a banked word without the arm step. */
-      placeAlignWordAt: (cardIndex, word) =>
-        a.applyAlignEdit((record) => linkWord(record, cardIndex, word), true),
+      /** #129 drag-and-drop: place banked words without the arm step (#736:
+       * a drag of a selected word carries the whole selection, in one edit). */
+      placeAlignWordsAt: (cardIndex, words) =>
+        a.applyAlignEdit((record) => words.reduce((r, w) => linkWord(r, cardIndex, w), record), true),
 
       /** #129 drag-and-drop: move a placed word between cards in one step. */
       moveAlignWord: (fromIndex, toIndex, word) =>
