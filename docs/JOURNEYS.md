@@ -442,8 +442,12 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
      usernames. A clicks "Review" and keeps one version of the verse (J18). Then A syncs again.
   4. B and C click "Sync with Door43". They get the version that A kept, and no conflict.
   5. All three projects show the same text.
-- End state: the three projects on disk have the same project files, byte for byte, and the same
-  `HEAD` as Door43 `main` (G6). The fold of each journal has no verse-text conflict. Each journal
+- End state: the three projects on disk have the same project files, byte for byte (G6). Two
+  local parts are outside this comparison (owner OK 2026-10-14): the `*.bak` backups, which the
+  project's `.gitignore` keeps out of every commit, and the three stamps that the platform writes
+  into `metadata.json` at each remake and commit. Each project's `ingredients/`, except `audio/`,
+  equals the tree of Door43 `main`. Its `HEAD` is its own commit, because the sync applies Door43 `main` in place
+  (D101). The fold of each journal has no verse-text conflict. Each journal
   file that a translator wrote is on Door43 `main`, byte for byte (G1). Each version in the
   review shows the Door43 username of its owner (#680).
 - The verses come from the shared fixture `conformance/fixtures/team-sync/` (D98), so a journey

@@ -188,8 +188,8 @@ come back.
 
 In the J26 run at `58a69e8`, the test `[G6] at the end the three projects have the same project
 files, and no verse has a conflict` compares every file of the three repositories (all files except `.git`) byte for byte.
-It also checks that each `HEAD` is the same as Door43 `main`, and that the fold of each journal
-has no `text|` fork. The file list (bytes, path), the same in the three projects:
+At that commit, it also checked that each `HEAD` was the same as Door43 `main`, and that the fold
+of each journal had no `text|` fork. The file list (bytes, path), the same in the three projects:
 
 Note (2026-10-14, D101): a sync now applies Door43 `main` in place (#676), so the `HEAD` of a project
 is not `main`. The test no longer checks `HEAD`. It checks that the `ingredients/` files of each
