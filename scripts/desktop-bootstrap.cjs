@@ -220,6 +220,22 @@ function ensureBundledResources({ resourcesDir, home, storeLeaf, profileLeaf }) 
   const installed = settings.installedResources ?? {};
   if (!installed || typeof installed !== 'object' || Array.isArray(installed)) throw new Error('Invalid installedResources settings');
   const next = { ...installed };
+  // #740: a published copy is verified in full once, when it is published or
+  // when it is first met, and `verifiedResources` records the inventory it was
+  // verified against. A later start that finds the record for the inventory
+  // the copy declares now opens none of its ingredients. Every launch opened
+  // every ingredient of the bundle and of the copy before: 35,823 file opens,
+  // about 8 minutes on a Windows laptop with Defender on. A record of another
+  // shape is no verification. The install records keep their shape (#528).
+  const recorded = settings.verifiedResources;
+  const verified = recorded && typeof recorded === 'object' && !Array.isArray(recorded) ? recorded : {};
+  const nextVerified = { ...verified };
+  const inventoryHash = (tree) => createHash('sha256').update(JSON.stringify(tree)).digest('hex');
+  const isVerified = (key, hash) => {
+    const record = verified[key];
+    return !!record && typeof record === 'object' && record.tree === hash;
+  };
+  const markVerified = (key, hash) => { nextVerified[key] = { tree: hash, at: new Date().toISOString() }; };
   try {
     for (const pin of manifest.bundled_resources) {
       if (!/^git\.door43\.org\/[a-z0-9_.-]+\/[a-z0-9_.-]+$/i.test(pin.repoPath) || !/^[0-9a-f]{40}$/.test(pin.sha)) throw new Error('Invalid bundled resource identity in manifest');
@@ -234,7 +250,6 @@ function ensureBundledResources({ resourcesDir, home, storeLeaf, profileLeaf }) 
       // payloads. Their verified complete-tree receipt is authoritative; DCS
       // exports continue to use the export's own ingredient inventory.
       const tree = archive ? archive.files : meta.ingredients;
-      validateTree(source, tree);
       let destination = path.join(local, `${segment}--${pin.sha}`);
       const candidates = fs.readdirSync(local, { withFileTypes: true }).filter((entry) => entry.isDirectory()).sort((a, b) => a.name.localeCompare(b.name));
       for (const entry of candidates) {
@@ -248,26 +263,39 @@ function ensureBundledResources({ resourcesDir, home, storeLeaf, profileLeaf }) 
         // A DCS export of one pin can carry other TWL bytes on another fetch
         // date (#640). The installed copy is never modified (#528), so it is
         // complete when it agrees with its own inventory. A commit archive is
-        // deterministic and keeps the build's receipt tree.
-        validateTree(candidate, archive ? tree : identity.meta.ingredients);
+        // deterministic and keeps the build's receipt tree. The copy is
+        // opened only while no verification record names that inventory (#740).
+        const inventory = archive ? tree : identity.meta.ingredients;
+        const candidateKey = `_local_/_sideloaded_/${entry.name}`;
+        const hash = inventoryHash(inventory);
+        if (!isVerified(candidateKey, hash)) {
+          validateTree(candidate, inventory);
+          markVerified(candidateKey, hash);
+        }
         destination = candidate;
         break;
       }
+      let published = false;
       if (!fs.existsSync(destination)) {
+        // The bundle is opened only when a copy is about to be made from it (#740).
+        validateTree(source, tree);
         const staging = path.join(stagingRoot, `${segment}--${pin.sha}`);
         fs.mkdirSync(stagingRoot, { recursive: true });
         fs.cpSync(source, staging, { recursive: true, errorOnExist: true, force: false });
         resourceMetadata(staging, pin, archive);
         validateTree(staging, tree);
         fs.renameSync(staging, destination);
+        published = true;
       }
       const key = `_local_/_sideloaded_/${path.basename(destination)}`;
       next[key] = { repoPath: pin.repoPath, sha: pin.sha, ...(pin.version ? { version: pin.version } : {}), flavor };
+      if (published) markVerified(key, inventoryHash(tree));
     }
     if (freshProfile) prepareProfile(resourcesDir, home, profile, profileStaging);
-    if (freshProfile || JSON.stringify(next) !== JSON.stringify(installed)) {
+    const changed = JSON.stringify(next) !== JSON.stringify(installed) || JSON.stringify(nextVerified) !== JSON.stringify(verified);
+    if (freshProfile || changed) {
       fs.mkdirSync(path.dirname(settingsFile), { recursive: true });
-      writeJsonAtomically(settingsFile, { ...settings, installedResources: next });
+      writeJsonAtomically(settingsFile, { ...settings, installedResources: next, verifiedResources: nextVerified });
     }
     if (freshProfile) fs.renameSync(profileStaging, profile);
   } finally {

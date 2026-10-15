@@ -942,13 +942,14 @@ The nine `unfoldingWord` repos are fetched as the DCS sb-zip export `/sb/<tag>.z
 Per D70, D75 (and its #331 amendment), #163, #218, #288 and #644 (D96), the desktop artifact bundles sixteen repos: the eleven-resource English Bible suite, `en_obs`, `en_obs-tn`, `en_obs-twl`, `en_obs-tq`, and `uW/obs_images_360`. Translation Words and Translation Academy are shared by Bible and OBS sets. The unpacker stages normal resources at `<APPDIR>/resources/<owner lowercased>--<repo>/` and the untagged default image pack at `uw--obs_images_360--7146d5b504f6`.
 
 At each packaged start (#528), the shared bootstrap checks `BUILD-MANIFEST.json`
-against the bundled metadata's repo, full SHA and factual flavor, and verifies
-every declared ingredient's size and checksum for DCS exports. The three
+against the bundled metadata's repo, full SHA and factual flavor. When a copy
+is about to be made from a bundled resource, it first verifies every declared
+ingredient's size and checksum for DCS exports. The three
 sha-only commit archives have authored metadata with no DCS identity; the
 lexicons' ingredient tables also omit payload files and have stale README
 checksums. Packaging preserves the fetcher's verified Gitea archive-comment
 identity in `.tc4-bundled-identity.json`, hashes every extracted file, and binds
-that receipt's SHA-256 in the build manifest. Startup verifies that complete
+that receipt's SHA-256 in the build manifest. The copy is verified against that complete
 tree, including metadata and otherwise unlisted payloads. A legacy archive
 copy is reused only with an exact saved identity or matching SHA-qualified
 path and a byte-identical verified tree. A distinct release is installed
@@ -961,7 +962,17 @@ every ingredient in its own `metadata.json` is present with the declared size an
 checksum; an archive copy still needs the byte-identical receipt tree. The export's
 TWL rows follow `en_twl` `master` at fetch time, so two builds of one pin can ship
 different bytes, and the installed copy is kept as it is (#640, owner ruling
-2026-10-12). The atomic
+2026-10-12). **A copy is verified once** (#740): when it is published, or when a
+start first meets it, and `verifiedResources` in `client_settings/uw-tc4.json`
+records, under the copy's key, the SHA-256 of the inventory it was verified against
+and the time. A later start that finds that record for the inventory the copy
+declares now opens none of the copy's ingredients and none of the bundle's. A
+record for another inventory, or of another shape, is no verification: the copy
+is verified again against its own inventory and the record is written again. A
+change made to an installed file after its verification is not seen at start.
+Before #740 every start opened every ingredient of the bundle and of the copy
+(35,823 opens, 613 MB), which took about 8 minutes on a Windows laptop with
+Defender real-time protection on. The atomic
 `client_settings/uw-tc4.json` merge preserves other install records and preferences;
 a failed record write aborts startup, and retry reuses the published resource.
 Abandoned staging is removed on retry. Older releases remain byte-for-byte,
