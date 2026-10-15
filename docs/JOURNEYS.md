@@ -138,7 +138,8 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   memory at once, Suggest keeps answering while any retrain runs in the background).
 - Proof: `e2e/j05-align-verse.spec.ts`, LTR and RTL; the suggestion cases are added by #1,
   the growth case (align verse A, open verse B, Suggest answers in 2 s with no "learning"
-  wait) by #516.
+  wait) by #516, and the late-book case (Align opens before the book text arrives; the verse
+  list and the session show when it arrives) by #722.
   Pending: a direct before-and-after compare of the book bytes (same as J4). Owner: shipped
   alpha.2 (manual form); revised end state shipped alpha.6 (#262: #255, #134, #213, #1).
 

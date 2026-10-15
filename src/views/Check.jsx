@@ -1110,10 +1110,11 @@ function AlignWorkspace() {
   const { s, actions } = useApp();
   const [filter, setFilter] = React.useState('all');
   // The rail's statuses derive from the sidecar + the draft: refresh when the
-  // verse changes and after each edit lands on the session record.
+  // verse changes, after each edit lands on the session record, and when the
+  // book text arrives (#722: the tool can open while the book still loads).
   React.useEffect(() => {
     actions.loadAlignIndex();
-  }, [s.book, s.alignVerse, s.alignSession?.record]);
+  }, [s.book, s.alignVerse, s.alignSession?.record, s.bookRaw == null]);
 
   const activeRef = s.alignVerse ?? s.alignSession?.ref ?? null;
   return (

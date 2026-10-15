@@ -5000,6 +5000,10 @@ export function AppProvider({ children }) {
         const settle = (alignSession) => {
           if (seq === alignSessionSeq) dispatch({ type: 'set', patch: { alignSession: { ...alignSession, seq } } });
         };
+        // #722: no text yet is a book still loading (since #679 the load waits
+        // in the store queue), not a book with no draft. The Align view opens
+        // the session again when the text arrives. A failed load is stated (D30).
+        if (st.bookRaw == null) return settle(st.bookError ? { error: st.bookError } : { loading: true });
         const ref = st.alignVerse ?? firstDraftedRef(st.bookRaw);
         if (!ref) return settle({ unavailable: 'undrafted' });
         settle({ loading: true });
