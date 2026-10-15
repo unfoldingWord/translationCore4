@@ -2175,11 +2175,15 @@ kept most of the product work and ruled on the order, the gates and the cut rule
 1. **The release path.** rc.2 tags on 2026-10-12. v4.0.0 ships on 2026-10-16. v4.0.0 promotes
    the rc.2 artifact and does not build it again. The dates of D74 and D79 stand. If a gate is
    not green, the release date moves. If a feature is not green, the feature leaves Increment 9.
-   [amended 2026-10-15 — D102: v4.0.0 also holds epics #24 and #658, it tags with no
-   rc.2, and the date moves]
+   [amended 2026-10-15 — D102 supersedes the release path and dates above. v4.0.0 also
+   holds epics #24 and #658. There is no rc.2 or rc.3, and no RC artifact is promoted.
+   After the re-cut, v4.0.0 tags on `release/4.0` from a signed build. The ship date is
+   the day the gates are green.]
 2. **What can enter.** Each defect that end-user QA finds is in scope until rc.2. After rc.2,
    only a release blocker can enter: data loss, a project that cannot open, or an install that
    fails. Other defects go to 4.0.1 or 4.1.0.
+   [superseded 2026-10-15 — D102: the re-cut replaces rc.2 as the cutoff. The re-cut
+   takes all of `main` once; after it, only cherry-picked fixes enter.]
 3. **The cut rule.** Each P2 or P3 issue that does not merge by the end of 2026-10-09 moves to
    the 4.0.1 milestone. It then stops blocking the release issue. The owner moves deliberate
    deferrals to 4.1.0. The gates (P1) are #44, #456, #284, #206, #335, #336, #42, #71 and the
@@ -2818,7 +2822,7 @@ deleted with their tests. Where it lands: `src/data/share/syncOperation.ts`,
 `src/data/journal/journalingStore.ts`, BURRITO-SPEC §8.7, `docs/RISKS.md` (Ledger #11 and #12),
 and `CONTEXT.md`.
 
-## D102 (2026-10-15, project-owner ruling) **v4.0.0 includes team sync round 1 (epic #24) and Arabic support (epic #658). When both epics close, `release/4.0` takes all of `main` once. Then v4.0.0 tags on `release/4.0`, with no more release candidates. Amends D89 point 1 and D99 point 6.** [owner rulings of 2026-10-15: "re-cut release/4.0 from main once I get these epics closed" and "We're not doing an RC3. We're just going to go right to 4-0"; epics #24 and #658; release issue #546]
+## D102 (2026-10-15, project-owner ruling) **v4.0.0 includes team sync round 1 (epic #24) and Arabic support (epic #658). When both epics close, `release/4.0` takes all of `main` once. Then v4.0.0 tags on `release/4.0`, with no more release candidates. Amends D89 points 1 and 2 and D99 point 6.** [owner rulings of 2026-10-15: "re-cut release/4.0 from main once I get these epics closed" and "We're not doing an RC3. We're just going to go right to 4-0"; epics #24 and #658; release issue #546]
 
 Context. `release/4.0` was cut from `main` at `17f4cbc` on 2026-10-13 and holds no cherry-pick.
 On 2026-10-15, `main` was 239 commits ahead of it (87 merges, 153 files). Most of that is
