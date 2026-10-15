@@ -20,11 +20,19 @@
 //   g  (#729) moving to another topic does not reload the frame's document, and no frame
 //      painted meanwhile is blank: each one shows the help bar and its logo, so nothing blinks
 //      white. The search page still lists its results, and of two quick clicks the second wins
+//   h  (#729) a read of the next page that a redirect sends to another origin or out of
+//      help/, or that is not HTML, is not swapped in and runs no script: the frame loads
+//      the page itself
+//   i  (#729 Interruptions) Escape while a page loads closes the panel, and the next open
+//      shows the help home; a page the server does not have shows the server's answer in
+//      the frame, and the panel stays open and closes as usual
 // The shared recorder (helpers/externalRequests.ts) writes each request log, and the
 // screenshots, into the test's output folder (and attaches them).
 import { test, expect } from './helpers/test';
 import fs from 'node:fs';
-import type { BrowserContext, Locator, Page, TestInfo } from '@playwright/test';
+import http from 'node:http';
+import type { AddressInfo } from 'node:net';
+import type { BrowserContext, Locator, Page, Route, TestInfo } from '@playwright/test';
 import { SEEDED_PROJECT, resetClientSettings, resetPlaces, resetSeededChecking } from './helpers/rig';
 import { gateOff, turnOnInternet } from './helpers/door43Share';
 import { CLIENT_HOST, recordExternal } from './helpers/externalRequests';
@@ -340,5 +348,67 @@ test.describe('#519 Help and guides', () => {
     await expect.poll(() => helpFrame().url()).toContain('/help/search.html?q=offline');
     await expect(frame(page).locator('#search-page-results li').first()).toBeVisible();
     expect(await sameDocument()).toBe(true);
+  });
+
+  test('h. a help page read that ends outside help/ or is not HTML is not swapped in; the frame loads the page itself', TAG, async ({ page }) => {
+    const topic = 'section-bible-projects.html';
+    const injected = '<!doctype html><title>Injected</title><h1>Injected</h1><script>parent.tc4Injected = 1;</script>';
+    // Another origin that any page may read (CORS open), with a script in its page.
+    const other = http.createServer((_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/html', 'access-control-allow-origin': '*' });
+      res.end(injected);
+    });
+    await new Promise<void>((done) => other.listen(0, '127.0.0.1', done));
+    const otherUrl = `http://127.0.0.1:${(other.address() as AddressInfo).port}/help/${topic}`;
+    const cases: { name: string; answer: (route: Route) => Promise<void> }[] = [
+      { name: 'redirect to another origin', answer: (route) => route.fulfill({ status: 302, headers: { location: otherUrl } }) },
+      // The client's own app page: same origin, out of help/.
+      { name: 'redirect out of help/', answer: (route) => route.fulfill({ status: 302, headers: { location: '/' } }) },
+      { name: 'not HTML', answer: (route) => route.fulfill({ status: 200, contentType: 'application/json', body: injected }) },
+    ];
+    try {
+      for (const { name, answer } of cases) {
+        await page.goto('/');
+        await openHelp(page);
+        await page.unrouteAll();
+        // Only the swap's read of the topic gets the bad answer; the frame's own load of it does not.
+        await page.route(`**/help/${topic}`, (route) => (route.request().resourceType() === 'fetch' ? answer(route) : route.fallback()));
+        await frame(page).locator(`nav a[href="${topic}"]:visible`).click();
+        await expect(frame(page).getByRole('heading', { level: 1 }), name).toHaveText('Bible projects');
+        expect(page.frames().some((f) => f.url().endsWith(`/help/${topic}`)), name).toBe(true);
+        expect(await page.evaluate(() => (window as unknown as { tc4Injected?: number }).tc4Injected), name).toBeUndefined();
+      }
+    } finally {
+      other.close();
+    }
+  });
+
+  test('i. closing the panel while a page loads closes it, and the help home shows on the next open; a page that fails to load leaves the panel open on it', TAG, async ({ page }) => {
+    const topic = 'section-bible-projects.html';
+    const errors: string[] = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await page.goto('/');
+    await openHelp(page);
+    // The read of the topic is held back, so the panel closes while it loads.
+    await page.route(`**/help/${topic}`, async (route) => {
+      await new Promise((done) => setTimeout(done, 1500));
+      await route.continue().catch(() => {});
+    });
+    await frame(page).locator(`nav a[href="${topic}"]:visible`).click();
+    await frame(page).locator('#q').press('Escape');
+    await expectClosed(page);
+    await page.waitForTimeout(2000);
+    await openHelp(page);
+
+    // A page the server does not have: the frame shows the server's answer, and the panel stays usable.
+    await page.unrouteAll();
+    await page.route(`**/help/${topic}`, (route) => route.fulfill({ status: 404, contentType: 'text/plain', body: 'Not found' }));
+    await frame(page).locator(`nav a[href="${topic}"]:visible`).click();
+    await expect.poll(() => page.frames().some((f) => f.url().endsWith(`/help/${topic}`))).toBe(true);
+    await expect(frame(page).locator('body')).toHaveText('Not found');
+    await expect(helpPanel(page)).toBeVisible();
+    await page.getByTestId('help-close').click();
+    await expectClosed(page);
+    expect(errors).toEqual([]);
   });
 });
