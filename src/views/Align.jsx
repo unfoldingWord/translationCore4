@@ -33,6 +33,13 @@ const dragPayload = (e) => {
 const setDragPayload = (e, data) => e.dataTransfer.setData('text/plain', JSON.stringify(data));
 const allowDrop = (e) => e.preventDefault();
 
+// #735: a word that occurs more than once in its verse carries its occurrence
+// number, as tC3's WordOccurrence did — a superscript, and in the chip's
+// accessible name ("de 3"). A word that occurs once shows nothing.
+const repeated = (w) => Number(w.occurrences) > 1;
+const Occurrence = ({ w }) => (repeated(w) ? <sup aria-hidden="true">{Number(w.occurrence)}</sup> : null);
+const occurrenceName = (w) => (repeated(w) ? `${w.word} ${Number(w.occurrence)}` : undefined);
+
 /** The ULT word(s) this card's original word(s) are aligned to — the gateway
  * lens's header label. Empty when the pane carries no alignment for them. */
 const gwLabelFor = (topWords, gwTokens) =>
@@ -46,7 +53,9 @@ const gwLabelFor = (topWords, gwTokens) =>
  * sub-label under a gateway word, and SPLIT on a merged phrase. Draggable
  * onto another card to merge. */
 function CardHeader({ card, mode, gwTokens, onSplit }) {
-  const origLabel = card.topWords.map((w) => w.word).join(' ');
+  const origLabel = card.topWords.map((w, i) => (
+    <React.Fragment key={`${w.word}-${w.occurrence}`}>{i > 0 && ' '}{w.word}<Occurrence w={w} /></React.Fragment>
+  ));
   const gwLabel = mode === 'gw' ? gwLabelFor(card.topWords, gwTokens) : '';
   const usingGw = mode === 'gw' && gwLabel !== '';
   return (
@@ -116,8 +125,9 @@ function WordCard({ card, armed, mode, gwTokens, suggested = [], onPlace, onRemo
             onDragStart={(e) => setDragPayload(e, { kind: 'placed', from: card.index, word: w })}
             onClick={(e) => { e.stopPropagation(); onRemove(card.index, w); }}
             title={t('align.clickToUnalign')}
+            aria-label={occurrenceName(w)} data-word={w.word}
             style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-ui-md)', color: 'var(--text-scripture)', background: 'var(--surface-card)', border: 'var(--stroke) solid var(--border-input)', borderRadius: 'var(--radius-chip)', padding: '3px 9px', cursor: 'pointer', whiteSpace: 'nowrap', boxShadow: '0 1px 2px rgba(1,66,99,.08)' }}>
-            {w.word}
+            {w.word}<Occurrence w={w} />
           </button>
         ))}
         {/* #1: a suggested link — dashed, with its check mark to confirm. It
@@ -125,8 +135,9 @@ function WordCard({ card, armed, mode, gwTokens, suggested = [], onPlace, onRemo
         {suggested.map((sg) => (
           <WordChip key={`sg-${sg.word.word}-${sg.word.occurrence}`} state="suggested" draggable={false}
             data-testid={`align-suggested-${card.index}`} title={t('align.suggest.confirm')}
+            aria-label={occurrenceName(sg.word)} data-word={sg.word.word}
             onClick={(e) => { e.stopPropagation(); onConfirm(card.index, sg.word); }}>
-            {sg.word.word}
+            {sg.word.word}<Occurrence w={sg.word} />
             <span aria-hidden="true" style={{ fontWeight: 'var(--fw-heavy)' }}>{t('align.suggest.confirmMark')}</span>
           </WordChip>
         ))}
@@ -410,6 +421,7 @@ export default function Align({ embedded = false }) {
                     onClick={() => actions.armAlignWord(isArmed ? null : w)}
                     title={a.armed ? t('align.hintArmed') : t('align.hintIdle')}
                     data-armed={isArmed ? '1' : '0'}
+                    aria-label={occurrenceName(w)} data-word={w.word}
                     style={{
                       fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-body)', borderRadius: 'var(--radius-sm)', padding: '5px 11px',
                       cursor: 'pointer', border: 'var(--stroke) solid var(--accent)',
@@ -417,7 +429,7 @@ export default function Align({ embedded = false }) {
                         ? { background: 'var(--accent)', color: 'var(--text-inverse)', boxShadow: 'var(--shadow-focus)' }
                         : { background: 'var(--surface-card)', color: 'var(--text-heading)', boxShadow: 'var(--shadow-chip)' }),
                     }}>
-                    {w.word}
+                    {w.word}<Occurrence w={w} />
                   </button>
                 );
               })}
