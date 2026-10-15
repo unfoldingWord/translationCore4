@@ -10,7 +10,9 @@ import { useApp } from '../state.jsx';
 import { t } from '../i18n';
 import { bookName } from '../data/bookNames';
 import { locationOf } from '../data/dcsServer';
+import { projectSyncs } from '../data/share/syncs';
 import { Card, BookTile, Button, Overline, Badge, Callout, Toast } from '../ds/index.js';
+import SyncResult from './SyncResult.jsx';
 
 // Above this many books a card shows only its in-progress books until expanded.
 const COLLAPSE_ABOVE = 12;
@@ -45,17 +47,23 @@ function SharedBadge({ p }) {
 // loadShared, never a stored record (D85) — "Upload changes", which opens the
 // upload dialog. #530: the card shows nothing under the action; the account,
 // the progress, the result and a refusal are in the dialog (ShareDialog.jsx).
+// #678: a shared Bible project reads "Sync with Door43" instead; one press
+// syncs, and the result shows on Home (SyncResult). Round 1 syncs Bible
+// projects only (D98), so a shared OBS project keeps "Upload changes".
 function ShareAction({ p }) {
   const { s, actions } = useApp();
   useEffect(() => {
     actions.loadShared(p);
   }, [p.id]);
   const shared = s.remoteByProject[p.id] || null;
-  const label = t(shared ? 'home.uploadChanges' : 'home.share');
+  const syncs = projectSyncs(p, shared);
+  const running = s.syncing === p.id;
+  const label = t(running ? 'home.syncing' : syncs ? 'home.sync' : shared ? 'home.uploadChanges' : 'home.share');
   return (
-    <div data-testid={`share-card-${p.id}`} data-shared={shared ? '1' : '0'}>
+    <div data-testid={`share-card-${p.id}`} data-shared={shared ? '1' : '0'} data-action={syncs ? 'sync' : shared ? 'upload' : 'share'}>
       {/* D88: a Share is one internet task; it asks first when the preference says so. An upload asks in its dialog (#530). */}
-      <Button variant="outline" size="sm" data-testid={`share-${p.id}`} title={label} onClick={() => actions.shareProject(p)}>
+      <Button variant="outline" size="sm" data-testid={`share-${p.id}`} title={label} aria-busy={running || undefined}
+        disabled={syncs && !!s.syncing} onClick={() => (syncs ? actions.syncProject(p) : actions.shareProject(p))}>
         {label}
       </Button>
     </div>
@@ -382,6 +390,14 @@ export default function Home() {
           {projects && projects.map((p) => (p.flavor === 'textStories' ? <ObsProjectCard key={p.id} p={p} /> : <ProjectCard key={p.id} p={p} />))}
         </div>
       </div>
+      {s.syncResult && (
+        <div style={{ position: 'fixed', insetBlockEnd: s.importToast ? 88 : 24, insetInlineStart: '50%', transform: 'translateX(-50%)', zIndex: 90, width: 'max-content', maxWidth: 'calc(100% - 48px)' }}>
+          <SyncResult result={s.syncResult}
+            onReview={() => { const { repoPath } = s.syncResult; actions.dismissSyncResult(); actions.openProjectConflicts(repoPath); }}
+            onDownload={() => actions.syncDownload(s.syncResult.repoPath)}
+            onDismiss={actions.dismissSyncResult} />
+        </div>
+      )}
       {s.importToast && (
         <div style={{ position: 'fixed', insetBlockEnd: 24, insetInlineStart: '50%', transform: 'translateX(-50%)', zIndex: 90, width: 'max-content', maxWidth: 'calc(100% - 48px)' }}>
           <Toast tone="success" data-testid="import-toast" message={t('importer.done', s.importToast)} onDismiss={actions.dismissImportToast} dismissLabel={t('common.dismiss')} />
