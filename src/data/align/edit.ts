@@ -99,10 +99,17 @@ export const linkWord = (
   };
 };
 
+/** #734: bank words in the verse's word order (tC3 kept its bank in verse
+ * order). A word the text no longer has goes last. */
+export const inVerseOrder = (bank: AlignedWord[], targetText: string): AlignedWord[] => {
+  const position = new Map(wordTokens(targetText).map((t, i) => [`${t.text} ${t.occurrence}`, i]));
+  const at = (w: AlignedWord) => position.get(`${w.word} ${Number(w.occurrence)}`) ?? Number.MAX_SAFE_INTEGER;
+  return [...bank].sort((a, b) => at(a) - at(b));
+};
+
 /** Unlink a target word, returning it to the bank in its place in the verse.
- * #734: the whole bank is put in the verse's word order (tC3 kept its bank
- * in verse order), so a bank stored in another order is restored too. A word
- * the text no longer has goes last. */
+ * #734: the whole bank is put in verse order, so a bank stored in another
+ * order is restored too. */
 export const unlinkWord = (
   record: AlignmentVerseRecord,
   alignmentIndex: number,
@@ -111,10 +118,7 @@ export const unlinkWord = (
 ): AlignmentVerseRecord => {
   const target = record.alignments[alignmentIndex];
   if (!target?.bottomWords.some((w) => sameWord(w, word))) return record;
-  const returned = normalizeOccurrences(word);
-  const position = new Map(wordTokens(targetText).map((t, i) => [`${t.text} ${t.occurrence}`, i]));
-  const at = (w: AlignedWord) => position.get(`${w.word} ${Number(w.occurrence)}`) ?? Number.MAX_SAFE_INTEGER;
-  const bank = [...record.wordBank, returned].sort((a, b) => at(a) - at(b));
+  const bank = inVerseOrder([...record.wordBank, normalizeOccurrences(word)], targetText);
   return {
     ...record,
     alignments: record.alignments.map((a, i) =>
