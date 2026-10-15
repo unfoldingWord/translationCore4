@@ -154,7 +154,9 @@ describe('OBS story pictures (#289)', () => {
     const presentation = await read();
     expect(Object.values(presentation.images).map((image) => image.source)).toEqual(fileNames.map(() => 'missing'));
     expect(presentation.imagePacks).toHaveLength(1);
-    // the server lists a missing repository as [] with HTTP 200 (journalingRig), so the listing answers, with no file
+    // A missing pack lists as `[]` with HTTP 200 on the real server [VERIFIED — pankosmia-web
+    // 0.18.15 (a83725b, 2026-09-29), live rig 2026-10-13], so the read goes by the listing (#677
+    // made the fake rig answer the same).
     expect(presentation.imagePacks[0]).toMatchObject({ pin: DEFAULT_OBS_IMAGES, localPath: DEFAULT_OBS_IMAGES_LOCAL, via: 'paths', files: 0 });
     expect(presentation.imageNote).toEqual({ wanted: fileNames.length, packs: presentation.imagePacks });
   });

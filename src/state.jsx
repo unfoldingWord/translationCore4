@@ -63,7 +63,7 @@ import { InternetSwitch, ensureGate, startGate } from './data/internet';
 import { currentSession, hasKeptToken, resumeKeptSession, signIn as door43SignIn, signOut as door43SignOut } from './data/share/session';
 import { desktopKeychain } from './data/share/keychain';
 import { share as door43Share, remoteAllowed, repositoryOf } from './data/share/shareOperation';
-import { standInCloneRepo, sync as door43Sync } from './data/share/syncOperation';
+import { openFromDoor43Asking, openRepoPathOf, openSourceOf, standInCloneRepo, sync as door43Sync } from './data/share/syncOperation';
 import { projectSyncs } from './data/share/syncs';
 import { organizationChoices } from './data/share/recommend';
 import { applyVersions, carryOverNeeds, resolveVersions, unresolvedSlots } from './data/import/tc3';
@@ -489,8 +489,9 @@ const initial = () => ({
   // `origin` remote (GET /git/remotes) — { repository, url } | null (not shared); a
   // missing key is not read yet. Nothing about remotes is stored in the installation.
   remoteByProject: {},
-  importToast: null, // { name, books } of the project an import just made
+  importToast: null, // { name, books } of the project an import just made; #677: { key: 'openDoor43.done', name } after an open from Door43
   importedRepo: null, // its repoPath: the Home card carries the "Imported" badge
+  od: null, // #677: the "Open a project from Door43" dialog (openDoor43Dialog), or null
   // #9: the guided fix screen for a pinned resource this machine lacks —
   // { tool, pin, candidates: ResourcePin[], busy: 'fetch'|'sideload'|null, error, progress }
   fix: null,
@@ -1870,6 +1871,18 @@ async function missingPinsAfterSync(repoPath, actions) {
   } catch {
     return 0;
   }
+}
+
+/** #678, #677: the platform for a sync and for an open from Door43. `getNetEnabled`
+ * is the D95 barrier. A `file://` origin is the rig's stand-in for Door43 (#673):
+ * only a development build (`dev`) accepts one, and only it clones from the mirror. */
+function door43TransportApi(dev) {
+  const transport = Object.assign(Object.create(api), { getNetEnabled: internetAllowed });
+  if (dev) {
+    const standIn = standInCloneRepo(api);
+    transport.cloneRepo = (host, org, repo) => (host === 'file' ? standIn(host, org, repo) : api.cloneRepo(host, org, repo));
+  }
+  return transport;
 }
 
 /** The leave-project checkpoint (D9, #183), started after the store was torn
@@ -4032,7 +4045,7 @@ export function AppProvider({ children }) {
       closeModal: () => {
         // #530: Cancel, Close and Escape end the Share or Upload changes flow now.
         closeShareFlow();
-        dispatch({ type: 'set', patch: { modal: null, np: null, ab: null, st: null, fix: null, im: null, sh: null } });
+        dispatch({ type: 'set', patch: { modal: null, np: null, ab: null, st: null, fix: null, im: null, sh: null, od: null } });
       },
 
       /** #378: "Ask for help" on a banner. The Feedback dialog opens as a Bug
@@ -6147,15 +6160,8 @@ export function AppProvider({ children }) {
           await leaveCheckpoints.get(repoPath);
           const { coverage } = await a.resolutionContext();
           const dev = import.meta.env.DEV === true;
-          const syncApi = Object.assign(Object.create(api), { getNetEnabled: internetAllowed });
-          // A `file://` origin is the rig's stand-in for Door43 (#673); only a
-          // development build accepts one, and only it clones from the mirror.
-          if (dev) {
-            const standIn = standInCloneRepo(api);
-            syncApi.cloneRepo = (host, org, repo) => (host === 'file' ? standIn(host, org, repo) : api.cloneRepo(host, org, repo));
-          }
           report = await door43Sync(
-            { api: syncApi, door43Server: door43.server, coverage, ops: opsLog, allowFileRemote: dev },
+            { api: door43TransportApi(dev), door43Server: door43.server, coverage, ops: opsLog, allowFileRemote: dev },
             { repoPath, session },
           );
         } catch (e) {
@@ -6388,6 +6394,56 @@ export function AppProvider({ children }) {
         dispatch({ type: 'set', patch: { importedRepo: repoPath, importToast: { name: im.name.trim(), books: (report.facts.books || []).map((c) => bookName(c)).join(' · ') } } });
       },
       dismissImportToast: () => dispatch({ type: 'set', patch: { importToast: null } }),
+
+      // ---- Open a project from Door43 (#677; layer 4 of epic #24). The operation
+      //      is openFromDoor43 (src/data/share/syncOperation.ts); the dialog is
+      //      src/views/modals/OpenFromDoor43.jsx. ----
+      /** The fourth card of "Add a project". `od`: the dialog's fields; `named`
+       * is true once the user typed a name, so the name stops following the
+       * repository name. `error`: { code, reason } of the last refusal, or null. */
+      openDoor43Dialog: () =>
+        dispatch({ type: 'set', patch: { modal: 'openDoor43', od: { repo: '', name: '', named: false, busy: false, error: null } } }),
+      patchOd: (patch) => dispatch({ type: 'set', patch: { od: { ...stateRef.current.od, ...patch } } }),
+      /** "Open project". The name check is local and comes first; then, with the
+       * internet off, the question (D95): Not now sends nothing. A refusal
+       * shows in the dialog; no project was added. */
+      openDoor43Run: async () => {
+        const od = stateRef.current.od;
+        if (!od || od.busy) return;
+        const dev = import.meta.env.DEV === true;
+        const source = openSourceOf(od.repo, door43.server, dev);
+        const name = od.name.trim();
+        const repoPath = openRepoPathOf(name);
+        if (!source || !repoPath) return;
+        a.patchOd({ busy: true, error: null });
+        try {
+          const opened = await openFromDoor43Asking(
+            { api: door43TransportApi(dev), ops: opsLog, ask: (run) => a.internetTask('open', run) },
+            { source, name },
+          );
+          if (opened) await a.afterOpenFromDoor43(opened.repoPath, name);
+          else a.patchOd({ busy: false });
+        } catch (e) {
+          // Cancel is off while the open runs, so the dialog is there to show the refusal.
+          const error = { code: refusalCodeOf(e), reason: String(e?.reason || e?.message || e) };
+          if (stateRef.current.od) a.patchOd({ busy: false, error });
+          else console.error(`open from Door43 refused: ${error.code ?? error.reason}`);
+        }
+      },
+      /** After an open from Door43: the project exists, so a failed read here is
+       * logged, never shown as a refusal. Home lists the card, and the card reads
+       * `origin`, so it shows "Sync with Door43" (#678). */
+      afterOpenFromDoor43: async (repoPath, name) => {
+        markUsed(repoPath);
+        try {
+          await refreshProjects();
+          await a.loadShared({ id: repoPath }, true);
+        } catch (e) {
+          console.error(`open from Door43: the read after the open failed: ${String(e?.message || e)}`);
+        }
+        if (stateRef.current.modal === 'openDoor43') a.closeModal();
+        dispatch({ type: 'set', patch: { importToast: { key: 'openDoor43.done', name } } });
+      },
 
       createObs: async () => {
         const w = stateRef.current.np;

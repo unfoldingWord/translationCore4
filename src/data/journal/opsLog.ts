@@ -78,6 +78,7 @@ import { Refusal, failedReport, isUnjournaledIngredient, okReport, type Report }
 import type { ServerApi } from '../serverApi';
 import { isNotFoundError } from '../serverApi';
 import { readJournalZipOf } from './journalStore';
+import { OPEN_MARKER, archiveNameOf, isReservedIngredient, openRunning, openScratchOf } from '../openCopyMarks';
 import { verifyProjectAgainstJournal } from './verify';
 
 /** The settings key that keeps the bytes of a settings document that did not parse. */
@@ -194,14 +195,10 @@ export type OpsRecoveryApi = Pick<
   | 'getMetadataRaw'
 >;
 
-// ---- the sync apply (issue #676, G8; D101) --------------------------------------
+/** What the open's disk recovery and gate need from the platform (#677). */
+export type OpenRecoveryApi = OpsRecoveryApi & Pick<ServerApi, 'getMetadataRaw'>;
 
-/** One name for the WHOLE project path inside `_local_/_archive_/`: `-` becomes
- * `-d` and `/` becomes `-s`. The encoding is injective, and it adds only `-`,
- * `d` and `s`, so the name keeps the platform's path rules (no `/`, no `..`;
- * pankosmia-web a83725b `utils/paths.rs` forbidden_path_strings). For the scratch
- * copies of a sync (#676) and of an open from Door43 (#677). */
-export const archiveNameOf = (repoPath: string): string => repoPath.replaceAll('-', '-d').replaceAll('/', '-s');
+// ---- the sync apply (issue #676, G8; D101) --------------------------------------
 
 /** The scratch copy of a project's sync. Under `_local_/_archive_/`, which
  * `list-local-repos` and the summaries skip (#673), so Home never lists it. */
@@ -210,7 +207,9 @@ export const scratchPathOf = (repoPath: string): string => `_local_/_archive_/tc
 /** The apply marker (module header): an ingredient path inside the scratch copy.
  * The apply never writes it into the project and never removes it from there. */
 export const APPLY_MARKER = 'tc4-sync/apply.json';
-const isMarkerPath = (ipath: string): boolean => ipath.startsWith('tc4-sync/');
+/** The reserved marker folders, `tc4-sync/` and `tc4-open/` (#677): one definition,
+ * src/data/openCopyMarks.ts. The apply never writes or removes a file there. */
+const isMarkerPath = isReservedIngredient;
 
 /** The sync generation of each project in this process (module header): an
  * apply moves it on, and a store opened at an older one is stale. A restart
@@ -220,6 +219,106 @@ export const syncGenerationOf = (repoPath: string): number => syncGenerations.ge
 export const nextSyncGeneration = (repoPath: string): void => {
   syncGenerations.set(repoPath, syncGenerationOf(repoPath) + 1);
 };
+
+// ---- the open from Door43 (issue #677) -----------------------------------------
+// Safety comes from the DISK only. The client-settings document is written in
+// place by many writers with no compare-and-swap, so a lost update or a torn read
+// can regress or erase a record; the open record (`op: 'open-door43'`) is kept for
+// the Report, the Inspector and one liveness hint (the clone path), never to decide
+// whether a project is whole.
+//
+// The marker: one file, `ingredients/tc4-open/move.json` (OPEN_MARKER), in the
+// scratch copy S of the project P. The platform copy copies the whole folder, so
+// the marker travels to P. The open runs, in this order:
+//   1. write the marker in S          (S is checked and complete; P is not there)
+//   2. copy S to P                    (P now has the marker, unless the copy stopped
+//                                      before it: the copy order is not known)
+//   3. delete the marker in S         (the copy returned ok: P is whole)
+//   4. delete the marker in P
+//   5. delete S
+// What the disk says, and what happens (`settleOpenCopy`):
+//   S has the marker                  the copy is not proved finished. P, when it is
+//                                     there, can be a part copy: delete P, then S. A P
+//                                     that has no marker and whose metadata.json differs
+//                                     from S's is not this open's copy: nothing is
+//                                     deleted, and the open of P is refused.
+//   S has no marker, P has it         the copy finished (step 3 ran): delete P's
+//                                     marker, keep P, delete S.
+//   neither has it                    P is a normal project. S is a stale scratch copy;
+//                                     only recovery at start deletes it.
+// Step 3 comes before step 4, so a stop after the copy goes forward, never back.
+// The gate: before a project opens or syncs, `guardOpenCopy` reads the two listings.
+// A marker means the copy is not finished: the gate settles it from the disk, then
+// the project opens (forward), or the open refuses (`open-door43.removed`). While an
+// open of P runs in this app, the gate refuses (`open-door43.pending`) and touches
+// nothing. No project with a marker is ever opened, so no edit can be lost when a
+// part copy is deleted. Edits need no gate: they run on an open store, and a marker
+// can appear only by a copy to a path that is free, which an open store is not.
+// A stale marked scratch copy never blocks a project made later at that path: every
+// create goes through the platform's create routes, and those first delete the scratch
+// copy for the path when no open of it runs here and no folder is at the path
+// (ServerApi `clearStaleOpenScratch`).
+
+/** The phases of an open from Door43, in order (the record only: a hint, not a safety input). */
+export const OPEN_PHASES = ['start', 'clone', 'check', 'move.copy', 'move.delete-scratch'] as const;
+export type OpenPhase = (typeof OPEN_PHASES)[number];
+
+// The open's names and its running set live in src/data/openCopyMarks.ts (no imports), so
+// the platform's create routes (serverApi.ts) can read them without a cycle.
+export { archiveNameOf, openScratchOf, OPEN_MARKER, openRunning, forgetRunningOpens } from '../openCopyMarks';
+
+/** What the disk says about a project's open from Door43, after `settleOpenCopy`. */
+export type OpenCopyState = 'clear' | 'finished' | 'removed' | 'blocked' | 'running';
+
+/** Is P this open's copy? Yes when P has no metadata.json yet (a part copy) or the
+ * same one as S. A different one, or one that does not read, is not proved: no. */
+async function isCopyOf(api: OpenRecoveryApi, scratch: string, repoPath: string): Promise<boolean> {
+  let mine: unknown;
+  try {
+    mine = await api.getMetadataRaw(repoPath);
+  } catch (error) {
+    return isNotFoundError(error);
+  }
+  try {
+    return JSON.stringify(await api.getMetadataRaw(scratch)) === JSON.stringify(mine);
+  } catch {
+    return false;
+  }
+}
+
+/** Decide from the disk only (the open section above), and do what it says. A read
+ * that fails throws: it never counts as "no marker". With `cleanStale`, a scratch
+ * copy with no marker is deleted too (recovery at start, when no open runs). */
+export async function settleOpenCopy(api: OpenRecoveryApi, repoPath: string, cleanStale = false): Promise<OpenCopyState> {
+  const scratch = openScratchOf(repoPath);
+  const inScratch = (await api.listPaths(scratch)).includes(OPEN_MARKER);
+  const projectPaths = await api.listPaths(repoPath);
+  const inProject = projectPaths.includes(OPEN_MARKER);
+  if (!inScratch && !inProject) {
+    if (cleanStale && !openRunning.has(repoPath)) await deleteIfPresent(api, scratch);
+    return 'clear';
+  }
+  if (openRunning.has(repoPath)) return 'running';
+  if (inScratch) {
+    if (projectPaths.length > 0 && !inProject && !(await isCopyOf(api, scratch, repoPath))) return 'blocked';
+    const there = projectPaths.length > 0 || (await api.listLocalRepos()).includes(repoPath);
+    await deleteIfPresent(api, repoPath);
+    await deleteIfPresent(api, scratch);
+    return there ? 'removed' : 'clear';
+  }
+  await deleteIngredientIfPresent(api, repoPath, OPEN_MARKER);
+  await deleteIfPresent(api, scratch);
+  return 'finished';
+}
+
+/** The gate before a project opens or syncs (the open section above). */
+export async function guardOpenCopy(api: OpenRecoveryApi, repoPath: string): Promise<void> {
+  const state = await settleOpenCopy(api, repoPath);
+  if (state === 'removed')
+    throw new Refusal('open-door43.removed', `the open from Door43 of ${repoPath} did not finish; its part copy was removed`, { repoPath });
+  if (state === 'running' || state === 'blocked')
+    throw new Refusal('open-door43.pending', `the open from Door43 of ${repoPath} did not finish (${state})`, { repoPath, state });
+}
 
 /** Delete a repository; a repository that is not there is not an error. The
  * platform answers a delete of a missing repository with HTTP 400 "could not
@@ -334,6 +433,14 @@ export const deleteIngredientIfPresent = async (api: Pick<OpsRecoveryApi, 'delet
   } catch (error) {
     if (!isIngredientGone(error)) throw error;
   }
+};
+
+/** Delete every file in the reserved marker folders (`isReservedIngredient`) of
+ * `repoPath`. Each clone of Door43 content, by the open (#677) and by the sync (#676),
+ * runs this at the fixed clone path before the move, so a marker that came with Door43
+ * never reaches a scratch copy or a project. */
+export const deleteReservedIngredients = async (api: Pick<OpsRecoveryApi, 'listPaths' | 'deleteIngredient'>, repoPath: string): Promise<void> => {
+  for (const ipath of (await api.listPaths(repoPath)).filter(isReservedIngredient)) await deleteIngredientIfPresent(api, repoPath, ipath);
 };
 
 /** The apply (module header): make the project's `ingredients/`, except
@@ -508,6 +615,7 @@ export class OpsLog implements OpsRecorder {
     if (entry.op === 'export')
       return failedReport('export', entry.startedAt, endedAt, new Error('the export was interrupted; no file was delivered'), facts);
     if (entry.op === 'sync') return this.resolveSync(entry, api, endedAt);
+    if (entry.op === 'open-door43') return this.resolveOpen(entry, api, endedAt);
     return failedReport(entry.op, entry.startedAt, endedAt,
       new Error(`the ${entry.op} was interrupted; the journal replays its staged actions at the next open of the project`), facts);
   }
@@ -560,6 +668,26 @@ export class OpsLog implements OpsRecorder {
       console.error(`ops log: the settings document did not parse; its bytes are kept under ${UNREADABLE_KEY}: ${failure.error}`);
       return doc;
     }
+  }
+
+  /** The recovery rule of an interrupted open from Door43 (the open section above). */
+  private async resolveOpen(entry: OpsEntry, api: OpsRecoveryApi, endedAt: string): Promise<Report> {
+    const facts = { ...entry.facts, interrupted: true };
+    const { phase, repoPath, clonePath } = entry.facts;
+    if (typeof repoPath !== 'string')
+      return failedReport('open-door43', entry.startedAt, endedAt, new Error('the open was interrupted before it named its project'), facts);
+    // A liveness hint only: a clone that the record names, left by a stop in the clone
+    // window. cloneProject proved the path absent before it saved this phase.
+    if (phase === 'clone' && typeof clonePath === 'string') await deleteIfPresent(api, clonePath);
+    // Safety: the disk decides (the open section above). A project that is not this
+    // open's copy stays, and its record stays open (the throw), so it is reported.
+    if (!(api as Partial<OpenRecoveryApi>).getMetadataRaw) throw new Error('the open recovery needs getMetadataRaw');
+    const state = await settleOpenCopy(api as OpenRecoveryApi, repoPath, true);
+    if (state === 'blocked') throw new Error(`a marked scratch copy for ${repoPath} and a project that is not its copy: nothing was deleted`);
+    const kept = state === 'finished' || (state === 'clear' && String(phase).startsWith('move.') && (await api.listLocalRepos()).includes(repoPath));
+    if (kept) return okReport('open-door43', entry.startedAt, endedAt, { ...facts, finishedMove: true });
+    return failedReport('open-door43', entry.startedAt, endedAt,
+      new Error('the open from Door43 was interrupted; no project was kept'), { ...facts, rolledBack: true });
   }
 
   private current(id: string): OpsEntry {

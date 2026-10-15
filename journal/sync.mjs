@@ -59,9 +59,10 @@ const sortedKeys = (map) => [...map.keys()].sort();
 /**
  * Check ONE journal file by its path, with the one validator (R-8.1.2, R-8.1.6, R-8.1.10,
  * R-8.1.12, R-8.1.13). Returns `{ ok: true, actor, events }` (events is `[]` for an
- * `actor.json`) or `{ ok: false, actor?, kind, reason }`.
+ * `actor.json`) or `{ ok: false, actor?, kind, reason }`. The open from Door43 (#677) checks
+ * each journal file of the copy with it too (G2).
  */
-const checkJournalFile = async (files, ipath, bytes) => {
+export const checkJournalFile = async (files, ipath, bytes) => {
   const parts = ipath.slice(JOURNAL_PREFIX.length).split('/');
   const actor = parts[0];
   if (actorSlugError(actor)) return { ok: false, kind: 'invalid', reason: 'actor-slug' };

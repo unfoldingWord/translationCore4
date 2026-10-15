@@ -17,6 +17,8 @@
 // The base path defaults to '/api': the dev server proxies it to the rig
 // (vite.config.js), and the built client is served same-origin by the platform.
 // Tests inject an absolute base (no vite proxy under vitest/node).
+import { Refusal } from './journal/runtime';
+import { openRunning, openScratchOf } from './openCopyMarks';
 
 export interface PostResult {
   is_good: boolean;
@@ -575,6 +577,30 @@ export class ServerApi {
     await this.post(`/git/pull-repo/${encodeURIComponent(remote)}/${encodeRepoPath(repoPath)}`);
   }
 
+  /** #677: the one place every create of `_local_/_local_/<abbr>` passes (New Bible,
+   * New OBS, Import, HttpStore), right before its POST. A killed open from Door43
+   * whose record was lost can leave a marked scratch copy for that path; the gate
+   * would then refuse the new project forever (opsLog.ts `settleOpenCopy`). So the
+   * scratch copy for that path is deleted first: only when no open of that path runs
+   * in this app (else refused, `open-door43.pending`), and only when no folder is at
+   * the path (a folder there can be a part copy, which is the gate's to decide; the
+   * create refuses that path anyway). */
+  private async clearStaleOpenScratch(abbr: string): Promise<void> {
+    const repoPath = `_local_/_local_/${abbr}`;
+    if (openRunning.has(repoPath))
+      throw new Refusal('open-door43.pending', `an open from Door43 of ${repoPath} runs now; create the project when it ends`, { repoPath, state: 'running' });
+    if ((await this.listLocalRepos()).includes(repoPath)) return;
+    // A missing repository lists as `[]` [VERIFIED — pankosmia-web 0.18.15, live rig
+    // 2026-10-13]: delete only a scratch copy that is there.
+    const scratch = openScratchOf(repoPath);
+    if ((await this.listPaths(scratch)).length === 0) return;
+    try {
+      await this.deleteRepo(scratch);
+    } catch (error) {
+      if (!isNotFoundError(error)) throw error;
+    }
+  }
+
   /** POST /git/new-text-translation — stamps the template repo, writes
    * ingredients/vrs.json from `versification`, scaffolds the book from
    * maxVerses when add_book, and makes the initial commit (D25). */
@@ -605,6 +631,7 @@ export class ServerApi {
         );
       }
     }
+    await this.clearStaleOpenScratch(params.content_abbr); // #677
     await this.post('/git/new-text-translation', {
       content_name: params.content_name,
       content_abbr: params.content_abbr,
@@ -633,6 +660,7 @@ export class ServerApi {
         "content_language_name is REQUIRED (non-null) when content_language_code starts with 'x-'",
       );
     }
+    await this.clearStaleOpenScratch(params.content_abbr); // #677
     await this.post('/git/new-obs-resource', {
       content_name: params.content_name,
       content_abbr: params.content_abbr,

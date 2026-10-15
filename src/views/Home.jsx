@@ -400,7 +400,7 @@ export default function Home() {
       )}
       {s.importToast && (
         <div style={{ position: 'fixed', insetBlockEnd: 24, insetInlineStart: '50%', transform: 'translateX(-50%)', zIndex: 90, width: 'max-content', maxWidth: 'calc(100% - 48px)' }}>
-          <Toast tone="success" data-testid="import-toast" message={t('importer.done', s.importToast)} onDismiss={actions.dismissImportToast} dismissLabel={t('common.dismiss')} />
+          <Toast tone="success" data-testid="import-toast" message={t(s.importToast.key ?? 'importer.done', s.importToast)} onDismiss={actions.dismissImportToast} dismissLabel={t('common.dismiss')} />
         </div>
       )}
     </main>

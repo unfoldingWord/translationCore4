@@ -50,7 +50,7 @@ import { idbKvStore, type KvStore } from './identity';
 import { sealAction, segmentName, type JournalEvent } from './seal';
 import { defaultFoldRunner, type FoldRunner } from './foldRunner';
 import { verseConflicts, type VerseConflict } from './verseConflicts';
-import { isApplyPending, recoverySettled, syncGenerationOf, type OpsRecorder } from './opsLog';
+import { guardOpenCopy, isApplyPending, recoverySettled, syncGenerationOf, type OpsRecorder } from './opsLog';
 import {
   applyStoryState,
   completePartialPins,
@@ -1292,6 +1292,9 @@ export class JournalingStore implements BurritoStore {
     refuseNonProjectPath(repoPath);
     await recoverySettled(); // #676: an open never races the start recovery
     await this.refusePendingApply(repoPath);
+    // #677: a project whose copy from Door43 is not proved finished never opens
+    // (disk only, opsLog.ts `settleOpenCopy`): the gate finishes it or removes it.
+    await guardOpenCopy(this.api, repoPath);
     const summary = await this.raw.open(repoPath); // binds raw + setCurrentProject
     this.boundRepoPath = repoPath;
     this.journal = new JournalStore({ api: this.api, repoPath, kv: this.kv, now: this.now });

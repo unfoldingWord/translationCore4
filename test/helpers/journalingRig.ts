@@ -272,8 +272,10 @@ export const journalingRig = () => {
       const repo = repoAt(3);
       maybeFail({ method, route, repo });
       const project = repos.get(repo);
-      // a missing repository answers [] with HTTP 200, as the platform does
-      // [VERIFIED — pankosmia-web 0.18.15 (a83725b), rig GET of a missing _local_/_archive_/ path, 2026-10-13]
+      // The real server lists a missing repository as `[]` with HTTP 200 [VERIFIED —
+      // pankosmia-web 0.18.15 (a83725b, 2026-09-29), live rig 2026-10-13 and 2026-10-14:
+      // GET /api/burrito/paths/_local_/_archive_/tc4-open--nothere → [] 200]. #677's
+      // gate reads the scratch listing at every open, so the fake answers the same.
       if (!project) return ok([]);
       return ok([...project.files.keys()].sort());
     }

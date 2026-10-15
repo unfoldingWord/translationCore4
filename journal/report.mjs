@@ -91,6 +91,12 @@ export const REFUSAL_CODES = Object.freeze({
   'sync.not-main': null, // (G4) the Door43 repository's default branch is not main
   'sync.apply-pending': null, // (G8) an apply may not have finished; the project takes no open until the next start or sync decides it
   'sync.cleanup-failed': null, // (G8) the sync and its apply are done; the clean-up after them did not finish, and the next start or sync ends it
+  // Open a project from Door43 (src/data/share/syncOperation.ts, #677). Its other refusals are the
+  // sync codes above: sync.offline, the clone codes, sync.obs-unsupported and (G2) sync.incoming-invalid.
+  'open-door43.name-exists': null, // a project with the chosen name is on this computer already; nothing was written
+  'open-door43.no-journal': null, // the repository holds no tC4 journal, so it is not a tC4 project (an import, #365); no project was written
+  'open-door43.pending': null, // an open from Door43 of the project runs now, or its marked copy is not proved to be this project; no open
+  'open-door43.removed': null, // an open from Door43 did not finish; the gate removed its part copy, so the project did not open
 });
 
 export const isRefusalCode = (code) => typeof code === 'string' && Object.hasOwn(REFUSAL_CODES, code);
@@ -101,7 +107,7 @@ export const isRefusalCode = (code) => typeof code === 'string' && Object.hasOwn
 // classified, what checkpoint wrote, ...); `startedAt`/`endedAt` are ISO-8601
 // UTC. A failed Report MAY carry a code (a refusal) or none (any other error);
 // its `rule` is the table's binding for that code and is absent for an app rule.
-export const REPORT_OPS = Object.freeze(['open', 'checkpoint', 'seed', 'reconcile', 'pin-complete', 'export', 'import', 'share', 'sync']);
+export const REPORT_OPS = Object.freeze(['open', 'checkpoint', 'seed', 'reconcile', 'pin-complete', 'export', 'import', 'share', 'sync', 'open-door43']);
 
 const REPORT_KEYS = new Set(['op', 'ok', 'code', 'rule', 'facts', 'startedAt', 'endedAt']);
 const isObj = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);
