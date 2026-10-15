@@ -987,7 +987,6 @@
   "syncResult.error.notShared": "यह परियोजना Door43 पर नहीं है। पहले इसे साझा करें।",
   "syncResult.error.clonePathExists": "इस कंप्यूटर पर एक फ़ोल्डर का नाम Door43 परियोजना जैसा है, इसलिए tC4 परियोजना नहीं ले सकता। कुछ नहीं बदला। मदद माँगें।",
   "syncResult.error.cloneFailed": "tC4 Door43 से परियोजना नहीं ले सका। कुछ नहीं बदला। फिर से कोशिश करें।",
-  "syncResult.error.moveFailed": "tC4 परियोजना का फ़ोल्डर नहीं बदल सका। परियोजना नहीं बदली। फिर से कोशिश करें।",
   "syncResult.error.verifyFailed": "सिंक की गई प्रति अपनी जाँच में पास नहीं हुई। Door43 पर कुछ नहीं भेजा गया। मदद माँगें।",
   "syncResult.error.nonFastForward": "सिंक के समय टीम ने Door43 पर बदलाव भेजे। फिर से सिंक करें।",
   "syncResult.error.noWriteAccess": "परियोजना के मालिक से Door43 पर लिखने की अनुमति माँगें।",

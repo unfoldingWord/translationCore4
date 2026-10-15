@@ -325,26 +325,22 @@ export const unsatisfiedProjectPinFor = (
     | {
         languageSets?: Record<string, LanguageSet>;
         resources?: { originalLanguage?: { nt?: ResourcePin; ot?: ResourcePin } };
+        extraScripture?: ResourcePin[];
       }
     | null
     | undefined,
   localRepoPath: string,
   installed: InstalledMap,
 ): ResourcePin | null => {
-  for (const rung of ['primary', 'fallback']) {
-    const set = resources?.languageSets?.[rung];
-    for (const pin of Object.values(set ?? {})) {
-      if (isMatchingUnsatisfiedPin(pin, localRepoPath, installed)) return pin;
-    }
-  }
   const orig = resources?.resources?.originalLanguage;
-  if (orig) {
-    for (const testament of ['nt', 'ot'] as const) {
-      const pin = orig[testament];
-      if (isMatchingUnsatisfiedPin(pin, localRepoPath, installed)) return pin;
-    }
-  }
-  return null;
+  const pins: unknown[] = [
+    ...['primary', 'fallback'].flatMap((rung) => Object.values(resources?.languageSets?.[rung] ?? {})),
+    orig?.nt,
+    orig?.ot,
+    // the source Bible panes (#412): the pins that `missingPinCount` counts (#678)
+    ...(resources?.extraScripture ?? []),
+  ];
+  return pins.find((pin): pin is ResourcePin => isMatchingUnsatisfiedPin(pin, localRepoPath, installed)) ?? null;
 };
 
 /** Re-point a pin at the version this machine actually has, when it has one.

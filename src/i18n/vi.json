@@ -987,7 +987,6 @@
   "syncResult.error.notShared": "Dự án này chưa có trên Door43. Hãy chia sẻ trước.",
   "syncResult.error.clonePathExists": "Một thư mục trên máy tính này có tên của dự án Door43, nên tC4 không thể nhận dự án. Không có gì thay đổi. Hãy nhờ giúp đỡ.",
   "syncResult.error.cloneFailed": "tC4 không thể nhận dự án từ Door43. Không có gì thay đổi. Hãy thử lại.",
-  "syncResult.error.moveFailed": "tC4 không thể thay thư mục dự án. Dự án không thay đổi. Hãy thử lại.",
   "syncResult.error.verifyFailed": "Bản sao đã đồng bộ không qua được bước kiểm tra. Không có gì được gửi lên Door43. Hãy nhờ giúp đỡ.",
   "syncResult.error.nonFastForward": "Nhóm đã gửi thay đổi lên Door43 trong khi đồng bộ. Hãy đồng bộ lại.",
   "syncResult.error.noWriteAccess": "Hãy xin chủ dự án quyền ghi trên Door43.",

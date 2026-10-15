@@ -566,6 +566,27 @@ describe('#677 the open never loses a project that opened (review B1, B2)', () =
     expect(await openFromDoor43({ api: w.api, ops: ops2 }, { source: SOURCE, name: 'prueba_b' })).toEqual({ repoPath: OPENED });
   });
 
+  it('the gate fails on a sync with a server error (HTTP 500): the Report has the code sync.failed, and the project does not change', async () => {
+    const w = await world();
+    const { ops } = await startApp(settingsDoc(), w.api);
+    expect(await openFromDoor43({ api: w.api, ops }, { source: SOURCE, name: 'prueba_b' })).toEqual({ repoPath: OPENED });
+    const before = new Map(w.rig.repos.get(OPENED)!.files);
+    // the gate's listing of the open scratch copy answers HTTP 500
+    const failing = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (new URL(String(input)).pathname === `/api/burrito/paths/${SCRATCH}`)
+        return new Response(JSON.stringify({ reason: 'server 500' }), { status: 500 });
+      return w.rig.fetchFn(input, init);
+    }) as typeof fetch });
+    forgetProjectQueues();
+    const report = await sync(
+      { api: failing, kv: w.kvB, door43Server: 'https://qa.door43.org', coverage: {}, ops },
+      { repoPath: OPENED, session: { username: 'translator_b', token: 'tok-677' } },
+    );
+    expect(reportError(report)).toBeNull();
+    expect([report.ok, report.code]).toEqual([false, 'sync.failed']);
+    expect(w.rig.repos.get(OPENED)!.files).toEqual(before);
+  });
+
   it('[B2] the gate on open: a part copy left with no record is removed, never opened', async () => {
     const w = await world();
     const settings = settingsDoc();
@@ -907,6 +928,23 @@ describe('#677 reserved folders that come with Door43 content never reach the pr
     const store = new JournalingStore({ api: w.api, kv: w.kvB, ops });
     await store.open(OPENED);
     store.dispose();
+  });
+
+  it('the opened project syncs: the sync deletes the reserved files of its clone too, and its push removes them from Door43 main', async () => {
+    const w = await door43WithReservedFiles();
+    const { ops } = await startApp(settingsDoc(), w.api);
+    expect(await openFromDoor43({ api: w.api, ops }, { source: SOURCE, name: 'prueba_b' })).toEqual({ repoPath: OPENED });
+    forgetProjectQueues();
+    const store = new JournalingStore({ api: w.api, kv: w.kvB, ops });
+    await store.open(OPENED);
+    store.dispose();
+    const report = await sync(
+      { api: w.api, kv: w.kvB, door43Server: 'https://qa.door43.org', coverage: {}, ops },
+      { repoPath: OPENED, session: { username: 'translator_b', token: 'tok-677' } },
+    );
+    expect([report.ok, report.code]).toEqual([true, undefined]);
+    expect(reservedIn(w, OPENED)).toEqual([]);
+    expect([...w.rig.remotes.get(URL_)!.files.keys()].filter((p) => p.startsWith('tc4-'))).toEqual([]);
   });
 
   for (const after of ['kept', 'erased'] as const)

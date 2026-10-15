@@ -987,7 +987,6 @@
   "syncResult.error.notShared": "هذا المشروع غير موجود على Door43. شاركه أولاً.",
   "syncResult.error.clonePathExists": "يحمل مجلد على هذا الكمبيوتر اسم مشروع Door43، لذلك لا يمكن لـ tC4 الحصول على المشروع. لم يتغير أي شيء. اطلب المساعدة.",
   "syncResult.error.cloneFailed": "تعذر على tC4 الحصول على المشروع من Door43. لم يتغير أي شيء. حاول مرة أخرى.",
-  "syncResult.error.moveFailed": "تعذر على tC4 استبدال مجلد المشروع. لم يتغير المشروع. حاول مرة أخرى.",
   "syncResult.error.verifyFailed": "لم تجتز النسخة التي تمت مزامنتها الفحص. لم يُرسل أي شيء إلى Door43. اطلب المساعدة.",
   "syncResult.error.nonFastForward": "أرسل زملاء الفريق تغييرات إلى Door43 أثناء المزامنة. قم بالمزامنة مرة أخرى.",
   "syncResult.error.noWriteAccess": "اطلب من مالك المشروع صلاحية الكتابة على Door43.",
