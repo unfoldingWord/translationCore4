@@ -5245,7 +5245,7 @@ export function AppProvider({ children }) {
       },
 
       unplaceAlignWord: (cardIndex, word) =>
-        a.applyAlignEdit((record) => unlinkWord(record, cardIndex, word)),
+        a.applyAlignEdit((record) => unlinkWord(record, cardIndex, word, stateRef.current.alignSession.targetText)),
 
       /** #129 drag-and-drop: place a banked word without the arm step. */
       placeAlignWordAt: (cardIndex, word) =>

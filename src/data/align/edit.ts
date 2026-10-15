@@ -99,19 +99,22 @@ export const linkWord = (
   };
 };
 
-/** Unlink a target word, returning it to the bank in its original position. */
+/** Unlink a target word, returning it to the bank in its place in the verse.
+ * #734: the whole bank is put in the verse's word order (tC3 kept its bank
+ * in verse order), so a bank stored in another order is restored too. A word
+ * the text no longer has goes last. */
 export const unlinkWord = (
   record: AlignmentVerseRecord,
   alignmentIndex: number,
   word: AlignedWord,
+  targetText: string,
 ): AlignmentVerseRecord => {
   const target = record.alignments[alignmentIndex];
   if (!target?.bottomWords.some((w) => sameWord(w, word))) return record;
   const returned = normalizeOccurrences(word);
-  const bank = [...record.wordBank, returned].sort(
-    (a, b) =>
-      Number(a.occurrence) - Number(b.occurrence) || String(a.word).localeCompare(String(b.word)),
-  );
+  const position = new Map(wordTokens(targetText).map((t, i) => [`${t.text} ${t.occurrence}`, i]));
+  const at = (w: AlignedWord) => position.get(`${w.word} ${Number(w.occurrence)}`) ?? Number.MAX_SAFE_INTEGER;
+  const bank = [...record.wordBank, returned].sort((a, b) => at(a) - at(b));
   return {
     ...record,
     alignments: record.alignments.map((a, i) =>
