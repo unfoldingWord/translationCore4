@@ -493,18 +493,19 @@ const preferredNamedPin = (pins: ResourcePin[], name: string): ResourcePin | und
 };
 
 /** The Bibles one gateway package supplies for the Translate source panes (#412):
- * its literal text (`<lang>_ult`, else `<lang>_glt`) and its simplified text
- * (`<lang>_ust`, else `<lang>_gst`), each only when installed with its identity. */
+ * its literal text (the Bible its registry entry names as `literal`, else
+ * `<lang>_ult`, else `<lang>_glt`) and its simplified text (`<lang>_ust`, else
+ * `<lang>_gst`), each only when installed with its identity. */
 export const gatewayBiblesFromInstalled = (
   installed: InstalledMap,
-  gateway: { id: string; org: string },
+  gateway: { id: string; org: string; literal?: string },
 ): { literal?: ResourcePin; simplified?: ResourcePin } => {
   const org = gateway.org.toLowerCase();
   const ofOrg = Object.values(installed).filter((p) =>
     !!p.sha && !!p.flavor && p.repoPath.toLowerCase().includes(`/${org}/`));
   const byName = (name: string) => preferredNamedPin(ofOrg, name);
   return {
-    literal: byName(`${gateway.id}_ult`) ?? byName(`${gateway.id}_glt`),
+    literal: (gateway.literal ? byName(gateway.literal) : undefined) ?? byName(`${gateway.id}_ult`) ?? byName(`${gateway.id}_glt`),
     simplified: byName(`${gateway.id}_ust`) ?? byName(`${gateway.id}_gst`),
   };
 };

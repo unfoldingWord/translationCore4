@@ -48,6 +48,9 @@ export interface Gateway {
   /** Whether the owner publishes a simplified text repo — `en_ust` for
    * unfoldingWord, `<lang>_gst` elsewhere (same evidence run). */
   hasSimplified: boolean;
+  /** The repo name of the literal Bible, for an owner whose literal text is not
+   * named `<lang>_ult` or `<lang>_glt` (#704: BSOJ publishes `ar_avd`). */
+  literal?: string;
 }
 
 export const GATEWAYS: Gateway[] = [
@@ -57,7 +60,7 @@ export const GATEWAYS: Gateway[] = [
   { id: 'fr', org: 'MVHS', name: 'French', autonym: 'Français', dir: 'ltr', seen: { tn: 'v0.0.2', tw: 'v0.0.1', ta: 'v0.0.2' }, hasTwl: true, hasBible: true, hasTq: true, hasSimplified: true },
   { id: 'ru', org: 'ru_gl', name: 'Russian', autonym: 'Русский', dir: 'ltr', seen: { tn: 'v60.1', tw: 'v14.2', ta: 'v13.3' }, hasTwl: true, hasBible: true, hasTq: true, hasSimplified: false },
   { id: 'fa', org: 'fa_gl', name: 'Persian', autonym: 'فارسی', dir: 'rtl', seen: { tn: 'v9', tw: 'v9', ta: 'v7.8' }, hasTwl: true, hasBible: true, hasTq: true, hasSimplified: true },
-  { id: 'ar', org: 'BSOJ', name: 'Arabic', autonym: 'العربية', dir: 'rtl', seen: { tn: 'v6.1', tw: 'v5', ta: 'v3' }, hasTwl: true, hasBible: true, hasTq: true, hasSimplified: true },
+  { id: 'ar', org: 'BSOJ', name: 'Arabic', autonym: 'العربية', dir: 'rtl', seen: { tn: 'v6.1', tw: 'v5', ta: 'v3' }, hasTwl: true, hasBible: true, hasTq: true, hasSimplified: true, literal: 'ar_avd' },
   { id: 'id', org: 'bahtraku', name: 'Indonesian', autonym: 'Bahasa Indonesia', dir: 'ltr', seen: { tn: 'v25', tw: 'v26', ta: 'v30' }, hasTwl: true, hasBible: true, hasTq: true, hasSimplified: true },
   { id: 'hi', org: 'translationCore-Create-BCS', name: 'Hindi', autonym: 'हिन्दी', dir: 'ltr', seen: { tn: 'v9', tw: 'v8', ta: 'v7' }, hasTwl: true, hasBible: true, hasTq: true, hasSimplified: true },
   { id: 'bn', org: 'translationCore-Create-BCS', name: 'Bengali', autonym: 'বাংলা', dir: 'ltr', seen: { tn: 'v6', tw: 'v4', ta: 'v5.0' }, hasTwl: true, hasBible: true, hasTq: true, hasSimplified: true },

@@ -39,6 +39,12 @@ node "$(npath "$ROOT/scripts/seed-large-project.mjs")" "$(npath "$WORK/repos/_lo
 AR_AVD_Z="$DEV/resources-cache/ar_avd-v6.9-unwrapped.zip"
 if [ "${TC4_ARABIC_FIXTURE:-}" = "1" ] && [ -f "$AR_AVD_Z" ]; then
   node "$(npath "$ROOT/scripts/seed-arabic-project.mjs")" "$(npath "$WORK/repos/_local_/_local_/arabic_burrito")" "$(npath "$AR_AVD_Z")"
+  # #704: BSOJ's literal Bible, installed by the seed (owner ruling on #650: not served
+  # through the test route, whose 90 MB response closed the test browser). Its install
+  # record (write-install-records.mjs) places it in BSOJ at v6.9.
+  mkdir -p "$WORK/repos/_local_/_sideloaded_/ar_avd"
+  unzip -q "$AR_AVD_Z" -d "$WORK/repos/_local_/_sideloaded_/ar_avd"
+  echo "sideloaded: BSOJ/ar_avd (v6.9)"
 fi
 # A SECOND gateway-language suite (es-419_gl) rides along, so the two-language-set
 # path (D17/D30 ladder, D23a gateway change, D36 carry-over) is exercisable on the
