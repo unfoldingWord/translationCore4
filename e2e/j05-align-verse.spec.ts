@@ -360,6 +360,65 @@ test.describe('J5 — a translator aligns a verse', () => {
     );
   }
 
+  // #754 (Birch): a card keeps its words in verse order automatically, as tC3
+  // did — wherever a word is dropped, however it got there. Titus 1:1 reads
+  // "… según la fe de los escogidos …"; cards 6 (κατὰ), 7 (πίστιν) and 8
+  // (ἐκλεκτῶν) start empty.
+  const fileCard = (index: number) =>
+    (alignmentFile()?.chapters?.['1']?.['1']?.alignments?.[index]?.bottomWords ?? []).map((w: { word: string; occurrence: number }) => `${w.word}/${w.occurrence}`);
+  const place = async (page: import('@playwright/test').Page, word: string, index: number) => {
+    const count = Number(await page.locator(`[data-testid="align-card-${index}"]`).getAttribute('data-count'));
+    await bankChip(page, word).click();
+    await page.locator(`[data-testid="align-card-${index}"]`).click();
+    await expect(page.locator(`[data-testid="align-card-${index}"]`)).toHaveAttribute('data-count', String(count + 1));
+  };
+
+  test(
+    '"la fe de los" placed as fe, la, los reads la, fe, los on the card and in the file; a drop on the left edge too (#754)',
+    { tag: ['@inc2', '@J5'] },
+    async ({ page }) => {
+      writePinsWithOriginal();
+      await openAlign(page);
+      await expect(page.locator('[data-testid="align-card-7"]')).toHaveAttribute('data-count', '0');
+      for (const w of ['fe', 'la', 'los']) await place(page, w, 7);
+      expect(await cardWords(page, 'align-card-7')).toEqual(['la', 'fe', 'los']);
+      await expect.poll(() => fileCard(7), { timeout: 10_000 }).toEqual(['la/1', 'fe/1', 'los/1']);
+
+      // A drop on the far left of card 8, after "escogidos" is already there.
+      await place(page, 'escogidos', 8);
+      const card8 = page.locator('[data-testid="align-card-8"]');
+      const box = (await card8.boundingBox())!;
+      await bankChip(page, 'de').dragTo(card8, { targetPosition: { x: 3, y: box.height - 8 } });
+      await expect(card8).toHaveAttribute('data-count', '2');
+      expect(await cardWords(page, 'align-card-8')).toEqual(['de', 'escogidos']);
+      await expect.poll(() => fileCard(8), { timeout: 10_000 }).toEqual(['de/1', 'escogidos/1']);
+    },
+  );
+
+  test(
+    'moving a word between cards and merging cards keep verse order (#754)',
+    { tag: ['@inc2', '@J5'] },
+    async ({ page }) => {
+      writePinsWithOriginal();
+      await openAlign(page);
+      await place(page, 'la', 6);
+      await place(page, 'los', 7);
+
+      // Move "la" from card 6 onto card 7, after "los": the card reads la, los.
+      await page.locator('[data-testid="align-card-6"] button[data-word="la"]').dragTo(page.locator('[data-testid="align-card-7"]'));
+      await expect(page.locator('[data-testid="align-card-7"]')).toHaveAttribute('data-count', '2');
+      expect(await cardWords(page, 'align-card-7')).toEqual(['la', 'los']);
+      await expect.poll(() => fileCard(7), { timeout: 10_000 }).toEqual(['la/1', 'los/1']);
+
+      // Put "fe" on card 6, then merge card 7 into card 6: la, fe, los.
+      await place(page, 'fe', 6);
+      await page.locator('[data-testid="align-card-7"] > div[draggable]').first().dragTo(page.locator('[data-testid="align-card-6"]'));
+      await expect(page.locator('[data-testid="align-card-6"]')).toHaveAttribute('data-count', '3');
+      expect(await cardWords(page, 'align-card-6')).toEqual(['la', 'fe', 'los']);
+      await expect.poll(() => fileCard(6), { timeout: 10_000 }).toEqual(['la/1', 'fe/1', 'los/1']);
+    },
+  );
+
   test(
     'the selection survives a drop outside a card and is cleared by opening another verse (#736 Interruptions)',
     { tag: ['@inc2', '@J5'] },

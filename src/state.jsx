@@ -45,7 +45,7 @@ import {
 } from './data/derive';
 import { readTwArticle, readTaArticle } from './data/articles';
 import { revalidateAgainstDraft, resolutionWarning } from './data/revalidate';
-import { bootstrapVerse, inVerseOrder, linkWord, unlinkWord, moveWord, mergeAlignments, splitAlignment, stampTargetVerse, alignmentIsStale, reflowAlignment, settleDone, markDone } from './data/align/edit';
+import { bootstrapVerse, cardsInVerseOrder, inVerseOrder, linkWord, unlinkWord, moveWord, mergeAlignments, splitAlignment, stampTargetVerse, alignmentIsStale, reflowAlignment, settleDone, markDone } from './data/align/edit';
 import { linksFor, rebindSuggestions, sessionInputFor, trainingVerseOf, trainingVersesFor } from './data/align/suggest';
 import { SuggestScheduler } from './data/align/suggestScheduler';
 import { consequencesOfGatewayChange, applyGatewayChange, completeLanguageSets, uncoveredByChange, sourcePanesForGateway, gatewaysCoveringProject, literalPaneId } from './data/gatewayChange';
@@ -1190,11 +1190,12 @@ async function buildAlignmentSession(store, sched, st, ref, source, origObjects)
   // `invalid` record a span create/break leaves on the new key (#63) — has
   // nothing to edit: the editor starts from the bootstrap; the file keeps
   // its flag until the translator saves an alignment.
-  // #734: a bank stored in another order (an older save, an import) is shown
-  // in verse order; the file takes that order on the next edit.
-  const record = stored?.alignments?.length
-    ? { ...stored, wordBank: inVerseOrder(stored.wordBank, targetText) }
-    : bootstrapVerse(targetText, origObjects, sourceVersion);
+  // #734, #754: a bank or a card stored in another order (an older save, an
+  // import) is shown in verse order; the file takes that order on the next edit.
+  // `any`, as the stored record was before #754: callers read it untyped.
+  const record = /** @type {any} */ (stored?.alignments?.length
+    ? cardsInVerseOrder({ ...stored, wordBank: inVerseOrder(stored.wordBank, targetText) }, targetText)
+    : bootstrapVerse(targetText, origObjects, sourceVersion));
   return {
     loading: false,
     ref,
@@ -5229,7 +5230,9 @@ export function AppProvider({ children }) {
         if (next === a2.record) return;
         // #271: `done` follows the edit — set when the verse is now fully
         // aligned, removed otherwise (an edit takes back Mark valid).
-        const record = settleDone(stampTargetVerse(next, a2.targetText));
+        // #754: every edit (place, move, merge, confirm a suggestion) leaves
+        // each card's words in verse order, wherever the word was dropped.
+        const record = settleDone(stampTargetVerse(cardsInVerseOrder(next, a2.targetText), a2.targetText));
         // #1: a proposal for a word this edit placed is spent; the rest are
         // re-bound to their card by its first original word (a merge or split
         // moved the indexes) and dropped when that card is gone.
