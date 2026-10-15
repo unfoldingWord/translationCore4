@@ -18,7 +18,7 @@
 //      help page open no new window (the system browser in the desktop app); the frame shows
 //      the page, as after a plain click
 //   g  (#729) moving to another topic does not reload the frame's document, and no frame
-//      painted meanwhile is blank: each one shows the help bar, so the panel never blinks
+//      painted meanwhile is blank: each one shows the help bar and its logo, so nothing blinks
 //      white. The search page still lists its results, and of two quick clicks the second wins
 // The shared recorder (helpers/externalRequests.ts) writes each request log, and the
 // screenshots, into the test's output folder (and attaches them).
@@ -126,6 +126,8 @@ test.describe('#519 Help and guides', () => {
     await expect(frame(page).locator('a[href="al-link-words.html"]:visible').first()).toBeVisible();
     await frame(page).locator('a[href="al-link-words.html"]:visible').first().click();
     await expect.poll(() => page.frames().some((f) => f.url().endsWith('/help/al-link-words.html'))).toBe(true);
+    // #729: the frame's URL moves first, then the page is swapped in.
+    await expect(frame(page).getByRole('heading', { level: 1 })).toHaveText('Link your words to the source');
     // The logo, and the page's first screenshot (the pages load their images lazily).
     for (const img of [frame(page).locator('img.brand-logo'), frame(page).locator('img[src^="img/"]').first()]) {
       await img.scrollIntoViewIfNeeded();
@@ -243,8 +245,14 @@ test.describe('#519 Help and guides', () => {
     const helpFrame = () => page.frames().find((f) => f.url().includes('/help/'))!;
     await helpFrame().evaluate(() => { (window as unknown as { tc4Mark: number }).tc4Mark = 729; });
     const sameDocument = () => helpFrame().evaluate(() => (window as unknown as { tc4Mark?: number }).tc4Mark === 729);
-    // A row of pixels just inside the help bar's top edge, above the search field.
+    // Two rows of pixels: one just inside the help bar's top edge, above the search field,
+    // and one across the middle of the logo in the bar.
     const box = (await page.getByTestId('help-frame').boundingBox())!;
+    const logo = (await frame(page).locator('img.brand-logo').boundingBox())!;
+    const segments = [
+      { x0: box.x, x1: box.x + box.width, y: box.y + 4 },
+      { x0: logo.x, x1: logo.x + logo.width, y: logo.y + logo.height / 2 },
+    ];
     const viewport = page.viewportSize()!;
     // Every frame Chromium paints, by the DevTools screencast.
     const cdp = await page.context().newCDPSession(page);
@@ -255,7 +263,7 @@ test.describe('#519 Help and guides', () => {
     });
     // A blank page to read the frames in: the canvas gives their pixels.
     const scorer = await page.context().newPage();
-    const barRow = (png: string) => scorer.evaluate(async ({ png, x0, x1, y, w, h }) => {
+    const barRow = (png: string, { x0, x1, y }: (typeof segments)[number]) => scorer.evaluate(async ({ png, x0, x1, y, w, h }) => {
       const img = new Image();
       img.src = `data:image/png;base64,${png}`;
       await img.decode();
@@ -266,8 +274,8 @@ test.describe('#519 Help and guides', () => {
       ctx.drawImage(img, 0, 0);
       const sx = img.width / w;
       return Array.from(ctx.getImageData(Math.round(x0 * sx), Math.round(y * (img.height / h)), Math.round((x1 - x0) * sx), 1).data);
-    }, { png, x0: box.x, x1: box.x + box.width, y: box.y + 4, w: viewport.width, h: viewport.height });
-    // The share of the row that still matches the bar as it was before the click.
+    }, { png, x0, x1, y, w: viewport.width, h: viewport.height });
+    // The share of a row that still matches the same row before the click.
     const share = (row: number[], bar: number[]) => {
       let same = 0;
       for (let i = 0; i < bar.length; i += 4) {
@@ -276,7 +284,7 @@ test.describe('#519 Help and guides', () => {
       return same / (bar.length / 4);
     };
 
-    const rows: { topic: string; frames: number; blank: number; shares: number[] }[] = [];
+    const rows: { topic: string; frames: number; blank: number; bar: number[]; logo: number[] }[] = [];
     try {
       const topics = ['section-bible-projects.html', 'bp-new-bible.html', 'bp-open-book.html', 'bp-import.html', 'bp-export-pdf.html'];
       for (const [step, href] of topics.entries()) {
@@ -291,9 +299,13 @@ test.describe('#519 Help and guides', () => {
         await page.waitForTimeout(700);
         expect(await sameDocument(), `${href} reloaded the frame`).toBe(true);
         await cdp.send('Page.stopScreencast');
-        const rowsOf = await Promise.all(frames.map(barRow));
-        const shares = rowsOf.map((row) => share(row, rowsOf[0]));
-        rows.push({ topic: href, frames: frames.length, blank: shares.filter((s) => s < 0.9).length, shares: shares.map((s) => Number(s.toFixed(2))) });
+        const [bar, mark] = await Promise.all(segments.map(async (segment) => {
+          const rowsOf = await Promise.all(frames.map((png) => barRow(png, segment)));
+          return rowsOf.map((row) => share(row, rowsOf[0]));
+        }));
+        const blank = bar.filter((s, i) => s < 0.9 || mark[i] < 0.9).length;
+        const round = (list: number[]) => list.map((s) => Number(s.toFixed(2)));
+        rows.push({ topic: href, frames: frames.length, blank, bar: round(bar), logo: round(mark) });
         // The frames of one switch, for the record.
         if (step === 1) {
           frames.forEach((data, i) => fs.writeFileSync(testInfo.outputPath(`switch-${String(i).padStart(2, '0')}.png`), Buffer.from(data, 'base64')));

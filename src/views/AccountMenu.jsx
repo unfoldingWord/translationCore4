@@ -217,6 +217,9 @@ function swapPages(doc) {
           script.textContent = old.textContent;
           old.replaceWith(script);
         }
+        // The logo in the help bar is a new image too: shown before it decodes, it blinks.
+        await Promise.all([...body.querySelectorAll('img:not([loading="lazy"])')].map((img) => img.decode().catch(() => {})));
+        if (e.signal.aborted) return;
         doc.body.replaceWith(body);
       },
     });
