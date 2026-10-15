@@ -17,6 +17,8 @@
 //   f  (#632) Ctrl+click, Shift+click, Command+click and a middle-click on a link to another
 //      help page open no new window (the system browser in the desktop app); the frame shows
 //      the page, as after a plain click
+//   g  (#729) no frame painted while the panel moves to another topic is blank: each one
+//      shows the help bar, so the panel never blinks white
 // The shared recorder (helpers/externalRequests.ts) writes each request log, and the
 // screenshots, into the test's output folder (and attaches them).
 import { test, expect } from './helpers/test';
@@ -231,5 +233,73 @@ test.describe('#519 Help and guides', () => {
     }
     expect(rows.map((r) => r.gesture)).toEqual(['ctrl', 'shift', 'command', 'middle']);
     expect(rows.filter((r) => r.popups > 0)).toEqual([]);
+  });
+
+  test('g. moving to another topic paints no blank frame: every frame shows the help bar', TAG, async ({ page }, testInfo) => {
+    await page.goto('/');
+    await openHelp(page);
+    // A row of pixels just inside the help bar's top edge, above the search field.
+    const box = (await page.getByTestId('help-frame').boundingBox())!;
+    const viewport = page.viewportSize()!;
+    // Every frame Chromium paints, by the DevTools screencast.
+    const cdp = await page.context().newCDPSession(page);
+    let frames: string[] = [];
+    cdp.on('Page.screencastFrame', ({ data, sessionId }) => {
+      frames.push(data);
+      void cdp.send('Page.screencastFrameAck', { sessionId }).catch(() => {});
+    });
+    // A blank page to read the frames in: the canvas gives their pixels.
+    const scorer = await page.context().newPage();
+    const barRow = (png: string) => scorer.evaluate(async ({ png, x0, x1, y, w, h }) => {
+      const img = new Image();
+      img.src = `data:image/png;base64,${png}`;
+      await img.decode();
+      const c = document.createElement('canvas');
+      c.width = img.width;
+      c.height = img.height;
+      const ctx = c.getContext('2d')!;
+      ctx.drawImage(img, 0, 0);
+      const sx = img.width / w;
+      return Array.from(ctx.getImageData(Math.round(x0 * sx), Math.round(y * (img.height / h)), Math.round((x1 - x0) * sx), 1).data);
+    }, { png, x0: box.x, x1: box.x + box.width, y: box.y + 4, w: viewport.width, h: viewport.height });
+    // The share of the row that still matches the bar as it was before the click.
+    const share = (row: number[], bar: number[]) => {
+      let same = 0;
+      for (let i = 0; i < bar.length; i += 4) {
+        if ([0, 1, 2].every((k) => Math.abs(row[i + k] - bar[i + k]) < 24)) same += 1;
+      }
+      return same / (bar.length / 4);
+    };
+
+    const rows: { topic: string; frames: number; blank: number; shares: number[] }[] = [];
+    try {
+      for (let step = 0; step < 5; step++) {
+        const link = frame(page).locator('nav a:visible:not(.current)').nth(step + 1);
+        const href = (await link.getAttribute('href'))!;
+        frames = [];
+        await cdp.send('Page.startScreencast', { format: 'png' });
+        await page.waitForTimeout(300);
+        await link.click();
+        await expect.poll(() => page.frames().some((f) => f.url().endsWith(`/help/${href}`))).toBe(true);
+        await expect(frame(page).getByRole('heading', { level: 1 })).toBeVisible();
+        await page.waitForTimeout(700);
+        await cdp.send('Page.stopScreencast');
+        const rowsOf = await Promise.all(frames.map(barRow));
+        const shares = rowsOf.map((row) => share(row, rowsOf[0]));
+        rows.push({ topic: href, frames: frames.length, blank: shares.filter((s) => s < 0.9).length, shares: shares.map((s) => Number(s.toFixed(2))) });
+        // The frames of one switch, for the record.
+        if (step === 1) {
+          frames.forEach((data, i) => fs.writeFileSync(testInfo.outputPath(`switch-${String(i).padStart(2, '0')}.png`), Buffer.from(data, 'base64')));
+        }
+      }
+    } finally {
+      const out = testInfo.outputPath('switches.json');
+      fs.writeFileSync(out, `${JSON.stringify(rows, null, 2)}\n`);
+      await testInfo.attach('switches', { path: out, contentType: 'application/json' });
+      await scorer.close();
+    }
+    expect(rows).toHaveLength(5);
+    expect(rows.every((row) => row.frames > 0)).toBe(true);
+    expect(rows.filter((row) => row.blank > 0)).toEqual([]);
   });
 });

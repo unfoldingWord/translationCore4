@@ -195,8 +195,14 @@ function HelpPanel({ openLink, onClose }) {
     const watch = () => {
       tick = requestAnimationFrame(watch);
       const doc = frame.current?.contentDocument;
-      if (!doc || doc === seen) return;
+      if (!doc || doc === seen || !doc.documentElement) return;
       seen = doc;
+      // #729: a frame paints blank between two pages, and the whole panel blinks white.
+      // A page that opts in to view transitions is kept on screen until the next one
+      // paints. No animation: the new page replaces the old one at once, with no fade.
+      const keep = doc.createElement('style');
+      keep.textContent = '@view-transition { navigation: auto; } ::view-transition-old(root), ::view-transition-new(root) { animation: none; }';
+      doc.documentElement.append(keep);
       const onLink = (e) => {
         const a = e.target.closest?.('a[href]');
         if (!a) return;
