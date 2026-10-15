@@ -376,6 +376,10 @@ test.describe('#522 — App language in the account menu', () => {
     // The committed text opens again for editing, in Spanish, unchanged.
     await page.getByTitle(ES['draft.editVerse']).first().click();
     await expect(page.getByRole('textbox', { name: ES['draft.verseLabel'].replace('{n}', '1') })).toHaveValue(TEXT);
+    // A tab is off while a card is open (#698); Cancel closes the verse card, whose text is
+    // already written.
+    await page.getByRole('button', { name: ES['draft.cancelVerse'], exact: true }).click();
+    await expect(page.getByRole('textbox', { name: ES['draft.verseLabel'].replace('{n}', '1') })).toHaveCount(0);
     // The comprehension note survives too, in Understand, now in Spanish.
     await page.getByRole('tab', { name: ES['nav.understand'], exact: true }).click();
     await expect(page.getByPlaceholder(ES['understand.commentsPlaceholderVerse']).first()).toHaveValue(NOTE);
