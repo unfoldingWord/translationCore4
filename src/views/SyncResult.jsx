@@ -30,6 +30,10 @@ export const SYNC_REFUSALS = {
   'sync.not-main': 'refusal.sync.not-main',
   'sync.apply-pending': 'refusal.sync.apply-pending',
   'sync.cleanup-failed': 'refusal.sync.cleanup-failed',
+  // The open gate (#677, `guardOpenCopy`) refuses a sync of a project whose copy from
+  // Door43 is not proved finished. `open-door43` is not a catalog namespace: plain quotes.
+  'open-door43.removed': 'refusal.open-door43.removed',
+  'open-door43.pending': 'refusal.open-door43.pending',
   // The store's project-path guard (#676); a sync Report does not carry it today. A refusal
   // code, not a catalog key: the template literal keeps the i18n key scan (whose `open.`
   // namespace it shares) from reading it as one.
