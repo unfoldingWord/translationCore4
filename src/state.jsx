@@ -1851,14 +1851,6 @@ function retryOwedCheckpoint({ store, storeRef, stateRef, dispatch }, repoPath) 
   startCheckpoint({ store, storeRef, dispatch }, 'retry');
 }
 
-/** The leave-project checkpoint (D9, #183), started after the store was torn
- * down: the captured store still owns its per-project queue, so the commit
- * runs behind every drained write, and the screen never waits on it. On
- * failure the project owes the checkpoint (commitErrorRepo) and retries it
- * when opened again; the banner shows on Home, or in that project if it is
- * already open again. Only the latest failure is remembered: an earlier
- * project's pending work is durable in its journal and commits at its own
- * next checkpoint. */
 /** #678 (D88 point 6): after a sync, how many pins of the project at
  * `repoPath` name a version that this computer does not have. Derived at result
  * time, never stored; 0 when the pin file cannot be read. */
@@ -1874,6 +1866,14 @@ async function missingPinsAfterSync(repoPath, actions) {
   }
 }
 
+/** The leave-project checkpoint (D9, #183), started after the store was torn
+ * down: the captured store still owns its per-project queue, so the commit
+ * runs behind every drained write, and the screen never waits on it. On
+ * failure the project owes the checkpoint (commitErrorRepo) and retries it
+ * when opened again; the banner shows on Home, or in that project if it is
+ * already open again. Only the latest failure is remembered: an earlier
+ * project's pending work is durable in its journal and commits at its own
+ * next checkpoint. */
 function startLeaveCheckpoint({ store, repoPath, stateRef, dispatch }) {
   const run = checkpointCommit(store, 'leaving the project')
     .then(() => {
@@ -6173,8 +6173,9 @@ export function AppProvider({ children }) {
         }
         return 0;
       },
-      /** After an ok sync: the project on disk is a new folder. Home reads its
-       * progress and its conflicts again, and an open store of it opens again. */
+      /** After an ok sync: the apply changed the project's files in place (D101).
+       * Home reads its progress and its conflicts again, and an open store of it
+       * opens again. */
       afterSync: async (project) => {
         const repoPath = project.id;
         conflictsGen.set(repoPath, (conflictsGen.get(repoPath) || 0) + 1);

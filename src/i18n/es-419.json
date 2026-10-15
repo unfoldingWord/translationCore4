@@ -985,7 +985,6 @@
   "syncResult.error.notShared": "Este proyecto no está en Door43. Compártalo primero.",
   "syncResult.error.clonePathExists": "Una carpeta en esta computadora tiene el nombre del proyecto de Door43, así que tC4 no puede recibir el proyecto. No cambió nada. Pida ayuda.",
   "syncResult.error.cloneFailed": "tC4 no pudo recibir el proyecto de Door43. No cambió nada. Inténtelo de nuevo.",
-  "syncResult.error.moveFailed": "tC4 no pudo reemplazar la carpeta del proyecto. El proyecto no cambió. Inténtelo de nuevo.",
   "syncResult.error.verifyFailed": "La copia sincronizada no pasó su revisión. No se envió nada a Door43. Pida ayuda.",
   "syncResult.error.nonFastForward": "El equipo envió cambios a Door43 durante la sincronización. Sincronice de nuevo.",
   "syncResult.error.noWriteAccess": "Pida al dueño del proyecto acceso de escritura en Door43.",
