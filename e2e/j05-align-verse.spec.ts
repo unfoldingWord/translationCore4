@@ -49,6 +49,11 @@ const alignmentFile = () => {
   return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : null;
 };
 
+/** The words of these chips, without the occurrence number a repeated word
+ * shows (#735). */
+const wordsOf = (chips: import('@playwright/test').Locator) =>
+  chips.evaluateAll((els) => els.map((el) => el.getAttribute('data-word') ?? ''));
+
 async function openAlign(page: import('@playwright/test').Page) {
   await page.goto('/');
   await page
@@ -138,7 +143,7 @@ test.describe('J5 — a translator aligns a verse', () => {
       // stored record's bank word for word, in verse order (#734).
       const artifact = {
         ref: '1:1',
-        bank: (await page.getByTestId('align-bank').getByRole('button').allTextContents()).map((w) => w.trim()),
+        bank: await wordsOf(page.getByTestId('align-bank').getByRole('button')),
       };
       const artifactPath = testInfo.outputPath('j05-reselect-verse.json');
       fs.writeFileSync(artifactPath, `${JSON.stringify(artifact, null, 2)}\n`);
@@ -159,7 +164,7 @@ test.describe('J5 — a translator aligns a verse', () => {
 
       const bank = page.getByTestId('align-bank').getByRole('button');
       const bankBefore = await bank.count();
-      const word = (await bank.first().textContent()) ?? '';
+      const word = (await bank.first().getAttribute('data-word')) ?? '';
 
       // Click the word, then a card that currently has nothing under it.
       await bank.first().click();
@@ -211,7 +216,7 @@ test.describe('J5 — a translator aligns a verse', () => {
       // The seeded sample already has placed words; take one back.
       const placedCard = page.locator('[data-testid^="align-card-"][data-count="1"]').first();
       const chip = placedCard.getByRole('button').first();
-      const word = ((await chip.textContent()) ?? '').trim();
+      const word = (await chip.getAttribute('data-word')) ?? '';
       const bankBefore = await page.getByTestId('align-bank').getByRole('button').count();
       await chip.click();
 
@@ -225,6 +230,73 @@ test.describe('J5 — a translator aligns a verse', () => {
           { timeout: 10_000 },
         )
         .toBe(true);
+    },
+  );
+
+  // #735: a repeated word carries its occurrence number, as tC3 did — a
+  // superscript only when the word occurs more than once in the verse, on the
+  // target chips and on the original-language card headers, and in the
+  // chip's accessible name. Titus 1:1: "de" ×5 in the bank, "Dios" placed
+  // twice, Θεοῦ heads two cards; "siervo" and Παῦλος occur once.
+  test(
+    'repeated words show their occurrence number on chips and card headers; single words show none (#735)',
+    { tag: ['@inc2', '@J5'] },
+    async ({ page }, testInfo) => {
+      writePinsWithOriginal();
+      await openAlign(page);
+      const stored = alignmentFile()!.chapters['1']['1'];
+      type W = { word: string; occurrence: number; occurrences: number };
+      const sup = (el: Element) => el.querySelector('sup')?.textContent ?? null;
+
+      // Bank: each "de" chip shows its own occurrence and names it.
+      const bankDe = (stored.wordBank as W[]).filter((w) => w.word === 'de');
+      expect(bankDe.length).toBeGreaterThan(1);
+      for (const w of bankDe) {
+        const chip = page.getByTestId('align-bank').getByRole('button', { name: `de ${w.occurrence}`, exact: true });
+        await expect(chip).toHaveCount(1);
+        expect(await chip.evaluate(sup)).toBe(String(w.occurrence));
+      }
+
+      // Placed: the two "Dios" chips, one per θεός card.
+      const placedDios = (stored.alignments as Array<{ bottomWords: W[] }>).flatMap((a) => a.bottomWords).filter((w) => w.word === 'Dios');
+      expect(placedDios.length).toBe(2);
+      for (const w of placedDios) {
+        const chip = page.locator('[data-testid^="align-card-"]').getByRole('button', { name: `Dios ${w.occurrence}`, exact: true });
+        await expect(chip).toHaveCount(1);
+        expect(await chip.evaluate(sup)).toBe(String(w.occurrence));
+      }
+
+      // A word that occurs once: no number, name is the word alone.
+      const siervo = page.locator('[data-testid^="align-card-"]').getByRole('button', { name: 'siervo', exact: true });
+      await expect(siervo).toHaveCount(1);
+      expect(await siervo.evaluate(sup)).toBeNull();
+
+      // Card headers: each Θεοῦ card numbers its original word; Παῦλος does not.
+      const headers = await page.locator('[data-testid^="align-card-"] [lang="el"]').evaluateAll((els) =>
+        els.map((el) => ({ text: (el.firstChild?.textContent ?? '').trim(), sup: el.querySelector('sup')?.textContent ?? null })));
+      const theou = (stored.alignments as Array<{ topWords: W[] }>).flatMap((a) => a.topWords).filter((w) => w.word === 'Θεοῦ');
+      expect(theou.length).toBe(2);
+      expect(headers.filter((h) => h.text.startsWith('Θεοῦ')).map((h) => h.sup)).toEqual(theou.map((w) => String(w.occurrence)));
+      expect(headers.find((h) => h.text.startsWith('Παῦλος'))?.sup).toBeNull();
+      // A header has no aria-label, so its number must stay readable (review round 1).
+      await expect(page.locator('[data-testid^="align-card-"] [lang="el"] sup[aria-hidden]')).toHaveCount(0);
+
+      // The number does not push its word down: a numbered chip is as tall as a
+      // plain one beside it, in the bank and on the cards.
+      const heights = (sel: string) => page.locator(sel).evaluateAll((els) =>
+        els.map((el) => ({ sup: !!el.querySelector('sup'), h: Math.round(el.getBoundingClientRect().height) })));
+      for (const sel of ['[data-testid="align-bank"] button', '[data-testid^="align-card-"] button[data-word]']) {
+        const chips = await heights(sel);
+        const withSup = chips.filter((c) => c.sup).map((c) => c.h);
+        const plain = chips.filter((c) => !c.sup).map((c) => c.h);
+        expect(withSup.length).toBeGreaterThan(0);
+        expect(plain.length).toBeGreaterThan(0);
+        expect(new Set([...withSup, ...plain]).size).toBe(1);
+      }
+
+      const shot = testInfo.outputPath('j05-735-occurrences.png');
+      await page.getByTestId('align-session').screenshot({ path: shot });
+      await testInfo.attach('j05-735-occurrences.png', { path: shot, contentType: 'image/png' });
     },
   );
 
@@ -253,7 +325,7 @@ test.describe('J5 — a translator aligns a verse', () => {
         // shows it in verse order already, so the un-align below moves only
         // the returned word (#734 review round 1).
         const seeded = alignmentFile()!.chapters['1']['1'].wordBank as Array<{ word: string; occurrence: number }>;
-        const screenBefore = (await bank.allTextContents()).map((w) => w.trim());
+        const screenBefore = await wordsOf(bank);
         expect(screenBefore).toEqual(inVerseOrder(seeded).map((k) => k.replace(/\/\d+$/, '')));
         const chip = page.locator('[data-testid^="align-card-"]').getByRole('button', { name: 'siervo', exact: true });
         if (how === 'click') await chip.click();
@@ -268,7 +340,7 @@ test.describe('J5 — a translator aligns a verse', () => {
           how,
           verse: verseText,
           screenBefore,
-          screen: (await bank.allTextContents()).map((w) => w.trim()),
+          screen: await wordsOf(bank),
           disk: stored.map(key),
         };
         const artifactPath = testInfo.outputPath(`j05-734-${how}.json`);
@@ -420,13 +492,13 @@ test.describe('J5 — a translator aligns a verse', () => {
         // Confirm the one chip by its check mark.
         const chip = chips.first();
         cardIndex = Number((await chip.getAttribute('data-testid'))!.replace('align-suggested-', ''));
-        word = ((await chip.textContent()) ?? '').replace('✓', '').trim();
+        word = (await chip.getAttribute('data-word')) ?? '';
         await chip.click();
       } else {
         // Nothing proposed this run: place one bank word by hand on an empty
         // card — the manual path the accepted path must equal.
         const bank = page.getByTestId('align-bank').getByRole('button');
-        word = ((await bank.first().textContent()) ?? '').trim();
+        word = (await bank.first().getAttribute('data-word')) ?? '';
         await bank.first().click();
         const emptyCard = page.locator('[data-testid^="align-card-"][data-count="0"]').first();
         cardIndex = Number((await emptyCard.getAttribute('data-testid'))!.replace('align-card-', ''));
