@@ -17,8 +17,9 @@
 //   f  (#632) Ctrl+click, Shift+click, Command+click and a middle-click on a link to another
 //      help page open no new window (the system browser in the desktop app); the frame shows
 //      the page, as after a plain click
-//   g  (#729) no frame painted while the panel moves to another topic is blank: each one
-//      shows the help bar, so the panel never blinks white
+//   g  (#729) moving to another topic does not reload the frame's document, and no frame
+//      painted meanwhile is blank: each one shows the help bar, so the panel never blinks
+//      white. The search page still lists its results, and of two quick clicks the second wins
 // The shared recorder (helpers/externalRequests.ts) writes each request log, and the
 // screenshots, into the test's output folder (and attaches them).
 import { test, expect } from './helpers/test';
@@ -235,9 +236,13 @@ test.describe('#519 Help and guides', () => {
     expect(rows.filter((r) => r.popups > 0)).toEqual([]);
   });
 
-  test('g. moving to another topic paints no blank frame: every frame shows the help bar', TAG, async ({ page }, testInfo) => {
+  test('g. moving to another topic reloads nothing and paints no blank frame: every frame shows the help bar', TAG, async ({ page }, testInfo) => {
     await page.goto('/');
     await openHelp(page);
+    // A mark on the frame's window: a reload would make a new window without it.
+    const helpFrame = () => page.frames().find((f) => f.url().includes('/help/'))!;
+    await helpFrame().evaluate(() => { (window as unknown as { tc4Mark: number }).tc4Mark = 729; });
+    const sameDocument = () => helpFrame().evaluate(() => (window as unknown as { tc4Mark?: number }).tc4Mark === 729);
     // A row of pixels just inside the help bar's top edge, above the search field.
     const box = (await page.getByTestId('help-frame').boundingBox())!;
     const viewport = page.viewportSize()!;
@@ -273,16 +278,18 @@ test.describe('#519 Help and guides', () => {
 
     const rows: { topic: string; frames: number; blank: number; shares: number[] }[] = [];
     try {
-      for (let step = 0; step < 5; step++) {
-        const link = frame(page).locator('nav a:visible:not(.current)').nth(step + 1);
-        const href = (await link.getAttribute('href'))!;
+      const topics = ['section-bible-projects.html', 'bp-new-bible.html', 'bp-open-book.html', 'bp-import.html', 'bp-export-pdf.html'];
+      for (const [step, href] of topics.entries()) {
+        const link = frame(page).locator(`nav a[href="${href}"]:visible`);
+        const h1Before = (await frame(page).getByRole('heading', { level: 1 }).textContent())!;
         frames = [];
         await cdp.send('Page.startScreencast', { format: 'png' });
         await page.waitForTimeout(300);
         await link.click();
         await expect.poll(() => page.frames().some((f) => f.url().endsWith(`/help/${href}`))).toBe(true);
-        await expect(frame(page).getByRole('heading', { level: 1 })).toBeVisible();
+        await expect(frame(page).getByRole('heading', { level: 1 })).not.toHaveText(h1Before);
         await page.waitForTimeout(700);
+        expect(await sameDocument(), `${href} reloaded the frame`).toBe(true);
         await cdp.send('Page.stopScreencast');
         const rowsOf = await Promise.all(frames.map(barRow));
         const shares = rowsOf.map((row) => share(row, rowsOf[0]));
@@ -301,5 +308,25 @@ test.describe('#519 Help and guides', () => {
     expect(rows).toHaveLength(5);
     expect(rows.every((row) => row.frames > 0)).toBe(true);
     expect(rows.filter((row) => row.blank > 0)).toEqual([]);
+
+    // A second topic while the first still loads (held back half a second): the second wins.
+    await page.route('**/help/bp-add-book.html', async (route) => {
+      await new Promise((done) => setTimeout(done, 500));
+      await route.continue().catch(() => {});
+    });
+    await frame(page).locator('nav a[href="bp-add-book.html"]:visible').click({ noWaitAfter: true });
+    await frame(page).locator('nav a[href="bp-import.html"]:visible').click();
+    await expect(frame(page).getByRole('heading', { level: 1 })).toHaveText(/^Import a project/);
+    await page.waitForTimeout(700);
+    expect(helpFrame().url()).toMatch(/\/help\/bp-import\.html$/);
+    await expect(frame(page).getByRole('heading', { level: 1 })).toHaveText(/^Import a project/);
+    expect(await sameDocument()).toBe(true);
+
+    // The search page builds its list from its own URL when its script runs.
+    await frame(page).locator('#q').fill('offline');
+    await frame(page).locator('#q').press('Enter');
+    await expect.poll(() => helpFrame().url()).toContain('/help/search.html?q=offline');
+    await expect(frame(page).locator('#search-page-results li').first()).toBeVisible();
+    expect(await sameDocument()).toBe(true);
   });
 });
