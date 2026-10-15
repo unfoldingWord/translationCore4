@@ -320,9 +320,13 @@ export default function Align({ embedded = false }) {
   const a = s.alignSession;
   const [mode, setMode] = React.useState('gw');
 
+  // #722: open again when the book text arrives, or when its load fails. Not
+  // the text itself, and not bookError while the text is there (a failed
+  // project-list read also writes bookError): only the load's outcome matters.
+  const bookLoad = s.bookRaw != null ? 'ready' : s.bookError ? 'failed' : 'loading';
   React.useEffect(() => {
     actions.openAlign();
-  }, [s.book, s.alignVerse, originalPinKey(s)]);
+  }, [s.book, s.alignVerse, originalPinKey(s), bookLoad]);
 
   const suggestOn = useSuggestionsSwitch(s, actions);
 
