@@ -131,6 +131,26 @@ describe.skipIf(!rigUp)('#676 one full sync against the live rig and the #673 st
     if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
   });
 
+  it('#725 pins the ordinary platform copy collision and preserves the destination byte for byte', async () => {
+    const files = (): Map<string, string> => {
+      const out = new Map<string, string>();
+      const walk = (folder: string): void => {
+        for (const entry of fs.readdirSync(folder, { withFileTypes: true })) {
+          const file = path.join(folder, entry.name);
+          if (entry.isDirectory()) walk(file);
+          else out.set(path.relative(dir(REPO), file), fs.readFileSync(file).toString('base64'));
+        }
+      };
+      walk(dir(REPO));
+      return out;
+    };
+    const before = files();
+    // Negative control: a missing source is a different refusal, even with an existing target.
+    await expect(api.copyRepo(SCRATCH, REPO)).rejects.toMatchObject({ status: 400, reason: 'Source repo not found or not a directory' });
+    await expect(api.copyRepo(REPO, REPO)).rejects.toMatchObject({ status: 400, reason: 'Target repo already exists' });
+    expect(files()).toEqual(before);
+  });
+
   it('a full sync: Door43 main moves forward to the project, the project keeps its path and actor, and verifies', async () => {
     const before = git(bare, 'rev-parse', 'main');
     const deps: SyncDeps = {
