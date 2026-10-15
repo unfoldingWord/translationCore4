@@ -8,6 +8,7 @@
 import { test, expect } from './helpers/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
 import { holdCheckpoints } from './helpers/checkpointHold';
+import { wordTokens } from '../src/data/align/tokenize';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -133,8 +134,8 @@ test.describe('J5 — a translator aligns a verse', () => {
       await expect(page.getByText('Opening the alignment…')).toHaveCount(0);
 
       // The artifact: the bank the page shows after the clicks. It holds no
-      // timestamps, so each run writes the same bytes, and it must match the
-      // stored record's bank word for word.
+      // timestamps, so each run writes the same bytes, and it must hold the
+      // stored record's bank word for word, in verse order (#734).
       const artifact = {
         ref: '1:1',
         bank: (await page.getByTestId('align-bank').getByRole('button').allTextContents()).map((w) => w.trim()),
@@ -142,7 +143,10 @@ test.describe('J5 — a translator aligns a verse', () => {
       const artifactPath = testInfo.outputPath('j05-reselect-verse.json');
       fs.writeFileSync(artifactPath, `${JSON.stringify(artifact, null, 2)}\n`);
       await testInfo.attach('j05-reselect-verse.json', { path: artifactPath, contentType: 'application/json' });
-      expect(artifact.bank).toEqual(stored.wordBank.map((w: { word: string }) => w.word));
+      const usfm = fs.readFileSync(path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'TIT.usfm'), 'utf8');
+      const banked = new Set(stored.wordBank.map((w: { word: string; occurrence: number }) => `${w.word}/${w.occurrence}`));
+      const inVerse = wordTokens(/\\v 1 ([^\\]*)/.exec(usfm)![1]).filter((t) => banked.has(`${t.text}/${t.occurrence}`));
+      expect(artifact.bank).toEqual(inVerse.map((t) => t.text));
     },
   );
 
@@ -223,6 +227,63 @@ test.describe('J5 — a translator aligns a verse', () => {
         .toBe(true);
     },
   );
+
+  // #734: an un-aligned word goes back to its place in the verse, by click and
+  // by drag alike, and the whole bank — on screen and on disk — reads in the
+  // verse's word order. Titus 1:1 repeats "de" (5), "la" (3) and "y" (2).
+  for (const how of ['click', 'drag'] as const) {
+    test(
+      `un-aligning "siervo" by ${how} puts the bank in verse order, on screen and on disk (#734)`,
+      { tag: ['@inc2', '@J5'] },
+      async ({ page }, testInfo) => {
+        writePinsWithOriginal();
+        await openAlign(page);
+
+        const usfm = fs.readFileSync(path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'TIT.usfm'), 'utf8');
+        const verseText = /\\v 1 ([^\\]*)/.exec(usfm)![1].trim();
+        const key = (w: { word?: string; text?: string; occurrence: unknown }) => `${w.word ?? w.text}/${Number(w.occurrence)}`;
+        const inVerseOrder = (bank: Array<{ word: string; occurrence: unknown }>) => {
+          const banked = new Set(bank.map(key));
+          return wordTokens(verseText).map(key).filter((k) => banked.has(k));
+        };
+
+        const bank = page.getByTestId('align-bank').getByRole('button');
+        const bankBefore = await bank.count();
+        // The seed stores this bank grouped by occurrence; the opened verse
+        // shows it in verse order already, so the un-align below moves only
+        // the returned word (#734 review round 1).
+        const seeded = alignmentFile()!.chapters['1']['1'].wordBank as Array<{ word: string; occurrence: number }>;
+        const screenBefore = (await bank.allTextContents()).map((w) => w.trim());
+        expect(screenBefore).toEqual(inVerseOrder(seeded).map((k) => k.replace(/\/\d+$/, '')));
+        const chip = page.locator('[data-testid^="align-card-"]').getByRole('button', { name: 'siervo', exact: true });
+        if (how === 'click') await chip.click();
+        else await chip.dragTo(page.getByTestId('align-bank'));
+        await expect(bank).toHaveCount(bankBefore + 1);
+
+        await expect
+          .poll(() => alignmentFile()?.chapters?.['1']?.['1']?.wordBank?.some((w: { word: string }) => w.word === 'siervo'), { timeout: 10_000 })
+          .toBe(true);
+        const stored = alignmentFile()!.chapters['1']['1'].wordBank as Array<{ word: string; occurrence: number }>;
+        const artifact = {
+          how,
+          verse: verseText,
+          screenBefore,
+          screen: (await bank.allTextContents()).map((w) => w.trim()),
+          disk: stored.map(key),
+        };
+        const artifactPath = testInfo.outputPath(`j05-734-${how}.json`);
+        fs.writeFileSync(artifactPath, `${JSON.stringify(artifact, null, 2)}\n`);
+        await testInfo.attach(`j05-734-${how}.json`, { path: artifactPath, contentType: 'application/json' });
+
+        expect(artifact.disk).toEqual(inVerseOrder(stored));
+        expect(artifact.screen).toEqual(stored.map((w) => w.word));
+        // Only "siervo" was added: every other word kept its place.
+        const others = [...artifact.screen];
+        others.splice(others.indexOf('siervo'), 1);
+        expect(others).toEqual(screenBefore);
+      },
+    );
+  }
 
   test(
     'a word is never in two places: total word count is conserved across edits',

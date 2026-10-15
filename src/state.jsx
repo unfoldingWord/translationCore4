@@ -45,7 +45,7 @@ import {
 } from './data/derive';
 import { readTwArticle, readTaArticle } from './data/articles';
 import { revalidateAgainstDraft, resolutionWarning } from './data/revalidate';
-import { bootstrapVerse, linkWord, unlinkWord, moveWord, mergeAlignments, splitAlignment, stampTargetVerse, alignmentIsStale, reflowAlignment, settleDone, markDone } from './data/align/edit';
+import { bootstrapVerse, inVerseOrder, linkWord, unlinkWord, moveWord, mergeAlignments, splitAlignment, stampTargetVerse, alignmentIsStale, reflowAlignment, settleDone, markDone } from './data/align/edit';
 import { linksFor, rebindSuggestions, sessionInputFor, trainingVerseOf, trainingVersesFor } from './data/align/suggest';
 import { SuggestScheduler } from './data/align/suggestScheduler';
 import { consequencesOfGatewayChange, applyGatewayChange, completeLanguageSets, uncoveredByChange, sourcePanesForGateway, gatewaysCoveringProject, literalPaneId } from './data/gatewayChange';
@@ -1190,7 +1190,11 @@ async function buildAlignmentSession(store, sched, st, ref, source, origObjects)
   // `invalid` record a span create/break leaves on the new key (#63) — has
   // nothing to edit: the editor starts from the bootstrap; the file keeps
   // its flag until the translator saves an alignment.
-  const record = stored?.alignments?.length ? stored : bootstrapVerse(targetText, origObjects, sourceVersion);
+  // #734: a bank stored in another order (an older save, an import) is shown
+  // in verse order; the file takes that order on the next edit.
+  const record = stored?.alignments?.length
+    ? { ...stored, wordBank: inVerseOrder(stored.wordBank, targetText) }
+    : bootstrapVerse(targetText, origObjects, sourceVersion);
   return {
     loading: false,
     ref,
@@ -5245,7 +5249,7 @@ export function AppProvider({ children }) {
       },
 
       unplaceAlignWord: (cardIndex, word) =>
-        a.applyAlignEdit((record) => unlinkWord(record, cardIndex, word)),
+        a.applyAlignEdit((record) => unlinkWord(record, cardIndex, word, stateRef.current.alignSession.targetText)),
 
       /** #129 drag-and-drop: place a banked word without the arm step. */
       placeAlignWordAt: (cardIndex, word) =>
