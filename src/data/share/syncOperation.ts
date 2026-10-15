@@ -357,6 +357,14 @@ async function checkOpenCopy(api: ServerApi, scratch: string, repoPath: string):
     throw new Refusal('sync.incoming-invalid', `${failures.length} journal file(s) on Door43 fail the validator`, { failures });
 }
 
+/** The two HTTP 400 collision replies from pankosmia-web 0.18.15 (a83725b,
+ * 2026-09-29), copy_repo.rs:50-56,73-82 and copy_dir 0.1.3 lib.rs:68-71.
+ * Verified 2026-10-15; docs/evidence/sync-copy-collisions-2026-10-15.md.
+ * Both checks precede any destination write. Other copy errors can leave a
+ * partial copy and still require its cleanup. */
+const isCopyCollision = ({ status, reason }: { status: number; reason: string }): boolean =>
+  status === 400 && (reason === 'Target repo already exists' || reason === 'could not copy repo: target path exists');
+
 /** Steps 1 to 3 of the marker order (opsLog.ts, the open section): the marker in the
  * scratch copy, the copy, then the scratch marker's delete. Throws `sync.move-failed`.
  * `keepScratch` is called when a part copy of this open can stay at `repoPath`: the
@@ -378,7 +386,7 @@ async function copyMarked(
     const facts = failureOf(error);
     // A target that is there already belongs to someone else: the marker goes first,
     // so that no gate can take that project for this open's part copy.
-    if (/already exists/i.test(facts.reason)) await cleanup(() => deleteIngredientIfPresent(api, scratch, OPEN_MARKER), 'the marker delete');
+    if (isCopyCollision(facts)) await cleanup(() => deleteIngredientIfPresent(api, scratch, OPEN_MARKER), 'the marker delete');
     // a part copy at the free path is this open's
     else if (!(await cleanup(() => deleteIfPresent(api, repoPath), 'the part copy delete'))) keepScratch();
     throw new Refusal('sync.move-failed', `the copy did not move to ${repoPath}`, { repoPath, ...facts });
