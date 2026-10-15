@@ -294,7 +294,16 @@ test.describe('#42 — the Check pages work with the keyboard alone', () => {
       await page.keyboard.press(' ');
       await expect(pressed(2)).toHaveAttribute('aria-pressed', 'false');
       await expect(pressed(1)).toHaveAttribute('aria-pressed', 'true');
+      // #726: the marking row is Previous, the three marks, Next, in Tab
+      // order. Previous is skipped on the first item (disabled).
+      rec.step('marking row');
+      if (await page.getByTestId('check-prev').isEnabled()) expect(await rec.tab()).toMatchObject({ testid: 'check-prev' });
       expect(await rec.tab()).toMatchObject({ testid: 'mark-valid' });
+      expect(await rec.tab()).toMatchObject({ testid: 'mark-invalid' });
+      expect(await rec.tab()).toMatchObject({ testid: 'mark-todo' });
+      expect(await rec.tab()).toMatchObject({ testid: 'check-next' });
+      for (let n = 0; n < 3; n++) await rec.tab(true);
+      expect(await activeIs(page, '[data-testid="mark-valid"]')).toBe(true);
       const checkId = await page.locator('[data-testid="check-list"] [aria-current="true"]').getAttribute('data-check-id');
       await page.keyboard.press('Enter');
       await expect

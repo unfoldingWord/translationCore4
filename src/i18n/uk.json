@@ -598,6 +598,8 @@
   "check.crossFrame": "Нумерація віршів у цьому проєкті відрізняється від нумерації в цьому тексті. Програма ще не може їх зіставити.",
   "check.prevItem": "Попередній елемент",
   "check.nextItem": "Наступний елемент",
+  "check.prevLabel": "Назад",
+  "check.nextLabel": "Далі",
   "check.nothingToSelect": "Нічого вибрати",
   "check.markTodo": "До виконання",
   "check.markValid": "✓ Позначити як дійсне",

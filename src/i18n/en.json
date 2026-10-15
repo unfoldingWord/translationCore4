@@ -598,6 +598,8 @@
   "check.crossFrame": "This project's verse numbering differs from this text's. The app cannot line them up yet.",
   "check.prevItem": "Previous item",
   "check.nextItem": "Next item",
+  "check.prevLabel": "Previous",
+  "check.nextLabel": "Next",
   "check.nothingToSelect": "Nothing to select",
   "check.markTodo": "To do",
   "check.markValid": "✓ Mark valid",

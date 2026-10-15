@@ -22,6 +22,7 @@ import { isSourceAbsent } from '../data/sourceState';
 import { literalPaneId } from '../data/gatewayChange';
 import { t } from '../i18n';
 import { Button, Overline, WordChip } from '../ds/index.js';
+import { ItemNavButton } from './ItemNav.jsx';
 
 const dragPayload = (e) => {
   try {
@@ -269,20 +270,16 @@ const modeChip = (on) => ({
   boxShadow: on ? 'var(--shadow-raised)' : 'none',
 });
 
-/** The design's detail header: reference, "Item n of total", previous / next
- * verse — over the drafted verses of the book (the rail's own list). */
-function AlignHeader({ a, index, book, actions }) {
+/** This verse's place among the drafted verses of the book (the rail's own
+ * list): the header's counter and the marking row's previous / next. */
+function alignNav(a, index) {
   const items = (index?.items ?? []).filter((it) => it.status !== 'undrafted');
   const idx = items.findIndex((it) => it.ref === a.ref);
-  const canPrev = idx > 0;
-  const canNext = idx >= 0 && idx < items.length - 1;
-  const nav = (enabled) => ({
-    border: 'var(--stroke) solid', background: 'var(--surface-card)', fontFamily: 'inherit',
-    fontWeight: 'var(--fw-heavy)', fontSize: 'var(--fs-ui-sm)', width: 30, height: 30, borderRadius: 'var(--radius-sm)',
-    color: enabled ? 'var(--text-heading)' : 'var(--uw-mist)',
-    borderColor: enabled ? 'var(--border-strong)' : 'var(--border)',
-    cursor: enabled ? 'pointer' : 'default',
-  });
+  return { items, idx, canPrev: idx > 0, canNext: idx >= 0 && idx < items.length - 1 };
+}
+
+/** The design's detail header: reference and "Item n of total". */
+function AlignHeader({ a, nav: { items, idx }, book }) {
   return (
     <>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
@@ -295,10 +292,6 @@ function AlignHeader({ a, index, book, actions }) {
             {t('check.itemOf', { n: idx + 1, total: items.length })}
           </span>
         )}
-        <button type="button" data-testid="align-prev" title={t('check.prevItem')} disabled={!canPrev}
-          onClick={() => canPrev && actions.setAlignVerse(items[idx - 1].ref)} style={nav(canPrev)}>←</button>
-        <button type="button" data-testid="align-next" title={t('check.nextItem')} disabled={!canNext}
-          onClick={() => canNext && actions.setAlignVerse(items[idx + 1].ref)} style={nav(canNext)}>→</button>
       </div>
       <h1 style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-h1)', fontWeight: 'var(--fw-bold)', color: 'var(--text-heading)', margin: '0 0 14px' }}>
         “{t('align.ref', { book: bookName(book), ref: a.ref })}”
@@ -350,6 +343,7 @@ export default function Align({ embedded = false }) {
   const placed = a.record.alignments.reduce((n, x) => n + x.bottomWords.length, 0);
   const total = placed + a.record.wordBank.length;
   const suggestedKeys = suggestedKeySet(a);
+  const nav = alignNav(a, s.alignIndex);
 
   // Payloads cross a string boundary — validate the shape, never assume it
   // (a malformed drop must be a no-op, not a crash in the record algebra).
@@ -371,7 +365,7 @@ export default function Align({ embedded = false }) {
   return (
     <div data-testid="align-session">
       {back && <div style={{ marginBottom: 14 }}>{back}</div>}
-      <AlignHeader a={a} index={s.alignIndex} book={s.book} actions={actions} />
+      <AlignHeader a={a} nav={nav} book={s.book} />
 
       <HowToggle />
 
@@ -447,7 +441,8 @@ export default function Align({ embedded = false }) {
         </div>
       </div>
 
-      <MarkValidBar record={a.record} stale={a.stale} refusal={a.refusal} onMark={actions.markAlignValid} />
+      <MarkValidBar record={a.record} stale={a.stale} refusal={a.refusal} onMark={actions.markAlignValid}
+        nav={nav} onGo={actions.setAlignVerse} />
     </div>
   );
 }
@@ -515,8 +510,8 @@ function SuggestionsRow({ a, suggest, on, actions }) {
 /** #271 (D73): the translator says when this verse is done — the same
  * control, in the same place, as the Check tools' Mark valid. Active while
  * the record is done, vouches for the current draft (I-3) and is not flagged
- * for re-review (§5.1 `invalid`). */
-function MarkValidBar({ record, stale, refusal, onMark }) {
+ * for re-review (§5.1 `invalid`). #726: Previous / Next sit either side of it. */
+function MarkValidBar({ record, stale, refusal, onMark, nav: { items, idx, canPrev, canNext }, onGo }) {
   const done = record.done === true && !stale && record.invalid !== true;
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 22, flexWrap: 'wrap' }}>
@@ -525,6 +520,7 @@ function MarkValidBar({ record, stale, refusal, onMark }) {
           {t('align.markValidRefused')}
         </span>
       )}
+      <ItemNavButton which="prev" testId="align-prev" enabled={canPrev} onClick={() => onGo(items[idx - 1].ref)} />
       <button type="button" data-testid="align-mark-valid" onClick={onMark}
         data-active={done ? '1' : '0'} title={t('align.markValidHint')}
         style={{
@@ -536,6 +532,7 @@ function MarkValidBar({ record, stale, refusal, onMark }) {
         }}>
         {t('align.markValid')}
       </button>
+      <ItemNavButton which="next" testId="align-next" enabled={canNext} onClick={() => onGo(items[idx + 1].ref)} />
     </div>
   );
 }
