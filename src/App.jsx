@@ -87,6 +87,12 @@ function TopBar() {
   const { s, actions } = useApp();
   const inProject = !!s.project && s.view !== 'home';
   const p = s.project;
+  // An open editing card keeps its draft in the card: a mode tab or the
+  // projects closes Translate and loses the draft. The rule of the
+  // Section/Verse switch (#238): these exits are off while a card is open.
+  // Translate itself stays on: a press on it does not close the view.
+  const editing = s.editing != null;
+  const toProjects = editing ? undefined : actions.backToProjects;
   return (
     <AppHeader
       logoSrc={`${import.meta.env.BASE_URL}assets/translationcore-logo.png`}
@@ -95,18 +101,21 @@ function TopBar() {
       projectNameDir={p ? projectDir(s) : undefined}
       projectMeta={p ? p.languageTag : undefined}
       switchTitle={t('app.switchProject')}
-      onBrandClick={actions.backToProjects}
-      onProjectClick={actions.backToProjects}
+      onBrandClick={toProjects}
+      onProjectClick={toProjects}
       center={inProject ? (
         // D63: Publish is retired as a top-level tab — the publish flow lives
         // inside Check as the Community Checking tool (#108). An OBS project
         // has the same three modes (#290, #291).
-        <Switcher indicator="pill" data-testid="mode-switch" value={s.view === 'publish' ? 'check' : s.view} onChange={(v) => actions.go(v)}
-          options={[
-            { value: 'read', label: t('nav.understand') },
-            { value: 'draft', label: t('nav.draft') },
-            { value: 'check', label: t('nav.check') },
-          ]} />
+        // A press on an off tab keeps the focus in the card.
+        <span onPointerDownCapture={editing ? (e) => e.preventDefault() : undefined}>
+          <Switcher indicator="pill" data-testid="mode-switch" value={s.view === 'publish' ? 'check' : s.view} onChange={(v) => actions.go(v)}
+            options={[
+              { value: 'read', label: t('nav.understand'), disabled: editing },
+              { value: 'draft', label: t('nav.draft') },
+              { value: 'check', label: t('nav.check'), disabled: editing },
+            ]} />
+        </span>
       ) : null}
       right={(
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>

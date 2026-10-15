@@ -12,6 +12,11 @@ import { RailGroup, RailNumberButton, RailNumbers, RailShell } from './railChrom
 export default function BookRail() {
   const { s, book, actions } = useApp();
   if (!book) return null;
+  // An open editing card keeps its draft in the card: a book or chapter switch
+  // closes it and loses the draft. The rule of the Section/Verse switch (#238):
+  // the buttons are off while a card is open, and a press keeps the focus in
+  // the card (Chromium sends no mousedown to a disabled button).
+  const off = s.editing != null ? { disabled: true, onPointerDownCapture: (e) => e.preventDefault(), style: { cursor: 'default' } } : {};
   return (
     <RailShell title={`${t('draft.books')} · ${(s.project?.bookCodes || []).length}`}>
       {(s.project?.bookCodes || []).map((code) => {
@@ -24,11 +29,11 @@ export default function BookRail() {
             <BookTile layout="row" active={active} name={bookName(code)}
               percent={pct ?? 0} meta={pct != null ? `${pct}%` : ''}
               metaTitle={pct != null ? t('draft.bookPercentTitle', { n: pct }) : undefined}
-              onClick={() => actions.openBook(code)} />
+              onClick={() => actions.openBook(code)} {...off} />
             {active && (
               <RailNumbers>
                 {book.chapterNums.map((c) => (
-                  <RailNumberButton key={c} selected={c === s.chapter} onClick={() => actions.setChapter(c)}>{c}</RailNumberButton>
+                  <RailNumberButton key={c} selected={c === s.chapter} onClick={() => actions.setChapter(c)} {...off}>{c}</RailNumberButton>
                 ))}
               </RailNumbers>
             )}
