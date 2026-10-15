@@ -361,6 +361,33 @@ test.describe('J5 — a translator aligns a verse', () => {
   }
 
   test(
+    'the selection survives a drop outside a card and is cleared by opening another verse (#736 Interruptions)',
+    { tag: ['@inc2', '@J5'] },
+    async ({ page }) => {
+      writePinsWithOriginal();
+      await openAlign(page);
+      const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
+      await bankChip(page, 'con').click({ modifiers: [mod] });
+      await bankChip(page, 'conocimiento').click({ modifiers: [mod] });
+      const before = alignmentFile()!.chapters['1']['1'];
+
+      // A drop that misses every card (here: back onto the bank) places
+      // nothing and keeps the selection.
+      await bankChip(page, 'con').dragTo(page.getByTestId('align-bank'));
+      expect((await armedWords(page)).sort()).toEqual(['con', 'conocimiento']);
+      await expect(page.locator('[data-testid^="align-card-"] button[data-word="con"]')).toHaveCount(0);
+      expect(alignmentFile()!.chapters['1']['1']).toEqual(before);
+
+      // Opening another verse and coming back clears it.
+      await page.getByTestId('align-verse-list').locator('button[data-ref="1:2"]').click();
+      await expect(page.getByTestId('align-verse-list').locator('button[data-ref="1:2"]')).toHaveAttribute('data-selected', 'true');
+      await page.getByTestId('align-verse-list').locator('button[data-ref="1:1"]').click();
+      await expect(bankChip(page, 'con')).toBeVisible();
+      expect(await armedWords(page)).toEqual([]);
+    },
+  );
+
+  test(
     'Shift-click adds the range in bank order; Ctrl-click removes a word; un-aligning each returns it to verse order (#736)',
     { tag: ['@inc2', '@J5'] },
     async ({ page }) => {

@@ -369,28 +369,8 @@ export default function Align({ embedded = false }) {
   const suggestedKeys = suggestedKeySet(a);
   const shownBank = a.record.wordBank.filter((w) => !suggestedKeys.has(wordKey(w)));
 
-  // #736: the bank selection, as tC3 had it. A plain click selects one word
-  // (or clears it); Ctrl/Cmd adds or removes a word; Shift adds every word
-  // from the first selected one to the clicked one, in bank order (Birch, Q1).
-  // The words need not be adjacent (Q2). Kept in bank order, so a card takes
-  // them in the order the translator sees them.
-  const armed = a.armed ?? [];
+  const armed = shownSelection(shownBank, a.armed);
   const armedKeys = new Set(armed.map(wordKey));
-  const inBankOrder = (keys) => shownBank.filter((w) => keys.has(wordKey(w)));
-  const selectionAfterClick = (e, w, i, isArmed) => {
-    if (e.ctrlKey || e.metaKey) {
-      const keys = new Set(armedKeys);
-      if (isArmed) keys.delete(wordKey(w)); else keys.add(wordKey(w));
-      return inBankOrder(keys);
-    }
-    if (e.shiftKey && armed.length > 0) {
-      const first = shownBank.findIndex((x) => armedKeys.has(wordKey(x)));
-      const keys = new Set(armedKeys);
-      for (const x of shownBank.slice(Math.min(first, i), Math.max(first, i) + 1)) keys.add(wordKey(x));
-      return inBankOrder(keys);
-    }
-    return isArmed && armed.length === 1 ? null : [w];
-  };
 
   // Payloads cross a string boundary — validate the shape, never assume it
   // (a malformed drop must be a no-op, not a crash in the record algebra).
@@ -448,13 +428,13 @@ export default function Align({ embedded = false }) {
                 return (
                   <button key={`${w.word}-${w.occurrence}`} type="button" draggable
                     onDragStart={(e) => setDragPayload(e, { kind: 'bank', words: isArmed ? armed : [w] })}
-                    onClick={(e) => actions.armAlignWords(selectionAfterClick(e, w, i, isArmed))}
+                    onClick={(e) => actions.armAlignWords(nextSelection(shownBank, armed, e, i))}
                     // The click a key fires carries no modifier, so Ctrl/Cmd/Shift
                     // with Enter or Space selects from the keyboard here.
                     onKeyDown={(e) => {
                       if ((e.key === 'Enter' || e.key === ' ') && (e.ctrlKey || e.metaKey || e.shiftKey)) {
                         e.preventDefault();
-                        actions.armAlignWords(selectionAfterClick(e, w, i, isArmed));
+                        actions.armAlignWords(nextSelection(shownBank, armed, e, i));
                       }
                     }}
                     title={a.armed ? t('align.hintArmed') : t('align.hintIdle')}
@@ -503,6 +483,32 @@ export default function Align({ embedded = false }) {
 }
 
 const wordKey = (w) => `${w.word} ${Number(w.occurrence)}`;
+
+/** #736: the selected words that the bank shows, in bank order. A selected
+ * word that has since become a suggestion is on its card, not in the bank. */
+export const shownSelection = (shownBank, armed) => {
+  const keys = new Set((armed ?? []).map(wordKey));
+  return shownBank.filter((w) => keys.has(wordKey(w)));
+};
+
+/** #736: the bank selection after a click (or Enter/Space) on word `i`, as
+ * tC3 had it. A plain click selects that word alone, or clears it when it is
+ * the only one selected; Ctrl/Cmd adds or removes it; Shift adds every word
+ * from the first selected one to it, in bank order (Birch, Q1). The words
+ * need not be adjacent (Q2). Kept in bank order, so a card takes them in the
+ * order the translator sees them. `armed` is the shown selection. */
+export const nextSelection = (shownBank, armed, e, i) => {
+  const w = shownBank[i];
+  const isArmed = armed.some((x) => wordKey(x) === wordKey(w));
+  if (e.ctrlKey || e.metaKey) {
+    return shownSelection(shownBank, isArmed ? armed.filter((x) => wordKey(x) !== wordKey(w)) : [...armed, w]);
+  }
+  if (e.shiftKey && armed.length > 0) {
+    const first = shownBank.findIndex((x) => wordKey(x) === wordKey(armed[0]));
+    return shownSelection(shownBank, [...armed, ...shownBank.slice(Math.min(first, i), Math.max(first, i) + 1)]);
+  }
+  return isArmed && armed.length === 1 ? null : [w];
+};
 
 /** #1: words with a standing suggestion render on their card, not in the bank. */
 const suggestedKeySet = (a) => new Set((a.suggestions ?? []).map((sg) => wordKey(sg.word)));
