@@ -51,6 +51,18 @@ function files(dir) {
   return Object.fromEntries(fs.readdirSync(dir, { recursive: true }).filter((p) => fs.statSync(path.join(dir, p)).isFile()).sort().map((p) => [p, fs.readFileSync(path.join(dir, p)).toString('base64')]));
 }
 function settingsAt(f) { return JSON.parse(fs.readFileSync(f.settings, 'utf8')); }
+// #740: which ingredient files a launch opens. `validateTree` reads through
+// `fs.readFileSync`, the one `fs` object this test shares with the module.
+function ingredientReads(run) {
+  const real = fs.readFileSync;
+  const reads = [];
+  fs.readFileSync = (file, ...rest) => {
+    if (typeof file === 'string' && file.split(path.sep).includes('ingredients')) reads.push(file);
+    return real(file, ...rest);
+  };
+  try { run(); } finally { fs.readFileSync = real; }
+  return reads;
+}
 function writeSettings(f, doc) {
   fs.mkdirSync(path.dirname(f.settings), { recursive: true });
   fs.writeFileSync(f.settings, JSON.stringify(doc));
@@ -104,7 +116,7 @@ test('real commit archive without DCS metadata installs from a verified receipt,
   assert.equal(settingsAt(f).keep, true);
 });
 
-test('commit archive receipt and full payload hashes reject a changed unlisted lexicon ingredient', async (t) => {
+test('commit archive receipt and full payload hashes reject a changed unlisted lexicon ingredient at install, and again once the verification record is gone (#740)', async (t) => {
   const f = await archiveFixture(t);
   const receipt = path.join(f.source, '.tc4-bundled-identity.json');
   fs.appendFileSync(receipt, '\n');
@@ -112,6 +124,13 @@ test('commit archive receipt and full payload hashes reject a changed unlisted l
   fs.writeFileSync(receipt, fs.readFileSync(receipt, 'utf8').trim());
   bootstrap(f.options);
   fs.appendFileSync(path.join(f.destination, 'ingredients/content/1.json'), '\n');
+  // #740: the installed copy was verified when it was published, and the
+  // record says so; a later launch does not open its payload again, so a
+  // change made to the installed copy after that is not seen at start.
+  bootstrap(f.options);
+  const settings = settingsAt(f);
+  delete settings.verifiedResources;
+  writeSettings(f, settings);
   assert.throws(() => bootstrap(f.options), /size|checksum/);
 });
 
@@ -297,6 +316,104 @@ test('bundled en_tw (with its TSVs) and en_twl install unchanged: files and meta
   const installed = (key) => { const all = files(path.join(f.store, key)); delete all['.tc4-bundled-identity.json']; return all; };
   assert.deepEqual(installed(twKey), files(tw)); // the tw export's TIT.tsv is still there
   assert.deepEqual(installed(twlKey), files(twl));
+});
+
+// #740 failure inventory, written before the code: every launch opens every
+// ingredient of the bundle and of the installed copy (35,823 opens, about 8
+// minutes on a Windows laptop with Defender on); the verification record names
+// another inventory than the copy now declares; the record has the wrong
+// shape; the install record is lost but the verification record is not; a
+// damaged bundle must still fail before a copy is published; a legacy folder
+// reused at its own path gets its record under its own key; the record write
+// fails; the second launch writes nothing (#528); a change made to the
+// installed copy after its verification is not seen (the trade-off, in the
+// archive test above).
+test('#740: a published copy is verified once; the next launch opens no ingredient of the copy or of the bundle', (t) => {
+  const f = fixture(t);
+  const first = ingredientReads(() => bootstrap(f.options));
+  assert.ok(first.some((file) => file.startsWith(f.source)), 'the bundle is verified before the copy');
+  assert.ok(first.some((file) => file.includes('.tc4-resource-installing')), 'the copy is verified before it is published');
+  const record = settingsAt(f).verifiedResources[f.key];
+  assert.match(record.tree, /^[0-9a-f]{64}$/);
+  assert.match(record.at, /^\d{4}-\d{2}-\d{2}T/);
+  assert.deepEqual(settingsAt(f).installedResources[f.key], f.pin, 'the install record keeps its shape');
+  const before = files(f.options.home);
+  assert.deepEqual(ingredientReads(() => bootstrap(f.options)), [], 'no ingredient is opened');
+  assert.deepEqual(files(f.options.home), before, 'the second launch writes nothing');
+});
+
+test('#740: a verification record for another inventory makes the launch verify the copy again against its own inventory, and never opens the bundle', (t) => {
+  const f = fixture(t);
+  bootstrap(f.options);
+  // The copy's own inventory changes (the #640 shape: one more row, and an inventory that agrees with it).
+  const tsv = path.join(f.destination, 'ingredients/TIT.tsv');
+  fs.appendFileSync(tsv, 'TIT 3:16\tdrift\t\tdrift\t1\t./payload/kt/drift.md\tdrift\n');
+  const bytes = fs.readFileSync(tsv);
+  const metadataFile = path.join(f.destination, 'metadata.json');
+  const metadata = JSON.parse(fs.readFileSync(metadataFile, 'utf8'));
+  metadata.ingredients['ingredients/TIT.tsv'].size = bytes.length;
+  metadata.ingredients['ingredients/TIT.tsv'].checksum.md5 = createHash('md5').update(bytes).digest('hex');
+  fs.writeFileSync(metadataFile, JSON.stringify(metadata));
+  const stale = settingsAt(f).verifiedResources[f.key].tree;
+  const reads = ingredientReads(() => bootstrap(f.options));
+  assert.ok(reads.includes(tsv), 'the copy is verified again');
+  assert.ok(reads.every((file) => !file.startsWith(f.source)), 'the bundle is not opened: no copy is made');
+  assert.notEqual(settingsAt(f).verifiedResources[f.key].tree, stale, 'the record names the new inventory');
+  assert.deepEqual(ingredientReads(() => bootstrap(f.options)), []);
+  // Negative control: an inventory that disagrees with the copy still stops the start.
+  metadata.ingredients['ingredients/TIT.tsv'].size = bytes.length + 1;
+  fs.writeFileSync(metadataFile, JSON.stringify(metadata));
+  assert.throws(() => bootstrap(f.options), /size/);
+});
+
+test('#740: a verification record of the wrong shape is not a verification: the copy is verified again and the record is written', (t) => {
+  const f = fixture(t);
+  bootstrap(f.options);
+  for (const wrong of ['verified', ['verified'], { [f.key]: 'yes' }, { [f.key]: { tree: 42 } }, { [f.key]: { at: '2026-10-15T00:00:00.000Z' } }]) {
+    const settings = settingsAt(f);
+    settings.verifiedResources = wrong;
+    writeSettings(f, settings);
+    const reads = ingredientReads(() => bootstrap(f.options));
+    assert.ok(reads.some((file) => file.startsWith(f.destination)), `verified again: ${JSON.stringify(wrong)}`);
+    assert.match(settingsAt(f).verifiedResources[f.key].tree, /^[0-9a-f]{64}$/);
+    assert.deepEqual(ingredientReads(() => bootstrap(f.options)), []);
+  }
+});
+
+test('#740: a damaged bundle still fails before a copy is published; a lost install record is written again from the verified copy', (t) => {
+  const f = fixture(t);
+  fs.appendFileSync(path.join(f.source, 'ingredients/TIT.tsv'), 'damaged');
+  assert.throws(() => bootstrap(f.options), /checksum|size/);
+  assert.deepEqual(files(f.local), {});
+  assert.equal(fs.existsSync(f.settings), false);
+  fs.copyFileSync(path.join(root, 'test/fixtures/resources/en_tn@v91/TIT.tsv'), path.join(f.source, 'ingredients/TIT.tsv'));
+  bootstrap(f.options);
+  const settings = settingsAt(f);
+  settings.installedResources = {};
+  writeSettings(f, settings);
+  assert.deepEqual(ingredientReads(() => bootstrap(f.options)), [], 'the verified copy is trusted');
+  assert.deepEqual(settingsAt(f).installedResources[f.key], f.pin);
+});
+
+test('#740: a legacy folder reused at its own path is verified once under its own key; a failed record write verifies again on retry', (t) => {
+  const f = fixture(t);
+  bootstrap(f.options);
+  const legacy = path.join(f.local, 'en_tn');
+  fs.renameSync(f.destination, legacy);
+  writeSettings(f, { independent: 'keep', installedResources: {} });
+  const rename = fs.renameSync;
+  fs.renameSync = (src, dest) => {
+    if (dest === f.settings) throw new Error('settings unavailable');
+    return rename(src, dest);
+  };
+  try { assert.throws(() => bootstrap(f.options), /settings unavailable/); }
+  finally { fs.renameSync = rename; }
+  const reads = ingredientReads(() => bootstrap(f.options));
+  assert.ok(reads.some((file) => file.startsWith(legacy)), 'no record survived the failed write, so the copy is verified again');
+  assert.deepEqual(settingsAt(f).installedResources['_local_/_sideloaded_/en_tn'], f.pin);
+  assert.match(settingsAt(f).verifiedResources['_local_/_sideloaded_/en_tn'].tree, /^[0-9a-f]{64}$/);
+  assert.equal(settingsAt(f).independent, 'keep');
+  assert.deepEqual(ingredientReads(() => bootstrap(f.options)), []);
 });
 
 module.exports = { exportFixture };
