@@ -2,8 +2,9 @@
 
 ## Round 1
 
-Round 1 is simpler than this plan, and it ships first (4.1.0). Three or more translators sync
-one Bible project with one public Door43 repository, on its `main` branch, with one button.
+Round 1 is simpler than this plan, and it ships first (v4.0.0 since 2026-10-15, D102).
+Three or more translators sync one Bible project with one public Door43 repository, on its
+`main` branch, with one button.
 It has no publication branches, no integrator and no legibility gate [decided 2026-10-13 —
 D98].
 
