@@ -4,6 +4,40 @@ This record is the run record of journey J26 (`docs/JOURNEYS.md`), issue #681, l
 #24. It also holds the check of the epic's acceptance line "each guarantee G1–G8 has at least one
 passing test whose name starts with its id".
 
+## The run on the final round-1 code (2026-10-15)
+
+The sections after this one are the run at `58a69e8` (2026-10-13 and 2026-10-14). Since then,
+the sync applies Door43 main in place (D101, #676, merged as #688), and #678 and #677 took the
+fixes of their review rounds. This section is the run of that code.
+
+- Branch `issue-681-team-sync-journey` at `54e503e`. It holds `main` with #688 (#676 at
+  `b49e816`), #678 at `37f5857`, #677 at `ec0fa82`, #680 and the J26 spec.
+- The rig is the pinned revision `a83725b` [VERIFIED — pankosmia-web 0.18.15 (a83725b,
+  2026-10-15), `prove` reports `rig 0.18.15 (a83725b) pristine=true`]. The rig was reseeded before
+  the run. Lane: rig 19681, vite 5681. Door43 `main` is the #673 stand-in, as below.
+- J26, one run, with J17 and the Sync button journeys in the same run:
+
+```
+TC4_RIG_PORT=19681 TC4_VITE_PORT=5681 npx playwright test e2e/sync-button.spec.ts e2e/j17-open-from-door43.spec.ts e2e/j26-team-sync.spec.ts …
+  ✓ e2e/j26-team-sync.spec.ts:315:3 › A shares; B and C open it from Door43; each drafts, checks and syncs; A keeps one version of the conflict; …
+  ✓ e2e/j26-team-sync.spec.ts:496:3 › [G6] at the end the three projects have the same project files, and no verse has a conflict (1.9s)
+  ✓ e2e/j26-team-sync.spec.ts:517:3 › [G1] every journal file that any translator wrote is on the stand-in's main (1.1s)
+  ✓ e2e/j17-open-from-door43.spec.ts:92:3 and :206:3 (2 passed)
+  ✓ e2e/sync-button.spec.ts:107:3 and :247:3 (2 passed)
+```
+
+- The guarantee tests at `54e503e`: `TC4_RIG_PORT=19899 npx vitest run -t "\[G[1-8]\]"` gives
+  71 passed and 1 skipped. Each id G1–G8 has at least one passed test whose name starts with it
+  (G1 17, G2 4, G3 3, G4 3, G5 1, G6 1, G7 5, G8 49). The skipped test is the rig test `[G4] a
+  Door43 repository whose default branch is not main …`; it passed in `prove` on the rig
+  (`vitest:rig 53 passed`). The journey tests `[G1]`, `[G2]` and `[G6]` passed above.
+- `TC4_RIG_PORT=19681 npm run prove` at `54e503e`: PROVE OK (conformance 52, journal 368,
+  normative 105, transport 10, roundtrip 12, vitest:rig 53).
+- The full journey suite at `cd86c58` (the stack before the last #677 fixes): 218 passed, 7
+  failed, 11 skipped. Of the 7, 6 passed in one run of their files at `54e503e`.
+  `e2e/j12-upgrade-resources.spec.ts:489` failed again, and it fails the same way on `main`
+  (control at `ebd9f2f`, 2026-10-15). It is not from team sync.
+
 ## What ran
 
 - Branch `issue-681-team-sync-journey` at `58a69e8`. This commit merges round 1 with the fixed
