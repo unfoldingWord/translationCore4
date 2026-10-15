@@ -85,6 +85,17 @@ describe('#679 the Home count is folded from the journal', () => {
   });
 });
 
+describe('#680 the same read-only fold gives the team the sync result labels by', () => {
+  it('Home keeps the team of the fold per project; it equals the open store\'s readTeam()', async () => {
+    const { api, store } = await conflicted();
+    const { box, dispatch } = recorder({ conflictsByProject: {}, teamByProject: {} });
+    await loadConflicts({ project: { id: REPO, flavor: 'textTranslation' }, stateRef: { current: box.state }, dispatch, conflictsGen: new Map(), apiClient: api });
+    expect(box.state.teamByProject).toEqual({ [REPO]: store.readTeam() });
+    expect((box.state.teamByProject as Record<string, { actors: string[] }>)[REPO].actors).toHaveLength(2);
+    store.dispose();
+  });
+});
+
 /** The open book as the app holds it: a real SaveScheduler over the real store,
  * loaded through the one editor load path, and the keep's context. */
 const session = async (store: JournalingStore, conflict: unknown, extra: Record<string, unknown> = {}) => {
@@ -143,6 +154,9 @@ describe('#679 "Keep this version"', () => {
     expect(box.state.conflictReview).toEqual({ key: KEY, error: null, kept: true });
     // The book loaded again through the one load path, with the kept text.
     expect(scheduler.bookText('TIT')).toContain('\\v 1 Pablo, siervo de Dios (mío).');
+    // #680: the open store's fold fills Home's team too, so the sync result
+    // still names senders after the project closes (team: null on Home).
+    expect(box.state.teamByProject).toEqual({ [REPO]: store.readTeam() });
     expect(box.state.bookRaw).toBe(rawRef.current);
   });
 

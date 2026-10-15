@@ -5,7 +5,7 @@
 // codes and the state of the folders, never message text.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ServerApi } from '../../src/data/serverApi';
-import { JournalingStore, forgetProjectQueues } from '../../src/data/journal/journalingStore';
+import { JournalingStore, ProjectReader, forgetProjectQueues } from '../../src/data/journal/journalingStore';
 import { JournalStore, forgetSharedClocks } from '../../src/data/journal/journalStore';
 import { actorIdFor } from '../../src/data/journal/identity';
 import { APPLY_MARKER, OpsLog, applyScratch, opsEntriesOf, scratchPathOf, serialSettingsWriter, type OpsRecoveryApi } from '../../src/data/journal/opsLog';
@@ -15,6 +15,7 @@ import { fold, makeClock, reportError } from '../../src/data/journal/runtime';
 import { sealAction, segmentName, validateSegment, type JournalEvent } from '../../src/data/journal/seal';
 import { sync, SYNC_TRIES, withClonePath, type SyncDeps } from '../../src/data/share/syncOperation';
 import { journalingRig, memKv, tickingNow, type JournalingRig } from '../helpers/journalingRig';
+import { actorLabel } from '../../src/views/actorLabel.js';
 
 const REPO = '_local_/_local_/prueba';
 const URL_ = 'https://qa.door43.org/facilitator/prueba';
@@ -378,6 +379,47 @@ describe('#676 the name action (R-8.5.25, R-8.5.26)', () => {
     await expect(journal.publish([second])).rejects.toMatchObject({ code: 'actor.name-already-set' });
     await expect(journal.stage([second])).rejects.toMatchObject({ code: 'actor.name-already-set' });
     await expect(journal.sealName('otro')).rejects.toMatchObject({ code: 'actor.name-already-set' });
+  });
+
+  it('#680 the result numbers teammates as the review does: one fold read after the sync, one team', async () => {
+    const w = await world();
+    expect((await sync(w.deps(), { repoPath: REPO, session: SESSION })).ok).toBe(true);
+    // three teammates (three installations) draft in the project; one of them has a name
+    const mates: string[] = [];
+    for (const [i, name] of [null, 'maria', null].entries()) {
+      forgetSharedClocks();
+      const kv = memKv();
+      const mate = new JournalingStore({ api: w.api, kv });
+      await mate.open(REPO);
+      await mate.writeBook('TIT', usfm(`Pablo ${i}.`));
+      mates.push(mate.actorId);
+      mate.dispose();
+      if (!name) continue;
+      forgetSharedClocks();
+      const journal = new JournalStore({ api: w.api, repoPath: REPO, kv });
+      await journal.open();
+      const sealed = await journal.sealName(name);
+      await w.api.writeIngredient(REPO, sealed.ipath, sealed.bytes, { updateIngredients: false, keepBak: false });
+    }
+    // the sync result's source when the project is not open: Home's read-only fold
+    const reader = new ProjectReader({ api: w.api });
+    await reader.open(REPO);
+    const read = await reader.readConflictsAndTeam();
+    expect(read).not.toBeNull();
+    // the review's source: the open store
+    forgetSharedClocks();
+    const store = new JournalingStore({ api: w.api, kv: w.kv });
+    await store.open(REPO);
+    const team = store.readTeam();
+    const me = store.actorId;
+    store.dispose();
+    expect(read!.team).toEqual(team);
+    expect(team.actors).toEqual([w.actor, ...mates].sort());
+    const result = mates.map((a) => actorLabel(a, read!.team.names, null, read!.team.actors));
+    const review = mates.map((a) => actorLabel(a, team.names, me, team.actors));
+    expect(result).toEqual(review);
+    expect([...result].sort()).toEqual(['Teammate 1', 'Teammate 2', 'maria']);
+    expect(actorLabel(me, team.names, me, team.actors)).toBe('Mine');
   });
 
   it('a refused sync writes no name', async () => {

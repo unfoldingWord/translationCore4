@@ -12,7 +12,7 @@ import { bookName } from '../data/bookNames';
 import { locationOf } from '../data/dcsServer';
 import { projectSyncs } from '../data/share/syncs';
 import { Card, BookTile, Button, Overline, Badge, Callout, Toast } from '../ds/index.js';
-import SyncResult from './SyncResult.jsx';
+import SyncResult, { syncTeam } from './SyncResult.jsx';
 
 // Above this many books a card shows only its in-progress books until expanded.
 const COLLAPSE_ABOVE = 12;
@@ -392,7 +392,7 @@ export default function Home() {
       </div>
       {s.syncResult && (
         <div style={{ position: 'fixed', insetBlockEnd: s.importToast ? 88 : 24, insetInlineStart: '50%', transform: 'translateX(-50%)', zIndex: 90, width: 'max-content', maxWidth: 'calc(100% - 48px)' }}>
-          <SyncResult result={s.syncResult}
+          <SyncResult result={s.syncResult} team={syncTeam(s, s.syncResult.repoPath)}
             onReview={() => { const { repoPath } = s.syncResult; actions.dismissSyncResult(); actions.openProjectConflicts(repoPath); }}
             onDownload={() => actions.syncDownload(s.syncResult.repoPath)}
             onDismiss={actions.dismissSyncResult} />

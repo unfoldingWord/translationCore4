@@ -2391,9 +2391,8 @@ export class JournalingStore implements BurritoStore {
   /** The team as the fold knows it (#679): each actor's recorded Door43 name
    * (`FoldOutput.names`, #674) and every actor id of the event set, sorted —
    * the order the "Teammate n" labels number by (actorLabel). */
-  readTeam(): { names: Record<string, string>; actors: string[] } {
-    const actors = [...new Set(this.events.map((e) => e.actor))].sort();
-    return { names: this.foldNow().names, actors };
+  readTeam(): Team {
+    return teamOf(this.foldNow(), this.events);
   }
 
   /** Keep one version of a verse in conflict (#679): ONE text.verse.set with
@@ -3412,6 +3411,19 @@ const NO_KV: KvStore = { get: refuseKv, set: refuseKv, setIfAbsent: refuseKv, ke
  * recovery (the Home progress bars, the settings dialog's read half, project
  * listing). Deliberately NOT a BurritoStore: it has no mutation surface at all,
  * and it never claims the platform's current-project slot. */
+/** The team of one journal (#679, #680): each actor's recorded Door43 name
+ * (`FoldOutput.names`, #674) and every actor id of the event set, sorted — the
+ * order the "Teammate n" labels number by (actorLabel). The one derivation of
+ * the open store (readTeam) and the read-only reader (readConflictsAndTeam). */
+export interface Team {
+  names: Record<string, string>;
+  actors: string[];
+}
+export const teamOf = (foldOut: { names: Record<string, string> }, events: readonly { actor: string }[]): Team => ({
+  names: foldOut.names,
+  actors: [...new Set(events.map((e) => e.actor))].sort(),
+});
+
 export class ProjectReader {
   private readonly raw: HttpStore;
   private repo: string | null = null;
@@ -3455,18 +3467,20 @@ export class ProjectReader {
   }
 
   /** #679: the open verse-text conflicts, folded read-only from the journal
-   * (no open, no recovery, no write) — the Home card's count. Null when the
-   * journal holds a file the union refuses: then the count is unknown (D30),
-   * never a false 0. */
-  async readVerseConflicts(): Promise<VerseConflict[] | null> {
+   * (no open, no recovery, no write) — the Home card's count — and (#680) the
+   * team of the same fold, which the sync result labels teammates by. Null
+   * when the journal holds a file the union refuses: then the count is
+   * unknown (D30), never a false 0. */
+  async readConflictsAndTeam(): Promise<{ conflicts: VerseConflict[]; team: Team } | null> {
     if (this.repo === null) throw new Error('ProjectReader: call open(repoPath) first');
     const journal = new JournalStore({ api: this.raw.api, repoPath: this.repo, kv: NO_KV });
     const { events, refused } = await journal.readAcceptedEvents();
     if (refused !== 0) return null;
-    if (events.length === 0) return [];
+    if (events.length === 0) return { conflicts: [], team: { names: {}, actors: [] } };
     const runner = defaultFoldRunner();
     try {
-      return verseConflicts(await runner.fold(events), events);
+      const foldOut = await runner.fold(events);
+      return { conflicts: verseConflicts(foldOut, events), team: teamOf(foldOut, events) };
     } finally {
       runner.dispose();
     }
