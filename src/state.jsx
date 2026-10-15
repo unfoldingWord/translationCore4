@@ -5415,6 +5415,13 @@ export function AppProvider({ children }) {
         dispatch({ type: 'set', patch: { checkTool: null, checkSession: null } });
       },
 
+      /** #722 class: the open session reads the draft again (#532's
+       * refreshCheckDraft) — for a session that opened before its text arrived. */
+      refreshCheckDraft: () => {
+        const cs = stateRef.current.checkSession;
+        if (cs?.items) dispatch({ type: 'refreshCheckDraft', seq: cs.seq });
+      },
+
       /** #268: Resume into a Check tool — wait for pins, then preflight until
        * ready, then open. openProject loads pins in the background. */
       resumeCheckTool: async (tool) => {

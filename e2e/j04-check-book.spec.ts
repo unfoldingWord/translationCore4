@@ -6,6 +6,7 @@
 // §5.2 sidecar with its resolution record.
 import { test, expect } from './helpers/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
+import { holdCheckpoints } from './helpers/checkpointHold';
 import { articleMarks } from './helpers/articleMarks';
 import { gateOff, turnOnInternet } from './helpers/door43Share';
 import { cachedZip, mockDoor43Package, type CachedRepo } from './helpers/door43Package';
@@ -646,6 +647,37 @@ test.describe('J4 — a checker works a book', () => {
       const shot = testInfo.outputPath('check-article-academy.png');
       await page.screenshot({ path: shot, animations: 'disabled' });
       await testInfo.attach('check-article-academy', { path: shot, contentType: 'image/png' });
+    },
+  );
+
+  test(
+    'a notes check opened before the book text arrives shows the draft when it arrives (#722 class)',
+    { tag: ['@inc2', '@J4'] },
+    async ({ page }) => {
+      writeProjectPins(SEEDED_PROJECT, PINS());
+      await page.goto('/');
+      await page.getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`).getByTestId('book-tile-JON').click();
+      const rail = page.getByRole('complementary');
+      await expect(rail.getByRole('button', { name: /^Jonah \d+%/ })).toBeVisible();
+
+      // Jonah → Titus while a checkpoint is held: the Titus check session is
+      // new (a book switch closes the old one) and is built before the text.
+      const hold = await holdCheckpoints(page);
+      await page.getByRole('tab', { name: 'Check', exact: true }).click();
+      await expect.poll(hold.held).toBeGreaterThan(0);
+      await expect(page.getByTestId('open-translationNotes')).toBeVisible();
+      await page.getByRole('tab', { name: 'Translate', exact: true }).click();
+      await rail.getByRole('button', { name: /^Titus \d+%/ }).click();
+      await expect(page.getByText('Loading book…')).toBeVisible(); // the window: no book text
+      await page.getByRole('tab', { name: 'Check', exact: true }).click();
+      await page.getByTestId('open-translationNotes').click();
+      await expect(page.getByTestId('check-progress')).toBeVisible();
+      await page.getByTestId('check-list').locator('button[data-ref="1:1"]').first().click();
+      const target = page.getByTestId('check-target');
+      await expect(target).toHaveAttribute('data-drafted', '0'); // built without the text
+
+      hold.release();
+      await expect(target).toHaveAttribute('data-drafted', '1'); // TIT 1:1 is drafted in the sample
     },
   );
 });

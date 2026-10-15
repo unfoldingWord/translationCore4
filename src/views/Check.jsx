@@ -1341,6 +1341,17 @@ function PickerGrid({ s, pre, story, unitLabel, pickerTitleOf }) {
   );
 }
 
+/** #722 class: a session can open before its book text arrives (since #679
+ * the load waits in the store queue); it then holds no draft copy. Read the
+ * draft again when the text arrives (#532's refresh). Once more for a session
+ * opened with the text is harmless: known invalidations stay. */
+function useDraftArrival(s, actions, unitLoaded) {
+  const sessionReady = Boolean(s.checkSession?.items);
+  React.useEffect(() => {
+    if (unitLoaded && sessionReady) actions.refreshCheckDraft();
+  }, [unitLoaded, sessionReady]);
+}
+
 export default function Check() {
   const { s, actions } = useApp();
   const pre = s.preflight;
@@ -1379,6 +1390,7 @@ export default function Check() {
   React.useEffect(() => {
     if (pre && atPicker && unitLoaded) actions.loadPickerProgress();
   }, [pre, atPicker, unitLoaded, s.story]);
+  useDraftArrival(s, actions, unitLoaded);
 
   // The picker's "Next: …" line shows the gateway title too [decided
   // 2026-08-31]; the frame verdict is the understand load's (sourceRefs).
