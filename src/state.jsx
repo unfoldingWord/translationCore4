@@ -391,6 +391,20 @@ function firstDraftedRef(bookRaw) {
   return keys.length ? keys[0] : null;
 }
 
+/** #136: where Align resumes — the remembered verse, else the picker's next
+ * unaligned verse, if its draft is not empty (review round 1: an emptied
+ * remembered verse falls through). Null while the book text loads (#722). */
+function resumeAlignRef(st) {
+  const texts = verseTextIndex(st.bookRaw);
+  return [st.toolPos?.[`align:${st.book}`], st.pickerProgress?.align?.nextRef].find((ref) => ref && texts[ref]) ?? null;
+}
+
+/** The verse Align opens: the one chosen, else where it resumes, else the
+ * first drafted. A tool that opened before the text came has no verse yet. */
+function openingAlignRef(st) {
+  return st.alignVerse ?? resumeAlignRef(st) ?? firstDraftedRef(st.bookRaw);
+}
+
 const initial = () => ({
   view: 'home', // home | read (Understand) | draft (Translate) | check | publish (Community Checking)
   projects: null, // null = loading; [] = none
@@ -1020,14 +1034,21 @@ async function gatewayChangePlan({ consequences, next, coverage, installed, stor
   return { plan, blocked };
 }
 
+/** The text of the open book, or null while the book loads. rawRef holds
+ * the latest edits. When bookRaw is null, a new book loads, and rawRef still
+ * holds the PREVIOUS book (#722: since #679 the load waits in the store
+ * queue). Null means: read this book from the store. */
+function openBookText(st, rawRef) {
+  return st.bookRaw == null ? null : rawRef.current;
+}
+
 /** Drafts remain editable while the resource reads are in flight. Count
  * against one live snapshot, then retry if an edit/book switch changed it
- * during any await, including a later book's derive. rawRef owns synchronous
- * edits; bookRaw being null means the new book is loading. */
+ * during any await, including a later book's derive. */
 async function liveGatewayChangePlan({ store, storeRef, stateRef, rawRef, obsProject, ...args }) {
   const snapshot = () => {
     const live = stateRef.current;
-    return { book: live.book, raw: live.bookRaw == null ? null : rawRef.current, story: live.story };
+    return { book: live.book, raw: openBookText(live, rawRef), story: live.story };
   };
   for (;;) {
     if (storeRef.current !== store) throw new Error(t('gateway.otherProject'));
@@ -1113,17 +1134,27 @@ async function prepareAlignmentSource(store, st, ref) {
 /** #1: the training corpus for one testament — every verse with a placed
  * word across the project's books of that testament, as the engine's
  * positional view (suggest.ts). The open book reads from the live draft and
- * the align buffer; the other books from disk. */
+ * the align buffer. The other books read from disk. So does the open book
+ * while it loads (`bookRaw` null: openBookText). */
 async function collectTrainingVerses({ store, sched, project, book, bookRaw, testament }) {
   const codes = (project?.bookCodes || []).filter((code) => (isOldTestament(code) ? 'ot' : 'nt') === testament);
   const out = [];
   for (const code of codes) {
-    const raw = code === book ? bookRaw : (await store.readBook(code)).usfm;
+    const raw = code === book && bookRaw != null ? bookRaw : (await store.readBook(code)).usfm;
     const { file } = code === book ? await alignFileFor(store, sched, code) : await alignFileFor(store, null, code);
     out.push(...trainingVersesFor(code, file, verseTextIndex(raw)));
   }
   return out;
 }
+
+/** The trainer's `collect`: the corpus of the open project, read when asked. */
+function trainingCollector({ storeRef, alignSchedulerRef, stateRef, rawRef }) {
+  return (testament) => {
+    const st = stateRef.current;
+    return collectTrainingVerses({ store: storeRef.current, sched: alignSchedulerRef.current, project: st.project, book: st.book, bookRaw: openBookText(st, rawRef), testament });
+  };
+}
+export const __trainingTextForTests = { collectTrainingVerses, trainingCollector };
 
 /** #213: reflow the alignment records of the verses a draft save changed.
  * One buffered read of the §5.1 file, then one staged record per verse that
@@ -5063,7 +5094,7 @@ export function AppProvider({ children }) {
         // in the store queue), not a book with no draft. The Align view opens
         // the session again when the text arrives. A failed load is stated (D30).
         if (st.bookRaw == null) return settle(st.bookError ? { error: st.bookError } : { loading: true });
-        const ref = st.alignVerse ?? firstDraftedRef(st.bookRaw);
+        const ref = openingAlignRef(st);
         if (!ref) return settle({ unavailable: 'undrafted' });
         settle({ loading: true });
         // Catch-to-absence sweep review: the try covers the WHOLE load —
@@ -5110,17 +5141,10 @@ export function AppProvider({ children }) {
 
       startAligning: () => {
         alignSessionSeq++;
-        // #136: open at the remembered verse, else the picker's next
-        // unaligned verse, else the default (first drafted, via openAlign).
-        // A remembered verse whose draft was since emptied is skipped
-        // (review round 1) — resuming it would open an unavailable session
-        // instead of falling through the chain.
-        const st = stateRef.current;
-        const texts = verseTextIndex(st.bookRaw);
-        const alignVerse =
-          [st.toolPos?.[`align:${st.book}`], st.pickerProgress?.align?.nextRef].find(
-            (ref) => ref && texts[ref],
-          ) ?? null;
+        // #136: open at the remembered verse (resumeAlignRef), else the
+        // default (first drafted, via openAlign). While the book text loads
+        // there is none yet; openAlign resumes when the text arrives (#722).
+        const alignVerse = resumeAlignRef(stateRef.current);
         dispatch({ type: 'set', patch: { aligning: true, alignSession: null, alignVerse } });
         // #516 (D93 point 3): the booster retrains each time the Align tool opens.
         a.trainAlignSuggestions();
@@ -5289,10 +5313,7 @@ export function AppProvider({ children }) {
         };
         engine.sched = new SuggestScheduler({
           testament: () => (stateRef.current.book ? (isOldTestament(stateRef.current.book) ? 'ot' : 'nt') : null),
-          collect: (testament) => {
-            const st = stateRef.current;
-            return collectTrainingVerses({ store: storeRef.current, sched: alignSchedulerRef.current, project: st.project, book: st.book, bookRaw: rawRef.current, testament });
-          },
+          collect: trainingCollector({ storeRef, alignSchedulerRef, stateRef, rawRef }),
           postAnswer: post(
             'answering',
             () => new Worker(new URL('./data/align/suggestWorker.ts', import.meta.url), { type: 'module' }),
@@ -5456,6 +5477,13 @@ export function AppProvider({ children }) {
       closeCheckTool: () => {
         checkSessionSeq++; // invalidate any in-flight open or completion
         dispatch({ type: 'set', patch: { checkTool: null, checkSession: null } });
+      },
+
+      /** #722 class: the open session reads the draft again (#532's
+       * refreshCheckDraft) — for a session that opened before its text arrived. */
+      refreshCheckDraft: () => {
+        const cs = stateRef.current.checkSession;
+        if (cs?.items) dispatch({ type: 'refreshCheckDraft', seq: cs.seq });
       },
 
       /** #268: Resume into a Check tool — wait for pins, then preflight until

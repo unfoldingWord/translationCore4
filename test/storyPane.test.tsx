@@ -82,6 +82,7 @@ const actions = {
   setCheckIndex: vi.fn(),
   recordDecision: vi.fn(),
   closeCheckTool: vi.fn(),
+  refreshCheckDraft: vi.fn(), // #722 class: Check reads the draft again when it arrives
   openSources: vi.fn(),
   go: vi.fn(),
 };
