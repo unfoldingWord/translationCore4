@@ -37,7 +37,9 @@ const allowDrop = (e) => e.preventDefault();
 // number, as tC3's WordOccurrence did — a superscript, and in the chip's
 // accessible name ("de 3"). A word that occurs once shows nothing.
 const repeated = (w) => Number(w.occurrences) > 1;
-const Occurrence = ({ w }) => (repeated(w) ? <sup aria-hidden="true">{Number(w.occurrence)}</sup> : null);
+// `named`: the host's aria-label already carries the number, so hide the <sup>;
+// elsewhere (card headers, the generic-span suggested chip) the <sup> is the name.
+const Occurrence = ({ w, named = false }) => (repeated(w) ? <sup aria-hidden={named ? 'true' : undefined}>{Number(w.occurrence)}</sup> : null);
 const occurrenceName = (w) => (repeated(w) ? `${w.word} ${Number(w.occurrence)}` : undefined);
 
 /** The ULT word(s) this card's original word(s) are aligned to — the gateway
@@ -127,7 +129,7 @@ function WordCard({ card, armed, mode, gwTokens, suggested = [], onPlace, onRemo
             title={t('align.clickToUnalign')}
             aria-label={occurrenceName(w)} data-word={w.word}
             style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-ui-md)', color: 'var(--text-scripture)', background: 'var(--surface-card)', border: 'var(--stroke) solid var(--border-input)', borderRadius: 'var(--radius-chip)', padding: '3px 9px', cursor: 'pointer', whiteSpace: 'nowrap', boxShadow: '0 1px 2px rgba(1,66,99,.08)' }}>
-            {w.word}<Occurrence w={w} />
+            {w.word}<Occurrence w={w} named />
           </button>
         ))}
         {/* #1: a suggested link — dashed, with its check mark to confirm. It
@@ -429,7 +431,7 @@ export default function Align({ embedded = false }) {
                         ? { background: 'var(--accent)', color: 'var(--text-inverse)', boxShadow: 'var(--shadow-focus)' }
                         : { background: 'var(--surface-card)', color: 'var(--text-heading)', boxShadow: 'var(--shadow-chip)' }),
                     }}>
-                    {w.word}<Occurrence w={w} />
+                    {w.word}<Occurrence w={w} named />
                   </button>
                 );
               })}

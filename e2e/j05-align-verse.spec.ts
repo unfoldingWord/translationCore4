@@ -278,6 +278,8 @@ test.describe('J5 — a translator aligns a verse', () => {
       expect(theou.length).toBe(2);
       expect(headers.filter((h) => h.text.startsWith('Θεοῦ')).map((h) => h.sup)).toEqual(theou.map((w) => String(w.occurrence)));
       expect(headers.find((h) => h.text.startsWith('Παῦλος'))?.sup).toBeNull();
+      // A header has no aria-label, so its number must stay readable (review round 1).
+      await expect(page.locator('[data-testid^="align-card-"] [lang="el"] sup[aria-hidden]')).toHaveCount(0);
 
       const shot = testInfo.outputPath('j05-735-occurrences.png');
       await page.getByTestId('align-session').screenshot({ path: shot });
