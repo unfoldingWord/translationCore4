@@ -179,3 +179,27 @@ describe('tokenizePlain / matchPlainQuote (OBS story frames, #291)', () => {
     expect(plainHits(OBS_1_1, '')).toBe('');
   });
 });
+
+// #765 / #664: in Hebrew a maqaf (U+05BE) joins two words inside one quote word,
+// but the aligned ULT names each side as its own zaln word. Real rows of en_tn
+// v91 (e586762) and en_twl v91 (7cbb341) against en_ult v91 (35d2159) Genesis 1.
+describe('a maqaf-joined quote word (#765, #664)', () => {
+  const gen = (usfmjs.toJSON(fs.readFileSync('test/fixtures/en_ult/GEN-1.usfm', 'utf8')) as {
+    chapters: Record<string, Record<string, { verseObjects: Array<Record<string, unknown>> }>>;
+  }).chapters['1'];
+  const title = (v: string, quote: Array<{ word: string }> | string) => gatewayQuote(tokenizeVerse(gen[v]), quote, 1);
+
+  it('matches its separate ULT words — tN quotes (a word array)', () => {
+    expect(title('5', tnQuoteWords('וַֽ⁠יְהִי־עֶ֥רֶב וַֽ⁠יְהִי־בֹ֖קֶר'))).toBe('Then there was evening and there was morning'); // xxe6
+    expect(title('7', tnQuoteWords('וַֽ⁠יְהִי־כֵֽן'))).toBe('And it was so'); // xfx7
+  });
+
+  it('matches its separate ULT words — TWL OrigWords (a plain string)', () => {
+    expect(title('28', 'אֶת־הָ⁠אָ֖רֶץ')).toBe('the earth'); // vzz2
+  });
+
+  it('leaves quotes without a maqaf as they were', () => {
+    expect(title('5', tnQuoteWords('וַ⁠יִּקְרָ֨א אֱלֹהִ֤ים'))).toBe('And God called'); // c9yz
+    expect(title('5', tnQuoteWords('י֥וֹם אֶחָֽד'))).toBe('one day'); // xmx5
+  });
+});

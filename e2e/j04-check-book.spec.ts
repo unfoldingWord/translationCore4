@@ -804,6 +804,39 @@ test.describe('J4 — a checker works a book', () => {
       await expect(target).toHaveAttribute('data-drafted', '1'); // TIT 1:1 is drafted in the sample
     },
   );
+
+  // #765: a Hebrew maqaf (־) joins two words in one quote word, while the ULT
+  // aligns each side on its own. Jonah is the rig's Old Testament book: in the
+  // v91 pins 5 tN and 11 tW titles fell back to the Hebrew quote before the fix.
+  test(
+    'every Jonah title shows the ULT phrase, also for a quote with a maqaf (#765)',
+    { tag: ['@inc2', '@J4'] },
+    async ({ page }, testInfo) => {
+      writeProjectPins(SEEDED_PROJECT, PINS());
+      await page.goto('/');
+      await page.getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`).getByTestId('book-tile-JON').click();
+      await page.getByRole('tab', { name: 'Check', exact: true }).click();
+      const list = page.getByTestId('check-list');
+      const hebrewTitles = () => list.getByRole('button').filter({ hasText: /\p{Script=Hebrew}/u }).count();
+      const cases = [
+        { tool: 'translationNotes', id: 'z3jv', ref: '1:6', title: 'What to you' },
+        { tool: 'translationWords', id: 'mtmh', ref: '1:1', title: 'the word of Yahweh' },
+      ];
+      for (const c of cases) {
+        await page.getByTestId(`open-${c.tool}`).click();
+        const row = list.locator(`button[data-check-id="${c.id}"]`);
+        await expect(row).toContainText(`“${c.title}”`);
+        await expect.poll(hebrewTitles).toBe(0);
+        await row.click();
+        await expect(page.getByTestId('ult-hl').first()).toBeVisible();
+        expect((await page.getByTestId('ult-hl').allTextContents()).join(' ')).toBe(c.title);
+        const shot = testInfo.outputPath(`j04-maqaf-${c.tool}-${c.ref.replace(':', '-')}.png`);
+        await page.screenshot({ path: shot, animations: 'disabled' });
+        await testInfo.attach(`j04-maqaf-${c.tool}`, { path: shot, contentType: 'image/png' });
+        await page.getByTestId('check-back').click();
+      }
+    },
+  );
 });
 
 // Issue #62 teardown: after this journey's mutations, every journaled local
