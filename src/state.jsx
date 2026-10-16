@@ -10,7 +10,7 @@ import { ServerApi } from './data/serverApi';
 // (test/noBypass.test.ts enforces it); read-only surfaces use ProjectReader.
 import { StaleWriteError } from './data/httpStore';
 import { STORY_FILE, refusalCodeOf } from './data/journal/runtime';
-import { JournalingStore, ProjectReader } from './data/journal/journalingStore';
+import { BookTooLargeError, JournalingStore, ProjectReader, bookAddFits } from './data/journal/journalingStore';
 import { parseVerseKey } from './data/journal/verseConflicts';
 import { SaveScheduler } from './data/saveScheduler';
 import { StoryScheduler, normalizeStoryUnit } from './data/storyScheduler';
@@ -2980,10 +2980,22 @@ async function classifyUsfmFiles(files, existing) {
       out.push({ ...entry, code, refusal: t('addBook.usfmExists', { name: bookName(code) }) });
       continue;
     }
+    // #767: refused here, so Add book never creates a book it cannot save.
+    if (!bookAddFits(code, usfm)) {
+      out.push({ ...entry, code, refusal: t('addBook.usfmTooLarge', { name: bookName(code) }) });
+      continue;
+    }
     out.push({ ...entry, code, usfm });
   }
   return out;
 }
+
+/** The Add-a-book dialog's message for a failed add. #767: a book too large to
+ * save is said in plain words, never as the journal's §8.1 wording. */
+const addBookErrorText = (e) =>
+  e instanceof BookTooLargeError
+    ? t('addBook.usfmTooLarge', { name: bookName(e.book) })
+    : e?.reason || e?.message || t('wizard.error');
 
 async function seedInitialUsfm({ store, code, projName }) {
   // #574: the pins of the project the book goes INTO, read through its own
@@ -4009,7 +4021,7 @@ export function AppProvider({ children }) {
         a.closeModal();
         if (open) await a.openProject(f.repoPath, items[0].code);
       } catch (e) {
-        a.patchAb({ busy: false, error: e?.reason || e?.message || t('wizard.error') });
+        a.patchAb({ busy: false, error: addBookErrorText(e) });
       } finally {
         store.dispose(); // #94: a throwaway store's fold worker
       }

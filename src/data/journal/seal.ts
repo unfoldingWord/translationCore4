@@ -66,6 +66,15 @@ export const sealAction = async (eventsIn: JournalEvent[]): Promise<string> => {
   return seg;
 };
 
+/** #767: whether these events would seal under the §8.1 limit, measured
+ * without hashing (the sha256 hex is always 64 characters). Same normalization
+ * and container as sealAction, so it agrees with sealAction byte for byte. */
+export const actionFits = (events: JournalEvent[]): boolean => {
+  const body = JSON.stringify({ events: events.map(normalizeEvent) });
+  if (utf8ByteLength(body) > SEGMENT_LIMIT - CONTAINER_FRAME) return false;
+  return utf8ByteLength(JSON.stringify({ container: 1, body, sha256: '0'.repeat(64) })) <= SEGMENT_LIMIT;
+};
+
 export type SegmentVerdict = { ok: true; events: JournalEvent[] } | { ok: false; reason: string };
 
 /** Validate one segment's bytes — the reference files.mjs validateSegment over

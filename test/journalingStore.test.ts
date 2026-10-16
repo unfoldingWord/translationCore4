@@ -7,11 +7,13 @@ import { describe, expect, it } from 'vitest';
 import { ServerApi } from '../src/data/serverApi';
 import { StaleWriteError, md5Hex } from '../src/data/httpStore';
 import {
+  BookTooLargeError,
   JournalingStore,
   forgetProjectQueues,
 } from '../src/data/journal/journalingStore';
 import { forgetSharedClocks } from '../src/data/journal/journalStore';
-import { validateSegment, type JournalEvent } from '../src/data/journal/seal';
+import { decompose } from '../src/data/journal/runtime';
+import { SEGMENT_LIMIT, actionFits, sealAction, validateSegment, type JournalEvent } from '../src/data/journal/seal';
 import { verifyProjectAgainstJournal, describeVerifierReport } from '../src/data/journal/verify';
 import type { Decision, DecisionFile, ResourcesFile } from '../src/data/burritoStore';
 import { journalingRig, memKv, tickingNow, type JournalingRig } from './helpers/journalingRig';
@@ -181,6 +183,54 @@ describe('#62 mapping: addBook is ONE self-contained book.add', () => {
     expect(add).toBeDefined();
     expect(rig.repos.get(REPO)?.files.get('JON.usfm')).toContain('fake platform scaffold');
     await expectVerified(api);
+  });
+
+  // #767: a book whose book.add cannot seal under the §8.1 4 MiB limit used to be
+  // created on the server first and then fail, leaving an empty book that also
+  // blocked a retry. The book is real aligned USFM: the en_ult v89 Titus
+  // fixture's chapters, repeated as the 72 chapters of a 3.3 MB book.
+  it('a book too large for one sealed action refuses before the server call: no book is left, and a retry works (#767)', async () => {
+    const { rig, api, store } = await setup();
+    const fs = process.getBuiltinModule('node:fs');
+    const tit = fs.readFileSync('test/fixtures/en_ult/TIT.usfm', 'utf8');
+    const chapters = tit.slice(tit.indexOf('\\c 1')).split(/\\c \d+/).filter((c: string) => c.trim());
+    let usfm = '\\id LEV EN_ULT\n\\usfm 3.0\n\\h Leviticus\n';
+    for (let n = 0; n < 72; n++) usfm += `\\c ${n + 1}${chapters[n % chapters.length]}`;
+    expect(usfm.length).toBeGreaterThan(3_000_000);
+    const before = await segmentsOf(rig);
+    const add = (initialUsfm: string) =>
+      store.addBook({ book_code: 'LEV', book_title: 'Levítico', book_abbr: 'LEV', add_cv: true, initialUsfm });
+    await expect(add(usfm)).rejects.toBeInstanceOf(BookTooLargeError);
+    expect(rig.repos.get(REPO)?.files.has('LEV.usfm')).toBe(false);
+    expect(await segmentsOf(rig)).toHaveLength(before.length);
+    // The retry with a book that fits is not blocked by a leftover.
+    await add(`\\id LEV EN_ULT\n\\usfm 3.0\n\\h Leviticus\n\\c 1${chapters[0]}`);
+    expect(rig.repos.get(REPO)?.files.get('LEV.usfm')).toContain('\\h Leviticus');
+    await expectVerified(api);
+  });
+});
+
+describe('#767: actionFits measures exactly what sealAction refuses', () => {
+  // A real book.add shape: the skeleton and slot key come from the store's own decompose.
+  const { skeleton, verses } = decompose('\\id LEV\n\\c 1\n\\p\n\\v 1 x\n');
+  const slot = Object.keys(verses)[0];
+  const event = (text: string): JournalEvent => ({
+    v: 1, op: 'book.add', actor: 'a0123456789abcde', ts: '2026-10-16T12:00:00.000Z|0000|a0123456789abcde',
+    base: null, book: 'LEV', scope: [], skeleton, initialVerses: { [slot]: text },
+  });
+  it('agrees with sealAction on both sides of the limit', async () => {
+    // Grow one verse until the action no longer fits, then check the last fit and the first miss.
+    let lo = 0;
+    let hi = SEGMENT_LIMIT;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (actionFits([event('a'.repeat(mid))])) lo = mid;
+      else hi = mid;
+    }
+    await expect(sealAction([event('a'.repeat(lo))])).resolves.toBeTypeOf('string');
+    await expect(sealAction([event('a'.repeat(hi))])).rejects.toThrow(/4 MiB/);
+    // A backslash costs four bytes once the body is wrapped in the container.
+    expect(actionFits([event('\\'.repeat(Math.floor(lo / 4) + 1))])).toBe(false);
   });
 });
 

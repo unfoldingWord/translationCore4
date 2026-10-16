@@ -361,6 +361,7 @@
   "addBook.pickOne": "Select at least one book.",
   "addBook.usfmWillAdd": "Adds {name}",
   "addBook.usfmExists": "{name} is already in this project. To replace an existing book, use Import.",
+  "addBook.usfmTooLarge": "{name} is too large for the app to save as one book, so it cannot be added.",
   "addBook.addOne": "Add book",
   "addBook.addN": "Add {n} books",
   "addBook.findBook": "Find a book by name or code",
