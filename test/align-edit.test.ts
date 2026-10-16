@@ -8,6 +8,7 @@ import {
   alignmentIsStale,
   allTargetWords,
 } from '../src/data/align/edit';
+import { wordTokens } from '../src/data/align/tokenize';
 import type { AlignedWord } from '../src/data/align/zaln';
 
 const ORIG = [
@@ -88,7 +89,7 @@ describe('C2.11 link / unlink — a word is in exactly one place', () => {
 
   it('unlinking a word that is not there is a no-op', () => {
     const record = boot();
-    expect(unlinkWord(record, 0, wordIn(record.wordBank, 'Pablo'))).toBe(record);
+    expect(unlinkWord(record, 0, wordIn(record.wordBank, 'Pablo'), TARGET)).toBe(record);
   });
 
   it('edits never mutate the record they were given', () => {
@@ -96,6 +97,42 @@ describe('C2.11 link / unlink — a word is in exactly one place', () => {
     const bankBefore = record.wordBank.length;
     linkWord(record, 0, wordIn(record.wordBank, 'Pablo'));
     expect(record.wordBank).toHaveLength(bankBefore);
+  });
+});
+
+// #734 — an unlinked word goes back to its place in the verse, not to an
+// alphabetical slot; the rest of the bank keeps the verse's order too.
+describe('#734 unlink — the bank follows the verse order', () => {
+  const key = (w: { word?: string; text?: string; occurrence: unknown }) => `${w.word ?? w.text}/${Number(w.occurrence)}`;
+  const verseOrder = (bank: AlignedWord[]) => {
+    const banked = new Set(bank.map(key));
+    return wordTokens(TARGET).map(key).filter((k) => banked.has(k));
+  };
+
+  it('a repeated word returns to its own occurrence slot', () => {
+    let rec = boot();
+    rec = linkWord(rec, 0, wordIn(rec.wordBank, 'de', 2));
+    rec = linkWord(rec, 1, wordIn(rec.wordBank, 'Dios', 1));
+    rec = unlinkWord(rec, 0, { word: 'de', occurrence: 2, occurrences: 2 }, TARGET);
+    expect(rec.wordBank.map(key)).toEqual(verseOrder(rec.wordBank));
+    rec = unlinkWord(rec, 1, { word: 'Dios', occurrence: 1, occurrences: 2 }, TARGET);
+    expect(rec.wordBank.map(key)).toEqual(wordTokens(TARGET).map(key));
+  });
+
+  it('a bank stored out of verse order comes back in verse order', () => {
+    let rec = boot();
+    rec = linkWord(rec, 0, wordIn(rec.wordBank, 'siervo'));
+    rec = { ...rec, wordBank: [...rec.wordBank].reverse() };
+    rec = unlinkWord(rec, 0, { word: 'siervo', occurrence: 1, occurrences: 1 }, TARGET);
+    expect(rec.wordBank.map(key)).toEqual(wordTokens(TARGET).map(key));
+  });
+
+  it('a word the text no longer has goes last, the others in verse order', () => {
+    let rec = boot();
+    rec = linkWord(rec, 0, wordIn(rec.wordBank, 'Pablo'));
+    const edited = TARGET.replace('Pablo', 'Saulo');
+    rec = unlinkWord(rec, 0, { word: 'Pablo', occurrence: 1, occurrences: 1 }, edited);
+    expect(rec.wordBank.map(key)).toEqual([...wordTokens(edited).map(key).filter((k) => k !== 'Saulo/1'), 'Pablo/1']);
   });
 });
 

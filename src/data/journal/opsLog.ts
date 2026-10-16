@@ -396,7 +396,8 @@ const isScratchWhole = async (api: OpsRecoveryApi, scratch: string): Promise<boo
   let verified: Awaited<ReturnType<typeof verifyProjectAgainstJournal>>;
   try {
     verified = await verifyProjectAgainstJournal(api, scratch, { skipUnjournaled: true });
-    await readIngredientFiles(api, scratch, () => true);
+    // Empty-scope metadata can verify without ingredients; such a copy cannot be applied.
+    if (!(await readIngredientFiles(api, scratch, () => true)).size) return false;
   } catch (error) {
     if (!isDamagedRead(error)) throw error;
     console.error(`ops log: the platform cannot read the scratch copy ${scratch}, so it is not whole: ${String((error as Error)?.message ?? error)}`);

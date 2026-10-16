@@ -34,6 +34,19 @@ const dragPayload = (e) => {
 const setDragPayload = (e, data) => e.dataTransfer.setData('text/plain', JSON.stringify(data));
 const allowDrop = (e) => e.preventDefault();
 
+// #735: a word that occurs more than once in its verse carries its occurrence
+// number, as tC3's WordOccurrence did — a superscript, and in the chip's
+// accessible name ("de 3"). A word that occurs once shows nothing.
+const repeated = (w) => Number(w.occurrences) > 1;
+// `named`: the host's aria-label already carries the number, so hide the <sup>;
+// elsewhere (card headers, the generic-span suggested chip) the <sup> is the name.
+// lineHeight 0 keeps the raised number out of the line box, so a numbered word
+// stays level with its neighbours and its chip keeps their height.
+const Occurrence = ({ w, named = false }) => (repeated(w)
+  ? <sup aria-hidden={named ? 'true' : undefined} style={{ lineHeight: 0 }}>{Number(w.occurrence)}</sup>
+  : null);
+const occurrenceName = (w) => (repeated(w) ? `${w.word} ${Number(w.occurrence)}` : undefined);
+
 /** The ULT word(s) this card's original word(s) are aligned to — the gateway
  * lens's header label. Empty when the pane carries no alignment for them. */
 const gwLabelFor = (topWords, gwTokens) =>
@@ -47,7 +60,9 @@ const gwLabelFor = (topWords, gwTokens) =>
  * sub-label under a gateway word, and SPLIT on a merged phrase. Draggable
  * onto another card to merge. */
 function CardHeader({ card, mode, gwTokens, onSplit }) {
-  const origLabel = card.topWords.map((w) => w.word).join(' ');
+  const origLabel = card.topWords.map((w, i) => (
+    <React.Fragment key={`${w.word}-${w.occurrence}`}>{i > 0 && ' '}{w.word}<Occurrence w={w} /></React.Fragment>
+  ));
   const gwLabel = mode === 'gw' ? gwLabelFor(card.topWords, gwTokens) : '';
   const usingGw = mode === 'gw' && gwLabel !== '';
   return (
@@ -117,8 +132,9 @@ function WordCard({ card, armed, mode, gwTokens, suggested = [], onPlace, onRemo
             onDragStart={(e) => setDragPayload(e, { kind: 'placed', from: card.index, word: w })}
             onClick={(e) => { e.stopPropagation(); onRemove(card.index, w); }}
             title={t('align.clickToUnalign')}
+            aria-label={occurrenceName(w)} data-word={w.word}
             style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-ui-md)', color: 'var(--text-scripture)', background: 'var(--surface-card)', border: 'var(--stroke) solid var(--border-input)', borderRadius: 'var(--radius-chip)', padding: '3px 9px', cursor: 'pointer', whiteSpace: 'nowrap', boxShadow: '0 1px 2px rgba(1,66,99,.08)' }}>
-            {w.word}
+            {w.word}<Occurrence w={w} named />
           </button>
         ))}
         {/* #1: a suggested link — dashed, with its check mark to confirm. It
@@ -126,8 +142,9 @@ function WordCard({ card, armed, mode, gwTokens, suggested = [], onPlace, onRemo
         {suggested.map((sg) => (
           <WordChip key={`sg-${sg.word.word}-${sg.word.occurrence}`} state="suggested" draggable={false}
             data-testid={`align-suggested-${card.index}`} title={t('align.suggest.confirm')}
+            aria-label={occurrenceName(sg.word)} data-word={sg.word.word}
             onClick={(e) => { e.stopPropagation(); onConfirm(card.index, sg.word); }}>
-            {sg.word.word}
+            {sg.word.word}<Occurrence w={sg.word} />
             <span aria-hidden="true" style={{ fontWeight: 'var(--fw-heavy)' }}>{t('align.suggest.confirmMark')}</span>
           </WordChip>
         ))}
@@ -344,13 +361,18 @@ export default function Align({ embedded = false }) {
   const total = placed + a.record.wordBank.length;
   const suggestedKeys = suggestedKeySet(a);
   const nav = alignNav(a, s.alignIndex);
+  const shownBank = a.record.wordBank.filter((w) => !suggestedKeys.has(wordKey(w)));
+
+  const armed = shownSelection(shownBank, a.armed);
+  const armedKeys = new Set(armed.map(wordKey));
 
   // Payloads cross a string boundary — validate the shape, never assume it
   // (a malformed drop must be a no-op, not a crash in the record algebra).
   const hasWord = (p) => typeof p?.word?.word === 'string';
   const hasFrom = (p) => typeof p?.from === 'number';
+  const hasWords = (p) => Array.isArray(p?.words) && p.words.length > 0 && p.words.every((w) => typeof w?.word === 'string');
   const onDropOnCard = (index, payload) => {
-    if (payload?.kind === 'bank' && hasWord(payload)) actions.placeAlignWordAt(index, payload.word);
+    if (payload?.kind === 'bank' && hasWords(payload)) actions.placeAlignWordsAt(index, payload.words);
     else if (payload?.kind === 'placed' && hasWord(payload) && hasFrom(payload)) actions.moveAlignWord(payload.from, index, payload.word);
     else if (payload?.kind === 'card' && hasFrom(payload)) actions.mergeAlignCards(payload.from, index);
   };
@@ -395,15 +417,23 @@ export default function Align({ embedded = false }) {
           </div>
           {a.record.wordBank.length > 0 ? (
             <div data-testid="align-bank" style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }} dir={a.targetDir}>
-              {a.record.wordBank.filter((w) => !suggestedKeys.has(wordKey(w))).map((w) => {
-                const isArmed = a.armed && a.armed.word === w.word
-                  && Number(a.armed.occurrence) === Number(w.occurrence);
+              {shownBank.map((w, i) => {
+                const isArmed = armedKeys.has(wordKey(w));
                 return (
                   <button key={`${w.word}-${w.occurrence}`} type="button" draggable
-                    onDragStart={(e) => setDragPayload(e, { kind: 'bank', word: w })}
-                    onClick={() => actions.armAlignWord(isArmed ? null : w)}
+                    onDragStart={(e) => setDragPayload(e, { kind: 'bank', words: isArmed ? armed : [w] })}
+                    onClick={(e) => actions.armAlignWords(nextSelection(shownBank, armed, e, i))}
+                    // The click a key fires carries no modifier, so Ctrl/Cmd/Shift
+                    // with Enter or Space selects from the keyboard here.
+                    onKeyDown={(e) => {
+                      if ((e.key === 'Enter' || e.key === ' ') && (e.ctrlKey || e.metaKey || e.shiftKey)) {
+                        e.preventDefault();
+                        actions.armAlignWords(nextSelection(shownBank, armed, e, i));
+                      }
+                    }}
                     title={a.armed ? t('align.hintArmed') : t('align.hintIdle')}
                     data-armed={isArmed ? '1' : '0'}
+                    aria-label={occurrenceName(w)} data-word={w.word}
                     style={{
                       fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-body)', borderRadius: 'var(--radius-sm)', padding: '5px 11px',
                       cursor: 'pointer', border: 'var(--stroke) solid var(--accent)',
@@ -411,7 +441,7 @@ export default function Align({ embedded = false }) {
                         ? { background: 'var(--accent)', color: 'var(--text-inverse)', boxShadow: 'var(--shadow-focus)' }
                         : { background: 'var(--surface-card)', color: 'var(--text-heading)', boxShadow: 'var(--shadow-chip)' }),
                     }}>
-                    {w.word}
+                    {w.word}<Occurrence w={w} named />
                   </button>
                 );
               })}
@@ -448,6 +478,32 @@ export default function Align({ embedded = false }) {
 }
 
 const wordKey = (w) => `${w.word} ${Number(w.occurrence)}`;
+
+/** #736: the selected words that the bank shows, in bank order. A selected
+ * word that has since become a suggestion is on its card, not in the bank. */
+export const shownSelection = (shownBank, armed) => {
+  const keys = new Set((armed ?? []).map(wordKey));
+  return shownBank.filter((w) => keys.has(wordKey(w)));
+};
+
+/** #736: the bank selection after a click (or Enter/Space) on word `i`, as
+ * tC3 had it. A plain click selects that word alone, or clears it when it is
+ * the only one selected; Ctrl/Cmd adds or removes it; Shift adds every word
+ * from the first selected one to it, in bank order (Birch, Q1). The words
+ * need not be adjacent (Q2). Kept in bank order, so a card takes them in the
+ * order the translator sees them. `armed` is the shown selection. */
+export const nextSelection = (shownBank, armed, e, i) => {
+  const w = shownBank[i];
+  const isArmed = armed.some((x) => wordKey(x) === wordKey(w));
+  if (e.ctrlKey || e.metaKey) {
+    return shownSelection(shownBank, isArmed ? armed.filter((x) => wordKey(x) !== wordKey(w)) : [...armed, w]);
+  }
+  if (e.shiftKey && armed.length > 0) {
+    const first = shownBank.findIndex((x) => wordKey(x) === wordKey(armed[0]));
+    return shownSelection(shownBank, [...armed, ...shownBank.slice(Math.min(first, i), Math.max(first, i) + 1)]);
+  }
+  return isArmed && armed.length === 1 ? null : [w];
+};
 
 /** #1: words with a standing suggestion render on their card, not in the bank. */
 const suggestedKeySet = (a) => new Set((a.suggestions ?? []).map((sg) => wordKey(sg.word)));

@@ -8,7 +8,7 @@ import { ServerApi } from '../../src/data/serverApi';
 import { JournalingStore, ProjectReader, forgetProjectQueues } from '../../src/data/journal/journalingStore';
 import { JournalStore, forgetSharedClocks } from '../../src/data/journal/journalStore';
 import { actorIdFor } from '../../src/data/journal/identity';
-import { APPLY_MARKER, OpsLog, applyScratch, opsEntriesOf, scratchPathOf, serialSettingsWriter, type OpsRecoveryApi } from '../../src/data/journal/opsLog';
+import { APPLY_MARKER, OpsLog, applyScratch, finishPendingApply, opsEntriesOf, scratchPathOf, serialSettingsWriter, type OpsRecoveryApi } from '../../src/data/journal/opsLog';
 import { recordInstalled } from '../../src/data/installed';
 import { assertRepoPath } from '../../src/data/serverApi';
 import { fold, makeClock, reportError } from '../../src/data/journal/runtime';
@@ -1743,3 +1743,42 @@ describe('#676 applyScratch (D101)', () => {
   });
 });
 
+// Controlled damage injection (#723), not a measured physical power failure.
+describe('#723 marker-only scratch recovery', () => {
+  for (const hasBook of [false, true])
+    it(`discards a marker-only copy with ${hasBook ? 'nonempty' : 'empty'} scope, reopens, and fetches again`, async () => {
+      const rig = journalingRig();
+      const kv = memKv();
+      const api = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: rig.fetchFn });
+      const store = new JournalingStore({ api, kv });
+      await store.createProject({ content_name: 'Prueba', content_abbr: 'prueba', content_language_code: 'es', add_book: false, versification: 'eng' });
+      if (hasBook) await store.addBook({ book_code: 'TIT', book_title: 'Tito', book_abbr: 'TIT', add_cv: true, initialUsfm: usfm('Pablo.') });
+      await store.commit('first (tC4)');
+      store.dispose();
+      rig.publish(REPO, URL_);
+      const ops = appStart(settingsDoc());
+      await ops.recover(api);
+      const deps = { api, kv, door43Server: 'https://qa.door43.org', coverage: {}, ops };
+      expect((await sync(deps, { repoPath: REPO, session: SESSION })).ok).toBe(true);
+      await api.copyRepo(REPO, SCRATCH);
+      const scratch = rig.repos.get(SCRATCH)!;
+      expect(scratch.meta).toHaveProperty('type.flavorType.currentScope', hasBook ? { TIT: [] } : {});
+      scratch.files.clear();
+      scratch.files.set(APPLY_MARKER, '{}');
+      const before = structuredClone(rig.repos.get(REPO)!);
+      // Negative control: the empty apply guard must still refuse before any live write.
+      await expect(applyScratch(api, REPO, SCRATCH)).rejects.toThrow('holds no file');
+      expect(rig.repos.get(REPO)).toEqual(before);
+      await expect(finishPendingApply(api, REPO)).resolves.toBe('refused');
+      expect(rig.repos.has(SCRATCH)).toBe(false);
+      await expect(finishPendingApply(api, REPO)).resolves.toBe('none');
+      expect(rig.repos.get(REPO)).toEqual(before);
+      const reopened = new JournalingStore({ api, kv });
+      await reopened.open(REPO);
+      reopened.dispose();
+      const start = rig.log.length;
+      expect((await sync(deps, { repoPath: REPO, session: SESSION })).ok).toBe(true);
+      expect(rig.log.slice(start).some((e) => e.route.startsWith('/api/git/clone-repo/'))).toBe(true);
+      expect(rig.repos.has(SCRATCH)).toBe(false);
+    });
+});

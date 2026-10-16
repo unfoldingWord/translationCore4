@@ -993,3 +993,33 @@ describe('#677 reserved folders that come with Door43 content never reach the pr
       expect(reservedIn(w, '_local_/_local_/prueba_c')).toEqual([]);
     });
 });
+
+// Replies pinned by the copy endpoint and copy_dir dependency; see
+// docs/evidence/sync-copy-collisions-2026-10-15.md. Inject the transport response
+// after another valid project appears at the destination (a controlled race).
+describe('#725 copy collisions', () => {
+  for (const reason of ['Target repo already exists', 'could not copy repo: target path exists'])
+    it(`preserves the destination for "${reason}" and cleans only its temporary data`, async () => {
+      const w = await world();
+      const before = snapshot(w.rig);
+      let appeared: ReturnType<typeof w.rig.repos.get>;
+      const api = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = new URL(String(input));
+        if (decodeURIComponent(url.pathname) === `/api/git/copy/${SCRATCH}` && url.searchParams.get('target_path') === OPENED) {
+          await w.api.copyRepo(REPO, OPENED);
+          appeared = structuredClone(w.rig.repos.get(OPENED)!);
+          return new Response(JSON.stringify({ is_good: false, reason }), { status: 400 });
+        }
+        return w.rig.fetchFn(input, init);
+      }) as typeof fetch });
+      const refusal = await refusalOf(openFromDoor43({ api }, { source: SOURCE, name: 'prueba_b' }));
+      expect(refusal).toMatchObject({ code: 'sync.move-failed', facts: { status: 400, reason } });
+      expect(appeared).toBeDefined();
+      expect(w.rig.repos.get(OPENED)).toEqual(appeared);
+      before.set(OPENED, appeared!.files);
+      expect(snapshot(w.rig)).toEqual(before);
+      const store = new JournalingStore({ api: w.api, kv: w.kvB });
+      await store.open(OPENED);
+      store.dispose();
+    });
+});
