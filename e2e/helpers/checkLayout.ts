@@ -35,6 +35,7 @@ export const checkLayout = (page: Page) => page.evaluate(() => {
     gap: getComputedStyle(row).columnGap,
     translationGap: getComputedStyle(card).rowGap,
     radius: getComputedStyle(row.children[0]).borderTopLeftRadius,
+    translationRadius: getComputedStyle(q('[data-testid="compare-translation"]')!).borderBottomLeftRadius,
     texts,
     horizontalScroll: main.scrollWidth > main.clientWidth || document.documentElement.scrollWidth > window.innerWidth,
   };
@@ -55,5 +56,5 @@ export function expectCheckLayout(seen: CheckLayout, label: string) {
     expect(Math.abs(last.width - seen.rowWidth), `${label}: a lone last card is full width`).toBeLessThan(1);
   }
   expect(seen.translation.top, `${label}: Your translation is below the source texts`).toBeGreaterThan(Math.max(...seen.cards.map((c) => c.bottom)));
-  expect([seen.gap, seen.translationGap, seen.radius === '0px'], `${label}: card gaps and corners`).toEqual(['6px', '24px', false]);
+  expect([seen.gap, seen.translationGap, seen.radius === '0px', seen.translationRadius === '0px'], `${label}: card gaps and corners`).toEqual(['6px', '24px', false, false]);
 }
