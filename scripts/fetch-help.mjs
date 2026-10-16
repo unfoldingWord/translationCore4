@@ -19,8 +19,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const REPO = 'https://github.com/unfoldingWord/tc-website.git';
-// The pages that describe 4.0.0-rc.1 [decided 2026-10-09 — owner, #519]. Change the pin here only.
-export const TC_WEBSITE_REV = 'cdfdf9b7d534e7574beb3fcf44678973cdc5f9d7'; // 2026-10-09
+// The pages that describe 4.0.0-rc.2 [decided 2026-10-16 — owner, #763; was rc.1, #519]. Change the pin here only.
+export const TC_WEBSITE_REV = 'dbb7cd03c657637ec97ee4c0f00ed7bae44698d9'; // 2026-10-16
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'public', 'help');
