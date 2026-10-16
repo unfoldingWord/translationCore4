@@ -31,6 +31,7 @@ import { BlockText, ExpandableNote, Quoted, glTitleFor } from './HelpsPanel.jsx'
 import { RAIL_FILTERS, RAIL_FILTER_ORDER, hasComment, isBookmarked, railCounts } from './checkFilters.js';
 import { t } from '../i18n';
 import { helpsDir, projectDir } from './scriptStyle.js';
+import { CompareCard, sourceCardStyle } from './CompareCard.jsx';
 import { Button, Callout, Drawer, Overline, ProgressBar } from '../ds/index.js';
 
 const TOOLS = Object.keys(TOOL_SLOT);
@@ -395,7 +396,6 @@ const triageStyle = (active, tone) => ({
   borderRadius: 'var(--radius-md)',
 });
 
-const paneLabelRow = { padding: '16px 20px', borderBottom: 'var(--stroke-hair) solid var(--border-hair)' };
 const paneAbsent = (text) => (
   <p style={{ fontSize: 'var(--fs-ui-md)', color: 'var(--text-tertiary)', fontStyle: 'italic', margin: '8px 0 0' }}>{text}</p>
 );
@@ -410,7 +410,7 @@ function OrigPane({ orig, c, v }) {
     const text = verseText(orig.chapters?.[String(c)]?.[String(v)]);
     body = text ? (
       <p dir={ot ? 'rtl' : 'ltr'} lang={ot ? 'hbo' : 'el'}
-        style={{ textAlign: 'start', fontFamily: ot ? 'var(--font-hebrew)' : 'var(--font-greek)', fontSize: 'var(--fs-verse)', lineHeight: 'var(--lh-verse-md)', color: 'var(--text-scripture)', margin: '8px 0 0' }}>
+        style={{ textAlign: 'start', fontFamily: ot ? 'var(--font-hebrew)' : 'var(--font-greek)', fontSize: 'var(--fs-verse)', lineHeight: 'var(--lh-verse-md)', color: 'var(--text-scripture)', margin: '8px 0 0', maxWidth: '80ch' }}>
         {text}
       </p>
     ) : paneAbsent(t('check.paneAbsent'));
@@ -423,7 +423,7 @@ function OrigPane({ orig, c, v }) {
     body = paneAbsent(t('check.origUnavailable'));
   }
   return (
-    <div data-testid="orig-pane" style={paneLabelRow}>
+    <div data-testid="orig-pane" style={sourceCardStyle}>
       <Overline tone="muted">{t(`check.origLabel.${orig.testament}`)}</Overline>
       {body}
     </div>
@@ -475,7 +475,7 @@ function UltPane({ sources, sourcePanes, item, c, v, crossFrame }) {
     // Token stream rendered the SourceVerse way: raw text nodes with <mark>
     // on the quote's hits, so the USFM's own spacing survives.
     body = (
-      <p data-testid="ult-pane-text" dir="auto" style={{ textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse)', lineHeight: 'var(--lh-verse-md)', color: 'var(--text-scripture)', margin: '8px 0 0' }}>
+      <p data-testid="ult-pane-text" dir="auto" style={{ textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse)', lineHeight: 'var(--lh-verse-md)', color: 'var(--text-scripture)', margin: '8px 0 0', maxWidth: '80ch' }}>
         {tokens.map((tok, i) =>
           hits.has(i) ? (
             <mark key={i} data-testid="ult-hl" style={{ background: 'var(--tc-highlight-soft)', color: 'var(--text-heading)', borderRadius: 'var(--radius-xs)', padding: '0 .06em' }}>
@@ -492,7 +492,7 @@ function UltPane({ sources, sourcePanes, item, c, v, crossFrame }) {
     body = absent == null ? null : paneAbsent(absent);
   }
   return (
-    <div data-testid="ult-pane" style={{ ...paneLabelRow, background: 'var(--surface-app)' }}>
+    <div data-testid="ult-pane" style={sourceCardStyle}>
       <Overline tone="muted">
         {paneId && paneId !== 'ult' ? t('check.gatewayLabel', { name: paneId.toUpperCase() }) : t('check.ultLabel')}
       </Overline>
@@ -511,10 +511,10 @@ function StoryPane({ item, sourceStory }) {
   const tokens = React.useMemo(() => (text ? tokenizePlain(text) : []), [text]);
   const hits = React.useMemo(() => matchPlainQuote(tokens, item.contextId.quoteString ?? ''), [tokens, item]);
   return (
-    <div data-testid="story-pane" style={{ ...paneLabelRow, background: 'var(--surface-app)' }}>
+    <div data-testid="story-pane" style={sourceCardStyle}>
       <Overline tone="muted">{t('check.gatewayStoryLabel')}</Overline>
       {tokens.length ? (
-        <p data-testid="story-pane-text" dir="auto" style={{ textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse)', lineHeight: 'var(--lh-verse-md)', color: 'var(--text-scripture)', whiteSpace: 'pre-wrap', margin: '8px 0 0' }}>
+        <p data-testid="story-pane-text" dir="auto" style={{ textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse)', lineHeight: 'var(--lh-verse-md)', color: 'var(--text-scripture)', whiteSpace: 'pre-wrap', margin: '8px 0 0', maxWidth: '80ch' }}>
           {tokens.map((tok, i) =>
             hits.has(i) ? (
               <mark key={i} data-testid="story-hl" style={{ background: 'var(--tc-highlight-soft)', color: 'var(--text-heading)', borderRadius: 'var(--radius-xs)', padding: '0 .06em' }}>
@@ -640,7 +640,7 @@ export function TargetWords({ words, sel, setSelection, toggleWord, direction })
     // #737: the text stays selectable for copying from beside the words; its
     // highlight is the system's (base.css, data-words), not the word yellow.
     <p data-testid="check-target" data-words="target" data-drafted="1" role="group" aria-label={t('check.targetWordsLabel')} onKeyDown={onKeyDown} onBlur={onBlur}
-      style={{ direction, textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-title-lg)', lineHeight: 1.9, color: 'var(--text-scripture)', margin: '8px 0 0' }}>
+      style={{ direction, textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-title-lg)', lineHeight: 1.9, color: 'var(--text-scripture)', margin: '8px 0 0', maxWidth: '80ch' }}>
       {words.map((w, i) => (
         <span key={i} ref={(el) => { refs.current[i] = el; }} data-testid={`tw-${i}`} data-selected={sel.has(i) ? '1' : '0'}
           role="button" aria-pressed={sel.has(i)} tabIndex={i === at ? 0 : -1}
@@ -678,7 +678,7 @@ function CheckDetail({ cs, item, title, sources, sourcePanes, sourceStory, words
   const canNext = idx < cs.items.length - 1;
 
   return (
-    <div style={{ maxWidth: 760, margin: '0 auto', padding: '28px 32px 60px' }}>
+    <div style={{ padding: '28px 32px 60px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
         <span style={{ fontSize: 'var(--fs-ui-sm)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)' }}>
           {unitLabelFor(cs.book, c)} {t('check.ref', { c, v })}
@@ -694,9 +694,9 @@ function CheckDetail({ cs, item, title, sources, sourcePanes, sourceStory, words
       </h1>
 
       {item.contextId.occurrenceNote && (
-        <div data-testid="check-note" style={{ maxWidth: '62ch', marginBottom: 8, borderRadius: 'var(--radius-lg)', padding: '16px 18px', background: 'var(--surface-warm)', border: 'var(--stroke) solid var(--tc-warn-border)' }}>
+        <div data-testid="check-note" style={{ fontSize: 'var(--fs-title-sm)', maxWidth: 'calc(80ch + 36px)', marginBottom: 8, borderRadius: 'var(--radius-lg)', padding: '16px 18px', background: 'var(--surface-warm)', border: 'var(--stroke) solid var(--tc-warn-border)' }}>
           <Overline style={{ color: 'var(--tc-warn-text-2)' }}>{t('check.whatToCheck')}</Overline>
-          <div dir={helpDir} data-testid="check-note-text" style={{ fontSize: 'var(--fs-title-sm)', letterSpacing: 'var(--track-16)', lineHeight: 'var(--lh-body)', fontWeight: 'var(--fw-medium)', color: 'var(--uw-ink)', margin: '7px 0 0' }}>
+          <div dir={helpDir} data-testid="check-note-text" style={{ fontSize: 'var(--fs-title-sm)', letterSpacing: 'var(--track-16)', lineHeight: 'var(--lh-body)', fontWeight: 'var(--fw-medium)', color: 'var(--uw-ink)', margin: '7px 0 0', maxWidth: '80ch' }}>
             {/* Keyed by item: the expanded/collapsed state must not leak from
               * one check to the next. */}
             <ExpandableNote key={idx} text={item.contextId.occurrenceNote} />
@@ -710,14 +710,14 @@ function CheckDetail({ cs, item, title, sources, sourcePanes, sourceStory, words
 
       <CheckSessionNotices cs={cs} />
 
-      {/* The compare card: original → gateway → your translation, one stacked
-        * card (mockup L1152–1187). */}
-      <div style={{ background: 'var(--surface-card)', border: 'var(--stroke) solid var(--border)', borderRadius: 'var(--radius-xl)', overflow: 'hidden', boxShadow: 'var(--shadow-card)' }}>
-        <SourcePanes cs={cs} item={item} sources={sources} sourcePanes={sourcePanes} sourceStory={sourceStory} c={c} v={v} />
-        <div style={{ padding: '16px 20px' }}>
+      {/* #762: the compare card — the source texts side by side when they fit,
+        * then "Your translation" in a card of its own. */}
+      <CompareCard
+        sources={<SourcePanes cs={cs} item={item} sources={sources} sourcePanes={sourcePanes} sourceStory={sourceStory} c={c} v={v} />}
+        translation={<>
           <Overline tone="accent">{t('check.yourTranslation')}</Overline>
           {words.length === 0 ? (
-            <p data-testid="check-target" data-drafted="0" style={{ fontSize: 'var(--fs-ui-md)', color: 'var(--text-tertiary)', fontStyle: 'italic', margin: '8px 0 0' }}>
+            <p data-testid="check-target" data-drafted="0" style={{ fontSize: 'var(--fs-ui-md)', color: 'var(--text-tertiary)', fontStyle: 'italic', margin: '8px 0 0', maxWidth: '80ch' }}>
               {t(isStorySession(cs.book) ? 'check.notDraftedFrame' : 'check.notDrafted')}
             </p>
           ) : (
@@ -726,8 +726,7 @@ function CheckDetail({ cs, item, title, sources, sourcePanes, sourceStory, words
               <p style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', color: 'var(--text-tertiary)', margin: '8px 0 0' }}>{t('check.selectHint')}</p>
             </>
           )}
-        </div>
-      </div>
+        </>} />
 
       {/* #726: mark, then move on — Previous / Next sit in the marking row. */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 22, flexWrap: 'wrap' }}>

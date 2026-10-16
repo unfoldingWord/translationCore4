@@ -11,6 +11,8 @@ import { articleMarks } from './helpers/articleMarks';
 import { gateOff, turnOnInternet } from './helpers/door43Share';
 import { cachedZip, mockDoor43Package, type CachedRepo } from './helpers/door43Package';
 import { recordExternal } from './helpers/externalRequests';
+import { LOCALES } from '../src/i18n/locales.js';
+import { checkLayout, expectCheckLayout, type CheckLayout } from './helpers/checkLayout';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -862,6 +864,77 @@ test.describe('J4 — a checker works a book', () => {
   );
 });
 
+// ---- #762: the Check view's widths ----
+// Widest first: each step is a live resize of one page, with no reload.
+const WIDTHS_762 = [1920, 1600, 1280, 900];
+/** The tN check (SupportReference set) with the longest note in the fixture's Titus. */
+function longestNoteId(): string {
+  const rows = sideloadedIngredient('en_tn', 'TIT.tsv').split('\n').slice(1)
+    .map((r) => r.split('\t')).filter((c) => (c[3] ?? '') !== '');
+  return rows.reduce((a, b) => ((b[6] ?? '').length > (a[6] ?? '').length ? b : a))[1];
+}
+async function openLongestNote(page: import('@playwright/test').Page) {
+  writeProjectPins(SEEDED_PROJECT, PINS());
+  await openCheck(page);
+  await page.getByTestId('open-translationNotes').click();
+  await page.getByTestId('check-list').locator(`[data-check-id="${longestNoteId()}"]`).click();
+  await expect(page.getByTestId('note-expand')).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByTestId('orig-pane').locator('p')).toBeVisible();
+  await expect(page.getByTestId('ult-pane-text')).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
+}
+
+test.describe('#762 — the Check view uses the window width and keeps lines readable', () => {
+  test('the longest note, at 1920, 1600, 1280 and 900px: 80ch text, one leading edge, the scripture texts side by side when they fit, and the buttons on screen @J4', async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: WIDTHS_762[0], height: 800 });
+    await openLongestNote(page);
+    const seen: Record<number, CheckLayout> = {};
+    for (const width of WIDTHS_762) {
+      await page.setViewportSize({ width, height: 800 });
+      await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(width);
+      seen[width] = await checkLayout(page);
+      const picture = testInfo.outputPath(`check-${width}.png`);
+      await page.screenshot({ path: picture });
+      await testInfo.attach(`check-${width}`, { path: picture, contentType: 'image/png' });
+    }
+    const file = testInfo.outputPath('check-layout.json');
+    fs.writeFileSync(file, `${JSON.stringify(seen, null, 2)}\n`);
+    await testInfo.attach('check-layout', { path: file, contentType: 'application/json' });
+    for (const width of WIDTHS_762) expectCheckLayout(seen[width], `${width}px`);
+    expect(seen[1920].card.width, 'the check column is wider than the old 760px cap').toBeGreaterThan(760);
+    expect(seen[900].horizontalScroll, 'no horizontal scroll bar at 900px').toBe(false);
+    // The resize from 1920 to 900 reflowed the two texts: side by side, then stacked.
+    expect(seen[1920].cards[0].top).toBe(seen[1920].cards[1].top);
+    expect(seen[900].cards[1].top).toBeGreaterThan(seen[900].cards[0].top);
+    // The buttons stay on screen without scrolling at 1280×800 and wider.
+    for (const width of [1920, 1600, 1280]) {
+      await page.setViewportSize({ width, height: 800 });
+      for (const id of ['mark-valid', 'mark-invalid', 'mark-todo']) {
+        await expect(page.getByTestId(id), `${id} at ${width}px`).toBeInViewport({ ratio: 1 });
+      }
+    }
+  });
+
+  test('a right-to-left interface: the leading edge is the right edge and the first scripture text is at the right @J4', async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await openLongestNote(page);
+    // The App language dialog previews Arabic at once; Cancel restores English.
+    await page.getByTestId('account-menu').click();
+    await page.getByTestId('account-language').click();
+    await page.getByTestId('language-select').click();
+    await page.getByRole('option', { name: LOCALES.find((l) => l.id === 'ar')!.label, exact: true }).click();
+    await expect.poll(() => page.evaluate(() => document.documentElement.dir)).toBe('rtl');
+    const seen = await checkLayout(page);
+    const picture = testInfo.outputPath('check-rtl-1280.png');
+    await page.screenshot({ path: picture });
+    await testInfo.attach('check-rtl-1280', { path: picture, contentType: 'image/png' });
+    await page.getByTestId('language-cancel').click();
+    expectCheckLayout(seen, 'rtl 1280px');
+    expect(seen.cards[0].top).toBe(seen.cards[1].top);
+    expect(seen.cards[0].left, 'the first text is at the right').toBeGreaterThan(seen.cards[1].left);
+  });
+});
+
 // Issue #62 teardown: after this journey's mutations, every journaled local
 // project must be a verified byte-for-byte materialization of its journal.
 test.afterAll(async () => {
@@ -1021,6 +1094,9 @@ test.describe.serial('J4 — the Arabic package, in an Arabic right-to-left proj
     await page.getByRole('tab', { name: 'Check', exact: true }).click();
     await page.getByTestId('open-translationNotes').click();
     seen.checkNote = await directionOf(page.getByTestId('check-note-text'));
+    // #762: an Arabic note obeys the same width rules.
+    await page.evaluate(() => document.fonts.ready);
+    expectCheckLayout(await checkLayout(page), 'Arabic note');
     // #704 AC2: the Check view's gateway row shows the same Bible.
     await expect(page.getByTestId('ult-pane-text')).toBeVisible({ timeout: 30_000 });
     seen.checkGatewayRow = nfc(await page.getByTestId('ult-pane-text').textContent());
