@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Compare card harness (#762)</title>
+</head>
+<body>
+  <!-- #762: vite serves this page in dev only (the build has index.html as its one entry).
+       e2e/compare-card.spec.ts renders the real CompareCard with ?n= source texts. -->
+  <div id="root"></div>
+  <script type="module" src="./compare-card.jsx"></script>
+</body>
+</html>
