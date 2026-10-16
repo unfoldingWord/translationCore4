@@ -567,6 +567,8 @@ version must mark the rewrite boundary. One pre-release per milestone close; the
 carry the journey shipped and the pasted test evidence. Published 2026-08-10:
 `v4.0.0-alpha.1` (`e4ada8b`, first public build) and `v4.0.0-alpha.2` (`3758a95`,
 Increment-2 close). `package.json` tracks the current pre-release.
+[amended 2026-10-15 — D103: the next release is named Public Beta and uses
+`4.0.0-rc.2`, preserving version order after the published rc.1.]
 
 ## D47 (2026-08-12, project-owner ruling) **The post-release format-change contract, and
 data-first sequencing to 4.0.0.** (a) After 4.0.0 ships, no change to the at-rest project
@@ -2178,7 +2180,8 @@ kept most of the product work and ruled on the order, the gates and the cut rule
    [amended 2026-10-15 — D102 supersedes the release path and dates above. v4.0.0 also
    holds epics #24 and #658. There is no rc.2 or rc.3, and no RC artifact is promoted.
    After the re-cut, v4.0.0 tags on `release/4.0` from a signed build. The ship date is
-   the day the gates are green.]
+   the day the gates are green.] [amended 2026-10-15 — D103 adds the public beta
+   before stable; D102's scope and re-cut still apply.]
 2. **What can enter.** Each defect that end-user QA finds is in scope until rc.2. After rc.2,
    only a release blocker can enter: data loss, a project that cannot open, or an install that
    fails. Other defects go to 4.0.1 or 4.1.0.
@@ -2728,7 +2731,8 @@ Electronite graphics DLLs by hand removed the failure on that machine.
 6. **Release path.** rc.2 ships Windows unsigned. A signed rc.3 follows, and v4.0.0
    promotes the rc.3 artifacts. [decided 2026-10-13 — owner, on #456; rc.2 tags when the
    Arabic work is ready] [amended 2026-10-15 — D102: no rc.2 and no rc.3; v4.0.0 tags on
-   `release/4.0` from a signed build]
+   `release/4.0` from a signed build] [amended 2026-10-15 — D103 publishes rc.2 as
+   Public Beta before stable; the signing requirement still applies]
 
 7. **Credential.** CI signs in to Azure with GitHub OIDC: an Entra app registration with
    the Signer role on `uw-public-prod`, and one federated credential for the GitHub
@@ -2841,9 +2845,37 @@ so the first release can still hold these features.
    `release/4.0` from a signed manual build (#456, closed 2026-10-15). After the re-cut, only
    cherry-picked fixes enter. The date of 2026-10-16 moves to the day the gates are green
    (D89 point 1).
+   [superseded 2026-10-15 — D103: after the re-cut, rc.2 is the public beta; stable
+   follows the beta and release-gate review. The scope, branch and signing rules remain.]
 4. **4.1.0.** The milestone keeps its other items (#364, #365, #55, #139 and the Aquifer
    epic #711). Team sync and Arabic leave it.
 
 Where it lands: `docs/ROADMAP.md`, `docs/PACKAGING.md` ("Release branches"),
 `docs/JOURNEYS.md` (J11 owner row), `docs/plans/TEAM-SYNC-PLAN.md` (Round 1),
 `docs/VISION.md`, and the milestones of #24, #658, #723, #725, #730, #724 and #710.
+
+## D103 (2026-10-15, project-owner ruling) **Publish 4.0.0-rc.2 as translationCore 4 — Public Beta. Keep increasing SemVer pre-release versions before stable 4.0.0. Amends D46 and D102 point 3.** [owner approval in this session, 2026-10-15: "Ok Let's go with that. make the changes and create a PR."]
+
+Context. The latest published release is `v4.0.0-rc.1`. Calling the next version
+`4.0.0-beta.N` would place it below rc.1 in SemVer ordering. Public Beta is the
+public release name; `4.0.0-rc.2` is the machine version and `v4.0.0-rc.2` is the tag.
+[VERIFIED — GitHub release list, package.json at main d310bf3, and
+[SemVer 2.0.0](https://semver.org/), 2026-10-15]
+
+1. **Name and distribution.** The GitHub release title is **translationCore 4 — Public
+   Beta**. Mark it as a pre-release, with download label **Download the public beta**.
+   Link to that release explicitly. Further beta fixes increase `rc.N`; stable uses
+   `4.0.0`. The public name does not change package names or the About version.
+2. **Release path.** The public beta replaces the direct-to-stable step of D102 point 3.
+   D102's scope and one-time re-cut after epics #24 and #658 close still apply, as do
+   the signing requirements, release gates and fixes-only rule after the re-cut.
+   Stable has no fixed date. Review beta feedback, resolve release blockers and prove
+   the gates on the final build before publishing stable.
+3. **Expectations.** Invite broader testing before production readiness. The release
+   notes state supported workflows and known limitations, with evidence from the
+   actual release build. A beta uses the normal project store, not a separate store
+   or a rollback mechanism. D47's stable-release format contract is unchanged.
+
+Where it lands: package.json and package-lock.json, README.md, docs/ROADMAP.md,
+docs/PACKAGING.md, and docs/releases/4.0.0-rc.2.md. Preparing this metadata does not
+publish a tag, release or installer.

@@ -9,9 +9,14 @@ checking decisions together. The application does not export or import between s
 
 ## Status
 
-**Version 4.0.0-alpha.2 (pre-release).** In development toward the **v4.0.0 pilot
-release, October 16, 2026** — the plan is `docs/ROADMAP.md`; pre-releases are on the
-[releases page](https://github.com/unfoldingWord/translationCore4/releases).
+**Public beta in preparation — version 4.0.0-rc.2.** The next published release is
+**translationCore 4 — Public Beta**. The public name is Public Beta; the version and
+tag keep the increasing SemVer sequence after `4.0.0-rc.1`.
+
+The beta invites broader testing before stable 4.0.0. The release date depends on
+the release gates and beta feedback, with no fixed stable-release date. Read the
+[roadmap](docs/ROADMAP.md) and the [public beta release checklist](docs/releases/4.0.0-rc.2.md).
+Published builds are on the [releases page](https://github.com/unfoldingWord/translationCore4/releases).
 
 Do not use tC4 for production translation work.
 
@@ -20,8 +25,8 @@ Do not use tC4 for production translation work.
 | Draft | Built. Create a project, add books, edit verses. |
 | Check | Built. Check a book against the translation helps; edit and re-review. |
 | Align | Built. Align a verse; carry alignments over an edit. |
-| Publish | Not built. |
-| Sync with Door43 | Resource download at pinned versions is built. Push is not built. |
+| Publish | Built. Export USFM, PDF and Scripture Burrito. |
+| Sync with Door43 | Resource download and first share are built. Team sync round 1 is in the release scope (epic #24). |
 
 ## What the application will do
 

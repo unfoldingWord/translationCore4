@@ -1052,6 +1052,23 @@ Measured locally on 2026-09-12 (macOS arm64, Node 22); the desktop artifact grow
 
 ## Release branches
 
+### Public beta metadata (D103, 2026-10-15)
+
+The next public release uses version `4.0.0-rc.2`, tag `v4.0.0-rc.2`, and title
+**translationCore 4 — Public Beta**. Mark it as a GitHub pre-release. Use
+**Download the public beta** for the download label and link to the explicit beta
+release, because GitHub's Latest release excludes pre-releases. Keep package
+names and About version values at `4.0.0-rc.2`; do not put spaces or the public
+title into the machine version. Further beta fixes increase `rc.N`; stable is
+`4.0.0`. See the [release checklist](releases/4.0.0-rc.2.md).
+
+The beta uses the production build variant and its normal project store. It is
+not a separate installation or a rollback mechanism. Existing signing, smoke-test,
+clean-machine and offline-run requirements still apply. The public beta comes
+after the one-time re-cut below; D103 replaces D102's direct-to-stable release path.
+
+### Branch rules
+
 [decided 2026-10-13 — owner]
 
 - Each minor release has one release branch, named `release/<major>.<minor>`. The first is
