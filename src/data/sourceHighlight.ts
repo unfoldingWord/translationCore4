@@ -123,8 +123,11 @@ const normalizeWord = (w: string): string =>
     // does (e.g. "Θεοῦ," in en_tn TIT 1:1) — edges only, the word is kept.
     .replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
 
+// A Hebrew maqaf (U+05BE) joins two words that the zaln names separately
+// (#765). Split here, not in tnQuoteWords: the saved quote keeps its shape.
 export const quoteToWords = (quote: Array<{ word: string }> | string): string[] =>
   (Array.isArray(quote) ? quote.map((q) => q.word) : String(quote).split(/\s+/))
+    .flatMap((w) => w.split('־'))
     .filter((w) => w !== '' && w !== '&' && w !== '…')
     .map(normalizeWord)
     .filter((w) => w !== '');
