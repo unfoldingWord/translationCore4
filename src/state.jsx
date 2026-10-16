@@ -3013,13 +3013,15 @@ export const __seedInitialUsfmForTests = (...args) => seedInitialUsfm(...args);
  * Bible's installed suite), so no project opens unpinned. A USFM import, a
  * burrito import with no pin file, or a Door43 repository with none ends here
  * (an import commits the EMPTY document, #485). A project that holds pins keeps
- * them. The write expects the md5 just read, so a racing writer wins; a failed
- * write leaves the document as read. Answers the pins the open goes on with. */
-async function pinCreationChoice(store, actions, pins, md5, stillCurrent) {
-  if (pins?.languageSets || pins?.resources || pins?.extraScripture || !stillCurrent()) return pins;
+ * them. The write expects the md5 of a fresh read, so a racing writer wins; a
+ * failed write leaves the document as read. Answers the pins the open goes on with. */
+const holdsPin = (pins) => Boolean(pins?.languageSets || pins?.resources || pins?.extraScripture);
+async function pinCreationChoice(store, actions, pins, stillCurrent) {
+  if (holdsPin(pins) || !stillCurrent()) return pins;
   try {
     const choice = await actions.importBasePins();
-    if (!stillCurrent()) return pins;
+    const { value, md5 } = await store.readResourcesWithMd5();
+    if (holdsPin(value) || !stillCurrent()) return value;
     await store.writeResources(choice, md5);
     return await store.readResources();
   } catch (error) {
@@ -3038,7 +3040,7 @@ function loadProjectPins({ store, repoPath, storeRef, stateRef, actions, dispatc
   const seq = stateRef.current.projectPinsSeq;
   const stillCurrent = () =>
     storeRef.current === store && stateRef.current.project?.repoPath === repoPath && stateRef.current.projectPinsSeq === seq;
-  const read = store.readResourcesWithMd5().then(({ value, md5 }) => pinCreationChoice(store, actions, value, md5, stillCurrent));
+  const read = store.readResources().then((pins) => pinCreationChoice(store, actions, pins, stillCurrent));
   const settled = read
     .then(async (pins) => {
       if (!stillCurrent()) return;
