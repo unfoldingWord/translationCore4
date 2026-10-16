@@ -6,7 +6,7 @@
 import { zipSync } from 'fflate';
 import { JournalingStore } from '../journal/journalingStore';
 import { Refusal, failedReport, okReport, storyIpath, type Report } from '../journal/runtime';
-import type { OpsHandle, OpsRecorder } from '../journal/opsLog';
+import { recoverySettled, type OpsHandle, type OpsRecorder } from '../journal/opsLog';
 import { unwrapExport } from '../resourceFetch';
 import { ServerApi } from '../serverApi';
 import type { ImportBundle, ImportFile, ImportParser } from './types';
@@ -172,6 +172,8 @@ async function importRecorded(
     if (!abbr) throw new Error('the project needs a name');
     const repoPath = importRepoPath(name, language);
     facts.repoPath = repoPath;
+    // #676: a create never races the start recovery (as the store's creates)
+    await recoverySettled();
     // Never create over an existing path (PLATFORM-NOTES #28): the create route
     // git-inits before it validates, so the rollback below may delete only a
     // path this listing proved absent.

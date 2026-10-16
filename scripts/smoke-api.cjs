@@ -91,7 +91,9 @@ async function bundledPath(repoPath) {
   if (!identities.length) {
     const segment = repoPath.replace('git.door43.org/', '').replace('/', '--').toLowerCase();
     const source = fs.readdirSync(path.join(__dirname, 'resources')).find((name) => name === segment || name === `${segment}--${pin.sha.slice(0, 12)}`);
-    const receipt = fs.readFileSync(path.join(__dirname, 'resources', source || '', '.tc4-bundled-identity.json'));
+    const receipt = fs.readFileSync(pin.archive && localStore
+      ? path.join(localStore, local, '.tc4-bundled-identity.json')
+      : path.join(__dirname, 'resources', source || '', '.tc4-bundled-identity.json'));
     const hash = (bytes) => require('node:crypto').createHash('sha256').update(bytes).digest('hex');
     if (!pin.archive_receipt_sha256 || hash(receipt) !== pin.archive_receipt_sha256 || !localStore) throw new Error("unverified archive identity: " + local);
     for (const [file, expected] of Object.entries(JSON.parse(receipt).files)) {

@@ -7,6 +7,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useApp, door43 } from '../state.jsx';
 import { APP_COMMIT, APP_VERSION, COPYRIGHT_LINE, GPL_TEXT, LICENSE_TEXT } from '../data/about';
+import { readHelpPage } from '../data/helpPages';
 import { LOCALES, t } from '../i18n';
 import { Layer } from '../ds/components/primitives/Layer.jsx';
 import { Surface } from '../ds/components/primitives/Surface.jsx';
@@ -63,7 +64,7 @@ function Trigger({ state, user, label, online, open, onClick }) {
         boxShadow: open ? '0 0 0 3px rgba(49,173,227,.45)' : 'none' }}>
         {user ? user.slice(0, 2).toUpperCase() : <Person />}
       </button>
-      {online && <span data-testid="internet-indicator" aria-hidden="true" style={{ position: 'absolute', right: -2, top: -2, width: 11, height: 11,
+      {online && <span data-testid="internet-indicator" aria-hidden="true" style={{ position: 'absolute', insetInlineEnd: -2, top: -2, width: 11, height: 11,
         borderRadius: 'var(--radius-pill)', background: 'var(--uw-inspire)', border: '2px solid #fff', boxSizing: 'border-box', pointerEvents: 'none' }} />}
     </>
   );
@@ -178,6 +179,53 @@ export default function AccountMenu() {
   );
 }
 
+/** #729: a new document in the frame paints blank before its first paint, so loading
+ * each topic as a page made the whole panel blink white. Every help page has the same
+ * head, so a move to another help page fetches it and swaps the body in place: nothing
+ * reloads. The navigation API sees every way a page moves (a link, a form, a script
+ * setting location), and keeps the frame's URL and history. */
+function swapPages(doc) {
+  const nav = doc.defaultView?.navigation;
+  // The frame's first document is about:blank, before the help home loads.
+  if (!nav || !/^https?:$/.test(doc.location.protocol)) return;
+  const base = new URL('.', doc.URL).href;
+  let load = null; // the page that failed to swap, loaded as a page
+  nav.addEventListener('navigate', (e) => {
+    const to = e.destination.url;
+    if (!e.canIntercept || e.hashChange || e.downloadRequest !== null || e.navigationType === 'reload' || !to.startsWith(base) || to === load) return;
+    e.intercept({
+      handler: async () => {
+        let next = null;
+        try {
+          next = await readHelpPage(to, e.signal);
+        } catch { /* cancelled, or no answer: both below */ }
+        // A second move cancelled this one, and the second one swaps.
+        if (e.signal.aborted) return;
+        if (!next) {
+          // No page to swap in: load it as before, so the frame shows what the server sends.
+          load = to;
+          doc.location.replace(to);
+          return;
+        }
+        doc.title = next.title;
+        const body = doc.adoptNode(next.body);
+        // A parsed script never runs; a new one does (in order: the search reads its index).
+        for (const old of body.querySelectorAll('script')) {
+          const script = doc.createElement('script');
+          for (const { name, value } of old.attributes) script.setAttribute(name, value);
+          script.async = false;
+          script.textContent = old.textContent;
+          old.replaceWith(script);
+        }
+        // The logo in the help bar is a new image too: shown before it decodes, it blinks.
+        await Promise.all([...body.querySelectorAll('img:not([loading="lazy"])')].map((img) => img.decode().catch(() => {})));
+        if (e.signal.aborted) return;
+        doc.body.replaceWith(body);
+      },
+    });
+  });
+}
+
 /** #519: the help pages of this build (`public/help/`, from the tc-website commit that
  * scripts/fetch-help.mjs pins), in a same-origin frame that fills the window. A new
  * window would open in the system browser and skip the internet switch, so the pages
@@ -197,6 +245,7 @@ function HelpPanel({ openLink, onClose }) {
       const doc = frame.current?.contentDocument;
       if (!doc || doc === seen) return;
       seen = doc;
+      swapPages(doc);
       const onLink = (e) => {
         const a = e.target.closest?.('a[href]');
         if (!a) return;

@@ -17,11 +17,22 @@
 //   f  (#632) Ctrl+click, Shift+click, Command+click and a middle-click on a link to another
 //      help page open no new window (the system browser in the desktop app); the frame shows
 //      the page, as after a plain click
+//   g  (#729) moving to another topic does not reload the frame's document, and no frame
+//      painted meanwhile is blank: each one shows the help bar and its logo, so nothing blinks
+//      white. The search page still lists its results, and of two quick clicks the second wins
+//   h  (#729) a read of the next page that a redirect sends to another origin or out of
+//      help/, or that is not HTML, is not swapped in and runs no script: the frame loads
+//      the page itself
+//   i  (#729 Interruptions) Escape while a page loads closes the panel, and the next open
+//      shows the help home; a page the server does not have shows the server's answer in
+//      the frame, and the panel stays open and closes as usual
 // The shared recorder (helpers/externalRequests.ts) writes each request log, and the
 // screenshots, into the test's output folder (and attaches them).
 import { test, expect } from './helpers/test';
 import fs from 'node:fs';
-import type { BrowserContext, Locator, Page, TestInfo } from '@playwright/test';
+import http from 'node:http';
+import type { AddressInfo } from 'node:net';
+import type { BrowserContext, Locator, Page, Route, TestInfo } from '@playwright/test';
 import { SEEDED_PROJECT, resetClientSettings, resetPlaces, resetSeededChecking } from './helpers/rig';
 import { gateOff, turnOnInternet } from './helpers/door43Share';
 import { CLIENT_HOST, recordExternal } from './helpers/externalRequests';
@@ -123,6 +134,8 @@ test.describe('#519 Help and guides', () => {
     await expect(frame(page).locator('a[href="al-link-words.html"]:visible').first()).toBeVisible();
     await frame(page).locator('a[href="al-link-words.html"]:visible').first().click();
     await expect.poll(() => page.frames().some((f) => f.url().endsWith('/help/al-link-words.html'))).toBe(true);
+    // #729: the frame's URL moves first, then the page is swapped in.
+    await expect(frame(page).getByRole('heading', { level: 1 })).toHaveText('Link your words to the source');
     // The logo, and the page's first screenshot (the pages load their images lazily).
     for (const img of [frame(page).locator('img.brand-logo'), frame(page).locator('img[src^="img/"]').first()]) {
       await img.scrollIntoViewIfNeeded();
@@ -231,5 +244,171 @@ test.describe('#519 Help and guides', () => {
     }
     expect(rows.map((r) => r.gesture)).toEqual(['ctrl', 'shift', 'command', 'middle']);
     expect(rows.filter((r) => r.popups > 0)).toEqual([]);
+  });
+
+  test('g. moving to another topic reloads nothing and paints no blank frame: every frame shows the help bar', TAG, async ({ page }, testInfo) => {
+    await page.goto('/');
+    await openHelp(page);
+    // A mark on the frame's window: a reload would make a new window without it.
+    const helpFrame = () => page.frames().find((f) => f.url().includes('/help/'))!;
+    await helpFrame().evaluate(() => { (window as unknown as { tc4Mark: number }).tc4Mark = 729; });
+    const sameDocument = () => helpFrame().evaluate(() => (window as unknown as { tc4Mark?: number }).tc4Mark === 729);
+    // Two rows of pixels: one just inside the help bar's top edge, above the search field,
+    // and one across the middle of the logo in the bar.
+    const box = (await page.getByTestId('help-frame').boundingBox())!;
+    const logo = (await frame(page).locator('img.brand-logo').boundingBox())!;
+    const segments = [
+      { x0: box.x, x1: box.x + box.width, y: box.y + 4 },
+      { x0: logo.x, x1: logo.x + logo.width, y: logo.y + logo.height / 2 },
+    ];
+    const viewport = page.viewportSize()!;
+    // Every frame Chromium paints, by the DevTools screencast.
+    const cdp = await page.context().newCDPSession(page);
+    let frames: string[] = [];
+    cdp.on('Page.screencastFrame', ({ data, sessionId }) => {
+      frames.push(data);
+      void cdp.send('Page.screencastFrameAck', { sessionId }).catch(() => {});
+    });
+    // A blank page to read the frames in: the canvas gives their pixels.
+    const scorer = await page.context().newPage();
+    const barRow = (png: string, { x0, x1, y }: (typeof segments)[number]) => scorer.evaluate(async ({ png, x0, x1, y, w, h }) => {
+      const img = new Image();
+      img.src = `data:image/png;base64,${png}`;
+      await img.decode();
+      const c = document.createElement('canvas');
+      c.width = img.width;
+      c.height = img.height;
+      const ctx = c.getContext('2d')!;
+      ctx.drawImage(img, 0, 0);
+      const sx = img.width / w;
+      return Array.from(ctx.getImageData(Math.round(x0 * sx), Math.round(y * (img.height / h)), Math.round((x1 - x0) * sx), 1).data);
+    }, { png, x0, x1, y, w: viewport.width, h: viewport.height });
+    // The share of a row that still matches the same row before the click.
+    const share = (row: number[], bar: number[]) => {
+      let same = 0;
+      for (let i = 0; i < bar.length; i += 4) {
+        if ([0, 1, 2].every((k) => Math.abs(row[i + k] - bar[i + k]) < 24)) same += 1;
+      }
+      return same / (bar.length / 4);
+    };
+
+    const rows: { topic: string; frames: number; blank: number; bar: number[]; logo: number[] }[] = [];
+    try {
+      const topics = ['section-bible-projects.html', 'bp-new-bible.html', 'bp-open-book.html', 'bp-import.html', 'bp-export-pdf.html'];
+      for (const [step, href] of topics.entries()) {
+        const link = frame(page).locator(`nav a[href="${href}"]:visible`);
+        const h1Before = (await frame(page).getByRole('heading', { level: 1 }).textContent())!;
+        frames = [];
+        await cdp.send('Page.startScreencast', { format: 'png' });
+        await page.waitForTimeout(300);
+        await link.click();
+        await expect.poll(() => page.frames().some((f) => f.url().endsWith(`/help/${href}`))).toBe(true);
+        await expect(frame(page).getByRole('heading', { level: 1 })).not.toHaveText(h1Before);
+        await page.waitForTimeout(700);
+        expect(await sameDocument(), `${href} reloaded the frame`).toBe(true);
+        await cdp.send('Page.stopScreencast');
+        const [bar, mark] = await Promise.all(segments.map(async (segment) => {
+          const rowsOf = await Promise.all(frames.map((png) => barRow(png, segment)));
+          return rowsOf.map((row) => share(row, rowsOf[0]));
+        }));
+        const blank = bar.filter((s, i) => s < 0.9 || mark[i] < 0.9).length;
+        const round = (list: number[]) => list.map((s) => Number(s.toFixed(2)));
+        rows.push({ topic: href, frames: frames.length, blank, bar: round(bar), logo: round(mark) });
+        // The frames of one switch, for the record.
+        if (step === 1) {
+          frames.forEach((data, i) => fs.writeFileSync(testInfo.outputPath(`switch-${String(i).padStart(2, '0')}.png`), Buffer.from(data, 'base64')));
+        }
+      }
+    } finally {
+      const out = testInfo.outputPath('switches.json');
+      fs.writeFileSync(out, `${JSON.stringify(rows, null, 2)}\n`);
+      await testInfo.attach('switches', { path: out, contentType: 'application/json' });
+      await scorer.close();
+    }
+    expect(rows).toHaveLength(5);
+    expect(rows.every((row) => row.frames > 0)).toBe(true);
+    expect(rows.filter((row) => row.blank > 0)).toEqual([]);
+
+    // A second topic while the first still loads (held back half a second): the second wins.
+    await page.route('**/help/bp-add-book.html', async (route) => {
+      await new Promise((done) => setTimeout(done, 500));
+      await route.continue().catch(() => {});
+    });
+    await frame(page).locator('nav a[href="bp-add-book.html"]:visible').click({ noWaitAfter: true });
+    await frame(page).locator('nav a[href="bp-import.html"]:visible').click();
+    await expect(frame(page).getByRole('heading', { level: 1 })).toHaveText(/^Import a project/);
+    await page.waitForTimeout(700);
+    expect(helpFrame().url()).toMatch(/\/help\/bp-import\.html$/);
+    await expect(frame(page).getByRole('heading', { level: 1 })).toHaveText(/^Import a project/);
+    expect(await sameDocument()).toBe(true);
+
+    // The search page builds its list from its own URL when its script runs.
+    await frame(page).locator('#q').fill('offline');
+    await frame(page).locator('#q').press('Enter');
+    await expect.poll(() => helpFrame().url()).toContain('/help/search.html?q=offline');
+    await expect(frame(page).locator('#search-page-results li').first()).toBeVisible();
+    expect(await sameDocument()).toBe(true);
+  });
+
+  test('h. a help page read that ends outside help/ or is not HTML is not swapped in; the frame loads the page itself', TAG, async ({ page }) => {
+    const topic = 'section-bible-projects.html';
+    const injected = '<!doctype html><title>Injected</title><h1>Injected</h1><script>parent.tc4Injected = 1;</script>';
+    // Another origin that any page may read (CORS open), with a script in its page.
+    const other = http.createServer((_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/html', 'access-control-allow-origin': '*' });
+      res.end(injected);
+    });
+    await new Promise<void>((done) => other.listen(0, '127.0.0.1', done));
+    const otherUrl = `http://127.0.0.1:${(other.address() as AddressInfo).port}/help/${topic}`;
+    const cases: { name: string; answer: (route: Route) => Promise<void> }[] = [
+      { name: 'redirect to another origin', answer: (route) => route.fulfill({ status: 302, headers: { location: otherUrl } }) },
+      // The client's own app page: same origin, out of help/.
+      { name: 'redirect out of help/', answer: (route) => route.fulfill({ status: 302, headers: { location: '/' } }) },
+      { name: 'not HTML', answer: (route) => route.fulfill({ status: 200, contentType: 'application/json', body: injected }) },
+    ];
+    try {
+      for (const { name, answer } of cases) {
+        await page.goto('/');
+        await openHelp(page);
+        await page.unrouteAll();
+        // Only the swap's read of the topic gets the bad answer; the frame's own load of it does not.
+        await page.route(`**/help/${topic}`, (route) => (route.request().resourceType() === 'fetch' ? answer(route) : route.fallback()));
+        await frame(page).locator(`nav a[href="${topic}"]:visible`).click();
+        await expect(frame(page).getByRole('heading', { level: 1 }), name).toHaveText('Bible projects');
+        expect(page.frames().some((f) => f.url().endsWith(`/help/${topic}`)), name).toBe(true);
+        expect(await page.evaluate(() => (window as unknown as { tc4Injected?: number }).tc4Injected), name).toBeUndefined();
+      }
+    } finally {
+      other.close();
+    }
+  });
+
+  test('i. closing the panel while a page loads closes it, and the help home shows on the next open; a page that fails to load leaves the panel open on it', TAG, async ({ page }) => {
+    const topic = 'section-bible-projects.html';
+    const errors: string[] = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await page.goto('/');
+    await openHelp(page);
+    // The read of the topic is held back, so the panel closes while it loads.
+    await page.route(`**/help/${topic}`, async (route) => {
+      await new Promise((done) => setTimeout(done, 1500));
+      await route.continue().catch(() => {});
+    });
+    await frame(page).locator(`nav a[href="${topic}"]:visible`).click();
+    await frame(page).locator('#q').press('Escape');
+    await expectClosed(page);
+    await page.waitForTimeout(2000);
+    await openHelp(page);
+
+    // A page the server does not have: the frame shows the server's answer, and the panel stays usable.
+    await page.unrouteAll();
+    await page.route(`**/help/${topic}`, (route) => route.fulfill({ status: 404, contentType: 'text/plain', body: 'Not found' }));
+    await frame(page).locator(`nav a[href="${topic}"]:visible`).click();
+    await expect.poll(() => page.frames().some((f) => f.url().endsWith(`/help/${topic}`))).toBe(true);
+    await expect(frame(page).locator('body')).toHaveText('Not found');
+    await expect(helpPanel(page)).toBeVisible();
+    await page.getByTestId('help-close').click();
+    await expectClosed(page);
+    expect(errors).toEqual([]);
   });
 });

@@ -3,8 +3,9 @@
 // email, the password, "Stay signed in on this computer", the server the app
 // signs in to, and the author notice: the platform signs each shared change
 // with the computer's account name, and Door43 shows it (PLATFORM-NOTES #47).
-// Nothing is asked twice by design and nothing but the kept token is stored
-// (D85): no name, no email, no login. The form lives in the state layer's
+// Nothing is asked twice by design. The app stores the kept token (D85) and,
+// at the first sync, the Door43 username in the project journal (D98, #680):
+// no email and no login. The username stays, so this step says so. The form lives in the state layer's
 // `si`; the token never enters React state (session.ts). This file names no
 // Door43 host (test/noBypass.test.ts): the host shown is the adapter's own
 // server.
@@ -49,6 +50,8 @@ export default function ShareSignIn() {
         <p style={NOTE} data-testid="signin-reason">{t('signIn.sessionNote')}</p>
         {/* D85: the author notice, in place of the D7 name-and-email notice. */}
         <p style={NOTE} data-testid="signin-notice">{t('signIn.notice')}</p>
+        {/* #680 (D98, R-8.5.25): the username goes into the journal once and stays. */}
+        <p style={NOTE} data-testid="signin-name-notice">{t('signIn.nameNotice')}</p>
         {si.error && (
           <Callout tone="warn" role="alert" data-testid="signin-error" data-code={si.error.code || ''}
             style={{ overflowWrap: 'anywhere' }}>

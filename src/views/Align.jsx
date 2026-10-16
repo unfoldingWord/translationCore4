@@ -19,8 +19,10 @@ import { bookName } from '../data/bookNames';
 import { tokenizeVerse } from '../data/sourceHighlight';
 import { verseText } from './verseText.js';
 import { isSourceAbsent } from '../data/sourceState';
+import { literalPaneId } from '../data/gatewayChange';
 import { t } from '../i18n';
 import { Button, Overline, WordChip } from '../ds/index.js';
+import { ItemNavButton } from './ItemNav.jsx';
 
 const dragPayload = (e) => {
   try {
@@ -31,6 +33,19 @@ const dragPayload = (e) => {
 };
 const setDragPayload = (e, data) => e.dataTransfer.setData('text/plain', JSON.stringify(data));
 const allowDrop = (e) => e.preventDefault();
+
+// #735: a word that occurs more than once in its verse carries its occurrence
+// number, as tC3's WordOccurrence did — a superscript, and in the chip's
+// accessible name ("de 3"). A word that occurs once shows nothing.
+const repeated = (w) => Number(w.occurrences) > 1;
+// `named`: the host's aria-label already carries the number, so hide the <sup>;
+// elsewhere (card headers, the generic-span suggested chip) the <sup> is the name.
+// lineHeight 0 keeps the raised number out of the line box, so a numbered word
+// stays level with its neighbours and its chip keeps their height.
+const Occurrence = ({ w, named = false }) => (repeated(w)
+  ? <sup aria-hidden={named ? 'true' : undefined} style={{ lineHeight: 0 }}>{Number(w.occurrence)}</sup>
+  : null);
+const occurrenceName = (w) => (repeated(w) ? `${w.word} ${Number(w.occurrence)}` : undefined);
 
 /** The ULT word(s) this card's original word(s) are aligned to — the gateway
  * lens's header label. Empty when the pane carries no alignment for them. */
@@ -45,7 +60,9 @@ const gwLabelFor = (topWords, gwTokens) =>
  * sub-label under a gateway word, and SPLIT on a merged phrase. Draggable
  * onto another card to merge. */
 function CardHeader({ card, mode, gwTokens, onSplit }) {
-  const origLabel = card.topWords.map((w) => w.word).join(' ');
+  const origLabel = card.topWords.map((w, i) => (
+    <React.Fragment key={`${w.word}-${w.occurrence}`}>{i > 0 && ' '}{w.word}<Occurrence w={w} /></React.Fragment>
+  ));
   const gwLabel = mode === 'gw' ? gwLabelFor(card.topWords, gwTokens) : '';
   const usingGw = mode === 'gw' && gwLabel !== '';
   return (
@@ -115,8 +132,9 @@ function WordCard({ card, armed, mode, gwTokens, suggested = [], onPlace, onRemo
             onDragStart={(e) => setDragPayload(e, { kind: 'placed', from: card.index, word: w })}
             onClick={(e) => { e.stopPropagation(); onRemove(card.index, w); }}
             title={t('align.clickToUnalign')}
+            aria-label={occurrenceName(w)} data-word={w.word}
             style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-ui-md)', color: 'var(--text-scripture)', background: 'var(--surface-card)', border: 'var(--stroke) solid var(--border-input)', borderRadius: 'var(--radius-chip)', padding: '3px 9px', cursor: 'pointer', whiteSpace: 'nowrap', boxShadow: '0 1px 2px rgba(1,66,99,.08)' }}>
-            {w.word}
+            {w.word}<Occurrence w={w} named />
           </button>
         ))}
         {/* #1: a suggested link — dashed, with its check mark to confirm. It
@@ -124,8 +142,9 @@ function WordCard({ card, armed, mode, gwTokens, suggested = [], onPlace, onRemo
         {suggested.map((sg) => (
           <WordChip key={`sg-${sg.word.word}-${sg.word.occurrence}`} state="suggested" draggable={false}
             data-testid={`align-suggested-${card.index}`} title={t('align.suggest.confirm')}
+            aria-label={occurrenceName(sg.word)} data-word={sg.word.word}
             onClick={(e) => { e.stopPropagation(); onConfirm(card.index, sg.word); }}>
-            {sg.word.word}
+            {sg.word.word}<Occurrence w={sg.word} />
             <span aria-hidden="true" style={{ fontWeight: 'var(--fw-heavy)' }}>{t('align.suggest.confirmMark')}</span>
           </WordChip>
         ))}
@@ -141,7 +160,7 @@ function WordCard({ card, armed, mode, gwTokens, suggested = [], onPlace, onRemo
  * stream. Only an eng-framed project may index the pane by the session ref
  * (#131 class); null when the pane, verse, or alignment data is absent. */
 function gatewayPaneVerse(sources, sourcePanes, c, v) {
-  const paneId = sourcePanes?.includes('ult') ? 'ult' : sourcePanes?.[0];
+  const paneId = literalPaneId(sourcePanes);
   const src = paneId ? sources?.[paneId] : undefined;
   return src && !isSourceAbsent(src) && !src.error ? src.chapters?.[String(c)]?.[String(v)] : null;
 }
@@ -268,20 +287,16 @@ const modeChip = (on) => ({
   boxShadow: on ? 'var(--shadow-raised)' : 'none',
 });
 
-/** The design's detail header: reference, "Item n of total", previous / next
- * verse — over the drafted verses of the book (the rail's own list). */
-function AlignHeader({ a, index, book, actions }) {
+/** This verse's place among the drafted verses of the book (the rail's own
+ * list): the header's counter and the marking row's previous / next. */
+function alignNav(a, index) {
   const items = (index?.items ?? []).filter((it) => it.status !== 'undrafted');
   const idx = items.findIndex((it) => it.ref === a.ref);
-  const canPrev = idx > 0;
-  const canNext = idx >= 0 && idx < items.length - 1;
-  const nav = (enabled) => ({
-    border: 'var(--stroke) solid', background: 'var(--surface-card)', fontFamily: 'inherit',
-    fontWeight: 'var(--fw-heavy)', fontSize: 'var(--fs-ui-sm)', width: 30, height: 30, borderRadius: 'var(--radius-sm)',
-    color: enabled ? 'var(--text-heading)' : 'var(--uw-mist)',
-    borderColor: enabled ? 'var(--border-strong)' : 'var(--border)',
-    cursor: enabled ? 'pointer' : 'default',
-  });
+  return { items, idx, canPrev: idx > 0, canNext: idx >= 0 && idx < items.length - 1 };
+}
+
+/** The design's detail header: reference and "Item n of total". */
+function AlignHeader({ a, nav: { items, idx }, book }) {
   return (
     <>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
@@ -294,10 +309,6 @@ function AlignHeader({ a, index, book, actions }) {
             {t('check.itemOf', { n: idx + 1, total: items.length })}
           </span>
         )}
-        <button type="button" data-testid="align-prev" title={t('check.prevItem')} disabled={!canPrev}
-          onClick={() => canPrev && actions.setAlignVerse(items[idx - 1].ref)} style={nav(canPrev)}>←</button>
-        <button type="button" data-testid="align-next" title={t('check.nextItem')} disabled={!canNext}
-          onClick={() => canNext && actions.setAlignVerse(items[idx + 1].ref)} style={nav(canNext)}>→</button>
       </div>
       <h1 style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-h1)', fontWeight: 'var(--fw-bold)', color: 'var(--text-heading)', margin: '0 0 14px' }}>
         “{t('align.ref', { book: bookName(book), ref: a.ref })}”
@@ -319,9 +330,13 @@ export default function Align({ embedded = false }) {
   const a = s.alignSession;
   const [mode, setMode] = React.useState('gw');
 
+  // #722: open again when the book text arrives, or when its load fails. Not
+  // the text itself, and not bookError while the text is there (a failed
+  // project-list read also writes bookError): only the load's outcome matters.
+  const bookLoad = s.bookRaw != null ? 'ready' : s.bookError ? 'failed' : 'loading';
   React.useEffect(() => {
     actions.openAlign();
-  }, [s.book, s.alignVerse, originalPinKey(s)]);
+  }, [s.book, s.alignVerse, originalPinKey(s), bookLoad]);
 
   const suggestOn = useSuggestionsSwitch(s, actions);
 
@@ -345,13 +360,19 @@ export default function Align({ embedded = false }) {
   const placed = a.record.alignments.reduce((n, x) => n + x.bottomWords.length, 0);
   const total = placed + a.record.wordBank.length;
   const suggestedKeys = suggestedKeySet(a);
+  const nav = alignNav(a, s.alignIndex);
+  const shownBank = a.record.wordBank.filter((w) => !suggestedKeys.has(wordKey(w)));
+
+  const armed = shownSelection(shownBank, a.armed);
+  const armedKeys = new Set(armed.map(wordKey));
 
   // Payloads cross a string boundary — validate the shape, never assume it
   // (a malformed drop must be a no-op, not a crash in the record algebra).
   const hasWord = (p) => typeof p?.word?.word === 'string';
   const hasFrom = (p) => typeof p?.from === 'number';
+  const hasWords = (p) => Array.isArray(p?.words) && p.words.length > 0 && p.words.every((w) => typeof w?.word === 'string');
   const onDropOnCard = (index, payload) => {
-    if (payload?.kind === 'bank' && hasWord(payload)) actions.placeAlignWordAt(index, payload.word);
+    if (payload?.kind === 'bank' && hasWords(payload)) actions.placeAlignWordsAt(index, payload.words);
     else if (payload?.kind === 'placed' && hasWord(payload) && hasFrom(payload)) actions.moveAlignWord(payload.from, index, payload.word);
     else if (payload?.kind === 'card' && hasFrom(payload)) actions.mergeAlignCards(payload.from, index);
   };
@@ -366,7 +387,7 @@ export default function Align({ embedded = false }) {
   return (
     <div data-testid="align-session">
       {back && <div style={{ marginBottom: 14 }}>{back}</div>}
-      <AlignHeader a={a} index={s.alignIndex} book={s.book} actions={actions} />
+      <AlignHeader a={a} nav={nav} book={s.book} />
 
       <HowToggle />
 
@@ -396,15 +417,23 @@ export default function Align({ embedded = false }) {
           </div>
           {a.record.wordBank.length > 0 ? (
             <div data-testid="align-bank" style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }} dir={a.targetDir}>
-              {a.record.wordBank.filter((w) => !suggestedKeys.has(wordKey(w))).map((w) => {
-                const isArmed = a.armed && a.armed.word === w.word
-                  && Number(a.armed.occurrence) === Number(w.occurrence);
+              {shownBank.map((w, i) => {
+                const isArmed = armedKeys.has(wordKey(w));
                 return (
                   <button key={`${w.word}-${w.occurrence}`} type="button" draggable
-                    onDragStart={(e) => setDragPayload(e, { kind: 'bank', word: w })}
-                    onClick={() => actions.armAlignWord(isArmed ? null : w)}
+                    onDragStart={(e) => setDragPayload(e, { kind: 'bank', words: isArmed ? armed : [w] })}
+                    onClick={(e) => actions.armAlignWords(nextSelection(shownBank, armed, e, i))}
+                    // The click a key fires carries no modifier, so Ctrl/Cmd/Shift
+                    // with Enter or Space selects from the keyboard here.
+                    onKeyDown={(e) => {
+                      if ((e.key === 'Enter' || e.key === ' ') && (e.ctrlKey || e.metaKey || e.shiftKey)) {
+                        e.preventDefault();
+                        actions.armAlignWords(nextSelection(shownBank, armed, e, i));
+                      }
+                    }}
                     title={a.armed ? t('align.hintArmed') : t('align.hintIdle')}
                     data-armed={isArmed ? '1' : '0'}
+                    aria-label={occurrenceName(w)} data-word={w.word}
                     style={{
                       fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-body)', borderRadius: 'var(--radius-sm)', padding: '5px 11px',
                       cursor: 'pointer', border: 'var(--stroke) solid var(--accent)',
@@ -412,7 +441,7 @@ export default function Align({ embedded = false }) {
                         ? { background: 'var(--accent)', color: 'var(--text-inverse)', boxShadow: 'var(--shadow-focus)' }
                         : { background: 'var(--surface-card)', color: 'var(--text-heading)', boxShadow: 'var(--shadow-chip)' }),
                     }}>
-                    {w.word}
+                    {w.word}<Occurrence w={w} named />
                   </button>
                 );
               })}
@@ -442,12 +471,39 @@ export default function Align({ embedded = false }) {
         </div>
       </div>
 
-      <MarkValidBar record={a.record} stale={a.stale} refusal={a.refusal} onMark={actions.markAlignValid} />
+      <MarkValidBar record={a.record} stale={a.stale} refusal={a.refusal} onMark={actions.markAlignValid}
+        nav={nav} onGo={actions.setAlignVerse} />
     </div>
   );
 }
 
 const wordKey = (w) => `${w.word} ${Number(w.occurrence)}`;
+
+/** #736: the selected words that the bank shows, in bank order. A selected
+ * word that has since become a suggestion is on its card, not in the bank. */
+export const shownSelection = (shownBank, armed) => {
+  const keys = new Set((armed ?? []).map(wordKey));
+  return shownBank.filter((w) => keys.has(wordKey(w)));
+};
+
+/** #736: the bank selection after a click (or Enter/Space) on word `i`, as
+ * tC3 had it. A plain click selects that word alone, or clears it when it is
+ * the only one selected; Ctrl/Cmd adds or removes it; Shift adds every word
+ * from the first selected one to it, in bank order (Birch, Q1). The words
+ * need not be adjacent (Q2). Kept in bank order, so a card takes them in the
+ * order the translator sees them. `armed` is the shown selection. */
+export const nextSelection = (shownBank, armed, e, i) => {
+  const w = shownBank[i];
+  const isArmed = armed.some((x) => wordKey(x) === wordKey(w));
+  if (e.ctrlKey || e.metaKey) {
+    return shownSelection(shownBank, isArmed ? armed.filter((x) => wordKey(x) !== wordKey(w)) : [...armed, w]);
+  }
+  if (e.shiftKey && armed.length > 0) {
+    const first = shownBank.findIndex((x) => wordKey(x) === wordKey(armed[0]));
+    return shownSelection(shownBank, [...armed, ...shownBank.slice(Math.min(first, i), Math.max(first, i) + 1)]);
+  }
+  return isArmed && armed.length === 1 ? null : [w];
+};
 
 /** #1: words with a standing suggestion render on their card, not in the bank. */
 const suggestedKeySet = (a) => new Set((a.suggestions ?? []).map((sg) => wordKey(sg.word)));
@@ -510,8 +566,8 @@ function SuggestionsRow({ a, suggest, on, actions }) {
 /** #271 (D73): the translator says when this verse is done — the same
  * control, in the same place, as the Check tools' Mark valid. Active while
  * the record is done, vouches for the current draft (I-3) and is not flagged
- * for re-review (§5.1 `invalid`). */
-function MarkValidBar({ record, stale, refusal, onMark }) {
+ * for re-review (§5.1 `invalid`). #726: Previous / Next sit either side of it. */
+function MarkValidBar({ record, stale, refusal, onMark, nav: { items, idx, canPrev, canNext }, onGo }) {
   const done = record.done === true && !stale && record.invalid !== true;
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 22, flexWrap: 'wrap' }}>
@@ -520,6 +576,7 @@ function MarkValidBar({ record, stale, refusal, onMark }) {
           {t('align.markValidRefused')}
         </span>
       )}
+      <ItemNavButton which="prev" testId="align-prev" enabled={canPrev} onClick={() => onGo(items[idx - 1].ref)} />
       <button type="button" data-testid="align-mark-valid" onClick={onMark}
         data-active={done ? '1' : '0'} title={t('align.markValidHint')}
         style={{
@@ -531,6 +588,7 @@ function MarkValidBar({ record, stale, refusal, onMark }) {
         }}>
         {t('align.markValid')}
       </button>
+      <ItemNavButton which="next" testId="align-next" enabled={canNext} onClick={() => onGo(items[idx + 1].ref)} />
     </div>
   );
 }

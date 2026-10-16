@@ -34,8 +34,10 @@ export interface Gateway {
   /** Whether the owner publishes a `<lang>_twl` repo. Functional (D97 ruling
    * 7, #646): a `false` owner's language set pins the bundled English `en_twl`
    * with its own `<lang>_tw`; a `true` owner's set is incomplete until its
-   * `_twl` is installed. [VERIFIED 2026-10-12 — live DCS queries in #646: every
-   * entry matches; `ar_gt/ar_twl` answers HTTP 404.] */
+   * `_twl` is installed. The `false` owners are `Door43-Catalog` for `ml` and
+   * `ur-deva` (D100: ar_gt left the registry). [VERIFIED 2026-10-12 — live DCS
+   * queries in #646: every entry matches; `Door43-Catalog/ur-deva_twl` answers
+   * HTTP 404, read again 2026-10-14.] */
   hasTwl: boolean;
   /** Whether the owner publishes an aligned Bible (literal/simplified text). */
   hasBible: boolean;
@@ -46,6 +48,9 @@ export interface Gateway {
   /** Whether the owner publishes a simplified text repo — `en_ust` for
    * unfoldingWord, `<lang>_gst` elsewhere (same evidence run). */
   hasSimplified: boolean;
+  /** The repo name of the literal Bible, for an owner whose literal text is not
+   * named `<lang>_ult` or `<lang>_glt` (#704: BSOJ publishes `ar_avd`). */
+  literal?: string;
 }
 
 export const GATEWAYS: Gateway[] = [
@@ -55,8 +60,7 @@ export const GATEWAYS: Gateway[] = [
   { id: 'fr', org: 'MVHS', name: 'French', autonym: 'Français', dir: 'ltr', seen: { tn: 'v0.0.2', tw: 'v0.0.1', ta: 'v0.0.2' }, hasTwl: true, hasBible: true, hasTq: true, hasSimplified: true },
   { id: 'ru', org: 'ru_gl', name: 'Russian', autonym: 'Русский', dir: 'ltr', seen: { tn: 'v60.1', tw: 'v14.2', ta: 'v13.3' }, hasTwl: true, hasBible: true, hasTq: true, hasSimplified: false },
   { id: 'fa', org: 'fa_gl', name: 'Persian', autonym: 'فارسی', dir: 'rtl', seen: { tn: 'v9', tw: 'v9', ta: 'v7.8' }, hasTwl: true, hasBible: true, hasTq: true, hasSimplified: true },
-  { id: 'ar', org: 'BSOJ', name: 'Arabic', autonym: 'العربية', dir: 'rtl', seen: { tn: 'v6.1', tw: 'v5', ta: 'v3' }, hasTwl: true, hasBible: true, hasTq: true, hasSimplified: true },
-  { id: 'ar', org: 'ar_gt', name: 'Arabic', autonym: 'العربية', dir: 'rtl', seen: { tn: 'v3.2', tw: 'v3', ta: 'v3.3' }, hasTwl: false, hasBible: true, hasTq: false, hasSimplified: true },
+  { id: 'ar', org: 'BSOJ', name: 'Arabic', autonym: 'العربية', dir: 'rtl', seen: { tn: 'v6.1', tw: 'v5', ta: 'v3' }, hasTwl: true, hasBible: true, hasTq: true, hasSimplified: true, literal: 'ar_avd' },
   { id: 'id', org: 'bahtraku', name: 'Indonesian', autonym: 'Bahasa Indonesia', dir: 'ltr', seen: { tn: 'v25', tw: 'v26', ta: 'v30' }, hasTwl: true, hasBible: true, hasTq: true, hasSimplified: true },
   { id: 'hi', org: 'translationCore-Create-BCS', name: 'Hindi', autonym: 'हिन्दी', dir: 'ltr', seen: { tn: 'v9', tw: 'v8', ta: 'v7' }, hasTwl: true, hasBible: true, hasTq: true, hasSimplified: true },
   { id: 'bn', org: 'translationCore-Create-BCS', name: 'Bengali', autonym: 'বাংলা', dir: 'ltr', seen: { tn: 'v6', tw: 'v4', ta: 'v5.0' }, hasTwl: true, hasBible: true, hasTq: true, hasSimplified: true },
@@ -80,6 +84,13 @@ export const gatewayKey = (g: Gateway): string => `${g.id}::${g.org}`;
 
 export const findGateway = (key: string): Gateway | undefined =>
   GATEWAYS.find((g) => gatewayKey(g) === key);
+
+/** #650: the direction that the helps of a language set read in: its gateway package's.
+ * Undefined for a package that is not in the registry. */
+export const languageSetDir = (set?: { gatewayLanguage?: { languageId: string; owner: string } } | null): 'ltr' | 'rtl' | undefined => {
+  const g = set?.gatewayLanguage;
+  return g ? findGateway(`${g.languageId}::${g.owner}`)?.dir : undefined;
+};
 
 /** The one name every screen shows for a gateway language (#579, D94): the
  * language's own name (`autonym`), so a list row, the ready message, the change

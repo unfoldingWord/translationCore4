@@ -9,6 +9,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { validateAction, normalizeEvent } from './schema.mjs';
 import { actorSlugError, isoInstantError, ipathError, tsError, isStr, isObj } from './grammar.mjs';
+import { Refusal } from './report.mjs';
 
 const sha256 = (s) => crypto.createHash('sha256').update(s, 'utf8').digest('hex');
 export const SEGMENT_LIMIT = 4 * 1024 * 1024; // 4 MiB (§8.1)
@@ -144,8 +145,18 @@ export const writeActionSegment = (actorDir, events) => {
     throw new Error(`refuse to write: event actor "${foreign.actor}" is not the actor directory "${actor}" (§8.1/§8.3 actor binding)`);
   const file = segmentPathFor(actorDir, events[0].ts);
   const existing = readSegmentFile(file); // lstat-guarded: a symlink REFUSES, it never reads through
+  if (existing === sealed) return file; // idempotent accept (R-8.1.5) — before the name rule, so a retry of the same name seals
+  // R-8.5.26 (D98): an actor names itself once. The writer knows its own journal — the
+  // segments already in this actor directory — so it refuses a second name before any byte
+  // is written. (validateAction already refuses two names in ONE action.) A teammate's
+  // second name, written by some other writer, still folds: the fold reports it in
+  // `namesRejected` and never applies it.
+  if (events.some((e) => e && e.op === 'actor.name.set')) {
+    const prior = readSegments(actorDir, () => {}).find((e) => e.op === 'actor.name.set');
+    if (prior)
+      throw new Refusal('actor.name-already-set', `refuse to write: actor "${actor}" already set its name at ${prior.ts} — a name is set once (§8.5 R-8.5.26)`, { actor, prior: prior.ts });
+  }
   if (existing !== null) {
-    if (existing === sealed) return file; // idempotent accept
     if (validateSegment(existing).ok)
       throw new Error(`segment ${path.basename(file)} already accepted with different bytes — refuse to overwrite (§8.1)`);
     throw new Error(`segment ${path.basename(file)} exists but is invalid — recover via republishSegment with staged intent (§8.1)`);

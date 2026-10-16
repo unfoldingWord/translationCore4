@@ -11,12 +11,13 @@
 //
 // Types are deliberately loose-but-named (the vendor.d.ts discipline): shapes are
 // asserted behaviorally by the conformance suite, not re-invented here.
-import { fold as foldRef, verseTextMd5 as verseTextMd5Ref } from '../../../journal/fold.mjs';
+import { fold as foldRef, verseTextMd5 as verseTextMd5Ref, verseHeadText as verseHeadTextRef } from '../../../journal/fold.mjs';
 import { decompose as decomposeRef, recompose as recomposeRef, slotKeysOf as slotKeysOfRef, SLOT as SLOT_REF } from '../../../journal/skeleton.mjs';
 import {
   derivedProjections as derivedProjectionsRef,
   classifyDivergence as classifyDivergenceRef,
   isUnjournaledIngredient as isUnjournaledIngredientRef,
+  isRemovableDerivedClass as isRemovableDerivedClassRef,
   projectAlignments as projectAlignmentsRef,
   projectResources as projectResourcesRef,
   projectSettings as projectSettingsRef,
@@ -43,6 +44,7 @@ import {
   refusalCodeOf as refusalCodeOfRef,
   reportError as reportErrorRef,
 } from '../../../journal/report.mjs';
+import { checkJournalFile as checkJournalFileRef, syncCore as syncCoreRef } from '../../../journal/sync.mjs';
 import type { JournalEvent } from './seal';
 import type { Story } from '../burritoStore';
 
@@ -78,6 +80,10 @@ export interface FoldOutput {
   scope: Record<string, string[]>;
   vrs: { name: string; bytes: string } | null;
   vrsRejected: string[];
+  /** §8.5 (R-8.5.25, D98): actor -> its Door43 username, from the first `actor.name.set` */
+  names: Record<string, string>;
+  /** R-8.5.26: the ts of each later name event of an actor — surfaced, never applied */
+  namesRejected: string[];
   pendingStructural: Array<{ ts: string; book: string; status: string; detail: string[] }>;
   /** resolved head ts per register key (`book|`, `skel|`, `text|`, `align|`, `dec|`, `pin|`, `meta|`, `set|`) */
   headsTs: Record<string, string>;
@@ -88,6 +94,11 @@ export interface FoldOutput {
 
 /** §8.6: the pure fold of an event SET. Throws on a corrupt/malformed union. */
 export const fold = foldRef as (events: JournalEvent[]) => FoldOutput;
+
+/** §8.5: the text a verse register head holds for slot `vkey` — the fold's own rule
+ * for a verse edit, a book.add and a structural post-image (#679). Throws for an op
+ * that makes no verse head. */
+export const verseHeadText = verseHeadTextRef as (event: JournalEvent, vkey: string) => string;
 
 /** §5.1 plain-text validity hash of ONE content slot (I-3). */
 export const verseTextMd5 = verseTextMd5Ref as (content: string) => string;
@@ -130,6 +141,13 @@ export const storyIpath = storyIpathRef as (story: number) => string;
 export const isStoryReference = isStoryReferenceRef as (reference: unknown) => boolean;
 /** R-10.5.1: the literal in the book position of a story identity key (`obs`). */
 export const STORY_BOOK_ID = STORY_BOOK_ID_REF as string;
+/** G2 (R-8.7.8): check ONE journal file by its ingredient path with the one validator,
+ * as the sync core does for each incoming file. The open from Door43 (#677) reads it. */
+export const checkJournalFile = checkJournalFileRef as (
+  files: SyncFileLayer,
+  ipath: string,
+  bytes: string,
+) => Promise<{ ok: true; actor: string; events: unknown[] } | { ok: false; actor?: string; kind: string; reason: string }>;
 /** §10.5: the book position of the story decision sidecar, `checking/<toolId>/OBS.json`. */
 export const STORY_FILE = STORY_FILE_REF as string;
 /** The inverse of storyIpath: the story number of a `content/NN.md` path, else null. */
@@ -159,6 +177,9 @@ export const classifyDivergence = classifyDivergenceRef as (
 
 /** §8.5: a tolerated unjournaled ingredient class (ingredients/audio/). */
 export const isUnjournaledIngredient = isUnjournaledIngredientRef as (ipath: string) => boolean;
+
+/** A derived path class whose projection can disappear (books, alignment and decision sidecars). */
+export const isRemovableDerivedClass = isRemovableDerivedClassRef as (ipath: string) => boolean;
 
 export const projectAlignments = projectAlignmentsRef as (foldOut: FoldOutput, book: string) => string;
 export const projectResources = projectResourcesRef as (pins: FoldOutput['pins']) => string;
@@ -235,7 +256,7 @@ export const normalizeEvent = normalizeEventRef as (event: JournalEvent) => Jour
 // throws is a Refusal carrying one code from REFUSAL_CODES.
 export const REFUSAL_CODES = REFUSAL_CODES_REF as Readonly<Record<RefusalCode, string | null>>;
 export type RefusalCode = keyof typeof REFUSAL_CODES_REF;
-export type ReportOp = 'open' | 'checkpoint' | 'seed' | 'reconcile' | 'pin-complete' | 'export' | 'import' | 'share';
+export type ReportOp = 'open' | 'checkpoint' | 'seed' | 'reconcile' | 'pin-complete' | 'export' | 'import' | 'share' | 'sync' | 'open-door43';
 
 export interface Report<F extends Record<string, unknown> = Record<string, unknown>> {
   op: ReportOp;
@@ -277,3 +298,37 @@ export const failedReport = failedReportRef as (
   facts?: Record<string, unknown>,
 ) => Report;
 export const refusalCodeOf = refusalCodeOfRef as (error: unknown) => RefusalCode | null;
+
+// ---- the sync core (issue #675, team sync round 1 — D98) ----------------------
+/** One verse-text fork for the conflict review (R-8.7.12). */
+export interface SyncTextConflict {
+  key: string;
+  heads: Array<{ actor: string | null; ts: string; text: string | null }>;
+  /** the ts of the newest head, which the fold projects */
+  provisional: string;
+}
+/** The facts of an ok sync Report. */
+export interface SyncFacts extends Record<string, unknown> {
+  carried: number;
+  /** teammate journal files this computer held and Door43 main lacked, carried back */
+  restored: number;
+  received: Record<string, number>;
+  textConflicts: SyncTextConflict[];
+  newestWins: Array<{ key: string; kind: string; winner: string }>;
+  names: Record<string, string>;
+}
+/** The one validator the core reads: journal/files.mjs (Node) or ./seal (the app). */
+export interface SyncFileLayer {
+  validateSegment(raw: string): { ok: boolean; reason?: string; events?: unknown[] } | Promise<{ ok: boolean; reason?: string; events?: unknown[] }>;
+  validateActorDoc(raw: string, actorId: string): { ok: boolean; reason?: string };
+  segmentName(ts: string): string;
+}
+/** The sync core: Door43 main + this computer's journal → the files to write + one
+ * Report (`op: 'sync'`). Pure; a refusal returns an empty `write` and `remove`.
+ * `remove`: the derived files on Door43 main that the fold no longer projects, sorted. */
+export const syncCore = syncCoreRef as (input: {
+  remote: Map<string, string>;
+  mine: { actor: string; journal: Map<string, string>; outbox: Map<string, string> };
+  resolve: (tool: string, book: string, pins: FoldOutput['pins']) => Record<string, unknown>;
+  files: SyncFileLayer;
+}) => Promise<{ write: Map<string, string>; remove: string[]; report: Report }>;

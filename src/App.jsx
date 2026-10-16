@@ -6,6 +6,7 @@ import StoryDraft from './views/StoryDraft.jsx';
 import StoryUnderstand from './views/StoryUnderstand.jsx';
 import Check from './views/Check.jsx';
 import AddProject from './views/modals/AddProject.jsx';
+import OpenFromDoor43 from './views/modals/OpenFromDoor43.jsx';
 import NewBible from './views/modals/NewBible.jsx';
 import NewObs from './views/modals/NewObs.jsx';
 import AddBook from './views/modals/AddBook.jsx';
@@ -25,6 +26,7 @@ import OpenProgress from './views/OpenProgress.jsx';
 import AccountMenu, { InternetDialog } from './views/AccountMenu.jsx';
 import { AppHeader, Switcher, StatusDot, Button, Callout } from './ds/index.js';
 import { t } from './i18n';
+import { projectDir } from './views/scriptStyle.js';
 
 /** Which failure the indicator's Retry button retries: a story/note save, a
  * checkpoint commit (#183), or the verse save. */
@@ -85,25 +87,35 @@ function TopBar() {
   const { s, actions } = useApp();
   const inProject = !!s.project && s.view !== 'home';
   const p = s.project;
+  // An open editing card keeps its draft in the card: a mode tab or the
+  // projects closes Translate and loses the draft. The rule of the
+  // Section/Verse switch (#238): these exits are off while a card is open.
+  // Translate itself stays on: a press on it does not close the view.
+  const editing = s.editing != null;
+  const toProjects = editing ? undefined : actions.backToProjects;
   return (
     <AppHeader
       logoSrc={`${import.meta.env.BASE_URL}assets/translationcore-logo.png`}
       projectInitials={p ? (p.name || '?').split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase() : undefined}
       projectName={p?.name}
+      projectNameDir={p ? projectDir(s) : undefined}
       projectMeta={p ? p.languageTag : undefined}
       switchTitle={t('app.switchProject')}
-      onBrandClick={actions.backToProjects}
-      onProjectClick={actions.backToProjects}
+      onBrandClick={toProjects}
+      onProjectClick={toProjects}
       center={inProject ? (
         // D63: Publish is retired as a top-level tab — the publish flow lives
         // inside Check as the Community Checking tool (#108). An OBS project
         // has the same three modes (#290, #291).
-        <Switcher indicator="pill" data-testid="mode-switch" value={s.view === 'publish' ? 'check' : s.view} onChange={(v) => actions.go(v)}
-          options={[
-            { value: 'read', label: t('nav.understand') },
-            { value: 'draft', label: t('nav.draft') },
-            { value: 'check', label: t('nav.check') },
-          ]} />
+        // A press on an off tab keeps the focus in the card.
+        <span onPointerDownCapture={editing ? (e) => e.preventDefault() : undefined}>
+          <Switcher indicator="pill" data-testid="mode-switch" value={s.view === 'publish' ? 'check' : s.view} onChange={(v) => actions.go(v)}
+            options={[
+              { value: 'read', label: t('nav.understand'), disabled: editing },
+              { value: 'draft', label: t('nav.draft') },
+              { value: 'check', label: t('nav.check'), disabled: editing },
+            ]} />
+        </span>
       ) : null}
       right={(
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -117,11 +129,8 @@ function TopBar() {
 
 export default function App() {
   const { s } = useApp();
-  const appDir = s.project && s.view !== 'home'
-    ? (s.project.scriptDirection === 'rtl' ? 'rtl' : 'ltr')
-    : 'ltr';
   return (
-    <div dir={appDir} style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%', background: 'var(--surface-app)', color: 'var(--text-body)', fontFamily: 'var(--font-ui)', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%', background: 'var(--surface-app)', color: 'var(--text-body)', fontFamily: 'var(--font-ui)', overflow: 'hidden' }}>
       <TopBar />
       <ViewBoundary key={`${s.view}:${s.project?.repoPath ?? ''}`}>
         <MainView state={s} />
@@ -131,6 +140,7 @@ export default function App() {
       <NewObs />
       <AddBook />
       <Import />
+      <OpenFromDoor43 />
       <ProjectSettings />
       <SourceTexts />
       <GatewayChange />

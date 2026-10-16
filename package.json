@@ -1,6 +1,6 @@
 {
   "name": "uw-tc4",
-  "version": "4.0.0-rc.1",
+  "version": "4.0.0-rc.2",
   "private": true,
   "type": "module",
   "scripts": {
@@ -20,7 +20,7 @@
     "docs:gate": "node scripts/docs-gate.mjs",
     "langnames:refresh": "node scripts/refresh-langnames.mjs",
     "prepare": "husky",
-    "test:desktop": "node --test scripts/desktop-resources.test.cjs scripts/desktop-bootstrap.test.cjs scripts/smoke-export.test.cjs scripts/smoke-api.test.cjs scripts/desktop-feedback.test.cjs scripts/feedback-token.test.cjs",
+    "test:desktop": "node --test scripts/desktop-resources.test.cjs scripts/desktop-bootstrap.test.cjs scripts/desktop-prepare.test.cjs scripts/smoke-export.test.cjs scripts/smoke-api.test.cjs scripts/desktop-feedback.test.cjs scripts/feedback-token.test.cjs",
     "dev:annotate": "node scripts/annotate-i18n.mjs && concurrently -k -n vite,annotate -c cyan,magenta \"vite --mode annotate\" \"react-grab-annotate --dir \\\"$HOME\\\" --base-dir .tc4-annotations\""
   },
   "dependencies": {

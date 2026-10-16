@@ -137,6 +137,7 @@ function runDesktopMain({ platform = 'linux', lock = true, startServer, bindErro
   const fakeRequire = (request) => {
     if (request === 'electron') return electron;
     if (request === './tc4-bootstrap.cjs') return bootstrapModule;
+    if (request === './tc4-prepare.cjs') return { prepareDesktop: (_electron, _options, ready) => { bootstrapModule.bootstrap(); ready(); } };
     if (request === './tc4-feedback.cjs') return require('./desktop-feedback.cjs');
     if (request === './tc4-bootstrap.json') return { storeLeaf: 'pankosmia/tc4-projects', variant: 'production' };
     if (request === './electronStartup.js') {

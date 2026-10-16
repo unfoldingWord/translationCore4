@@ -107,6 +107,17 @@ const payloadOf = (e) => {
 // only way to reach an own `__proto__` payload field or an over-deep value here.
 export const headIdentity = (e) => canon(payloadOf(e));
 
+// The text a verse register head holds for slot `vkey` (§8.5): a verse edit's own text,
+// a book.add's initial verse (or the stub), or a structural post-image's transition
+// text. The ONE rule: the fold builds every `text|` head with it, and a reader that
+// names a head by its event (the conflict review, #679) takes the text from it.
+export const verseHeadText = (e, vkey) => {
+  if (e.op === 'text.verse.set') return e.text;
+  if (e.op === 'book.add') return (e.initialVerses || {})[vkey] ?? '___\n';
+  if (e.op === 'text.structure.apply') return e.transitions[vkey].text;
+  throw new Error(`verseHeadText: a ${e.op} makes no verse head`);
+};
+
 // The §5.2 identity key a decision disposition names: toolId|checkId|bookId|chapter|verse|occurrence.
 // Built from the ONE identity-key serializer (grammar.mjs) — the same string the schema's
 // grammar validates, so serializer and validator can never drift.
@@ -279,6 +290,13 @@ export const fold = (eventsIn) => {
   };
   let vrs = null;                  // {name, bytes, ts} — immutable first-value register
   const vrsRejected = [];
+  // §8.5 (R-8.5.25, R-8.5.26, D98): one first-value register PER ACTOR. Events run in ts
+  // order, so the first name of an actor binds and every later one is surfaced, never
+  // applied — and never a whole-fold refusal (a refusal after publish would make the
+  // journal unprojectable, the #485 lesson). Null-prototype: the slug grammar admits
+  // `constructor`, which must read as absent, not as Object.prototype.constructor.
+  const names = Object.create(null);
+  const namesRejected = [];
 
   const consume = (key, headTs, structTs) => {
     const k = `${key}|${headTs}`;
@@ -423,6 +441,12 @@ export const fold = (eventsIn) => {
     }
     if (e.op === 'note.add') { notes.push(e); continue; }
 
+    if (e.op === 'actor.name.set') {
+      if (Object.hasOwn(names, e.actor)) namesRejected.push(e.ts);
+      else names[e.actor] = e.username;
+      continue;
+    }
+
     if (e.op === 'project.vrs.set') {
       // §8.5: immutable first-value register — first binds, identical repeat de-duplicates,
       // any different later value is surfaced and never applied.
@@ -436,7 +460,6 @@ export const fold = (eventsIn) => {
       // A re-add bases on the book.remove it follows; a first add is a root (base null).
       const pend = structuralBaseState(e, CHAIN_OPS);
       if (pend) { pendingStructural.push(pend); continue; }
-      const initial = e.initialVerses || {};
       joinHead(`book|${e.book}`, { ts: e.ts, actor: e.actor, sanc: e.ts, book: e.book, event: e }, e.base, e.supersedes, e.actor);
       joinHead(`skel|${e.book}`, { ts: e.ts, actor: e.actor, sanc: e.ts, book: e.book,
         event: { op: 'text.skeleton.set', book: e.book, skeleton: e.skeleton } }, e.base, e.supersedes, e.actor);
@@ -449,7 +472,7 @@ export const fold = (eventsIn) => {
         // actor's re-add quarantined it. The prior head stays live; the generation
         // quarantine (ancestry, at projection) decides — one rule for every actor.
         pushHead(`text|${e.book}|${k}`, { ts: e.ts, actor: e.actor, sanc: e.ts, book: e.book,
-          event: { op: 'text.verse.set', book: e.book, chapter, verse, text: initial[k] ?? '___\n' } });
+          event: { op: 'text.verse.set', book: e.book, chapter, verse, text: verseHeadText(e, k) } });
       }
       acceptedStructural.add(e.ts);
       continue;
@@ -626,7 +649,7 @@ export const fold = (eventsIn) => {
         for (const src of tr.sources || []) consume(`text|${book}|${src.key}`, aliasTs(src.ts), e.ts);
         const { chapter, verse } = vkeyParts(dest);
         pushHead(`text|${book}|${dest}`, { ts: e.ts, actor: e.actor, sanc: e.ts, book,
-          event: { op: 'text.verse.set', book, chapter, verse, text: tr.text } });
+          event: { op: 'text.verse.set', book, chapter, verse, text: verseHeadText(e, dest) } });
       }
       for (const d of dispositions) {
         const dts = aliasTs(d.ts); // the D53d alias — the canonical head the ref names
@@ -1027,6 +1050,7 @@ export const fold = (eventsIn) => {
     books, stories, decisions, alignments, pins, projectMeta, projectMetaRemoved, settings, notes: notesOut,
     forks, invalid, retained, autoMerged, scope,
     vrs: vrs ? { name: vrs.name, bytes: vrs.bytes } : null, vrsRejected,
+    names, namesRejected,
     pendingStructural, headsTs, supersedeRefused,
     // The RAW live-head sets (§8.6 step 3), exposed because §8.8 reconcile must build its
     // dispositions from the SAME set the fold computes its affected set from. Reconcile

@@ -90,7 +90,11 @@ const parsers = {
 // The suites, in run order. `layer` groups them; `needsRig` gates them.
 // ---------------------------------------------------------------------------
 const integrationFiles = () =>
-  fs.readdirSync(path.join(ROOT, 'test')).filter((f) => f.endsWith('.integration.test.ts')).map((f) => `test/${f}`).sort();
+  fs.readdirSync(path.join(ROOT, 'test'), { recursive: true })
+    .map((f) => String(f).replaceAll('\\', '/'))
+    .filter((f) => f.endsWith('.integration.test.ts'))
+    .map((f) => `test/${f}`)
+    .sort();
 
 // Set after rig detection. The integration vitest files detect the rig themselves and
 // run against it from inside the plain `vitest` suite. When the rig answers, the plain
@@ -114,7 +118,9 @@ const SUITES = [
   // create and keep a project) last.
   { id: 'conformance:transport', layer: 'rig', cwd: CONF, cmd: 'node', args: ['validate-transport.mjs'], parse: 'transport', needsRig: true },
   { id: 'conformance:roundtrip', layer: 'rig', cwd: CONF, cmd: 'node', args: ['validate-roundtrip.mjs'], parse: 'roundtrip', needsRig: true },
-  { id: 'vitest:rig', layer: 'rig', cwd: ROOT, cmd: 'npx', args: () => ['vitest', 'run', ...integrationFiles()], parse: 'vitest', needsRig: true },
+  // One file at a time: the rig suites share one server, and its net gate is server-wide
+  // (the share and sync rig suites turn it on and off).
+  { id: 'vitest:rig', layer: 'rig', cwd: ROOT, cmd: 'npx', args: () => ['vitest', 'run', '--no-file-parallelism', ...integrationFiles()], parse: 'vitest', needsRig: true },
   { id: 'bench:fold', layer: 'bench', cwd: CONF, cmd: 'node', args: ['bench-fold.mjs'], parse: 'bench', optIn: '--bench' },
 ];
 

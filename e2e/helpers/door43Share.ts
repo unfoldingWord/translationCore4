@@ -87,6 +87,66 @@ export const git = (cwd: string, ...args: string[]): string =>
 /** The local project's `HEAD`. */
 export const head = (repo: string): string => git(rigRepo(repo), 'rev-parse', 'HEAD');
 
+/** The `ingredients/` files on a bare remote's `main`, but `audio/` (D101: a sync never carries audio). */
+export const mainIngredients = (bare: string): string[] =>
+  git(bare, 'ls-tree', '-r', '--name-only', 'main').split('\n').filter((p) => p.startsWith('ingredients/') && !p.startsWith('ingredients/audio/'));
+
+/** D101 (#676): after a sync the project's `ingredients/` (but `audio/`) equal Door43 main's
+ * tree, byte for byte. The project's HEAD is not main's: only the tree is the same. */
+export function expectIngredientsEqualMain(bare: string, repo: string): void {
+  const door = mainIngredients(bare);
+  const live: string[] = [];
+  const walk = (folder: string, prefix: string): void => {
+    for (const entry of fs.readdirSync(folder, { withFileTypes: true })) {
+      if (entry.name.startsWith('.') || entry.name.endsWith('.bak')) continue;
+      const rel = `${prefix}/${entry.name}`;
+      if (entry.isDirectory()) walk(path.join(folder, entry.name), rel);
+      else if (!rel.startsWith('ingredients/audio/')) live.push(rel);
+    }
+  };
+  walk(path.join(rigRepo(repo), 'ingredients'), 'ingredients');
+  expect(live.sort(), `${repo}: the ingredients paths are Door43 main's`).toEqual([...door].sort());
+  for (const p of door) {
+    const bytes = execFileSync('git', ['-C', bare, 'cat-file', 'blob', `main:${p}`], { stdio: 'pipe', maxBuffer: 64 * 1024 * 1024 });
+    expect(fs.readFileSync(path.join(rigRepo(repo), p)).equals(bytes), `${repo}: ${p} is Door43 main's, byte for byte`).toBe(true);
+  }
+}
+
+type OpsRecord = { id: string; op: string; facts?: { repoPath?: string }; report?: { ok?: boolean; facts?: { classification?: string } } };
+const opsRecords = (): OpsRecord[] => (readClientSettingsDoc()?.opsLog ?? []) as OpsRecord[];
+
+/** The ids of the ops-log records now (the rig's client-settings document). */
+export const opsIds = (): Set<string> => new Set(opsRecords().map((e) => e.id));
+
+/** The first `open` of `repoPath` after `before` (opsIds()) classifies converged: the
+ * project on disk is the fold of its journal, so the open writes nothing. */
+export async function expectConvergedOpen(repoPath: string, before: Set<string>): Promise<void> {
+  await expect
+    .poll(() => opsRecords().find((e) => e.op === 'open' && e.facts?.repoPath === repoPath && !before.has(e.id))?.report?.facts?.classification ?? null,
+      { message: `${repoPath}: the open after the sync classifies converged`, timeout: 60_000 })
+    .toBe('converged');
+}
+
+/** Delete a local project on the rig, if it is there. */
+export async function deleteRigProject(repo: string): Promise<void> {
+  await fetch(`${RIG_API}/git/delete/_local_/_local_/${repo}`, { method: 'POST' });
+}
+
+/** #678: a shared Bible card reads "Sync with Door43", so the upload dialog (#530) is
+ * proved on an OBS card, which keeps "Upload changes" (round 1 syncs Bible projects
+ * only, D98). A new, unshared OBS project `repo` on the rig, made the way J11 test 11
+ * makes one; an earlier one of the same name is deleted first. Load Home after it. */
+export async function makeObsProject(repo: string): Promise<string> {
+  await deleteRigProject(repo);
+  const created = await fetch(`${RIG_API}/git/new-obs-resource`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content_name: `Historias ${repo}`, content_abbr: repo, content_language_code: 'es', branch_name: null }),
+  });
+  expect(created.ok, await created.text().catch(() => '')).toBe(true);
+  return `_local_/_local_/${repo}`;
+}
+
 /** Unshare: drop the `origin` remote (the one record of a share, D84 point 1). */
 export const dropOrigin = (repo: string): void => {
   try {

@@ -15,6 +15,7 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { downloadPin, rezip } from '../../src/data/resourceFetch';
+import { installableFiles } from '../../src/data/resourceArchive.mjs';
 
 const [ownerRepo, tagArg, expectedSha] = process.argv.slice(2);
 const tag = tagArg || undefined;
@@ -43,7 +44,7 @@ if (expectedSha && revision !== expectedSha) {
   process.exit(1);
 }
 
-const bytes = rezip(files);
+const bytes = rezip(await installableFiles({ repoPath, sha: expectedSha }, files, revision));
 writeFileSync(out, bytes);
 console.log(`  wrote ${out} (${bytes.length} bytes)`);
 

@@ -1,4 +1,4 @@
-# tC4 Roadmap — the path to 4.0.0 (October 16, 2026)
+# tC4 Roadmap — the path to 4.0.0
 
 This is the plan of record for translationCore 4's first release. The board's
 milestones carry the live work state; this page tells the story in one read.
@@ -17,7 +17,8 @@ Two increments are built, reviewed, and released as pre-releases:
 
 Both are early forms: drafting is verse-by-verse, alignment is manual. The plan
 below grows them to release quality. One pre-release tags at each milestone close
-(`4.0.0-alpha.N` → `-rc.N` → `4.0.0` — decision D46).
+(`4.0.0-alpha.N` → `-rc.N` → `4.0.0` — decision D46). The next pre-release is
+`4.0.0-rc.2`, published as **translationCore 4 — Public Beta** (D103).
 
 ## The principle that orders this plan: data first (D47)
 
@@ -42,10 +43,24 @@ has verified since August.
 | **7 — Open Bible Stories** | A second kind of project (D66, D74): the OBS format section and harness first (#147), then the story store and journal vocabulary v2, OBS resources and the bundled picture pack, and the screens; ships J20 create, J21 translate frame by frame, J25 understand, J22 check. Inserted 2026-09-15 after Increment 6 closed 17 days early | Sep 25 | #64 (#147, #286, #288, #287, #289, #290, #291, #292, #293) |
 | **8 — Publish & import** | Export the book (J7: dated PDF by the print-styled route, aligned USFM, plain USFM, Scripture Burrito zip with the `relationships` mirror) and the OBS project (J23) on one export kernel (#375); import as a new project from a tC3 zip, raw USFM or a Scripture Burrito through one import shell (#361), damaged input refused; the renumber re-key rules (#209) and the original-language upgrade (#258) before D47 locks the format. Defined 2026-09-22, D79; epic #373. Tags rc.1 with 8.5 | Oct 9 | #156, #375, #19, #359, #20, #360, #11, #142, #361, #195, #196, #21, #41, #209, #258, #371 |
 | **8.5 — First share** | Runs beside Increment 8 and tags rc.1 with it (D79). A facilitator shares from the Home project card: signs in to Door43 (once per session, or kept in the operating-system keychain; nothing else is stored, D85), chooses their own account or an organization, and the app creates the repository and pushes the working `main` branch (J11; J24 for OBS; D84). Send only; receive and team sync stay Phase 2 (D67). If not green on Oct 9 it moves whole to 4.1.0. Epic #372 | Oct 9 | #363, #156, #120, #362, #203, #366, #185 |
-| **9 — Ship** | Installers, smoke test, rollback plan, witnessed offline run, local fonts, keyboard basics | Oct 15, **Oct 16 → v4.0.0** | #44, #45, #46, #43, #3, #32, #42 |
-| **4.1.0 — BT Servant and deferred items** | The first feature release after the pilot: BT Servant, unfoldingWord's headless chatbot on unfoldingWord resources (online only), plus what left Increment 8 on 2026-09-22 (D79): the editor renumber action (#364), import into an existing project (#365), book introductions (#55), Home check percent (#139). Credentials in the OS keychain (#366) moved to 8.5 on 2026-09-28 (D84). Hotfixes go to 4.0.x | after Oct 16 | #364, #365, #55, #139 |
+| **9 — Ship** | Installers, smoke test, rollback plan, witnessed offline run, local fonts, keyboard basics. Since 2026-10-15 (D102) also team sync round 1 (epic #24) and Arabic support (#658): when both epics close, `release/4.0` takes all of `main` once. Publish v4.0.0-rc.2 as Public Beta, then v4.0.0 after the gates and beta feedback are reviewed (D103) | **Public Beta, then v4.0.0 when the gates are green** (D103; no fixed date) | #44, #45, #46, #43, #3, #32, #42, #24, #658 |
+| **4.1.0 — Deferred items** | The first feature release after the pilot. Team sync round 1 (epic #24) and Arabic support (#658) moved to v4.0.0 on 2026-10-15 (D102). It holds what left Increment 8 on 2026-09-22 (D79): the editor renumber action (#364), import into an existing project (#365), book introductions (#55), Home check percent (#139). Credentials in the OS keychain (#366) moved to 8.5 on 2026-09-28 (D84). BT Servant moved to 4.2.0 on 2026-10-13. Hotfixes go to 4.0.x on the `release/4.0` branch (`docs/PACKAGING.md`, "Release branches") | after v4.0.0 | #364, #365, #55, #139 |
+| **4.2.0 — BT Servant** | BT Servant, unfoldingWord's headless chatbot on unfoldingWord resources (online only). Moved from 4.1.0 on 2026-10-13 | after 4.1.0 | #651 |
 
-## Who October 16 is for — the pilot posture
+## Public beta before stable 4.0.0 (D103)
+
+The public beta invites broader testing of the planned 4.0.0 workflows. Its public
+name is **translationCore 4 — Public Beta**; its version is `4.0.0-rc.2`, and its tag
+is `v4.0.0-rc.2`. Further beta fixes use increasing `rc.N` versions. Stable is `4.0.0`.
+The beta does not announce production readiness. Test with copies of projects and
+keep independent backups. The beta uses the normal project store.
+
+The release gates, signing requirements and one-time re-cut of `release/4.0` stay
+as decided in D99 and D102. Stable 4.0.0 has no fixed date. Before stable, review
+the beta feedback, resolve release blockers and prove the release gates on the
+final build. The [release checklist](releases/4.0.0-rc.2.md) records the publication steps.
+
+## Who stable 4.0.0 is for — the pilot posture
 
 **v4.0.0 is a pilot release** [owner ruling 2026-08-13]: selected external users plus
 all internal users. Pilots do not bring real project data on day one, but soon after —
@@ -61,10 +76,9 @@ Safe by the data-accrual test, and said out loud so nobody assumes otherwise:
 the RTL rendering proof (#29), the full screen-reader pass,
 i18n key audit (#12), auto-merge of concurrent edits (#27), OBS layouts (#11), OBS audio
 (#294), Door43 send for OBS (J24), and the
-whole Phase 2 team-collaboration app (#23–#26). **4.0.0 is a single-translator
-release.** Team sync arrives in Phase 2, folding the journal 4.0.0 has been
-writing all along. The sync plan is `docs/plans/TEAM-SYNC-PLAN.md` (epic #24). It
-starts after the legibility increment in `docs/plans/LEGIBILITY.md` closes (D67).
+rest of the Phase 2 team-collaboration app. Team sync round 1 (epic #24) ships in
+4.0.0 (D102): three or more translators sync one project through Door43 `main`. The sync
+plan is `docs/plans/TEAM-SYNC-PLAN.md`.
 
 ## Standing rules that bind the plan
 

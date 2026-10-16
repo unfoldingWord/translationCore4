@@ -20,22 +20,39 @@
 //   f  startup, the menu, the preview, Cancel and Apply make zero external requests;
 //      the keyboard opens the dialog, picks a language, applies, and the focus returns to
 //      the account trigger
-//   g  #612: in Hindi no element that shows Devanagari is letter-spaced (Home and the
-//      Report a problem dialog); every other language keeps the tracking of English
+//   g  #612, #649: in Hindi and in Arabic no element that shows the script is letter-spaced
+//      (Home and the Report a problem dialog); every other language keeps the tracking of English
+//   h  #657: with Arabic the document, the app root, the top bar, the side panel and the
+//      dialog read right to left, on Home and in a project; the preview flips at once and
+//      Cancel restores; English reads left to right again with no restart
+//   i  #657: scripture follows the project: the seeded left-to-right project keeps its
+//      direction under Arabic, and a right-to-left project keeps its direction under English
+//   j  #686: with the internet off, the browser paints Arabic interface text in the bundled
+//      Noto Sans Arabic at each weight the interface shows; Latin text stays in Mulish; the
+//      Pashto, Sindhi and Kurdish names of the shipped language list show in it too
+//   k  #650: helps read in the direction of their gateway package: under the Arabic interface
+//      the notes, words, questions, simplified text and articles of a left-to-right package
+//      are left to right
 // The shared recorder (helpers/externalRequests.ts) writes each request log, and the
 // screenshots, into the test's output folder (and attaches them).
 import fs from 'node:fs';
 import path from 'node:path';
 import { test, expect } from './helpers/test';
 import type { Locator, Page, TestInfo } from '@playwright/test';
-import { RIG_CLIENT_SETTINGS, SEEDED_PROJECT, readClientSettingsDoc, resetClientSettings, resetPlaces, resetSeededChecking } from './helpers/rig';
+import { RIG_CLIENT_SETTINGS, SEEDED_PROJECT, listLocalRepos, readClientSettingsDoc, resetClientSettings, resetPlaces, resetSeededChecking, rigRepo } from './helpers/rig';
 import { dropOrigin, gateOff } from './helpers/door43Share';
+import { pickOption } from './helpers/dropdown';
 import { recordExternal } from './helpers/externalRequests';
 import { TC4_ROOT } from './helpers/root';
+import { lane } from './lane.mjs';
+import { ServerApi } from '../src/data/serverApi';
 import { LOCALES } from '../src/i18n/locales.js';
 
 const TAG = { tag: ['@app-language'] };
 const SEEDED_ID = `_local_/_local_/${SEEDED_PROJECT}`;
+const rigApi = new ServerApi({ baseUrl: lane().rigApi });
+/** The projects a case made in the rig (case i), removed after the file. */
+const madeRepos: string[] = [];
 
 // The expected strings come from the shipped catalogs, never from memory.
 const catalog = (id: string): Record<string, string> =>
@@ -108,6 +125,8 @@ test.describe('#522 — App language in the account menu', () => {
     await gateOff();
   });
   test.afterAll(async () => {
+    // Case i makes a project: it goes, so the next file starts from the seeded ones.
+    for (const repo of madeRepos) await rigApi.deleteRepo(`_local_/_local_/${repo}`).catch(() => {});
     resetSeededChecking();
     resetPlaces();
     resetClientSettings();
@@ -184,9 +203,9 @@ test.describe('#522 — App language in the account menu', () => {
   });
 
   // #622, criterion 5: each language added by #622 applies, and a fresh session starts in it.
-  test('b2. each language added by #622 applies and survives a restart', TAG, async ({ page }, testInfo) => {
+  test('b2. each language added by #622, and Arabic (#649), applies and survives a restart', TAG, async ({ page }, testInfo) => {
     await page.goto('/');
-    for (const id of ['pt-BR', 'id', 'uk', 'ru', 'vi']) {
+    for (const id of ['pt-BR', 'id', 'uk', 'ru', 'vi', 'ar']) {
       await openDialog(page);
       await choose(page, id);
       const written = page.waitForResponse((r) => isSettingsWrite(r.url(), r.request().method()));
@@ -357,6 +376,10 @@ test.describe('#522 — App language in the account menu', () => {
     // The committed text opens again for editing, in Spanish, unchanged.
     await page.getByTitle(ES['draft.editVerse']).first().click();
     await expect(page.getByRole('textbox', { name: ES['draft.verseLabel'].replace('{n}', '1') })).toHaveValue(TEXT);
+    // A tab is off while a card is open (#698); Cancel closes the verse card, whose text is
+    // already written.
+    await page.getByRole('button', { name: ES['draft.cancelVerse'], exact: true }).click();
+    await expect(page.getByRole('textbox', { name: ES['draft.verseLabel'].replace('{n}', '1') })).toHaveCount(0);
     // The comprehension note survives too, in Understand, now in Spanish.
     await page.getByRole('tab', { name: ES['nav.understand'], exact: true }).click();
     await expect(page.getByPlaceholder(ES['understand.commentsPlaceholderVerse']).first()).toHaveValue(NOTE);
@@ -408,9 +431,14 @@ test.describe('#522 — App language in the account menu', () => {
     await expect.poll(focused).toBe('account-language');
     await page.keyboard.press('Enter');
     await expect(dialog(page)).toBeVisible();
+    // With ten languages (#649) the list opens with a search field, and End there moves the
+    // text cursor. The arrows reach the last row; Enter chooses the row that is highlighted.
     await select(page).focus();
+    await expect.poll(focused).toBe('language-select');
     await page.keyboard.press('ArrowDown');
-    await page.keyboard.press('End');
+    await expect(page.getByRole('listbox')).toBeVisible();
+    for (let i = 1; i < LOCALES.length; i++) await page.keyboard.press('ArrowDown');
+    await expect(page.locator(`[aria-activedescendant$="-opt-${LOCALES.length - 1}"]`)).toHaveCount(1);
     await page.keyboard.press('Enter');
     await expect(select(page)).toContainText(LABEL[LAST]);
     await expectLanguage(page, LAST);
@@ -431,10 +459,11 @@ test.describe('#522 — App language in the account menu', () => {
     await external.save(testInfo);
   });
 
-  // ---- g · #612: Hindi text carries no letter spacing ----
+  // ---- g · #612, #649: Hindi and Arabic text carry no letter spacing ----
   // Devanagari has no capitals, and the letter spacing of the uppercase labels breaks its
-  // headline stroke. The control comes first: in English the same labels are tracked.
-  test('g. #612: in Hindi no element that shows Devanagari is letter-spaced; every other language keeps the tracking', TAG, async ({ page }, testInfo) => {
+  // headline stroke. Arabic letters join, and letter spacing breaks the joins. The control
+  // comes first: in English the same labels are tracked.
+  test('g. #612, #649: in Hindi and in Arabic no element that shows the script is letter-spaced; every other language keeps the tracking', TAG, async ({ page }, testInfo) => {
     const px = async (loc: Locator): Promise<number> => {
       const v = await loc.evaluate((el) => getComputedStyle(el).letterSpacing);
       return v === 'normal' ? 0 : parseFloat(v);
@@ -455,17 +484,21 @@ test.describe('#522 — App language in the account menu', () => {
       }
       return out;
     };
-    // Each visible element that holds Devanagari text of its own.
-    const devanagari = (): Promise<Array<{ text: string; uppercase: boolean; letterSpacing: string }>> => page.evaluate(() => {
+    type Shown = { text: string; uppercase: boolean; letterSpacing: string };
+    // Each visible element that holds text of its own in the script (a Unicode block).
+    const inScript = (block: string): Promise<Shown[]> => page.evaluate((source) => {
+      const script = new RegExp(source);
       const out: Array<{ text: string; uppercase: boolean; letterSpacing: string }> = [];
       for (const el of Array.from(document.querySelectorAll<HTMLElement>('body *'))) {
         const own = Array.from(el.childNodes).filter((n) => n.nodeType === 3).map((n) => n.textContent ?? '').join('').trim();
-        if (!/[ऀ-ॿ]/.test(own) || !el.getClientRects().length) continue;
+        if (!script.test(own) || !el.getClientRects().length) continue;
         const cs = getComputedStyle(el);
         out.push({ text: own, uppercase: cs.textTransform === 'uppercase', letterSpacing: cs.letterSpacing });
       }
       return out;
-    });
+    }, block);
+    // The languages whose script takes no letter spacing: Devanagari, Arabic.
+    const UNTRACKED = [{ id: 'hi', block: '[\u0900-\u097F]' }, { id: 'ar', block: '[\u0600-\u06FF]' }];
 
     await page.goto('/');
     await expectLanguage(page, 'en');
@@ -477,39 +510,429 @@ test.describe('#522 — App language in the account menu', () => {
     for (const f of FIELDS) expect(enFields[f], `en ${f}`).toBeGreaterThan(0);
     await report.getByTestId('feedback-cancel').click();
     measured.en = { home: enHome, ...enFields };
-    // Every other language but Hindi keeps the English tracking.
+    // Every other language but Hindi and Arabic keeps the English tracking.
     await openDialog(page);
-    for (const { id } of LOCALES.filter((l) => l.id !== 'en' && l.id !== 'hi')) {
+    for (const { id } of LOCALES.filter((l) => l.id !== 'en' && !UNTRACKED.some((u) => u.id === l.id))) {
       await choose(page, id);
       await expectLanguage(page, id);
       const home = await px(homeLabel(id));
       expect(home, `${id}: Home section label`).toBe(enHome);
       measured[id] = { home };
     }
-    // Hindi, applied.
-    await choose(page, 'hi');
+    await cancel(page).click();
+    await expect(dialog(page)).toHaveCount(0);
+    // Hindi, then Arabic, each applied.
+    const seen: Array<{ id: string; home: number; fields: Record<string, number>; onHome: Shown[]; onReport: Shown[] }> = [];
+    for (const { id, block } of UNTRACKED) {
+      await openDialog(page);
+      await choose(page, id);
+      const written = page.waitForResponse((r) => isSettingsWrite(r.url(), r.request().method()));
+      await apply(page).click();
+      await written;
+      await expect(dialog(page)).toHaveCount(0);
+      await expectLanguage(page, id);
+      const home = await px(homeLabel(id));
+      const onHome = await inScript(block);
+      const fields = await fieldLabels(id);
+      const onReport = await inScript(block);
+      measured[id] = { home, ...fields, shown: onReport };
+      seen.push({ id, home, fields, onHome, onReport });
+      // The dialog fades in: the picture is of its final state.
+      const picture = testInfo.outputPath(`feedback-${id}.png`);
+      await page.screenshot({ path: picture, animations: 'disabled' });
+      await testInfo.attach(`feedback-${id}`, { path: picture, contentType: 'image/png' });
+      await report.getByTestId('feedback-cancel').click();
+      await expect(report).toHaveCount(0);
+    }
+    const file = testInfo.outputPath('label-tracking.json');
+    fs.writeFileSync(file, `${JSON.stringify(measured, null, 2)}\n`);
+    await testInfo.attach('label-tracking', { path: file, contentType: 'application/json' });
+    for (const { id, home, fields, onHome, onReport } of seen) {
+      expect(home, `${id}: Home section label`).toBe(0);
+      for (const f of FIELDS) expect(fields[f], `${id} ${f}`).toBe(0);
+      expect(onHome.filter((el) => el.uppercase).length, id).toBeGreaterThan(0);
+      expect(onHome.filter((el) => !el.uppercase).length, id).toBeGreaterThan(0);
+      expect(onReport.length, id).toBeGreaterThan(onHome.length);
+      for (const el of [...onHome, ...onReport]) expect(['normal', '0px'], `${id}: "${el.text}"`).toContain(el.letterSpacing);
+    }
+  });
+
+  // ---- h, i · #657: the interface follows the app language; scripture follows the project ----
+  /** The document's `dir`, and the direction the app root computes. */
+  const directions = (page: Page): Promise<{ html: string; root: string }> => page.evaluate(() => ({
+    html: document.documentElement.dir,
+    root: getComputedStyle(document.querySelector('#root > div') as HTMLElement).direction,
+  }));
+  /** Where the middle of `loc` is: the left or the right half of the window. */
+  const half = async (page: Page, loc: Locator): Promise<'left' | 'right'> => {
+    const box = (await loc.boundingBox())!;
+    return box.x + box.width / 2 < page.viewportSize()!.width / 2 ? 'left' : 'right';
+  };
+  const openTitus = async (page: Page): Promise<void> => {
+    await page.getByTestId(`project-${SEEDED_ID}`).getByRole('button', { name: /Titus/ }).click();
+    await expect(page.getByTestId('understand')).toBeVisible({ timeout: 20_000 });
+  };
+  const helps = (page: Page): Locator => page.getByTestId('helps-panel');
+  /** `dir` and the computed direction of each match of `loc`. */
+  const textDirections = (loc: Locator): Promise<Array<{ dir: string | null; direction: string }>> =>
+    loc.evaluateAll((els) => els.map((el) => ({ dir: el.getAttribute('dir'), direction: getComputedStyle(el).direction })));
+
+  test('h. #657: with Arabic the document, the top bar, the side panel and the dialog read right to left, on Home and in a project; the preview and the switch back flip at once', TAG, async ({ page }, testInfo) => {
+    const seen: Record<string, unknown> = {};
+    await page.goto('/');
+    await expectLanguage(page, 'en');
+    // The control: English reads left to right, and the account menu is at the right end.
+    expect(await directions(page)).toEqual({ html: 'ltr', root: 'ltr' });
+    expect(await half(page, trigger(page))).toBe('right');
+    await openTitus(page);
+    await expect(helps(page)).toBeVisible();
+    seen.en = { ...(await directions(page)), account: await half(page, trigger(page)), helps: await half(page, helps(page)) };
+    expect(seen.en).toEqual({ html: 'ltr', root: 'ltr', account: 'right', helps: 'right' });
+    // In the project: the preview flips the direction at once, and Cancel restores it.
+    await openDialog(page);
+    await choose(page, 'ar');
+    await expect.poll(() => directions(page)).toEqual({ html: 'rtl', root: 'rtl' });
+    await cancel(page).click();
+    await expect(dialog(page)).toHaveCount(0);
+    await expect.poll(() => directions(page)).toEqual({ html: 'ltr', root: 'ltr' });
+    // Arabic, applied, with no restart.
+    await openDialog(page);
+    await choose(page, 'ar');
     const written = page.waitForResponse((r) => isSettingsWrite(r.url(), r.request().method()));
     await apply(page).click();
     await written;
     await expect(dialog(page)).toHaveCount(0);
-    await expectLanguage(page, 'hi');
-    const hiHome = await px(homeLabel('hi'));
-    const onHome = await devanagari();
-    const hiFields = await fieldLabels('hi');
-    const onReport = await devanagari();
-    measured.hi = { home: hiHome, ...hiFields, devanagari: onReport };
-    // The dialog fades in: the picture is of its final state.
-    const picture = testInfo.outputPath('feedback-hi.png');
+    await expect.poll(() => page.evaluate(() => document.documentElement.lang)).toBe('ar');
+    seen.arProject = { ...(await directions(page)), account: await half(page, trigger(page)), helps: await half(page, helps(page)) };
+    await shot(page, testInfo, 'rtl-project-ar');
+    // The App language dialog.
+    await openDialog(page);
+    seen.arDialog = await dialog(page).evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return { direction: cs.direction, textAlign: cs.textAlign };
+    });
+    await shot(page, testInfo, 'rtl-dialog-ar');
+    await cancel(page).click();
+    await expect(dialog(page)).toHaveCount(0);
+    // Home.
+    await page.getByTestId('project-switch').click();
+    await expectLanguage(page, 'ar');
+    seen.arHome = { ...(await directions(page)), account: await half(page, trigger(page)) };
+    await shot(page, testInfo, 'rtl-home-ar');
+    // Back to English: left to right at once.
+    await openDialog(page);
+    await choose(page, 'en');
+    await apply(page).click();
+    await expect(dialog(page)).toHaveCount(0);
+    await expectLanguage(page, 'en');
+    seen.enAgain = { ...(await directions(page)), account: await half(page, trigger(page)) };
+    const file = testInfo.outputPath('interface-direction.json');
+    fs.writeFileSync(file, `${JSON.stringify(seen, null, 2)}\n`);
+    await testInfo.attach('interface-direction', { path: file, contentType: 'application/json' });
+    expect(seen.arProject).toEqual({ html: 'rtl', root: 'rtl', account: 'left', helps: 'left' });
+    expect((seen.arDialog as { direction: string }).direction).toBe('rtl');
+    expect(['start', 'right']).toContain((seen.arDialog as { textAlign: string }).textAlign);
+    expect(seen.arHome).toEqual({ html: 'rtl', root: 'rtl', account: 'left' });
+    expect(seen.enAgain).toEqual({ html: 'ltr', root: 'ltr', account: 'right' });
+  });
+
+  test('i. #657: scripture follows the project, not the app language: a left-to-right project under Arabic, and a right-to-left project under English', TAG, async ({ page }, testInfo) => {
+    test.setTimeout(120_000);
+    const seen: Record<string, unknown> = {};
+    const source = page.getByTestId('draft-source-text');
+    const target = page.getByTestId('draft-target-text');
+    const editor = page.getByTestId('section-editor').locator('textarea');
+    const draftSection = (id: string): Locator =>
+      page.getByRole('button', { name: new RegExp(`^${escapeRe(BY_ID[id]['draft.draftSection'].split('{span}')[0])}`) }).first();
+    // Arabic interface, the seeded left-to-right project.
+    writeStoredLocale('ar');
+    await page.goto('/');
+    await expectLanguage(page, 'ar');
+    await openTitus(page);
+    await page.getByRole('tab', { name: BY_ID.ar['nav.draft'], exact: true }).click();
+    await expect(source.first()).toBeVisible({ timeout: 20_000 });
+    await draftSection('ar').click();
+    await expect(editor).toBeVisible();
+    seen.arInterfaceLtrProject = {
+      interface: await directions(page),
+      source: await textDirections(source),
+      target: await textDirections(target),
+      editor: await textDirections(editor),
+    };
+    await shot(page, testInfo, 'ltr-project-ar');
+    await page.getByTestId('section-editor').getByRole('button', { name: BY_ID.ar['draft.cancelVerse'], exact: true }).click();
+    await page.getByTestId('project-switch').click();
+    await expectLanguage(page, 'ar');
+    // English interface, a right-to-left project made the way a translator makes one.
+    await openDialog(page);
+    await choose(page, 'en');
+    await apply(page).click();
+    await expect(dialog(page)).toHaveCount(0);
+    await expectLanguage(page, 'en');
+    const before = listLocalRepos();
+    await page.getByTestId('add-project').click();
+    await page.getByTestId('add-project-bible').click();
+    await page.getByLabel(EN['newBible.name']).fill('Equipo Rig — derecha a izquierda');
+    await page.getByLabel(EN['newBible.code']).fill('ar');
+    await page.getByRole('button', { name: EN['wizard.rtl'] }).click();
+    await page.getByRole('button', { name: 'Create Bible' }).click();
+    await page.getByRole('button', { name: EN['addBook.blankTitle'] }).click({ timeout: 20_000 });
+    await pickOption(page, EN['addBook.book'], 'Titus');
+    await page.getByRole('button', { name: EN['addBook.create'] }).click();
+    await expect(page.getByTestId('understand')).toBeVisible({ timeout: 20_000 });
+    const created = listLocalRepos().filter((r) => !before.includes(r));
+    expect(created, 'one new repository in the rig').toHaveLength(1);
+    madeRepos.push(created[0]);
+    const settings = JSON.parse(fs.readFileSync(path.join(rigRepo(created[0]), 'ingredients', 'checking', 'settings.json'), 'utf8'));
+    expect(settings.textDirection).toBe('rtl');
+    // A comprehension note is typed in the project's direction (its blur saves it).
+    const NOTE = 'بولس يقدّم نفسه كعبد ورسول.';
+    const note = page.getByPlaceholder(EN['understand.commentsPlaceholder']).first();
+    await note.fill(NOTE);
+    await note.blur();
+    await page.getByRole('tab', { name: EN['nav.draft'], exact: true }).click();
+    await expect(source.first()).toBeVisible({ timeout: 20_000 });
+    await draftSection('en').click();
+    await expect(editor).toBeVisible();
+    const editorSeen = await textDirections(editor);
+    await shot(page, testInfo, 'rtl-project-en');
+    await page.getByTestId('section-editor').getByRole('button', { name: EN['draft.cancelVerse'], exact: true }).click();
+    // A drafted verse, for the alignment list below (the blur saves it).
+    const VERSE = 'بولس، عبد الله ورسول يسوع المسيح.';
+    await page.getByRole('tab', { name: 'Verse', exact: true }).click();
+    await page.getByRole('button', { name: 'Start this verse' }).first().click();
+    const verse = page.getByRole('textbox', { name: 'Verse 1' });
+    await verse.fill(VERSE);
+    await verse.blur();
+    await expect(page.getByTestId('draft-target-text').filter({ hasText: VERSE })).toBeVisible();
+    // The note, shown in the Comments tab of the helps panel, reads as it was typed.
+    await helps(page).getByRole('tab', { name: EN['helps.comments'], exact: true }).click();
+    const shownNote = page.getByTestId('helps-comment').locator('p');
+    await expect(shownNote).toHaveText(NOTE);
+    seen.enInterfaceRtlProject = {
+      interface: await directions(page),
+      account: await half(page, trigger(page)),
+      source: await textDirections(source),
+      editor: editorSeen,
+      note: await textDirections(shownNote),
+      // The project's name in the top bar.
+      name: await textDirections(page.getByTestId('project-switch').getByText('Equipo Rig — derecha a izquierda', { exact: true })),
+    };
+    // A check comment has no language of its own: it reads in the direction of what is typed.
+    await page.getByRole('tab', { name: EN['nav.check'], exact: true }).click();
+    await page.getByTestId('open-translationNotes').click();
+    await page.getByTestId('comment-toggle').click();
+    const comment = page.getByTestId('comment-text');
+    await comment.fill('Paul calls himself a servant.');
+    const latin = await textDirections(comment);
+    await comment.fill(NOTE);
+    const arabic = await textDirections(comment);
+    await comment.fill('');
+    seen.checkComment = { latin, arabic };
+    // The alignment tool lists each drafted verse by its text, in the project's direction.
+    await page.getByTestId('check-back').click();
+    await page.getByTestId('open-align').click();
+    const row = page.getByTestId('align-verse-list').getByText(VERSE, { exact: true });
+    await expect(row).toBeVisible({ timeout: 20_000 });
+    seen.alignRow = await textDirections(row);
+    const file = testInfo.outputPath('scripture-direction.json');
+    fs.writeFileSync(file, `${JSON.stringify(seen, null, 2)}\n`);
+    await testInfo.attach('scripture-direction', { path: file, contentType: 'application/json' });
+    const ltr = seen.arInterfaceLtrProject as { interface: unknown; source: Array<{ direction: string }>; target: Array<{ direction: string }>; editor: unknown };
+    expect(ltr.interface).toEqual({ html: 'rtl', root: 'rtl' });
+    expect(ltr.source.length).toBeGreaterThan(0);
+    for (const el of [...ltr.source, ...ltr.target]) expect(el.direction).toBe('ltr');
+    expect(ltr.editor).toEqual([{ dir: 'ltr', direction: 'ltr' }]);
+    const rtl = seen.enInterfaceRtlProject as { interface: unknown; account: string; source: Array<{ direction: string }>; editor: unknown; note: unknown; name: unknown };
+    expect(rtl.name).toEqual([{ dir: 'rtl', direction: 'rtl' }]);
+    expect(seen.alignRow).toEqual([{ dir: 'rtl', direction: 'rtl' }]);
+    expect(rtl.interface).toEqual({ html: 'ltr', root: 'ltr' });
+    expect(rtl.account).toBe('right');
+    // The source is the English gateway text: it stays left to right.
+    for (const el of rtl.source) expect(el.direction).toBe('ltr');
+    expect(rtl.editor).toEqual([{ dir: 'rtl', direction: 'rtl' }]);
+    expect(rtl.note).toEqual([{ dir: 'rtl', direction: 'rtl' }]);
+    expect(seen.checkComment).toEqual({ latin: [{ dir: 'auto', direction: 'ltr' }], arabic: [{ dir: 'auto', direction: 'rtl' }] });
+  });
+
+  // ---- j · #686: Arabic interface text is in the bundled Noto Sans Arabic ----
+  type Face = { family: string; bundled: boolean; glyphs: number };
+  const ARABIC = 'Noto Sans Arabic';
+  /** The faces the browser painted the text of `loc` with, as Chromium reports them
+   * (CSS.getPlatformFontsForNode): the computed `font-family` is only the list asked for. */
+  const faces = async (page: Page, loc: Locator): Promise<Face[]> => {
+    const cdp = await page.context().newCDPSession(page);
+    try {
+      await loc.evaluate((el) => el.setAttribute('data-face-probe', ''));
+      await cdp.send('DOM.enable');
+      await cdp.send('CSS.enable');
+      const { root } = await cdp.send('DOM.getDocument');
+      const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector: '[data-face-probe]' });
+      const { fonts } = await cdp.send('CSS.getPlatformFontsForNode', { nodeId });
+      // A variable face reports the name of its default instance ("Mulish ExtraLight"): keep the family.
+      const family = (name: string): string => [ARABIC, 'Mulish'].find((known) => name.startsWith(known)) ?? name;
+      return fonts.map((f) => ({ family: family(f.familyName), bundled: f.isCustomFont, glyphs: f.glyphCount }))
+        .sort((a, b) => a.family.localeCompare(b.family));
+    } finally {
+      await loc.evaluate((el) => el.removeAttribute('data-face-probe'));
+      await cdp.send('CSS.disable');
+      await cdp.send('DOM.disable');
+      await cdp.detach();
+    }
+  };
+  const families = (list: Face[]): string[] => list.map((f) => f.family);
+  /** The characters of `text` that the Arabic face must paint: the Arabic block. */
+  const arabicLetters = (text: string): number => [...text].filter((c) => /[؀-ۿ]/.test(c)).length;
+
+  test('j. #686: with the internet off, Arabic interface text is painted in the bundled Noto Sans Arabic at each weight; Latin text stays in Mulish; Pashto, Sindhi and Kurdish names show in it too', TAG, async ({ page }, testInfo) => {
+    const external = recordExternal(page);
+    const seen: Record<string, unknown> = {};
+    // The control: English, where every face is Mulish.
+    await page.goto('/');
+    await expectLanguage(page, 'en');
+    seen.latin = await faces(page, heading(page));
+    // Arabic, applied.
+    await openDialog(page);
+    await choose(page, 'ar');
+    await apply(page).click();
+    await expect(dialog(page)).toHaveCount(0);
+    await expectLanguage(page, 'ar');
+    await page.evaluate(() => document.fonts.ready);
+    // Each weight that an element with Arabic text of its own has, on Home and in Report a problem.
+    const mark = (): Promise<number[]> => page.evaluate(() => {
+      const weights = new Set<number>();
+      for (const el of Array.from(document.querySelectorAll<HTMLElement>('body *'))) {
+        const own = Array.from(el.childNodes).filter((n) => n.nodeType === 3).map((n) => n.textContent ?? '').join('').trim();
+        if (!/[؀-ۿ]/.test(own) || !el.getClientRects().length) continue;
+        const weight = Number(getComputedStyle(el).fontWeight);
+        if (!weights.has(weight) && !document.querySelector(`[data-face-weight="${weight}"]`)) el.setAttribute('data-face-weight', String(weight));
+        weights.add(weight);
+      }
+      return Array.from(document.querySelectorAll('[data-face-weight]')).map((el) => Number(el.getAttribute('data-face-weight'))).sort();
+    });
+    const byWeight: Record<string, Face[]> = {};
+    const probeWeights = async (): Promise<void> => {
+      for (const weight of await mark()) {
+        if (byWeight[weight]) continue;
+        byWeight[weight] = (await faces(page, page.locator(`[data-face-weight="${weight}"]`))).filter((f) => f.family !== 'Mulish');
+      }
+    };
+    await probeWeights();
+    await openMenu(page);
+    await page.getByTestId('account-report').click();
+    await expect(page.getByTestId('feedback')).toBeVisible();
+    await probeWeights();
+    await page.getByTestId('feedback-cancel').click();
+    seen.arabicByWeight = byWeight;
+    // A label with Arabic and Latin text: each script in its own face, read right to left.
+    const share = page.getByRole('button', { name: BY_ID.ar['home.share'], exact: true }).first();
+    seen.mixed = { faces: await faces(page, share), direction: await share.evaluate((el) => getComputedStyle(el).direction) };
+    await shot(page, testInfo, 'arabic-face-home');
+    // A placeholder is interface text too, also in a field that is in the scripture face.
+    await openTitus(page);
+    const noteField = page.getByPlaceholder(BY_ID.ar['understand.commentsPlaceholder']).first();
+    await expect(noteField).toBeVisible();
+    seen.placeholder = {
+      asked: await noteField.evaluate((el) => getComputedStyle(el, '::placeholder').fontFamily),
+      faces: await faces(page, noteField),
+    };
+    await shot(page, testInfo, 'arabic-face-placeholder');
+    await page.getByTestId('project-switch').click();
+    await expectLanguage(page, 'ar');
+    // The names of Pashto, Sindhi and Kurdish, from the language list the app ships.
+    const names = JSON.parse(fs.readFileSync(path.join(TC4_ROOT, 'src', 'data', 'langnames.json'), 'utf8')) as Array<{ lc: string; ln: string; ang: string }>;
+    await page.getByTestId('add-project').click();
+    await page.getByTestId('add-project-bible').click();
+    const samples: Record<string, { name: string; letters: number; faces: Face[] }> = {};
+    for (const code of ['ps', 'sd', 'ckb']) {
+      const row = names.find((r) => r.lc === code)!;
+      await page.getByLabel(BY_ID.ar['newBible.langName']).fill(row.ang.split(',')[0]);
+      const name = page.getByRole('option').getByText(row.ln, { exact: true }).first();
+      await expect(name).toBeVisible();
+      samples[code] = { name: row.ln, letters: arabicLetters(row.ln), faces: await faces(page, name) };
+    }
+    await shot(page, testInfo, 'arabic-face-names');
+    seen.samples = samples;
+    seen.external = external.external();
+    const file = testInfo.outputPath('interface-faces.json');
+    fs.writeFileSync(file, `${JSON.stringify(seen, null, 2)}\n`);
+    await testInfo.attach('interface-faces', { path: file, contentType: 'application/json' });
+    await external.save(testInfo);
+
+    expect(seen.latin).toEqual([{ family: 'Mulish', bundled: true, glyphs: EN['home.yourProjects'].length }]);
+    // 400 to 900 are the weights of the tokens; each one the interface shows is checked.
+    expect(Object.keys(byWeight).length).toBeGreaterThan(2);
+    for (const [weight, list] of Object.entries(byWeight)) {
+      expect(families(list), `weight ${weight}`).toEqual([ARABIC]);
+      expect(list[0].bundled, `weight ${weight}`).toBe(true);
+    }
+    const mixed = seen.mixed as { faces: Face[]; direction: string };
+    expect(families(mixed.faces)).toEqual(['Mulish', ARABIC]);
+    expect(mixed.faces.every((f) => f.bundled)).toBe(true);
+    expect(mixed.direction).toBe('rtl');
+    const placeholder = seen.placeholder as { asked: string; faces: Face[] };
+    expect(placeholder.asked).toContain(ARABIC);
+    expect(families(placeholder.faces.filter((f) => f.family !== 'Mulish'))).toEqual([ARABIC]);
+    // No tofu box: the bundled Arabic face paints the Arabic letters of each name itself (a
+    // letter is one glyph or more). A name in Arabic script only has no other face. The
+    // Sindhi name has a Devanagari part too, which the system paints.
+    for (const [code, sample] of Object.entries(samples)) {
+      const arabic = sample.faces.find((f) => f.family === ARABIC);
+      expect(arabic?.bundled, `${code}: ${sample.name}`).toBe(true);
+      expect(arabic?.glyphs, `${code}: ${sample.name}`).toBeGreaterThanOrEqual(sample.letters);
+      if (sample.letters === [...sample.name].length) expect(families(sample.faces), `${code}: ${sample.name}`).toEqual([ARABIC]);
+    }
+    expect(samples.ps.letters === [...samples.ps.name].length && samples.ckb.letters === [...samples.ckb.name].length).toBe(true);
+    expect(external.external()).toEqual([]);
+  });
+
+  // ---- k · #650: helps read in the direction of their gateway package ----
+  test('k. #650: with the Arabic interface, the helps of a left-to-right package read left to right: notes, words, questions, the simplified text, the article, and the note and the article of a check', TAG, async ({ page }, testInfo) => {
+    test.setTimeout(90_000);
+    const AR = BY_ID.ar;
+    const seen: Record<string, unknown> = {};
+    const one = async (loc: Locator): Promise<{ dir: string | null; direction: string }> => {
+      await expect(loc.first()).toBeVisible({ timeout: 20_000 });
+      // On the one element, so a list that renders again between the two reads is waited for.
+      return loc.first().evaluate((el) => ({ dir: el.getAttribute('dir'), direction: getComputedStyle(el).direction }));
+    };
+    writeStoredLocale('ar');
+    await page.goto('/');
+    await expectLanguage(page, 'ar');
+    await openTitus(page);
+    await expect(helps(page)).toBeVisible();
+    // The packages of the seeded project (Spanish, and English behind it) read left to right.
+    seen.note = await one(page.getByTestId('helps-note'));
+    await helps(page).getByRole('button', { name: AR['understand.academyLink'], exact: true }).first().click();
+    seen.article = await one(page.getByTestId('understand-article'));
+    seen.articleTitle = await one(page.getByTestId('helps-article-title'));
+    await shot(page, testInfo, 'helps-ltr-under-arabic');
+    await page.getByTestId('helps-article-close').click();
+    await helps(page).getByRole('tab', { name: AR['helps.words'], exact: true }).click();
+    seen.word = await one(page.getByTestId('helps-word'));
+    await helps(page).getByRole('tab', { name: AR['helps.questions'], exact: true }).click();
+    seen.question = await one(page.getByTestId('understand-question'));
+    await helps(page).getByRole('tab').nth(3).click();
+    seen.simplified = await one(page.getByTestId('understand-simplified').locator('p'));
+    // A check: its note, and the article of its Translation Academy drawer.
+    await page.getByRole('tab', { name: AR['nav.check'], exact: true }).click();
+    await page.getByTestId('open-translationNotes').click();
+    seen.checkNote = await one(page.getByTestId('check-note-text'));
+    await page.getByTestId('open-academy').click();
+    seen.checkArticle = await one(page.getByTestId('academy-drawer').getByTestId('article-panel'));
+    seen.checkArticleTitle = await one(page.getByTestId('drawer-title'));
+    // The drawer slides in: the picture is of its final state.
+    const picture = testInfo.outputPath('check-helps-ltr-under-arabic.png');
     await page.screenshot({ path: picture, animations: 'disabled' });
-    await testInfo.attach('feedback-hi', { path: picture, contentType: 'image/png' });
-    const file = testInfo.outputPath('label-tracking.json');
-    fs.writeFileSync(file, `${JSON.stringify(measured, null, 2)}\n`);
-    await testInfo.attach('label-tracking', { path: file, contentType: 'application/json' });
-    expect(hiHome, 'hi: Home section label').toBe(0);
-    for (const f of FIELDS) expect(hiFields[f], `hi ${f}`).toBe(0);
-    expect(onHome.filter((el) => el.uppercase).length).toBeGreaterThan(0);
-    expect(onHome.filter((el) => !el.uppercase).length).toBeGreaterThan(0);
-    expect(onReport.length).toBeGreaterThan(onHome.length);
-    for (const el of [...onHome, ...onReport]) expect(['normal', '0px'], `hi: "${el.text}"`).toContain(el.letterSpacing);
+    await testInfo.attach('check-helps-ltr-under-arabic', { path: picture, contentType: 'image/png' });
+    seen.interface = await directions(page);
+    const file = testInfo.outputPath('helps-direction.json');
+    fs.writeFileSync(file, `${JSON.stringify(seen, null, 2)}\n`);
+    await testInfo.attach('helps-direction', { path: file, contentType: 'application/json' });
+    // The interface stays right to left; each help states its own direction.
+    expect(seen.interface).toEqual({ html: 'rtl', root: 'rtl' });
+    for (const part of ['note', 'article', 'articleTitle', 'word', 'question', 'simplified', 'checkNote', 'checkArticle', 'checkArticleTitle']) {
+      expect(seen[part], part).toEqual({ dir: 'ltr', direction: 'ltr' });
+    }
   });
 });

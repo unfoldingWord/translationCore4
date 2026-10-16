@@ -15,6 +15,7 @@ import {
 } from '../src/data/resourceFetch';
 import type { FetchPin } from '../src/data/resourceFetch';
 import type { ResourcePin } from '../src/data/burritoStore';
+const { readFileSync } = process.getBuiltinModule('node:fs');
 
 const PIN: ResourcePin & { version: string } = {
   repoPath: 'git.door43.org/unfoldingWord/en_twl',
@@ -401,6 +402,28 @@ describe('sha-only pin with no tag — the Gitea commit archive (D71, #218)', ()
     expect(seen.at(-1)).toBe(`https://git.door43.org/uW/en_ugl/archive/${SHA}.zip`);
     expect(r.revision).toBe(SHA);
     expect(installed).toEqual(['_local_/_sideloaded_/uw--en_ugl']);
+  });
+
+  it('#740 installs the compact representation through the same runtime download path', async () => {
+    const fixture = new URL('./fixtures/resources/en_ugl@d9d29e2d5892/', import.meta.url);
+    const metadata = readFileSync(new URL('metadata.json', fixture));
+    const payload = readFileSync(new URL('1.json', fixture));
+    const zip = withArchiveComment(zipSync({
+      'en_ugl/metadata.json': metadata,
+      'en_ugl/ingredients/content/1.json': payload,
+      'en_ugl/ingredients/README.md': readFileSync(new URL('README.md', fixture)),
+    }), SHA);
+    const posted: Uint8Array[] = [];
+    await fetchAndInstallPin(LEXICON, {
+      api: { getNetEnabled: async () => true, postZippedBurrito: async (_repo: string, bytes: Uint8Array) => { posted.push(bytes); } } as never,
+      fetchFn: dcsWithArchive(zip, []),
+    });
+    const outer = unzipSync(posted[0]);
+    expect(Object.keys(outer).filter((name) => !name.endsWith('/')).sort()).toEqual(['.tc4-bundled-identity.json', 'ingredients/source.zip', 'metadata.json']);
+    const restored = unzipSync(outer['ingredients/source.zip']);
+    expect(Buffer.from(restored['metadata.json'])).toEqual(metadata);
+    expect(Buffer.from(restored['ingredients/content/1.json'])).toEqual(payload);
+    expect(JSON.parse(new TextDecoder().decode(outer['.tc4-bundled-identity.json']))).toMatchObject({ repoPath: LEXICON.repoPath, sha: SHA, storage: 'lexicon-archive-v1' });
   });
 
   it('REFUSES an archive whose comment names another commit, or none — even when its OWN metadata claims the pinned sha', async () => {

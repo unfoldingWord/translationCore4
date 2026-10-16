@@ -20,14 +20,17 @@ import { STORY_FILE } from '../data/journal/runtime';
 import { bookName } from '../data/bookNames';
 import { renderArticleBlocks } from '../data/articles';
 import Align from './Align.jsx';
+import { ItemNavButton } from './ItemNav.jsx';
 import { isLanguageSwitch } from '../data/revalidate';
 import { targetWords, selectionsFromTokens, tokenIndicesFromSelections } from '../data/selections';
 import { tokenizeVerse, matchQuote, tokenizePlain, matchPlainQuote } from '../data/sourceHighlight';
 import { verseText } from './verseText.js';
 import { absenceMessageKey, isSourceAbsent } from '../data/sourceState';
+import { literalPaneId } from '../data/gatewayChange';
 import { BlockText, ExpandableNote, Quoted, glTitleFor } from './HelpsPanel.jsx';
 import { RAIL_FILTERS, RAIL_FILTER_ORDER, hasComment, isBookmarked, railCounts } from './checkFilters.js';
 import { t } from '../i18n';
+import { helpsDir, projectDir } from './scriptStyle.js';
 import { Button, Callout, Drawer, Overline, ProgressBar } from '../ds/index.js';
 
 const TOOLS = Object.keys(TOOL_SLOT);
@@ -281,7 +284,7 @@ function FallbackWarning({ tool, missing }) {
 /** The help article behind the active item (C2.5), read from the installed
  * burrito — presented as the mockup's right-side Drawer (F1, INVENTORY §6),
  * not an inline card. Absence is stated, never rendered as an empty panel. */
-function ArticleBody({ article }) {
+function ArticleBody({ article, dir }) {
   if (!article || article.loading) {
     return <p style={{ fontSize: 'var(--fs-caption-lg)', color: 'var(--text-tertiary)', margin: 0 }}>{t('check.articleLoading')}</p>;
   }
@@ -302,7 +305,7 @@ function ArticleBody({ article }) {
   // already exceeds the old 40-block cap.
   const blocks = renderArticleBlocks(article.found.body);
   return (
-    <div data-testid="article-panel">
+    <div data-testid="article-panel" dir={dir}>
       {blocks.map((b, i) => {
         if (b.kind === 'h') {
           return (
@@ -332,13 +335,16 @@ function ArticleBody({ article }) {
 }
 
 /* The design system's own end-edge slide-over ('Translation Academy' is its
- * documented purpose); the article prose inherits the document direction. */
-function AcademyDrawer({ article, cat, onClose }) {
+ * documented purpose); the article prose reads in the direction of its gateway
+ * package (#650). */
+function AcademyDrawer({ article, cat, resource, onClose }) {
+  const { s } = useApp();
   return (
     <Drawer data-testid="academy-drawer" width="var(--drawer-width)" onClose={onClose} closeLabel={t('common.close')}
       eyebrow={t('check.academyEyebrow', { cat })}
-      title={article?.found?.title ?? t('check.academyFallback')}>
-      <ArticleBody article={article} />
+      title={article?.found?.title ?? t('check.academyFallback')}
+      titleDir={article?.found?.title ? helpsDir(s, resource?.languageSet) : undefined}>
+      <ArticleBody article={article} dir={helpsDir(s, resource?.languageSet)} />
     </Drawer>
   );
 }
@@ -450,10 +456,11 @@ const ultVerseObj = (source, crossFrame, c, v) =>
 
 /** The compare card's GATEWAY row: the project's §5.3 extraScripture verse
  * with the quote's tokens highlighted through the alignment (same matcher as
- * the helps panel). Pane ids are the project's own — 'ult' is preferred when
- * present, otherwise the first declared pane; a project with none states so. */
+ * the helps panel). Pane ids are the project's own — the literal pane ('ult',
+ * else 'glt') is preferred when present, otherwise the first declared pane; a
+ * project with none states so. */
 function UltPane({ sources, sourcePanes, item, c, v, crossFrame }) {
-  const paneId = sourcePanes?.includes('ult') ? 'ult' : sourcePanes?.[0];
+  const paneId = literalPaneId(sourcePanes);
   const source = paneId ? sources?.[paneId] : undefined;
   const vObj = ultVerseObj(source, crossFrame, c, v);
   const tokens = React.useMemo(() => (vObj ? tokenizeVerse(vObj) : []), [vObj]);
@@ -549,12 +556,44 @@ function SourcePanes({ cs, item, sources, sourcePanes, sourceStory, c, v }) {
  * item by the caller: the caret starts before the first word. */
 const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'Meta']);
 
+/** #737: the selection a drag from word `from` to word `to` makes: the words
+ * selected when it began, plus every word from `from` to `to`, whole. */
+const dragRange = (base, from, to) => {
+  const next = new Set(base);
+  for (let k = Math.min(from, to); k <= Math.max(from, to); k++) next.add(k);
+  return next;
+};
+
 export function TargetWords({ words, sel, setSelection, toggleWord, direction }) {
   // caret: 0..words.length, the gap before word `caret`. run: { anchor, base }
   // while Shift+arrows extend a range; base is the selection when it began.
   const [caret, setCaret] = React.useState(0);
   const run = React.useRef(null);
   const refs = React.useRef([]);
+  // #737 (Birch: Option A, as in tC3): pressing on a word and dragging across
+  // others selects them, whole, as the pointer passes; the words selected
+  // before stay. The release can land anywhere, so the document hears it; the
+  // click that follows a drag must not toggle the last word back.
+  const drag = React.useRef(null); // { from, base, moved } while the button is down
+  const dragged = React.useRef(false);
+  const dragOver = (i) => {
+    const d = drag.current;
+    if (!d || (!d.moved && i === d.from)) return;
+    d.moved = true;
+    setSelection(dragRange(d.base, d.from, i));
+  };
+  React.useEffect(() => {
+    const onMouseUp = () => {
+      if (drag.current?.moved) {
+        run.current = null;
+        dragged.current = true;
+        setTimeout(() => { dragged.current = false; }, 0);
+      }
+      drag.current = null;
+    };
+    document.addEventListener('mouseup', onMouseUp);
+    return () => document.removeEventListener('mouseup', onMouseUp);
+  }, []);
   const at = Math.min(caret, words.length - 1);
   const focusWord = (i) => refs.current[Math.min(i, words.length - 1)]?.focus();
   const extend = (step) => {
@@ -598,12 +637,26 @@ export function TargetWords({ words, sel, setSelection, toggleWord, direction })
     if (!e.currentTarget.contains(e.relatedTarget)) run.current = null;
   };
   return (
-    <p data-testid="check-target" data-drafted="1" role="group" aria-label={t('check.targetWordsLabel')} onKeyDown={onKeyDown} onBlur={onBlur}
+    // #737: the text stays selectable for copying from beside the words; its
+    // highlight is the system's (base.css, data-words), not the word yellow.
+    <p data-testid="check-target" data-words="target" data-drafted="1" role="group" aria-label={t('check.targetWordsLabel')} onKeyDown={onKeyDown} onBlur={onBlur}
       style={{ direction, textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-title-lg)', lineHeight: 1.9, color: 'var(--text-scripture)', margin: '8px 0 0' }}>
       {words.map((w, i) => (
         <span key={i} ref={(el) => { refs.current[i] = el; }} data-testid={`tw-${i}`} data-selected={sel.has(i) ? '1' : '0'}
           role="button" aria-pressed={sel.has(i)} tabIndex={i === at ? 0 : -1}
-          onClick={() => { run.current = null; setCaret(i); toggleWord(i); }}
+          onMouseDown={(e) => {
+            if (e.button !== 0) return;
+            // A press on a word starts a word drag, never a text selection; the
+            // browser no longer focuses the word, so focus it here. The keyboard
+            // then acts on this word, as after a click (#737 review).
+            e.preventDefault();
+            refs.current[i]?.focus();
+            run.current = null;
+            setCaret(i);
+            drag.current = { from: i, base: new Set(sel), moved: false };
+          }}
+          onMouseEnter={() => dragOver(i)}
+          onClick={() => { if (dragged.current) return; run.current = null; setCaret(i); toggleWord(i); }}
           style={{ display: 'inline-block', cursor: 'pointer', borderRadius: 4, padding: '0 .1em', marginInlineEnd: '.22em', background: sel.has(i) ? 'var(--tc-highlight-soft)' : 'transparent' }}>
           {w}
         </span>
@@ -619,15 +672,10 @@ function CheckDetail({ cs, item, title, sources, sourcePanes, sourceStory, words
   const { c, v } = referenceParts(item.contextId.reference);
   const quote = title;
   const idx = cs.activeIndex;
+  const { s } = useApp();
+  const helpDir = helpsDir(s, cs.resource?.languageSet);
   const canPrev = idx > 0;
   const canNext = idx < cs.items.length - 1;
-  const navStyle = (enabled) => ({
-    border: 'var(--stroke) solid', background: 'var(--surface-card)', fontFamily: 'inherit',
-    fontWeight: 'var(--fw-heavy)', fontSize: 'var(--fs-ui-sm)', width: 30, height: 30, borderRadius: 'var(--radius-sm)',
-    color: enabled ? 'var(--text-heading)' : 'var(--uw-mist)',
-    borderColor: enabled ? 'var(--border-strong)' : 'var(--border)',
-    cursor: enabled ? 'pointer' : 'default',
-  });
 
   return (
     <div style={{ maxWidth: 760, margin: '0 auto', padding: '28px 32px 60px' }}>
@@ -639,10 +687,6 @@ function CheckDetail({ cs, item, title, sources, sourcePanes, sourceStory, words
         <span data-testid="check-item-counter" style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
           {t('check.itemOf', { n: idx + 1, total: cs.items.length })}
         </span>
-        <button type="button" data-testid="check-prev" title={t('check.prevItem')} disabled={!canPrev}
-          onClick={() => canPrev && onNav(idx - 1)} style={navStyle(canPrev)}>←</button>
-        <button type="button" data-testid="check-next" title={t('check.nextItem')} disabled={!canNext}
-          onClick={() => canNext && onNav(idx + 1)} style={navStyle(canNext)}>→</button>
       </div>
 
       <h1 data-testid="check-quote" style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-h1)', fontWeight: 'var(--fw-bold)', color: 'var(--text-heading)', margin: '0 0 14px' }}>
@@ -652,7 +696,7 @@ function CheckDetail({ cs, item, title, sources, sourcePanes, sourceStory, words
       {item.contextId.occurrenceNote && (
         <div data-testid="check-note" style={{ maxWidth: '62ch', marginBottom: 8, borderRadius: 'var(--radius-lg)', padding: '16px 18px', background: 'var(--surface-warm)', border: 'var(--stroke) solid var(--tc-warn-border)' }}>
           <Overline style={{ color: 'var(--tc-warn-text-2)' }}>{t('check.whatToCheck')}</Overline>
-          <div style={{ fontSize: 'var(--fs-title-sm)', letterSpacing: 'var(--track-16)', lineHeight: 'var(--lh-body)', fontWeight: 'var(--fw-medium)', color: 'var(--uw-ink)', margin: '7px 0 0' }}>
+          <div dir={helpDir} data-testid="check-note-text" style={{ fontSize: 'var(--fs-title-sm)', letterSpacing: 'var(--track-16)', lineHeight: 'var(--lh-body)', fontWeight: 'var(--fw-medium)', color: 'var(--uw-ink)', margin: '7px 0 0' }}>
             {/* Keyed by item: the expanded/collapsed state must not leak from
               * one check to the next. */}
             <ExpandableNote key={idx} text={item.contextId.occurrenceNote} />
@@ -685,7 +729,9 @@ function CheckDetail({ cs, item, title, sources, sourcePanes, sourceStory, words
         </div>
       </div>
 
+      {/* #726: mark, then move on — Previous / Next sit in the marking row. */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 22, flexWrap: 'wrap' }}>
+        <ItemNavButton which="prev" testId="check-prev" enabled={canPrev} onClick={() => onNav(idx - 1)} />
         <button type="button" data-testid="mark-valid" onClick={markValid}
           style={triageStyle(item.status === 'valid', TRIAGE_TONES.valid)}>
           {t('check.markValid')}
@@ -698,6 +744,7 @@ function CheckDetail({ cs, item, title, sources, sourcePanes, sourceStory, words
           style={triageStyle(item.status === 'todo', TRIAGE_TONES.todo)}>
           {t('check.markTodo')}
         </button>
+        <ItemNavButton which="next" testId="check-next" enabled={canNext} onClick={() => onNav(idx + 1)} />
       </div>
 
       <CheckMarks item={item} idx={idx} onBookmark={onBookmark} onComment={onComment} />
@@ -804,7 +851,7 @@ function CheckMarks({ item, idx, onBookmark, onComment }) {
       {open && (
         <div data-testid="comment-editor" style={{ marginTop: 12, background: 'var(--surface-card)', border: 'var(--stroke) solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '14px 16px' }}>
           <Overline tone="accent">{t('check.comment.title')}</Overline>
-          <textarea data-testid="comment-text" rows={3} value={draft} onChange={(e) => setDraft(e.target.value)}
+          <textarea data-testid="comment-text" rows={3} dir="auto" value={draft} onChange={(e) => setDraft(e.target.value)}
             placeholder={t('check.comment.placeholder')}
             style={{ width: '100%', boxSizing: 'border-box', marginTop: 8, border: 'var(--stroke) solid var(--border-input)', borderRadius: 'var(--radius-md)', padding: '10px 12px', fontFamily: 'inherit', fontSize: 'var(--fs-ui-md)', lineHeight: 'var(--lh-body)', color: 'var(--text-body)', background: 'var(--surface-app)', resize: 'vertical' }} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
@@ -1075,7 +1122,8 @@ function AlignRail({ index, activeRef, filter, setFilter, onSelect }) {
               <span style={{ fontSize: 'var(--fs-badge)', letterSpacing: 'var(--track-10)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
                 {it.ref}
               </span>
-              <span style={{ flex: 1, fontSize: 'var(--fs-ui-sm)', fontWeight: 'var(--fw-bold)', color: 'var(--text-body)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: undrafted ? 'italic' : 'normal' }}>
+              {/* #657: the verse is the project's text; the cut keeps its start. */}
+              <span dir={undrafted ? undefined : projectDir(s)} style={{ flex: 1, fontSize: 'var(--fs-ui-sm)', fontWeight: 'var(--fw-bold)', color: 'var(--text-body)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: undrafted ? 'italic' : 'normal' }}>
                 {undrafted ? t('align.notDraftedShort') : it.text}
               </span>
             </button>
@@ -1101,10 +1149,11 @@ function AlignWorkspace() {
   const { s, actions } = useApp();
   const [filter, setFilter] = React.useState('all');
   // The rail's statuses derive from the sidecar + the draft: refresh when the
-  // verse changes and after each edit lands on the session record.
+  // verse changes, after each edit lands on the session record, and when the
+  // book text arrives (#722: the tool can open while the book still loads).
   React.useEffect(() => {
     actions.loadAlignIndex();
-  }, [s.book, s.alignVerse, s.alignSession?.record]);
+  }, [s.book, s.alignVerse, s.alignSession?.record, s.bookRaw == null]);
 
   const activeRef = s.alignVerse ?? s.alignSession?.ref ?? null;
   return (
@@ -1149,7 +1198,7 @@ const quoteOf = (item) =>
  * result on (sources, sourcePanes, understand): the caches live as long as it does. */
 export function gatewayTitleFor(sources, sourcePanes, understand) {
   if (!understand || understand.loading) return quoteOf;
-  const paneId = sourcePanes?.includes('ult') ? 'ult' : sourcePanes?.[0];
+  const paneId = literalPaneId(sourcePanes);
   const src = paneId ? sources?.[paneId] : undefined;
   const perChapter = new Map();
   return (item) => {
@@ -1278,7 +1327,7 @@ function CheckSession() {
         )}
       </main>
       {academyOpen && (
-        <AcademyDrawer article={cs.article} cat={item?.category} onClose={() => setAcademyOpen(false)} />
+        <AcademyDrawer article={cs.article} cat={item?.category} resource={cs.resource} onClose={() => setAcademyOpen(false)} />
       )}
     </div>
   );
@@ -1331,6 +1380,17 @@ function PickerGrid({ s, pre, story, unitLabel, pickerTitleOf }) {
   );
 }
 
+/** #722 class: a session can open before its book text arrives (since #679
+ * the load waits in the store queue); it then holds no draft copy. Read the
+ * draft again when the text arrives (#532's refresh). Once more for a session
+ * opened with the text is harmless: known invalidations stay. */
+function useDraftArrival(s, actions, unitLoaded) {
+  const sessionReady = Boolean(s.checkSession?.items);
+  React.useEffect(() => {
+    if (unitLoaded && sessionReady) actions.refreshCheckDraft();
+  }, [unitLoaded, sessionReady]);
+}
+
 export default function Check() {
   const { s, actions } = useApp();
   const pre = s.preflight;
@@ -1369,6 +1429,7 @@ export default function Check() {
   React.useEffect(() => {
     if (pre && atPicker && unitLoaded) actions.loadPickerProgress();
   }, [pre, atPicker, unitLoaded, s.story]);
+  useDraftArrival(s, actions, unitLoaded);
 
   // The picker's "Next: …" line shows the gateway title too [decided
   // 2026-08-31]; the frame verdict is the understand load's (sourceRefs).

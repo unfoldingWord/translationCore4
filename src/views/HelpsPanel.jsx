@@ -20,6 +20,7 @@ import { gatewayQuote, tokenizeVerse } from '../data/sourceHighlight';
 import { Button, Callout, HelpCard, IconButton, Overline, Switcher } from '../ds/index.js';
 import { inFocus } from './helpsFocus.js';
 import { HelpsIcon } from './PanelIcons.jsx';
+import { helpsDir, projectDir } from './scriptStyle.js';
 
 // The leading verse number of a chapter key — span keys ("17-18") are real
 // USFM verse bridges (see usfm/indexer.ts) and MUST NOT be dropped.
@@ -65,7 +66,7 @@ export function ArticleView({ article, onClose, onRetry }) {
     // cards stop and the article starts.
     <div data-testid="helps-article-pane" style={{ borderTop: 'var(--stroke) solid var(--border-strong)', maxHeight: '45%', flex: 'none', display: 'flex', flexDirection: 'column', background: '#fff' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', flex: 'none', background: 'var(--surface-muted)', borderBottom: 'var(--stroke-hair) solid var(--border-hair)' }}>
-        <span data-testid="helps-article-title" style={{ flex: 1, fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)' }}>
+        <span data-testid="helps-article-title" dir={article.found?.title && !article.loading ? article.dir : undefined} style={{ flex: 1, fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)' }}>
           {article.loading ? t('check.articleLoading') : article.found?.title ?? ''}
         </span>
         <IconButton data-testid="helps-article-close" size={26} title={t('common.close')} onClick={onClose}>✕</IconButton>
@@ -85,7 +86,7 @@ export function ArticleView({ article, onClose, onRetry }) {
         <Callout tone="warn" data-testid="understand-article-missing">{t('check.articleMissing')}</Callout>
       )}
       {!article.loading && article.found && (
-        <div data-testid="understand-article">
+        <div data-testid="understand-article" dir={article.dir}>
           {renderArticleBlocks(article.found.body).map((b, i) => (
             <Quoted key={i} depth={b.quote}>
               <p style={{
@@ -255,11 +256,12 @@ export function ExpandableNote({ text }) {
 }
 
 function NotesTab({ slot, notes, actions, cardFocus, focusVerses }) {
+  const { s } = useApp();
   if (slot?.state !== 'ready') return <><SlotBanners slot={slot} /><SlotState slot={slot} /></>;
   return <>
     <SlotBanners slot={slot} />
     {notes.length === 0 ? emptyTab(focusVerses) : notes.map((n, i) => (
-      <HelpCard key={`${n.contextId.checkId}-${i}`} kind="note" verse={unitRef(n.contextId.reference).verse} data-frame={unitRef(n.contextId.reference).verse} data-focused={cardFocus.isActive(n) ? 'true' : undefined}
+      <HelpCard key={`${n.contextId.checkId}-${i}`} kind="note" data-testid="helps-note" dir={helpsDir(s, slot.rung)} verse={unitRef(n.contextId.reference).verse} data-frame={unitRef(n.contextId.reference).verse} data-focused={cardFocus.isActive(n) ? 'true' : undefined}
         active={cardFocus.isActive(n)}
         onClick={() => cardFocus.focus(focusOf(n))}
         onMouseEnter={() => cardFocus.hover(focusOf(n))} onMouseLeave={() => cardFocus.hover(null)}
@@ -273,11 +275,12 @@ function NotesTab({ slot, notes, actions, cardFocus, focusVerses }) {
 }
 
 function WordsTab({ slot, words, actions, cardFocus, focusVerses }) {
+  const { s } = useApp();
   if (slot?.state !== 'ready') return <><SlotBanners slot={slot} /><SlotState slot={slot} /></>;
   return <>
     <SlotBanners slot={slot} />
     {words.length === 0 ? emptyTab(focusVerses) : words.map((w, i) => (
-      <HelpCard key={`${w.contextId.checkId}-${i}`} kind="word" verse={unitRef(w.contextId.reference).verse} data-frame={unitRef(w.contextId.reference).verse} data-focused={cardFocus.isActive(w) ? 'true' : undefined}
+      <HelpCard key={`${w.contextId.checkId}-${i}`} kind="word" data-testid="helps-word" dir={helpsDir(s, slot.rung)} verse={unitRef(w.contextId.reference).verse} data-frame={unitRef(w.contextId.reference).verse} data-focused={cardFocus.isActive(w) ? 'true' : undefined}
         active={cardFocus.isActive(w)}
         onClick={() => cardFocus.focus(focusOf(w))}
         onMouseEnter={() => cardFocus.hover(focusOf(w))} onMouseLeave={() => cardFocus.hover(null)}
@@ -289,11 +292,12 @@ function WordsTab({ slot, words, actions, cardFocus, focusVerses }) {
 }
 
 function QuestionsTab({ slot, questions, focusVerses, cardFocus }) {
+  const { s } = useApp();
   if (slot?.state !== 'ready') return <><SlotBanners slot={slot} /><SlotState slot={slot} /></>;
   return <>
     <SlotBanners slot={slot} />
     {questions.length === 0 ? emptyTab(focusVerses) : questions.map((q, i) => (
-      <div key={`${q.contextId.checkId}-${i}`} data-testid="understand-question" data-frame={unitRef(q.contextId.reference).verse} data-focused={cardFocus?.isActive(q) ? 'true' : undefined}
+      <div key={`${q.contextId.checkId}-${i}`} data-testid="understand-question" dir={helpsDir(s, slot.rung)} data-frame={unitRef(q.contextId.reference).verse} data-focused={cardFocus?.isActive(q) ? 'true' : undefined}
         style={{ border: `var(--stroke) solid ${cardFocus?.isActive(q) ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 'var(--radius-lg)', padding: 14, background: '#fff' }}>
         <p style={{ fontSize: 'var(--fs-ui-md)', letterSpacing: 'var(--track-14)', fontWeight: 'var(--fw-heavy)', color: 'var(--uw-ocean)', margin: '0 0 6px' }}>{q.question}</p>
         <p style={{ fontSize: 'var(--fs-ui-sm)', letterSpacing: 'var(--track-13)', lineHeight: 'var(--lh-body)', color: 'var(--text-secondary)', margin: 0 }}>
@@ -322,13 +326,14 @@ const simplifiedVerses = (simplified, sourceRefs, chapter, focusVerses) => {
 const SUP = { fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', marginInlineEnd: 3, verticalAlign: 'super' };
 
 function SimplifiedTab({ slot, sourceRefs, chapter, focusVerses }) {
+  const { s } = useApp();
   if (slot?.state !== 'ready') return <><SlotBanners slot={slot} /><SlotState slot={slot} /></>;
   const verses = simplifiedVerses(slot, sourceRefs, chapter, focusVerses);
   return (<>
     <SlotBanners slot={slot} />
     <div style={{ border: 'var(--stroke) solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 16, background: 'var(--surface-app)' }} data-testid="understand-simplified">
       <Overline>{t('understand.simplifiedTitle')}</Overline>
-      <p style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse)', lineHeight: 'var(--lh-verse)', color: 'var(--text-scripture)', margin: '10px 0 0' }}>
+      <p dir={verses.length === 0 ? undefined : helpsDir(s, slot.rung)} style={{ textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse)', lineHeight: 'var(--lh-verse)', color: 'var(--text-scripture)', margin: '10px 0 0' }}>
         {verses.length === 0
           ? t(focusVerses != null ? 'understand.noneInFocus' : 'understand.noneForChapter')
           // Two project verses can read the same source reference, so the key is the position.
@@ -339,6 +344,7 @@ function SimplifiedTab({ slot, sourceRefs, chapter, focusVerses }) {
 }
 
 function CommentsTab({ comprehension, chapter, focusVerses, story = false }) {
+  const { s } = useApp();
   if (!comprehension) return emptyTab(focusVerses);
   const list = Object.entries(comprehension)
     .filter(([key]) => Number(key.split(':')[0]) === Number(chapter))
@@ -367,7 +373,8 @@ function CommentsTab({ comprehension, chapter, focusVerses, story = false }) {
           <div key={key} data-testid="helps-comment" data-frame={verseKey}
             style={{ border: 'var(--stroke) solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 14, background: '#fff' }}>
             <Overline>{label}</Overline>
-            <p style={{ whiteSpace: 'pre-wrap' }}>{entry.text}</p>
+            {/* #657: a note reads as it was typed, in the project's direction. */}
+            <p dir={projectDir(s)} style={{ whiteSpace: 'pre-wrap', textAlign: 'start' }}>{entry.text}</p>
           </div>
         );
       })}

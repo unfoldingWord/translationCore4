@@ -20,6 +20,8 @@ import { absenceMessageKey, isSourceAbsent } from '../data/sourceState';
 import { paragraphLevel, paragraphsOf, rangeSpan, sectionRanges, sectionStarts, sourceKeysFor } from './sections.js';
 import { SectionEditor } from './SectionEditor.jsx';
 import { CELL, DraftPill, EditingCard, chipStyle, hair } from './draftChrome.jsx';
+import ConflictReview from './ConflictReview.jsx';
+import { ConflictVerse, ConflictsButton } from './conflictMarkers.jsx';
 
 const SUP = { fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', marginInlineEnd: 3, verticalAlign: 'super' };
 
@@ -114,7 +116,7 @@ function SourceCell({ s, bookCode, keys, sourceModel, paneFocus, label }) {
       {isSourceAbsent(sourceModel) ? (
         <p style={italic}>{t(absenceMessageKey(sourceModel))}</p>
       ) : paragraphsOf(sourceKeysFor(keys, chapterVerses), chapterVerses).map((para) => (
-        <p key={para[0]} dir={isOrig ? (ot ? 'rtl' : 'ltr') : undefined} lang={isOrig ? (ot ? 'hbo' : 'el') : undefined}
+        <p key={para[0]} data-testid="draft-source-text" dir={isOrig ? (ot ? 'rtl' : 'ltr') : undefined} lang={isOrig ? (ot ? 'hbo' : 'el') : undefined}
           style={{ direction: isOrig ? (ot ? 'rtl' : 'ltr') : 'ltr', textAlign: 'start', fontFamily: isOrig ? (ot ? 'var(--font-hebrew)' : 'var(--font-greek)') : 'var(--font-scripture)', fontSize: 'var(--fs-verse-lg)', lineHeight: 'var(--lh-verse-lg)', color: 'var(--text-scripture)', margin: '0 0 10px' }}>
           {para.map((k) => {
             const srcVerse = chapterVerses[String(k)];
@@ -173,7 +175,7 @@ function TargetVerse({ v, chapter, editing, actions, mode }) {
   );
 }
 
-function TargetCell({ s, verses, keys, byKey, span, dir, type, editType, actions, mode }) {
+function TargetCell({ s, verses, keys, byKey, span, dir, type, editType, actions, mode, conflictAt }) {
   const editingKey = s.editing?.key;
   // The open card keeps the verse set it was opened with (startSection's
   // keys), whatever the rows regroup to after a source switch — the row that
@@ -189,20 +191,31 @@ function TargetCell({ s, verses, keys, byKey, span, dir, type, editType, actions
         <>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 6, minHeight: 14 }}>
             {mode === 'section' && (
-              <Button variant="ghost" size="sm" onClick={() => actions.startSection(s.chapter, keys)}
-                style={{ color: 'var(--text-tertiary)', fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)' }}>
+              // Another row's card would replace an open card and lose its
+              // draft: off while a card is open, as the Section/Verse switch.
+              // #728: a quiet pill at rest, so it reads as a button, not a title.
+              <Button variant="secondary" size="sm" onClick={() => actions.startSection(s.chapter, keys)}
+                disabled={s.editing != null} onPointerDownCapture={s.editing != null ? (e) => e.preventDefault() : undefined}
+                style={s.editing != null ? undefined : { color: 'var(--accent)' }}>
                 {t('draft.draftSection', { span })}
               </Button>
             )}
           </div>
           {targetParagraphs(verses).map((para) => (
-            <p key={para[0].n} style={{ direction: dir, textAlign: 'start', ...type, color: 'var(--text-scripture)', margin: '0 0 10px', ...indentStyle(paragraphLevel(para)) }}>
-              {para.map((v) => (
-                <React.Fragment key={v.n}>
-                  <sup style={SUP}>{v.n}</sup>
-                  <TargetVerse v={v} chapter={s.chapter} editing={verseOpen?.n === v.n} actions={actions} mode={mode} />
-                </React.Fragment>
-              ))}
+            <p key={para[0].n} data-testid="draft-target-text" style={{ direction: dir, textAlign: 'start', ...type, color: 'var(--text-scripture)', margin: '0 0 10px', ...indentStyle(paragraphLevel(para)) }}>
+              {para.map((v) => {
+                const number = <sup style={SUP}>{v.n}</sup>;
+                const verse = <TargetVerse v={v} chapter={s.chapter} editing={verseOpen?.n === v.n} actions={actions} mode={mode} />;
+                // #679: a verse with a verse-text conflict carries the marker that opens the review.
+                const conflict = conflictAt.get(`${s.chapter}:${v.n}`);
+                return (
+                  <React.Fragment key={v.n}>
+                    {conflict
+                      ? <><ConflictVerse conflict={conflict} number={number} onReview={actions.openConflictReview} disabled={s.editing != null}>{verse}</ConflictVerse>{' '}</>
+                      : <>{number}{verse}</>}
+                  </React.Fragment>
+                );
+              })}
             </p>
           ))}
           {verseOpen && <VerseEditor chapter={s.chapter} verse={verseOpen} dir={dir} type={type} />}
@@ -244,6 +257,10 @@ function SourceTabs({ s, actions, origTestament }) {
   );
 }
 
+/** #679: the open book's verse-text conflicts, by "chapter:verse". */
+const conflictsOfBook = (conflicts = [], code) =>
+  new Map(conflicts.filter((c) => c.book === code).map((c) => [`${c.chapter}:${c.verse}`, c]));
+
 const persistedDraftUnit = (s) => s.draftUnits?.[s.project?.repoPath ?? s.project?.id] ?? 'section';
 
 function DraftUnitSwitch({ mode, onChange, disabled, crossFrame }) {
@@ -282,6 +299,10 @@ export default function Draft() {
   const effectiveMode = crossFrame ? 'verse' : mode;
   useLoadHelps();
 
+  // #679: the conflict review shows in Translate, in place of the two columns.
+  // It needs no loaded book: a keep unloads the book while it runs.
+  if (s.conflictReview) return <ConflictReview />;
+
   if (!book) {
     return (
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-tertiary)', fontSize: 'var(--fs-ui)' }}>
@@ -291,6 +312,7 @@ export default function Draft() {
   }
 
   const verses = book.byChapter[String(s.chapter)] || [];
+  const conflictAt = conflictsOfBook(s.verseConflicts, book.code);
   const paneFocus = crossFrameSafeFocus(s);
   const dir = projectDir(s);
   // Target-language type from the project's script font (Nastaliq takes its own step).
@@ -311,6 +333,7 @@ export default function Draft() {
           <IconButton title={t('draft.toggleRail')} onClick={actions.toggleRail}><RailIcon /></IconButton>
           <h2 style={{ fontSize: 'var(--fs-title)', letterSpacing: 'var(--track-17)', margin: 0 }}>{bookName(book.code)} {s.chapter}</h2>
           <div style={{ flex: 1 }} />
+          <ConflictsButton conflicts={s.verseConflicts} onClick={() => actions.openConflictReview()} disabled={s.editing != null} />
           <HelpsToggleButton />
         </div>
 
@@ -329,7 +352,7 @@ export default function Draft() {
               return (
                 <React.Fragment key={keys[0]}>
                   <SourceCell s={s} bookCode={book.code} keys={keys} sourceModel={sourceModel} paneFocus={paneFocus} label={`${bookName(book.code)} ${s.chapter}:${span}`} />
-                  <TargetCell s={s} verses={sectionVerses} keys={keys} byKey={byKey} span={span} dir={dir} type={type} editType={editType} actions={actions} mode={effectiveMode} />
+                  <TargetCell s={s} verses={sectionVerses} keys={keys} byKey={byKey} span={span} dir={dir} type={type} editType={editType} actions={actions} mode={effectiveMode} conflictAt={conflictAt} />
                 </React.Fragment>
               );
             })}

@@ -3,10 +3,11 @@
 // Pins are real identities: the shipped English suite (installedSuite) and the
 // es-419_gl releases cached for the rig (dev-env/resources-cache/helps-provenance.json).
 import { describe, expect, it } from 'vitest';
-import { sourcePanesForGateway, applyGatewayChange, gatewaysCoveringProject, pinnedGateway } from '../src/data/gatewayChange';
+import { sourcePanesForGateway, applyGatewayChange, gatewaysCoveringProject, pinnedGateway, literalPaneId } from '../src/data/gatewayChange';
 import { pinKey } from '../src/data/resolve';
 import { gatewayBiblesFromInstalled, readInstalled } from '../src/data/installed';
 import { INSTALLED_SUITE, EN_HELPS } from '../src/data/installedSuite';
+import { findGateway } from '../src/data/gateways';
 import type { ResourcePin, ResourcesFile } from '../src/data/burritoStore';
 
 const EN_ULT = INSTALLED_SUITE.extraScripture[0] as { id: string } & ResourcePin;
@@ -15,6 +16,8 @@ const ENGLISH = { literal: EN_ULT, simplified: EN_UST };
 const ES_GLT: ResourcePin = { repoPath: 'git.door43.org/es-419_gl/es-419_glt', version: 'v42', sha: '3f9bf7e8806f2e310601d723eb201334fe3be1ab', flavor: 'scripture/textTranslation' };
 const ES_GST: ResourcePin = { repoPath: 'git.door43.org/es-419_gl/es-419_gst', version: 'v40', sha: '608e2294aa56938592ef592b0fc391d6d6178b2f', flavor: 'scripture/textTranslation' };
 const ES = { id: 'es-419', org: 'es-419_gl' };
+// BSOJ's Arabic Van Dyck Bible at the release cached for the rig (its export's metadata.json).
+const AR_AVD: ResourcePin = { repoPath: 'git.door43.org/BSOJ/ar_avd', sha: '3ba2e7f1d2fb3c5b9c9682dcc20d09b6f3770c06', flavor: 'scripture/textTranslation' };
 const bare = ({ id, ...pin }: { id: string } & ResourcePin) => { void id; return pin; };
 
 describe('gatewayBiblesFromInstalled', () => {
@@ -26,6 +29,16 @@ describe('gatewayBiblesFromInstalled', () => {
     };
     expect(gatewayBiblesFromInstalled(installed, ES)).toEqual({ literal: ES_GLT, simplified: ES_GST });
     expect(gatewayBiblesFromInstalled(installed, { id: 'en', org: 'unfoldingWord' })).toEqual({ literal: bare(EN_ULT), simplified: undefined });
+  });
+
+  it('#704: a package whose literal Bible has another name takes the one its registry entry names', () => {
+    const installed = {
+      '_local_/_sideloaded_/bsoj--ar_avd': AR_AVD,
+      '_local_/_sideloaded_/en_ult': bare(EN_ULT),
+    };
+    expect(gatewayBiblesFromInstalled(installed, findGateway('ar::BSOJ')!)).toEqual({ literal: AR_AVD, simplified: undefined });
+    // Without the entry's name, no BSOJ Bible is ever chosen.
+    expect(gatewayBiblesFromInstalled(installed, { id: 'ar', org: 'BSOJ' })).toEqual({ literal: undefined, simplified: undefined });
   });
 
   it('finds nothing for a package with no Bible installed, or a Bible of another org', () => {
@@ -52,6 +65,19 @@ describe('sourcePanesForGateway', () => {
 
   it('a package with only a literal Bible: the simplified pane shows the English UST', () => {
     expect(sourcePanesForGateway(current, { literal: ES_GLT }, ENGLISH)).toEqual([{ id: 'glt', ...ES_GLT }, EN_UST]);
+  });
+
+  it('#704: a literal Bible with another name fills the `glt` pane, so a later change still finds it', () => {
+    const arabic = sourcePanesForGateway(current, { literal: AR_AVD }, ENGLISH);
+    expect(arabic).toEqual([{ id: 'glt', ...AR_AVD }, EN_UST]);
+    expect(sourcePanesForGateway(arabic, {}, ENGLISH)).toEqual([EN_ULT, EN_UST]);
+  });
+
+  it('#704: the views read the literal pane by its id, whatever the saved order', () => {
+    expect(literalPaneId(['ust', 'glt'])).toBe('glt');
+    expect(literalPaneId(['ult', 'ust'])).toBe('ult');
+    expect(literalPaneId(['kjv'])).toBe('kjv');
+    expect(literalPaneId([])).toBeUndefined();
   });
 
   it('a pane that already pins the chosen repository keeps its pin', () => {

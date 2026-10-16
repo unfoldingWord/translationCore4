@@ -24,7 +24,7 @@ import { ServerApi } from '../src/data/serverApi';
 import { languageSetFromInstalled, localRepoPathFromRepoPath } from '../src/data/installed';
 import type { InstalledMap } from '../src/data/installed';
 import { EN_HELPS } from '../src/data/installedSuite';
-import { findGateway } from '../src/data/gateways';
+import { GATEWAYS, findGateway } from '../src/data/gateways';
 import { pinKey, preflightToolBook, resolveToolBook } from '../src/data/resolve';
 import type { ResourcePin, ResourcesFile } from '../src/data/burritoStore';
 import { journalingRig } from './helpers/journalingRig';
@@ -49,8 +49,9 @@ const TWL_V86: ResourcePin = {
 };
 
 // The gateway entries, from the catalogue config itself (ruling 7 is decided
-// per organization: `ar_gt` publishes no `_twl`, `BSOJ` and `es-419_gl` do).
-const AR_GT = findGateway('ar::ar_gt')!;
+// per organization: `Door43-Catalog` publishes no `ur-deva_twl`, `BSOJ` and
+// `es-419_gl` publish their `_twl`). ar_gt left the registry (D100).
+const UR = findGateway('ur-deva::Door43-Catalog')!;
 const BSOJ = findGateway('ar::BSOJ')!;
 const ES = findGateway('es-419::es-419_gl')!;
 
@@ -73,21 +74,29 @@ const installedOf = (pins: ResourcePin[]): InstalledMap =>
 const ENGLISH = [EN_HELPS.translationNotes, EN_HELPS.translationWordsLinks, EN_HELPS.translationWords, EN_HELPS.translationAcademy];
 const AR = [pin('ar_gt/ar_tn', 'v3.2'), pin('ar_gt/ar_tw', 'v3'), pin('ar_gt/ar_ta', 'v3.3')];
 const AR_TW = AR[1];
+const UR_SUITE = [pin('Door43-Catalog/ur-deva_tn', 'v14.1'), pin('Door43-Catalog/ur-deva_tw', 'v8.3'), pin('Door43-Catalog/ur-deva_ta', 'v10.1')];
+
+describe('D100 — ar_gt left the registry; BSOJ is the only Arabic package', () => {
+  it('GATEWAYS has one Arabic entry, BSOJ, and no ar_gt entry', () => {
+    expect(GATEWAYS.filter((g) => g.id === 'ar').map((g) => g.org)).toEqual(['BSOJ']);
+    expect(findGateway('ar::ar_gt')).toBeUndefined();
+  });
+});
 
 describe('#646 ruling 7 — a gateway with no `_twl` repository pins the bundled en_twl with its own tw', () => {
-  it('ar_gt: the set is complete; twl = en_twl (the bundled identity), tw = ar_tw', () => {
-    const set = languageSetFromInstalled(installedOf([...ENGLISH, ...AR]), AR_GT);
+  it('ur-deva: the set is complete; twl = en_twl (the bundled identity), tw = ur-deva_tw', () => {
+    const set = languageSetFromInstalled(installedOf([...ENGLISH, ...UR_SUITE]), UR);
     expect(set).not.toBeNull();
-    expect(set?.gatewayLanguage).toEqual({ languageId: 'ar', owner: 'ar_gt' });
+    expect(set?.gatewayLanguage).toEqual({ languageId: 'ur-deva', owner: 'Door43-Catalog' });
     expect(set?.translationWordsLinks).toEqual(EN_HELPS.translationWordsLinks);
-    expect(set?.translationWords).toEqual(AR_TW);
-    expect(set?.translationNotes).toEqual(AR[0]);
-    expect(set?.translationAcademy).toEqual(AR[2]);
+    expect(set?.translationWords).toEqual(UR_SUITE[1]);
+    expect(set?.translationNotes).toEqual(UR_SUITE[0]);
+    expect(set?.translationAcademy).toEqual(UR_SUITE[2]);
   });
 
-  it('ar_gt without the bundled en_twl installed is incomplete (the twl slot never names ar_tw)', () => {
+  it('ur-deva without the bundled en_twl installed is incomplete (the twl slot never names ur-deva_tw)', () => {
     const noTwl = ENGLISH.filter((p) => !p.repoPath.endsWith('/en_twl'));
-    expect(languageSetFromInstalled(installedOf([...noTwl, ...AR]), AR_GT)).toBeNull();
+    expect(languageSetFromInstalled(installedOf([...noTwl, ...UR_SUITE]), UR)).toBeNull();
   });
 });
 
@@ -106,10 +115,13 @@ describe('#646 — `hasTwl` decides, not "not installed"', () => {
   });
 
   it('the check is per organization: BSOJ (hasTwl: true) with no ar_twl installed is incomplete, while ar_gt is complete', () => {
+    // No registry pair of one language shows the hasTwl difference since ar_gt
+    // left the registry (D100), so the second organization is a test-only gateway.
+    const arGt = { id: 'ar', org: 'ar_gt', hasTwl: false };
     const bsoj = [pin('BSOJ/ar_tn', 'v6.1'), pin('BSOJ/ar_tw', 'v5'), pin('BSOJ/ar_ta', 'v3')];
     const installed = installedOf([...ENGLISH, ...AR, ...bsoj]);
     expect(languageSetFromInstalled(installed, BSOJ)).toBeNull();
-    expect(languageSetFromInstalled(installed, AR_GT)?.translationWords).toEqual(AR_TW);
+    expect(languageSetFromInstalled(installed, arGt)?.translationWords).toEqual(AR_TW);
   });
 
   it('a gateway passed without hasTwl is strict: no `_twl` installed → no set', () => {

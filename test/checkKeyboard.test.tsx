@@ -71,6 +71,39 @@ describe('TargetWords — a Shift+arrow run ends on any other key or on blur', (
   });
 });
 
+// #737 review round 1: a drag starts on a word; the keyboard then acts on that
+// word, as it does after a click — not on where the caret was before.
+describe('TargetWords — the keyboard after a mouse drag (#737)', () => {
+  const drag = (from: number, to: number) => {
+    fireEvent.mouseDown(screen.getByTestId(`tw-${from}`), { button: 0 });
+    screen.getByTestId(`tw-${from}`).focus();
+    for (let i = from + 1; i <= to; i++) fireEvent.mouseEnter(screen.getByTestId(`tw-${i}`));
+    fireEvent.mouseUp(document);
+  };
+
+  it('a drag selects the words it passed over, whole', () => {
+    render(<Words />);
+    drag(1, 3);
+    expect(pressed()).toEqual([1, 2, 3]);
+  });
+
+  it('Space right after a drag toggles the word the drag started on', () => {
+    render(<Words />);
+    drag(1, 3);
+    key(' ');
+    expect(pressed()).toEqual([2, 3]);
+  });
+
+  it('Shift+Right right after a drag extends from the word the drag started on', () => {
+    render(<Words />);
+    drag(1, 2);
+    key('Escape'); // ends nothing special; the caret stays before word 1
+    key('ArrowRight', true);
+    expect(pressed()).toEqual([1, 2]);
+    expect(document.activeElement).toBe(screen.getByTestId('tw-2'));
+  });
+});
+
 describe('railKeyDown — the Switcher roving pattern', () => {
   const run = (k: string, current: number, order = [3, 5, 7]) => {
     const onSelect = vi.fn();

@@ -7,6 +7,8 @@
 // from every saved verse without a retrain in the way.
 import { test, expect } from './helpers/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
+import { holdCheckpoints } from './helpers/checkpointHold';
+import { wordTokens } from '../src/data/align/tokenize';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -46,6 +48,11 @@ const alignmentFile = () => {
   const p = path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking', 'alignments', 'TIT.json');
   return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : null;
 };
+
+/** The words of these chips, without the occurrence number a repeated word
+ * shows (#735). */
+const wordsOf = (chips: import('@playwright/test').Locator) =>
+  chips.evaluateAll((els) => els.map((el) => el.getAttribute('data-word') ?? ''));
 
 async function openAlign(page: import('@playwright/test').Page) {
   await page.goto('/');
@@ -132,16 +139,19 @@ test.describe('J5 — a translator aligns a verse', () => {
       await expect(page.getByText('Opening the alignment…')).toHaveCount(0);
 
       // The artifact: the bank the page shows after the clicks. It holds no
-      // timestamps, so each run writes the same bytes, and it must match the
-      // stored record's bank word for word.
+      // timestamps, so each run writes the same bytes, and it must hold the
+      // stored record's bank word for word, in verse order (#734).
       const artifact = {
         ref: '1:1',
-        bank: (await page.getByTestId('align-bank').getByRole('button').allTextContents()).map((w) => w.trim()),
+        bank: await wordsOf(page.getByTestId('align-bank').getByRole('button')),
       };
       const artifactPath = testInfo.outputPath('j05-reselect-verse.json');
       fs.writeFileSync(artifactPath, `${JSON.stringify(artifact, null, 2)}\n`);
       await testInfo.attach('j05-reselect-verse.json', { path: artifactPath, contentType: 'application/json' });
-      expect(artifact.bank).toEqual(stored.wordBank.map((w: { word: string }) => w.word));
+      const usfm = fs.readFileSync(path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'TIT.usfm'), 'utf8');
+      const banked = new Set(stored.wordBank.map((w: { word: string; occurrence: number }) => `${w.word}/${w.occurrence}`));
+      const inVerse = wordTokens(/\\v 1 ([^\\]*)/.exec(usfm)![1]).filter((t) => banked.has(`${t.text}/${t.occurrence}`));
+      expect(artifact.bank).toEqual(inVerse.map((t) => t.text));
     },
   );
 
@@ -154,7 +164,7 @@ test.describe('J5 — a translator aligns a verse', () => {
 
       const bank = page.getByTestId('align-bank').getByRole('button');
       const bankBefore = await bank.count();
-      const word = (await bank.first().textContent()) ?? '';
+      const word = (await bank.first().getAttribute('data-word')) ?? '';
 
       // Click the word, then a card that currently has nothing under it.
       await bank.first().click();
@@ -206,7 +216,7 @@ test.describe('J5 — a translator aligns a verse', () => {
       // The seeded sample already has placed words; take one back.
       const placedCard = page.locator('[data-testid^="align-card-"][data-count="1"]').first();
       const chip = placedCard.getByRole('button').first();
-      const word = ((await chip.textContent()) ?? '').trim();
+      const word = (await chip.getAttribute('data-word')) ?? '';
       const bankBefore = await page.getByTestId('align-bank').getByRole('button').count();
       await chip.click();
 
@@ -222,6 +232,323 @@ test.describe('J5 — a translator aligns a verse', () => {
         .toBe(true);
     },
   );
+
+  // #735: a repeated word carries its occurrence number, as tC3 did — a
+  // superscript only when the word occurs more than once in the verse, on the
+  // target chips and on the original-language card headers, and in the
+  // chip's accessible name. Titus 1:1: "de" ×5 in the bank, "Dios" placed
+  // twice, Θεοῦ heads two cards; "siervo" and Παῦλος occur once.
+  test(
+    'repeated words show their occurrence number on chips and card headers; single words show none (#735)',
+    { tag: ['@inc2', '@J5'] },
+    async ({ page }, testInfo) => {
+      writePinsWithOriginal();
+      await openAlign(page);
+      const stored = alignmentFile()!.chapters['1']['1'];
+      type W = { word: string; occurrence: number; occurrences: number };
+      const sup = (el: Element) => el.querySelector('sup')?.textContent ?? null;
+
+      // Bank: each "de" chip shows its own occurrence and names it.
+      const bankDe = (stored.wordBank as W[]).filter((w) => w.word === 'de');
+      expect(bankDe.length).toBeGreaterThan(1);
+      for (const w of bankDe) {
+        const chip = page.getByTestId('align-bank').getByRole('button', { name: `de ${w.occurrence}`, exact: true });
+        await expect(chip).toHaveCount(1);
+        expect(await chip.evaluate(sup)).toBe(String(w.occurrence));
+      }
+
+      // Placed: the two "Dios" chips, one per θεός card.
+      const placedDios = (stored.alignments as Array<{ bottomWords: W[] }>).flatMap((a) => a.bottomWords).filter((w) => w.word === 'Dios');
+      expect(placedDios.length).toBe(2);
+      for (const w of placedDios) {
+        const chip = page.locator('[data-testid^="align-card-"]').getByRole('button', { name: `Dios ${w.occurrence}`, exact: true });
+        await expect(chip).toHaveCount(1);
+        expect(await chip.evaluate(sup)).toBe(String(w.occurrence));
+      }
+
+      // A word that occurs once: no number, name is the word alone.
+      const siervo = page.locator('[data-testid^="align-card-"]').getByRole('button', { name: 'siervo', exact: true });
+      await expect(siervo).toHaveCount(1);
+      expect(await siervo.evaluate(sup)).toBeNull();
+
+      // Card headers: each Θεοῦ card numbers its original word; Παῦλος does not.
+      const headers = await page.locator('[data-testid^="align-card-"] [lang="el"]').evaluateAll((els) =>
+        els.map((el) => ({ text: (el.firstChild?.textContent ?? '').trim(), sup: el.querySelector('sup')?.textContent ?? null })));
+      const theou = (stored.alignments as Array<{ topWords: W[] }>).flatMap((a) => a.topWords).filter((w) => w.word === 'Θεοῦ');
+      expect(theou.length).toBe(2);
+      expect(headers.filter((h) => h.text.startsWith('Θεοῦ')).map((h) => h.sup)).toEqual(theou.map((w) => String(w.occurrence)));
+      expect(headers.find((h) => h.text.startsWith('Παῦλος'))?.sup).toBeNull();
+      // A header has no aria-label, so its number must stay readable (review round 1).
+      await expect(page.locator('[data-testid^="align-card-"] [lang="el"] sup[aria-hidden]')).toHaveCount(0);
+
+      // The number does not push its word down: a numbered chip is as tall as a
+      // plain one beside it, in the bank and on the cards.
+      const heights = (sel: string) => page.locator(sel).evaluateAll((els) =>
+        els.map((el) => ({ sup: !!el.querySelector('sup'), h: Math.round(el.getBoundingClientRect().height) })));
+      for (const sel of ['[data-testid="align-bank"] button', '[data-testid^="align-card-"] button[data-word]']) {
+        const chips = await heights(sel);
+        const withSup = chips.filter((c) => c.sup).map((c) => c.h);
+        const plain = chips.filter((c) => !c.sup).map((c) => c.h);
+        expect(withSup.length).toBeGreaterThan(0);
+        expect(plain.length).toBeGreaterThan(0);
+        expect(new Set([...withSup, ...plain]).size).toBe(1);
+      }
+
+      const shot = testInfo.outputPath('j05-735-occurrences.png');
+      await page.getByTestId('align-session').screenshot({ path: shot });
+      await testInfo.attach('j05-735-occurrences.png', { path: shot, contentType: 'image/png' });
+    },
+  );
+
+  // #736: several bank words can be selected and placed on one card at once,
+  // as in tC3. Ctrl/Cmd-click adds or removes a word; Shift-click adds the
+  // range from the first selected word to the clicked one, in bank order
+  // (Birch, Q1); the words need not be adjacent (Q2). A click on a card, or a
+  // drag of any selected word, places the whole selection in one edit.
+  const bankChip = (page: import('@playwright/test').Page, word: string) =>
+    page.getByTestId('align-bank').locator(`button[data-word="${word}"]`).first();
+  const armedWords = (page: import('@playwright/test').Page) =>
+    wordsOf(page.getByTestId('align-bank').locator('button[data-armed="1"]'));
+  const cardWords = (page: import('@playwright/test').Page, id: string) =>
+    wordsOf(page.locator(`[data-testid="${id}"] button[data-word]`));
+  const fileCardWords = (index: number) =>
+    (alignmentFile()?.chapters?.['1']?.['1']?.alignments?.[index]?.bottomWords ?? []).map((w: { word: string }) => w.word);
+
+  for (const how of ['click', 'drag', 'keyboard'] as const) {
+    test(
+      `several bank words selected with ${how === 'keyboard' ? 'Ctrl+Enter' : 'Ctrl-click'} go to one card in one edit, by ${how === 'drag' ? 'drag' : 'click'} (#736)`,
+      { tag: ['@inc2', '@J5'] },
+      async ({ page }, testInfo) => {
+        writePinsWithOriginal();
+        await openAlign(page);
+        const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
+
+        // Select "con" and "conocimiento" — not adjacent in the bank.
+        if (how === 'keyboard') {
+          await bankChip(page, 'con').focus();
+          await page.keyboard.press(`${mod}+Enter`);
+          await bankChip(page, 'conocimiento').focus();
+          await page.keyboard.press(`${mod}+Enter`);
+        } else {
+          await bankChip(page, 'con').click({ modifiers: [mod] });
+          await bankChip(page, 'conocimiento').click({ modifiers: [mod] });
+        }
+        expect((await armedWords(page)).sort()).toEqual(['con', 'conocimiento']);
+
+        const emptyCard = page.locator('[data-testid^="align-card-"][data-count="0"]').first();
+        const cardId = (await emptyCard.getAttribute('data-testid'))!;
+        const index = Number(cardId.replace('align-card-', ''));
+        const writes: string[] = [];
+        page.on('request', (r) => {
+          if (r.method() !== 'GET' && decodeURIComponent(r.url()).includes('alignments/TIT.json')) writes.push(r.url());
+        });
+        if (how === 'drag') await bankChip(page, 'conocimiento').dragTo(emptyCard);
+        else await emptyCard.click();
+
+        await expect(page.locator(`[data-testid="${cardId}"]`)).toHaveAttribute('data-count', '2');
+        expect((await cardWords(page, cardId)).sort()).toEqual(['con', 'conocimiento']);
+        expect(await armedWords(page)).toEqual([]);
+        await expect.poll(() => fileCardWords(index).sort(), { timeout: 10_000 }).toEqual(['con', 'conocimiento']);
+        // One edit: the alignment file was written once for the two words.
+        await page.waitForTimeout(1_500);
+        const artifact = { how, card: cardId, writes: writes.length, file: fileCardWords(index) };
+        const artifactPath = testInfo.outputPath(`j05-736-${how}.json`);
+        fs.writeFileSync(artifactPath, `${JSON.stringify(artifact, null, 2)}\n`);
+        await testInfo.attach(`j05-736-${how}.json`, { path: artifactPath, contentType: 'application/json' });
+        expect(writes.length).toBe(1);
+      },
+    );
+  }
+
+  // #754 (Birch): a card keeps its words in verse order automatically, as tC3
+  // did — wherever a word is dropped, however it got there. Titus 1:1 reads
+  // "… según la fe de los escogidos …"; cards 6 (κατὰ), 7 (πίστιν) and 8
+  // (ἐκλεκτῶν) start empty.
+  const fileCard = (index: number) =>
+    (alignmentFile()?.chapters?.['1']?.['1']?.alignments?.[index]?.bottomWords ?? []).map((w: { word: string; occurrence: number }) => `${w.word}/${w.occurrence}`);
+  const place = async (page: import('@playwright/test').Page, word: string, index: number) => {
+    const count = Number(await page.locator(`[data-testid="align-card-${index}"]`).getAttribute('data-count'));
+    await bankChip(page, word).click();
+    await page.locator(`[data-testid="align-card-${index}"]`).click();
+    await expect(page.locator(`[data-testid="align-card-${index}"]`)).toHaveAttribute('data-count', String(count + 1));
+  };
+
+  test(
+    '"la fe de los" placed as fe, la, los reads la, fe, los on the card and in the file; a drop on the left edge too (#754)',
+    { tag: ['@inc2', '@J5'] },
+    async ({ page }) => {
+      writePinsWithOriginal();
+      await openAlign(page);
+      await expect(page.locator('[data-testid="align-card-7"]')).toHaveAttribute('data-count', '0');
+      for (const w of ['fe', 'la', 'los']) await place(page, w, 7);
+      expect(await cardWords(page, 'align-card-7')).toEqual(['la', 'fe', 'los']);
+      await expect.poll(() => fileCard(7), { timeout: 10_000 }).toEqual(['la/1', 'fe/1', 'los/1']);
+
+      // A drop on the far left of card 8, after "escogidos" is already there.
+      await place(page, 'escogidos', 8);
+      const card8 = page.locator('[data-testid="align-card-8"]');
+      const box = (await card8.boundingBox())!;
+      await bankChip(page, 'de').dragTo(card8, { targetPosition: { x: 3, y: box.height - 8 } });
+      await expect(card8).toHaveAttribute('data-count', '2');
+      expect(await cardWords(page, 'align-card-8')).toEqual(['de', 'escogidos']);
+      await expect.poll(() => fileCard(8), { timeout: 10_000 }).toEqual(['de/1', 'escogidos/1']);
+    },
+  );
+
+  test(
+    'moving a word between cards and merging cards keep verse order (#754)',
+    { tag: ['@inc2', '@J5'] },
+    async ({ page }) => {
+      writePinsWithOriginal();
+      await openAlign(page);
+      await place(page, 'la', 6);
+      await place(page, 'los', 7);
+
+      // Move "la" from card 6 onto card 7, after "los": the card reads la, los.
+      await page.locator('[data-testid="align-card-6"] button[data-word="la"]').dragTo(page.locator('[data-testid="align-card-7"]'));
+      await expect(page.locator('[data-testid="align-card-7"]')).toHaveAttribute('data-count', '2');
+      expect(await cardWords(page, 'align-card-7')).toEqual(['la', 'los']);
+      await expect.poll(() => fileCard(7), { timeout: 10_000 }).toEqual(['la/1', 'los/1']);
+
+      // Put "fe" on card 6, then merge card 7 into card 6: la, fe, los.
+      await place(page, 'fe', 6);
+      await page.locator('[data-testid="align-card-7"] > div[draggable]').first().dragTo(page.locator('[data-testid="align-card-6"]'));
+      await expect(page.locator('[data-testid="align-card-6"]')).toHaveAttribute('data-count', '3');
+      expect(await cardWords(page, 'align-card-6')).toEqual(['la', 'fe', 'los']);
+      await expect.poll(() => fileCard(6), { timeout: 10_000 }).toEqual(['la/1', 'fe/1', 'los/1']);
+    },
+  );
+
+  test(
+    'the selection survives a drop outside a card and is cleared by opening another verse (#736 Interruptions)',
+    { tag: ['@inc2', '@J5'] },
+    async ({ page }) => {
+      writePinsWithOriginal();
+      await openAlign(page);
+      const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
+      await bankChip(page, 'con').click({ modifiers: [mod] });
+      await bankChip(page, 'conocimiento').click({ modifiers: [mod] });
+      const before = alignmentFile()!.chapters['1']['1'];
+
+      // A drop that misses every card (here: back onto the bank) places
+      // nothing and keeps the selection.
+      await bankChip(page, 'con').dragTo(page.getByTestId('align-bank'));
+      expect((await armedWords(page)).sort()).toEqual(['con', 'conocimiento']);
+      await expect(page.locator('[data-testid^="align-card-"] button[data-word="con"]')).toHaveCount(0);
+      expect(alignmentFile()!.chapters['1']['1']).toEqual(before);
+
+      // Opening another verse and coming back clears it.
+      await page.getByTestId('align-verse-list').locator('button[data-ref="1:2"]').click();
+      await expect(page.getByTestId('align-verse-list').locator('button[data-ref="1:2"]')).toHaveAttribute('data-selected', 'true');
+      await page.getByTestId('align-verse-list').locator('button[data-ref="1:1"]').click();
+      await expect(bankChip(page, 'con')).toBeVisible();
+      expect(await armedWords(page)).toEqual([]);
+    },
+  );
+
+  test(
+    'Shift-click adds the range in bank order; Ctrl-click removes a word; un-aligning each returns it to verse order (#736)',
+    { tag: ['@inc2', '@J5'] },
+    async ({ page }) => {
+      writePinsWithOriginal();
+      await openAlign(page);
+      const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
+      const bank = page.getByTestId('align-bank').getByRole('button');
+      const shown = await wordsOf(bank);
+      const from = shown.indexOf('según');
+      const to = shown.indexOf('los');
+      expect(to).toBeGreaterThan(from + 1);
+
+      await bankChip(page, 'según').click();
+      await bankChip(page, 'los').click({ modifiers: ['Shift'] });
+      const range = shown.slice(from, to + 1);
+      expect(await armedWords(page)).toEqual(range);
+
+      // Ctrl-click takes one word out of the selection.
+      const dropped = range[1];
+      await bank.nth(from + 1).click({ modifiers: [mod] });
+      const selected = range.filter((_, i) => i !== 1);
+      expect(await armedWords(page)).toEqual(selected);
+
+      // A plain click selects that word alone, as before.
+      await bankChip(page, 'verdad').click();
+      expect(await armedWords(page)).toEqual(['verdad']);
+      await bankChip(page, 'según').click();
+      await bankChip(page, 'los').click({ modifiers: ['Shift'] });
+      await bank.nth(from + 1).click({ modifiers: [mod] });
+      expect(await armedWords(page)).toEqual(selected);
+      expect(dropped).toBeTruthy();
+
+      const emptyCard = page.locator('[data-testid^="align-card-"][data-count="0"]').first();
+      const cardId = (await emptyCard.getAttribute('data-testid'))!;
+      await emptyCard.click();
+      await expect(page.locator(`[data-testid="${cardId}"]`)).toHaveAttribute('data-count', String(selected.length));
+
+      // Un-align each placed word: the bank is back in its opening order.
+      for (let n = selected.length; n > 0; n--) {
+        await page.locator(`[data-testid="${cardId}"] button[data-word]`).first().click();
+        await expect(page.locator(`[data-testid="${cardId}"]`)).toHaveAttribute('data-count', String(n - 1));
+      }
+      expect(await wordsOf(bank)).toEqual(shown);
+    },
+  );
+
+  // #734: an un-aligned word goes back to its place in the verse, by click and
+  // by drag alike, and the whole bank — on screen and on disk — reads in the
+  // verse's word order. Titus 1:1 repeats "de" (5), "la" (3) and "y" (2).
+  for (const how of ['click', 'drag'] as const) {
+    test(
+      `un-aligning "siervo" by ${how} puts the bank in verse order, on screen and on disk (#734)`,
+      { tag: ['@inc2', '@J5'] },
+      async ({ page }, testInfo) => {
+        writePinsWithOriginal();
+        await openAlign(page);
+
+        const usfm = fs.readFileSync(path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'TIT.usfm'), 'utf8');
+        const verseText = /\\v 1 ([^\\]*)/.exec(usfm)![1].trim();
+        const key = (w: { word?: string; text?: string; occurrence: unknown }) => `${w.word ?? w.text}/${Number(w.occurrence)}`;
+        const inVerseOrder = (bank: Array<{ word: string; occurrence: unknown }>) => {
+          const banked = new Set(bank.map(key));
+          return wordTokens(verseText).map(key).filter((k) => banked.has(k));
+        };
+
+        const bank = page.getByTestId('align-bank').getByRole('button');
+        const bankBefore = await bank.count();
+        // The seed stores this bank grouped by occurrence; the opened verse
+        // shows it in verse order already, so the un-align below moves only
+        // the returned word (#734 review round 1).
+        const seeded = alignmentFile()!.chapters['1']['1'].wordBank as Array<{ word: string; occurrence: number }>;
+        const screenBefore = await wordsOf(bank);
+        expect(screenBefore).toEqual(inVerseOrder(seeded).map((k) => k.replace(/\/\d+$/, '')));
+        const chip = page.locator('[data-testid^="align-card-"]').getByRole('button', { name: 'siervo', exact: true });
+        if (how === 'click') await chip.click();
+        else await chip.dragTo(page.getByTestId('align-bank'));
+        await expect(bank).toHaveCount(bankBefore + 1);
+
+        await expect
+          .poll(() => alignmentFile()?.chapters?.['1']?.['1']?.wordBank?.some((w: { word: string }) => w.word === 'siervo'), { timeout: 10_000 })
+          .toBe(true);
+        const stored = alignmentFile()!.chapters['1']['1'].wordBank as Array<{ word: string; occurrence: number }>;
+        const artifact = {
+          how,
+          verse: verseText,
+          screenBefore,
+          screen: await wordsOf(bank),
+          disk: stored.map(key),
+        };
+        const artifactPath = testInfo.outputPath(`j05-734-${how}.json`);
+        fs.writeFileSync(artifactPath, `${JSON.stringify(artifact, null, 2)}\n`);
+        await testInfo.attach(`j05-734-${how}.json`, { path: artifactPath, contentType: 'application/json' });
+
+        expect(artifact.disk).toEqual(inVerseOrder(stored));
+        expect(artifact.screen).toEqual(stored.map((w) => w.word));
+        // Only "siervo" was added: every other word kept its place.
+        const others = [...artifact.screen];
+        others.splice(others.indexOf('siervo'), 1);
+        expect(others).toEqual(screenBefore);
+      },
+    );
+  }
 
   test(
     'a word is never in two places: total word count is conserved across edits',
@@ -358,13 +685,13 @@ test.describe('J5 — a translator aligns a verse', () => {
         // Confirm the one chip by its check mark.
         const chip = chips.first();
         cardIndex = Number((await chip.getAttribute('data-testid'))!.replace('align-suggested-', ''));
-        word = ((await chip.textContent()) ?? '').replace('✓', '').trim();
+        word = (await chip.getAttribute('data-word')) ?? '';
         await chip.click();
       } else {
         // Nothing proposed this run: place one bank word by hand on an empty
         // card — the manual path the accepted path must equal.
         const bank = page.getByTestId('align-bank').getByRole('button');
-        word = ((await bank.first().textContent()) ?? '').trim();
+        word = (await bank.first().getAttribute('data-word')) ?? '';
         await bank.first().click();
         const emptyCard = page.locator('[data-testid^="align-card-"][data-count="0"]').first();
         cardIndex = Number((await emptyCard.getAttribute('data-testid'))!.replace('align-card-', ''));
@@ -559,6 +886,81 @@ test.describe('J5 — a translator aligns a verse', () => {
       const unavailable = page.getByTestId('align-unavailable');
       await expect(unavailable).toBeVisible();
       await expect(unavailable).toContainText(/original-language/i);
+    },
+  );
+
+  test(
+    'Align opened before the book text arrives lists the verses when it arrives (#722: since #679 the book load waits for a checkpoint)',
+    { tag: ['@inc2', '@J5'] },
+    async ({ page }) => {
+      writePinsWithOriginal();
+      await page.goto('/');
+      await page
+        .getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`)
+        .getByRole('button', { name: /Titus/ })
+        .click();
+      // The book rail row (Home's book tiles have the same name until the project opens).
+      const titusRow = page.getByRole('complementary').getByRole('button', { name: /^Titus \d+%/ });
+      await expect(titusRow).toBeVisible();
+
+      // Hold the checkpoint that the next mode switch starts: the book load
+      // (openBook → reconcileStaged) waits behind it, so s.bookRaw stays null.
+      const hold = await holdCheckpoints(page);
+      await page.getByRole('tab', { name: 'Check', exact: true }).click();
+      await expect.poll(hold.held).toBeGreaterThan(0);
+      await expect(page.getByTestId('open-align')).toBeVisible();
+      await page.getByRole('tab', { name: 'Translate', exact: true }).click();
+      await expect(page.getByRole('tab', { name: 'Translate', exact: true })).toHaveAttribute('aria-selected', 'true');
+      await titusRow.click();
+      await expect(page.getByText('Loading book…')).toBeVisible(); // the window: no book text
+      await page.getByRole('tab', { name: 'Check', exact: true }).click();
+      await page.getByTestId('open-align').click();
+      // In the window: no book text yet, so the rail has no rows, and the
+      // session says it is opening (never "Nothing to align yet").
+      await expect(page.getByTestId('align-verse-list').locator('button')).toHaveCount(0);
+      await expect.soft(page.getByText('Opening the alignment…')).toBeVisible();
+
+      hold.release();
+      await expect(page.getByTestId('align-verse-list').locator('button[data-ref="1:1"]')).toBeVisible();
+      await expect(page.getByTestId('align-session')).toBeVisible();
+    },
+  );
+
+  test(
+    'Align opened before the book text arrives resumes at the remembered verse when it arrives (#722 class)',
+    { tag: ['@inc2', '@J5'] },
+    async ({ page }) => {
+      writePinsWithOriginal();
+      await page.goto('/');
+      await page
+        .getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`)
+        .getByRole('button', { name: /Titus/ })
+        .click();
+      const titusRow = page.getByRole('complementary').getByRole('button', { name: /^Titus \d+%/ });
+      await expect(titusRow).toBeVisible();
+      await page.getByRole('tab', { name: 'Check', exact: true }).click();
+      await page.getByTestId('open-align').click();
+      await expect(page.getByTestId('align-session')).toBeVisible();
+      // The remembered place (#136): the translator picks 1:3, then leaves the tool.
+      const row13 = page.getByTestId('align-verse-list').locator('button[data-ref="1:3"]');
+      await row13.click();
+      await expect(row13).toHaveAttribute('data-selected', 'true');
+      await page.getByTestId('align-rail').getByRole('button', { name: '← All checking tools' }).click();
+      await expect(page.getByTestId('open-align')).toBeVisible();
+
+      const hold = await holdCheckpoints(page);
+      await page.getByRole('tab', { name: 'Translate', exact: true }).click();
+      await expect.poll(hold.held).toBeGreaterThan(0);
+      await titusRow.click();
+      await expect(page.getByText('Loading book…')).toBeVisible(); // the window: no book text
+      await page.getByRole('tab', { name: 'Check', exact: true }).click();
+      await page.getByTestId('open-align').click();
+      await expect(page.getByTestId('align-verse-list').locator('button')).toHaveCount(0);
+
+      hold.release();
+      await expect(page.getByTestId('align-session')).toBeVisible();
+      await expect(row13).toHaveAttribute('data-selected', 'true');
+      await expect(page.getByTestId('align-verse-list').locator('button[data-ref="1:1"]')).not.toHaveAttribute('data-selected', 'true');
     },
   );
 });

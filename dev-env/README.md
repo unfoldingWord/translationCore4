@@ -266,6 +266,24 @@ MSYS2 zsh window of the [Windows](#windows) section.
 
    The cache is gitignored. Do this step once; the entries stay when the rig reseeds.
 
+   For the Arabic cases of J4 (#650), cache the Arabic package of BSOJ and its Bible too.
+   The journey serves the four helps and tQ as a held-still Door43 download; the seed
+   reads Titus from `ar_avd` for the Arabic right-to-left project, and sideloads `ar_avd`
+   itself as BSOJ's literal Bible (#704), with its install record:
+
+   ```bash
+   zsh dev-env/scripts/cache-resource.zsh BSOJ/ar_tn v6.1 14400d4155ddd066d4335fbea602f00d9243b666
+   zsh dev-env/scripts/cache-resource.zsh BSOJ/ar_twl v5.1 9fe43c98fa04ab2f502516c6a759ea16e3c4a332
+   zsh dev-env/scripts/cache-resource.zsh BSOJ/ar_tw v5 7c233628947dee9ad1da0b1d6deddac663e66574
+   zsh dev-env/scripts/cache-resource.zsh BSOJ/ar_ta v3 a25e9ac3d19bdef1923a758cbcf86154e809d28e
+   zsh dev-env/scripts/cache-resource.zsh BSOJ/ar_tq v3.1 a63f38387c9d395e3e9e39ef1c098a377ffbb762
+   zsh dev-env/scripts/cache-resource.zsh BSOJ/ar_avd v6.9 3ba2e7f1d2fb3c5b9c9682dcc20d09b6f3770c06
+   ```
+
+   Then select the fixture for the run: `TC4_ARABIC_FIXTURE=1 npx playwright test e2e/j04-check-book.spec.ts`.
+   The seed builds the project `arabic_burrito` only with that variable, so every other run
+   sees the same Home. Without the variable or the cache, the Arabic cases skip and say why.
+
 4. Run the journeys:
 
    ```bash

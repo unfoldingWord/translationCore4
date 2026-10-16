@@ -11,6 +11,7 @@ import { ServerApi } from './data/serverApi';
 import { StaleWriteError } from './data/httpStore';
 import { STORY_FILE, refusalCodeOf } from './data/journal/runtime';
 import { JournalingStore, ProjectReader } from './data/journal/journalingStore';
+import { parseVerseKey } from './data/journal/verseConflicts';
 import { SaveScheduler } from './data/saveScheduler';
 import { StoryScheduler, normalizeStoryUnit } from './data/storyScheduler';
 import { createObsPackCache, projectImageIngredients, readObsStoryPresentation } from './data/obsStory';
@@ -26,10 +27,10 @@ import { mapReference } from './data/mapReference';
 import { seedBookFromSource } from './data/seed';
 import { SOURCE_MISSING, SOURCE_NOT_INSTALLED, isSourceAbsent } from './data/sourceState';
 import { BOOK_NAMES, bookName } from './data/bookNames';
-import { GATEWAYS, gatewayKey, gatewayDisplayName, DCS_HOST, orgForRepoName } from './data/gateways';
+import { GATEWAYS, gatewayKey, gatewayDisplayName, DCS_HOST, orgForRepoName, languageSetDir } from './data/gateways';
 import { dcsReleases, fetchAndInstallPin, latestReleaseTag, identifyExistingInstall, releaseCommitSha, rezip, unwrapExport, verifySideload } from './data/resourceFetch';
 import { isNotFoundError } from './data/serverApi';
-import { readInstalled, recordInstalled, coverageFromLocal, languageSetFromInstalled, gatewayBiblesFromInstalled, mergeOptionalPins, isPinLocal, unsatisfiedProjectPinFor, pinsPreferringInstalled, localRepoPathFromRepoPath, installedPathFor, discoverOnDisk, flavorOfMetadata } from './data/installed';
+import { readInstalled, recordInstalled, coverageFromLocal, languageSetFromInstalled, gatewayBiblesFromInstalled, mergeOptionalPins, isPinLocal, missingPinCount, unsatisfiedProjectPinFor, pinsPreferringInstalled, localRepoPathFromRepoPath, installedPathFor, discoverOnDisk, flavorOfMetadata } from './data/installed';
 import { OBS_TOOL_SLOT, TOOL_SLOT, coverageFor, oldTwlPin, preflightObsTool, preflightToolBook, recordMatchesResolution, resolutionRecord, resolveObsSetSlot, resolveToolBook, resolveSetSlot, samePath } from './data/resolve';
 import {
   deriveForProject,
@@ -44,10 +45,10 @@ import {
 } from './data/derive';
 import { readTwArticle, readTaArticle } from './data/articles';
 import { revalidateAgainstDraft, resolutionWarning } from './data/revalidate';
-import { bootstrapVerse, linkWord, unlinkWord, moveWord, mergeAlignments, splitAlignment, stampTargetVerse, alignmentIsStale, reflowAlignment, settleDone, markDone } from './data/align/edit';
+import { bootstrapVerse, cardsInVerseOrder, inVerseOrder, linkWord, unlinkWord, moveWord, mergeAlignments, splitAlignment, stampTargetVerse, alignmentIsStale, reflowAlignment, settleDone, markDone } from './data/align/edit';
 import { linksFor, rebindSuggestions, sessionInputFor, trainingVerseOf, trainingVersesFor } from './data/align/suggest';
 import { SuggestScheduler } from './data/align/suggestScheduler';
-import { consequencesOfGatewayChange, applyGatewayChange, completeLanguageSets, uncoveredByChange, sourcePanesForGateway, gatewaysCoveringProject } from './data/gatewayChange';
+import { consequencesOfGatewayChange, applyGatewayChange, completeLanguageSets, uncoveredByChange, sourcePanesForGateway, gatewaysCoveringProject, literalPaneId } from './data/gatewayChange';
 import { carryOverDecisions } from './data/carryOver';
 import { applyTextUpgrade, applyUpgrade, invalidateAlignments, invalidatedTestaments, latestReleasesForSet, offerForSet, offerIsStale, repinOffer, textOfferIsStale, textOffers, textPinOf } from './data/upgrade';
 import { LADDER } from './data/burritoStore';
@@ -61,7 +62,9 @@ import { Door43Api } from './data/share/door43Api';
 import { InternetSwitch, ensureGate, startGate } from './data/internet';
 import { currentSession, hasKeptToken, resumeKeptSession, signIn as door43SignIn, signOut as door43SignOut } from './data/share/session';
 import { desktopKeychain } from './data/share/keychain';
-import { share as door43Share, repositoryOf } from './data/share/shareOperation';
+import { share as door43Share, remoteAllowed, repositoryOf } from './data/share/shareOperation';
+import { openFromDoor43Asking, openRepoPathOf, openSourceOf, standInCloneRepo, sync as door43Sync } from './data/share/syncOperation';
+import { projectSyncs } from './data/share/syncs';
 import { organizationChoices } from './data/share/recommend';
 import { applyVersions, carryOverNeeds, resolveVersions, unresolvedSlots } from './data/import/tc3';
 import { PARSERS } from './data/import/parsers';
@@ -107,7 +110,13 @@ const settingsWriter = serialSettingsWriter(
   (doc) => api.setClientSettings(STORAGE_ID, doc),
 );
 /** #374: the ops log — one record per store operation, in the same document. */
-export const opsLog = new OpsLog({ read: () => api.getClientSettings(STORAGE_ID), update: settingsWriter });
+export const opsLog = new OpsLog({
+  read: () => api.getClientSettings(STORAGE_ID),
+  update: settingsWriter,
+  // #676: a document that does not parse is kept and replaced, never a lock forever
+  readText: () => api.getClientSettingsText(STORAGE_ID),
+  replace: (doc) => settingsWriter.replace(doc), // the same queue as every update
+});
 /** #362/#203: the one Door43 adapter; its server is the build's `dcsServer`. */
 // D95 (#559): the one on/off internet state of the app session. main.jsx
 // guards every client request with it (guardFetch), and the Door43 adapter
@@ -123,6 +132,21 @@ const readSavedLocale = (cs) => (isLocale(cs?.appLocale) ? cs.appLocale : 'en');
 export const door43 = new Door43Api({ allowed: () => internet.on });
 /** Whether the internet is on, as the share and sign-in code asks for it. */
 const internetAllowed = async () => internet.on;
+/** #678: whether Door43 `main` exists for a shared project. A `file://` origin
+ * (the rig's stand-in, development builds only) has no Door43 API: the sync
+ * clones it. An answer other than 200 or 404 is unknown: the sync runs, and
+ * its Report says what Door43 answered. */
+const mainOnDoor43 = async (shared, session) => {
+  if (!remoteAllowed(shared.url, door43.server)) return true;
+  const [owner, repo] = shared.repository.split('/');
+  return door43.hasBranch(session, owner, repo, 'main').catch(() => true);
+};
+/** #678: whether a Share or Sync flow runs the sync now. A project that syncs
+ * never runs the share push after its first share; it syncs once Door43 main
+ * exists. Until then (a first share whose push failed) its upload retries that
+ * push. A sync with no `origin` runs, and says so. */
+const syncsNow = async (project, shared, kind, session) =>
+  shared ? projectSyncs(project, shared) && mainOnDoor43(shared, session) : kind === 'sync';
 /** D95: the answer to the open "Turn on the internet?" dialog — true for Turn on. */
 let pendingAsk = null;
 /** #378: a Feedback send is running. Set at the click, before any await, so a
@@ -367,6 +391,20 @@ function firstDraftedRef(bookRaw) {
   return keys.length ? keys[0] : null;
 }
 
+/** #136: where Align resumes — the remembered verse, else the picker's next
+ * unaligned verse, if its draft is not empty (review round 1: an emptied
+ * remembered verse falls through). Null while the book text loads (#722). */
+function resumeAlignRef(st) {
+  const texts = verseTextIndex(st.bookRaw);
+  return [st.toolPos?.[`align:${st.book}`], st.pickerProgress?.align?.nextRef].find((ref) => ref && texts[ref]) ?? null;
+}
+
+/** The verse Align opens: the one chosen, else where it resumes, else the
+ * first drafted. A tool that opened before the text came has no verse yet. */
+function openingAlignRef(st) {
+  return st.alignVerse ?? resumeAlignRef(st) ?? firstDraftedRef(st.bookRaw);
+}
+
 const initial = () => ({
   view: 'home', // home | read (Understand) | draft (Translate) | check | publish (Community Checking)
   projects: null, // null = loading; [] = none
@@ -465,8 +503,9 @@ const initial = () => ({
   // `origin` remote (GET /git/remotes) — { repository, url } | null (not shared); a
   // missing key is not read yet. Nothing about remotes is stored in the installation.
   remoteByProject: {},
-  importToast: null, // { name, books } of the project an import just made
+  importToast: null, // { name, books } of the project an import just made; #677: { key: 'openDoor43.done', name } after an open from Door43
   importedRepo: null, // its repoPath: the Home card carries the "Imported" badge
+  od: null, // #677: the "Open a project from Door43" dialog (openDoor43Dialog), or null
   // #9: the guided fix screen for a pinned resource this machine lacks —
   // { tool, pin, candidates: ResourcePin[], busy: 'fetch'|'sideload'|null, error, progress }
   fix: null,
@@ -509,6 +548,24 @@ const initial = () => ({
   pickerProgress: null, // #136 (D3d): { seq, [tool]: {done,total,dropped,nextItem}|{error}, align: {…,nextRef} } — derived on picker open, never stored
   toolPos: {}, // #136: in-memory only — "your place is saved in each tool", keyed `${tool}:${book}`; dies with the app (§4.2)
   progressByProject: {}, // repoPath -> { CODE: draftPct } (lazy Home cache)
+  // #679: the open verse-text conflicts per project, folded from its journal:
+  // repoPath -> { CODE: count } in canonical order, or null when unknown (D30).
+  conflictsByProject: {},
+  // #680: the team of the same read-only fold, per project that is not open:
+  // repoPath -> { names, actors } (ProjectReader.readConflictsAndTeam). The
+  // sync result labels teammates by it; the open project's team is `team`.
+  teamByProject: {},
+  // #678: the project whose "Sync with Door43" runs (repoPath), or null; one
+  // sync runs at a time. `syncResult`: the result of the last sync, which Home
+  // shows: { repoPath, name, report, missingPins }. Never stored.
+  syncing: null,
+  syncResult: null,
+  // #679: the open project's verse-text conflicts (readVerseConflicts), the
+  // team that owns their versions ({ me, names, actors }), and the review:
+  // { key, error } while the conflict review shows, else null.
+  verseConflicts: [],
+  team: null,
+  conflictReview: null,
   // Last OBS story per project; user-machine state, never project data.
   obsStoryByProject: {},
   // The stories edited most recently per project on this machine (#328): the
@@ -700,7 +757,14 @@ function setShared(state, a) {
   return { ...state, remoteByProject: { ...state.remoteByProject, [a.id]: a.shared } };
 }
 
-const CHECK_SESSION_CASES = { patchCheckSession, checkDecisionSaved, refreshCheckDraft, pickerToolEntry, alignSaveState, checkSaveState, patchUpgrade, setProgress, setShared, patchSt: patchSettingsForm };
+// #679: Home's conflict counts, merged per project for the same reason as setProgress.
+function setConflicts(state, a) {
+  const next = { ...state, conflictsByProject: { ...state.conflictsByProject, [a.id]: a.counts } };
+  if (a.team === undefined) return next;
+  return { ...next, teamByProject: { ...state.teamByProject, [a.id]: a.team } };
+}
+
+const CHECK_SESSION_CASES = { patchCheckSession, checkDecisionSaved, refreshCheckDraft, pickerToolEntry, alignSaveState, checkSaveState, patchUpgrade, setProgress, setShared, setConflicts, patchSt: patchSettingsForm };
 
 function setSourceEntry(state, a) {
   if (a.value === undefined || a.value === null) {
@@ -970,14 +1034,21 @@ async function gatewayChangePlan({ consequences, next, coverage, installed, stor
   return { plan, blocked };
 }
 
+/** The text of the open book, or null while the book loads. rawRef holds
+ * the latest edits. When bookRaw is null, a new book loads, and rawRef still
+ * holds the PREVIOUS book (#722: since #679 the load waits in the store
+ * queue). Null means: read this book from the store. */
+function openBookText(st, rawRef) {
+  return st.bookRaw == null ? null : rawRef.current;
+}
+
 /** Drafts remain editable while the resource reads are in flight. Count
  * against one live snapshot, then retry if an edit/book switch changed it
- * during any await, including a later book's derive. rawRef owns synchronous
- * edits; bookRaw being null means the new book is loading. */
+ * during any await, including a later book's derive. */
 async function liveGatewayChangePlan({ store, storeRef, stateRef, rawRef, obsProject, ...args }) {
   const snapshot = () => {
     const live = stateRef.current;
-    return { book: live.book, raw: live.bookRaw == null ? null : rawRef.current, story: live.story };
+    return { book: live.book, raw: openBookText(live, rawRef), story: live.story };
   };
   for (;;) {
     if (storeRef.current !== store) throw new Error(t('gateway.otherProject'));
@@ -1063,17 +1134,27 @@ async function prepareAlignmentSource(store, st, ref) {
 /** #1: the training corpus for one testament — every verse with a placed
  * word across the project's books of that testament, as the engine's
  * positional view (suggest.ts). The open book reads from the live draft and
- * the align buffer; the other books from disk. */
+ * the align buffer. The other books read from disk. So does the open book
+ * while it loads (`bookRaw` null: openBookText). */
 async function collectTrainingVerses({ store, sched, project, book, bookRaw, testament }) {
   const codes = (project?.bookCodes || []).filter((code) => (isOldTestament(code) ? 'ot' : 'nt') === testament);
   const out = [];
   for (const code of codes) {
-    const raw = code === book ? bookRaw : (await store.readBook(code)).usfm;
+    const raw = code === book && bookRaw != null ? bookRaw : (await store.readBook(code)).usfm;
     const { file } = code === book ? await alignFileFor(store, sched, code) : await alignFileFor(store, null, code);
     out.push(...trainingVersesFor(code, file, verseTextIndex(raw)));
   }
   return out;
 }
+
+/** The trainer's `collect`: the corpus of the open project, read when asked. */
+function trainingCollector({ storeRef, alignSchedulerRef, stateRef, rawRef }) {
+  return (testament) => {
+    const st = stateRef.current;
+    return collectTrainingVerses({ store: storeRef.current, sched: alignSchedulerRef.current, project: st.project, book: st.book, bookRaw: openBookText(st, rawRef), testament });
+  };
+}
+export const __trainingTextForTests = { collectTrainingVerses, trainingCollector };
 
 /** #213: reflow the alignment records of the verses a draft save changed.
  * One buffered read of the §5.1 file, then one staged record per verse that
@@ -1109,7 +1190,12 @@ async function buildAlignmentSession(store, sched, st, ref, source, origObjects)
   // `invalid` record a span create/break leaves on the new key (#63) — has
   // nothing to edit: the editor starts from the bootstrap; the file keeps
   // its flag until the translator saves an alignment.
-  const record = stored?.alignments?.length ? stored : bootstrapVerse(targetText, origObjects, sourceVersion);
+  // #734, #754: a bank or a card stored in another order (an older save, an
+  // import) is shown in verse order; the file takes that order on the next edit.
+  // `any`, as the stored record was before #754: callers read it untyped.
+  const record = /** @type {any} */ (stored?.alignments?.length
+    ? cardsInVerseOrder({ ...stored, wordBank: inVerseOrder(stored.wordBank, targetText) }, targetText)
+    : bootstrapVerse(targetText, origObjects, sourceVersion));
   return {
     loading: false,
     ref,
@@ -1808,6 +1894,33 @@ function retryOwedCheckpoint({ store, storeRef, stateRef, dispatch }, repoPath) 
   startCheckpoint({ store, storeRef, dispatch }, 'retry');
 }
 
+/** #678 (D88 point 6): after a sync, how many pins of the project at
+ * `repoPath` name a version that this computer does not have. Derived at result
+ * time, never stored; 0 when the pin file cannot be read. */
+async function missingPinsAfterSync(repoPath, actions) {
+  try {
+    const reader = new ProjectReader({ api });
+    await reader.open(repoPath);
+    const resources = await reader.readResources();
+    const { installed } = await actions.resolutionContext();
+    return missingPinCount(resources, installed);
+  } catch {
+    return 0;
+  }
+}
+
+/** #678, #677: the platform for a sync and for an open from Door43. `getNetEnabled`
+ * is the D95 barrier. A `file://` origin is the rig's stand-in for Door43 (#673):
+ * only a development build (`dev`) accepts one, and only it clones from the mirror. */
+function door43TransportApi(dev) {
+  const transport = Object.assign(Object.create(api), { getNetEnabled: internetAllowed });
+  if (dev) {
+    const standIn = standInCloneRepo(api);
+    transport.cloneRepo = (host, org, repo) => (host === 'file' ? standIn(host, org, repo) : api.cloneRepo(host, org, repo));
+  }
+  return transport;
+}
+
 /** The leave-project checkpoint (D9, #183), started after the store was torn
  * down: the captured store still owns its per-project queue, so the commit
  * runs behind every drained write, and the screen never waits on it. On
@@ -2146,6 +2259,7 @@ async function performProjectOpen(ctx, repoPath, bookCode, view = 'read') {
         project: { ...summary, scriptDirection, textFont, repoPath },
         projectScope,
         view,
+        conflictReview: null,
         projectPins: null,
         projectPinsLoaded: false,
         projectPinsError: null,
@@ -2176,6 +2290,15 @@ async function performProjectOpen(ctx, repoPath, bookCode, view = 'read') {
     // failure never blocks opening. N1 (round 14): the detached chain binds
     // every dispatch to the originating store instance and repo path.
     const pinsReady = loadProjectPins({ store, repoPath, storeRef, stateRef, actions, dispatch });
+    // #679: the conflicts of the fold this open just made (Translate markers, Home count).
+    // A selector failure never blocks the open: the count is then unknown (D30).
+    try {
+      adoptConflicts({ store, repoPath, dispatch });
+    } catch (e) {
+      console.error(`verse conflicts of ${repoPath} could not be read: ${failureText(e)}`);
+      dispatch({ type: 'set', patch: { verseConflicts: [], team: null } });
+      dispatch({ type: 'setConflicts', id: repoPath, counts: null });
+    }
     // B12 — warm the install resolver BEFORE any book/source read, so
     // resolveReadPath's installedCache is populated on a cold open.
     await actions.resolutionContext().catch(() => {});
@@ -2415,6 +2538,145 @@ export const __performLoadUnderstandForTests = performLoadUnderstand;
 /** Test hook (#290): the story Understand load is unit-tested on the fake rig. */
 export const __performLoadStoryUnderstandForTests = performLoadStoryUnderstand;
 
+/** #679: the number of verse-text conflicts per book, in the conflicts' canonical order. */
+export const conflictCounts = (conflicts) => {
+  const counts = {};
+  for (const c of conflicts) counts[c.book] = (counts[c.book] ?? 0) + 1;
+  return counts;
+};
+
+/** #679: the open project's conflicts and team, read from its store's fold,
+ * and the Home count of that project with them. #680: Home's team of the
+ * project too, so the sync result still names senders once the project
+ * closes (performLoadConflicts skips a project whose count is cached). */
+function adoptConflicts({ store, repoPath, dispatch }) {
+  const verseConflicts = store.readVerseConflicts();
+  const team = store.readTeam();
+  dispatch({ type: 'set', patch: { verseConflicts, team: { me: store.actorId, ...team } } });
+  dispatch({ type: 'setConflicts', id: repoPath, counts: conflictCounts(verseConflicts), team });
+  return verseConflicts;
+}
+
+/** #679: Home's conflict count of one Bible project, folded read-only from its
+ * journal (ProjectReader). Cached per project; the open and "Keep this
+ * version" replace the entry from the open store's fold. */
+async function performLoadConflicts({ project, stateRef, dispatch, conflictsGen, apiClient: api }) {
+  if (project.flavor === 'textStories') return;
+  if (project.id in stateRef.current.conflictsByProject) return;
+  const gen = conflictsGen.get(project.id) || 0;
+  const reader = new ProjectReader({ api });
+  let read;
+  try {
+    await reader.open(project.id);
+    read = await reader.readConflictsAndTeam();
+  } catch {
+    return; // D30: no entry is an unknown count; the next Home visit reads again
+  }
+  if ((conflictsGen.get(project.id) || 0) !== gen) return;
+  dispatch({ type: 'setConflicts', id: project.id, counts: read ? conflictCounts(read.conflicts) : null, team: read ? read.team : null });
+}
+
+/** #679 "Keep this version". A keep never meets a loaded book: the editor's
+ * copy of the book (the verse scheduler's buffer, rawRef, s.bookRaw) is what a
+ * save diffs against the fold, so any copy older than the keep writes the
+ * replaced version back (bench rounds 1–6). So: every pending save is on disk
+ * first (a failure refuses the keep), the book of the verse is unloaded (the
+ * review has no editor), the store writes the keep, and the book loads again
+ * through the one editor load path (ctx.reloadBook → openBook →
+ * loadEditorBook), which first publishes any action the store staged and could
+ * not publish. Only THEN is the outcome decided, once, from the fold: the
+ * list, the Home count, and kept or not. The chosen version is the one the
+ * person saw in the review when they pressed (s.verseConflicts). Returns
+ * whether the chosen version is kept. */
+async function performKeepVersion(ctx, key, keptTs) {
+  const { storeRef, stateRef, saveRefs } = ctx;
+  if (!(await drainSchedulers(saveRefs))) return false;
+  const store = storeRef.current;
+  const repoPath = stateRef.current.project?.repoPath;
+  if (!store || !repoPath) return false;
+  const seen = stateRef.current.verseConflicts ?? [];
+  const position = seen.findIndex((c) => c.key === key);
+  const chosen = seen[position]?.versions.find((v) => v.ts === keptTs)?.text;
+  // Bench round 6: the drain above can write a version of this very verse that
+  // the review never showed; the store refuses a fork whose heads are not these.
+  const shownHeads = seen[position]?.versions.map((v) => v.ts) ?? [];
+  const { book } = parseVerseKey(key);
+  const wasOpen = stateRef.current.book === book;
+  if (!unloadEditorBook(ctx, book)) return false;
+  const failure = await store.resolveVerse(key, keptTs, shownHeads).then(() => null, (e) => e);
+  if (storeRef.current !== store) return false;
+  const loaded = await reloadAfterKeep(ctx, store, book, wasOpen);
+  if (storeRef.current !== store) return false;
+  return keepOutcome(ctx, store, { key, repoPath, position, chosen, failure, loaded });
+}
+
+/** After the store's write: the open book loads again (ctx.reloadBook, the
+ * keepVersion action's openBook); for a book that is not open, the store
+ * publishes its staged actions all the same. Returns false when the open book
+ * could not load. */
+async function reloadAfterKeep({ rawRef, reloadBook }, store, book, wasOpen) {
+  if (wasOpen) {
+    await reloadBook(book);
+    return rawRef.current !== null;
+  }
+  await store.reconcileStaged().catch((e) => console.error(`keepVersion: staged actions not published: ${failureText(e)}`));
+  return true;
+}
+
+/** The outcome, from the fold after the reload. Kept ⇔ no conflict on the
+ * verse and the fold projects the chosen text. The review stays at its place
+ * (the conflict after the kept one) and says what did not happen. */
+function keepOutcome({ stateRef, dispatch, conflictsGen }, store, { key, repoPath, position, chosen, failure, loaded }) {
+  const { book, chapter, verse } = parseVerseKey(key);
+  conflictsGen.set(repoPath, (conflictsGen.get(repoPath) || 0) + 1);
+  const left = adoptConflicts({ store, repoPath, dispatch });
+  const open = left.some((c) => c.key === key);
+  const kept = !open && chosen !== undefined && store.projectedVerse(book, chapter, verse) === chosen;
+  const notes = kept ? [] : [open ? null : t('conflicts.otherKept'), failure && failureText(failure)];
+  const error = [...notes, loaded ? null : t('conflicts.bookNotLoaded')].filter(Boolean).join(' ') || null;
+  if (failure) console[kept ? 'warn' : 'error'](`keepVersion(${key}): ${kept ? 'kept' : 'not kept'}; the store reported: ${failureText(failure)}`);
+  if (stateRef.current.conflictReview) {
+    const next = left[Math.min(Math.max(position, 0), left.length - 1)];
+    dispatch({ type: 'set', patch: { conflictReview: { key: next?.key ?? key, error, kept } } });
+  }
+  return kept;
+}
+
+/** Before a keep: the verse scheduler forgets the book (it is clean: the drain
+ * ran), and the open book's text leaves the state. A book that cannot be
+ * unloaded refuses the keep, and the review says why. */
+function unloadEditorBook({ stateRef, schedulerRef, rawRef, dispatch }, book) {
+  try {
+    schedulerRef.current?.unloadBook(book);
+  } catch (e) {
+    const review = stateRef.current.conflictReview;
+    if (review) dispatch({ type: 'set', patch: { conflictReview: { ...review, error: failureText(e) } } });
+    return false;
+  }
+  if (stateRef.current.book === book) {
+    rawRef.current = null;
+    dispatch({ type: 'set', patch: { bookRaw: null } });
+  }
+  return true;
+}
+
+/** #679 (one read path): the book text the editor and its save buffer start
+ * from. The store first publishes any action it staged and could not publish
+ * (a keep whose write failed is one), so the text holds every action a later
+ * save would replay; then the fold projects the book — the text every save
+ * diffs against. Never the derived file on disk, which a failed regeneration
+ * can leave behind the journal. Throws when the fold has no such book. */
+export async function loadEditorBook(store, code) {
+  await store.reconcileStaged();
+  const raw = store.projectedBook(code);
+  if (raw === null) throw new Error(`the project's journal holds no ${code}`);
+  return raw;
+}
+
+/** Test hooks (#679): the Home count read and the keep action run on the fake rig. */
+export const __performLoadConflictsForTests = performLoadConflicts;
+export const __performKeepVersionForTests = performKeepVersion;
+
 /** Home: lazy per-book draft progress (design shows a bar per tile). #573:
  * with `inPlace`, the re-read of the open story project's entry after an edit. */
 async function performLoadProgress(ctx) {
@@ -2477,7 +2739,9 @@ async function performLoadProgress(ctx) {
   } catch {
     // Catch-to-absence sweep (D30), reviewed: cache NOTHING on a
     // failed open — Home already renders missing entries as unknown
-    // (em-dash), and the next render retries.
+    // (em-dash). The next Home visit (a new card mount) tries again; a
+    // re-render does not, so a repository that cannot open is not read
+    // again on each render.
     return;
   }
   const pcts = {};
@@ -2653,8 +2917,9 @@ function loadSourcePanes({ store, code, seq, openSeqRef, stateRef, dispatch, pin
     type: 'set',
     patch: {
       sourcePanes: ids,
-      // Keep the tab valid: an imported project may name panes differently.
-      ...(ids.length > 0 && !ids.includes(st.sourceTab) && !(st.sourceTab === 'orig' && origPin) ? { sourceTab: ids[0] } : {}),
+      // Keep the tab valid: an imported project may name panes differently,
+      // and a gateway change may replace the literal pane (#704).
+      ...(ids.length > 0 && !ids.includes(st.sourceTab) && !(st.sourceTab === 'orig' && origPin) ? { sourceTab: literalPaneId(ids) } : {}),
     },
   });
   loadOrigPane({ store, origPin, code, seq, openSeqRef, stateRef, dispatch, testament });
@@ -2724,9 +2989,11 @@ async function seedInitialUsfm({ store, code, projName }) {
   // #574: the pins of the project the book goes INTO, read through its own
   // store. The open project's state pins were null when the book was added
   // from Home or right after New Bible, so every such book got the server
-  // skeleton. extraScripture[0] is the literal pane, which follows the
-  // gateway (#412): its \h name is the gateway's book name.
-  const seedPin = (await store.readResources())?.extraScripture?.[0];
+  // skeleton. The literal pane follows the gateway (#412): its \h name is the
+  // gateway's book name. It is read by its id, because the saved order is
+  // not literal-first after a change that replaces only that pane (#704).
+  const panes = (await store.readResources())?.extraScripture;
+  const seedPin = panes?.find((e) => e.id === literalPaneId(panes.map((p) => p.id)));
   if (!seedPin) return undefined;
   try {
     const src = await store.readSourceBook(localSourceRepo(seedPin), code);
@@ -2740,6 +3007,7 @@ async function seedInitialUsfm({ store, code, projName }) {
     return undefined;
   }
 }
+export const __seedInitialUsfmForTests = (...args) => seedInitialUsfm(...args);
 
 /** Returns the outcome of the pins read, `{ pins, failed }` (never rejects), so
  * a story open can wait for it (#312): `pins` is the document or null when
@@ -3167,6 +3435,28 @@ function isCheckToolReady(pre) {
   return Boolean(pre && pre.state === 'ready' && pre.resolution?.pin);
 }
 
+/** #679: resolve once the rendered state (stateRef) satisfies `holds`, or at the
+ * deadline. A dispatch reaches stateRef only on the next render. */
+function waitForState(stateRef, holds, ms = 5_000) {
+  const deadline = Date.now() + ms;
+  return new Promise((resolve) => {
+    const tick = () => {
+      if (holds(stateRef.current)) {
+        resolve();
+        return;
+      }
+      if (Date.now() >= deadline) {
+        // Never silent: a caller that reads stateRef next sees the old state.
+        console.error(`waitForState: the rendered state did not arrive in ${ms} ms`);
+        resolve();
+        return;
+      }
+      setTimeout(tick, 0);
+    };
+    tick();
+  });
+}
+
 /** #268: openProject's pin load is detached — Resume into Check waits for it. */
 function waitForProjectPins(stateRef, ms = 20_000) {
   const deadline = Date.now() + ms;
@@ -3300,6 +3590,10 @@ export function AppProvider({ children }) {
   // stateRef follows the render, so two quick clicks could both pass it.
   const gatewayBusyRef = useRef(false);
   const openSeqRef = useRef(0); // openBook sequence token (review finding M2)
+  // #679: the keep in flight. Every exit from the review waits for it, so no
+  // editor can show the book text from before the keep (review finding B1).
+  const keepPendingRef = useRef(null);
+  const keepSettled = () => keepPendingRef.current?.catch(() => {});
   const understandSeqRef = useRef(0); // loadUnderstand sequence token (2026-08-27 Codex review)
   // D65 (round-22 checkpoint): the comprehension-note SaveScheduler and the
   // registry mapping each note key to its write target. The scheduler's
@@ -3508,6 +3802,9 @@ export function AppProvider({ children }) {
   // titles and percentages, so that entry stays, stale, and is read again in place.
   const progressGen = new Map();
   const progressStale = new Set();
+  // #679: Home's conflict count of a project: a keep bumps it, so an older
+  // in-flight read cannot put back the count from before the keep.
+  const conflictsGen = new Map();
   function invalidateProgress(repoPath) {
     progressGen.set(repoPath, (progressGen.get(repoPath) || 0) + 1);
     const st = stateRef.current;
@@ -3719,6 +4016,7 @@ export function AppProvider({ children }) {
     };
     const a = {
       go: async (view) => {
+        await keepSettled(); // #679
         // B1/D65: navigation is flush-and-go (owner ruling 2026-08-28), and a
         // FAILED write holds navigation (FR-32). #100: every scheduler — an
         // alignment or decision made before the switch is on disk before the
@@ -3727,7 +4025,7 @@ export function AppProvider({ children }) {
         if (!(await drainSchedulers(saveRefs))) return;
         const st = stateRef.current;
         const from = st.view;
-        dispatch({ type: 'set', patch: { view } });
+        dispatch({ type: 'set', patch: { view, conflictReview: null } });
         // #532: an open check reads the draft made while the user was away.
         if (view === 'check' && from !== 'check' && st.checkSession?.items)
           dispatch({ type: 'refreshCheckDraft', seq: st.checkSession.seq });
@@ -3785,7 +4083,7 @@ export function AppProvider({ children }) {
       closeModal: () => {
         // #530: Cancel, Close and Escape end the Share or Upload changes flow now.
         closeShareFlow();
-        dispatch({ type: 'set', patch: { modal: null, np: null, ab: null, st: null, fix: null, im: null, sh: null } });
+        dispatch({ type: 'set', patch: { modal: null, np: null, ab: null, st: null, fix: null, im: null, sh: null, od: null } });
       },
 
       /** #378: "Ask for help" on a banner. The Feedback dialog opens as a Bug
@@ -4799,7 +5097,11 @@ export function AppProvider({ children }) {
         const settle = (alignSession) => {
           if (seq === alignSessionSeq) dispatch({ type: 'set', patch: { alignSession: { ...alignSession, seq } } });
         };
-        const ref = st.alignVerse ?? firstDraftedRef(st.bookRaw);
+        // #722: no text yet is a book still loading (since #679 the load waits
+        // in the store queue), not a book with no draft. The Align view opens
+        // the session again when the text arrives. A failed load is stated (D30).
+        if (st.bookRaw == null) return settle(st.bookError ? { error: st.bookError } : { loading: true });
+        const ref = openingAlignRef(st);
         if (!ref) return settle({ unavailable: 'undrafted' });
         settle({ loading: true });
         // Catch-to-absence sweep review: the try covers the WHOLE load —
@@ -4846,17 +5148,10 @@ export function AppProvider({ children }) {
 
       startAligning: () => {
         alignSessionSeq++;
-        // #136: open at the remembered verse, else the picker's next
-        // unaligned verse, else the default (first drafted, via openAlign).
-        // A remembered verse whose draft was since emptied is skipped
-        // (review round 1) — resuming it would open an unavailable session
-        // instead of falling through the chain.
-        const st = stateRef.current;
-        const texts = verseTextIndex(st.bookRaw);
-        const alignVerse =
-          [st.toolPos?.[`align:${st.book}`], st.pickerProgress?.align?.nextRef].find(
-            (ref) => ref && texts[ref],
-          ) ?? null;
+        // #136: open at the remembered verse (resumeAlignRef), else the
+        // default (first drafted, via openAlign). While the book text loads
+        // there is none yet; openAlign resumes when the text arrives (#722).
+        const alignVerse = resumeAlignRef(stateRef.current);
         dispatch({ type: 'set', patch: { aligning: true, alignSession: null, alignVerse } });
         // #516 (D93 point 3): the booster retrains each time the Align tool opens.
         a.trainAlignSuggestions();
@@ -4912,10 +5207,11 @@ export function AppProvider({ children }) {
         });
       },
 
-      /** Select (or clear) the banked word the next card click will place. */
-      armAlignWord: (word) => {
+      /** Select (or clear) the banked words the next card click will place.
+       * #736: `armed` is a list — several words go to one card at once. */
+      armAlignWords: (words) => {
         const a2 = stateRef.current.alignSession;
-        if (a2) dispatch({ type: 'set', patch: { alignSession: { ...a2, armed: word } } });
+        if (a2) dispatch({ type: 'set', patch: { alignSession: { ...a2, armed: words?.length ? words : null } } });
       },
 
       /** #129 (PR #135 review round 1) — ONE path for every alignment edit.
@@ -4934,7 +5230,9 @@ export function AppProvider({ children }) {
         if (next === a2.record) return;
         // #271: `done` follows the edit — set when the verse is now fully
         // aligned, removed otherwise (an edit takes back Mark valid).
-        const record = settleDone(stampTargetVerse(next, a2.targetText));
+        // #754: every edit (place, move, merge, confirm a suggestion) leaves
+        // each card's words in verse order, wherever the word was dropped.
+        const record = settleDone(stampTargetVerse(cardsInVerseOrder(next, a2.targetText), a2.targetText));
         // #1: a proposal for a word this edit placed is spent; the rest are
         // re-bound to their card by its first original word (a merge or split
         // moved the indexes) and dropped when that card is gone.
@@ -4951,15 +5249,16 @@ export function AppProvider({ children }) {
       placeAlignWord: (cardIndex) => {
         const armed = stateRef.current.alignSession?.armed;
         if (!armed) return;
-        a.applyAlignEdit((record) => linkWord(record, cardIndex, armed), true);
+        a.applyAlignEdit((record) => armed.reduce((r, w) => linkWord(r, cardIndex, w), record), true);
       },
 
       unplaceAlignWord: (cardIndex, word) =>
-        a.applyAlignEdit((record) => unlinkWord(record, cardIndex, word)),
+        a.applyAlignEdit((record) => unlinkWord(record, cardIndex, word, stateRef.current.alignSession.targetText)),
 
-      /** #129 drag-and-drop: place a banked word without the arm step. */
-      placeAlignWordAt: (cardIndex, word) =>
-        a.applyAlignEdit((record) => linkWord(record, cardIndex, word), true),
+      /** #129 drag-and-drop: place banked words without the arm step (#736:
+       * a drag of a selected word carries the whole selection, in one edit). */
+      placeAlignWordsAt: (cardIndex, words) =>
+        a.applyAlignEdit((record) => words.reduce((r, w) => linkWord(r, cardIndex, w), record), true),
 
       /** #129 drag-and-drop: move a placed word between cards in one step. */
       moveAlignWord: (fromIndex, toIndex, word) =>
@@ -5025,10 +5324,7 @@ export function AppProvider({ children }) {
         };
         engine.sched = new SuggestScheduler({
           testament: () => (stateRef.current.book ? (isOldTestament(stateRef.current.book) ? 'ot' : 'nt') : null),
-          collect: (testament) => {
-            const st = stateRef.current;
-            return collectTrainingVerses({ store: storeRef.current, sched: alignSchedulerRef.current, project: st.project, book: st.book, bookRaw: rawRef.current, testament });
-          },
+          collect: trainingCollector({ storeRef, alignSchedulerRef, stateRef, rawRef }),
           postAnswer: post(
             'answering',
             () => new Worker(new URL('./data/align/suggestWorker.ts', import.meta.url), { type: 'module' }),
@@ -5192,6 +5488,13 @@ export function AppProvider({ children }) {
       closeCheckTool: () => {
         checkSessionSeq++; // invalidate any in-flight open or completion
         dispatch({ type: 'set', patch: { checkTool: null, checkSession: null } });
+      },
+
+      /** #722 class: the open session reads the draft again (#532's
+       * refreshCheckDraft) — for a session that opened before its text arrived. */
+      refreshCheckDraft: () => {
+        const cs = stateRef.current.checkSession;
+        if (cs?.items) dispatch({ type: 'refreshCheckDraft', seq: cs.seq });
       },
 
       /** #268: Resume into a Check tool — wait for pins, then preflight until
@@ -5678,8 +5981,13 @@ export function AppProvider({ children }) {
        * #530: Upload changes on a shared card opens its dialog and sends
        * nothing; its steps start when the upload, or its sign-in, is sent. */
       shareProject: (project) => {
+        const known = stateRef.current.remoteByProject[project.id];
+        // #678: a project that syncs never runs the share push after its first
+        // share (its history differs from Door43 main after a sync): it takes
+        // the sync's flow, and startShare decides by Door43 main.
+        if (projectSyncs(project, known)) return a.syncProject(project);
         // The click starts the flow of this Share or Upload changes (#530).
-        if (stateRef.current.remoteByProject[project.id]) return a.openUpload(project, startShareFlow('upload'));
+        if (known) return a.openUpload(project, startShareFlow('upload'));
         const flow = startShareFlow('share');
         // A flow that opened no dialog (Cancel on the question, or a failure
         // before the first dialog) ends here.
@@ -5761,8 +6069,8 @@ export function AppProvider({ children }) {
       },
       /** Share, or Upload changes. No token: the sign-in step first, then back
        * here. A shared project (an `origin`) opens the upload dialog on its
-       * review step (#530); a first share opens the dialog on the
-       * where-it-goes step and reads the organizations (D84 point 3). */
+       * review step (#530), or syncs when it is a project that syncs (#678);
+       * a first share opens the dialog on the where-it-goes step and reads the organizations (D84 point 3). */
       startShare: async (project, flow) => {
         let session = currentSession();
         if (!session) {
@@ -5782,6 +6090,11 @@ export function AppProvider({ children }) {
         // first-share dialog, so a shared project never asks again (#362 AC 2, 7).
         const shared = stateRef.current.remoteByProject[project.id] || (await a.loadShared(project, true));
         if (flow.closed) return;
+        // #678: a sync needs no dialog. It runs in this flow, so it closes
+        // this flow's sign-in step.
+        const syncNow = await syncsNow(project, shared, flow.kind, session);
+        if (flow.closed) return;
+        if (syncNow) return a.syncRun(project, flow);
         if (shared) return a.openUpload(project, flow);
         flow.dialog = true;
         dispatch({
@@ -5859,6 +6172,96 @@ export function AppProvider({ children }) {
         a.patchSh(report.ok ? { step: 'done', busy: false, report } : { step: review, busy: false, error });
         return report;
       },
+      // ---- Sync with Door43 (#678; layer 4 of epic #24). The operation is
+      //      src/data/share/syncOperation.ts; the result shows on Home. ----
+      /** The Home card's "Sync with Door43" (a shared Bible project). Only this
+       * press starts a sync: nothing syncs at start or while idle (D88 point 5).
+       * While the internet is off it asks first (D95); Not now sends nothing.
+       * No sign-in: the sign-in step comes first, and the sync runs after it. */
+      syncProject: (project) => {
+        if (stateRef.current.syncing) return undefined;
+        const flow = startShareFlow('sync');
+        return a.flowStep(flow, () => a.startShare(project, flow)).finally(() => {
+          if (!flow.dialog) closeShareFlow(flow);
+        });
+      },
+      /** Run one sync of `project` and show its result. After an ok sync the
+       * project is read again: the Home caches of the project are dropped, and
+       * an open store of the project opens again (the sync() contract). */
+      syncRun: async (project, flow) => {
+        const session = currentSession();
+        if (!session || stateRef.current.syncing) return null;
+        // The sign-in step of this sync closes: the sync shows its result on Home.
+        if (stateRef.current.modal === 'signIn' && stateRef.current.si?.flow === flow)
+          dispatch({ type: 'set', patch: { modal: null, si: null } });
+        closeShareFlow(flow);
+        const repoPath = project.id;
+        dispatch({ type: 'set', patch: { syncing: repoPath, syncResult: null } });
+        let report;
+        try {
+          // The checkpoint of a project the user just left goes first.
+          await leaveCheckpoints.get(repoPath);
+          const { coverage } = await a.resolutionContext();
+          const dev = import.meta.env.DEV === true;
+          report = await door43Sync(
+            { api: door43TransportApi(dev), door43Server: door43.server, coverage, ops: opsLog, allowFileRemote: dev },
+            { repoPath, session },
+          );
+        } catch (e) {
+          report = { op: 'sync', ok: false, facts: { error: String(e?.reason || e?.message || e) } };
+        }
+        // The result shows, and the button comes back, whatever the reads after the sync did.
+        const missingPins = await a.afterSyncReport(project, report);
+        dispatch({ type: 'set', patch: { syncing: null, syncResult: { repoPath, name: project.name, report, missingPins } } });
+        return report;
+      },
+      /** The steps after one sync. Resolves to the D88 point 6 count; never rejects:
+       * the sync itself is done, and a failed read shows at the next read of the card. */
+      afterSyncReport: async (project, report) => {
+        try {
+          if (report.ok) {
+            await a.afterSync(project);
+            return await missingPinsAfterSync(project.id, a);
+          }
+          if (report.code === 'sync.auth-failed') {
+            // Door43 refused the token: forget it, so the next press asks for the password (#467).
+            // [PENDING — owner run, #673 steps 3 and 4]: the shell maps a push answer to
+            // sync.auth-failed by its 401 status as best known (refusalForPush).
+            await door43SignOut(desktopKeychain() ?? undefined).catch(() => {});
+            dispatch({ type: 'set', patch: { door43User: null, door43Kept: false, door43NotKept: false } });
+          }
+        } catch (e) {
+          console.error(`sync: the read after the sync failed: ${String(e?.message || e)}`);
+        }
+        return 0;
+      },
+      /** After an ok sync: the apply changed the project's files in place (D101).
+       * Home reads its progress and its conflicts again, and an open store of it
+       * opens again. */
+      afterSync: async (project) => {
+        const repoPath = project.id;
+        conflictsGen.set(repoPath, (conflictsGen.get(repoPath) || 0) + 1);
+        const conflicts = { ...stateRef.current.conflictsByProject };
+        delete conflicts[repoPath];
+        const teams = { ...stateRef.current.teamByProject };
+        delete teams[repoPath];
+        dispatch({ type: 'set', patch: { conflictsByProject: conflicts, teamByProject: teams } });
+        invalidateProgress(repoPath);
+        const st = stateRef.current;
+        if (st.project?.id === repoPath) await a.openProject(repoPath, st.book ?? undefined, st.view);
+        await Promise.all([a.loadConflicts(project), a.loadProgress(project)]);
+      },
+      dismissSyncResult: () => dispatch({ type: 'set', patch: { syncResult: null } }),
+      /** D88 point 6: a version the synced pins name that this computer does
+       * not have. The project opens, and the Source texts screen offers its
+       * Download (the "Manage source texts" path of Settings). */
+      syncDownload: async (repoPath) => {
+        dispatch({ type: 'set', patch: { syncResult: null } });
+        await a.openProject(repoPath);
+        if (stateRef.current.project?.id !== repoPath) return;
+        await a.openSources();
+      },
+
       /** Copy link (D84 point 5): the repository URL to the clipboard. */
       shareCopyLink: async () => {
         const url = stateRef.current.sh?.report?.facts.url;
@@ -6034,6 +6437,56 @@ export function AppProvider({ children }) {
         dispatch({ type: 'set', patch: { importedRepo: repoPath, importToast: { name: im.name.trim(), books: (report.facts.books || []).map((c) => bookName(c)).join(' · ') } } });
       },
       dismissImportToast: () => dispatch({ type: 'set', patch: { importToast: null } }),
+
+      // ---- Open a project from Door43 (#677; layer 4 of epic #24). The operation
+      //      is openFromDoor43 (src/data/share/syncOperation.ts); the dialog is
+      //      src/views/modals/OpenFromDoor43.jsx. ----
+      /** The fourth card of "Add a project". `od`: the dialog's fields; `named`
+       * is true once the user typed a name, so the name stops following the
+       * repository name. `error`: { code, reason } of the last refusal, or null. */
+      openDoor43Dialog: () =>
+        dispatch({ type: 'set', patch: { modal: 'openDoor43', od: { repo: '', name: '', named: false, busy: false, error: null } } }),
+      patchOd: (patch) => dispatch({ type: 'set', patch: { od: { ...stateRef.current.od, ...patch } } }),
+      /** "Open project". The name check is local and comes first; then, with the
+       * internet off, the question (D95): Not now sends nothing. A refusal
+       * shows in the dialog; no project was added. */
+      openDoor43Run: async () => {
+        const od = stateRef.current.od;
+        if (!od || od.busy) return;
+        const dev = import.meta.env.DEV === true;
+        const source = openSourceOf(od.repo, door43.server, dev);
+        const name = od.name.trim();
+        const repoPath = openRepoPathOf(name);
+        if (!source || !repoPath) return;
+        a.patchOd({ busy: true, error: null });
+        try {
+          const opened = await openFromDoor43Asking(
+            { api: door43TransportApi(dev), ops: opsLog, ask: (run) => a.internetTask('open', run) },
+            { source, name },
+          );
+          if (opened) await a.afterOpenFromDoor43(opened.repoPath, name);
+          else a.patchOd({ busy: false });
+        } catch (e) {
+          // Cancel is off while the open runs, so the dialog is there to show the refusal.
+          const error = { code: refusalCodeOf(e), reason: String(e?.reason || e?.message || e) };
+          if (stateRef.current.od) a.patchOd({ busy: false, error });
+          else console.error(`open from Door43 refused: ${error.code ?? error.reason}`);
+        }
+      },
+      /** After an open from Door43: the project exists, so a failed read here is
+       * logged, never shown as a refusal. Home lists the card, and the card reads
+       * `origin`, so it shows "Sync with Door43" (#678). */
+      afterOpenFromDoor43: async (repoPath, name) => {
+        markUsed(repoPath);
+        try {
+          await refreshProjects();
+          await a.loadShared({ id: repoPath }, true);
+        } catch (e) {
+          console.error(`open from Door43: the read after the open failed: ${String(e?.message || e)}`);
+        }
+        if (stateRef.current.modal === 'openDoor43') a.closeModal();
+        dispatch({ type: 'set', patch: { importToast: { key: 'openDoor43.done', name } } });
+      },
 
       createObs: async () => {
         const w = stateRef.current.np;
@@ -6318,6 +6771,64 @@ export function AppProvider({ children }) {
       // ---- Home: lazy per-book draft progress (design shows a bar per tile) ----
       loadProgress: (project) => performLoadProgress({ project, stateRef, dispatch, progressGen, progressStale, actions: a, apiClient: api }),
 
+      // ---- #679: the conflict review ----------------------------------------
+      /** Home: the number of open verse-text conflicts of a Bible project. */
+      loadConflicts: (project) => performLoadConflicts({ project, stateRef, dispatch, conflictsGen, apiClient: api }),
+
+      /** Show the conflict review in Translate, at `key` or at the first conflict.
+       * The list is read again from the store's fold. No conflict: nothing opens. */
+      openConflictReview: (key) => {
+        const st = stateRef.current;
+        const store = storeRef.current;
+        // Bench P1: never over an open editing card — the section card's draft
+        // lives in the card and would be lost (its entries are disabled too).
+        if (!store || !st.project || st.editing) return;
+        const conflicts = adoptConflicts({ store, repoPath: st.project.repoPath, dispatch });
+        const at = conflicts.find((c) => c.key === key) ?? conflicts[0];
+        if (!at) return;
+        dispatch({ type: 'set', patch: { conflictReview: { key: at.key, error: null } } });
+      },
+
+      /** Home "Review": open the project in Translate at the book of its first
+       * conflict, then the review. */
+      openProjectConflicts: async (repoPath) => {
+        const counts = stateRef.current.conflictsByProject[repoPath];
+        const book = counts ? Object.keys(counts)[0] : undefined;
+        await a.openProject(repoPath, book, 'draft');
+        if (stateRef.current.project?.repoPath !== repoPath) return;
+        a.openConflictReview();
+      },
+
+      /** Previous / Next in the review. */
+      showConflict: async (key) => {
+        await keepSettled();
+        if (!stateRef.current.conflictReview) return;
+        dispatch({ type: 'set', patch: { conflictReview: { key, error: null } } });
+      },
+
+      /** Leave the review. The conflicts that are open stay listed. */
+      closeConflictReview: async () => {
+        await keepSettled();
+        dispatch({ type: 'set', patch: { conflictReview: null } });
+      },
+
+      /** "Keep this version": the kept head `keptTs` replaces every version of `key`. */
+      keepVersion: (key, keptTs) => {
+        // The keep unloads the open book; it loads again through the one editor
+        // load path, at the chapter it was on. (openBook does not wait for the
+        // pending keep: this IS the pending keep.)
+        const reloadBook = async (book) => {
+          const { chapter } = stateRef.current;
+          await a.openBook(book);
+          if (rawRef.current !== null && chapter !== 1) dispatch({ type: 'set', patch: { chapter } });
+        };
+        const run = performKeepVersion({ storeRef, stateRef, schedulerRef, rawRef, saveRefs, dispatch, conflictsGen, reloadBook }, key, keptTs);
+        keepPendingRef.current = run;
+        return run.finally(() => {
+          if (keepPendingRef.current === run) keepPendingRef.current = null;
+        });
+      },
+
       /** #329: the frame in focus on the story screens; the place record follows it. */
       setStoryFrame: (frame) => {
         const n = Number(frame);
@@ -6451,7 +6962,7 @@ export function AppProvider({ children }) {
         dispatch({ type: 'set', patch: { book: code, chapter: 1, bookRaw: null, bookError: null, sources: {}, editing: null, helpsHover: null, helpsActive: null, pickerProgress: null, ...(closeCheck ? { checkTool: null, checkSession: null } : {}) } });
         let raw;
         try {
-          ({ usfm: raw } = await store.readBook(code));
+          raw = await loadEditorBook(store, code); // #679: the fold with every staged action, never the disk file
         } catch (e) {
           if (seq === openSeqRef.current) {
             dispatch({ type: 'set', patch: { bookError: e?.reason || e?.message || String(e) } });
@@ -6462,6 +6973,12 @@ export function AppProvider({ children }) {
         rawRef.current = raw;
         scheduler?.loadBook(code, raw);
         dispatch({ type: 'set', patch: { bookRaw: raw } });
+        // #679: the book now comes from memory, with no await. The HTTP read's
+        // await used to let React render before openBook returned; every next
+        // step reads stateRef, which a render sets (a resume into Check captured
+        // the old book and stopped: J4, J8, #434). Return once the state holds it.
+        await waitForState(stateRef, (st) => seq !== openSeqRef.current || (st.book === code && st.bookRaw === raw));
+        if (seq !== openSeqRef.current) return;
         // Round 37 (spec §5.3): the source panes come from the PROJECT's own
         // extraScripture pins — never the machine suite. Deferred while the
         // pins are still loading; loadProjectPins reloads on arrival.
@@ -6613,7 +7130,7 @@ export function AppProvider({ children }) {
         if (!isCurrentArticleRequest(now, seq, articleSeqRef.current, repoPath, key)) return;
         dispatch({
           type: 'set',
-          patch: { understand: { ...now.understand, article: { key, seq, loading: false, found, error: articleError, request } } },
+          patch: { understand: { ...now.understand, article: { key, seq, loading: false, found, error: articleError, request, dir: languageSetDir(set) } } },
         });
       },
 
@@ -6767,6 +7284,7 @@ export function AppProvider({ children }) {
       retrySave: () =>
         Promise.all(saveRefs.map((ref) => (ref.current?.getFailure() ? ref.current.retry() : Promise.resolve()))),
       backToProjects: async () => {
+        await keepSettled(); // #679
         // Never navigate away from unsaved work or a visible failure (FR-32).
         // EVERY blocker is checked BEFORE anything is disposed (C3,
         // adversarial round 3): a refused exit must leave the project fully
@@ -6804,7 +7322,7 @@ export function AppProvider({ children }) {
         alignSessionSeq++;
         dispatch({
           type: 'set',
-          patch: { view: 'home', project: null, book: null, bookRaw: null, sources: {}, storyNumbers: [], storyNumber: null, story: null, sourceStory: null, storyImages: {}, storyImageNote: null, storyLoading: false, storyError: null, storySource: null, saveState: 'saved', noteSaveState: 'saved', alignSaveState: 'saved', checkSaveState: 'saved', storySaveState: 'saved', storySaveError: null, commitError: null, projectPins: null, projectPinsLoaded: false, projectPinsError: null, preflight: null, preflightError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null, aligning: false, alignSession: null, alignVerse: null, alignIndex: null, alignSuggest: { status: 'off', verses: 0, boosted: false, error: null }, pickerProgress: null, toolPos: {}, upgrade: UPGRADE_IDLE },
+          patch: { view: 'home', project: null, book: null, bookRaw: null, editing: null, sources: {}, verseConflicts: [], team: null, conflictReview: null, storyNumbers: [], storyNumber: null, story: null, sourceStory: null, storyImages: {}, storyImageNote: null, storyLoading: false, storyError: null, storySource: null, saveState: 'saved', noteSaveState: 'saved', alignSaveState: 'saved', checkSaveState: 'saved', storySaveState: 'saved', storySaveError: null, commitError: null, projectPins: null, projectPinsLoaded: false, projectPinsError: null, preflight: null, preflightError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null, aligning: false, alignSession: null, alignVerse: null, alignIndex: null, alignSuggest: { status: 'off', verses: 0, boosted: false, error: null }, pickerProgress: null, toolPos: {}, upgrade: UPGRADE_IDLE },
         });
         refreshProjects(); // re-order: the project just left goes to the top
         if (leaving && leavingStore) startLeaveCheckpoint({ store: leavingStore, repoPath: leaving.repoPath, stateRef, dispatch });

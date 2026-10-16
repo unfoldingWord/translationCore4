@@ -113,7 +113,7 @@ The intended first complete public release includes:
 - Windows, macOS, and Linux;
 - correct RTL and complex-script editing and export, including SIL Graphite fonts and
   shaping;
-- English, Spanish, and French interfaces, with Arabic following soon afterward; and
+- English, Spanish, French, and Arabic interfaces (Arabic since 2026-10-15, D102); and
 - Door43 send and receive, continued offline work, conflict resolution, and future
   project compatibility.
 
