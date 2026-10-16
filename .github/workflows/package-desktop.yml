@@ -42,6 +42,13 @@ on:
       - scripts/*mac*
       - scripts/*windows*
       - scripts/desktop-bootstrap*
+      - scripts/desktop-prepare*
+      - scripts/desktop-resource-worker.cjs
+      - scripts/build-desktop-bootstrap.cjs
+      - scripts/stage-resource.mjs
+      - src/data/resourceArchive.mjs
+      - src/data/resourceFetch.ts
+      - dev-env/scripts/cache-resource.ts
       - scripts/resource-archive-receipt.cjs
       - scripts/smoke-*
       - scripts/tc4.iss

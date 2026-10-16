@@ -160,18 +160,24 @@ function start() {
       // captures APP_RESOURCES_DIR. All platforms publish resource releases
       // and their install records under this same singleton lock (#528).
       bootstrap.bindPackagedResources(options);
-      bootstrap.bootstrap(options);
+      require('./tc4-prepare.cjs').prepareDesktop(require('electron'), options,
+        () => require('./electronStartup.js'), preparationFailed);
+      return;
     }
   } catch (error) {
-    require('electron').dialog.showErrorBox(
-      'translationCore4 could not start',
-      'The bundled resources could not be prepared. Please quit and try again.\n' + error.message,
-    );
-    app.exit(1);
+    preparationFailed(error);
     return;
   }
 
   require('./electronStartup.js');
+}
+
+function preparationFailed(error) {
+  require('electron').dialog.showErrorBox(
+    'translationCore4 could not start',
+    'The bundled resources could not be prepared. Please quit and try again.\n' + error.message,
+  );
+  app.exit(1);
 }
 
 start();

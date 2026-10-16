@@ -279,16 +279,12 @@ done
 echo "== 4/7 assemble the app directory"
 rm -rf "$PACK"
 mkdir -p "$PACK/bin" "$PACK/lib/setup" "$PACK/lib/clients/uw-tc4" "$PACK/lib/product" "$PACK/resources"
+mkdir -p "$BUILD/resource-pins"
 for entry in "${BUNDLED_RESOURCES[@]}"; do
   bundled_fields "$entry"
   unwrapped="$REPO/dev-env/resources-cache/$repo-$label-unwrapped.zip"
-  target="$PACK/resources/$seg"
-  rm -rf "$target"
-  mkdir -p "$target"
-  unzip -qq -o "$unwrapped" -d "$target"
-  if [ -z "$tag" ]; then
-    node "$REPO/scripts/resource-archive-receipt.cjs" "$(npath "$target")" "git.door43.org/$owner/$repo" "$sha" "$(npath "$unwrapped")" "$(npath "$REPO/dev-env/resources-cache/helps-provenance.json")"
-  fi
+  node "$REPO/scripts/stage-resource.mjs" "$(npath "$unwrapped")" "git.door43.org/$owner/$repo" "$sha" \
+    "$(npath "$PACK/resources/$seg.zip")" "$(npath "$REPO/dev-env/resources-cache/helps-provenance.json")" > "$BUILD/resource-pins/$seg.json"
 done
 
 T="$BUILD/upstream/desktop-app-template"
@@ -564,7 +560,7 @@ if [ "$OS" = macos ]; then
   : # Finder launches the bundle; bootstrap runs in tc4-main.js.
 elif [ "$OS" = windows ]; then
   write_windows_launcher
-  cp "$REPO/scripts/desktop-bootstrap.cjs" "$APPDIR/electron/tc4-bootstrap.cjs"
+  node "$REPO/scripts/build-desktop-bootstrap.cjs" "$(npath "$APPDIR/electron")"
   printf '{"storeLeaf":"%s","variant":"%s"}\n' "$STORE_LEAF" "$VARIANT" > "$APPDIR/electron/tc4-bootstrap.json"
   cp "$REPO/branding/icon.ico" "$APPDIR/icon.ico"
   cp "$REPO/branding/icon-1024.png" "$APPDIR/electron/favicon.png"
@@ -572,7 +568,7 @@ elif [ "$OS" = windows ]; then
 else
   # All resource and debug-project installation runs in tc4-main.js under
   # Electron's singleton lock, before the server starts (#528).
-  cp "$REPO/scripts/desktop-bootstrap.cjs" "$APPDIR/electron/tc4-bootstrap.cjs"
+  node "$REPO/scripts/build-desktop-bootstrap.cjs" "$(npath "$APPDIR/electron")"
   printf '{"storeLeaf":"%s","variant":"%s"}\n' "$STORE_LEAF" "$VARIANT" > "$APPDIR/electron/tc4-bootstrap.json"
   cat > "$APPDIR/$LAUNCHER" <<LAUNCH
 $LAUNCH_SHEBANG
@@ -649,15 +645,7 @@ SERVER_SHA=$(sha256_of "$APPDIR/bin/$SERVER_BIN")
 BUNDLED_MANIFEST_ENTRIES=""
 for entry in "${BUNDLED_RESOURCES[@]}"; do
   bundled_fields "$entry"
-  zip_sha=$(sha256_of "$REPO/dev-env/resources-cache/$repo-$label-unwrapped.zip")
-  # A sha-only pin has no version label (never invented): JSON null.
-  if [ -n "$tag" ]; then version_json="\"$tag\""; else version_json="null"; fi
-  receipt_json=""
-  if [ -z "$tag" ]; then
-    receipt_sha=$(sha256_of "$APPDIR/resources/$seg/.tc4-bundled-identity.json")
-    receipt_json=", \"archive_receipt_sha256\": \"$receipt_sha\""
-  fi
-  line="    { \"repoPath\": \"git.door43.org/$owner/$repo\", \"version\": $version_json, \"sha\": \"$sha\", \"zip_sha256\": \"$zip_sha\"$receipt_json }"
+  line="    $(cat "$BUILD/resource-pins/$seg.json")"
   if [ -n "$BUNDLED_MANIFEST_ENTRIES" ]; then
     BUNDLED_MANIFEST_ENTRIES="$BUNDLED_MANIFEST_ENTRIES,
 $line"
@@ -1064,7 +1052,10 @@ else
   expected_segments=()
   for entry in "${BUNDLED_RESOURCES[@]}"; do
     bundled_fields "$entry"
-    expected_segments+=("${(L)owner}--${repo}--${sha}")
+    storage=$(node -p 'JSON.parse(require("fs").readFileSync(process.argv[1])).storage || ""' "$(npath "$BUILD/resource-pins/$seg.json")")
+    suffix=""
+    if [ "$storage" = lexicon-archive-v1 ]; then suffix="--compact-v1"; fi
+    expected_segments+=("${(L)owner}--${repo}--${sha}${suffix}")
   done
   expected_segments=($(printf '%s\n' "${expected_segments[@]}" | sort))
   if [ "${sideloaded_entries[*]}" != "${expected_segments[*]}" ]; then

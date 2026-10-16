@@ -19,6 +19,19 @@ import { resolveToolBook } from '../src/data/resolve';
 import type { InstalledMap } from '../src/data/installed';
 import type { ResourcePin, ResourcesFile } from '../src/data/burritoStore';
 
+import { INSTALLED_SUITE } from '../src/data/installedSuite.js';
+
+it('prefers the compact sibling of an exact lexicon pin, preserving older releases', () => {
+  const lexicon = INSTALLED_SUITE.resources.lexicon.nt;
+  const legacy = '_local_/_sideloaded_/uw--en_ugl';
+  const compact = `${legacy}--${lexicon.sha}--compact-v1`;
+  expect(installedPathFor({ [legacy]: lexicon }, lexicon)).toBe(legacy);
+  expect(
+    installedPathFor({ [compact]: { ...lexicon, sha: 'different' }, [legacy]: lexicon }, lexicon),
+  ).toBe(legacy);
+  expect(installedPathFor({ [legacy]: lexicon, [compact]: lexicon }, lexicon)).toBe(compact);
+});
+
 // Recorded installs carry the burrito's real flavor (D57): a pin with an
 // empty flavor cannot journal, so the record paths fill it from metadata.
 // Deterministic fake sha per (repo, version) — D58: identity is the sha, so

@@ -226,10 +226,15 @@ const installedEntry = (
   // different content while downstream records claim the requested sha. The
   // repoPath comparison stays case-insensitive and path-shape-blind (B10:
   // legacy `<repo>` and `<owner>--<repo>` keys both resolve).
-  return Object.entries(installed).find(
+  const matches = Object.entries(installed).filter(
     ([, p]) =>
       samePath(p.repoPath, pin.repoPath) && !!pin.sha && !!p.sha && pin.sha === p.sha,
   );
+  // #740 keeps the old expanded copy. Prefer its compact sibling for the
+  // exact same source revision, independently of settings insertion order.
+  return matches.find(([key, p]) =>
+    p.flavor === 'peripheral/x-lexicon' && key.endsWith(`--${pin.sha}--compact-v1`),
+  ) ?? matches[0];
 };
 
 /** The same-repo entry regardless of sha — ONLY for `preferInstalledVersion`,
