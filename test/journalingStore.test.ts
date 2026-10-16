@@ -185,26 +185,45 @@ describe('#62 mapping: addBook is ONE self-contained book.add', () => {
     await expectVerified(api);
   });
 
-  // #767: a book whose book.add cannot seal under the §8.1 4 MiB limit used to be
-  // created on the server first and then fail, leaving an empty book that also
-  // blocked a retry. The book is real aligned USFM: the en_ult v89 Titus
-  // fixture's chapters, repeated as the 72 chapters of a 3.3 MB book.
-  it('a book too large for one sealed action refuses before the server call: no book is left, and a retry works (#767)', async () => {
-    const { rig, api, store } = await setup();
+  // #767: the books are real aligned USFM, the en_ult v89 Titus fixture's
+  // chapters repeated as N chapters (about 46 KB each).
+  const alignedBook = (chapterCount: number): string => {
     const fs = process.getBuiltinModule('node:fs');
     const tit = fs.readFileSync('test/fixtures/en_ult/TIT.usfm', 'utf8');
     const chapters = tit.slice(tit.indexOf('\\c 1')).split(/\\c \d+/).filter((c: string) => c.trim());
     let usfm = '\\id LEV EN_ULT\n\\usfm 3.0\n\\h Leviticus\n';
-    for (let n = 0; n < 72; n++) usfm += `\\c ${n + 1}${chapters[n % chapters.length]}`;
+    for (let n = 0; n < chapterCount; n++) usfm += `\\c ${n + 1}${chapters[n % chapters.length]}`;
+    return usfm;
+  };
+  const addLev = (store: JournalingStore, initialUsfm: string) =>
+    store.addBook({ book_code: 'LEV', book_title: 'Levítico', book_abbr: 'LEV', add_cv: true, initialUsfm });
+
+  // D104: the §8.1 cap is 8 MiB. A 3.3 MB aligned book seals to about 4.4 MiB,
+  // over the old 4 MiB cap, the size of en_ult Leviticus (QA's file).
+  it('a 3.3 MB aligned book, over the old 4 MiB cap, is added whole (#767, D104)', async () => {
+    const { rig, api, store } = await setup();
+    const usfm = alignedBook(72);
     expect(usfm.length).toBeGreaterThan(3_000_000);
+    await addLev(store, usfm);
+    const add = (await segmentsOf(rig)).flatMap((s) => s.events).find((e) => e.op === 'book.add' && e.book === 'LEV');
+    expect(Object.keys(add?.initialVerses as object).length).toBeGreaterThan(1000);
+    expect(rig.repos.get(REPO)?.files.get('LEV.usfm')).toContain('\\c 72');
+    await expectVerified(api);
+  });
+
+  // #767: a book whose book.add cannot seal under the §8.1 limit used to be
+  // created on the server first and then fail, leaving an empty book that also
+  // blocked a retry. 160 chapters are 7.3 MB, over 8 MiB once sealed.
+  it('a book too large for one sealed action refuses before the server call: no book is left, and a retry works (#767)', async () => {
+    const { rig, api, store } = await setup();
+    const usfm = alignedBook(160);
+    expect(usfm.length).toBeGreaterThan(7_000_000);
     const before = await segmentsOf(rig);
-    const add = (initialUsfm: string) =>
-      store.addBook({ book_code: 'LEV', book_title: 'Levítico', book_abbr: 'LEV', add_cv: true, initialUsfm });
-    await expect(add(usfm)).rejects.toBeInstanceOf(BookTooLargeError);
+    await expect(addLev(store, usfm)).rejects.toBeInstanceOf(BookTooLargeError);
     expect(rig.repos.get(REPO)?.files.has('LEV.usfm')).toBe(false);
     expect(await segmentsOf(rig)).toHaveLength(before.length);
     // The retry with a book that fits is not blocked by a leftover.
-    await add(`\\id LEV EN_ULT\n\\usfm 3.0\n\\h Leviticus\n\\c 1${chapters[0]}`);
+    await addLev(store, alignedBook(1));
     expect(rig.repos.get(REPO)?.files.get('LEV.usfm')).toContain('\\h Leviticus');
     await expectVerified(api);
   });
@@ -228,10 +247,10 @@ describe('#767: actionFits measures exactly what sealAction refuses', () => {
       else hi = mid;
     }
     await expect(sealAction([event('a'.repeat(lo))])).resolves.toBeTypeOf('string');
-    await expect(sealAction([event('a'.repeat(hi))])).rejects.toThrow(/4 MiB/);
+    await expect(sealAction([event('a'.repeat(hi))])).rejects.toThrow(/8 MiB/);
     // A backslash costs four bytes once the body is wrapped in the container.
     expect(actionFits([event('\\'.repeat(Math.floor(lo / 4) + 1))])).toBe(false);
-  });
+  }, 30_000); // about 25 seals of 8 MiB strings: over the 5 s default under a full run's load
 });
 
 describe('#62 mapping: writeBook is a boundary adapter to explicit edit intent', () => {

@@ -1925,7 +1925,7 @@ export class JournalingStore implements BurritoStore {
       await sealAction(events);
       return [events];
     } catch (error) {
-      if (!/4 MiB/.test(String(error)) || events.length < 2) throw error;
+      if (!/exceeds the \d+ MiB limit/.test(String(error)) || events.length < 2) throw error;
       const mid = Math.ceil(events.length / 2);
       return [
         ...(await this.chunkForSealing(events.slice(0, mid))),

@@ -460,7 +460,7 @@ const buildSeed = () => {
   const deepJson = (d) => '{"a":'.repeat(d) + '1' + '}'.repeat(d);
   const sha = (s) => crypto.createHash('sha256').update(s, 'utf8').digest('hex');
 
-  // (a) the reachable P1: a hostile segment far below the 4 MiB cap. Pre-fix
+  // (a) the reachable P1: a hostile segment far below the size cap. Pre-fix
   // `jsonRoundTripError` recursed unguarded, so validateSegment THREW instead of
   // returning a verdict — `onInvalid` never fired and the honest actor's OWN segments
   // became unreadable behind it.
@@ -468,7 +468,7 @@ const buildSeed = () => {
   const hostile = JSON.stringify({ container: 1, body, sha256: sha(body) });
   let verdict = null, threw = '';
   try { verdict = validateSegment(hostile); } catch (e) { threw = e.constructor.name; }
-  check('JC-14g: a hostile deeply-nested segment — a small fraction of the 4 MiB cap — gets a VERDICT, not a RangeError: validateSegment returns {ok:false} so onInvalid fires and the rest of the stream still reads',
+  check('JC-14g: a hostile deeply-nested segment — a small fraction of the size cap — gets a VERDICT, not a RangeError: validateSegment returns {ok:false} so onInvalid fires and the rest of the stream still reads',
     threw === '' && verdict && verdict.ok === false && /deeper than/.test(String(verdict.reason)),
     `${(Buffer.byteLength(hostile) / 1024).toFixed(1)} KB = ${(100 * Buffer.byteLength(hostile) / SEGMENT_LIMIT).toFixed(1)}% of the cap · ${threw || String(verdict && verdict.reason).slice(0, 50)}`);
   // and the honest neighbour in the same directory still reads
@@ -2020,11 +2020,15 @@ try {
     gotBad.length === 2 && invalids2[0] === 'checksum', JSON.stringify(invalids2));
   fs.rmSync(f3, { force: true });
 
-  // 4 MiB limit
+  // 8 MiB limit (D104: was 4 MiB, which refused aligned books such as en_ult Leviticus)
   let oversize = false;
   try { sealAction([ev(5, '5', 'x'.repeat(SEGMENT_LIMIT))]); } catch { oversize = true; }
-  check('JC-23: the 4 MiB segment limit binds the writer, and an oversize file is invalid to readers [covers R-8.1.9]',
-    oversize && validateSegment('{"container":1,"body":"' + 'x'.repeat(80) + '","sha256":"00"}').ok === false);
+  let fiveMiBSeals = true;
+  try { sealAction([ev(5, '5', 'x'.repeat(5 * 1024 * 1024))]); } catch { fiveMiBSeals = false; }
+  check('JC-23: the 8 MiB segment limit binds the writer (a 5 MiB action seals, an 8 MiB one does not), and an oversize file is invalid to readers [covers R-8.1.9]',
+    SEGMENT_LIMIT === 8 * 1024 * 1024 && fiveMiBSeals && oversize &&
+      validateSegment('{"container":1,"body":"' + 'x'.repeat(80) + '","sha256":"00"}').ok === false,
+    `limit ${SEGMENT_LIMIT} · 5 MiB seals ${fiveMiBSeals} · oversize refused ${oversize}`);
 
   // multi-scope action: one segment carries _project-scope and book-scope events together
   const skel = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${SLOT}1:1${SLOT}`;
@@ -2148,7 +2152,7 @@ try {
 
 // ---------- JC-23d (review round 4): the container contract binds the ACTION shape too (§8.1) ----------
 // §8.1 MUST audit, one firing case each: outer parse + container:1 + body-string + sha256
-// (JC-23 torn/checksum), 4 MiB (JC-23), directory actor binding (JC-23/readSegments), reserved
+// (JC-23 torn/checksum), 8 MiB (JC-23), directory actor binding (JC-23/readSegments), reserved
 // reader field (JC-29e), and — added here — non-empty events, strict ts order, one actor.
 {
   const sha = (x) => crypto.createHash('sha256').update(x, 'utf8').digest('hex');
@@ -2296,7 +2300,7 @@ try {
     fs.writeFileSync(big, 'x'.repeat(SEGMENT_LIMIT + 1024));
     const seen = [];
     const got = readSegments(dir, (f, r) => seen.push(r));
-    check('JC-23f: an oversize segment is reported from its STAT — the 4 MiB cap applies before the read, not after it (reading first costs ~3x the file in RSS to reach the same verdict) [covers R-8.1.9]',
+    check('JC-23f: an oversize segment is reported from its STAT — the 8 MiB cap applies before the read, not after it (reading first costs ~3x the file in RSS to reach the same verdict) [covers R-8.1.9]',
       got.length === 1 && seen.length === 1 && seen[0] === 'oversize', JSON.stringify(seen));
     const collide = ['a:b', 'a_b', '2026-08-16T06:00:01.000Z|0000|actor a'];
     const refusedNames = collide.filter((s) => { try { segmentName(s); return false; } catch { return true; } });
