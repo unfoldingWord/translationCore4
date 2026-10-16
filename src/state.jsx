@@ -3026,7 +3026,8 @@ async function pinCreationChoice(store, actions, pins, stillCurrent) {
     return await store.readResources();
   } catch (error) {
     console.error(`the creation pins were not written: ${String(error?.message || error)}`);
-    return pins;
+    // A refused write means another writer won: the open goes on with its pins.
+    return store.readResources().catch(() => pins);
   }
 }
 
