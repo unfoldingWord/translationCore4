@@ -142,9 +142,18 @@ test.describe('#519 Help and guides', () => {
       await expect.poll(() => img.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth)).toBeGreaterThan(0);
     }
     await shot(page, testInfo, 'help-page');
+    // #763: the pages describe rc.2; Release notes reaches its page, still with no network.
+    await frame(page).locator('a.brand').click();
+    await expectPage(page, 'index.html', 'translationCore 4 Help');
+    await expect(frame(page).locator('body')).not.toContainText(/4\.0\.0-rc\.1|b04c70f/);
+    await frame(page).locator('.hero-meta a[href="section-whats-new.html"]').click();
+    await frame(page).locator('a.card[href="wn-rc2.html"]').click();
+    await expectPage(page, 'wn-rc2.html', "What's new in 4.0 rc.2");
+    await shot(page, testInfo, 'help-whats-new-rc2');
     await rec.save(testInfo);
     expect(rec.external()).toEqual([]);
     expect(rec.all().some((r) => r.path.endsWith('/help/al-link-words.html'))).toBe(true);
+    expect(rec.all().some((r) => r.path.endsWith('/help/wn-rc2.html'))).toBe(true);
   });
 
   test('c. while the internet is off, the Releases link asks first; Not now opens nothing and sends nothing', TAG, async ({ page, context }, testInfo) => {

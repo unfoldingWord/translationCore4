@@ -918,7 +918,7 @@ procedure's subject.
 | desktop-app-template | `4cb7576` | `scripts/package-desktop.zsh` |
 | resource-core | `54802be780af18ab02e426dd59014bc6adb158af` | `scripts/package-desktop.zsh` |
 | webfonts-core | `eb52ccdad6806b5729ea8b45b1c59c793ffa32c3` | `scripts/package-desktop.zsh` |
-| tc-website (`tc-help/`, the help pages, #519) | `cdfdf9b7d534e7574beb3fcf44678973cdc5f9d7` | `scripts/fetch-help.mjs` |
+| tc-website (`tc-help/`, the help pages, #519, #763) | `dbb7cd03c657637ec97ee4c0f00ed7bae44698d9` | `scripts/fetch-help.mjs` |
 | puppeteer-core / @puppeteer/browsers | `24.43.1` / `2.13.1`, exact; lockfile ships in the artifact (`electron/package-lock.json`) | `scripts/package-desktop.zsh` |
 | en_ult | v91, sha `35d215957f3203fd2e2fac5702ce14902d417f9d` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
 | en_ust | v91, sha `85f274a74245cb418f85266e1a5b524bc3e91e9c` | `src/data/installedSuite.js`, `scripts/package-desktop.zsh` |
