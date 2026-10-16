@@ -361,6 +361,7 @@
   "addBook.pickOne": "Chọn ít nhất một sách.",
   "addBook.usfmWillAdd": "Thêm {name}",
   "addBook.usfmExists": "{name} đã có trong dự án này. Để thay thế sách hiện có, hãy dùng Nhập.",
+  "addBook.usfmTooLarge": "{name} quá lớn để ứng dụng lưu thành một sách, nên không thể thêm.",
   "addBook.addOne": "Thêm sách",
   "addBook.addN": "Thêm {n} sách",
   "addBook.findBook": "Tìm sách theo tên hoặc mã",

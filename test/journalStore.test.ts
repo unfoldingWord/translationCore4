@@ -266,9 +266,9 @@ describe('#61 checkbox 1: immutability branches (R-8.1.4/5) over HTTP', () => {
     const before = rig.writes.length;
     await expect(
       store.publish([
-        verseEvent(store.actorId, store.issueTs(), `${'x'.repeat(4 * 1024 * 1024)}\n`),
+        verseEvent(store.actorId, store.issueTs(), `${'x'.repeat(9 * 1024 * 1024)}\n`),
       ]),
-    ).rejects.toThrow(/4 MiB/);
+    ).rejects.toThrow(/8 MiB/);
     expect(rig.writes).toHaveLength(before);
     expect(await kv.keys(`outbox:${REPO}:${store.actorId}:`)).toHaveLength(0);
   });

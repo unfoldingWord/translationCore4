@@ -288,9 +288,9 @@ describe('round 5 M4: a seal-rejected whole-file write must not poison the regis
         tool: 'translationWords',
         book: 'TIT',
         resource: RES_D as never,
-        decisions: [...stored.decisions, decision('gorda1', 'x'.repeat(5 * 1024 * 1024))],
+        decisions: [...stored.decisions, decision('gorda1', 'x'.repeat(9 * 1024 * 1024))],
       } as unknown as DecisionFile),
-    ).rejects.toThrow(/4 MiB/);
+    ).rejects.toThrow(/8 MiB/);
 
     // The next upsert (no resource passed — the register is its only source)
     // must publish under the last ACCEPTED resource.
@@ -340,10 +340,10 @@ describe('round 5 M5: an inline marker retry reads durable candidates, never the
         decisions: [
           ...(fileWith(RES_D, ['cand1', 'cand2']) as unknown as { decisions: Decision[] })
             .decisions,
-          decision('gorda1', 'x'.repeat(5 * 1024 * 1024)),
+          decision('gorda1', 'x'.repeat(9 * 1024 * 1024)),
         ],
       } as unknown as DecisionFile),
-    ).rejects.toThrow(/4 MiB/);
+    ).rejects.toThrow(/8 MiB/);
 
     // An unrelated pins write succeeds; its INLINE RETRY of the outstanding
     // decision path must materialize under the last ACCEPTED candidate (C) —

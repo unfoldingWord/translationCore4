@@ -361,6 +361,7 @@
   "addBook.pickOne": "اختر سفراً واحداً على الأقل.",
   "addBook.usfmWillAdd": "يضيف {name}",
   "addBook.usfmExists": "{name} موجود بالفعل في هذا المشروع. لاستبدال سفر موجود، استخدم الاستيراد.",
+  "addBook.usfmTooLarge": "{name} كبير جدًا بحيث لا يستطيع التطبيق حفظه كسفر واحد، لذلك لا يمكن إضافته.",
   "addBook.addOne": "إضافة سفر",
   "addBook.addN": "إضافة الأسفار ({n})",
   "addBook.findBook": "البحث عن سفر بالاسم أو الرمز",
