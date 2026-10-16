@@ -555,12 +555,44 @@ function SourcePanes({ cs, item, sources, sourcePanes, sourceStory, c, v }) {
  * item by the caller: the caret starts before the first word. */
 const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'Meta']);
 
+/** #737: the selection a drag from word `from` to word `to` makes: the words
+ * selected when it began, plus every word from `from` to `to`, whole. */
+const dragRange = (base, from, to) => {
+  const next = new Set(base);
+  for (let k = Math.min(from, to); k <= Math.max(from, to); k++) next.add(k);
+  return next;
+};
+
 export function TargetWords({ words, sel, setSelection, toggleWord, direction }) {
   // caret: 0..words.length, the gap before word `caret`. run: { anchor, base }
   // while Shift+arrows extend a range; base is the selection when it began.
   const [caret, setCaret] = React.useState(0);
   const run = React.useRef(null);
   const refs = React.useRef([]);
+  // #737 (Birch: Option A, as in tC3): pressing on a word and dragging across
+  // others selects them, whole, as the pointer passes; the words selected
+  // before stay. The release can land anywhere, so the document hears it; the
+  // click that follows a drag must not toggle the last word back.
+  const drag = React.useRef(null); // { from, base, moved } while the button is down
+  const dragged = React.useRef(false);
+  const dragOver = (i) => {
+    const d = drag.current;
+    if (!d || (!d.moved && i === d.from)) return;
+    d.moved = true;
+    setSelection(dragRange(d.base, d.from, i));
+  };
+  React.useEffect(() => {
+    const onMouseUp = () => {
+      if (drag.current?.moved) {
+        run.current = null;
+        dragged.current = true;
+        setTimeout(() => { dragged.current = false; }, 0);
+      }
+      drag.current = null;
+    };
+    document.addEventListener('mouseup', onMouseUp);
+    return () => document.removeEventListener('mouseup', onMouseUp);
+  }, []);
   const at = Math.min(caret, words.length - 1);
   const focusWord = (i) => refs.current[Math.min(i, words.length - 1)]?.focus();
   const extend = (step) => {
@@ -604,12 +636,16 @@ export function TargetWords({ words, sel, setSelection, toggleWord, direction })
     if (!e.currentTarget.contains(e.relatedTarget)) run.current = null;
   };
   return (
+    // #737: userSelect none — the browser's text highlight looked like a
+    // selection and was never one; a drag now selects the words themselves.
     <p data-testid="check-target" data-drafted="1" role="group" aria-label={t('check.targetWordsLabel')} onKeyDown={onKeyDown} onBlur={onBlur}
-      style={{ direction, textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-title-lg)', lineHeight: 1.9, color: 'var(--text-scripture)', margin: '8px 0 0' }}>
+      style={{ direction, textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-title-lg)', lineHeight: 1.9, color: 'var(--text-scripture)', margin: '8px 0 0', userSelect: 'none' }}>
       {words.map((w, i) => (
         <span key={i} ref={(el) => { refs.current[i] = el; }} data-testid={`tw-${i}`} data-selected={sel.has(i) ? '1' : '0'}
           role="button" aria-pressed={sel.has(i)} tabIndex={i === at ? 0 : -1}
-          onClick={() => { run.current = null; setCaret(i); toggleWord(i); }}
+          onMouseDown={(e) => { if (e.button === 0) drag.current = { from: i, base: new Set(sel), moved: false }; }}
+          onMouseEnter={() => dragOver(i)}
+          onClick={() => { if (dragged.current) return; run.current = null; setCaret(i); toggleWord(i); }}
           style={{ display: 'inline-block', cursor: 'pointer', borderRadius: 4, padding: '0 .1em', marginInlineEnd: '.22em', background: sel.has(i) ? 'var(--tc-highlight-soft)' : 'transparent' }}>
           {w}
         </span>
