@@ -4,7 +4,7 @@
 // the pre-load snapshot. F2 — pins LOADED-BUT-ABSENT is a legal state (D30.3
 // "no pins recorded"): the screen proceeds with unpinned help slots instead
 // of waiting forever.
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { __performLoadUnderstandForTests as loadUnderstand, __loadProjectPinsForTests as loadPins, __loadSourcePanesForTests as loadSourcePanes, __setInstalledCacheForTests as setInstalledCache, __adoptDownloadedPinsForTests as adoptDownloaded, __reducerForTests as reducer } from '../src/state.jsx';
 import { INSTALLED_SUITE } from '../src/data/installedSuite';
 import { localRepoPathFromRepoPath } from '../src/data/installed';
@@ -486,4 +486,22 @@ describe('#189 — no pin write after the project is left during the resolver aw
       expect(h.writes).toHaveLength(0);
     });
   }
+});
+
+describe('#766 — a creation-pin write that loses the race answers the winner', () => {
+  it('a refused write re-reads: the open goes on with the pins on disk, not the empty document', async () => {
+    const winner = { schemaVersion: 2, languageSets: { primary: {} } };
+    const reads = [{ schemaVersion: 2 }, winner];
+    const store = {
+      readResources: async () => reads.shift() ?? winner,
+      readResourcesWithMd5: async () => ({ value: { schemaVersion: 2 }, md5: 'm0' }),
+      writeResources: async () => { throw new Error('stale write'); },
+    };
+    const actions = { importBasePins: async () => ({ schemaVersion: 2, languageSets: {} }), resolutionContext: async () => ({ installed: {}, coverage: {} }) };
+    const stateRef = { current: { project: { repoPath: 'repo/p' } } };
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const out = await loadPins({ store, repoPath: 'repo/p', storeRef: { current: store }, stateRef, actions, dispatch: () => {} });
+    error.mockRestore();
+    expect(out).toEqual({ pins: winner, failed: false });
+  });
 });
