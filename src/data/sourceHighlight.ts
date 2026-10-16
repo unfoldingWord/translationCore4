@@ -182,9 +182,10 @@ const groupHas = (g: GroupInstance, word: string, occurrence?: number): boolean 
  *    ("in faith") AND τῇ#2 ("in love"); both share ἀγάπῃ#1, and the τῇ#2
  *    candidate spans one group, so "in love" wins (2026-08-31 review R1).
  * 3. The N-th class in verse order is the N-th occurrence; fewer classes than
- *    N means NO match — fall back to per-word matching, exact when the note
- *    names a single word (2026-08-31 review R3: never return occurrence 1's
- *    words for occurrence 2).
+ *    N means NO match — fall back: a single word resolves exactly through its
+ *    occurrence (2026-08-31 review R3: never return occurrence 1's words for
+ *    occurrence 2); several words take the shortest run of groups that names
+ *    them all (#773).
  */
 export const matchQuote = (
   tokens: SourceToken[],
@@ -239,28 +240,52 @@ export const matchQuote = (
     else classes.push([c]);
   }
   const want = Math.max(1, Number(occurrence) || 1);
-  const cls = classes[want - 1];
-  if (cls) {
-    const best = cls.reduce((a, b) => (b.span < a.span ? b : a));
-    // Expand each matched instance to EVERY group naming it: one origin word
-    // is often rendered by several gateway groups (en_ult TIT 1:1 carries
-    // ἐκλεκτῶν#1 twice — "of" and "the chosen people") and the quote covers
-    // the whole rendering.
+  // Expand each matched instance to EVERY group naming it: one origin word
+  // is often rendered by several gateway groups (en_ult TIT 1:1 carries
+  // ἐκλεκτῶν#1 twice — "of" and "the chosen people") and the quote covers
+  // the whole rendering.
+  const markInstances = (instances: Set<string>): Set<number> => {
     groups.forEach((g) => {
-      if (g.orig.some((o) => best.instances.has(`${o.content}#${o.occurrence}`)))
+      if (g.orig.some((o) => instances.has(`${o.content}#${o.occurrence}`)))
         g.tokenIdxs.forEach((i) => hits.add(i));
     });
     return hits;
-  }
+  };
+  const cls = classes[want - 1];
+  if (cls) return markInstances(cls.reduce((a, b) => (b.span < a.span ? b : a)).instances);
 
   // Fallback: no such occurrence of the whole quote. A single-word quote
-  // still resolves exactly through the zaln verse-level occurrence attribute;
-  // a multi-word one degrades to content matching (visible, never invented).
-  const exactOcc = words.length === 1 ? want : undefined;
-  groups.forEach((g) => {
-    if (words.some((w) => groupHas(g, w, exactOcc))) g.tokenIdxs.forEach((i) => hits.add(i));
-  });
-  return hits;
+  // still resolves exactly through the zaln verse-level occurrence attribute.
+  if (words.length === 1) {
+    groups.forEach((g) => {
+      if (groupHas(g, words[0], want)) g.tokenIdxs.forEach((i) => hits.add(i));
+    });
+    return hits;
+  }
+  // A multi-word one usually lands here because the gateway orders its words
+  // differently (#773). Mark the SHORTEST run of groups that names every quote
+  // word the verse has — never every group naming any word: a repeated אֶת or
+  // כָּל would pull in words from elsewhere in the verse.
+  const present = [...new Set(words)].filter((w) => groups.some((g) => groupHas(g, w)));
+  let run: [number, number] | null = null;
+  for (let start = 0; start < groups.length; start++) {
+    if (!present.some((w) => groupHas(groups[start], w))) continue;
+    const missing = new Set(present);
+    for (let end = start; end < groups.length; end++) {
+      present.forEach((w) => {
+        if (groupHas(groups[end], w)) missing.delete(w);
+      });
+      if (missing.size === 0) {
+        if (!run || end - start < run[1] - run[0]) run = [start, end];
+        break;
+      }
+    }
+  }
+  if (!run) return hits;
+  const instances = new Set<string>();
+  for (let g = run[0]; g <= run[1]; g++)
+    present.forEach((w) => instancesOf(groups[g], w).forEach((k) => instances.add(k)));
+  return markInstances(instances);
 };
 
 /** The GATEWAY-language rendering of a quote — the words matchQuote resolves,

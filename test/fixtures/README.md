@@ -10,11 +10,13 @@ These files are pinned copies. Do not edit them. Tests read them read-only.
 | `hbo_uhb/JON.usfm` | unfoldingWord hbo_uhb (Hebrew, right-to-left; `\w` tokens with lemma/strong/morph, U+2060 word joiners inside words, maqaf U+05BE between words) | v3.0.0 | `74022f0fed012a3ef169886f595dd98e7b200543` (the tag's commit) | raw file `32-JON.usfm` at the tag; sha256 `55a36ef7ab573305e6281d5ae28223fe525e478f7e12e946b64099f6b646ca7b` | 2026-09-12 |
 | `hbo_uhb/GEN-1-1.usfm` | unfoldingWord hbo_uhb, Genesis from the file start up to `\v 2` (the header and Genesis 1:1; the Hebrew is not NFC) | v3.0.0 | `74022f0fed012a3ef169886f595dd98e7b200543` | lines of the sideloaded `ingredients/GEN.usfm` (sha256 `5b9391454b6b6f358838f2cbfd4f5b5cd90b447ad4320e087b698f2b9c167d71`), cut before `\v 2`; extract sha256 `db5b57f90710b5ac39eb8bed25b222d279ca1ebd04940008a3de7e36c52f02f5` | 2026-10-16 |
 | `en_ult/GEN-1-1.usfm` | unfoldingWord en_ult (aligned USFM), Genesis from the file start up to `\v 2` | v91 | `35d215957f3203fd2e2fac5702ce14902d417f9d` | lines of the sideloaded `ingredients/GEN.usfm` (sha256 `bcc81339556b4cb27de812590e89884243f3a69da70d3c8412bbc9291430e4e4`), cut before `\v 2`; extract sha256 `44fe75ea16c38732866e3c9a4ced1783060aa177ed836b2275508c126aa4d405` | 2026-10-16 |
+| `en_ult/GEN-773.usfm` | unfoldingWord en_ult (aligned USFM), Genesis header plus verses 9:11, 24:48 and 33:5 only (each `\c` line and the lines of those three verses from `GEN.usfm`) | v91 | `35d215957f3203fd2e2fac5702ce14902d417f9d` | raw file `01-GEN.usfm` at the v91 tag (sha256 `bcc81339556b4cb27de812590e89884243f3a69da70d3c8412bbc9291430e4e4`, the same file as above); each verse parses to the same usfm-js verseObjects as in the full file; extract sha256 `1f8c2004bc7efebc7fd007af8c87abf83e77585743309d84c343901c2418c77a` | 2026-10-16 |
 
 `test/align-tokenize.test.ts` (issue #255) reads `hbo_uhb/JON.usfm` for its right-to-left
 verses. `test/align-gateway-label.test.ts` (issue #768) reads the two `GEN-1-1.usfm`
 extracts; their commit hashes match the `revision` field of the sideloaded burritos
-(verified 2026-10-16). The two `en_*` TIT copies came from the dev rig at
+(verified 2026-10-16). `test/sourceHighlight.test.ts` (issue #773) reads `en_ult/GEN-773.usfm`;
+its source file has the same sha256 as the full `GEN.usfm` above. The two `en_*` TIT copies came from the dev rig at
 `dev-env/state/work/repos/_local_/_sideloaded_/en_ult|en_ust/ingredients/TIT.usfm`.
 The commit hashes above match the `revision` field in each sideloaded burrito's
 `metadata.json` (verified 2026-07-30). The copies make the tests independent of
