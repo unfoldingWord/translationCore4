@@ -81,6 +81,17 @@ export const readTaArticle = async (
   return null;
 };
 
+/** #769: the title of a tA module, for the Check rail's group headings. Reads
+ * `title.md` only, probing the sections like readTaArticle; the slug when no
+ * section carries a title. */
+export const readTaTitle = async (api: ServerApi, taRepoPath: string, slug: string): Promise<string> => {
+  for (const section of TA_SECTIONS) {
+    const title = (await readOrNull(api, taRepoPath, `${section}/${slug}/title.md`))?.trim();
+    if (title) return title;
+  }
+  return slug;
+};
+
 /** One run of inline text. `text` carries no markdown marks. */
 export interface ArticleSpan {
   text: string;

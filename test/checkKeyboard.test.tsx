@@ -122,3 +122,42 @@ describe('railKeyDown — the Switcher roving pattern', () => {
     expect(run('End', 9)).toBe(7);
   });
 });
+
+// #769: with folding group headings, the rail stays ONE Tab stop. Up and Down
+// walk the headings and the shown rows in screen order; a heading only takes
+// focus, a row is selected as before.
+describe('railKeyDown — group headings are roving stops (#769)', () => {
+  const list = () => {
+    const root = document.createElement('div');
+    root.innerHTML = [
+      '<button data-rail-stop data-testid="rail-group" data-group="a"></button>',
+      '<button data-rail-stop data-rail-index="0"></button>',
+      '<button data-rail-stop data-testid="rail-group" data-group="b"></button>',
+      '<button data-rail-stop data-rail-index="2"></button>',
+    ].join('');
+    document.body.append(root);
+    return root;
+  };
+  const press = (root: HTMLElement, k: string, onSelect = vi.fn()) => {
+    railKeyDown([0, 2], 0, onSelect, { current: root })({ key: k, preventDefault() {} });
+    return onSelect;
+  };
+  it('Down from a row reaches the next heading (focus only), then the row after it (selected)', () => {
+    const root = list();
+    (root.querySelector('[data-rail-index="0"]') as HTMLElement).focus();
+    expect(press(root, 'ArrowDown')).not.toHaveBeenCalled();
+    expect(document.activeElement?.getAttribute('data-group')).toBe('b');
+    const onSelect = press(root, 'ArrowDown');
+    expect(onSelect).toHaveBeenCalledWith(2);
+    expect(document.activeElement?.getAttribute('data-rail-index')).toBe('2');
+    root.remove();
+  });
+  it('Home and End go to the first and the last stop', () => {
+    const root = list();
+    (root.querySelector('[data-rail-index="2"]') as HTMLElement).focus();
+    press(root, 'Home');
+    expect(document.activeElement?.getAttribute('data-group')).toBe('a');
+    expect(press(root, 'End')).toHaveBeenCalledWith(2);
+    root.remove();
+  });
+});

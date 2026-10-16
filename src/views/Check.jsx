@@ -868,11 +868,15 @@ const statusOf = (it) => (it.status === 'valid' || it.status === 'invalid' ? it.
 const DOT = { valid: 'var(--tc-valid)', invalid: 'var(--tc-invalid)', todo: 'var(--text-tertiary)' };
 
 /** Sort modes per tool (mockup L1971–2000): tW groups by term or lists by
- * verse; tN lists by verse or groups by category. */
+ * verse; tN lists by verse or groups by figure — one group per tA module
+ * (#769, owner Q4). */
 const SORTS = {
   translationWords: { modes: ['byWord', 'byVerse'], default: 'byWord' },
-  translationNotes: { modes: ['byVerse', 'byCategory'], default: 'byVerse' },
+  translationNotes: { modes: ['byVerse', 'byFigure'], default: 'byVerse' },
 };
+// #769: the grouped sorts fold; the one-group verse list does not.
+const DISCLOSURE = '›'; // ›, turned 90° when open (ds Accordion)
+const FOLDING_SORTS = new Set(['byWord', 'byFigure']);
 // The session can mount before it has a tool (#583): until its reset effect
 // runs, the rail shows the tool's default, so the first rows it renders stay.
 const shownSort = (sortMode, tool) => sortMode ?? SORTS[tool]?.default;
@@ -892,15 +896,13 @@ export function railGroupsOf({ items, sortMode, book, label = bookName(book) }) 
     const pz = partsOf(z);
     return refNum(pa.c) - refNum(pz.c) || refNum(pa.v) - refNum(pz.v);
   });
-  if (sortMode === 'byWord') {
-    const terms = [...new Set(rows.map((r) => r.it.contextId.groupId))].sort((a, z) => a.localeCompare(z));
-    return terms.map((term) => ({ label: term, rows: rows.filter((r) => r.it.contextId.groupId === term) }));
-  }
-  if (sortMode === 'byCategory') {
-    const cats = [...new Set(rows.map((r) => r.it.category))];
-    return cats.map((cat) => ({ label: cat, rows: rows.filter((r) => r.it.category === cat) }));
-  }
-  return [{ label, rows }];
+  const byGroupId = (keys) =>
+    keys.map((key) => ({ key, label: key, rows: rows.filter((r) => r.it.contextId.groupId === key) }));
+  if (sortMode === 'byWord')
+    return byGroupId([...new Set(rows.map((r) => r.it.contextId.groupId))].sort((a, z) => a.localeCompare(z)));
+  // #769: one group per tA module, in the verse order of its first note.
+  if (sortMode === 'byFigure') return byGroupId([...new Set(rows.map((r) => r.it.contextId.groupId))]);
+  return [{ key: '', label, rows }];
 }
 
 /** #42: the rail's item list is one Tab stop — the Switcher roving pattern
@@ -910,23 +912,51 @@ export function railGroupsOf({ items, sortMode, book, label = bookName(book) }) 
  * can have hundreds of items, and Tab must not walk each one. `current` is the
  * selected item (cs.activeIndex), as Switcher passes its value: when a filter
  * hides it, Up or Down selects the focused first row rather than skip it. */
+/** The roving position after `step` from `pos` in a list of `n`: Home and
+ * End jump, a step wraps, and no position yet starts at the first. */
+const rovePos = (pos, step, n) =>
+  step === -Infinity ? 0 : step === Infinity ? n - 1 : pos < 0 ? 0 : (pos + step + n) % n;
+
 export function railKeyDown(order, current, onSelect, listRef) {
   return (e) => {
     const step = e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1
       : e.key === 'Home' ? -Infinity : e.key === 'End' ? Infinity : 0;
-    if (!step || !order.length) return;
+    if (!step) return;
+    // #769: a grouped rail roves over its fold headings too, in screen order,
+    // so it stays one Tab stop. A heading takes focus only; a row is selected.
+    const stops = [...(listRef.current?.querySelectorAll('[data-rail-stop]') ?? [])];
+    if (stops.some((el) => el.getAttribute('data-testid') === 'rail-group')) {
+      e.preventDefault();
+      const to = stops[rovePos(stops.indexOf(document.activeElement), step, stops.length)];
+      to.focus();
+      const index = to.getAttribute('data-rail-index');
+      if (index !== null) onSelect(Number(index));
+      return;
+    }
+    if (!order.length) return;
     e.preventDefault();
-    const pos = order.indexOf(current);
-    const nextPos = step === -Infinity ? 0 : step === Infinity ? order.length - 1
-      : pos < 0 ? 0 : (pos + step + order.length) % order.length;
-    const next = order[nextPos];
+    const next = order[rovePos(order.indexOf(current), step, order.length)];
     onSelect(next);
     listRef.current?.querySelector(`[data-rail-index="${next}"]`)?.focus();
   };
 }
 
+/** #769: resolved/total per group, over all of the group's items (the rail
+ * progress rule, isDecided), whatever the filter shows. */
+const groupStatsOf = (items) => {
+  const stats = new Map();
+  for (const it of items) {
+    const key = it.contextId.groupId;
+    const st = stats.get(key) ?? { decided: 0, total: 0 };
+    st.total += 1;
+    if (isDecided(it)) st.decided += 1;
+    stats.set(key, st);
+  }
+  return stats;
+};
+
 function CheckRail({ cs, label, filter, setFilter, sortMode, setSortMode, onSelect, titleOf, listRef }) {
-  const { actions } = useApp();
+  const { s, actions } = useApp();
   const decided = isDecided;
   const indexed = cs.items.map((it, i) => ({ it, i }));
   // #50: five chips — All, To do, Invalid, Bookmarked, Commented — counted and
@@ -936,8 +966,28 @@ function CheckRail({ cs, label, filter, setFilter, sortMode, setSortMode, onSele
   const sorts = SORTS[cs.tool];
   const story = isStorySession(cs.book);
   const groups = railGroupsOf({ items: filtered, tool: cs.tool, sortMode, book: cs.book, label });
-  const order = groups.flatMap((grp) => grp.rows.map(({ i }) => i));
+  // #769: a grouped sort folds by group, per client (owner Q2). The active
+  // item's group is always open (Q1), and Up/Down walk only the open rows.
+  const folds = FOLDING_SORTS.has(sortMode);
+  const foldKey = (key) => `${cs.tool}|${key}`;
+  const activeKey = cs.items[cs.activeIndex]?.contextId.groupId;
+  const isOpen = (grp) => !folds || grp.key === activeKey || !s.railFolded?.[foldKey(grp.key)];
+  const order = groups.filter(isOpen).flatMap((grp) => grp.rows.map(({ i }) => i));
   const tabStop = order.includes(cs.activeIndex) ? cs.activeIndex : order[0];
+  const stats = React.useMemo(() => groupStatsOf(cs.items), [cs.items]);
+  const groupLabel = (grp) =>
+    sortMode !== 'byFigure' ? grp.label : grp.key ? (cs.groupTitles?.[grp.key] ?? grp.key) : t('check.group.other');
+  // Headings show the slug until the tA titles arrive; the read never holds the rail.
+  React.useEffect(() => {
+    if (sortMode === 'byFigure') actions.loadGroupTitles();
+  }, [sortMode, cs.seq]);
+  const groupCount = (key) => `${stats.get(key)?.decided ?? 0}/${stats.get(key)?.total ?? 0}`;
+  const foldable = groups.filter((grp) => grp.key !== activeKey);
+  const allFolded = foldable.length > 0 && foldable.every((grp) => s.railFolded?.[foldKey(grp.key)]);
+  const foldAll = () =>
+    allFolded
+      ? actions.setRailFolded(groups.map((grp) => foldKey(grp.key)), false)
+      : actions.setRailFolded(foldable.map((grp) => foldKey(grp.key)), true);
 
   return (
     <aside data-testid="check-rail" data-resource={cs.resource?.repoPath} style={{ width: 'var(--rail-width-wide)', flex: 'none', background: 'var(--surface-card)', borderInlineEnd: 'var(--stroke-hair) solid var(--border)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -970,6 +1020,11 @@ function CheckRail({ cs, label, filter, setFilter, sortMode, setSortMode, onSele
                 {t(`check.sort.${story && m === 'byVerse' ? 'byFrame' : m}`)}
               </button>
             ))}
+            {folds && groups.length > 1 && (
+              <button type="button" data-trim="cap" data-testid="rail-fold-all" onClick={foldAll} style={{ ...railChip(false), marginInlineStart: 'auto' }}>
+                {t(allFolded ? 'check.unfoldAll' : 'check.foldAll')}
+              </button>
+            )}
           </div>
         )}
         {/* #15: the dropped count travels with the progress it qualifies. */}
@@ -982,15 +1037,29 @@ function CheckRail({ cs, label, filter, setFilter, sortMode, setSortMode, onSele
       </div>
       <div data-testid="check-list" ref={listRef} onKeyDown={railKeyDown(order, cs.activeIndex, onSelect, listRef)} style={{ flex: 1, overflow: 'auto', padding: 14, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
         {groups.map((grp) => (
-          <div key={grp.label}>
-            <Overline tone="muted" as="p" style={{ margin: '0 0 6px' }}>{grp.label}</Overline>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div key={grp.key}>
+            {folds ? (
+              // #769: the disclosure pattern of ds Accordion — a row button with
+              // aria-expanded, a › that turns when open, and the count on the right.
+              <button type="button" data-testid="rail-group" data-group={grp.key} data-rail-stop aria-expanded={isOpen(grp)} tabIndex={-1}
+                onClick={() => actions.setRailFolded([foldKey(grp.key)], isOpen(grp))}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', margin: '0 0 6px', padding: '4px 2px', border: 0, background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'start' }}>
+                <span aria-hidden="true" style={{ color: 'var(--text-tertiary)', transform: isOpen(grp) ? 'rotate(90deg)' : 'none', transition: 'transform var(--dur-hover) var(--ease-standard)' }}>{DISCLOSURE}</span>
+                <Overline tone="muted" style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>{groupLabel(grp)}</Overline>
+                <span data-testid="rail-group-count" style={{ fontSize: 'var(--fs-badge)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                  {groupCount(grp.key)}
+                </span>
+              </button>
+            ) : (
+              <Overline tone="muted" as="p" style={{ margin: '0 0 6px' }}>{grp.label}</Overline>
+            )}
+            {isOpen(grp) && <div data-testid="rail-group-rows" data-group={grp.key} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {grp.rows.map(({ it, i }) => {
                 const st = statusOf(it);
                 const activeRow = i === cs.activeIndex;
                 return (
                   <button key={`${it.contextId.checkId}-${i}`} type="button" data-i="choice" data-tone="accent" data-selected={activeRow ? 'true' : undefined} onClick={() => onSelect(i)}
-                    data-rail-index={i} tabIndex={i === tabStop ? 0 : -1} aria-current={activeRow ? 'true' : undefined}
+                    data-rail-index={i} data-rail-stop tabIndex={i === tabStop ? 0 : -1} aria-current={activeRow ? 'true' : undefined}
                     title={`${locatorOf(it.contextId.reference)} · ${it.contextId.groupId}`}
                     data-ref={locatorOf(it.contextId.reference)}
                     data-check-id={it.contextId.checkId}
@@ -1024,7 +1093,7 @@ function CheckRail({ cs, label, filter, setFilter, sortMode, setSortMode, onSele
                   </button>
                 );
               })}
-            </div>
+            </div>}
           </div>
         ))}
         {filtered.length === 0 && (
@@ -1322,7 +1391,12 @@ function CheckSession() {
             toggleWord={toggleWord} setSelection={setSel} markValid={markValid} markInvalid={markInvalid} markTodo={markTodo}
             onBookmark={toggleBookmark} onComment={setComment}
             onOpenAcademy={() => setAcademyOpen(true)}
-            onNav={(i) => actions.setCheckIndex(i)} />
+            onNav={(i) => {
+              // #769: Next/Previous into a folded group unfolds it.
+              const key = `${tool}|${cs.items[i]?.contextId.groupId}`;
+              if (FOLDING_SORTS.has(shownSort(sortMode, tool)) && s.railFolded?.[key]) actions.setRailFolded([key], false);
+              actions.setCheckIndex(i);
+            }} />
         )}
       </main>
       {academyOpen && (

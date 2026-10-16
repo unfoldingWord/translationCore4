@@ -116,6 +116,31 @@ test.describe('J22 — a translator checks an OBS story', () => {
       });
     },
   );
+
+  // #769: the same rail serves a story session. OBS tN groups by figure too; the
+  // story notes with no tA module (every title note) group under "Other notes".
+  test('an OBS tN check groups by figure, and a group folds and unfolds (#769)', { tag: ['@inc9', '@J22'] }, async ({ page }) => {
+    test.setTimeout(180_000);
+    const repo = await createObsProject('j22f', 'Equipo Rig — J22 fold', (store) => store.writeFrame(1, 1, FRAME_1));
+    await page.goto('/');
+    await page.getByTestId(`project-_local_/_local_/${repo}`).getByTestId('story-tile-1').click();
+    await openTool(page, 'translationNotes');
+    await page.getByTestId('sort-byFigure').click();
+    const heads = page.getByTestId('rail-group');
+    await expect(page.locator('[data-testid="rail-group"][data-group=""]')).toContainText('Other notes');
+    expect(await heads.count()).toBeGreaterThan(1);
+    // A group that does not hold the active item folds and unfolds.
+    const active = await page.locator('[data-testid="check-list"] button[aria-current="true"]').evaluate((b) => b.closest('[data-group]')?.getAttribute('data-group'));
+    const other = page.locator(`[data-testid="rail-group"]:not([data-group="${active}"])`).first();
+    const key = (await other.getAttribute('data-group'))!;
+    const rows = page.locator(`[data-testid="rail-group-rows"][data-group="${key}"] button`);
+    expect(await rows.count()).toBeGreaterThan(0);
+    await other.click();
+    await expect(other).toHaveAttribute('aria-expanded', 'false');
+    await expect(rows).toHaveCount(0);
+    await other.click();
+    await expect(other).toHaveAttribute('aria-expanded', 'true');
+  });
 });
 
 test.afterAll(async () => {
