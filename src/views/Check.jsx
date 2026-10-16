@@ -643,7 +643,13 @@ export function TargetWords({ words, sel, setSelection, toggleWord, direction })
       {words.map((w, i) => (
         <span key={i} ref={(el) => { refs.current[i] = el; }} data-testid={`tw-${i}`} data-selected={sel.has(i) ? '1' : '0'}
           role="button" aria-pressed={sel.has(i)} tabIndex={i === at ? 0 : -1}
-          onMouseDown={(e) => { if (e.button === 0) drag.current = { from: i, base: new Set(sel), moved: false }; }}
+          onMouseDown={(e) => {
+            if (e.button !== 0) return;
+            // The keyboard then acts on this word, as after a click (#737 review).
+            run.current = null;
+            setCaret(i);
+            drag.current = { from: i, base: new Set(sel), moved: false };
+          }}
           onMouseEnter={() => dragOver(i)}
           onClick={() => { if (dragged.current) return; run.current = null; setCaret(i); toggleWord(i); }}
           style={{ display: 'inline-block', cursor: 'pointer', borderRadius: 4, padding: '0 .1em', marginInlineEnd: '.22em', background: sel.has(i) ? 'var(--tc-highlight-soft)' : 'transparent' }}>
