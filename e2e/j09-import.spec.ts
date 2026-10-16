@@ -663,9 +663,10 @@ test.describe('J9 — a facilitator imports existing work', () => {
         await expect(page.getByTestId('import-toast')).toBeVisible({ timeout: 60_000 });
         expect(pinsOnDisk()).toEqual({ schemaVersion: 2 });
       });
-      // #766: an open pins the installed suite, so the change is made from Home
-      // before any open — on the EMPTY document this case is about.
-      await test.step('change the checking language to English from Project Settings (#412 flow), before any open', async () => {
+      // #766: an open pins the installed suite. Settings reads the pins before
+      // its choice opens the project, so English is still a change there; the
+      // change then waits for the open's pin write (pinsBackfillSettled).
+      await test.step('from Home, change the checking language to English in Project Settings (#412 flow)', async () => {
         await page.goto('/');
         await page.getByTestId(`project-_local_/_local_/${abbrOf(name)}`).getByRole('button', { name: 'Settings' }).click();
         await page.getByTestId('settings-gateway-en::unfoldingWord').click();
