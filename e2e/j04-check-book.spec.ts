@@ -839,6 +839,29 @@ test.describe('J4 — a checker works a book', () => {
       }
     },
   );
+
+  // #773: the ULT orders "μεγάλου Θεοῦ" and "Σωτῆρος ἡμῶν" differently from the
+  // Greek, so the strict match fails. Before the fix the fallback marked every
+  // group naming any quote word, and καὶ#1 ("hope and appearing") joined the
+  // title as "and … of our great God and Savior Jesus Christ".
+  test(
+    'a Titus title for a reordered quote shows only its own ULT phrase (#773)',
+    { tag: ['@inc2', '@J4'] },
+    async ({ page }, testInfo) => {
+      writeProjectPins(SEEDED_PROJECT, PINS());
+      await openCheck(page);
+      await page.getByTestId('open-translationNotes').click();
+      const phrase = 'of our great God and Savior Jesus Christ';
+      const row = page.getByTestId('check-list').locator('button[data-check-id="xyz7"]');
+      await expect(row).toContainText(`“${phrase}”`);
+      await row.click();
+      await expect(page.getByTestId('ult-hl').first()).toBeVisible();
+      expect((await page.getByTestId('ult-hl').allTextContents()).join(' ')).toBe(phrase);
+      const shot = testInfo.outputPath('j04-reordered-quote-tit-2-13.png');
+      await page.screenshot({ path: shot, animations: 'disabled' });
+      await testInfo.attach('j04-reordered-quote', { path: shot, contentType: 'image/png' });
+    },
+  );
 });
 
 // ---- #762: the Check view's widths ----
