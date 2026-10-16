@@ -663,10 +663,9 @@ test.describe('J9 — a facilitator imports existing work', () => {
         await expect(page.getByTestId('import-toast')).toBeVisible({ timeout: 60_000 });
         expect(pinsOnDisk()).toEqual({ schemaVersion: 2 });
       });
-      await test.step('open it and change the checking language to English from Project Settings (#412 flow)', async () => {
-        await page.goto('/');
-        await page.getByTestId(`project-_local_/_local_/${abbrOf(name)}`).getByRole('button', { name: /Titus/ }).click();
-        await expect(page.getByRole('heading', { name: /^Titus \d+$/ })).toBeVisible({ timeout: 120_000 });
+      // #766: an open pins the installed suite, so the change is made from Home
+      // before any open — on the EMPTY document this case is about.
+      await test.step('change the checking language to English from Project Settings (#412 flow), before any open', async () => {
         await page.goto('/');
         await page.getByTestId(`project-_local_/_local_/${abbrOf(name)}`).getByRole('button', { name: 'Settings' }).click();
         await page.getByTestId('settings-gateway-en::unfoldingWord').click();
