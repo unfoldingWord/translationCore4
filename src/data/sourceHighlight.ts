@@ -165,6 +165,45 @@ const groupHas = (g: GroupInstance, word: string, occurrence?: number): boolean 
       normalizeWord(o.content) === word && (occurrence == null || o.occurrence === occurrence),
   );
 
+const instancesOf = (g: GroupInstance, word: string): string[] =>
+  g.orig.filter((o) => normalizeWord(o.content) === word).map((o) => `${o.content}#${o.occurrence}`);
+
+/** The origin instances of the SHORTEST run of groups (gateway order) that
+ * names every quote word the verse has, each as many times as the quote names
+ * it (#773). Shortest = the marked words span the fewest groups. A multi-word quote reaches this when the gateway orders its words
+ * differently from the origin. Marking every group that names ANY quote word
+ * instead let a repeated אֶת or כָּל pull in words from elsewhere in the verse. */
+const shortestRunInstances = (groups: GroupInstance[], words: string[]): Set<string> => {
+  // Distinct instances the run must hold per word: the times the quote names
+  // it, capped by the instances the verse has; a word the verse lacks drops.
+  const need = new Map<string, number>();
+  for (const w of words) need.set(w, (need.get(w) ?? 0) + 1);
+  for (const [w, n] of need) {
+    const inVerse = new Set(groups.flatMap((g) => instancesOf(g, w))).size;
+    if (inVerse === 0) need.delete(w);
+    else need.set(w, Math.min(n, inVerse));
+  }
+  const runWords = [...need.keys()];
+  let best: { instances: Set<string>; extent: number } | null = null;
+  for (let start = 0; start < groups.length; start++) {
+    if (!runWords.some((w) => groupHas(groups[start], w))) continue;
+    const seen = new Map(runWords.map((w) => [w, new Set<string>()]));
+    for (let end = start; end < groups.length; end++) {
+      runWords.forEach((w) => instancesOf(groups[end], w).forEach((k) => seen.get(w)?.add(k)));
+      if (![...need].every(([w, n]) => (seen.get(w)?.size ?? 0) >= n)) continue;
+      // Length = the groups the marked instances expand to, not the run: en_ult
+      // GEN 49:6 renders תָּבֹא#1 as "Do … let … enter", so a run from "enter"
+      // only looks short.
+      const instances = new Set([...seen.values()].flatMap((s) => [...s]));
+      const marked = groups.flatMap((g, i) => (g.orig.some((o) => instances.has(`${o.content}#${o.occurrence}`)) ? [i] : []));
+      const extent = marked[marked.length - 1] - marked[0];
+      if (!best || extent < best.extent) best = { instances, extent };
+      break;
+    }
+  }
+  return best?.instances ?? new Set();
+};
+
 /** Resolve a quote to the token indices to highlight.
  *
  * A quote is contiguous in the ORIGIN text (\u0026-spans aside), and its
@@ -196,9 +235,6 @@ export const matchQuote = (
   const hits = new Set<number>();
   if (words.length === 0) return hits;
   const groups = groupInstances(tokens);
-
-  const instancesOf = (g: GroupInstance, word: string): string[] =>
-    g.orig.filter((o) => normalizeWord(o.content) === word).map((o) => `${o.content}#${o.occurrence}`);
 
   interface Cand {
     picked: number[];
@@ -255,37 +291,13 @@ export const matchQuote = (
   if (cls) return markInstances(cls.reduce((a, b) => (b.span < a.span ? b : a)).instances);
 
   // Fallback: no such occurrence of the whole quote. A single-word quote
-  // still resolves exactly through the zaln verse-level occurrence attribute.
-  if (words.length === 1) {
-    groups.forEach((g) => {
-      if (groupHas(g, words[0], want)) g.tokenIdxs.forEach((i) => hits.add(i));
-    });
-    return hits;
-  }
-  // A multi-word one usually lands here because the gateway orders its words
-  // differently (#773). Mark the SHORTEST run of groups that names every quote
-  // word the verse has — never every group naming any word: a repeated אֶת or
-  // כָּל would pull in words from elsewhere in the verse.
-  const present = [...new Set(words)].filter((w) => groups.some((g) => groupHas(g, w)));
-  let run: [number, number] | null = null;
-  for (let start = 0; start < groups.length; start++) {
-    if (!present.some((w) => groupHas(groups[start], w))) continue;
-    const missing = new Set(present);
-    for (let end = start; end < groups.length; end++) {
-      present.forEach((w) => {
-        if (groupHas(groups[end], w)) missing.delete(w);
-      });
-      if (missing.size === 0) {
-        if (!run || end - start < run[1] - run[0]) run = [start, end];
-        break;
-      }
-    }
-  }
-  if (!run) return hits;
-  const instances = new Set<string>();
-  for (let g = run[0]; g <= run[1]; g++)
-    present.forEach((w) => instancesOf(groups[g], w).forEach((k) => instances.add(k)));
-  return markInstances(instances);
+  // still resolves exactly through the zaln verse-level occurrence attribute;
+  // a multi-word one takes the shortest run that names all its words (#773).
+  if (words.length > 1) return markInstances(shortestRunInstances(groups, words));
+  groups.forEach((g) => {
+    if (groupHas(g, words[0], want)) g.tokenIdxs.forEach((i) => hits.add(i));
+  });
+  return hits;
 };
 
 /** The GATEWAY-language rendering of a quote — the words matchQuote resolves,

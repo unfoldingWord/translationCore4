@@ -219,4 +219,11 @@ describe('a quote whose ULT word order differs (#773)', () => {
     expect(title('24', '48', 'אֶת־בַּת־אֲחִ֥י אֲדֹנִ֖⁠י')).toBe('the daughter of my master s brother'); // gyfv
     expect(title('9', '11', 'וְ⁠לֹֽא־יִכָּרֵ֧ת כָּל־בָּשָׂ֛ר ע֖וֹד')).toBe('that never again will all flesh be cut off'); // r2u9
   });
+
+  it('keeps a word the quote names twice, and measures a split rendering whole', () => {
+    // בֶּן twice in the quote: the run holds both instances.
+    expect(title('11', '31', 'וְ⁠אֶת־ל֤וֹט בֶּן־הָרָן֙ בֶּן־בְּנ֔⁠וֹ')).toBe('and Lot Haran s son his son s son'); // zczu
+    // תָּבֹא is "Do … let … enter": a run from "enter" to the second אַל only looks short.
+    expect(title('49', '6', 'בְּ⁠סֹדָ⁠ם֙ אַל־תָּבֹ֣א')).toBe('Do not let … enter into their council'); // h9hm
+  });
 });
