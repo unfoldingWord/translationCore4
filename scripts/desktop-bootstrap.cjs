@@ -247,7 +247,11 @@ async function ensureArchives({ resourcesDir, home, storeLeaf, profileLeaf, onPr
         try { identity = resourceMetadata(candidate, pin, pin.archive_receipt_sha256 ? { files: {} } : null, installed[`_local_/_sideloaded_/${entry.name}`]); }
         catch (error) { if (candidate === destination) throw error; continue; }
         const key = `_local_/_sideloaded_/${entry.name}`;
-        const tree = pin.archive_receipt_sha256 ? archiveProof(candidate, pin).files : identity.meta.ingredients;
+        // A legacy copy proven by its recorded identity or exact path may have
+        // no receipt of its own; verify it against the bundle's trusted one.
+        const tree = !pin.archive_receipt_sha256 ? identity.meta.ingredients
+          : fs.existsSync(path.join(candidate, ARCHIVE_RECEIPT)) ? archiveProof(candidate, pin).files
+            : trustedReceipt(unzipSync(fs.readFileSync(path.join(bundled, pin.archive)), { filter: (file) => file.name === ARCHIVE_RECEIPT })[ARCHIVE_RECEIPT], pin).files;
         const hash = inventoryHash(tree);
         if (verified[key]?.tree !== hash) {
           await mapFiles(Object.entries(tree), async ([relative, record]) => {
@@ -271,12 +275,7 @@ async function ensureArchives({ resourcesDir, home, storeLeaf, profileLeaf, onPr
       for (const name of Object.keys(entries)) assertResourcePath(name);
       const meta = JSON.parse(Buffer.from(entries['metadata.json'] ?? []).toString('utf8'));
       let receipt = null;
-      if (pin.archive_receipt_sha256) {
-        const proof = entries[ARCHIVE_RECEIPT];
-        if (!proof || createHash('sha256').update(proof).digest('hex') !== pin.archive_receipt_sha256) throw new Error('Archive receipt does not match manifest');
-        receipt = JSON.parse(Buffer.from(proof).toString('utf8'));
-        if (receipt.repoPath !== pin.repoPath || receipt.sha !== pin.sha || !receipt.files?.['metadata.json']) throw new Error('Archive receipt identity does not match manifest');
-      }
+      if (pin.archive_receipt_sha256) receipt = trustedReceipt(entries[ARCHIVE_RECEIPT], pin);
       if (!receipt && !Object.entries(meta.identification?.primary?.dcs ?? {}).some(([repo, value]) => `git.door43.org/${repo}`.toLowerCase() === pin.repoPath.toLowerCase() && value.revision === pin.sha)) throw new Error('Resource revision does not match manifest');
       const ft = meta.type?.flavorType;
       if (!ft?.name || !ft?.flavor?.name) throw new Error('Resource has no factual flavor');
@@ -308,6 +307,14 @@ async function ensureArchives({ resourcesDir, home, storeLeaf, profileLeaf, onPr
     fs.rmSync(stagingRoot, { recursive: true, force: true });
     fs.rmSync(profileStaging, { recursive: true, force: true });
   }
+}
+
+// A bundled receipt is trusted only when its bytes hash to the manifest's value.
+function trustedReceipt(proof, pin) {
+  if (!proof || createHash('sha256').update(proof).digest('hex') !== pin.archive_receipt_sha256) throw new Error('Archive receipt does not match manifest');
+  const receipt = JSON.parse(Buffer.from(proof).toString('utf8'));
+  if (receipt.repoPath !== pin.repoPath || receipt.sha !== pin.sha || !receipt.files?.['metadata.json']) throw new Error('Archive receipt identity does not match manifest');
+  return receipt;
 }
 
 function assertResourcePath(name) {

@@ -318,6 +318,27 @@ test('real commit archive without DCS metadata installs from a verified receipt,
   assert.equal(settingsAt(f).keep, true);
 });
 
+test('#740: archive packaging reuses a recorded receipt-less legacy copy against the bundled receipt, and still rejects a damaged one', async (t) => {
+  const f = await archiveFixture(t);
+  archiveBundle(f);
+  await bootstrap(f.options);
+  const legacyKey = '_local_/_sideloaded_/uw--en_ugl';
+  const legacy = path.join(f.store, legacyKey);
+  fs.renameSync(f.destination, legacy);
+  fs.unlinkSync(path.join(legacy, '.tc4-bundled-identity.json'));
+  const before = files(f.local);
+  writeSettings(f, { installedResources: { [legacyKey]: f.pin }, keep: true });
+  await bootstrap(f.options);
+  await bootstrap(f.options);
+  assert.deepEqual(files(f.local), before, 'legacy bytes must not be changed and no copy is published');
+  assert.deepEqual(settingsAt(f).installedResources, { [legacyKey]: f.pin });
+  assert.ok(settingsAt(f).verifiedResources[legacyKey]);
+  assert.equal(settingsAt(f).keep, true);
+  fs.appendFileSync(path.join(legacy, 'ingredients/content/1.json'), '\n');
+  writeSettings(f, { installedResources: { [legacyKey]: f.pin } });
+  await assert.rejects(bootstrap(f.options), /size|checksum/);
+});
+
 test('commit archive receipt and full payload hashes reject a changed unlisted lexicon ingredient at install, and again once the verification record is gone (#740)', async (t) => {
   const f = await archiveFixture(t);
   const receipt = path.join(f.source, '.tc4-bundled-identity.json');
