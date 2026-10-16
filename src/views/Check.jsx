@@ -905,35 +905,57 @@ export function railGroupsOf({ items, sortMode, book, label = bookName(book) }) 
   return [{ key: '', label, rows }];
 }
 
+/** The roving position after `step` from `pos` in a list of `n`: Home and
+ * End jump, a step wraps, and no position yet starts at the first. */
+const rovePos = (pos, step, n) =>
+  step === -Infinity ? 0 : step === Infinity ? n - 1 : pos < 0 ? 0 : (pos + step + n) % n;
+const stepOf = (key) =>
+  key === 'ArrowDown' ? 1 : key === 'ArrowUp' ? -1 : key === 'Home' ? -Infinity : key === 'End' ? Infinity : 0;
+
+/** #769: keys on a fold heading. Up and Down go to the stop before or after it
+ * in screen order — a heading takes focus, a row is selected. Enter and Space
+ * are the button's own. */
+function headingKeyDown(e, heading, list, onSelect) {
+  const step = stepOf(e.key);
+  if (!step) return;
+  e.preventDefault();
+  const stops = [...list.querySelectorAll('[data-rail-stop]')];
+  const to = stops[rovePos(stops.indexOf(heading), step, stops.length)];
+  to.focus();
+  const index = to.getAttribute('data-rail-index');
+  if (index !== null) onSelect(Number(index));
+}
+
+/** #769: Left on a row (Right in a right-to-left rail) moves focus to its
+ * group's heading, the tree pattern; it selects nothing. */
+function rowToHeading(e, row, list) {
+  const rtl = (list.closest('[dir]')?.getAttribute('dir') || document.documentElement.dir) === 'rtl';
+  if (e.key !== (rtl ? 'ArrowRight' : 'ArrowLeft') || !row?.hasAttribute('data-rail-index')) return false;
+  const key = row.closest('[data-testid="rail-group-rows"]')?.getAttribute('data-group');
+  const heading = key == null ? null : list.querySelector(`[data-testid="rail-group"][data-group=${JSON.stringify(key)}]`);
+  if (!heading) return false;
+  e.preventDefault();
+  heading.focus();
+  return true;
+}
+
 /** #42: the rail's item list is one Tab stop — the Switcher roving pattern
  * (ds/components/primitives/Switcher.jsx). Only the current item is tabbable
  * (the first shown one when a filter hides it); Up and Down, Home and End move
  * the selection in the order the rail shows, and focus moves with it. A book
  * can have hundreds of items, and Tab must not walk each one. `current` is the
  * selected item (cs.activeIndex), as Switcher passes its value: when a filter
- * hides it, Up or Down selects the focused first row rather than skip it. */
-/** The roving position after `step` from `pos` in a list of `n`: Home and
- * End jump, a step wraps, and no position yet starts at the first. */
-const rovePos = (pos, step, n) =>
-  step === -Infinity ? 0 : step === Infinity ? n - 1 : pos < 0 ? 0 : (pos + step + n) % n;
-
+ * hides it, Up or Down selects the focused first row rather than skip it.
+ * #769: the fold headings are reached from a row with Left, and move on with
+ * Up and Down; on a row the keys are unchanged (review S2). */
 export function railKeyDown(order, current, onSelect, listRef) {
   return (e) => {
-    const step = e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1
-      : e.key === 'Home' ? -Infinity : e.key === 'End' ? Infinity : 0;
-    if (!step) return;
-    // #769: a grouped rail roves over its fold headings too, in screen order,
-    // so it stays one Tab stop. A heading takes focus only; a row is selected.
-    const stops = [...(listRef.current?.querySelectorAll('[data-rail-stop]') ?? [])];
-    if (stops.some((el) => el.getAttribute('data-testid') === 'rail-group')) {
-      e.preventDefault();
-      const to = stops[rovePos(stops.indexOf(document.activeElement), step, stops.length)];
-      to.focus();
-      const index = to.getAttribute('data-rail-index');
-      if (index !== null) onSelect(Number(index));
-      return;
-    }
-    if (!order.length) return;
+    const list = listRef.current;
+    const focused = list?.contains(document.activeElement) ? document.activeElement : null;
+    if (focused?.getAttribute('data-testid') === 'rail-group') return headingKeyDown(e, focused, list, onSelect);
+    if (focused && rowToHeading(e, focused, list)) return undefined;
+    const step = stepOf(e.key);
+    if (!step || !order.length) return undefined;
     e.preventDefault();
     const next = order[rovePos(order.indexOf(current), step, order.length)];
     onSelect(next);
@@ -974,6 +996,9 @@ function CheckRail({ cs, label, filter, setFilter, sortMode, setSortMode, onSele
   const isOpen = (grp) => !folds || grp.key === activeKey || !s.railFolded?.[foldKey(grp.key)];
   const order = groups.filter(isOpen).flatMap((grp) => grp.rows.map(({ i }) => i));
   const tabStop = order.includes(cs.activeIndex) ? cs.activeIndex : order[0];
+  // Review S1: with every shown group folded no row renders, so the first
+  // heading is the list's one Tab stop instead.
+  const headingStop = folds && !order.length ? groups[0]?.key : undefined;
   const stats = React.useMemo(() => groupStatsOf(cs.items), [cs.items]);
   const groupLabel = (grp) =>
     sortMode !== 'byFigure' ? grp.label : grp.key ? (cs.groupTitles?.[grp.key] ?? grp.key) : t('check.group.other');
@@ -1041,7 +1066,7 @@ function CheckRail({ cs, label, filter, setFilter, sortMode, setSortMode, onSele
             {folds ? (
               // #769: the disclosure pattern of ds Accordion — a row button with
               // aria-expanded, a › that turns when open, and the count on the right.
-              <button type="button" data-testid="rail-group" data-group={grp.key} data-rail-stop aria-expanded={isOpen(grp)} tabIndex={-1}
+              <button type="button" data-testid="rail-group" data-group={grp.key} data-rail-stop aria-expanded={isOpen(grp)} tabIndex={grp.key === headingStop ? 0 : -1}
                 onClick={() => actions.setRailFolded([foldKey(grp.key)], isOpen(grp))}
                 style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', margin: '0 0 6px', padding: '4px 2px', border: 0, background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'start' }}>
                 <span aria-hidden="true" style={{ color: 'var(--text-tertiary)', transform: isOpen(grp) ? 'rotate(90deg)' : 'none', transition: 'transform var(--dur-hover) var(--ease-standard)' }}>{DISCLOSURE}</span>

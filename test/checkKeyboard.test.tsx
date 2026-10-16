@@ -123,41 +123,57 @@ describe('railKeyDown — the Switcher roving pattern', () => {
   });
 });
 
-// #769: with folding group headings, the rail stays ONE Tab stop. Up and Down
-// walk the headings and the shown rows in screen order; a heading only takes
-// focus, a row is selected as before.
-describe('railKeyDown — group headings are roving stops (#769)', () => {
-  const list = () => {
+// #769: the fold headings keep the rail ONE Tab stop and take nothing from the
+// rows' keys (review S2): on a row, Up/Down/Home/End select item to item as
+// before; Left (Right in a right-to-left rail) moves focus to the row's group
+// heading, the tree pattern. On a heading, Up/Down go to the stop before or
+// after it in screen order.
+describe('railKeyDown — group headings beside the rows (#769)', () => {
+  const list = (dir = 'ltr') => {
     const root = document.createElement('div');
+    root.dir = dir;
     root.innerHTML = [
-      '<button data-rail-stop data-testid="rail-group" data-group="a"></button>',
-      '<button data-rail-stop data-rail-index="0"></button>',
-      '<button data-rail-stop data-testid="rail-group" data-group="b"></button>',
-      '<button data-rail-stop data-rail-index="2"></button>',
+      '<div><button data-rail-stop data-testid="rail-group" data-group="a"></button>',
+      '<div data-testid="rail-group-rows" data-group="a"><button data-rail-stop data-rail-index="0"></button></div></div>',
+      '<div><button data-rail-stop data-testid="rail-group" data-group="b"></button>',
+      '<div data-testid="rail-group-rows" data-group="b"><button data-rail-stop data-rail-index="2"></button></div></div>',
     ].join('');
     document.body.append(root);
     return root;
   };
-  const press = (root: HTMLElement, k: string, onSelect = vi.fn()) => {
-    railKeyDown([0, 2], 0, onSelect, { current: root })({ key: k, preventDefault() {} });
+  const press = (root: HTMLElement, k: string, current = 0) => {
+    const onSelect = vi.fn();
+    railKeyDown([0, 2], current, onSelect, { current: root })({ key: k, preventDefault() {} });
     return onSelect;
   };
-  it('Down from a row reaches the next heading (focus only), then the row after it (selected)', () => {
+  const focus = (root: HTMLElement, sel: string) => (root.querySelector(sel) as HTMLElement).focus();
+
+  it('on a row, Down and Home select item to item, as without headings', () => {
     const root = list();
-    (root.querySelector('[data-rail-index="0"]') as HTMLElement).focus();
-    expect(press(root, 'ArrowDown')).not.toHaveBeenCalled();
-    expect(document.activeElement?.getAttribute('data-group')).toBe('b');
-    const onSelect = press(root, 'ArrowDown');
-    expect(onSelect).toHaveBeenCalledWith(2);
+    focus(root, '[data-rail-index="0"]');
+    expect(press(root, 'ArrowDown')).toHaveBeenCalledWith(2);
     expect(document.activeElement?.getAttribute('data-rail-index')).toBe('2');
+    expect(press(root, 'Home', 2)).toHaveBeenCalledWith(0);
     root.remove();
   });
-  it('Home and End go to the first and the last stop', () => {
+  it("Left on a row focuses its group's heading and selects nothing; Right in a right-to-left rail", () => {
     const root = list();
-    (root.querySelector('[data-rail-index="2"]') as HTMLElement).focus();
-    press(root, 'Home');
-    expect(document.activeElement?.getAttribute('data-group')).toBe('a');
-    expect(press(root, 'End')).toHaveBeenCalledWith(2);
+    focus(root, '[data-rail-index="2"]');
+    expect(press(root, 'ArrowLeft', 2)).not.toHaveBeenCalled();
+    expect(document.activeElement?.getAttribute('data-group')).toBe('b');
+    root.remove();
+    const rtl = list('rtl');
+    focus(rtl, '[data-rail-index="2"]');
+    press(rtl, 'ArrowRight', 2);
+    expect(document.activeElement?.getAttribute('data-group')).toBe('b');
+    rtl.remove();
+  });
+  it('on a heading, Down selects the row after it and Up goes to the stop before it', () => {
+    const root = list();
+    focus(root, '[data-testid="rail-group"][data-group="b"]');
+    expect(press(root, 'ArrowDown')).toHaveBeenCalledWith(2);
+    focus(root, '[data-testid="rail-group"][data-group="b"]');
+    expect(press(root, 'ArrowUp')).toHaveBeenCalledWith(0);
     root.remove();
   });
 });
