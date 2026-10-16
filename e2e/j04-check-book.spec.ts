@@ -692,6 +692,40 @@ test.describe('J4 — a checker works a book', () => {
   );
 
   test(
+    'a drag that starts beside the words selects text to copy, selects no word, and does not look like a selected word (#737)',
+    { tag: ['@inc2', '@J4'] },
+    async ({ page }) => {
+      writeProjectPins(SEEDED_PROJECT, PINS());
+      await openCheck(page);
+      await page.getByTestId('open-translationNotes').click();
+      await page.getByTestId('check-list').locator('button[data-ref="1:1"]').first().click();
+      await page.getByTestId('check-target').scrollIntoViewIfNeeded();
+      const w0 = (await page.getByTestId('tw-0').boundingBox())!;
+      const w2 = (await page.getByTestId('tw-2').boundingBox())!;
+      // Press just left of the first word (in the line's margin), drag to the
+      // middle of word 2.
+      await page.mouse.move(w0.x - 6, w0.y + w0.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(w2.x + w2.width / 2, w2.y + w2.height / 2, { steps: 12 });
+      await page.mouse.up();
+
+      const words = await Promise.all([0, 1].map(async (i) => (await page.getByTestId(`tw-${i}`).textContent())!.trim()));
+      const copied = await nativeSelection(page);
+      expect(copied).toContain(words[0]);
+      expect(copied).toContain(words[1]);
+      expect(await selectedWords(page)).toEqual([]);
+      // The text highlight is the system's, not the selected-word yellow.
+      const colours = await page.evaluate(() => {
+        const line = document.querySelector('[data-testid="check-target"]')!;
+        const word = document.querySelector('[data-testid="tw-0"]')!;
+        return { selection: getComputedStyle(word, '::selection').backgroundColor, picked: getComputedStyle(line).getPropertyValue('--tc-highlight-soft').trim() };
+      });
+      expect(colours.selection).not.toBe('');
+      expect(colours.selection).not.toContain(colours.picked);
+    },
+  );
+
+  test(
     'the tW tool derives its list from the en_twl pin and shows the article from the en_tw pin (D96, FR-15)',
     { tag: ['@inc2', '@J4'] },
     async ({ page }, testInfo) => {

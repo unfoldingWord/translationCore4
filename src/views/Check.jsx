@@ -636,16 +636,20 @@ export function TargetWords({ words, sel, setSelection, toggleWord, direction })
     if (!e.currentTarget.contains(e.relatedTarget)) run.current = null;
   };
   return (
-    // #737: userSelect none — the browser's text highlight looked like a
-    // selection and was never one; a drag now selects the words themselves.
-    <p data-testid="check-target" data-drafted="1" role="group" aria-label={t('check.targetWordsLabel')} onKeyDown={onKeyDown} onBlur={onBlur}
-      style={{ direction, textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-title-lg)', lineHeight: 1.9, color: 'var(--text-scripture)', margin: '8px 0 0', userSelect: 'none' }}>
+    // #737: the text stays selectable for copying from beside the words; its
+    // highlight is the system's (base.css, data-words), not the word yellow.
+    <p data-testid="check-target" data-words="target" data-drafted="1" role="group" aria-label={t('check.targetWordsLabel')} onKeyDown={onKeyDown} onBlur={onBlur}
+      style={{ direction, textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-title-lg)', lineHeight: 1.9, color: 'var(--text-scripture)', margin: '8px 0 0' }}>
       {words.map((w, i) => (
         <span key={i} ref={(el) => { refs.current[i] = el; }} data-testid={`tw-${i}`} data-selected={sel.has(i) ? '1' : '0'}
           role="button" aria-pressed={sel.has(i)} tabIndex={i === at ? 0 : -1}
           onMouseDown={(e) => {
             if (e.button !== 0) return;
-            // The keyboard then acts on this word, as after a click (#737 review).
+            // A press on a word starts a word drag, never a text selection; the
+            // browser no longer focuses the word, so focus it here. The keyboard
+            // then acts on this word, as after a click (#737 review).
+            e.preventDefault();
+            refs.current[i]?.focus();
             run.current = null;
             setCaret(i);
             drag.current = { from: i, base: new Set(sel), moved: false };
