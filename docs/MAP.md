@@ -18,6 +18,7 @@ check for this rule is a follow-up.
 | `docs/RISKS.md` | known risks `Ledger #n` | — |
 | `docs/JOURNAL-TEST-PLAN.md` | journal checks `JC-n` | — |
 | `docs/PACKAGING.md` | installers and CI packaging | — |
+| `docs/releases/4.0.0-rc.2.md` | public beta metadata, publication checklist and draft release notes | — |
 | `docs/LEGACY-IDS.md` | how to read old ids | — |
 | `docs/plans/*.md` | one plan per epic | — |
 | `CONTEXT.md` | vocabulary | any other definition |
@@ -43,6 +44,7 @@ check for this rule is a follow-up.
 | `Ledger #n` | risk | RISKS.md |
 | `PLATFORM-NOTES #n` | platform observation | PLATFORM-NOTES.md |
 | `4.0.0-alpha.N` | pre-release | GitHub Releases |
+| `4.0.0-rc.N` | pre-release version; rc.2 is named Public Beta (D103) | GitHub Releases |
 
 ## Abbreviations
 
