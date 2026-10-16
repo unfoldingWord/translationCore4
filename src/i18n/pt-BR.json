@@ -598,6 +598,8 @@
   "check.crossFrame": "A numeração de versículos deste projeto difere da deste texto. O aplicativo ainda não pode alinhá-los.",
   "check.prevItem": "Item anterior",
   "check.nextItem": "Próximo item",
+  "check.prevLabel": "Anterior",
+  "check.nextLabel": "Próximo",
   "check.nothingToSelect": "Nada para selecionar",
   "check.markTodo": "A fazer",
   "check.markValid": "✓ Marcar válido",

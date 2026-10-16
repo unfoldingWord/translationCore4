@@ -598,6 +598,8 @@
   "check.crossFrame": "يختلف ترقيم الآيات في هذا المشروع عن ترقيم هذا النص. لا يمكن للتطبيق مطابقتهما بعد.",
   "check.prevItem": "العنصر السابق",
   "check.nextItem": "العنصر التالي",
+  "check.prevLabel": "السابق",
+  "check.nextLabel": "التالي",
   "check.nothingToSelect": "لا يوجد شيء لتحديده",
   "check.markTodo": "لم يُحسم",
   "check.markValid": "✓ تعليم كصالح",

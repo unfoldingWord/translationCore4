@@ -598,6 +598,8 @@
   "check.crossFrame": "Нумерация стихов в этом проекте отличается от нумерации в этом тексте. Приложение пока не может их сопоставить.",
   "check.prevItem": "Предыдущий элемент",
   "check.nextItem": "Следующий элемент",
+  "check.prevLabel": "Назад",
+  "check.nextLabel": "Далее",
   "check.nothingToSelect": "Нечего выбрать",
   "check.markTodo": "К выполнению",
   "check.markValid": "✓ Отметить как действительное",

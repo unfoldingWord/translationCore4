@@ -193,9 +193,10 @@ function TargetCell({ s, verses, keys, byKey, span, dir, type, editType, actions
             {mode === 'section' && (
               // Another row's card would replace an open card and lose its
               // draft: off while a card is open, as the Section/Verse switch.
-              <Button variant="ghost" size="sm" onClick={() => actions.startSection(s.chapter, keys)}
+              // #728: a quiet pill at rest, so it reads as a button, not a title.
+              <Button variant="secondary" size="sm" onClick={() => actions.startSection(s.chapter, keys)}
                 disabled={s.editing != null} onPointerDownCapture={s.editing != null ? (e) => e.preventDefault() : undefined}
-                style={{ color: 'var(--text-tertiary)', fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)' }}>
+                style={s.editing != null ? undefined : { color: 'var(--accent)' }}>
                 {t('draft.draftSection', { span })}
               </Button>
             )}

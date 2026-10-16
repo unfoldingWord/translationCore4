@@ -598,6 +598,8 @@
   "check.crossFrame": "Cách đánh số câu của dự án này khác với văn bản này. Ứng dụng chưa thể khớp chúng.",
   "check.prevItem": "Mục trước",
   "check.nextItem": "Mục tiếp theo",
+  "check.prevLabel": "Trước",
+  "check.nextLabel": "Tiếp",
   "check.nothingToSelect": "Không có gì để chọn",
   "check.markTodo": "Cần làm",
   "check.markValid": "✓ Đánh dấu hợp lệ",

@@ -598,6 +598,8 @@
   "check.crossFrame": "इस परियोजना की पद संख्या इस पाठ से भिन्न है। ऐप अभी उन्हें मिला नहीं सकता।",
   "check.prevItem": "पिछली मद",
   "check.nextItem": "अगली मद",
+  "check.prevLabel": "पिछला",
+  "check.nextLabel": "अगला",
   "check.nothingToSelect": "चुनने के लिए कुछ नहीं",
   "check.markTodo": "करना है",
   "check.markValid": "✓ मान्य चिह्नित करें",

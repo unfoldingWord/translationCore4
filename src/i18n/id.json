@@ -598,6 +598,8 @@
   "check.crossFrame": "Penomoran ayat proyek ini berbeda dari teks ini. Aplikasi belum dapat menyejajarkannya.",
   "check.prevItem": "Item sebelumnya",
   "check.nextItem": "Item berikutnya",
+  "check.prevLabel": "Sebelumnya",
+  "check.nextLabel": "Berikutnya",
   "check.nothingToSelect": "Tidak ada yang dapat dipilih",
   "check.markTodo": "Perlu dikerjakan",
   "check.markValid": "✓ Tandai valid",

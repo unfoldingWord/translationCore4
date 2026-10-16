@@ -20,6 +20,7 @@ import { STORY_FILE } from '../data/journal/runtime';
 import { bookName } from '../data/bookNames';
 import { renderArticleBlocks } from '../data/articles';
 import Align from './Align.jsx';
+import { ItemNavButton } from './ItemNav.jsx';
 import { isLanguageSwitch } from '../data/revalidate';
 import { targetWords, selectionsFromTokens, tokenIndicesFromSelections } from '../data/selections';
 import { tokenizeVerse, matchQuote, tokenizePlain, matchPlainQuote } from '../data/sourceHighlight';
@@ -629,13 +630,6 @@ function CheckDetail({ cs, item, title, sources, sourcePanes, sourceStory, words
   const helpDir = helpsDir(s, cs.resource?.languageSet);
   const canPrev = idx > 0;
   const canNext = idx < cs.items.length - 1;
-  const navStyle = (enabled) => ({
-    border: 'var(--stroke) solid', background: 'var(--surface-card)', fontFamily: 'inherit',
-    fontWeight: 'var(--fw-heavy)', fontSize: 'var(--fs-ui-sm)', width: 30, height: 30, borderRadius: 'var(--radius-sm)',
-    color: enabled ? 'var(--text-heading)' : 'var(--uw-mist)',
-    borderColor: enabled ? 'var(--border-strong)' : 'var(--border)',
-    cursor: enabled ? 'pointer' : 'default',
-  });
 
   return (
     <div style={{ maxWidth: 760, margin: '0 auto', padding: '28px 32px 60px' }}>
@@ -647,10 +641,6 @@ function CheckDetail({ cs, item, title, sources, sourcePanes, sourceStory, words
         <span data-testid="check-item-counter" style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
           {t('check.itemOf', { n: idx + 1, total: cs.items.length })}
         </span>
-        <button type="button" data-testid="check-prev" title={t('check.prevItem')} disabled={!canPrev}
-          onClick={() => canPrev && onNav(idx - 1)} style={navStyle(canPrev)}>←</button>
-        <button type="button" data-testid="check-next" title={t('check.nextItem')} disabled={!canNext}
-          onClick={() => canNext && onNav(idx + 1)} style={navStyle(canNext)}>→</button>
       </div>
 
       <h1 data-testid="check-quote" style={{ fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-h1)', fontWeight: 'var(--fw-bold)', color: 'var(--text-heading)', margin: '0 0 14px' }}>
@@ -693,7 +683,9 @@ function CheckDetail({ cs, item, title, sources, sourcePanes, sourceStory, words
         </div>
       </div>
 
+      {/* #726: mark, then move on — Previous / Next sit in the marking row. */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 22, flexWrap: 'wrap' }}>
+        <ItemNavButton which="prev" testId="check-prev" enabled={canPrev} onClick={() => onNav(idx - 1)} />
         <button type="button" data-testid="mark-valid" onClick={markValid}
           style={triageStyle(item.status === 'valid', TRIAGE_TONES.valid)}>
           {t('check.markValid')}
@@ -706,6 +698,7 @@ function CheckDetail({ cs, item, title, sources, sourcePanes, sourceStory, words
           style={triageStyle(item.status === 'todo', TRIAGE_TONES.todo)}>
           {t('check.markTodo')}
         </button>
+        <ItemNavButton which="next" testId="check-next" enabled={canNext} onClick={() => onNav(idx + 1)} />
       </div>
 
       <CheckMarks item={item} idx={idx} onBookmark={onBookmark} onComment={onComment} />
