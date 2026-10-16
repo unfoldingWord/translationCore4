@@ -601,6 +601,130 @@ test.describe('J4 — a checker works a book', () => {
     },
   );
 
+  // #737 (Birch: Option A, as tC3): dragging across draft words makes a real
+  // selection, snapped to whole words, saved by Mark valid — in both checks.
+  // The browser's text highlight does not stay behind as a fake selection.
+  // `page.mouse` works in viewport coordinates: callers scroll the line into
+  // view before they measure.
+  const dragAcross = async (page: import('@playwright/test').Page, from: string, path: Array<{ x: number; y: number }>) => {
+    const a = (await page.getByTestId(from).boundingBox())!;
+    await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+    await page.mouse.down();
+    for (const p of path) await page.mouse.move(p.x, p.y, { steps: 12 });
+    await page.mouse.up();
+  };
+  const selectedWords = (page: import('@playwright/test').Page) =>
+    page.getByTestId('check-target').locator('[data-testid^="tw-"]').evaluateAll((els) =>
+      els.filter((el) => el.getAttribute('data-selected') === '1').map((el) => el.getAttribute('data-testid')));
+  const nativeSelection = (page: import('@playwright/test').Page) => page.evaluate(() => window.getSelection()?.toString() ?? '');
+
+  for (const tool of ['translationNotes', 'translationWords'] as const) {
+    test(
+      `${tool}: dragging from word 2 into the middle of word 4 selects words 2–4, whole, and Mark valid saves them (#737)`,
+      { tag: ['@inc2', '@J4'] },
+      async ({ page }, testInfo) => {
+        writeProjectPins(SEEDED_PROJECT, { ...PINS(), twl: pinForSideloaded('en_twl', 'v91') });
+        fs.rmSync(path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking', tool, 'TIT.json'), { force: true });
+        await openCheck(page);
+        await page.getByTestId(`open-${tool}`).click();
+        await expect(page.getByTestId('check-progress')).toBeVisible();
+        await page.getByTestId('check-list').locator('button[data-ref="1:1"]').first().click();
+        await expect(page.getByTestId('check-target')).toHaveAttribute('data-drafted', '1');
+        await page.getByTestId('check-target').scrollIntoViewIfNeeded();
+
+        const end = (await page.getByTestId('tw-3').boundingBox())!;
+        await dragAcross(page, 'tw-1', [{ x: end.x + end.width / 2, y: end.y + end.height / 2 }]);
+        expect(await selectedWords(page)).toEqual(['tw-1', 'tw-2', 'tw-3']);
+        expect(await nativeSelection(page)).toBe('');
+        const texts = await Promise.all([1, 2, 3].map(async (i) => (await page.getByTestId(`tw-${i}`).textContent())?.trim()));
+
+        const shot = testInfo.outputPath(`check-737-${tool}.png`);
+        await page.getByTestId('check-target').screenshot({ path: shot });
+        await testInfo.attach(`check-737-${tool}.png`, { path: shot, contentType: 'image/png' });
+
+        await page.getByTestId('mark-valid').click();
+        await expect
+          .poll(() => {
+            const f = readDecisionFile(SEEDED_PROJECT, tool, 'TIT');
+            const d = f?.decisions.find((x) => Array.isArray((x as { selections?: unknown }).selections)) as
+              | { selections?: Array<{ text: string }> }
+              | undefined;
+            return d?.selections?.map((s) => s.text);
+          }, { timeout: 10_000 })
+          .toEqual(texts);
+
+        // Leave and return: the saved selection shows on the same words.
+        await page.getByTestId('check-list').locator('button[data-ref="1:2"]').first().click();
+        await expect(page.getByTestId('check-list').locator('button[data-ref="1:2"]').first()).toHaveAttribute('data-selected', 'true');
+        await page.getByTestId('check-list').locator('button[data-ref="1:1"]').first().click();
+        await expect(page.getByTestId('tw-3')).toHaveAttribute('data-selected', '1');
+        expect(await selectedWords(page)).toEqual(['tw-1', 'tw-2', 'tw-3']);
+      },
+    );
+  }
+
+  test(
+    'a drag that ends off the words selects the words it covered; a later click still toggles one word (#737)',
+    { tag: ['@inc2', '@J4'] },
+    async ({ page }) => {
+      writeProjectPins(SEEDED_PROJECT, PINS());
+      await openCheck(page);
+      await page.getByTestId('open-translationNotes').click();
+      await page.getByTestId('check-list').locator('button[data-ref="1:1"]').first().click();
+      await page.getByTestId('check-target').scrollIntoViewIfNeeded();
+      const line = (await page.getByTestId('check-target').boundingBox())!;
+      const w2 = (await page.getByTestId('tw-2').boundingBox())!;
+      // Along the first line to word 2, then up off the words: release above
+      // the line (going down would pass over the verse's next line).
+      await dragAcross(page, 'tw-0', [
+        { x: w2.x + w2.width / 2, y: w2.y + w2.height / 2 },
+        { x: w2.x + w2.width / 2, y: line.y - 30 },
+      ]);
+      expect(await selectedWords(page)).toEqual(['tw-0', 'tw-1', 'tw-2']);
+      expect(await nativeSelection(page)).toBe('');
+
+      // A plain click right after a drag toggles that word, as before.
+      await page.getByTestId('tw-0').click();
+      await expect(page.getByTestId('tw-0')).toHaveAttribute('data-selected', '0');
+      await page.getByTestId('tw-0').click();
+      await expect(page.getByTestId('tw-0')).toHaveAttribute('data-selected', '1');
+    },
+  );
+
+  test(
+    'a drag that starts beside the words selects text to copy, selects no word, and does not look like a selected word (#737)',
+    { tag: ['@inc2', '@J4'] },
+    async ({ page }) => {
+      writeProjectPins(SEEDED_PROJECT, PINS());
+      await openCheck(page);
+      await page.getByTestId('open-translationNotes').click();
+      await page.getByTestId('check-list').locator('button[data-ref="1:1"]').first().click();
+      await page.getByTestId('check-target').scrollIntoViewIfNeeded();
+      const w0 = (await page.getByTestId('tw-0').boundingBox())!;
+      const w2 = (await page.getByTestId('tw-2').boundingBox())!;
+      // Press just left of the first word (in the line's margin), drag to the
+      // middle of word 2.
+      await page.mouse.move(w0.x - 6, w0.y + w0.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(w2.x + w2.width / 2, w2.y + w2.height / 2, { steps: 12 });
+      await page.mouse.up();
+
+      const words = await Promise.all([0, 1].map(async (i) => (await page.getByTestId(`tw-${i}`).textContent())!.trim()));
+      const copied = await nativeSelection(page);
+      expect(copied).toContain(words[0]);
+      expect(copied).toContain(words[1]);
+      expect(await selectedWords(page)).toEqual([]);
+      // The text highlight is the system's, not the selected-word yellow.
+      const colours = await page.evaluate(() => {
+        const line = document.querySelector('[data-testid="check-target"]')!;
+        const word = document.querySelector('[data-testid="tw-0"]')!;
+        return { selection: getComputedStyle(word, '::selection').backgroundColor, picked: getComputedStyle(line).getPropertyValue('--tc-highlight-soft').trim() };
+      });
+      expect(colours.selection).not.toBe('');
+      expect(colours.selection).not.toContain(colours.picked);
+    },
+  );
+
   test(
     'the tW tool derives its list from the en_twl pin and shows the article from the en_tw pin (D96, FR-15)',
     { tag: ['@inc2', '@J4'] },
