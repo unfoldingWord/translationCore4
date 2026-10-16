@@ -228,6 +228,30 @@ fix out of the change set, and apply the three tests of "Review findings" rule 3
 add it to an issue only if all three are true, and link that issue from the pull request.
 If they are not all true, say "dropped: <reason>" in the pull request.
 
+### Fix a bug: reuse or simplify before you add code
+
+Added 2026-10-16 by the owner. A bug in one place often has working code for the same task
+in a different place in the application. For example, Hebrew text parses correctly in one
+view and incorrectly in another. The fix is to use the working parser in the second view.
+Do not write a second parser. Do not add a patch around the broken one.
+
+Before you add code to fix a bug, do these steps in this order:
+
+1. **Find the working code.** Search the application for code that does the same task
+   correctly. Confirm that it takes the same input, including data already stored, and
+   gives the same result.
+2. **Reuse it.** If you find working code, make the broken place call it. Then move every
+   caller of the broken code to the working code, and delete the broken code.
+3. **Simplify.** If you do not find working code, find the cause. Try to remove code to
+   fix the bug. Look for a special case, a fallback, or a second path for the same data.
+   Do not remove the only code that reads data already stored.
+4. **Add code only as the last choice.** Say in the pull request why steps 2 and 3 did not
+   fix the bug.
+
+In the pull request, say which step fixed the bug. Name the code that you reused, or say
+what you searched. For code outside this repository, also apply "Look at Pankosmia before
+you write code" in `AGENTS.md`.
+
 ### Labels
 
 | Label | Meaning |
