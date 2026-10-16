@@ -631,6 +631,10 @@ test.describe('J9 — a facilitator imports existing work', () => {
         pins = await expectCreationPins(page, abbr);
         await expect(page.getByTestId('home-open-error')).toHaveCount(0);
         await shot(page, testInfo, 'usfm-import-source-panes');
+        await page.getByRole('tab', { name: 'Check', exact: true }).click();
+        await expect(page.getByTestId('open-community-checking')).toBeVisible({ timeout: 60_000 });
+        await expect(page.getByText('No resources pinned', { exact: false })).toHaveCount(0);
+        await shot(page, testInfo, 'usfm-import-check');
       });
       await test.step('Add a book from a USFM file: no source-text step; the pins stay as they are and Jonah shows the same panes', async () => {
         await page.goto('/');
