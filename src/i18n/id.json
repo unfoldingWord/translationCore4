@@ -361,6 +361,7 @@
   "addBook.pickOne": "Pilih setidaknya satu kitab.",
   "addBook.usfmWillAdd": "Menambahkan {name}",
   "addBook.usfmExists": "{name} sudah ada dalam proyek ini. Untuk mengganti kitab yang ada, gunakan Impor.",
+  "addBook.usfmTooLarge": "{name} terlalu besar untuk disimpan aplikasi sebagai satu kitab, jadi tidak dapat ditambahkan.",
   "addBook.addOne": "Tambah kitab",
   "addBook.addN": "Tambah {n} kitab",
   "addBook.findBook": "Cari kitab berdasarkan nama atau kode",

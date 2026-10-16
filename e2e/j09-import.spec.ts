@@ -19,7 +19,7 @@ import { captureDownload } from './helpers/export';
 import { importFixture } from './helpers/import';
 import { pickOption } from './helpers/dropdown';
 import { assertNoRepoCreated, MANIFEST_DIR, readManifest, seedEventsOf, TC3_DCS_TAGS } from '../test/helpers/import';
-import { SEEDED_PROJECT, lastCommitMessage, readDecisionFile, readProjectPins, rigRepo } from './helpers/rig';
+import { SEEDED_PROJECT, lastCommitMessage, readDecisionFile, readProjectPins, rigRepo, sideloadedIngredient } from './helpers/rig';
 import { recordExternal } from './helpers/externalRequests';
 import { gateOff, shot } from './helpers/door43Share';
 
@@ -606,6 +606,46 @@ test.describe('J9 — a facilitator imports existing work', () => {
       const artifactPath = testInfo.outputPath('j09-add-book-usfm.json');
       fs.writeFileSync(artifactPath, `${JSON.stringify(seen, null, 2)}\n`);
       await testInfo.attach('j09-add-book-usfm.json', { path: artifactPath, contentType: 'application/json' });
+    });
+
+    // #767: QA's file, the rig's own en_ult Leviticus (3.1 MB aligned USFM), used
+    // to fail on Add with an internal message and leave an empty book that blocked
+    // a retry. D104 raised the §8.1 cap to 8 MiB, so it now adds whole. A file over
+    // 8 MiB once saved is still refused in its row: en_ult Genesis with Exodus's
+    // chapters appended as Genesis 51-90 (8.7 MB of real aligned USFM).
+    test('add a book from a USFM file: en_ult Leviticus is added whole, a file too large to save is refused in its row, and no empty book is created (#767)', { tag: ['@inc8', '@J9'] }, async ({ page }, testInfo) => {
+      test.setTimeout(240_000);
+      const name = fresh('Jonás grande');
+      const repo = rigRepo(abbrOf(name));
+      const ult = (book: string) => sideloadedIngredient('en_ult', `${book}.usfm`);
+      const exodusAsGenesis = ult('EXO').slice(ult('EXO').indexOf('\\c 1')).replace(/\\c (\d+)/g, (_, n) => `\\c ${Number(n) + 50}`);
+      const tooLarge = { name: 'GEN-EXO.usfm', mimeType: 'text/plain', buffer: Buffer.from(ult('GEN') + exodusAsGenesis) };
+      await importFixture(page, path.join(MANIFEST_DIR, 'usfm', '32-JON.usfm'), { kind: 'usfm', edits: { name, language: 'es-419' } });
+      await expect(page.getByTestId('import-toast')).toBeVisible();
+      await page.goto('/');
+      const card = page.getByTestId(`project-_local_/_local_/${abbrOf(name)}`);
+      await card.getByRole('button', { name: 'Add a book' }).click();
+      await page.getByTestId('ab-usfm-option').click();
+      const rows = page.getByTestId('ab-usfm-file');
+      await page.getByTestId('ab-usfm-input').setInputFiles([{ name: 'LEV.usfm', mimeType: 'text/plain', buffer: Buffer.from(ult('LEV')) }, tooLarge]);
+      await expect(rows).toHaveCount(2);
+      await expect(rows.filter({ hasText: 'LEV.usfm' })).toHaveAttribute('data-status', 'valid');
+      const big = rows.filter({ hasText: 'GEN-EXO.usfm' });
+      await expect(big).toHaveAttribute('data-status', 'refused');
+      await expect(big).toContainText('Genesis is too large for the app to save as one book, so it cannot be added.');
+      const shot = testInfo.outputPath('j09-usfm-too-large.png');
+      await page.screenshot({ path: shot, animations: 'disabled' });
+      await testInfo.attach('j09-usfm-too-large', { path: shot, contentType: 'image/png' });
+      // Add writes Leviticus whole; Genesis is neither on Home nor on disk.
+      await page.getByTestId('ab-usfm-add').click();
+      await expect(page.getByTestId('ab-usfm')).toHaveCount(0, { timeout: 120_000 });
+      await expect(card.getByRole('button', { name: /Leviticus/ })).toBeVisible();
+      await expect(card.getByRole('button', { name: /Genesis/ })).toHaveCount(0);
+      const lev = fs.readFileSync(path.join(repo, 'ingredients', 'LEV.usfm'), 'utf8');
+      expect(lev).toContain('\\c 27');
+      expect(lev).toContain('Yahweh');
+      expect(fs.existsSync(path.join(repo, 'ingredients', 'GEN.usfm'))).toBe(false);
+      expect(lastCommitMessage(abbrOf(name))).toBe('Add LEV (tC4)');
     });
 
     // #485: an imported project's pin file is the EMPTY document, and a

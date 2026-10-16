@@ -10,7 +10,7 @@ import { ServerApi } from './data/serverApi';
 // (test/noBypass.test.ts enforces it); read-only surfaces use ProjectReader.
 import { StaleWriteError } from './data/httpStore';
 import { STORY_FILE, refusalCodeOf } from './data/journal/runtime';
-import { JournalingStore, ProjectReader } from './data/journal/journalingStore';
+import { JournalingStore, ProjectReader, bookAddFits } from './data/journal/journalingStore';
 import { parseVerseKey } from './data/journal/verseConflicts';
 import { SaveScheduler } from './data/saveScheduler';
 import { StoryScheduler, normalizeStoryUnit } from './data/storyScheduler';
@@ -2978,6 +2978,11 @@ async function classifyUsfmFiles(files, existing) {
     fileOf.set(code, name);
     if ((existing || []).includes(code)) {
       out.push({ ...entry, code, refusal: t('addBook.usfmExists', { name: bookName(code) }) });
+      continue;
+    }
+    // #767: refused here, so Add book never creates a book it cannot save.
+    if (!bookAddFits(code, usfm)) {
+      out.push({ ...entry, code, refusal: t('addBook.usfmTooLarge', { name: bookName(code) }) });
       continue;
     }
     out.push({ ...entry, code, usfm });

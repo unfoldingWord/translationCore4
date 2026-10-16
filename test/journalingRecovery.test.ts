@@ -1126,7 +1126,7 @@ describe('#62 review round 4: a rejected newer same-key intent does not destroy 
     const segsAfterWrite1 = segmentPaths(rig);
 
     // Write 2, SAME key: rejected DETERMINISTICALLY at the §8.1 seal (one
-    // event over the 4 MiB cap) — publish() seals before it stages, so the
+    // event over the 8 MiB cap) — publish() seals before it stages, so the
     // rejected action leaves NO segment and NO outbox intent to gate on.
     await expect(
       store.writeDecisions('translationWords', 'TIT', {
@@ -1134,9 +1134,9 @@ describe('#62 review round 4: a rejected newer same-key intent does not destroy 
         tool: 'translationWords',
         book: 'TIT',
         resource: TW_NEWER,
-        decisions: [...written, decision('gigante1', { comments: 'x'.repeat(4 * 1024 * 1024) })],
+        decisions: [...written, decision('gigante1', { comments: 'x'.repeat(9 * 1024 * 1024) })],
       }),
-    ).rejects.toThrow(/4 MiB/);
+    ).rejects.toThrow(/8 MiB/);
     expect(segmentPaths(rig)).toEqual(segsAfterWrite1); // nothing published
     expect((await kv.keys('outbox:')).filter((k) => k.includes(REPO))).toHaveLength(0); // nothing staged
 

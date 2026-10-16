@@ -361,7 +361,7 @@ const runStep = async (w: World, store: JournalingStore, s: StepSpec): Promise<v
       const stored = await store.readDecisions('translationWords', 'TIT').catch(() => null);
       const decisions = [...(stored?.decisions ?? [])];
       if (s.kind === 'decisionsEventful') decisions.push(decisionOf(s.token, 'nueva'));
-      if (s.kind === 'sealReject') decisions.push(decisionOf(s.token, 'x'.repeat(4 * 1024 * 1024 + 64)));
+      if (s.kind === 'sealReject') decisions.push(decisionOf(s.token, 'x'.repeat(8 * 1024 * 1024 + 64)));
       const file: DecisionFile = {
         schemaVersion: 1,
         tool: 'translationWords',
