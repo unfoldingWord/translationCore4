@@ -170,9 +170,10 @@ const instancesOf = (g: GroupInstance, word: string): string[] =>
 
 /** The origin instances of the SHORTEST run of groups (gateway order) that
  * names every quote word the verse has, each as many times as the quote names
- * it (#773). Shortest = the marked words span the fewest groups. A multi-word quote reaches this when the gateway orders its words
- * differently from the origin. Marking every group that names ANY quote word
- * instead let a repeated אֶת or כָּל pull in words from elsewhere in the verse. */
+ * it (#773). Shortest = the marked words span the fewest groups. A multi-word
+ * quote reaches this when the gateway orders its words differently from the
+ * origin. Marking every group that names ANY quote word instead let a repeated
+ * אֶת or כָּל pull in words from elsewhere in the verse. */
 const shortestRunInstances = (groups: GroupInstance[], words: string[]): Set<string> => {
   // Distinct instances the run must hold per word: the times the quote names
   // it, capped by the instances the verse has; a word the verse lacks drops.
