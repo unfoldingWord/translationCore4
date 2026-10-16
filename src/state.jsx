@@ -3009,6 +3009,25 @@ async function seedInitialUsfm({ store, code, projName }) {
 }
 export const __seedInitialUsfmForTests = (...args) => seedInitialUsfm(...args);
 
+/** #766: a project that holds no pin gets the pins of the creation choice (New
+ * Bible's installed suite), so no project opens unpinned. A USFM import, a
+ * burrito import with no pin file, or a Door43 repository with none ends here
+ * (an import commits the EMPTY document, #485). A project that holds pins keeps
+ * them. The write expects the md5 just read, so a racing writer wins; a failed
+ * write leaves the document as read. Answers the pins the open goes on with. */
+async function pinCreationChoice(store, actions, pins, md5, stillCurrent) {
+  if (pins?.languageSets || pins?.resources || pins?.extraScripture || !stillCurrent()) return pins;
+  try {
+    const choice = await actions.importBasePins();
+    if (!stillCurrent()) return pins;
+    await store.writeResources(choice, md5);
+    return await store.readResources();
+  } catch (error) {
+    console.error(`the creation pins were not written: ${String(error?.message || error)}`);
+    return pins;
+  }
+}
+
 /** Returns the outcome of the pins read, `{ pins, failed }` (never rejects), so
  * a story open can wait for it (#312): `pins` is the document or null when
  * absent; `failed` marks a rejected read, whose pins are unknown. The
@@ -3019,7 +3038,7 @@ function loadProjectPins({ store, repoPath, storeRef, stateRef, actions, dispatc
   const seq = stateRef.current.projectPinsSeq;
   const stillCurrent = () =>
     storeRef.current === store && stateRef.current.project?.repoPath === repoPath && stateRef.current.projectPinsSeq === seq;
-  const read = store.readResources();
+  const read = store.readResourcesWithMd5().then(({ value, md5 }) => pinCreationChoice(store, actions, value, md5, stillCurrent));
   const settled = read
     .then(async (pins) => {
       if (!stillCurrent()) return;

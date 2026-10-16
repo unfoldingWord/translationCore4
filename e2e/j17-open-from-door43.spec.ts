@@ -12,7 +12,9 @@ import { pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import type { Page } from '@playwright/test';
 import { test, expect } from './helpers/test';
-import { SEEDED_PROJECT, RIG_LOCAL_REPOS, rigRepo, writePlace } from './helpers/rig';
+import { SEEDED_PROJECT, RIG_LOCAL_REPOS, readProjectPins, rigRepo, writePlace } from './helpers/rig';
+import { importFixture } from './helpers/import';
+import { MANIFEST_DIR } from '../test/helpers/import';
 import { USER, expectConvergedOpen, expectIngredientsEqualMain, fakeShare, git, opsIds, shot, signIn, gateOff, type BareRemote } from './helpers/door43Share';
 import { lane } from './lane.mjs';
 import { ServerApi } from '../src/data/serverApi';
@@ -24,6 +26,7 @@ const ORG = USER.username;
 const RUN = Date.now();
 const REPO = `j17open_${RUN}`;
 const BAD = `j17bad_${RUN}`;
+const NOPINS = `j17nopins_${RUN}`;
 const ID = `_local_/_local_/${REPO}`;
 const REPOS = path.join(RIG_LOCAL_REPOS, '..', '..');
 const mirrorDir = (repo: string) => path.join(REPOS, '_local_', '_archive_', `${ORG}--${repo}`);
@@ -79,12 +82,12 @@ test.describe('J17 — open a project from Door43', () => {
     tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tc4-j17-'));
   });
   test.afterAll(async () => {
-    for (const repo of [REPO, BAD]) {
+    for (const repo of [REPO, BAD, NOPINS]) {
       fs.rmSync(mirrorDir(repo), { recursive: true, force: true });
       fs.rmSync(fixedDir(repo), { recursive: true, force: true });
       fs.rmSync(scratchDir(repo), { recursive: true, force: true });
     }
-    fs.rmSync(path.join(RIG_LOCAL_REPOS, REPO), { recursive: true, force: true });
+    for (const repo of [REPO, NOPINS]) fs.rmSync(path.join(RIG_LOCAL_REPOS, repo), { recursive: true, force: true });
     fs.rmSync(tmp, { recursive: true, force: true });
     await gateOff();
   });
@@ -218,5 +221,39 @@ test.describe('J17 — open a project from Door43', () => {
     await shot(page, testInfo, 'g-refused');
     expectNoProjectWritten(BAD, BAD);
     await expect(page.getByTestId(`project-_local_/_local_/${BAD}`)).toHaveCount(0);
+  });
+
+  test('#766: a Door43 repository with no pins gets the installed sources at its first open', TAG, async ({ page }, testInfo) => {
+    test.setTimeout(240_000);
+    // ---- Door43 main: a USFM import as committed (a journal, and the empty pin document) ----
+    const imported = `J17 sin fijar ${RUN}`;
+    const importedAbbr = imported.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+    await page.goto('/');
+    await importFixture(page, path.join(MANIFEST_DIR, 'usfm', '57-TIT.usfm'), { kind: 'usfm', edits: { name: imported, language: 'es-419' } });
+    await expect(page.getByTestId('import-toast')).toBeVisible();
+    expect(readProjectPins(importedAbbr)).toEqual({ schemaVersion: 2 });
+    const work = path.join(tmp, 'nopins-work');
+    fs.cpSync(rigRepo(importedAbbr), work, { recursive: true });
+    const nopins = door43Main(tmp, NOPINS, work);
+    fs.rmSync(rigRepo(importedAbbr), { recursive: true, force: true });
+
+    // ---- open it from Door43, then open the project: the pins are the installed suite ----
+    await page.goto('/');
+    await openDialog(page);
+    await page.getByTestId('open-door43-repo').fill(pathToFileURL(nopins.bare).href);
+    await expect(page.getByTestId('open-door43-name')).toHaveValue(NOPINS);
+    await page.getByTestId('open-door43-submit').click();
+    await page.getByTestId('net-confirm').click();
+    await expect(page.getByTestId('open-door43-modal')).toHaveCount(0, { timeout: 120_000 });
+    await gateOff();
+    await page.getByTestId(`project-_local_/_local_/${NOPINS}`).getByRole('button', { name: /Titus/ }).click();
+    await expect(page.getByRole('heading', { name: /^Titus \d+$/ })).toBeVisible({ timeout: 120_000 });
+    await expect(page.getByTestId('source-tab-ult')).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByTestId('no-source-panes')).toHaveCount(0);
+    await expect.poll(() => readProjectPins(NOPINS).languageSets !== undefined, { timeout: 20_000 }).toBe(true);
+    const pins = readProjectPins(NOPINS);
+    expect(pins.languageSets.primary.gatewayLanguage).toEqual({ languageId: 'en', owner: 'unfoldingWord' });
+    expect(pins.languageSets.fallback.gatewayLanguage).toEqual({ languageId: 'en', owner: 'unfoldingWord' });
+    await shot(page, testInfo, 'door43-open-source-panes');
   });
 });
