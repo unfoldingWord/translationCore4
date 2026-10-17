@@ -973,7 +973,7 @@ test.describe('J5 — a translator aligns a verse', () => {
   // en_ult GEN.usfm, added to a new project with Add a book → USFM (the issue's
   // steps). A whole-project USFM import of that file refuses it (not NFC).
   test(
-    'Align and Translate show every word of en_ult Genesis, nested alignments included: 1:1 has "the heavens" (#782)',
+    'Align and Translate show every word of en_ult Genesis, nested alignments included: 1:1 has "the heavens" in its text and its bank (#782)',
     { tag: ['@inc9', '@J5'] },
     async ({ page }, testInfo) => {
       test.setTimeout(240_000);
@@ -1030,22 +1030,29 @@ test.describe('J5 — a translator aligns a verse', () => {
         expect(rail.find((r) => r.ref === '1:4')?.text).toBe('And God saw the light, that {it was} good. Then God separated between the light and the darkness.');
       });
 
-      // The rig holds no Hebrew Bible, so 1:1 opens on "not on this computer" and
-      // shows no word bank here. The bank of Gen 1:1 is proven by the session
-      // build in test/bookModel-nested-alignment.test.ts.
-      await test.step('Align 1:1: the rail row the translator picks states the whole verse', async () => {
+      await test.step('Align 1:1: the word bank holds "the" and "heavens", every word of the verse', async () => {
         const row = page.getByTestId('align-verse-list').locator('button[data-ref="1:1"]');
         await row.click();
         await expect(row).toHaveAttribute('data-selected', 'true');
         await expect(row).toContainText('In the beginning God created the heavens and the earth.');
+        // The seed sideloads hbo_uhb v3.0.0, the pin a new project gets.
+        await expect(page.getByTestId('align-session')).toBeVisible({ timeout: 60_000 });
+        const bank = page.getByTestId('align-bank').getByRole('button');
+        await expect(bank.first()).toBeVisible({ timeout: 60_000 });
+        const words = await wordsOf(bank);
+        expect(words).toEqual(expect.arrayContaining(['the', 'heavens']));
+        // Nothing is aligned in the verse yet, so the bank holds every word of it
+        // (a bootstrapped bank is not in verse order).
+        expect([...words].sort()).toEqual(wordTokens('In the beginning God created the heavens and the earth.').map((t) => t.text).sort());
         const shotPath = testInfo.outputPath('j05-gen-1-1-nested.png');
         await page.screenshot({ path: shotPath, animations: 'disabled' });
         await testInfo.attach('j05-gen-1-1-nested', { path: shotPath, contentType: 'image/png' });
-        // The run's artifact: the counts, and 1:1 and 1:4 as the rail states them.
+        // The run's artifact: the counts, 1:1 and 1:4 as the rail states them, and the 1:1 bank.
         const artifact = {
           rows: rail.length,
           rowsLosingWords: rail.filter((r) => !holdsInOrder(r.text, fileWords.get(r.ref) ?? [])).length,
           rail: rail.filter((r) => r.ref === '1:1' || r.ref === '1:4'),
+          bank11: [...words].sort(),
         };
         const artifactPath = testInfo.outputPath('j05-gen-nested.json');
         fs.writeFileSync(artifactPath, `${JSON.stringify(artifact, null, 2)}\n`);

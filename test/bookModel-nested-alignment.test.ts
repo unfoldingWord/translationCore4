@@ -97,7 +97,7 @@ describe('verseText reads words inside nested alignments (#782)', () => {
 
   it('the Align session of Gen 1:1 banks "the" and "heavens": every word of the verse (way 1)', async () => {
     // The real session build: the draft is en_ult's Gen 1:1, the original is
-    // hbo_uhb's. The rig holds no Hebrew Bible, so the journey cannot open it.
+    // hbo_uhb's. The J5 #782 journey shows the same bank in the app.
     const store = { readAlignmentsWithMd5: async () => ({ value: null, md5: null }) };
     const st = { book: 'GEN', bookRaw: read('en_ult/GEN-1-1.usfm'), project: { scriptDirection: 'ltr' } };
     const source = { testament: 'ot', pin: { repoPath: 'unfoldingWord/hbo_uhb', version: 'v3.0.0' }, usfmText: '' };
