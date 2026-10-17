@@ -22,6 +22,8 @@ const corpora: Record<string, string> = {
   'sample JON (plain draft, span verse 2:9-10)': read('test/fixtures/sample-burrito/JON.usfm'),
   'en_ult TIT (aligned: 705 zaln-s, 23 ts milestones)': read('test/fixtures/en_ult/TIT.usfm'),
   'en_ust TIT (aligned)': read('test/fixtures/en_ust/TIT.usfm'),
+  // #784: 49:6 is `\q1 \v 6 …`, the verse marker after a poetry marker on one line.
+  'en_ult GEN-773 (49:6 follows \\q1 on its line)': read('test/fixtures/en_ult/GEN-773.usfm'),
 };
 
 // The zaln-strip-repro inline shape (sample-burrito-validation/zaln-strip-repro/
@@ -101,6 +103,40 @@ describe('verse bodies', () => {
         expect(b).not.toContain('\\ts\\*');
       }
     }
+  });
+});
+
+// #784: Paratext and the unfoldingWord aligned texts write poetry as `\q1 \v 15 …`.
+// The ways this can fail, written before the fix:
+//   1. The verse is not indexed: Translate and Align do not show it (the defect).
+//   2. Its body starts too early and holds `\q1 ` or `\v 15 `: an edit deletes the
+//      marker or doubles it.
+//   3. The verse before it keeps the `\q1 \v 15 …` line in its body.
+//   4. A verse whose `\v` starts its line indexes differently than before.
+describe('#784 — a \\v after a paragraph or poetry marker on the same line', () => {
+  const poetry = ['\\id TST', '\\c 1', '\\q1 \\v 1 one', '\\q2 more of one', '\\q1 \\v 2 two', '\\p \\v 3 three', '\\li1 \\v 4 four', ''].join('\n');
+
+  it('each such verse is indexed, its body starts after `\\v N `, and the marker stays outside every body (ways 1-3)', () => {
+    const entries = indexBook(poetry);
+    expect(entries.map((e) => e.verseKey)).toEqual(['1', '2', '3', '4']);
+    expect(['1', '2', '3', '4'].map((k) => body(poetry, 1, k))).toEqual(['one', 'two', 'three', 'four']);
+    for (const e of entries) expect(poetry.slice(e.start - `\\v ${e.verseKey} `.length, e.start)).toBe(`\\v ${e.verseKey} `);
+  });
+
+  it('en_ult Gen 49:6 is indexed after its `\\q1 ` (ways 1 and 2)', () => {
+    const raw = corpora['en_ult GEN-773 (49:6 follows \\q1 on its line)'];
+    const e = findVerse(indexBook(raw), 49, '6');
+    expect(e).not.toBeNull();
+    const lineStart = raw.lastIndexOf('\n', e!.start) + 1;
+    expect(raw.slice(lineStart, e!.start)).toBe('\\q1 \\v 6 ');
+    expect(raw.slice(e!.start, e!.end)).toMatch(/^\\zaln-s /);
+  });
+
+  it('a verse whose \\v starts its line keeps the same entry (way 4)', () => {
+    const lineStart = poetry.replace('\\q1 \\v 2 two', '\\q1\n\\v 2 two');
+    const before = findVerse(indexBook(lineStart), 1, '2')!;
+    expect(lineStart.slice(before.start, before.end)).toBe('two');
+    expect(lineStart.slice(before.start - 5, before.start)).toBe('\\v 2 ');
   });
 });
 

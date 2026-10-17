@@ -128,6 +128,16 @@ const baseTag = (tag: string): string => (tag.includes('-') ? tag : tag.replace(
 
 const endsBody = (tag: string): boolean => BODY_ENDING_TAGS.has(baseTag(tag.toLowerCase()));
 
+/** #784: Paratext and the aligned texts put a verse on its poetry or paragraph
+ * marker's line (`\q1 \v 15 …`). For such a line, the length of the marker and
+ * its spaces, where the verse's own `\v` starts; else null. The marker ends the
+ * open body and stays outside every body. */
+const verseLead = (line: string, tag: string): number | null => {
+  if (tag === 'v' || !endsBody(tag)) return null;
+  const lead = /^\\[a-z][a-z0-9]*[ \t]+(?=\\v[ \t])/i.exec(line);
+  return lead ? lead[0].length : null;
+};
+
 /** Walk back over line terminators so trailing `\n`/`\r\n` (and blank lines
  * before the next marker) stay outside the body range. */
 const trimLineBreaksBack = (raw: string, from: number, floor: number): number => {
@@ -178,14 +188,16 @@ export const indexBook = (rawBook: string): VerseEntry[] => {
     if (lineEnd === -1) lineEnd = len;
     const line = rawBook.slice(lineStart, lineEnd);
     const m = LINE_MARKER.exec(line);
+    const lead = m ? verseLead(line, m[1]) : null;
     if (m) {
       const tag = m[1];
-      if (tag === 'v') {
+      if (tag === 'v' || lead !== null) {
         closeOpen(lineStart);
+        const at = lead ?? 0;
         // `\v` + whitespace + key token (exact string; spans like "9-10" stay intact).
-        const vm = /^\\v[ \t]+(\S+)[ \t]?/.exec(line);
+        const vm = /^\\v[ \t]+(\S+)[ \t]?/.exec(line.slice(at));
         if (vm && chapter !== null) {
-          const markerEnd = lineStart + vm[0].length;
+          const markerEnd = lineStart + at + vm[0].length;
           let start = markerEnd;
           // Marker line with no same-line text (aligned drafts put the body on
           // the following lines): the body starts past the line terminator.

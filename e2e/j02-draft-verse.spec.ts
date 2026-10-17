@@ -13,6 +13,8 @@ import { verifyAllJournaledProjects } from './helpers/journal';
 import { QA_SERVER, USER, dropOrigin, git } from './helpers/door43Share';
 import { recordExternal } from './helpers/externalRequests';
 import { captureDownload } from './helpers/export';
+import { importFixture } from './helpers/import';
+import { MANIFEST_DIR } from '../test/helpers/import';
 import { proveHelpsDragAndToggle, proveHelpsToolbar } from './helpers/helps';
 import { lane } from './lane.mjs';
 import {
@@ -1175,6 +1177,93 @@ test.describe('J2 — a translator drafts a verse', () => {
         await page.getByTestId('open-translationNotes').click();
         await expect(page.getByTestId('check-progress')).toBeVisible();
       });
+    },
+  );
+
+  // #784: Paratext and the aligned texts write poetry as `\q1 \v 15 …`. The verse
+  // index read a `\v` only at the start of a line, so such verses had no entry:
+  // 41 of 1533 in en_ult Genesis, 2439 of 2461 in Psalms. The books are the rig's
+  // own en_ult GEN.usfm and PSA.usfm, added to a new project with Add a book → USFM.
+  test(
+    'a verse after \\q1 on its own line is a verse: Align lists all of en_ult Genesis and Psalms, and an edit of Gen 3:15 keeps its \\q1 (#784)',
+    { tag: ['@inc9', '@J2'] },
+    async ({ page }, testInfo) => {
+      test.setTimeout(400_000);
+      const gen = sideloadedIngredient('en_ult', 'GEN.usfm');
+      const psa = sideloadedIngredient('en_ult', 'PSA.usfm');
+      // The verses each file states, counted from the raw text: every `\v`.
+      const versesIn = (usfm: string) => (usfm.match(/\\v \d/g) ?? []).length;
+      const name = `Poesia 784 ${Date.now()}`;
+      const abbr = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+      const card = page.getByTestId(`project-_local_/_local_/${abbr}`);
+      const seen: Record<string, unknown> = { genesisVersesInFile: versesIn(gen), psalmsVersesInFile: versesIn(psa) };
+
+      await test.step('a new project gets en_ult Genesis and Psalms from USFM files', async () => {
+        await page.goto('/');
+        await importFixture(page, path.join(MANIFEST_DIR, 'usfm', '32-JON.usfm'), { kind: 'usfm', edits: { name, language: 'es-419' } });
+        await expect(page.getByTestId('import-toast')).toBeVisible();
+        await page.goto('/');
+        await card.getByRole('button', { name: 'Add a book' }).click();
+        await page.getByTestId('ab-usfm-option').click();
+        await page.getByTestId('ab-usfm-input').setInputFiles([
+          { name: 'GEN.usfm', mimeType: 'text/plain', buffer: Buffer.from(gen) },
+          { name: 'PSA.usfm', mimeType: 'text/plain', buffer: Buffer.from(psa) },
+        ]);
+        await expect(page.getByTestId('ab-usfm-file')).toHaveCount(2);
+        await page.getByTestId('ab-usfm-add').click();
+        await expect(page.getByTestId('ab-usfm')).toHaveCount(0, { timeout: 240_000 });
+      });
+
+      const alignRows = async (book: RegExp): Promise<number> => {
+        await page.goto('/');
+        await card.getByRole('button', { name: book }).click();
+        await page.getByRole('tab', { name: 'Check', exact: true }).click();
+        await page.getByTestId('open-align').click();
+        const rows = page.getByTestId('align-verse-list').locator('button[data-ref]');
+        await expect(rows.first()).toBeVisible({ timeout: 120_000 });
+        return rows.count();
+      };
+
+      await test.step('Align lists every verse of Genesis, 3:15 among them', async () => {
+        seen.genesisAlignRows = await alignRows(/Genesis/);
+        expect(seen.genesisAlignRows).toBe(seen.genesisVersesInFile);
+        await expect(page.getByTestId('align-verse-list').locator('button[data-ref="3:15"]')).toHaveCount(1);
+      });
+
+      await test.step('Align lists every verse of Psalms', async () => {
+        seen.psalmsAlignRows = await alignRows(/Psalms/);
+        expect(seen.psalmsAlignRows).toBe(seen.psalmsVersesInFile);
+      });
+
+      const repo = rigRepo(abbr);
+      const genOnDisk = () => fs.readFileSync(path.join(repo, 'ingredients', 'GEN.usfm'));
+      const EDIT = 'Pondré enemistad entre ti y la mujer (#784).';
+      await test.step('Translate shows Gen 3:15; an edit saves only that verse, and its \\q1 stays', async () => {
+        await page.goto('/');
+        await card.getByRole('button', { name: /Genesis/ }).click();
+        await page.getByRole('tab', { name: 'Translate', exact: true }).click();
+        await page.getByRole('button', { name: '3', exact: true }).click();
+        await page.getByRole('tab', { name: 'Verse', exact: true }).click();
+        const before = genOnDisk();
+        await page.getByTitle('Edit this verse').filter({ hasText: 'hostility' }).first().click();
+        const editor = page.getByRole('textbox', { name: 'Verse 15' });
+        await editor.fill(EDIT);
+        await editor.blur();
+        await expect.poll(() => genOnDisk().toString('utf8'), { timeout: 30_000 }).toContain(EDIT);
+        const after = genOnDisk();
+        expect(byteStrictViolation(before, after, 3, 15)).toBeNull();
+        expect(after.toString('utf8')).toContain(`\\q1 \\v 15 ${EDIT}`);
+        await expect(page.getByText(EDIT)).toBeVisible();
+        const shot = testInfo.outputPath('j02-gen-3-15-saved.png');
+        await page.screenshot({ path: shot, animations: 'disabled' });
+        await testInfo.attach('j02-gen-3-15-saved', { path: shot, contentType: 'image/png' });
+        const at = after.toString('utf8').indexOf(`\\v 15 ${EDIT}`);
+        seen.savedLine = after.toString('utf8').slice(after.toString('utf8').lastIndexOf('\n', at) + 1, at + `\\v 15 ${EDIT}`.length);
+      });
+
+      const artifactPath = testInfo.outputPath('j02-poetry-verses.json');
+      fs.writeFileSync(artifactPath, `${JSON.stringify(seen, null, 2)}\n`);
+      await testInfo.attach('j02-poetry-verses.json', { path: artifactPath, contentType: 'application/json' });
     },
   );
 });
