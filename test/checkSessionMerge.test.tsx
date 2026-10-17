@@ -131,8 +131,16 @@ describe('railGroupsOf — non-numeric references stay sortable', () => {
     expect(order).toEqual(['front:intro', '1:1-2', '1:1', '1:3']);
   });
 
-  it('byCategory groups by item category', () => {
-    const groups = railGroupsOf({ items: rows, sortMode: 'byCategory', book: 'TIT' });
-    expect(groups.map((g) => g.label).sort()).toEqual(['intro', 'kt']);
+  // #769 (owner Q4): one group per tA module (groupId), in verse order of first
+  // appearance; a note with no module (an OBS plain note) groups under ''.
+  it('byFigure groups by tA module, keyed by groupId', () => {
+    const withModule = (row: { it: Item; i: number }, groupId: string) => ({ ...row, it: { ...row.it, contextId: { ...row.it.contextId, groupId } } });
+    const figs = [withModule(rows[0], 'figs-metaphor'), withModule(rows[1], ''), withModule(rows[2], 'figs-abstractnouns'), withModule(rows[3], 'figs-metaphor')];
+    const groups = railGroupsOf({ items: figs, sortMode: 'byFigure', book: 'TIT' });
+    expect(groups.map((g: { key: string; rows: Array<{ i: number }> }) => [g.key, g.rows.map(({ i }: { i: number }) => i)])).toEqual([
+      ['', [1]],
+      ['figs-abstractnouns', [2]],
+      ['figs-metaphor', [3, 0]],
+    ]);
   });
 });

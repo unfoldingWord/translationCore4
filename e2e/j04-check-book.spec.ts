@@ -935,6 +935,155 @@ test.describe('#762 — the Check view uses the window width and keeps lines rea
   });
 });
 
+// #769: the grouped rail folds. tN groups by figure — one group per tA module,
+// headed by the module's title.md — and tW by term. Titus in the v91 pins has
+// 23 figs-abstractnouns notes ("Abstract Nouns").
+test.describe('J4 — the rail groups fold (#769)', () => {
+  const group = (page: import('@playwright/test').Page, key: string) => page.locator(`[data-testid="rail-group"][data-group="${key}"]`);
+  const rowsOf = (page: import('@playwright/test').Page, key: string) => page.locator(`[data-testid="rail-group-rows"][data-group="${key}"] button`);
+
+  test('tN by figure: a heading per tA module with its title and resolved/total; it folds, unfolds, skips folded rows by keyboard, opens for Next, and stays folded after a restart', { tag: ['@inc9', '@J4'] }, async ({ page }, testInfo) => {
+    test.setTimeout(120_000);
+    writeProjectPins(SEEDED_PROJECT, PINS());
+    await openCheck(page);
+    await page.getByTestId('open-translationNotes').click();
+    await expect(page.getByTestId('check-progress')).toBeVisible();
+    // By verse is one group: no fold control.
+    await expect(page.getByTestId('rail-group')).toHaveCount(0);
+    await expect(page.getByTestId('rail-fold-all')).toHaveCount(0);
+
+    await page.getByTestId('sort-byFigure').click();
+    await expect(page.getByTestId('sort-byFigure')).toHaveText('By figure');
+    const abstract = group(page, 'figs-abstractnouns');
+    // The heading says the module title (from title.md), and resolved/total over the group.
+    await expect(abstract).toContainText('Abstract Nouns');
+    const total = await rowsOf(page, 'figs-abstractnouns').count();
+    expect(total).toBeGreaterThan(1);
+    const decided = await page.locator('[data-testid="rail-group-rows"][data-group="figs-abstractnouns"] button[data-decided="1"]').count();
+    await expect(abstract.getByTestId('rail-group-count')).toHaveText(`${decided}/${total}`);
+    await expect(abstract).toHaveAttribute('aria-expanded', 'true');
+
+    // The active item's group is always open, so work from an item of another group.
+    await page.locator('[data-testid="rail-group-rows"]:not([data-group="figs-abstractnouns"]) button').first().click();
+
+    // Click folds; the rows hide. Enter on the heading unfolds, Space folds again.
+    await abstract.click();
+    await expect(abstract).toHaveAttribute('aria-expanded', 'false');
+    await expect(rowsOf(page, 'figs-abstractnouns')).toHaveCount(0);
+    // #42: the rail stays one Tab stop — a heading is reached with the arrows, not Tab.
+    await expect(abstract).toHaveAttribute('tabindex', '-1');
+    await abstract.focus();
+    await page.keyboard.press('Enter');
+    await expect(abstract).toHaveAttribute('aria-expanded', 'true');
+    await page.keyboard.press('Space');
+    await expect(abstract).toHaveAttribute('aria-expanded', 'false');
+    const shot = testInfo.outputPath('j04-rail-folded.png');
+    await page.screenshot({ path: shot, animations: 'disabled' });
+    await testInfo.attach('j04-rail-folded', { path: shot, contentType: 'image/png' });
+
+    // Up/Down walk only the rows shown: none of them is in the folded group.
+    const active = page.locator('[data-testid="check-list"] button[aria-current="true"]');
+    await active.focus();
+    for (let n = 0; n < 6; n++) {
+      await page.keyboard.press('ArrowDown');
+      expect(await page.locator('[data-testid="check-list"] button[aria-current="true"]').getAttribute('data-rail-index')).not.toBeNull();
+      await expect(rowsOf(page, 'figs-abstractnouns')).toHaveCount(0);
+    }
+
+    // The fold is saved for the app, and kept across the filter, leaving the tool, and a restart.
+    await expect.poll(() => (readClientSettingsDoc()?.railFolded as Record<string, boolean> | undefined)?.['translationNotes|figs-abstractnouns']).toBe(true);
+    await page.getByTestId('filter-todo').click();
+    await page.getByTestId('filter-all').click();
+    await expect(abstract).toHaveAttribute('aria-expanded', 'false');
+    await page.reload();
+    await openCheck(page);
+    // The tile returns to the tool it left (#329); the picker shows only until then.
+    await expect(page.getByTestId('check-progress')).toBeVisible({ timeout: 30_000 });
+    await page.getByTestId('sort-byFigure').click();
+    // The restored item may sit in the folded group, which shows open while active (Q1);
+    // with an item of another group active, the saved fold shows.
+    await page.locator('[data-testid="rail-group-rows"]:not([data-group="figs-abstractnouns"]) button').first().click();
+    await expect(abstract).toHaveAttribute('aria-expanded', 'false');
+
+    // Next into a folded group unfolds it. Next walks book order, so take two
+    // items next to each other in the book that sit in different groups.
+    const pair = await page.locator('[data-testid="rail-group-rows"] button').evaluateAll((bs) => {
+      const groupOf = new Map(bs.map((b) => [Number(b.getAttribute('data-rail-index')), b.closest('[data-group]')?.getAttribute('data-group')]));
+      for (const [i, key] of groupOf) {
+        const before = groupOf.get(i - 1);
+        if (before !== undefined && before !== key) return { prev: i - 1, next: i, key: key as string };
+      }
+      return null;
+    });
+    expect(pair).not.toBeNull();
+    const target = group(page, pair!.key);
+    await page.locator(`[data-testid="check-list"] button[data-rail-index="${pair!.prev}"]`).click();
+    await target.click();
+    await expect(target).toHaveAttribute('aria-expanded', 'false');
+    await page.getByTestId('check-next').click();
+    await expect(target).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.locator(`[data-testid="check-list"] button[data-rail-index="${pair!.next}"]`)).toHaveAttribute('aria-current', 'true');
+
+    // Fold all folds every group but the active one; Unfold all opens them all.
+    await page.getByTestId('rail-fold-all').click();
+    await expect(page.locator('[data-testid="rail-group"][aria-expanded="true"]')).toHaveCount(1);
+    await expect(target).toHaveAttribute('aria-expanded', 'true'); // the active group
+    await page.getByTestId('rail-fold-all').click();
+    await expect(page.locator('[data-testid="rail-group"][aria-expanded="false"]')).toHaveCount(0);
+
+    // Review S2: on a row, Down still selects the next row, as before #769; Left
+    // moves focus to the row's heading without selecting.
+    const current = () => page.locator('[data-testid="check-list"] button[aria-current="true"]');
+    const before = (await current().getAttribute('data-rail-index'))!;
+    await current().focus();
+    await page.keyboard.press('ArrowDown');
+    await expect(current()).not.toHaveAttribute('data-rail-index', before);
+    const selected = (await current().getAttribute('data-rail-index'))!;
+    await page.keyboard.press('ArrowLeft');
+    await expect(page.locator('[data-testid="check-list"] :focus')).toHaveAttribute('data-testid', 'rail-group');
+    await expect(current()).toHaveAttribute('data-rail-index', selected);
+
+    // Review S1: a filter that shows only folded groups still leaves a Tab stop —
+    // the first heading — so the keyboard can unfold it.
+    const groupOfRow = (i: string) => page.locator(`[data-testid="check-list"] button[data-rail-index="${i}"]`).evaluate((b) => b.closest('[data-group]')?.getAttribute('data-group'));
+    const markedRow = page.locator(`[data-testid="rail-group-rows"]:not([data-group="${await groupOfRow(selected)}"]) button`).first();
+    const markedIndex = (await markedRow.getAttribute('data-rail-index'))!;
+    const markedGroup = (await groupOfRow(markedIndex))!;
+    await markedRow.click();
+    await page.getByTestId('bookmark').click();
+    await expect(page.locator(`[data-testid="check-list"] button[data-rail-index="${markedIndex}"]`)).toHaveAttribute('data-bookmarked', '1');
+    await page.locator(`[data-testid="rail-group-rows"]:not([data-group="${markedGroup}"]) button`).first().click();
+    await page.getByTestId('rail-fold-all').click();
+    await page.getByTestId('filter-bookmarked').click();
+    const only = group(page, markedGroup);
+    await expect(page.getByTestId('rail-group')).toHaveCount(1);
+    await expect(only).toHaveAttribute('aria-expanded', 'false');
+    await expect(only).toHaveAttribute('tabindex', '0');
+    await only.focus();
+    await page.keyboard.press('Enter');
+    await expect(rowsOf(page, markedGroup)).toHaveCount(1);
+    await page.getByTestId('filter-all').click();
+    await page.getByTestId('rail-fold-all').click(); // Unfold all: leave no fold for the next case
+  });
+
+  test('tW by term: a term group folds and unfolds, with its resolved/total', { tag: ['@inc9', '@J4'] }, async ({ page }) => {
+    writeProjectPins(SEEDED_PROJECT, PINS());
+    await openCheck(page);
+    await page.getByTestId('open-translationWords').click();
+    await expect(page.getByTestId('check-progress')).toBeVisible();
+    const heads = page.getByTestId('rail-group');
+    expect(await heads.count()).toBeGreaterThan(1);
+    const second = heads.nth(1); // the first group holds the active item
+    const key = (await second.getAttribute('data-group'))!;
+    await expect(second.getByTestId('rail-group-count')).toHaveText(new RegExp(`^\\d+/${await rowsOf(page, key).count()}$`));
+    await second.click();
+    await expect(second).toHaveAttribute('aria-expanded', 'false');
+    await expect(rowsOf(page, key)).toHaveCount(0);
+    await second.click();
+    await expect(second).toHaveAttribute('aria-expanded', 'true');
+  });
+});
+
 // Issue #62 teardown: after this journey's mutations, every journaled local
 // project must be a verified byte-for-byte materialization of its journal.
 test.afterAll(async () => {
