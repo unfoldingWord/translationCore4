@@ -17,7 +17,7 @@ import { pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import type { Page } from '@playwright/test';
 import { test, expect } from './helpers/test';
-import { SEEDED_PROJECT, RIG_LOCAL_REPOS, rigRepo, writePlace } from './helpers/rig';
+import { SEEDED_PROJECT, RIG_CLIENT_SETTINGS, RIG_LOCAL_REPOS, rigRepo, writePlace } from './helpers/rig';
 import { USER, dropOrigin, expectConvergedOpen, expectIngredientsEqualMain, fakeShare, git, head, mainIngredients, opsIds, shot, signIn, gateOff, type BareRemote } from './helpers/door43Share';
 import { recordExternal } from './helpers/externalRequests';
 import { verifyAllJournaledProjects } from './helpers/journal';
@@ -93,11 +93,28 @@ test.describe('#678 — Sync with Door43', () => {
   test.describe.configure({ mode: 'serial' });
   let remote: BareRemote;
 
+  // D88 point 6 needs a pin this computer lacks. The seeded project pins hbo_uhb
+  // v3.0.0, which the seed sideloads since #782. So this file's computer holds
+  // another Hebrew release: its install record names another commit (a pin is a
+  // repoPath and a sha, D58). The record is restored after the file.
+  let settingsBefore: string | null = null;
+
   test.beforeAll(() => {
     dropOrigin(SEEDED_PROJECT);
     remote = makeOrgRemote();
+    settingsBefore = fs.readFileSync(RIG_CLIENT_SETTINGS, 'utf8');
+    const doc = JSON.parse(settingsBefore);
+    const hebrew = doc.installedResources?.['_local_/_sideloaded_/hbo_uhb'];
+    expect(hebrew, 'the seed records hbo_uhb').toBeTruthy();
+    doc.installedResources['_local_/_sideloaded_/hbo_uhb'] = { ...hebrew, version: 'v2.1.30', sha: '6780000000000000000000000000000000000678' };
+    fs.writeFileSync(RIG_CLIENT_SETTINGS, JSON.stringify(doc));
   });
   test.afterAll(async () => {
+    if (settingsBefore !== null) {
+      const doc = JSON.parse(fs.readFileSync(RIG_CLIENT_SETTINGS, 'utf8'));
+      doc.installedResources = JSON.parse(settingsBefore).installedResources;
+      fs.writeFileSync(RIG_CLIENT_SETTINGS, JSON.stringify(doc));
+    }
     dropOrigin(SEEDED_PROJECT);
     remote?.dispose();
     for (const dir of [MIRROR_DIR, FIXED_DIR]) fs.rmSync(dir, { recursive: true, force: true });
@@ -216,7 +233,7 @@ test.describe('#678 — Sync with Door43', () => {
     await expect(page.getByTestId('sync-count-newest')).toHaveAttribute('data-count', '0');
     await expect(page.getByTestId('sync-review')).toBeVisible();
     // D88 point 6: Download is always offered while a pin names a version this computer
-    // lacks: the seeded project pins hbo_uhb v3.0.0, which the rig does not hold
+    // lacks: the seeded project pins hbo_uhb v3.0.0, and this file's computer holds another release
     await expect(page.getByTestId('sync-download')).toBeVisible();
     expect(Number(await page.getByTestId('sync-missing-pins').getAttribute('data-count'))).toBeGreaterThan(0);
     // the card reads the project again: its conflict chip shows the one verse conflict (#679)

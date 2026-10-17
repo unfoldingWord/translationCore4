@@ -37,6 +37,8 @@ const VERSIONS = {
   en_ta: 'v91',
   en_tq: 'v91',
   'el-x-koine_ugnt': 'v0.34',
+  // #782: the Hebrew Bible at the shipped pin.
+  hbo_uhb: 'v3.0.0',
   'es-419_tn': 'v66',
   // D97 (#646): the Spanish set pins es-419_twl at its own release (v18 goes with es-419_tw v37).
   'es-419_twl': 'v18',

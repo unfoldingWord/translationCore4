@@ -222,11 +222,11 @@ MSYS2 zsh window of the [Windows](#windows) section.
    zsh dev-env/scripts/setup-from-pins.zsh
    ```
 
-3. Cache the 24 resources that the journeys need. Each command downloads one pinned
+3. Cache the 25 resources that the journeys need. Each command downloads one pinned
    release from Door43 through the app's own fetch path, and fails if the commit is not
-   the one given. `seed.zsh` sideloads the first 22 and writes an install record
+   the one given. `seed.zsh` sideloads the first 23 and writes an install record
    (decision D57) for each of them except the English OBS rows and the picture pack,
-   which seed without a record — 17 records in all. The last two are releases the rig
+   which seed without a record — 18 records in all. The last two are releases the rig
    lacks, which the guided fix serves as a mocked Door43:
 
    ```bash
@@ -243,6 +243,8 @@ MSYS2 zsh window of the [Windows](#windows) section.
    zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_ta v91 ce9a1bb9431317ca888e8c1f9620caa7f5fe45fd
    zsh dev-env/scripts/cache-resource.zsh unfoldingWord/en_tq v91 8be02772584ff5a5fea893a392b4f019e3efcc77
    zsh dev-env/scripts/cache-resource.zsh unfoldingWord/el-x-koine_ugnt v0.34 fc95b2b8aad08bb65ab54628ab685413a1139e97
+   # #782: the Hebrew Bible at the shipped pin, so Align opens Old Testament verses.
+   zsh dev-env/scripts/cache-resource.zsh unfoldingWord/hbo_uhb v3.0.0 74022f0fed012a3ef169886f595dd98e7b200543
    zsh dev-env/scripts/cache-resource.zsh Es-419_gl/es-419_tn v66 22f3d0c61e2ab4701cb869547de9c3c43da07208
    # D97 (#646): the Spanish set pins es-419_twl at its own release.
    zsh dev-env/scripts/cache-resource.zsh Es-419_gl/es-419_twl v18 c2d9547ec95e40c2ba085c597b127c94733feb8a
