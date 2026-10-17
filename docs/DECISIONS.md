@@ -2879,3 +2879,27 @@ public release name; `4.0.0-rc.2` is the machine version and `v4.0.0-rc.2` is th
 Where it lands: package.json and package-lock.json, README.md, docs/ROADMAP.md,
 docs/PACKAGING.md, and docs/releases/4.0.0-rc.2.md. Preparing this metadata does not
 publish a tag, release or installer.
+
+## D104 (2026-10-16, project-owner ruling) **The §8.1 segment size limit is 8 MiB. It was 4 MiB. Amends R-8.1.9 (BURRITO-SPEC 1.24).** [owner ruling relayed by Elias in the #767 session, 2026-10-16; issue #767, PR #775]
+
+Context. One book is one `book.add` action, so a whole book must fit in one segment.
+The body is JSON-encoded twice inside the segment, so each USFM backslash costs four
+bytes. Aligned USFM has many. Under 4 MiB, 11 of the 60 en_ult v91 books could not be
+added from a file (GEN, EXO, LEV, DEU, 1SA, 1KI, PSA, MAT, LUK, JHN, ACT), and QA's
+3.1 MB Leviticus left an empty book behind (#767). Sealed as one `book.add`, the
+largest en_ult v91 book, Psalms, is 6.8 MiB. [VERIFIED — `bookAddFits` and the sealed
+size of each en_ult v91 book from the rig cache, branch issue-767-usfm-too-large,
+2026-10-16]
+
+1. **The limit.** `SEGMENT_LIMIT` is 8 MiB in the app (`src/data/journal/seal.ts`) and in
+   the reference (`journal/files.mjs`). Writers refuse to seal a larger action. Readers
+   treat a larger segment as invalid, as before.
+2. **A file that is still too large** is refused in the Add-a-book dialog, in its own row,
+   and `addBook` measures the action before the server creates the book. No empty book
+   is created (#767).
+3. **Known limit, accepted.** A segment over 4 MiB is invalid to a reader of spec 1.23
+   or earlier: a build from before this change, which includes 4.0.0-rc.1. A project
+   with such a segment, opened or synced by such a build, stops with "A saved change in
+   this project is damaged". 4.0.0-rc.2 reads and writes 8 MiB segments, because no
+   4.0.0-rc.2 build went out with the 4 MiB limit. [VERIFIED — no `v4.0.0-rc.2` tag or
+   release on origin, 2026-10-16; owner: no rc.2 build was distributed, PR #780]

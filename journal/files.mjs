@@ -3,7 +3,7 @@
 // read-compat form is deleted; no released project ever contained it): every mutation
 // publishes as ONE immutable sealed action segment
 // (journal/<actorId>/segments/<encoded-ts>.action.json, container + body-string sha256,
-// 4 MiB cap), and readers read nothing else.
+// 8 MiB cap, D104), and readers read nothing else.
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
@@ -12,7 +12,7 @@ import { actorSlugError, isoInstantError, ipathError, tsError, isStr, isObj } fr
 import { Refusal } from './report.mjs';
 
 const sha256 = (s) => crypto.createHash('sha256').update(s, 'utf8').digest('hex');
-export const SEGMENT_LIMIT = 4 * 1024 * 1024; // 4 MiB (§8.1)
+export const SEGMENT_LIMIT = 8 * 1024 * 1024; // 8 MiB (§8.1, D104)
 // The container adds `{"container":1,"body":…,"sha256":"<64 hex>"}` plus the JSON escaping
 // of the body string. The body can therefore never be larger than the cap minus this
 // frame — which is what lets the writer refuse an oversize action BEFORE it pays for the
@@ -119,10 +119,10 @@ export const sealAction = (eventsIn) => {
   const body = JSON.stringify({ events });
   // cheap first: the body alone already exceeds the cap, so never pay for the container
   if (Buffer.byteLength(body, 'utf8') > SEGMENT_LIMIT - CONTAINER_FRAME)
-    throw new Error(`action segment exceeds the 4 MiB limit (§8.1)`);
+    throw new Error(`action segment exceeds the 8 MiB limit (§8.1)`);
   const seg = JSON.stringify({ container: 1, body, sha256: sha256(body) });
   if (Buffer.byteLength(seg, 'utf8') > SEGMENT_LIMIT)
-    throw new Error(`action segment exceeds the 4 MiB limit (§8.1)`);
+    throw new Error(`action segment exceeds the 8 MiB limit (§8.1)`);
   return seg;
 };
 

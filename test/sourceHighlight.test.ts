@@ -179,3 +179,51 @@ describe('tokenizePlain / matchPlainQuote (OBS story frames, #291)', () => {
     expect(plainHits(OBS_1_1, '')).toBe('');
   });
 });
+
+// #765 / #664: in Hebrew a maqaf (U+05BE) joins two words inside one quote word,
+// but the aligned ULT names each side as its own zaln word. Real rows of en_tn
+// v91 (e586762) and en_twl v91 (7cbb341) against en_ult v91 (35d2159) Genesis 1.
+describe('a maqaf-joined quote word (#765, #664)', () => {
+  const gen = (usfmjs.toJSON(fs.readFileSync('test/fixtures/en_ult/GEN-1.usfm', 'utf8')) as {
+    chapters: Record<string, Record<string, { verseObjects: Array<Record<string, unknown>> }>>;
+  }).chapters['1'];
+  const title = (v: string, quote: Array<{ word: string }> | string) => gatewayQuote(tokenizeVerse(gen[v]), quote, 1);
+
+  it('matches its separate ULT words — tN quotes (a word array)', () => {
+    expect(title('5', tnQuoteWords('וַֽ⁠יְהִי־עֶ֥רֶב וַֽ⁠יְהִי־בֹ֖קֶר'))).toBe('Then there was evening and there was morning'); // xxe6
+    expect(title('7', tnQuoteWords('וַֽ⁠יְהִי־כֵֽן'))).toBe('And it was so'); // xfx7
+  });
+
+  it('matches its separate ULT words — TWL OrigWords (a plain string)', () => {
+    expect(title('28', 'אֶת־הָ⁠אָ֖רֶץ')).toBe('the earth'); // vzz2
+  });
+
+  it('leaves quotes without a maqaf as they were', () => {
+    expect(title('5', tnQuoteWords('וַ⁠יִּקְרָ֨א אֱלֹהִ֤ים'))).toBe('And God called'); // c9yz
+    expect(title('5', tnQuoteWords('י֥וֹם אֶחָֽד'))).toBe('one day'); // xmx5
+  });
+});
+
+// #773: when the ULT orders the quote's words differently from the Hebrew, the
+// strict match finds no candidate. The fallback marks the shortest run of ULT
+// groups that names every quote word, not every group that names any of them.
+// Real en_tn v91 (e586762) rows against en_ult v91 (35d2159) Genesis.
+describe('a quote whose ULT word order differs (#773)', () => {
+  const gen = (usfmjs.toJSON(fs.readFileSync('test/fixtures/en_ult/GEN-773.usfm', 'utf8')) as {
+    chapters: Record<string, Record<string, { verseObjects: Array<Record<string, unknown>> }>>;
+  }).chapters;
+  const title = (c: string, v: string, quote: string) => gatewayQuote(tokenizeVerse(gen[c][v]), tnQuoteWords(quote), 1);
+
+  it('shows only the ULT phrase for the quote, not a repeated word elsewhere in the verse', () => {
+    expect(title('33', '5', 'אֲשֶׁר־חָנַ֥ן אֱלֹהִ֖ים אֶת־עַבְדֶּֽ⁠ךָ')).toBe('whom God has graciously given to your servant'); // mix3
+    expect(title('24', '48', 'אֶת־בַּת־אֲחִ֥י אֲדֹנִ֖⁠י')).toBe('the daughter of my master s brother'); // gyfv
+    expect(title('9', '11', 'וְ⁠לֹֽא־יִכָּרֵ֧ת כָּל־בָּשָׂ֛ר ע֖וֹד')).toBe('that never again will all flesh be cut off'); // r2u9
+  });
+
+  it('keeps a word the quote names twice, and measures a split rendering whole', () => {
+    // בֶּן twice in the quote: the run holds both instances.
+    expect(title('11', '31', 'וְ⁠אֶת־ל֤וֹט בֶּן־הָרָן֙ בֶּן־בְּנ֔⁠וֹ')).toBe('and Lot Haran s son his son s son'); // zczu
+    // תָּבֹא is "Do … let … enter": a run from "enter" to the second אַל only looks short.
+    expect(title('49', '6', 'בְּ⁠סֹדָ⁠ם֙ אַל־תָּבֹ֣א')).toBe('Do not let … enter into their council'); // h9hm
+  });
+});

@@ -1,6 +1,6 @@
 // C2.5 — the help article behind a check item, read from the INSTALLED burrito.
 import { describe, expect, it } from 'vitest';
-import { readTaArticle, readTwArticle, renderArticleBlocks } from '../src/data/articles';
+import { readTaArticle, readTaTitle, readTwArticle, renderArticleBlocks } from '../src/data/articles';
 
 const fakeApi = (files: Record<string, string>) => ({
   readIngredient: async (repo: string, ipath: string) => {
@@ -44,6 +44,22 @@ describe('tA modules — the tN groupId is a module slug (PLATFORM-NOTES #12)', 
   it('falls back to the slug when title.md is missing but the body is not', async () => {
     const partial = fakeApi({ [`${TA}::translate/x-mod/01.md`]: 'body' });
     expect((await readTaArticle(partial as never, TA, 'x-mod'))?.title).toBe('x-mod');
+  });
+
+  // #769: the rail's group headings need the title only, so the body is never read.
+  it('readTaTitle reads title.md only, probing the sections, and falls back to the slug', async () => {
+    const reads: string[] = [];
+    const counting = {
+      readIngredient: async (repo: string, ipath: string) => {
+        reads.push(ipath);
+        return api.readIngredient(repo, ipath);
+      },
+    };
+    expect(await readTaTitle(counting as never, TA, 'figs-metaphor')).toBe('Metaphor');
+    expect(await readTaTitle(counting as never, TA, 'acceptable')).toBe('Acceptable Style');
+    expect(await readTaTitle(counting as never, TA, 'figs-yousingular')).toBe('figs-yousingular');
+    expect(reads.length).toBeGreaterThan(0);
+    expect(reads.every((p) => p.endsWith('/title.md'))).toBe(true);
   });
 });
 

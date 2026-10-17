@@ -31,6 +31,7 @@ import { BlockText, ExpandableNote, Quoted, glTitleFor } from './HelpsPanel.jsx'
 import { RAIL_FILTERS, RAIL_FILTER_ORDER, hasComment, isBookmarked, railCounts } from './checkFilters.js';
 import { t } from '../i18n';
 import { helpsDir, projectDir } from './scriptStyle.js';
+import { CompareCard, sourceCardStyle } from './CompareCard.jsx';
 import { Button, Callout, Drawer, Overline, ProgressBar } from '../ds/index.js';
 
 const TOOLS = Object.keys(TOOL_SLOT);
@@ -395,7 +396,6 @@ const triageStyle = (active, tone) => ({
   borderRadius: 'var(--radius-md)',
 });
 
-const paneLabelRow = { padding: '16px 20px', borderBottom: 'var(--stroke-hair) solid var(--border-hair)' };
 const paneAbsent = (text) => (
   <p style={{ fontSize: 'var(--fs-ui-md)', color: 'var(--text-tertiary)', fontStyle: 'italic', margin: '8px 0 0' }}>{text}</p>
 );
@@ -410,7 +410,7 @@ function OrigPane({ orig, c, v }) {
     const text = verseText(orig.chapters?.[String(c)]?.[String(v)]);
     body = text ? (
       <p dir={ot ? 'rtl' : 'ltr'} lang={ot ? 'hbo' : 'el'}
-        style={{ textAlign: 'start', fontFamily: ot ? 'var(--font-hebrew)' : 'var(--font-greek)', fontSize: 'var(--fs-verse)', lineHeight: 'var(--lh-verse-md)', color: 'var(--text-scripture)', margin: '8px 0 0' }}>
+        style={{ textAlign: 'start', fontFamily: ot ? 'var(--font-hebrew)' : 'var(--font-greek)', fontSize: 'var(--fs-verse)', lineHeight: 'var(--lh-verse-md)', color: 'var(--text-scripture)', margin: '8px 0 0', maxWidth: '80ch' }}>
         {text}
       </p>
     ) : paneAbsent(t('check.paneAbsent'));
@@ -423,7 +423,7 @@ function OrigPane({ orig, c, v }) {
     body = paneAbsent(t('check.origUnavailable'));
   }
   return (
-    <div data-testid="orig-pane" style={paneLabelRow}>
+    <div data-testid="orig-pane" style={sourceCardStyle}>
       <Overline tone="muted">{t(`check.origLabel.${orig.testament}`)}</Overline>
       {body}
     </div>
@@ -475,7 +475,7 @@ function UltPane({ sources, sourcePanes, item, c, v, crossFrame }) {
     // Token stream rendered the SourceVerse way: raw text nodes with <mark>
     // on the quote's hits, so the USFM's own spacing survives.
     body = (
-      <p data-testid="ult-pane-text" dir="auto" style={{ textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse)', lineHeight: 'var(--lh-verse-md)', color: 'var(--text-scripture)', margin: '8px 0 0' }}>
+      <p data-testid="ult-pane-text" dir="auto" style={{ textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse)', lineHeight: 'var(--lh-verse-md)', color: 'var(--text-scripture)', margin: '8px 0 0', maxWidth: '80ch' }}>
         {tokens.map((tok, i) =>
           hits.has(i) ? (
             <mark key={i} data-testid="ult-hl" style={{ background: 'var(--tc-highlight-soft)', color: 'var(--text-heading)', borderRadius: 'var(--radius-xs)', padding: '0 .06em' }}>
@@ -492,7 +492,7 @@ function UltPane({ sources, sourcePanes, item, c, v, crossFrame }) {
     body = absent == null ? null : paneAbsent(absent);
   }
   return (
-    <div data-testid="ult-pane" style={{ ...paneLabelRow, background: 'var(--surface-app)' }}>
+    <div data-testid="ult-pane" style={sourceCardStyle}>
       <Overline tone="muted">
         {paneId && paneId !== 'ult' ? t('check.gatewayLabel', { name: paneId.toUpperCase() }) : t('check.ultLabel')}
       </Overline>
@@ -511,10 +511,10 @@ function StoryPane({ item, sourceStory }) {
   const tokens = React.useMemo(() => (text ? tokenizePlain(text) : []), [text]);
   const hits = React.useMemo(() => matchPlainQuote(tokens, item.contextId.quoteString ?? ''), [tokens, item]);
   return (
-    <div data-testid="story-pane" style={{ ...paneLabelRow, background: 'var(--surface-app)' }}>
+    <div data-testid="story-pane" style={sourceCardStyle}>
       <Overline tone="muted">{t('check.gatewayStoryLabel')}</Overline>
       {tokens.length ? (
-        <p data-testid="story-pane-text" dir="auto" style={{ textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse)', lineHeight: 'var(--lh-verse-md)', color: 'var(--text-scripture)', whiteSpace: 'pre-wrap', margin: '8px 0 0' }}>
+        <p data-testid="story-pane-text" dir="auto" style={{ textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-verse)', lineHeight: 'var(--lh-verse-md)', color: 'var(--text-scripture)', whiteSpace: 'pre-wrap', margin: '8px 0 0', maxWidth: '80ch' }}>
           {tokens.map((tok, i) =>
             hits.has(i) ? (
               <mark key={i} data-testid="story-hl" style={{ background: 'var(--tc-highlight-soft)', color: 'var(--text-heading)', borderRadius: 'var(--radius-xs)', padding: '0 .06em' }}>
@@ -640,7 +640,7 @@ export function TargetWords({ words, sel, setSelection, toggleWord, direction })
     // #737: the text stays selectable for copying from beside the words; its
     // highlight is the system's (base.css, data-words), not the word yellow.
     <p data-testid="check-target" data-words="target" data-drafted="1" role="group" aria-label={t('check.targetWordsLabel')} onKeyDown={onKeyDown} onBlur={onBlur}
-      style={{ direction, textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-title-lg)', lineHeight: 1.9, color: 'var(--text-scripture)', margin: '8px 0 0' }}>
+      style={{ direction, textAlign: 'start', fontFamily: 'var(--font-scripture)', fontSize: 'var(--fs-title-lg)', lineHeight: 1.9, color: 'var(--text-scripture)', margin: '8px 0 0', maxWidth: '80ch' }}>
       {words.map((w, i) => (
         <span key={i} ref={(el) => { refs.current[i] = el; }} data-testid={`tw-${i}`} data-selected={sel.has(i) ? '1' : '0'}
           role="button" aria-pressed={sel.has(i)} tabIndex={i === at ? 0 : -1}
@@ -678,7 +678,7 @@ function CheckDetail({ cs, item, title, sources, sourcePanes, sourceStory, words
   const canNext = idx < cs.items.length - 1;
 
   return (
-    <div style={{ maxWidth: 760, margin: '0 auto', padding: '28px 32px 60px' }}>
+    <div style={{ padding: '28px 32px 60px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
         <span style={{ fontSize: 'var(--fs-ui-sm)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)' }}>
           {unitLabelFor(cs.book, c)} {t('check.ref', { c, v })}
@@ -694,9 +694,9 @@ function CheckDetail({ cs, item, title, sources, sourcePanes, sourceStory, words
       </h1>
 
       {item.contextId.occurrenceNote && (
-        <div data-testid="check-note" style={{ maxWidth: '62ch', marginBottom: 8, borderRadius: 'var(--radius-lg)', padding: '16px 18px', background: 'var(--surface-warm)', border: 'var(--stroke) solid var(--tc-warn-border)' }}>
+        <div data-testid="check-note" style={{ fontSize: 'var(--fs-title-sm)', maxWidth: 'calc(80ch + 36px)', marginBottom: 8, borderRadius: 'var(--radius-lg)', padding: '16px 18px', background: 'var(--surface-warm)', border: 'var(--stroke) solid var(--tc-warn-border)' }}>
           <Overline style={{ color: 'var(--tc-warn-text-2)' }}>{t('check.whatToCheck')}</Overline>
-          <div dir={helpDir} data-testid="check-note-text" style={{ fontSize: 'var(--fs-title-sm)', letterSpacing: 'var(--track-16)', lineHeight: 'var(--lh-body)', fontWeight: 'var(--fw-medium)', color: 'var(--uw-ink)', margin: '7px 0 0' }}>
+          <div dir={helpDir} data-testid="check-note-text" style={{ fontSize: 'var(--fs-title-sm)', letterSpacing: 'var(--track-16)', lineHeight: 'var(--lh-body)', fontWeight: 'var(--fw-medium)', color: 'var(--uw-ink)', margin: '7px 0 0', maxWidth: '80ch' }}>
             {/* Keyed by item: the expanded/collapsed state must not leak from
               * one check to the next. */}
             <ExpandableNote key={idx} text={item.contextId.occurrenceNote} />
@@ -710,14 +710,14 @@ function CheckDetail({ cs, item, title, sources, sourcePanes, sourceStory, words
 
       <CheckSessionNotices cs={cs} />
 
-      {/* The compare card: original → gateway → your translation, one stacked
-        * card (mockup L1152–1187). */}
-      <div style={{ background: 'var(--surface-card)', border: 'var(--stroke) solid var(--border)', borderRadius: 'var(--radius-xl)', overflow: 'hidden', boxShadow: 'var(--shadow-card)' }}>
-        <SourcePanes cs={cs} item={item} sources={sources} sourcePanes={sourcePanes} sourceStory={sourceStory} c={c} v={v} />
-        <div style={{ padding: '16px 20px' }}>
+      {/* #762: the compare card — the source texts side by side when they fit,
+        * then "Your translation" in a card of its own. */}
+      <CompareCard
+        sources={<SourcePanes cs={cs} item={item} sources={sources} sourcePanes={sourcePanes} sourceStory={sourceStory} c={c} v={v} />}
+        translation={<>
           <Overline tone="accent">{t('check.yourTranslation')}</Overline>
           {words.length === 0 ? (
-            <p data-testid="check-target" data-drafted="0" style={{ fontSize: 'var(--fs-ui-md)', color: 'var(--text-tertiary)', fontStyle: 'italic', margin: '8px 0 0' }}>
+            <p data-testid="check-target" data-drafted="0" style={{ fontSize: 'var(--fs-ui-md)', color: 'var(--text-tertiary)', fontStyle: 'italic', margin: '8px 0 0', maxWidth: '80ch' }}>
               {t(isStorySession(cs.book) ? 'check.notDraftedFrame' : 'check.notDrafted')}
             </p>
           ) : (
@@ -726,8 +726,7 @@ function CheckDetail({ cs, item, title, sources, sourcePanes, sourceStory, words
               <p style={{ fontSize: 'var(--fs-caption)', letterSpacing: 'var(--track-12)', color: 'var(--text-tertiary)', margin: '8px 0 0' }}>{t('check.selectHint')}</p>
             </>
           )}
-        </div>
-      </div>
+        </>} />
 
       {/* #726: mark, then move on — Previous / Next sit in the marking row. */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 22, flexWrap: 'wrap' }}>
@@ -869,11 +868,15 @@ const statusOf = (it) => (it.status === 'valid' || it.status === 'invalid' ? it.
 const DOT = { valid: 'var(--tc-valid)', invalid: 'var(--tc-invalid)', todo: 'var(--text-tertiary)' };
 
 /** Sort modes per tool (mockup L1971–2000): tW groups by term or lists by
- * verse; tN lists by verse or groups by category. */
+ * verse; tN lists by verse or groups by figure — one group per tA module
+ * (#769, owner Q4). */
 const SORTS = {
   translationWords: { modes: ['byWord', 'byVerse'], default: 'byWord' },
-  translationNotes: { modes: ['byVerse', 'byCategory'], default: 'byVerse' },
+  translationNotes: { modes: ['byVerse', 'byFigure'], default: 'byVerse' },
 };
+// #769: the grouped sorts fold; the one-group verse list does not.
+const DISCLOSURE = '›'; // ›, turned 90° when open (ds Accordion)
+const FOLDING_SORTS = new Set(['byWord', 'byFigure']);
 // The session can mount before it has a tool (#583): until its reset effect
 // runs, the rail shows the tool's default, so the first rows it renders stay.
 const shownSort = (sortMode, tool) => sortMode ?? SORTS[tool]?.default;
@@ -893,15 +896,47 @@ export function railGroupsOf({ items, sortMode, book, label = bookName(book) }) 
     const pz = partsOf(z);
     return refNum(pa.c) - refNum(pz.c) || refNum(pa.v) - refNum(pz.v);
   });
-  if (sortMode === 'byWord') {
-    const terms = [...new Set(rows.map((r) => r.it.contextId.groupId))].sort((a, z) => a.localeCompare(z));
-    return terms.map((term) => ({ label: term, rows: rows.filter((r) => r.it.contextId.groupId === term) }));
-  }
-  if (sortMode === 'byCategory') {
-    const cats = [...new Set(rows.map((r) => r.it.category))];
-    return cats.map((cat) => ({ label: cat, rows: rows.filter((r) => r.it.category === cat) }));
-  }
-  return [{ label, rows }];
+  const byGroupId = (keys) =>
+    keys.map((key) => ({ key, label: key, rows: rows.filter((r) => r.it.contextId.groupId === key) }));
+  if (sortMode === 'byWord')
+    return byGroupId([...new Set(rows.map((r) => r.it.contextId.groupId))].sort((a, z) => a.localeCompare(z)));
+  // #769: one group per tA module, in the verse order of its first note.
+  if (sortMode === 'byFigure') return byGroupId([...new Set(rows.map((r) => r.it.contextId.groupId))]);
+  return [{ key: '', label, rows }];
+}
+
+/** The roving position after `step` from `pos` in a list of `n`: Home and
+ * End jump, a step wraps, and no position yet starts at the first. */
+const rovePos = (pos, step, n) =>
+  step === -Infinity ? 0 : step === Infinity ? n - 1 : pos < 0 ? 0 : (pos + step + n) % n;
+const stepOf = (key) =>
+  key === 'ArrowDown' ? 1 : key === 'ArrowUp' ? -1 : key === 'Home' ? -Infinity : key === 'End' ? Infinity : 0;
+
+/** #769: keys on a fold heading. Up and Down go to the stop before or after it
+ * in screen order — a heading takes focus, a row is selected. Enter and Space
+ * are the button's own. */
+function headingKeyDown(e, heading, list, onSelect) {
+  const step = stepOf(e.key);
+  if (!step) return;
+  e.preventDefault();
+  const stops = [...list.querySelectorAll('[data-rail-stop]')];
+  const to = stops[rovePos(stops.indexOf(heading), step, stops.length)];
+  to.focus();
+  const index = to.getAttribute('data-rail-index');
+  if (index !== null) onSelect(Number(index));
+}
+
+/** #769: Left on a row (Right in a right-to-left rail) moves focus to its
+ * group's heading, the tree pattern; it selects nothing. */
+function rowToHeading(e, row, list) {
+  const rtl = (list.closest('[dir]')?.getAttribute('dir') || document.documentElement.dir) === 'rtl';
+  if (e.key !== (rtl ? 'ArrowRight' : 'ArrowLeft') || !row?.hasAttribute('data-rail-index')) return false;
+  const key = row.closest('[data-testid="rail-group-rows"]')?.getAttribute('data-group');
+  const heading = key == null ? null : list.querySelector(`[data-testid="rail-group"][data-group=${JSON.stringify(key)}]`);
+  if (!heading) return false;
+  e.preventDefault();
+  heading.focus();
+  return true;
 }
 
 /** #42: the rail's item list is one Tab stop — the Switcher roving pattern
@@ -910,24 +945,40 @@ export function railGroupsOf({ items, sortMode, book, label = bookName(book) }) 
  * the selection in the order the rail shows, and focus moves with it. A book
  * can have hundreds of items, and Tab must not walk each one. `current` is the
  * selected item (cs.activeIndex), as Switcher passes its value: when a filter
- * hides it, Up or Down selects the focused first row rather than skip it. */
+ * hides it, Up or Down selects the focused first row rather than skip it.
+ * #769: the fold headings are reached from a row with Left, and move on with
+ * Up and Down; on a row the keys are unchanged (review S2). */
 export function railKeyDown(order, current, onSelect, listRef) {
   return (e) => {
-    const step = e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1
-      : e.key === 'Home' ? -Infinity : e.key === 'End' ? Infinity : 0;
-    if (!step || !order.length) return;
+    const list = listRef.current;
+    const focused = list?.contains(document.activeElement) ? document.activeElement : null;
+    if (focused?.getAttribute('data-testid') === 'rail-group') return headingKeyDown(e, focused, list, onSelect);
+    if (focused && rowToHeading(e, focused, list)) return undefined;
+    const step = stepOf(e.key);
+    if (!step || !order.length) return undefined;
     e.preventDefault();
-    const pos = order.indexOf(current);
-    const nextPos = step === -Infinity ? 0 : step === Infinity ? order.length - 1
-      : pos < 0 ? 0 : (pos + step + order.length) % order.length;
-    const next = order[nextPos];
+    const next = order[rovePos(order.indexOf(current), step, order.length)];
     onSelect(next);
     listRef.current?.querySelector(`[data-rail-index="${next}"]`)?.focus();
   };
 }
 
+/** #769: resolved/total per group, over all of the group's items (the rail
+ * progress rule, isDecided), whatever the filter shows. */
+const groupStatsOf = (items) => {
+  const stats = new Map();
+  for (const it of items) {
+    const key = it.contextId.groupId;
+    const st = stats.get(key) ?? { decided: 0, total: 0 };
+    st.total += 1;
+    if (isDecided(it)) st.decided += 1;
+    stats.set(key, st);
+  }
+  return stats;
+};
+
 function CheckRail({ cs, label, filter, setFilter, sortMode, setSortMode, onSelect, titleOf, listRef }) {
-  const { actions } = useApp();
+  const { s, actions } = useApp();
   const decided = isDecided;
   const indexed = cs.items.map((it, i) => ({ it, i }));
   // #50: five chips — All, To do, Invalid, Bookmarked, Commented — counted and
@@ -937,8 +988,31 @@ function CheckRail({ cs, label, filter, setFilter, sortMode, setSortMode, onSele
   const sorts = SORTS[cs.tool];
   const story = isStorySession(cs.book);
   const groups = railGroupsOf({ items: filtered, tool: cs.tool, sortMode, book: cs.book, label });
-  const order = groups.flatMap((grp) => grp.rows.map(({ i }) => i));
+  // #769: a grouped sort folds by group, per client (owner Q2). The active
+  // item's group is always open (Q1), and Up/Down walk only the open rows.
+  const folds = FOLDING_SORTS.has(sortMode);
+  const foldKey = (key) => `${cs.tool}|${key}`;
+  const activeKey = cs.items[cs.activeIndex]?.contextId.groupId;
+  const isOpen = (grp) => !folds || grp.key === activeKey || !s.railFolded?.[foldKey(grp.key)];
+  const order = groups.filter(isOpen).flatMap((grp) => grp.rows.map(({ i }) => i));
   const tabStop = order.includes(cs.activeIndex) ? cs.activeIndex : order[0];
+  // Review S1: with every shown group folded no row renders, so the first
+  // heading is the list's one Tab stop instead.
+  const headingStop = folds && !order.length ? groups[0]?.key : undefined;
+  const stats = React.useMemo(() => groupStatsOf(cs.items), [cs.items]);
+  const groupLabel = (grp) =>
+    sortMode !== 'byFigure' ? grp.label : grp.key ? (cs.groupTitles?.[grp.key] ?? grp.key) : t('check.group.other');
+  // Headings show the slug until the tA titles arrive; the read never holds the rail.
+  React.useEffect(() => {
+    if (sortMode === 'byFigure') actions.loadGroupTitles();
+  }, [sortMode, cs.seq]);
+  const groupCount = (key) => `${stats.get(key)?.decided ?? 0}/${stats.get(key)?.total ?? 0}`;
+  const foldable = groups.filter((grp) => grp.key !== activeKey);
+  const allFolded = foldable.length > 0 && foldable.every((grp) => s.railFolded?.[foldKey(grp.key)]);
+  const foldAll = () =>
+    allFolded
+      ? actions.setRailFolded(groups.map((grp) => foldKey(grp.key)), false)
+      : actions.setRailFolded(foldable.map((grp) => foldKey(grp.key)), true);
 
   return (
     <aside data-testid="check-rail" data-resource={cs.resource?.repoPath} style={{ width: 'var(--rail-width-wide)', flex: 'none', background: 'var(--surface-card)', borderInlineEnd: 'var(--stroke-hair) solid var(--border)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -971,6 +1045,11 @@ function CheckRail({ cs, label, filter, setFilter, sortMode, setSortMode, onSele
                 {t(`check.sort.${story && m === 'byVerse' ? 'byFrame' : m}`)}
               </button>
             ))}
+            {folds && groups.length > 1 && (
+              <button type="button" data-trim="cap" data-testid="rail-fold-all" onClick={foldAll} style={{ ...railChip(false), marginInlineStart: 'auto' }}>
+                {t(allFolded ? 'check.unfoldAll' : 'check.foldAll')}
+              </button>
+            )}
           </div>
         )}
         {/* #15: the dropped count travels with the progress it qualifies. */}
@@ -983,15 +1062,29 @@ function CheckRail({ cs, label, filter, setFilter, sortMode, setSortMode, onSele
       </div>
       <div data-testid="check-list" ref={listRef} onKeyDown={railKeyDown(order, cs.activeIndex, onSelect, listRef)} style={{ flex: 1, overflow: 'auto', padding: 14, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
         {groups.map((grp) => (
-          <div key={grp.label}>
-            <Overline tone="muted" as="p" style={{ margin: '0 0 6px' }}>{grp.label}</Overline>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div key={grp.key}>
+            {folds ? (
+              // #769: the disclosure pattern of ds Accordion — a row button with
+              // aria-expanded, a › that turns when open, and the count on the right.
+              <button type="button" data-testid="rail-group" data-group={grp.key} data-rail-stop aria-expanded={isOpen(grp)} tabIndex={grp.key === headingStop ? 0 : -1}
+                onClick={() => actions.setRailFolded([foldKey(grp.key)], isOpen(grp))}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', margin: '0 0 6px', padding: '4px 2px', border: 0, background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'start' }}>
+                <span aria-hidden="true" style={{ color: 'var(--text-tertiary)', transform: isOpen(grp) ? 'rotate(90deg)' : 'none', transition: 'transform var(--dur-hover) var(--ease-standard)' }}>{DISCLOSURE}</span>
+                <Overline tone="muted" style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>{groupLabel(grp)}</Overline>
+                <span data-testid="rail-group-count" style={{ fontSize: 'var(--fs-badge)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                  {groupCount(grp.key)}
+                </span>
+              </button>
+            ) : (
+              <Overline tone="muted" as="p" style={{ margin: '0 0 6px' }}>{grp.label}</Overline>
+            )}
+            {isOpen(grp) && <div data-testid="rail-group-rows" data-group={grp.key} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {grp.rows.map(({ it, i }) => {
                 const st = statusOf(it);
                 const activeRow = i === cs.activeIndex;
                 return (
                   <button key={`${it.contextId.checkId}-${i}`} type="button" data-i="choice" data-tone="accent" data-selected={activeRow ? 'true' : undefined} onClick={() => onSelect(i)}
-                    data-rail-index={i} tabIndex={i === tabStop ? 0 : -1} aria-current={activeRow ? 'true' : undefined}
+                    data-rail-index={i} data-rail-stop tabIndex={i === tabStop ? 0 : -1} aria-current={activeRow ? 'true' : undefined}
                     title={`${locatorOf(it.contextId.reference)} · ${it.contextId.groupId}`}
                     data-ref={locatorOf(it.contextId.reference)}
                     data-check-id={it.contextId.checkId}
@@ -1025,7 +1118,7 @@ function CheckRail({ cs, label, filter, setFilter, sortMode, setSortMode, onSele
                   </button>
                 );
               })}
-            </div>
+            </div>}
           </div>
         ))}
         {filtered.length === 0 && (
@@ -1323,7 +1416,12 @@ function CheckSession() {
             toggleWord={toggleWord} setSelection={setSel} markValid={markValid} markInvalid={markInvalid} markTodo={markTodo}
             onBookmark={toggleBookmark} onComment={setComment}
             onOpenAcademy={() => setAcademyOpen(true)}
-            onNav={(i) => actions.setCheckIndex(i)} />
+            onNav={(i) => {
+              // #769: Next/Previous into a folded group unfolds it.
+              const key = `${tool}|${cs.items[i]?.contextId.groupId}`;
+              if (FOLDING_SORTS.has(shownSort(sortMode, tool)) && s.railFolded?.[key]) actions.setRailFolded([key], false);
+              actions.setCheckIndex(i);
+            }} />
         )}
       </main>
       {academyOpen && (

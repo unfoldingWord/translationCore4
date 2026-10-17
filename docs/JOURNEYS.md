@@ -189,6 +189,8 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
   flow with a conflict review is #365, 4.1.0). The tC3 import review does not look up resource
   versions by itself: "Look up on Door43" is an explicit step, and it asks to turn the internet
   on while the internet is off (D88 point 5, D95). A local import sends no external request.
+  A project with no pins (c, and a d burrito with no `checking/resources.json`) gets the installed
+  sources at its first open: the pins that New Bible writes (#766). A project with pins keeps them.
 - MUST NOT (all): create a project or write anything on disk from damaged or incomplete input;
   leave a partial repository after a failed write (the shell deletes it).
 - Proof: `e2e/j09-import.spec.ts`, tags `@inc8 @J9`: one shell block (#361), one block per
@@ -313,7 +315,8 @@ MUST NOT · proof · owner. Entries for shipped journeys take their end state fr
      Home.
 - End state: one new git repository at `_local_/_local_/<name>`. Its files and its `HEAD` are the
   same as Door43 `main`, and its `origin` is the Door43 repository. The project has a new actor id,
-  because identity is per path (D53(c)). Its card shows "Sync with Door43" (#678). The first sync
+  because identity is per path (D53(c)). A repository with no pins gets the installed sources at
+  its first open, as in J9 (#766). Its card shows "Sync with Door43" (#678). The first sync
   needs no other step.
 - MUST NOT: add a project when a refusal occurs. The refusals are:
   - one journal file on Door43 fails the validator (G2, `sync.incoming-invalid`);

@@ -19,8 +19,9 @@ import { captureDownload } from './helpers/export';
 import { importFixture } from './helpers/import';
 import { pickOption } from './helpers/dropdown';
 import { assertNoRepoCreated, MANIFEST_DIR, readManifest, seedEventsOf, TC3_DCS_TAGS } from '../test/helpers/import';
-import { SEEDED_PROJECT, lastCommitMessage, readDecisionFile, readProjectPins, rigRepo } from './helpers/rig';
+import { SEEDED_PROJECT, lastCommitMessage, readDecisionFile, readProjectPins, rigRepo, sideloadedIngredient } from './helpers/rig';
 import { recordExternal } from './helpers/externalRequests';
+import { gateOff, shot } from './helpers/door43Share';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CONFORMANCE = path.resolve(HERE, '..', 'conformance');
@@ -72,6 +73,21 @@ const expectTypedName = (stored: Buffer | Uint8Array, source: Buffer | Uint8Arra
 /** A name no earlier run left on the rig: the shell refuses an existing folder. */
 const fresh = (base: string) => `${base} ${Date.now()}`;
 const abbrOf = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+
+/** #766: the open of a project with no pins writes the creation choice — the
+ * installed English suite on both sets, with its source panes — and Understand
+ * shows those panes. Answers the pins on disk. */
+async function expectCreationPins(page: Page, abbr: string) {
+  await expect(page.getByTestId('source-tab-ult')).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId('no-source-panes')).toHaveCount(0);
+  await expect.poll(() => readProjectPins(abbr).languageSets !== undefined, { timeout: 20_000 }).toBe(true);
+  const pins = readProjectPins(abbr) as ReturnType<typeof readProjectPins> & { extraScripture: Array<{ id: string }> };
+  expect(pins.languageSets.primary.gatewayLanguage).toEqual({ languageId: 'en', owner: 'unfoldingWord' });
+  expect(pins.languageSets.fallback.gatewayLanguage).toEqual({ languageId: 'en', owner: 'unfoldingWord' });
+  expect(pins.languageSets.primary.translationNotes).toMatchObject({ repoPath: 'git.door43.org/unfoldingWord/en_tn', version: 'v91' });
+  expect(pins.extraScripture.map((pane) => pane.id)).toContain('ult');
+  return pins;
+}
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('tc4.e2e.fakeImport', '1'));
@@ -592,11 +608,90 @@ test.describe('J9 — a facilitator imports existing work', () => {
       await testInfo.attach('j09-add-book-usfm.json', { path: artifactPath, contentType: 'application/json' });
     });
 
+    // #767: QA's file, the rig's own en_ult Leviticus (3.1 MB aligned USFM), used
+    // to fail on Add with an internal message and leave an empty book that blocked
+    // a retry. D104 raised the §8.1 cap to 8 MiB, so it now adds whole. A file over
+    // 8 MiB once saved is still refused in its row: en_ult Genesis with Exodus's
+    // chapters appended as Genesis 51-90 (8.7 MB of real aligned USFM).
+    test('add a book from a USFM file: en_ult Leviticus is added whole, a file too large to save is refused in its row, and no empty book is created (#767)', { tag: ['@inc8', '@J9'] }, async ({ page }, testInfo) => {
+      test.setTimeout(240_000);
+      const name = fresh('Jonás grande');
+      const repo = rigRepo(abbrOf(name));
+      const ult = (book: string) => sideloadedIngredient('en_ult', `${book}.usfm`);
+      const exodusAsGenesis = ult('EXO').slice(ult('EXO').indexOf('\\c 1')).replace(/\\c (\d+)/g, (_, n) => `\\c ${Number(n) + 50}`);
+      const tooLarge = { name: 'GEN-EXO.usfm', mimeType: 'text/plain', buffer: Buffer.from(ult('GEN') + exodusAsGenesis) };
+      await importFixture(page, path.join(MANIFEST_DIR, 'usfm', '32-JON.usfm'), { kind: 'usfm', edits: { name, language: 'es-419' } });
+      await expect(page.getByTestId('import-toast')).toBeVisible();
+      await page.goto('/');
+      const card = page.getByTestId(`project-_local_/_local_/${abbrOf(name)}`);
+      await card.getByRole('button', { name: 'Add a book' }).click();
+      await page.getByTestId('ab-usfm-option').click();
+      const rows = page.getByTestId('ab-usfm-file');
+      await page.getByTestId('ab-usfm-input').setInputFiles([{ name: 'LEV.usfm', mimeType: 'text/plain', buffer: Buffer.from(ult('LEV')) }, tooLarge]);
+      await expect(rows).toHaveCount(2);
+      await expect(rows.filter({ hasText: 'LEV.usfm' })).toHaveAttribute('data-status', 'valid');
+      const big = rows.filter({ hasText: 'GEN-EXO.usfm' });
+      await expect(big).toHaveAttribute('data-status', 'refused');
+      await expect(big).toContainText('Genesis is too large for the app to save as one book, so it cannot be added.');
+      const shot = testInfo.outputPath('j09-usfm-too-large.png');
+      await page.screenshot({ path: shot, animations: 'disabled' });
+      await testInfo.attach('j09-usfm-too-large', { path: shot, contentType: 'image/png' });
+      // Add writes Leviticus whole; Genesis is neither on Home nor on disk.
+      await page.getByTestId('ab-usfm-add').click();
+      await expect(page.getByTestId('ab-usfm')).toHaveCount(0, { timeout: 120_000 });
+      await expect(card.getByRole('button', { name: /Leviticus/ })).toBeVisible();
+      await expect(card.getByRole('button', { name: /Genesis/ })).toHaveCount(0);
+      const lev = fs.readFileSync(path.join(repo, 'ingredients', 'LEV.usfm'), 'utf8');
+      expect(lev).toContain('\\c 27');
+      expect(lev).toContain('Yahweh');
+      expect(fs.existsSync(path.join(repo, 'ingredients', 'GEN.usfm'))).toBe(false);
+      expect(lastCommitMessage(abbrOf(name))).toBe('Add LEV (tC4)');
+    });
+
     // #485: an imported project's pin file is the EMPTY document, and a
     // checking-language change built on it used to journal a primary-only pin
     // state that no later checkpoint or open could project — the project was
     // locked out for good. The change must pin BOTH sets, and the project must
     // keep opening.
+    test('USFM #766: offline, the first open pins the installed sources; Understand shows them; Add a book asks nothing and keeps them', { tag: ['@inc8', '@J9'] }, async ({ page }, testInfo) => {
+      test.setTimeout(240_000);
+      await gateOff();
+      const name = fresh('Tito 766');
+      const abbr = abbrOf(name);
+      const card = page.getByTestId(`project-_local_/_local_/${abbr}`);
+      await test.step('import Titus with the internet off: no source-text step, and the committed pin file is the empty document', async () => {
+        await importFixture(page, path.join(MANIFEST_DIR, 'usfm', '57-TIT.usfm'), { kind: 'usfm', edits: { name, language: 'es-419' } });
+        await expect(page.getByTestId('import-toast')).toBeVisible();
+        expect(readProjectPins(abbr)).toEqual({ schemaVersion: 2 });
+      });
+      let pins: Awaited<ReturnType<typeof expectCreationPins>>;
+      await test.step('open it: the creation pins are written, and Understand shows the ULT pane, not "no source texts"', async () => {
+        await card.getByRole('button', { name: /Titus/ }).click();
+        await expect(page.getByRole('heading', { name: /^Titus \d+$/ })).toBeVisible({ timeout: 120_000 });
+        pins = await expectCreationPins(page, abbr);
+        await expect(page.getByTestId('home-open-error')).toHaveCount(0);
+        await shot(page, testInfo, 'usfm-import-source-panes');
+        await page.getByRole('tab', { name: 'Check', exact: true }).click();
+        await expect(page.getByTestId('open-community-checking')).toBeVisible({ timeout: 60_000 });
+        await expect(page.getByText('No resources pinned', { exact: false })).toHaveCount(0);
+        await shot(page, testInfo, 'usfm-import-check');
+      });
+      await test.step('Add a book from a USFM file: no source-text step; the pins stay as they are and Jonah shows the same panes', async () => {
+        await page.goto('/');
+        await card.getByRole('button', { name: 'Add a book' }).click();
+        await page.getByTestId('ab-usfm-option').click();
+        await page.getByTestId('ab-usfm-input').setInputFiles([path.join(MANIFEST_DIR, 'usfm', '32-JON.usfm')]);
+        await expect(page.getByTestId('ab-usfm-file')).toHaveAttribute('data-status', 'valid');
+        await page.getByTestId('ab-usfm-add').click();
+        await expect(page.getByTestId('ab-usfm')).toHaveCount(0, { timeout: 60_000 });
+        await card.getByRole('button', { name: /Jonah/ }).click();
+        await expect(page.getByRole('heading', { name: /^Jonah \d+$/ })).toBeVisible({ timeout: 120_000 });
+        await expect(page.getByTestId('source-tab-ult')).toBeVisible({ timeout: 60_000 });
+        expect(readProjectPins(abbr)).toEqual(pins);
+        await shot(page, testInfo, 'usfm-add-book-source-panes');
+      });
+    });
+
     test('USFM #485: a checking-language change on an imported project pins both language sets, and the project reopens', { tag: ['@inc8', '@J9', '@J13'] }, async ({ page }) => {
       const name = fresh('Tito 485');
       const source = path.join(MANIFEST_DIR, 'usfm', '57-TIT.usfm');
@@ -608,10 +703,10 @@ test.describe('J9 — a facilitator imports existing work', () => {
         await expect(page.getByTestId('import-toast')).toBeVisible({ timeout: 60_000 });
         expect(pinsOnDisk()).toEqual({ schemaVersion: 2 });
       });
-      await test.step('open it and change the checking language to English from Project Settings (#412 flow)', async () => {
-        await page.goto('/');
-        await page.getByTestId(`project-_local_/_local_/${abbrOf(name)}`).getByRole('button', { name: /Titus/ }).click();
-        await expect(page.getByRole('heading', { name: /^Titus \d+$/ })).toBeVisible({ timeout: 120_000 });
+      // #766: an open pins the installed suite. Settings reads the pins before
+      // its choice opens the project, so English is still a change there; the
+      // change then waits for the open's pin write (pinsBackfillSettled).
+      await test.step('from Home, change the checking language to English in Project Settings (#412 flow)', async () => {
         await page.goto('/');
         await page.getByTestId(`project-_local_/_local_/${abbrOf(name)}`).getByRole('button', { name: 'Settings' }).click();
         await page.getByTestId('settings-gateway-en::unfoldingWord').click();
@@ -703,7 +798,25 @@ test.describe('J9 — a facilitator imports existing work', () => {
         for (const [rel, bytes] of journal) expect(stored.get(rel)?.equals(Buffer.from(bytes)), rel).toBe(true);
         const after = [...stored].filter(([rel]) => rel.startsWith('ingredients/')).map(([rel, bytes]) => [rel.slice('ingredients/'.length), bytes.toString('utf8')] as [string, string]);
         expect(seedEventsOf(after).length).toBe(seedsBefore);
+        // #766: a burrito that carries pins keeps them as they are
+        expect(stored.get('ingredients/checking/resources.json')?.equals(Buffer.from(exported['ingredients/checking/resources.json'])), 'resources.json').toBe(true);
       });
+    });
+
+    test('Scripture Burrito #766: offline, a foreign burrito with no pin file gets the installed sources at its first open', { tag: ['@inc8', '@J9'] }, async ({ page }, testInfo) => {
+      test.setTimeout(240_000);
+      await gateOff();
+      const name = fresh('Jonás ajeno');
+      const abbr = abbrOf(name);
+      await importFixture(page, path.join(MANIFEST_DIR, 'burrito', 'foreign'), { kind: 'burrito', edits: { name } });
+      await expect(page.getByTestId('import-toast')).toBeVisible();
+      expect(fs.existsSync(path.join(rigRepo(abbr), 'ingredients', 'checking', 'resources.json'))).toBe(false);
+      await page.goto('/');
+      await page.getByTestId(`project-_local_/_local_/${abbr}`).getByRole('button', { name: /Jonah/ }).click();
+      await expect(page.getByRole('heading', { name: /^Jonah \d+$/ })).toBeVisible({ timeout: 120_000 });
+      await expectCreationPins(page, abbr);
+      await expect(page.getByTestId('home-open-error')).toHaveCount(0);
+      await shot(page, testInfo, 'burrito-import-source-panes');
     });
   });
 });

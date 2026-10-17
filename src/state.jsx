@@ -10,7 +10,7 @@ import { ServerApi } from './data/serverApi';
 // (test/noBypass.test.ts enforces it); read-only surfaces use ProjectReader.
 import { StaleWriteError } from './data/httpStore';
 import { STORY_FILE, refusalCodeOf } from './data/journal/runtime';
-import { JournalingStore, ProjectReader } from './data/journal/journalingStore';
+import { JournalingStore, ProjectReader, bookAddFits } from './data/journal/journalingStore';
 import { parseVerseKey } from './data/journal/verseConflicts';
 import { SaveScheduler } from './data/saveScheduler';
 import { StoryScheduler, normalizeStoryUnit } from './data/storyScheduler';
@@ -43,7 +43,7 @@ import {
   textKeyOf,
   twArticlesOf,
 } from './data/derive';
-import { readTwArticle, readTaArticle } from './data/articles';
+import { readTwArticle, readTaArticle, readTaTitle } from './data/articles';
 import { revalidateAgainstDraft, resolutionWarning } from './data/revalidate';
 import { bootstrapVerse, cardsInVerseOrder, inVerseOrder, linkWord, unlinkWord, moveWord, mergeAlignments, splitAlignment, stampTargetVerse, alignmentIsStale, reflowAlignment, settleDone, markDone } from './data/align/edit';
 import { linksFor, rebindSuggestions, sessionInputFor, trainingVerseOf, trainingVersesFor } from './data/align/suggest';
@@ -578,6 +578,7 @@ const initial = () => ({
   storyFrame: null,
   draftUnits: {}, // repoPath -> 'section' | 'verse'
   alignSuggestions: {}, // #1: repoPath -> true when the suggestions switch is on (per client, never in the project)
+  railFolded: {}, // #769: 'tool|groupId' -> true for a folded Check rail group (per client, any project)
   // #1: the suggestion engine's state for the open project — status 'off' |
   // 'reading' | 'ready' | 'none' | 'error'; `testament` names the model the
   // status is about (one model per original language, owner ruling 2026-09-12).
@@ -872,6 +873,20 @@ async function readTextIngredient(apiClient, repoPath, ipath) {
     if (isNotFoundError(error)) return null;
     throw error;
   }
+}
+
+/** #769: one title read per (tA pin, module) for the app's life — a pinned
+ * release does not change. A failed read is the slug, not cached, so a later
+ * session asks again. */
+const taTitles = new Map();
+function taTitleOf(apiClient, repo, slug) {
+  const key = `${repo}|${slug}`;
+  if (!taTitles.has(key))
+    taTitles.set(key, readTaTitle(apiClient, repo, slug).catch(() => {
+      taTitles.delete(key);
+      return slug;
+    }));
+  return taTitles.get(key);
 }
 
 async function readHelpArticle(apiClient, kind, set, category, slug) {
@@ -2980,6 +2995,11 @@ async function classifyUsfmFiles(files, existing) {
       out.push({ ...entry, code, refusal: t('addBook.usfmExists', { name: bookName(code) }) });
       continue;
     }
+    // #767: refused here, so Add book never creates a book it cannot save.
+    if (!bookAddFits(code, usfm)) {
+      out.push({ ...entry, code, refusal: t('addBook.usfmTooLarge', { name: bookName(code) }) });
+      continue;
+    }
     out.push({ ...entry, code, usfm });
   }
   return out;
@@ -3009,6 +3029,28 @@ async function seedInitialUsfm({ store, code, projName }) {
 }
 export const __seedInitialUsfmForTests = (...args) => seedInitialUsfm(...args);
 
+/** #766: a project that holds no pin gets the pins of the creation choice (New
+ * Bible's installed suite), so no project opens unpinned. A USFM import, a
+ * burrito import with no pin file, or a Door43 repository with none ends here
+ * (an import commits the EMPTY document, #485). A project that holds pins keeps
+ * them. The write expects the md5 of a fresh read, so a racing writer wins; a
+ * failed write leaves the document as read. Answers the pins the open goes on with. */
+const holdsPin = (pins) => Boolean(pins?.languageSets || pins?.resources || pins?.extraScripture);
+async function pinCreationChoice(store, actions, pins, stillCurrent) {
+  if (holdsPin(pins) || !stillCurrent()) return pins;
+  try {
+    const choice = await actions.importBasePins();
+    const { value, md5 } = await store.readResourcesWithMd5();
+    if (holdsPin(value) || !stillCurrent()) return value;
+    await store.writeResources(choice, md5);
+    return await store.readResources();
+  } catch (error) {
+    console.error(`the creation pins were not written: ${String(error?.message || error)}`);
+    // A refused write means another writer won: the open goes on with its pins.
+    return store.readResources().catch(() => pins);
+  }
+}
+
 /** Returns the outcome of the pins read, `{ pins, failed }` (never rejects), so
  * a story open can wait for it (#312): `pins` is the document or null when
  * absent; `failed` marks a rejected read, whose pins are unknown. The
@@ -3019,7 +3061,7 @@ function loadProjectPins({ store, repoPath, storeRef, stateRef, actions, dispatc
   const seq = stateRef.current.projectPinsSeq;
   const stillCurrent = () =>
     storeRef.current === store && stateRef.current.project?.repoPath === repoPath && stateRef.current.projectPinsSeq === seq;
-  const read = store.readResources();
+  const read = store.readResources().then((pins) => pinCreationChoice(store, actions, pins, stillCurrent));
   const settled = read
     .then(async (pins) => {
       if (!stillCurrent()) return;
@@ -3880,7 +3922,7 @@ export function AppProvider({ children }) {
   }
 
   async function readHomeSettings() {
-    const fallback = { lastUsed: {}, lastEdit: null, draftUnits: {}, alignSuggestions: {}, obsStoryByProject: {}, obsRecentByProject: {}, placeByProject: {} };
+    const fallback = { lastUsed: {}, lastEdit: null, draftUnits: {}, alignSuggestions: {}, railFolded: {}, obsStoryByProject: {}, obsRecentByProject: {}, placeByProject: {} };
     try {
       // A pending Resume record is written before the document is read, so
       // a Home visit within the debounce never reads an older record.
@@ -3891,6 +3933,7 @@ export function AppProvider({ children }) {
         lastEdit: cs.lastEdit || null,
         draftUnits: cs.draftUnits || {},
         alignSuggestions: cs.alignSuggestions || {},
+        railFolded: cs.railFolded || {},
         obsStoryByProject: cs.obsStoryByProject || {},
         obsRecentByProject: cs.obsRecentByProject || {},
         placeByProject: cs.placeByProject || {},
@@ -3916,7 +3959,7 @@ export function AppProvider({ children }) {
     try {
       const reader = new ProjectReader({ api });
       const projects = await reader.listProjects();
-      const { lastUsed, lastEdit: persistedLastEdit, draftUnits, alignSuggestions, obsStoryByProject, obsRecentByProject, placeByProject } = await readHomeSettings();
+      const { lastUsed, lastEdit: persistedLastEdit, draftUnits, alignSuggestions, railFolded, obsStoryByProject, obsRecentByProject, placeByProject } = await readHomeSettings();
       let lastEdit = persistedLastEdit;
       // Never regress the in-session record to an older persisted one (a rig
       // without client settings keeps the session's record).
@@ -3935,7 +3978,7 @@ export function AppProvider({ children }) {
       // performProjectOpen is left alone (projects was already an array).
       dispatch({
         type: 'set',
-        patch: { projects, lastEdit: resumable ? lastEdit : null, draftUnits, alignSuggestions, obsStoryByProject: mergeObsStoryHistory(obsStoryByProject), obsRecentByProject: { ...(stateRef.current.obsRecentByProject || {}), ...obsRecentByProject }, placeByProject: (placesRef.current = mergePlaces(placesRef.current ?? stateRef.current.placeByProject, placeByProject)), ...(stateRef.current.projects === null ? { bookError: null } : {}) },
+        patch: { projects, lastEdit: resumable ? lastEdit : null, draftUnits, alignSuggestions, railFolded: { ...railFolded, ...stateRef.current.railFolded }, obsStoryByProject: mergeObsStoryHistory(obsStoryByProject), obsRecentByProject: { ...(stateRef.current.obsRecentByProject || {}), ...obsRecentByProject }, placeByProject: (placesRef.current = mergePlaces(placesRef.current ?? stateRef.current.placeByProject, placeByProject)), ...(stateRef.current.projects === null ? { bookError: null } : {}) },
       });
     } catch (e) {
       // Catch-to-absence sweep (D30): projects stays null (unknown), so the
@@ -4187,6 +4230,40 @@ export function AppProvider({ children }) {
         if (on) a.trainAlignSuggestions();
         else a.stopAlignSuggestions();
         return updateClientSettings((cs) => ({ ...cs, alignSuggestions }));
+      },
+
+      /** #769 (owner Q2): fold or unfold Check rail groups, keyed `tool|groupId`.
+       * Per client and for any project, in the client-settings record. An
+       * unfold is stored as false, so a later Home load cannot bring back a
+       * fold this session already undid. */
+      setRailFolded: (keys, folded) => {
+        if (!keys.length) return undefined;
+        const apply = (map) => {
+          const next = { ...(map || {}) };
+          for (const key of keys) next[key] = folded;
+          return next;
+        };
+        dispatch({ type: 'set', patch: { railFolded: apply(stateRef.current.railFolded) } });
+        return updateClientSettings((cs) => ({ ...cs, railFolded: apply(cs.railFolded) }));
+      },
+
+      /** #769: the titles of the tA modules the open tN session groups by, read
+       * after the rail renders (a heading shows its slug until then). Same tA
+       * pin as the item's article (loadActiveArticle); title.md only. */
+      loadGroupTitles: async () => {
+        const st = stateRef.current;
+        const cs = st.checkSession;
+        if (!cs?.items || cs.tool !== 'translationNotes') return;
+        const set = st.projectPins?.languageSets?.[cs.resource?.languageSet];
+        if (!set?.translationAcademy) return;
+        const repo = resolveReadPath(set.translationAcademy);
+        const known = cs.groupTitles || {};
+        const slugs = [...new Set(cs.items.map((it) => it.contextId.groupId))].filter((slug) => slug && !known[slug]);
+        if (!slugs.length) return;
+        const titles = Object.fromEntries(await Promise.all(slugs.map(async (slug) => [slug, await taTitleOf(api, repo, slug)])));
+        const now = stateRef.current.checkSession;
+        if (now?.seq !== cs.seq) return; // the session changed
+        dispatch({ type: 'patchCheckSession', seq: cs.seq, patch: { groupTitles: { ...(now.groupTitles || {}), ...titles } } });
       },
 
       // ---- Source texts (J3): book packages from Door43 ----

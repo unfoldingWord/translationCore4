@@ -48,11 +48,14 @@ const Occurrence = ({ w, named = false }) => (repeated(w)
 const occurrenceName = (w) => (repeated(w) ? `${w.word} ${Number(w.occurrence)}` : undefined);
 
 /** The ULT word(s) this card's original word(s) are aligned to — the gateway
- * lens's header label. Empty when the pane carries no alignment for them. */
-const gwLabelFor = (topWords, gwTokens) =>
+ * lens's header label. Empty when the pane carries no alignment for them.
+ * #768: a saved card's words are NFC (the journal seal, I-4) and the pane's
+ * `x-content` is the resource's own form (hbo_uhb is not NFC), so both sides
+ * are compared in NFC. */
+export const gwLabelFor = (topWords, gwTokens) =>
   (gwTokens ?? [])
     .filter((tok) => tok.word && tok.orig.some((o) =>
-      topWords.some((tw) => tw.word === o.content && Number(tw.occurrence) === Number(o.occurrence))))
+      topWords.some((tw) => tw.word.normalize('NFC') === o.content.normalize('NFC') && Number(tw.occurrence) === Number(o.occurrence))))
     .map((tok) => tok.text.trim())
     .join(' ');
 

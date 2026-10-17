@@ -28,7 +28,7 @@ export interface JournalEvent {
   [field: string]: unknown;
 }
 
-export const SEGMENT_LIMIT = 4 * 1024 * 1024; // 4 MiB (§8.1, R-8.1.9)
+export const SEGMENT_LIMIT = 8 * 1024 * 1024; // 8 MiB (§8.1, R-8.1.9, D104)
 /** The container frame allowance — MUST match the reference files.mjs value, so
  * the store and the reference refuse the same oversize actions. EXPORTED for the
  * boundary-parity test, which computes the exact accept/refuse boundary from
@@ -59,11 +59,20 @@ export const sealAction = async (eventsIn: JournalEvent[]): Promise<string> => {
   const body = JSON.stringify({ events });
   // cheap first: the body alone already exceeds the cap, so never pay for the container
   if (utf8ByteLength(body) > SEGMENT_LIMIT - CONTAINER_FRAME)
-    throw new Error(`action segment exceeds the 4 MiB limit (§8.1)`);
+    throw new Error(`action segment exceeds the 8 MiB limit (§8.1)`);
   const seg = JSON.stringify({ container: 1, body, sha256: await sha256Hex(body) });
   if (utf8ByteLength(seg) > SEGMENT_LIMIT)
-    throw new Error(`action segment exceeds the 4 MiB limit (§8.1)`);
+    throw new Error(`action segment exceeds the 8 MiB limit (§8.1)`);
   return seg;
+};
+
+/** #767: whether these events would seal under the §8.1 limit, measured
+ * without hashing (the sha256 hex is always 64 characters). Same normalization
+ * and container as sealAction, so it agrees with sealAction byte for byte. */
+export const actionFits = (events: JournalEvent[]): boolean => {
+  const body = JSON.stringify({ events: events.map(normalizeEvent) });
+  if (utf8ByteLength(body) > SEGMENT_LIMIT - CONTAINER_FRAME) return false;
+  return utf8ByteLength(JSON.stringify({ container: 1, body, sha256: '0'.repeat(64) })) <= SEGMENT_LIMIT;
 };
 
 export type SegmentVerdict = { ok: true; events: JournalEvent[] } | { ok: false; reason: string };

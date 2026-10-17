@@ -7,6 +7,7 @@ import { test, expect } from './helpers/test';
 import type { Page } from '@playwright/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
 import { readDecisionFile } from './helpers/rig';
+import { checkLayout, expectCheckLayout } from './helpers/checkLayout';
 import { createObsProject, newSegments, segmentFiles, storyBytes } from './helpers/story';
 
 const FRAME_1 = 'Así fue como Dios hizo todo en el principio. Creó el universo y todo lo que hay en él en seis días.';
@@ -49,6 +50,13 @@ test.describe('J22 — a translator checks an OBS story', () => {
           await page.getByTestId('check-list').locator('button[data-ref="1:1"]').first().click();
           await expect(page.getByTestId('story-pane-text')).toContainText('This is how God made everything');
           await expect(page.getByTestId('check-target')).toHaveAttribute('data-drafted', '1');
+          // #762: the story text is one full-width card; the target text stops at 80ch.
+          await page.setViewportSize({ width: 1600, height: 800 });
+          await page.evaluate(() => document.fonts.ready);
+          const layout = await checkLayout(page);
+          expectCheckLayout(layout, `${tool} 1600px`);
+          expect(layout.cards).toHaveLength(1);
+          await page.setViewportSize({ width: 1280, height: 720 });
           // A word the later edit removes, so the edit invalidates this decision (D36).
           const word = page.getByTestId('check-target').locator('[data-testid^="tw-"]', { hasText: 'universo' }).first();
           await word.click();
@@ -108,6 +116,31 @@ test.describe('J22 — a translator checks an OBS story', () => {
       });
     },
   );
+
+  // #769: the same rail serves a story session. OBS tN groups by figure too; the
+  // story notes with no tA module (every title note) group under "Other notes".
+  test('an OBS tN check groups by figure, and a group folds and unfolds (#769)', { tag: ['@inc9', '@J22'] }, async ({ page }) => {
+    test.setTimeout(180_000);
+    const repo = await createObsProject('j22f', 'Equipo Rig — J22 fold', (store) => store.writeFrame(1, 1, FRAME_1));
+    await page.goto('/');
+    await page.getByTestId(`project-_local_/_local_/${repo}`).getByTestId('story-tile-1').click();
+    await openTool(page, 'translationNotes');
+    await page.getByTestId('sort-byFigure').click();
+    const heads = page.getByTestId('rail-group');
+    await expect(page.locator('[data-testid="rail-group"][data-group=""]')).toContainText('Other notes');
+    expect(await heads.count()).toBeGreaterThan(1);
+    // A group that does not hold the active item folds and unfolds.
+    const active = await page.locator('[data-testid="check-list"] button[aria-current="true"]').evaluate((b) => b.closest('[data-group]')?.getAttribute('data-group'));
+    const other = page.locator(`[data-testid="rail-group"]:not([data-group="${active}"])`).first();
+    const key = (await other.getAttribute('data-group'))!;
+    const rows = page.locator(`[data-testid="rail-group-rows"][data-group="${key}"] button`);
+    expect(await rows.count()).toBeGreaterThan(0);
+    await other.click();
+    await expect(other).toHaveAttribute('aria-expanded', 'false');
+    await expect(rows).toHaveCount(0);
+    await other.click();
+    await expect(other).toHaveAttribute('aria-expanded', 'true');
+  });
 });
 
 test.afterAll(async () => {

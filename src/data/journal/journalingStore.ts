@@ -47,7 +47,7 @@ import { INSTALLED_SUITE } from '../installedSuite';
 import { withBookHeader } from '../seed';
 import { JournalStore } from './journalStore';
 import { idbKvStore, type KvStore } from './identity';
-import { sealAction, segmentName, type JournalEvent } from './seal';
+import { actionFits, sealAction, segmentName, type JournalEvent } from './seal';
 import { defaultFoldRunner, type FoldRunner } from './foldRunner';
 import { verseConflicts, type VerseConflict } from './verseConflicts';
 import { guardOpenCopy, isApplyPending, recoverySettled, syncGenerationOf, type OpsRecorder } from './opsLog';
@@ -296,6 +296,30 @@ export class UnexplainedDivergenceError extends Refusal {
     this.paths = paths;
   }
 }
+
+/** #767: a book whose book.add would not seal under the §8.1 limit. Thrown
+ * before the server creates the book, so nothing is left behind. */
+export class BookTooLargeError extends Error {
+  readonly book: string;
+
+  constructor(book: string) {
+    super(`addBook(${book}): the book is too large for one action segment (§8.1) — nothing was created`);
+    this.name = 'BookTooLargeError';
+    this.book = book;
+  }
+}
+
+/** #767: whether a picked USFM file would fit as one book.add, before any
+ * project is touched. The actor and ts are stand-ins of the real widths (an
+ * actor id is 16 characters, identity.ts); `base` is a ts, the longest case. */
+export const bookAddFits = (book: string, usfm: string): boolean => {
+  const { skeleton, verses } = decompose(toNfc(usfm));
+  const actor = 'a000000000000000';
+  const ts = `2026-01-01T00:00:00.000Z|0000|${actor}`;
+  return actionFits([
+    { v: 1, op: 'book.add', actor, ts, base: ts, book, scope: [], skeleton, initialVerses: verses },
+  ]);
+};
 
 /** The §8.8 universal seed could not reproduce the pre-seed bytes exactly, so
  * it was NOT published (all-or-nothing). */
@@ -1901,7 +1925,7 @@ export class JournalingStore implements BurritoStore {
       await sealAction(events);
       return [events];
     } catch (error) {
-      if (!/4 MiB/.test(String(error)) || events.length < 2) throw error;
+      if (!/exceeds the \d+ MiB limit/.test(String(error)) || events.length < 2) throw error;
       const mid = Math.ceil(events.length / 2);
       return [
         ...(await this.chunkForSealing(events.slice(0, mid))),
@@ -2282,6 +2306,24 @@ export class JournalingStore implements BurritoStore {
       await this.replayOwnStagedBeforeDiff(); // round-5 rule 1: REPLAY-BEFORE-DIFF
       const journal = this.mustJournal();
       const book = params.book_code.toUpperCase();
+      const bookAdd = (usfm: string): JournalEvent => {
+        const { skeleton, verses } = decompose(toNfc(usfm));
+        return {
+          v: 1,
+          op: 'book.add',
+          actor: journal.actorId,
+          ts: journal.issueTs(),
+          base: this.foldNow().headsTs[`book|${book}`] ?? null, // a re-add chains to the removal
+          book,
+          scope: [],
+          skeleton,
+          initialVerses: verses,
+        };
+      };
+      // #767: a seeded book is measured BEFORE the server creates it. A book.add
+      // over the §8.1 limit used to fail after the scaffold, leaving an empty book.
+      const seeded = params.initialUsfm != null ? bookAdd(params.initialUsfm) : null;
+      if (seeded && !actionFits([seeded])) throw new BookTooLargeError(book);
       await this.api.newScriptureBook(this.mustRepo(), {
         book_code: params.book_code,
         book_title: params.book_title,
@@ -2291,25 +2333,14 @@ export class JournalingStore implements BurritoStore {
       });
       // #574 (D94): with no seed, the server skeleton gets the blank-book
       // header — the book name (book_title) and \usfm 3.0, not the bare code.
-      const usfm =
-        params.initialUsfm ??
-        withBookHeader(await this.api.readIngredient(this.mustRepo(), bookIpath(book)), {
-          bookCode: book,
-          bookName: params.book_title,
-        });
-      const { skeleton, verses } = decompose(toNfc(usfm));
-      const foldOut = this.foldNow();
-      const event: JournalEvent = {
-        v: 1,
-        op: 'book.add',
-        actor: journal.actorId,
-        ts: journal.issueTs(),
-        base: foldOut.headsTs[`book|${book}`] ?? null, // a re-add chains to the removal
-        book,
-        scope: [],
-        skeleton,
-        initialVerses: verses,
-      };
+      const event =
+        seeded ??
+        bookAdd(
+          withBookHeader(await this.api.readIngredient(this.mustRepo(), bookIpath(book)), {
+            bookCode: book,
+            bookName: params.book_title,
+          }),
+        );
       await this.publishAndRegenerate([event], [bookIpath(book)]);
     });
   }
