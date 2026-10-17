@@ -2898,6 +2898,8 @@ size of each en_ult v91 book from the rig cache, branch issue-767-usfm-too-large
    and `addBook` measures the action before the server creates the book. No empty book
    is created (#767).
 3. **Known limit, accepted.** A segment over 4 MiB is invalid to a reader of spec 1.23
-   or earlier, which includes 4.0.0-rc.2. A project with such a segment, opened or synced
-   by rc.2, stops with "A saved change in this project is damaged". 4.0.0-rc.2 is a
-   public beta (D103).
+   or earlier: a build from before this change, which includes 4.0.0-rc.1. A project
+   with such a segment, opened or synced by such a build, stops with "A saved change in
+   this project is damaged". 4.0.0-rc.2 reads and writes 8 MiB segments, because no
+   4.0.0-rc.2 build went out with the 4 MiB limit. [VERIFIED — no `v4.0.0-rc.2` tag or
+   release on origin, 2026-10-16; owner: no rc.2 build was distributed, PR #780]
