@@ -8,6 +8,8 @@
 import { test, expect } from './helpers/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
 import { holdCheckpoints } from './helpers/checkpointHold';
+import { importFixture } from './helpers/import';
+import { MANIFEST_DIR } from '../test/helpers/import';
 import { wordTokens } from '../src/data/align/tokenize';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -18,6 +20,7 @@ import {
   writeProjectPins,
   resetSeededChecking,
   resetPlaces,
+  sideloadedIngredient,
 } from './helpers/rig';
 
 const PINS = () => ({
@@ -961,6 +964,104 @@ test.describe('J5 — a translator aligns a verse', () => {
       await expect(page.getByTestId('align-session')).toBeVisible();
       await expect(row13).toHaveAttribute('data-selected', 'true');
       await expect(page.getByTestId('align-verse-list').locator('button[data-ref="1:1"]')).not.toHaveAttribute('data-selected', 'true');
+    },
+  );
+
+  // #782: en_ult aligns one English phrase to two Hebrew words with one \zaln
+  // inside another. Align (and Translate) read one level down, so Gen 1:1 lost
+  // "the heavens" and 633 Genesis verses lost words. Genesis is the rig's own
+  // en_ult GEN.usfm, added to a new project with Add a book → USFM (the issue's
+  // steps). A whole-project USFM import of that file refuses it (not NFC).
+  test(
+    'Align and Translate show every word of en_ult Genesis, nested alignments included: 1:1 has "the heavens" (#782)',
+    { tag: ['@inc9', '@J5'] },
+    async ({ page }, testInfo) => {
+      test.setTimeout(240_000);
+      const usfm = sideloadedIngredient('en_ult', 'GEN.usfm');
+      const name = `Genesis 782 ${Date.now()}`;
+      const abbr = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+      await page.goto('/');
+      await importFixture(page, path.join(MANIFEST_DIR, 'usfm', '32-JON.usfm'), { kind: 'usfm', edits: { name, language: 'es-419' } });
+      await expect(page.getByTestId('import-toast')).toBeVisible();
+      await page.goto('/');
+      const card = page.getByTestId(`project-_local_/_local_/${abbr}`);
+      await card.getByRole('button', { name: 'Add a book' }).click();
+      await page.getByTestId('ab-usfm-option').click();
+      await page.getByTestId('ab-usfm-input').setInputFiles([{ name: 'GEN.usfm', mimeType: 'text/plain', buffer: Buffer.from(usfm) }]);
+      await expect(page.getByTestId('ab-usfm-file')).toHaveAttribute('data-status', 'valid');
+      await page.getByTestId('ab-usfm-add').click();
+      await expect(page.getByTestId('ab-usfm')).toHaveCount(0, { timeout: 120_000 });
+      await card.getByRole('button', { name: /Genesis/ }).click();
+      await expect(page.getByRole('heading', { name: /^Genesis \d+$/ })).toBeVisible({ timeout: 120_000 });
+
+      // The words of each verse as the file states them: every \w word, in file
+      // order, read from the raw USFM without usfm-js. Footnotes are not verse text.
+      const fileWords = new Map<string, string[]>();
+      for (const chapter of usfm.replace(/\\f .*?\\f\*/gs, '').split(/\\c (?=\d)/).slice(1)) {
+        const c = /^\d+/.exec(chapter)![0];
+        const parts = chapter.split(/\\v (\d+(?:-\d+)?)\s/);
+        for (let i = 1; i < parts.length; i += 2) fileWords.set(`${c}:${parts[i]}`, [...parts[i + 1].matchAll(/\\w ([^|\\]+)\|/g)].map((m) => m[1]));
+      }
+      const holdsInOrder = (text: string, words: string[]) => {
+        let at = 0;
+        for (const w of words) {
+          const found = text.slice(at).search(new RegExp(`(?<![\\p{L}\\p{N}])${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}])`, 'u'));
+          if (found < 0) return false;
+          at += found + w.length;
+        }
+        return true;
+      };
+
+      let rail: Array<{ ref: string; text: string }> = [];
+      await test.step('Align: every rail row holds its verse\'s words, in order', async () => {
+        await page.getByRole('tab', { name: 'Check', exact: true }).click();
+        await page.getByTestId('open-align').click();
+        const rows = page.getByTestId('align-verse-list').locator('button[data-ref]');
+        await expect(rows.first()).toBeVisible({ timeout: 120_000 });
+        rail = await rows.evaluateAll((els) => els.map((el) => ({ ref: el.getAttribute('data-ref') ?? '', text: el.children[2]?.textContent ?? '' })));
+        // Every row is a verse of the file. The rail leaves out 41 verses whose
+        // `\v` follows `\q1` on the same line (3:15, 49:2-27, …): a separate defect
+        // of the verse index, outside #782, so those verses are not compared here.
+        expect(rail.length).toBeGreaterThan(1400);
+        expect(rail.filter((r) => !fileWords.has(r.ref))).toEqual([]);
+        const losing = rail.filter((r) => !holdsInOrder(r.text, fileWords.get(r.ref) ?? [])).map((r) => r.ref);
+        expect(losing).toEqual([]);
+        expect(rail.find((r) => r.ref === '1:1')?.text).toBe('In the beginning God created the heavens and the earth.');
+        expect(rail.find((r) => r.ref === '1:4')?.text).toBe('And God saw the light, that {it was} good. Then God separated between the light and the darkness.');
+      });
+
+      // The rig holds no Hebrew Bible, so 1:1 opens on "not on this computer" and
+      // shows no word bank here. The bank of Gen 1:1 is proven by the session
+      // build in test/bookModel-nested-alignment.test.ts.
+      await test.step('Align 1:1: the rail row the translator picks states the whole verse', async () => {
+        const row = page.getByTestId('align-verse-list').locator('button[data-ref="1:1"]');
+        await row.click();
+        await expect(row).toHaveAttribute('data-selected', 'true');
+        await expect(row).toContainText('In the beginning God created the heavens and the earth.');
+        const shotPath = testInfo.outputPath('j05-gen-1-1-nested.png');
+        await page.screenshot({ path: shotPath, animations: 'disabled' });
+        await testInfo.attach('j05-gen-1-1-nested', { path: shotPath, contentType: 'image/png' });
+        // The run's artifact: the counts, and 1:1 and 1:4 as the rail states them.
+        const artifact = {
+          rows: rail.length,
+          rowsLosingWords: rail.filter((r) => !holdsInOrder(r.text, fileWords.get(r.ref) ?? [])).length,
+          rail: rail.filter((r) => r.ref === '1:1' || r.ref === '1:4'),
+        };
+        const artifactPath = testInfo.outputPath('j05-gen-nested.json');
+        fs.writeFileSync(artifactPath, `${JSON.stringify(artifact, null, 2)}\n`);
+        await testInfo.attach('j05-gen-nested.json', { path: artifactPath, contentType: 'application/json' });
+      });
+
+      await test.step('Translate states Gen 1:1 and 1:4 whole', async () => {
+        const translate = page.getByRole('tab', { name: 'Translate', exact: true });
+        if ((await translate.getAttribute('aria-selected')) !== 'true') await translate.click();
+        const target = page.getByTestId('draft-target-text');
+        await expect(target.filter({ hasText: 'In the beginning' })).toContainText('In the beginning God created the heavens and the earth.', { timeout: 60_000 });
+        await expect(target.filter({ hasText: 'And God saw' }).first()).toContainText('And God saw the light, that {it was} good.');
+        const shotPath = testInfo.outputPath('j05-gen-1-translate.png');
+        await page.screenshot({ path: shotPath, animations: 'disabled' });
+        await testInfo.attach('j05-gen-1-translate', { path: shotPath, contentType: 'image/png' });
+      });
     },
   );
 });
