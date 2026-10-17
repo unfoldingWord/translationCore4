@@ -7,8 +7,9 @@
 // the pinned resources' own text (test/fixtures/README.md) and the USFM corpus.
 //
 // The ways this can fail, written before the fix:
-//   1. A word two or more `\zaln` levels down is dropped: Gen 1:1 reads
-//      "created  and the earth." (the reported defect).
+//   1. A word two or more levels down is dropped: Gen 1:1 reads "created  and
+//      the earth." (the reported defect), and Psalms lose the "Selah" that sits
+//      in a `\zaln` inside `\qs … \qs*` (found in the #783 review).
 //   2. The fix walks too far: footnote text (`\f … \f*`, a `\+w` inside it) or a
 //      section heading joins the verse text.
 //   3. A verse with no nested alignment (plain, footnoted, poetry with line
@@ -39,12 +40,11 @@ const beforeFix = (v: Verse) =>
     .join('')
     .trim();
 
-/** True when a `\zaln` milestone holds another one. */
-const nests = (vos: VerseObject[] = [], inZaln = false): boolean =>
-  vos.some((vo) => {
-    const zaln = vo.tag === 'zaln' && vo.type === 'milestone';
-    return (zaln && inZaln) || nests(vo.children, inZaln || zaln);
-  });
+/** True when a `\zaln` milestone sits inside another node: another `\zaln`
+ * (Gen 1:1), or a character marker such as `\qs … \qs*` (Psalms "Selah"). The
+ * one-level walk lost the words of both. */
+const nests = (vos: VerseObject[] = [], inside = false): boolean =>
+  vos.some((vo) => ((vo.tag === 'zaln' && vo.type === 'milestone' && inside) || nests(vo.children, true)));
 
 /** The `\w` words of each verse of one chapter, in file order, read from the
  * raw USFM without usfm-js. Footnotes are cut first: their words are not verse text. */
@@ -109,6 +109,13 @@ describe('verseText reads words inside nested alignments (#782)', () => {
     expect([...bank].sort()).toEqual(wordTokens('In the beginning God created the heavens and the earth.').map((t) => t.text).sort());
   });
 
+  it('Ps 3:2 keeps its aligned "Selah", which en_ult wraps in \\qs … \\qs* (way 1)', () => {
+    const v2 = chaptersOf(read('en_ult/PSA-3.usfm'))['3']['2'];
+    expect(nests(v2.verseObjects)).toBe(true);
+    expect(beforeFix(v2)).not.toMatch(/Selah/);
+    expect(verseText(v2)).toMatch(/\nSelah$/);
+  });
+
   it('footnotes and section headings stay out of the verse text (way 2)', () => {
     const chapter = chaptersOf(read('usfm-corpus/exotic-poetry-footnotes.usfm'))['1'];
     for (const v of ['1', '2', '3', '4-5']) {
@@ -127,6 +134,7 @@ describe('verseText reads words inside nested alignments (#782)', () => {
       'usfm-corpus/en_ult-TIT-aligned.usfm',
       'usfm-corpus/en_ust-TIT-aligned.usfm',
       'en_ult/GEN-1.usfm',
+      'en_ult/PSA-3.usfm',
     ]) {
       for (const [c, verses] of Object.entries(chaptersOf(read(rel)))) {
         for (const [v, verse] of Object.entries(verses)) {
