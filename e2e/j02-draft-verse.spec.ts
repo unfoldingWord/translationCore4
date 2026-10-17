@@ -1237,6 +1237,24 @@ test.describe('J2 — a translator drafts a verse', () => {
 
       const repo = rigRepo(abbr);
       const genOnDisk = () => fs.readFileSync(path.join(repo, 'ingredients', 'GEN.usfm'));
+      const psaOnDisk = () => fs.readFileSync(path.join(repo, 'ingredients', 'PSA.usfm'));
+
+      // #785 review: a section Save writes back the \q1 lines Translate read. With
+      // `\q1 \v N` they must be read too, or a Save with no change removes them.
+      await test.step('Psalm 3: a section saved with no change leaves PSA.usfm byte-identical', async () => {
+        await page.goto('/');
+        await card.getByRole('button', { name: /Psalms/ }).click();
+        await page.getByRole('tab', { name: 'Translate', exact: true }).click();
+        await page.getByRole('button', { name: '3', exact: true }).click();
+        await page.getByRole('tab', { name: 'Section', exact: true }).click();
+        const before = psaOnDisk();
+        await page.getByRole('button', { name: /^Draft section / }).first().click();
+        await page.getByRole('button', { name: 'Save section' }).click();
+        await expect(page.getByTestId('section-editor')).toHaveCount(0);
+        await expect(page.getByText('Saved')).toBeVisible();
+        expect(psaOnDisk().equals(before)).toBe(true);
+        seen.psalm3SectionSaveUnchanged = true;
+      });
       const EDIT = 'Pondré enemistad entre ti y la mujer (#784).';
       await test.step('Translate shows Gen 3:15; an edit saves only that verse, and its \\q1 stays', async () => {
         await page.goto('/');

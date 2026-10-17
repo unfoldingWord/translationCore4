@@ -129,12 +129,13 @@ const baseTag = (tag: string): string => (tag.includes('-') ? tag : tag.replace(
 const endsBody = (tag: string): boolean => BODY_ENDING_TAGS.has(baseTag(tag.toLowerCase()));
 
 /** #784: Paratext and the aligned texts put a verse on its poetry or paragraph
- * marker's line (`\q1 \v 15 …`). For such a line, the length of the marker and
- * its spaces, where the verse's own `\v` starts; else null. The marker ends the
- * open body and stays outside every body. */
+ * marker's line (`\q1 \v 15 …`, and `\p\v 6` with no space in Zechariah). For
+ * such a line, the length of the marker and its spaces, where the verse's own
+ * `\v` starts; else null. The marker ends the open body and stays outside
+ * every body. */
 const verseLead = (line: string, tag: string): number | null => {
   if (tag === 'v' || !endsBody(tag)) return null;
-  const lead = /^\\[a-z][a-z0-9]*[ \t]+(?=\\v[ \t])/i.exec(line);
+  const lead = /^\\[a-z][a-z0-9]*[ \t]*(?=\\v[ \t])/i.exec(line);
   return lead ? lead[0].length : null;
 };
 

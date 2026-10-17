@@ -114,12 +114,13 @@ describe('verse bodies', () => {
 //   3. The verse before it keeps the `\q1 \v 15 …` line in its body.
 //   4. A verse whose `\v` starts its line indexes differently than before.
 describe('#784 — a \\v after a paragraph or poetry marker on the same line', () => {
-  const poetry = ['\\id TST', '\\c 1', '\\q1 \\v 1 one', '\\q2 more of one', '\\q1 \\v 2 two', '\\p \\v 3 three', '\\li1 \\v 4 four', ''].join('\n');
+  // `\p\v 5` (no space) is in en_ult and en_ust Zechariah.
+  const poetry = ['\\id TST', '\\c 1', '\\q1 \\v 1 one', '\\q2 more of one', '\\q1 \\v 2 two', '\\p \\v 3 three', '\\li1 \\v 4 four', '\\p\\v 5 five', ''].join('\n');
 
   it('each such verse is indexed, its body starts after `\\v N `, and the marker stays outside every body (ways 1-3)', () => {
     const entries = indexBook(poetry);
-    expect(entries.map((e) => e.verseKey)).toEqual(['1', '2', '3', '4']);
-    expect(['1', '2', '3', '4'].map((k) => body(poetry, 1, k))).toEqual(['one', 'two', 'three', 'four']);
+    expect(entries.map((e) => e.verseKey)).toEqual(['1', '2', '3', '4', '5']);
+    expect(['1', '2', '3', '4', '5'].map((k) => body(poetry, 1, k))).toEqual(['one', 'two', 'three', 'four', 'five']);
     for (const e of entries) expect(poetry.slice(e.start - `\\v ${e.verseKey} `.length, e.start)).toBe(`\\v ${e.verseKey} `);
   });
 

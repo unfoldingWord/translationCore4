@@ -26,7 +26,10 @@ export function buildChapterVerses(bookRaw, chapters, entries) {
     const body = bookRaw.slice(e.start, e.end).trim();
     const drafted = body !== '' && body !== '___';
     const sameCh = prev && prev.chapter === e.chapter;
-    const gap = sameCh ? bookRaw.slice(prev.end, e.start) : '';
+    // The gap ends at this verse's own `\v` (the last one before its body), as
+    // spliceVerseGap's does: for `\q1 \v 15` (#784) its last line is `\q1 `,
+    // the marker the section Save writes back.
+    const gap = sameCh ? bookRaw.slice(prev.end, bookRaw.lastIndexOf('\\v', e.start - 1)) : '';
     const para = !sameCh || PARA_IN_GAP.test(gap);
     const format = sameCh ? gapMarkerOf(gap) : null;
     (byChapter[e.chapter] ||= []).push({
