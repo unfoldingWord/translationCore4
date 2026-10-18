@@ -21,6 +21,7 @@ import {
   resetSeededChecking,
   resetPlaces,
   sideloadedIngredient,
+  sideloadedRepo,
 } from './helpers/rig';
 
 const PINS = () => ({
@@ -976,6 +977,7 @@ test.describe('J5 — a translator aligns a verse', () => {
     'Align and Translate show every word of en_ult Genesis, nested alignments included: 1:1 has "the heavens" in its text and its bank (#782)',
     { tag: ['@inc9', '@J5'] },
     async ({ page }, testInfo) => {
+      test.skip(!fs.existsSync(sideloadedRepo('hbo_uhb')), 'hbo_uhb v3.0.0 is not cached under dev-env/resources-cache, so the seed did not sideload it');
       test.setTimeout(240_000);
       const usfm = sideloadedIngredient('en_ult', 'GEN.usfm');
       const name = `Genesis 782 ${Date.now()}`;

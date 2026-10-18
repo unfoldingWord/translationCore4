@@ -21,6 +21,10 @@ import { usfmjs } from '../src/data/vendor';
 import { bookModel, verseText } from '../src/data/bookModel';
 import { wordTokens } from '../src/data/align/tokenize';
 import { __buildAlignmentSessionForTests as buildAlignmentSession } from '../src/state.jsx';
+import { md5Hex } from '../src/data/httpStore';
+import { indexBook } from '../src/data/usfm/indexer';
+import { verseTextMd5 } from '../journal/fold.mjs';
+import { decompose } from '../journal/skeleton.mjs';
 
 // Real node builtins via the runtime (see CONTRIBUTING.md, "Write a test that reads files").
 const fs = process.getBuiltinModule('node:fs');
@@ -147,5 +151,35 @@ describe('verseText reads words inside nested alignments (#782)', () => {
     // A poetry verse keeps its line breaks, as it did before.
     expect(verseText(chaptersOf(read('usfm-corpus/exotic-poetry-footnotes.usfm'))['1']['4-5'])).toContain('\n');
     expect(compared).toBeGreaterThan(50);
+  });
+
+  it('plain drafts: the client I-3 stamp equals the journal hash of the stored verse', () => {
+    // The export weave and the fold check verseTextMd5 of the stored verse; the client
+    // stamps md5Hex(verseText). On plain drafts the two must agree, or no alignment exports.
+    const differ: string[] = [];
+    let compared = 0;
+    for (const rel of [
+      'conformance/sample-burrito/ingredients/TIT.usfm',
+      'conformance/sample-burrito/ingredients/JON.usfm',
+      'test/fixtures/usfm-corpus/sample-TIT-draft.usfm',
+      'test/fixtures/usfm-corpus/sample-JON-span.usfm',
+      'test/fixtures/usfm-corpus/exotic-partial-book.usfm',
+      'test/fixtures/usfm-corpus/exotic-poetry-footnotes.usfm',
+    ]) {
+      const raw = fs.readFileSync(path.resolve(process.cwd(), rel), 'utf8');
+      const chapters = chaptersOf(raw);
+      const verses = decompose(raw).verses as Record<string, string>;
+      for (const e of indexBook(raw)) {
+        const body = raw.slice(e.start, e.end).trim();
+        if (body === '' || body === '___') continue;
+        const ref = `${e.chapter}:${e.verseKey}`;
+        // 1:3 holds inline \zaln, which I-1 forbids in a stored book (#553): the journal hash reads only top-level text, so it misses the aligned words.
+        if (rel.endsWith('exotic-poetry-footnotes.usfm') && ref === '1:3') continue;
+        if (md5Hex(verseText(chapters[e.chapter][e.verseKey])) !== verseTextMd5(verses[ref])) differ.push(`${rel} ${ref}`);
+        compared++;
+      }
+    }
+    expect(differ).toEqual([]);
+    expect(compared).toBe(22);
   });
 });

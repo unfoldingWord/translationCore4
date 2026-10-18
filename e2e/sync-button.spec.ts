@@ -96,7 +96,8 @@ test.describe('#678 — Sync with Door43', () => {
   // D88 point 6 needs a pin this computer lacks. The seeded project pins hbo_uhb
   // v3.0.0, which the seed sideloads since #782. So this file's computer holds
   // another Hebrew release: its install record names another commit (a pin is a
-  // repoPath and a sha, D58). The record is restored after the file.
+  // repoPath and a sha, D58). The record is restored after the file. The record
+  // changes only when the seed recorded hbo_uhb; with no cache the pin is already missing.
   let settingsBefore: string | null = null;
 
   test.beforeAll(() => {
@@ -105,9 +106,10 @@ test.describe('#678 — Sync with Door43', () => {
     settingsBefore = fs.readFileSync(RIG_CLIENT_SETTINGS, 'utf8');
     const doc = JSON.parse(settingsBefore);
     const hebrew = doc.installedResources?.['_local_/_sideloaded_/hbo_uhb'];
-    expect(hebrew, 'the seed records hbo_uhb').toBeTruthy();
-    doc.installedResources['_local_/_sideloaded_/hbo_uhb'] = { ...hebrew, version: 'v2.1.30', sha: '6780000000000000000000000000000000000678' };
-    fs.writeFileSync(RIG_CLIENT_SETTINGS, JSON.stringify(doc));
+    if (hebrew) {
+      doc.installedResources['_local_/_sideloaded_/hbo_uhb'] = { ...hebrew, version: 'v2.1.30', sha: '6780000000000000000000000000000000000678' };
+      fs.writeFileSync(RIG_CLIENT_SETTINGS, JSON.stringify(doc));
+    }
   });
   test.afterAll(async () => {
     if (settingsBefore !== null) {
@@ -233,7 +235,8 @@ test.describe('#678 — Sync with Door43', () => {
     await expect(page.getByTestId('sync-count-newest')).toHaveAttribute('data-count', '0');
     await expect(page.getByTestId('sync-review')).toBeVisible();
     // D88 point 6: Download is always offered while a pin names a version this computer
-    // lacks: the seeded project pins hbo_uhb v3.0.0, and this file's computer holds another release
+    // lacks: the seeded project pins hbo_uhb v3.0.0, and this file's computer lacks that pin
+    // (its record names another commit, or there is no record because the cache is missing)
     await expect(page.getByTestId('sync-download')).toBeVisible();
     expect(Number(await page.getByTestId('sync-missing-pins').getAttribute('data-count'))).toBeGreaterThan(0);
     // the card reads the project again: its conflict chip shows the one verse conflict (#679)
