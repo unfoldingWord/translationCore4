@@ -5323,12 +5323,6 @@ export function AppProvider({ children }) {
         a.queueAlignSuggestionAppend(optimistic);
       },
 
-      placeAlignWord: (cardIndex) => {
-        const armed = stateRef.current.alignSession?.armed;
-        if (!armed) return;
-        a.applyAlignEdit((record) => armed.reduce((r, w) => linkWord(r, cardIndex, w), record), true);
-      },
-
       unplaceAlignWord: (cardIndex, word) =>
         a.applyAlignEdit((record) => unlinkWord(record, cardIndex, word, stateRef.current.alignSession.targetText)),
 
