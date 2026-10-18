@@ -11,9 +11,10 @@
 //        mismatch (PLATFORM-NOTES #2), so every word crossing this boundary is
 //        normalized — including the ones word-aligner itself hands back.
 //   I-3  `targetVerseMd5` records the draft the alignment was made against, so
-//        a later edit is detectable rather than silently invalidating.
+//        a later edit is detectable rather than silently invalidating. The hash
+//        is the export's own (`verseTextMd5` of the stored verse slot, #795); the
+//        caller makes it and these functions only stamp and compare it.
 import { usfmjs, wordaligner } from '../vendor';
-import { md5Hex } from '../httpStore';
 import { normalizeOccurrences } from './occurrences';
 import { tokenizeVerse, wordTokens } from './tokenize';
 import type { AlignedWord, Alignment, AlignmentVerseRecord } from './zaln';
@@ -47,6 +48,7 @@ export const bootstrapVerse = (
   targetText: string,
   origVerseObjects: Array<Record<string, unknown>>,
   sourceVersion: string,
+  md5: string,
 ): AlignmentVerseRecord => {
   const tokenized = tokenizeTargetVerse(targetText);
   const parsed = usfmjs.toJSON(`\\v 1 ${tokenized}`, { chunk: true }) as unknown as {
@@ -68,7 +70,7 @@ export const bootstrapVerse = (
     })),
     wordBank: asWords(unmerged.wordBank),
     invalid: false,
-    targetVerseMd5: md5Hex(targetText),
+    targetVerseMd5: md5,
     sourceVersion,
   };
 };
@@ -223,15 +225,16 @@ export const moveWord = (
   };
 };
 
-/** Re-stamp the draft hash after the alignment is edited against a verse. */
+/** Re-stamp the draft hash after the alignment is edited against a verse.
+ * `md5` is the export's hash of the stored verse (#795). */
 export const stampTargetVerse = (
   record: AlignmentVerseRecord,
-  targetText: string,
-): AlignmentVerseRecord => ({ ...record, targetVerseMd5: md5Hex(targetText), invalid: false });
+  md5: string,
+): AlignmentVerseRecord => ({ ...record, targetVerseMd5: md5, invalid: false });
 
 /** I-3: does this record still describe the verse as it now reads? */
-export const alignmentIsStale = (record: AlignmentVerseRecord, targetText: string): boolean =>
-  record.targetVerseMd5 !== md5Hex(targetText);
+export const alignmentIsStale = (record: AlignmentVerseRecord, md5: string): boolean =>
+  record.targetVerseMd5 !== md5;
 
 /** Every target word the verse has, linked or not — the aligner's full set. */
 export const allTargetWords = (record: AlignmentVerseRecord): AlignedWord[] => [
@@ -263,8 +266,8 @@ export const settleDone = (record: AlignmentVerseRecord): AlignmentVerseRecord =
  * bank or not. The record vouches for the CURRENT text (I-3 restamp) and the
  * re-review flag is cleared (tC3 reset "invalidated" on finish), so a stale
  * or flagged record marked valid reads valid again. */
-export const markDone = (record: AlignmentVerseRecord, targetText: string): AlignmentVerseRecord => ({
-  ...stampTargetVerse(record, targetText),
+export const markDone = (record: AlignmentVerseRecord, md5: string): AlignmentVerseRecord => ({
+  ...stampTargetVerse(record, md5),
   invalid: false,
   done: true,
 });
@@ -326,12 +329,13 @@ export const reconcileToText = (
 export const reflowAlignment = (
   record: AlignmentVerseRecord | undefined,
   targetText: string,
+  md5: string,
 ): AlignmentVerseRecord | null => {
   if (!record || record.invalid === true) return null;
   if (!record.alignments.some((a) => a.bottomWords.length)) return null;
-  if (!alignmentIsStale(record, targetText)) return null;
+  if (!alignmentIsStale(record, md5)) return null;
   if (!wordTokens(targetText).length) return null;
   // #271: a reflow is an edit — `done` follows the reflowed record (set when
   // every surviving word is placed and the bank is empty, else removed).
-  return settleDone({ ...reconcileToText(record, targetText).record, invalid: false, targetVerseMd5: md5Hex(targetText) });
+  return settleDone({ ...reconcileToText(record, targetText).record, invalid: false, targetVerseMd5: md5 });
 };

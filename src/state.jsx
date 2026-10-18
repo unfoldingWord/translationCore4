@@ -9,7 +9,7 @@ import { ServerApi } from './data/serverApi';
 // BEFORE any derived file changes. The raw HttpStore is never constructed here
 // (test/noBypass.test.ts enforces it); read-only surfaces use ProjectReader.
 import { StaleWriteError } from './data/httpStore';
-import { STORY_FILE, refusalCodeOf } from './data/journal/runtime';
+import { STORY_FILE, decompose, refusalCodeOf, toNfc, verseTextMd5 } from './data/journal/runtime';
 import { JournalingStore, ProjectReader, bookAddFits } from './data/journal/journalingStore';
 import { parseVerseKey } from './data/journal/verseConflicts';
 import { SaveScheduler } from './data/saveScheduler';
@@ -360,6 +360,29 @@ function verseTextIndex(bookRaw) {
     out[`${e.chapter}:${e.verseKey}`] = verseText(chapters[e.chapter]?.[e.verseKey]);
   }
   return out;
+}
+
+/** #795: "chapter:verse" -> the hash the export checks for that drafted verse
+ * (I-3): `verseTextMd5` of the stored slot, `decompose(toNfc(book)).verses[ref]`,
+ * the journal seal's own expression. So text typed in a non-NFC form, or a verse
+ * that holds inline `\zaln`, is stamped with what the fold and the export compute.
+ * The text of verseTextIndex is for display only. One entry is kept: the last
+ * book text asked about. A verse the slots do not hold has no entry. */
+let slotMd5Memo = { raw: null, index: {} };
+function slotMd5Index(bookRaw) {
+  if (!bookRaw) return {};
+  if (slotMd5Memo.raw !== bookRaw) {
+    const slots = decompose(toNfc(bookRaw)).verses;
+    const index = {};
+    for (const e of indexBook(bookRaw)) {
+      const ref = `${e.chapter}:${e.verseKey}`;
+      const body = bookRaw.slice(e.start, e.end).trim();
+      if (body === '' || body === '___' || slots[ref] === undefined) continue;
+      index[ref] = verseTextMd5(slots[ref]);
+    }
+    slotMd5Memo = { raw: bookRaw, index };
+  }
+  return slotMd5Memo.index;
 }
 
 /** #794: the stored verse still holds the `\zaln` markup of an aligned import
@@ -1188,6 +1211,7 @@ export const __trainingTextForTests = { collectTrainingVerses, trainingCollector
  * and the I-3 hash keeps reporting it invalid-and-retained. */
 async function reflowAlignedVerses({ store, sched, book, bookRaw, stillCurrent = () => true }, refs) {
   const texts = verseTextIndex(bookRaw);
+  const md5s = slotMd5Index(bookRaw);
   const { file } = await alignFileFor(store, sched, book);
   // The read awaited; leaving the project meanwhile drained and disposed this
   // scheduler (#100 teardown) — staging now would write project A's sidecar
@@ -1197,7 +1221,7 @@ async function reflowAlignedVerses({ store, sched, book, bookRaw, stillCurrent =
   for (const ref of refs) {
     if (verseHoldsImportedAlignment(bookRaw, ref, entries)) continue;
     const [chapter, verse] = ref.split(':');
-    const next = reflowAlignment(file?.chapters?.[chapter]?.[verse], texts[ref] ?? '');
+    const next = reflowAlignment(file?.chapters?.[chapter]?.[verse], texts[ref] ?? '', md5s[ref]);
     if (next) sched.markDirty(book, chapter, verse, JSON.stringify(next));
   }
 }
@@ -1208,6 +1232,8 @@ async function reflowAlignedVerses({ store, sched, book, bookRaw, stillCurrent =
  * reaches this read (#134; test/align-session-frame.test.ts). */
 async function buildAlignmentSession(store, sched, st, ref, source, origObjects) {
   const targetText = verseTextIndex(st.bookRaw)[ref] ?? '';
+  // #795: the stamp is the export's hash of the stored verse; the text is for the words.
+  const targetMd5 = slotMd5Index(st.bookRaw)[ref];
   if (!origObjects.length || !targetText) return { unavailable: 'missing' };
   const { file, md5 } = await alignFileFor(store, sched, st.book);
   const [chapter, verse] = ref.split(':');
@@ -1233,7 +1259,7 @@ async function buildAlignmentSession(store, sched, st, ref, source, origObjects)
     record = cardsInVerseOrder(reconciled.record, targetText);
     changed = reconciled.changed;
   } else {
-    const fresh = bootstrapVerse(targetText, origObjects, sourceVersion);
+    const fresh = bootstrapVerse(targetText, origObjects, sourceVersion, targetMd5);
     record = { ...fresh, wordBank: inVerseOrder(fresh.wordBank, targetText) };
   }
   return {
@@ -1243,9 +1269,10 @@ async function buildAlignmentSession(store, sched, st, ref, source, origObjects)
     record,
     md5,
     targetText,
+    targetMd5,
     origObjects,
     sourceVersion,
-    stale: alignmentIsStale(record, targetText) || changed,
+    stale: alignmentIsStale(record, targetMd5) || changed,
     armed: null,
     targetDir: st.project?.scriptDirection === 'rtl' ? 'rtl' : 'ltr',
     origDir: source.testament === 'ot' ? 'rtl' : 'ltr',
@@ -1274,17 +1301,19 @@ function isCurrentArticleRequest(now, seq, currentSeq, repoPath, key) {
  * every word is placed, or by Mark valid), 'invalid' = the draft changed
  * under the record (align.stale), 'todo' = otherwise — plus 'undrafted',
  * which the other tools do not have. */
-function alignVerseStatus(rec, text) {
+function alignVerseStatus(rec, text, md5) {
   if (!text) return { status: 'undrafted', placed: 0, total: 0 };
   const placed = rec ? rec.alignments.reduce((n, x) => n + x.bottomWords.length, 0) : 0;
   const total = rec ? placed + rec.wordBank.length : 0;
   // §5.1's own re-review flag outranks the hash check — either means the
   // record no longer vouches for the draft (PR #135 review round 1).
-  if (rec && (rec.invalid === true || alignmentIsStale(rec, text))) return { status: 'invalid', placed, total };
+  if (rec && (rec.invalid === true || alignmentIsStale(rec, md5))) return { status: 'invalid', placed, total };
   if (rec && rec.done === true) return { status: 'valid', placed, total };
   return { status: 'todo', placed, total };
 }
 export const __alignVerseStatusForTests = alignVerseStatus;
+export const __alignIndexItemsForTests = alignIndexItems;
+export const __slotMd5IndexForTests = slotMd5Index;
 
 /** The §5.1 file with one verse's record replaced (persistAlign's merge). */
 function alignFileWith(current, book, ref, record) {
@@ -1303,12 +1332,13 @@ function alignFileWith(current, book, ref, record) {
  * with the verse text and its derived status. */
 function alignIndexItems(bookRaw, file) {
   const texts = verseTextIndex(bookRaw);
+  const md5s = slotMd5Index(bookRaw);
   const items = [];
   for (const e of indexBook(bookRaw)) {
     const ref = `${e.chapter}:${e.verseKey}`;
     const text = texts[ref] ?? '';
     const rec = file?.chapters?.[String(e.chapter)]?.[String(e.verseKey)];
-    items.push({ ref, text, ...alignVerseStatus(rec, text) });
+    items.push({ ref, text, ...alignVerseStatus(rec, text, md5s[ref]) });
   }
   return items;
 }
@@ -5338,7 +5368,7 @@ export function AppProvider({ children }) {
         // aligned, removed otherwise (an edit takes back Mark valid).
         // #754: every edit (place, move, merge, confirm a suggestion) leaves
         // each card's words in verse order, wherever the word was dropped.
-        const record = settleDone(stampTargetVerse(cardsInVerseOrder(next, a2.targetText), a2.targetText));
+        const record = settleDone(stampTargetVerse(cardsInVerseOrder(next, a2.targetText), a2.targetMd5));
         // #1: a proposal for a word this edit placed is spent; the rest are
         // re-bound to their card by its first original word (a merge or split
         // moved the indexes) and dropped when that card is gone.
@@ -5391,7 +5421,7 @@ export function AppProvider({ children }) {
           dispatch({ type: 'set', patch: { alignSession: { ...a2, refusal: 'suggestions' } } });
           return;
         }
-        const record = markDone(a2.record, a2.targetText);
+        const record = markDone(a2.record, a2.targetMd5);
         dispatch({ type: 'set', patch: { alignSession: { ...a2, record, stale: false, refusal: null } } });
         const [chapter, verse] = a2.ref.split(':');
         sched.markDirty(a2.book, chapter, verse, JSON.stringify(record));

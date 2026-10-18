@@ -15,6 +15,7 @@
 import { describe, expect, it } from 'vitest';
 import { usfmjs } from '../src/data/vendor';
 import { bootstrapVerse } from '../src/data/align/edit';
+import { md5Hex } from '../src/data/httpStore';
 import { normalizeEvent } from '../src/data/journal/runtime';
 import { tokenizeVerse } from '../src/data/sourceHighlight';
 import { gwLabelFor } from '../src/views/Align.jsx';
@@ -33,7 +34,7 @@ const ultTokens = tokenizeVerse(gen11('en_ult/GEN-1-1.usfm') as never);
 // The ULT's own verse text is the draft: the bootstrap needs target words, and
 // the label reads only the original-language side.
 const draft = ultTokens.map((t) => t.text).join('').replace(/\s+/g, ' ').trim();
-const record = bootstrapVerse(draft, uhb.verseObjects, 'dcs::unfoldingWord/hbo_uhb@v3.0.0');
+const record = bootstrapVerse(draft, uhb.verseObjects, 'dcs::unfoldingWord/hbo_uhb@v3.0.0', md5Hex(draft));
 
 // The event shape journalingStore.alignmentEvents publishes, sealed as the journal seals it.
 const sealed = normalizeEvent({
