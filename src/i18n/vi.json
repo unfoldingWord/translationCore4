@@ -848,6 +848,8 @@
   "align.error.title": "Không thể đọc văn bản nguồn",
   "align.unavailable.unreadable.title": "Không thể đọc văn bản ngôn ngữ gốc",
   "align.unavailable.unreadable.body": "Văn bản cho {book} có trên máy tính này nhưng không thể phân tích cú pháp. Tải lại văn bản nguồn hoặc báo cáo tài nguyên.",
+  "align.unavailable.inline-alignment.title": "Câu này đã có sẵn căn chỉnh",
+  "align.unavailable.inline-alignment.body": "{book} được thêm từ một tệp đã có sẵn các căn chỉnh. tC4 giữ nguyên căn chỉnh của câu này. Bạn chưa thể thay đổi nó trong tC4.",
   "check.preflightError": "Không thể đọc bản ghi tài nguyên đã cài đặt, vì vậy không thể xác định tính sẵn sàng của công cụ:",
   "check.oldTwl": "Một phiên bản tiền phát hành của translationCore đã ghim các liên kết Từ ngữ dịch thuật của dự án này, vì vậy ứng dụng không đọc chúng. Hãy tạo lại dự án.",
   "sources.checkableError": "Không thể đọc bản ghi tài nguyên đã cài đặt, vì vậy danh sách các ngôn ngữ có thể kiểm tra có thể chưa đầy đủ:",

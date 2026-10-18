@@ -848,6 +848,8 @@
   "align.error.title": "Não foi possível ler o texto fonte",
   "align.unavailable.unreadable.title": "Não foi possível ler o texto no idioma original",
   "align.unavailable.unreadable.body": "O texto de {book} está neste computador, mas não pôde ser analisado. Baixe novamente os textos fonte ou relate o recurso.",
+  "align.unavailable.inline-alignment.title": "Este versículo já tem um alinhamento",
+  "align.unavailable.inline-alignment.body": "{book} foi adicionado a partir de um arquivo que já contém alinhamentos. O tC4 mantém o alinhamento deste versículo como está. Você ainda não pode alterá-lo no tC4.",
   "check.preflightError": "O registro de recursos instalados não pôde ser lido, portanto a prontidão da ferramenta não pode ser determinada:",
   "check.oldTwl": "Uma versão de pré-lançamento do translationCore fixou os links de Palavras de tradução deste projeto, portanto o aplicativo não os lê. Crie o projeto novamente.",
   "sources.checkableError": "O registro de recursos instalados não pôde ser lido, portanto os idiomas verificáveis podem estar incompletos:",

@@ -848,6 +848,8 @@
   "align.error.title": "The source text could not be read",
   "align.unavailable.unreadable.title": "The original-language text could not be read",
   "align.unavailable.unreadable.body": "The text for {book} is on this computer but could not be parsed. Re-download the source texts, or report the resource.",
+  "align.unavailable.inline-alignment.title": "This verse already holds an alignment",
+  "align.unavailable.inline-alignment.body": "{book} was added from a file that already holds alignments. tC4 keeps this verse's alignment as it is. You cannot change it in tC4 yet.",
   "check.preflightError": "The installed-resource record could not be read, so tool readiness cannot resolve:",
   "check.oldTwl": "A pre-release version of translationCore pinned the Translation Words links of this project, so the app does not read them. Create the project again.",
   "sources.checkableError": "The installed-resource record could not be read, so the checkable languages may be incomplete:",
