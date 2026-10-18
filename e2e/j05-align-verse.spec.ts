@@ -1141,6 +1141,46 @@ test.describe('J5 — a translator aligns a verse', () => {
       await expect(page.getByTestId('align-stale')).toHaveCount(0);
     },
   );
+
+  // #794: a book added from an aligned USFM file keeps its `\zaln` markup inline
+  // until #553 extracts it. Align must not open such a verse as a plain draft:
+  // a later save would replace the imported alignment with the translator's.
+  test(
+    'Align does not open a verse that holds imported alignment markup: en_ult Titus 1:1 states it and shows no word bank (#794)',
+    { tag: ['@inc9', '@J5'] },
+    async ({ page }) => {
+      test.setTimeout(240_000);
+      const name = `Titus 794 ${Date.now()}`;
+      const abbr = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+      const usfm = fs.readFileSync(path.resolve('test/fixtures/en_ult/TIT.usfm'), 'utf8');
+      await page.goto('/');
+      await importFixture(page, path.join(MANIFEST_DIR, 'usfm', '32-JON.usfm'), { kind: 'usfm', edits: { name, language: 'es-419' } });
+      await expect(page.getByTestId('import-toast')).toBeVisible();
+      await page.goto('/');
+      const card = page.getByTestId(`project-_local_/_local_/${abbr}`);
+      await card.getByRole('button', { name: 'Add a book' }).click();
+      await page.getByTestId('ab-usfm-option').click();
+      await page.getByTestId('ab-usfm-input').setInputFiles([{ name: 'TIT.usfm', mimeType: 'text/plain', buffer: Buffer.from(usfm) }]);
+      await expect(page.getByTestId('ab-usfm-file')).toHaveAttribute('data-status', 'valid');
+      await page.getByTestId('ab-usfm-add').click();
+      await expect(page.getByTestId('ab-usfm')).toHaveCount(0, { timeout: 120_000 });
+      await card.getByRole('button', { name: /Titus/ }).click();
+      await expect(page.getByRole('heading', { name: /^Titus \d+$/ })).toBeVisible({ timeout: 120_000 });
+
+      await page.getByRole('tab', { name: 'Check', exact: true }).click();
+      await page.getByTestId('open-align').click();
+      const row = page.getByTestId('align-verse-list').locator('button[data-ref="1:1"]');
+      await expect(row).toBeVisible({ timeout: 120_000 });
+      await row.click();
+      await expect(row).toHaveAttribute('data-selected', 'true');
+      const unavailable = page.getByTestId('align-unavailable');
+      await expect(unavailable).toBeVisible({ timeout: 60_000 });
+      await expect(unavailable).toContainText('This verse already holds an alignment');
+      await expect(unavailable).toContainText('Titus was added from a file that already holds alignments.');
+      await expect(page.getByTestId('align-session')).toHaveCount(0);
+      await expect(page.getByTestId('align-bank')).toHaveCount(0);
+    },
+  );
 });
 
 // Issue #62 teardown: after this journey's mutations, every journaled local
