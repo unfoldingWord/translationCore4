@@ -362,27 +362,36 @@ function verseTextIndex(bookRaw) {
   return out;
 }
 
-/** #795: "chapter:verse" -> the hash the export checks for that drafted verse
- * (I-3): `verseTextMd5` of the stored slot, `decompose(toNfc(book)).verses[ref]`,
- * the journal seal's own expression. So text typed in a non-NFC form, or a verse
- * that holds inline `\zaln`, is stamped with what the fold and the export compute.
- * The text of verseTextIndex is for display only. One entry is kept: the last
- * book text asked about. A verse the slots do not hold has no entry. */
-let slotMd5Memo = { raw: null, index: {} };
+/** #795: the hash the export checks for one drafted verse (I-3): `verseTextMd5`
+ * of the stored slot, `decompose(toNfc(book)).verses[ref]`, the journal seal's own
+ * expression. So text typed in a non-NFC form, or a verse that holds inline
+ * `\zaln`, is stamped with what the fold and the export compute. The text of
+ * verseTextIndex is for display only. Lazy, as a hash is a usfm-js parse and a
+ * Translate blur must not pay one per verse of the book: the slots are cut once
+ * per book text (the last one asked about is kept) and a verse is hashed once,
+ * when first asked. `undefined` = the slots hold no such verse. `decompose` needs
+ * a space or tab after the verse number, so `\v 1` with its text on the next
+ * line has no slot. */
+let slotMemo = { raw: null, slots: {}, md5: {} };
+function slotMd5Of(bookRaw, ref) {
+  if (!bookRaw) return undefined;
+  if (slotMemo.raw !== bookRaw) slotMemo = { raw: bookRaw, slots: decompose(toNfc(bookRaw)).verses, md5: {} };
+  if (!(ref in slotMemo.md5)) slotMemo.md5[ref] = slotMemo.slots[ref] === undefined ? undefined : verseTextMd5(slotMemo.slots[ref]);
+  return slotMemo.md5[ref];
+}
+
+/** Tests only: every drafted verse's hash, by `slotMd5Of`. */
 function slotMd5Index(bookRaw) {
-  if (!bookRaw) return {};
-  if (slotMd5Memo.raw !== bookRaw) {
-    const slots = decompose(toNfc(bookRaw)).verses;
-    const index = {};
-    for (const e of indexBook(bookRaw)) {
-      const ref = `${e.chapter}:${e.verseKey}`;
-      const body = bookRaw.slice(e.start, e.end).trim();
-      if (body === '' || body === '___' || slots[ref] === undefined) continue;
-      index[ref] = verseTextMd5(slots[ref]);
-    }
-    slotMd5Memo = { raw: bookRaw, index };
+  const index = {};
+  if (!bookRaw) return index;
+  for (const e of indexBook(bookRaw)) {
+    const ref = `${e.chapter}:${e.verseKey}`;
+    const body = bookRaw.slice(e.start, e.end).trim();
+    if (body === '' || body === '___') continue;
+    const md5 = slotMd5Of(bookRaw, ref);
+    if (md5 !== undefined) index[ref] = md5;
   }
-  return slotMd5Memo.index;
+  return index;
 }
 
 /** #794: the stored verse still holds the `\zaln` markup of an aligned import
@@ -1210,18 +1219,26 @@ export const __trainingTextForTests = { collectTrainingVerses, trainingCollector
  * the save did not change) is not staged, so its record stays byte-identical
  * and the I-3 hash keeps reporting it invalid-and-retained. */
 async function reflowAlignedVerses({ store, sched, book, bookRaw, stillCurrent = () => true }, refs) {
-  const texts = verseTextIndex(bookRaw);
-  const md5s = slotMd5Index(bookRaw);
   const { file } = await alignFileFor(store, sched, book);
   // The read awaited; leaving the project meanwhile drained and disposed this
   // scheduler (#100 teardown) — staging now would write project A's sidecar
   // through its torn-down store, after the D9 leave checkpoint. Refuse.
   if (!stillCurrent()) return;
   const entries = bookRaw ? indexBook(bookRaw) : [];
+  // #795: a blur reaches here in the save's own task, so nothing is parsed
+  // before the read: the book's texts, and a slot hash, only for a verse that
+  // has a record to reflow.
+  let texts;
   for (const ref of refs) {
-    if (verseHoldsImportedAlignment(bookRaw, ref, entries)) continue;
     const [chapter, verse] = ref.split(':');
-    const next = reflowAlignment(file?.chapters?.[chapter]?.[verse], texts[ref] ?? '', md5s[ref]);
+    const rec = file?.chapters?.[chapter]?.[verse];
+    if (!rec) continue;
+    if (verseHoldsImportedAlignment(bookRaw, ref, entries)) continue;
+    // A verse with no slot has no hash the export would accept: stage nothing.
+    const md5 = slotMd5Of(bookRaw, ref);
+    if (md5 === undefined) continue;
+    texts ??= verseTextIndex(bookRaw);
+    const next = reflowAlignment(rec, texts[ref] ?? '', md5);
     if (next) sched.markDirty(book, chapter, verse, JSON.stringify(next));
   }
 }
@@ -1232,9 +1249,12 @@ async function reflowAlignedVerses({ store, sched, book, bookRaw, stillCurrent =
  * reaches this read (#134; test/align-session-frame.test.ts). */
 async function buildAlignmentSession(store, sched, st, ref, source, origObjects) {
   const targetText = verseTextIndex(st.bookRaw)[ref] ?? '';
-  // #795: the stamp is the export's hash of the stored verse; the text is for the words.
-  const targetMd5 = slotMd5Index(st.bookRaw)[ref];
   if (!origObjects.length || !targetText) return { unavailable: 'missing' };
+  // #795: the stamp is the export's hash of the stored verse; the text is for the words.
+  // A verse the stored text has no slot for has no stamp the export would accept: no
+  // session, so no edit or Mark valid writes a record the journal refuses to seal.
+  const targetMd5 = slotMd5Of(st.bookRaw, ref);
+  if (targetMd5 === undefined) return { unavailable: 'no-slot' };
   const { file, md5 } = await alignFileFor(store, sched, st.book);
   const [chapter, verse] = ref.split(':');
   const stored = file?.chapters?.[chapter]?.[verse];
@@ -1300,7 +1320,8 @@ function isCurrentArticleRequest(now, seq, currentSeq, repoPath, key) {
  * check status model: 'valid' = the record says `done` (#271, D73 — set when
  * every word is placed, or by Mark valid), 'invalid' = the draft changed
  * under the record (align.stale), 'todo' = otherwise — plus 'undrafted',
- * which the other tools do not have. */
+ * which the other tools do not have. `md5` (#795) is read only for a drafted
+ * verse with a record that is not flagged `invalid`; elsewhere it may be absent. */
 function alignVerseStatus(rec, text, md5) {
   if (!text) return { status: 'undrafted', placed: 0, total: 0 };
   const placed = rec ? rec.alignments.reduce((n, x) => n + x.bottomWords.length, 0) : 0;
@@ -1332,13 +1353,14 @@ function alignFileWith(current, book, ref, record) {
  * with the verse text and its derived status. */
 function alignIndexItems(bookRaw, file) {
   const texts = verseTextIndex(bookRaw);
-  const md5s = slotMd5Index(bookRaw);
   const items = [];
   for (const e of indexBook(bookRaw)) {
     const ref = `${e.chapter}:${e.verseKey}`;
     const text = texts[ref] ?? '';
     const rec = file?.chapters?.[String(e.chapter)]?.[String(e.verseKey)];
-    items.push({ ref, text, ...alignVerseStatus(rec, text, md5s[ref]) });
+    // #795: hashed only when the status reads it (see alignVerseStatus).
+    const md5 = rec && text && rec.invalid !== true ? slotMd5Of(bookRaw, ref) : undefined;
+    items.push({ ref, text, ...alignVerseStatus(rec, text, md5) });
   }
   return items;
 }

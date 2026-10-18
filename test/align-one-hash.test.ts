@@ -14,10 +14,14 @@
 //    stores NFC. After a restart the verse reads "invalid" and does not export.
 // 4. The new stamp moves a hash that is right today (a plain NFC draft).
 // 5. The #794 guard stops holding once the stamp equals the export hash.
+// 6. A verse the book indexer lists but the stored slots do not hold (`\v 1` with
+//    its text on the next line) has no export hash: a record stamped for it has
+//    no `targetVerseMd5`, the journal refuses to seal it, and the align save of
+//    the whole book is stuck.
 //
 // B3 runs the real save path (JournalingStore over the in-memory rig, the align
 // writer, a reload from the projected book), not a hand-built seal.
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ServerApi } from '../src/data/serverApi';
 import { JournalingStore, forgetProjectQueues } from '../src/data/journal/journalingStore';
 import { forgetSharedClocks } from '../src/data/journal/journalStore';
@@ -38,7 +42,9 @@ import {
   __alignIndexItemsForTests as alignIndexItems,
   __alignSaveForTests,
   __buildAlignmentSessionForTests as buildAlignmentSession,
+  __reflowAlignedVersesForTests as reflowAlignedVerses,
   __slotMd5IndexForTests as slotMd5Index,
+  alignFileJson,
 } from '../src/state.jsx';
 
 const fs = process.getBuiltinModule('node:fs');
@@ -259,5 +265,94 @@ describe('#795 a record stamped with the export hash does not replace imported a
     const out = weaveBook(EN_ULT, alignments, AlignmentHelpers) as string;
     expect((decompose(out).verses as Record<string, string>)['1:1']).toBe(stored['1:1']);
     expect(out).toBe(EN_ULT);
+  });
+});
+
+// ---- B6: a verse with no stored slot ------------------------------------------
+
+/** 1:1 has its text on the line after its number, which `decompose` does not read as a verse
+ * marker (journal/skeleton.mjs needs a space or tab after the key). 1:2 is normal. */
+const NO_SLOT = '\\id TIT\n\\c 1\n\\p\n\\v 1\nPablo, siervo de Dios\n\\v 2 Pablo, siervo de Dios\n';
+
+/** A sidecar store that counts reads and writes. */
+const countingStore = () => {
+  let file: AlignmentFile | null = null;
+  let md5: string | null = null;
+  const calls = { reads: 0, writes: 0 };
+  return {
+    calls,
+    get file() {
+      return file;
+    },
+    readAlignmentsWithMd5: async () => {
+      calls.reads++;
+      return { value: file, md5 };
+    },
+    writeAlignments: async (_book: string, data: AlignmentFile, expectMd5?: string | null) => {
+      if ((expectMd5 ?? null) !== md5) throw new Error(`stale write: expected ${expectMd5}, disk ${md5}`);
+      calls.writes++;
+      file = data;
+      md5 = `md5-${calls.writes}`;
+    },
+    reconcileStaged: async () => {},
+  };
+};
+
+describe('#795 a verse with no stored slot cannot be stamped, so nothing is written for it (B6)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+  const settle = async () => {
+    await vi.advanceTimersByTimeAsync(2000);
+    await vi.advanceTimersByTimeAsync(0);
+  };
+
+  it('precondition: the indexer lists 1:1 and drafts it, but the stored slots hold only 1:2', () => {
+    expect(draftedRefs(NO_SLOT)).toEqual(['1:1', '1:2']);
+    expect(Object.keys(decompose(toNfc(NO_SLOT)).verses)).toEqual(['1:2']);
+    expect(slotMd5Index(NO_SLOT)).toEqual({ '1:2': storedHash(NO_SLOT, '1:2') });
+  });
+
+  it('Align refuses 1:1 with "no-slot" and writes nothing; 1:2 opens and is stamped with its slot hash', async () => {
+    const store = countingStore();
+    const sched = new SaveScheduler({ writeBook: makeAlignWriter({ store }), splice: spliceAlignRecord });
+    const st = { book: 'TIT', bookRaw: NO_SLOT, project: {} };
+    expect(await buildAlignmentSession(store, sched, st, '1:1', SOURCE, ORIG)).toEqual({ unavailable: 'no-slot' });
+
+    const open = (await buildAlignmentSession(store, sched, st, '1:2', SOURCE, ORIG)) as Session & { unavailable?: string };
+    expect(open.unavailable).toBeUndefined();
+    expect(open.targetMd5).toBe(storedHash(NO_SLOT, '1:2'));
+    expect(open.record.targetVerseMd5).toBe(storedHash(NO_SLOT, '1:2'));
+
+    await settle();
+    expect(store.calls.writes).toBe(0);
+    expect(sched.getState()).toBe('saved');
+  });
+
+  it('a draft save of both verses stages nothing for 1:1, and still reflows 1:2', async () => {
+    const store = countingStore();
+    const old = 'Pablo, siervo de Dios';
+    const linked = (): AlignmentVerseRecord => {
+      let r = bootstrapVerse(old, ORIG, 'dcs::unfoldingWord/el-x-koine_ugnt@v0.34', md5Hex(old));
+      r = linkWord(r, 0, r.wordBank.find((w) => w.word === 'Pablo') as AlignedWord);
+      return stampTargetVerse(r, md5Hex(old));
+    };
+    // Both verses hold a record stamped for the old text; the draft now says "esclavo", so a reflow stages each.
+    let json = alignFileJson(null, 'TIT');
+    json = spliceAlignRecord(json, '1', '1', JSON.stringify(linked()));
+    json = spliceAlignRecord(json, '1', '2', JSON.stringify(linked()));
+    await store.writeAlignments('TIT', JSON.parse(json), null);
+    const before = JSON.stringify(store.file!.chapters['1']['1']);
+    const writesBefore = store.calls.writes;
+
+    const sched = new SaveScheduler({ writeBook: makeAlignWriter({ store }), splice: spliceAlignRecord });
+    await reflowAlignedVerses({ store, sched, book: 'TIT', bookRaw: NO_SLOT.replace(/siervo/g, 'esclavo') }, ['1:1', '1:2']);
+    await settle();
+
+    // 1:2 is the control: it has a slot, so the reflow restamped it with the slot hash.
+    const slot2 = storedHash(NO_SLOT.replace(/siervo/g, 'esclavo'), '1:2');
+    expect((store.file!.chapters['1']['2'] as AlignmentVerseRecord).targetVerseMd5).toBe(slot2);
+    // 1:1 has no slot: its record keeps its bytes, and nothing carries an undefined stamp.
+    expect(JSON.stringify(store.file!.chapters['1']['1'])).toBe(before);
+    expect(store.calls.writes - writesBefore).toBe(1);
   });
 });

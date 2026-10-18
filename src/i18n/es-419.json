@@ -850,6 +850,8 @@
   "align.unavailable.unreadable.body": "El texto de {book} está en esta computadora pero no se pudo analizar. Descarga de nuevo los textos fuente o reporta el recurso.",
   "align.unavailable.inline-alignment.title": "Este versículo ya tiene una alineación",
   "align.unavailable.inline-alignment.body": "{book} se agregó desde un archivo que ya contiene alineaciones. tC4 conserva la alineación de este versículo tal como está. Aún no puedes cambiarla en tC4.",
+  "align.unavailable.no-slot.title": "tC4 no puede guardar una alineación para este versículo",
+  "align.unavailable.no-slot.body": "tC4 no encuentra este versículo en el texto guardado de {book}, así que no puede guardar una alineación para él. Si el texto del versículo empieza en la línea siguiente a su número, muévelo a la misma línea.",
   "check.preflightError": "No se pudo leer el registro de recursos instalados, así que no se puede determinar si las herramientas están listas:",
   "check.oldTwl": "Una versión preliminar de translationCore fijó los enlaces de Palabras de traducción de este proyecto, así que la aplicación no los lee. Cree el proyecto de nuevo.",
   "sources.checkableError": "No se pudo leer el registro de recursos instalados, así que los idiomas revisables pueden estar incompletos:",
