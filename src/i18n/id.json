@@ -762,6 +762,7 @@
   "cc.exportSaved": "{filename} disimpan",
   "cc.exportInterrupted": "{filename} tidak selesai diunduh. Ekspor lagi.",
   "cc.exportReady": "Ekspor siap: {filename}",
+  "cc.exportSkipped": "Penyelarasan Anda untuk ayat-ayat ini tidak ada di berkas. Periksa di Selaraskan: {refs}",
   "cc.exportsLater": "Ekspor akan tiba kemudian dalam tahapan ini (J7).",
   "cc.pageSetup": "Tata letak halaman",
   "cc.columns": "Kolom",

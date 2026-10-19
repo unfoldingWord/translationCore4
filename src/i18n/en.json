@@ -762,6 +762,7 @@
   "cc.exportSaved": "Saved {filename}",
   "cc.exportInterrupted": "{filename} did not finish downloading. Export it again.",
   "cc.exportReady": "Export ready: {filename}",
+  "cc.exportSkipped": "Your alignment of these verses is not in the file. Check them in Align: {refs}",
   "cc.exportsLater": "Exports arrive later in this increment (J7).",
   "cc.pageSetup": "Page setup",
   "cc.columns": "Columns",

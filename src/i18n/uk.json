@@ -762,6 +762,7 @@
   "cc.exportSaved": "Збережено: {filename}",
   "cc.exportInterrupted": "Завантаження {filename} не завершилося. Експортуйте знову.",
   "cc.exportReady": "Експорт готовий: {filename}",
+  "cc.exportSkipped": "Вашого вирівнювання цих віршів немає у файлі. Перевірте їх у розділі «Вирівняти»: {refs}",
   "cc.exportsLater": "Експорт з'явиться пізніше в цьому етапі (J7).",
   "cc.pageSetup": "Параметри сторінки",
   "cc.columns": "Стовпці",

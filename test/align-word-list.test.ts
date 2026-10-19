@@ -14,9 +14,9 @@
 //     one stored, with no banner and no write;
 // (e) a word that is both banked and placed, or placed on two cards, is written once.
 import { describe, expect, it, vi } from 'vitest';
-import { decompose } from '../journal/skeleton.mjs';
+import { decompose, recompose } from '../journal/skeleton.mjs';
 import { finalizeEdit, linkWord } from '../src/data/align/edit';
-import { weaveBook } from '../src/data/export/weave.mjs';
+import { holdsInlineAlignment, weaveBook } from '../src/data/export/weave.mjs';
 import { indexBook } from '../src/data/usfm/indexer';
 import { AlignmentHelpers } from '../src/data/vendor';
 import { __buildAlignmentSessionForTests as buildAlignmentSession } from '../src/state.jsx';
@@ -198,5 +198,70 @@ describe('#796 a stub or empty verse is "missing" when a paragraph marker follow
   it('a stub with no trailing marker is still "missing" (unchanged)', async () => {
     const s = await open('\\id TIT\n\\c 1\n\\p\n\\v 1 ___\n\\v 2 Hola\n');
     expect(s.unavailable).toBe('missing');
+  });
+});
+
+// #796 slice 5 (acceptance criterion 4, the export half): the weave now asks `needsReview` and
+// `hasLinks` before it merges. A record that matches its verse must still weave as the library
+// merges it, with nothing reported. The records are the ones of the sweep above (B3 (d)).
+describe('#796 slice 5 B4 the export sweep: a record that matches its verse weaves as the library merges it', () => {
+  const fixtures = [
+    'conformance/sample-burrito/ingredients/TIT.usfm',
+    'conformance/sample-burrito/ingredients/JON.usfm',
+    'test/fixtures/usfm-corpus/sample-TIT-draft.usfm',
+    'test/fixtures/usfm-corpus/sample-JON-span.usfm',
+    'test/fixtures/usfm-corpus/exotic-partial-book.usfm',
+    'test/fixtures/usfm-corpus/exotic-poetry-footnotes.usfm',
+  ];
+
+  // A verse that holds imported `\zaln-s` markup (one fixture verse does, #794) keeps its stored bytes, and the
+  // report names it; every other verse is merge(slot, record) with an empty report.
+  it('every drafted verse of the six fixtures: the woven verse is merge(slot, record), and the report is empty', async () => {
+    let merged = 0;
+    const inline: string[] = [];
+    for (const rel of fixtures) {
+      const raw: string = fs.readFileSync(path.resolve(process.cwd(), rel), 'utf8');
+      const slots = decompose(raw).verses as Record<string, string>;
+      for (const e of indexBook(raw)) {
+        const body = raw.slice(e.start, e.end).trim();
+        if (body === '' || body === '___') continue;
+        const ref = `${e.chapter}:${e.verseKey}`;
+        const first = await open(raw, null, ref);
+        let next: AlignmentVerseRecord = first.record;
+        first.record.wordBank.forEach((w: AlignedWord, i: number) => {
+          if (i % 3 === 0) next = linkWord(next, i % next.alignments.length, w);
+        });
+        const stored: AlignmentVerseRecord = JSON.parse(JSON.stringify(finalizeEdit(next, first.words, first.targetMd5)));
+        const skips: Array<{ ref: string; reason: string }> = [];
+        // The library changes the record it is given: the expected verse is made from its own copy.
+        const expected = holdsInlineAlignment(slots[ref])
+          ? slots[ref]
+          : AlignmentHelpers.addAlignmentsToTargetVerseUsingMerge(slots[ref], JSON.parse(JSON.stringify(stored)));
+        expect(expected, `${rel} ${ref} merges`).not.toBeNull();
+        const out = weaveBook(raw, fileOf(ref, stored), AlignmentHelpers, (skip: { ref: string; reason: string }) => skips.push(skip));
+        expect((decompose(out).verses as Record<string, string>)[ref], `${rel} ${ref}`).toBe(expected);
+        if (holdsInlineAlignment(slots[ref])) {
+          expect(skips, `${rel} ${ref}`).toEqual([{ ref: `${e.chapter}:${e.verseKey}`, reason: 'inline-alignment' }]);
+          inline.push(`${rel} ${ref}`);
+        } else {
+          expect(skips, `${rel} ${ref}`).toEqual([]);
+          expect(expected, `${rel} ${ref} is woven`).not.toBe(slots[ref]);
+          merged++;
+        }
+      }
+    }
+    expect(inline).toEqual(['test/fixtures/usfm-corpus/exotic-poetry-footnotes.usfm 1:3']);
+    expect(merged + inline.length).toBe(23);
+  });
+
+  it('the whole sample Titus: the output is the stored book with 1:1 merged by the library, byte for byte', () => {
+    const raw: string = fs.readFileSync(path.join(SAMPLE, 'TIT.usfm'), 'utf8');
+    const { skeleton, verses } = decompose(raw) as { skeleton: string; verses: Record<string, string> };
+    const merged = AlignmentHelpers.addAlignmentsToTargetVerseUsingMerge(verses['1:1'], JSON.parse(JSON.stringify(FILE.chapters['1']['1'])));
+    expect(merged).not.toBeNull();
+    const skips: Array<{ ref: string; reason: string }> = [];
+    const out = weaveBook(raw, FILE, AlignmentHelpers, (skip: { ref: string; reason: string }) => skips.push(skip));
+    expect(out).toBe(recompose(skeleton, { ...verses, '1:1': merged }));
+    expect(skips).toEqual([]);
   });
 });
