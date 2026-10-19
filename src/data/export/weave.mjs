@@ -22,6 +22,10 @@ import { decompose, recompose } from '../../../journal/skeleton.mjs';
  * and its `targetVerseMd5` matches the verse's current text (I-3). */
 const isValid = (record, content) => record.invalid !== true && content !== undefined && verseTextMd5(content) === record.targetVerseMd5;
 
+/** True when a stored verse still holds the `\zaln-s` markup of an aligned
+ * import (an I-1 violation that #553 will extract to the sidecar). */
+export const holdsInlineAlignment = (content) => typeof content === 'string' && /\\zaln-s\b/.test(content);
+
 /**
  * The aligned USFM of one book. Each verse with a valid §5.1 record gets its
  * alignments; every other verse keeps its stored content, so nothing is
@@ -36,6 +40,8 @@ export function weaveBook(usfm, alignments, AlignmentHelpers) {
   for (const [chapter, records] of Object.entries(alignments?.chapters ?? {})) {
     for (const [verse, record] of Object.entries(records)) {
       const key = `${chapter}:${verse}`;
+      // Until #553 extracts it, the imported markup is the verse's alignment: keep it.
+      if (holdsInlineAlignment(verses[key])) continue;
       if (!isValid(record, verses[key])) continue;
       // null when the record does not merge into the verse: keep the stored content.
       const woven = AlignmentHelpers.addAlignmentsToTargetVerseUsingMerge(verses[key], record);
