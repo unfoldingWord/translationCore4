@@ -5,6 +5,7 @@
 import usfm from 'usfm-js';
 import { gapMarkerOf } from './usfm/splice';
 import { indexBook } from './usfm/indexer';
+import { tokenizeVerse, tokensText } from './sourceHighlight';
 
 export const parseChapters = (raw) => {
   // Display parse (whole-book: chapters + headers — PLATFORM-NOTES #4).
@@ -12,11 +13,10 @@ export const parseChapters = (raw) => {
   return json.chapters || {};
 };
 
-export const verseText = (vObj) =>
-  (vObj?.verseObjects || [])
-    .map((vo) => vo.text || vo.children?.map((c) => c.text || '').join('') || '')
-    .join('')
-    .trim();
+// #782: the walk is tokenizeVerse, which reads words at any `\zaln` depth. The
+// whitespace stays as the file has it (src/views/verseText.js collapses it for
+// the source panes), so a stored Check selection still matches its verse.
+export const verseText = (vObj) => tokensText(tokenizeVerse(vObj)).trim();
 
 export function buildChapterVerses(bookRaw, chapters, entries) {
   const byChapter = /** @type {Record<string, object[]>} */ ({});
