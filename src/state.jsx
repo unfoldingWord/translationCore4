@@ -19,6 +19,7 @@ import { readPrintedStories } from './data/storyModel';
 import { recordRecentStory } from './data/obsRecency';
 import { modeOf, placeKey, recordPlace } from './data/place';
 import { spliceSection, spliceVerse, spliceVerseGap, verseBody } from './data/usfm/splice';
+import { bodyToEditorText, editorTextToBody } from './data/usfm/poemLines';
 import { draftPercent, findVerse, indexBook } from './data/usfm/indexer';
 import { bookModel, parseChapters, verseText } from './data/bookModel';
 import { RESOURCE_FRAME, forgetProjectFrames, resolveProjectFrame } from './data/projectFrame';
@@ -1708,7 +1709,8 @@ async function writeBookOrStructure({ store, structuralRef, alignSchedulerRef },
  * describes — and the book is flagged for the scheduler's writer. */
 function stageStructuralSection({ rawRef, schedulerRef, structuralRef, stateRef, dispatch, recordLastEdit }, chapter, keys, texts, newKeys) {
   const book = stateRef.current.book;
-  const verses = newKeys.map((key) => ({ key, body: (texts[key] ?? '').trim() }));
+  const nl = rawRef.current.includes('\r\n') ? '\r\n' : '\n';
+  const verses = newKeys.map((key) => ({ key, body: editorTextToBody((texts[key] ?? '').trim(), nl) }));
   rawRef.current = spliceSection(rawRef.current, chapter, keys, verses);
   structuralRef.current.add(book);
   schedulerRef.current.replaceBook(book, rawRef.current);
@@ -7341,8 +7343,9 @@ export function AppProvider({ children }) {
       editVerse: (chapter, verseKey, text) => {
         // Synchronous local splice keeps the raw string authoritative in-session;
         // the scheduler owns the debounced whole-file write (W-5). An emptied
-        // verse returns to the platform stub convention `___` (§4.1).
-        const body = text.trim() === '' ? '___' : text;
+        // verse returns to the platform stub convention `___` (§4.1). The
+        // editors' tab lines become the verse's inner poem lines (#786).
+        const body = text.trim() === '' ? '___' : editorTextToBody(text, rawRef.current.includes('\r\n') ? '\r\n' : '\n');
         rawRef.current = spliceVerse(rawRef.current, chapter, verseKey, body);
         schedulerRef.current.markDirty(stateRef.current.book, chapter, verseKey, body);
         dispatch({ type: 'set', patch: { bookRaw: rawRef.current } });
@@ -7399,7 +7402,7 @@ export function AppProvider({ children }) {
           for (const verseKey of keys) {
             const stored = verseBody(rawRef.current, chapter, verseKey);
             if (stored == null) continue;
-            const current = stored.trim() === '___' ? '' : stored.trim();
+            const current = stored.trim() === '___' ? '' : bodyToEditorText(stored.trim());
             const text = texts[verseKey] ?? '';
             if (text.trim() === current) continue;
             a.editVerse(chapter, verseKey, text);

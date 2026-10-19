@@ -120,7 +120,8 @@ describe('#784 — a \\v after a paragraph or poetry marker on the same line', (
   it('each such verse is indexed, its body starts after `\\v N `, and the marker stays outside every body (ways 1-3)', () => {
     const entries = indexBook(poetry);
     expect(entries.map((e) => e.verseKey)).toEqual(['1', '2', '3', '4', '5']);
-    expect(['1', '2', '3', '4', '5'].map((k) => body(poetry, 1, k))).toEqual(['one', 'two', 'three', 'four', 'five']);
+    // #786: the inner poem line of verse 1 is part of its body.
+    expect(['1', '2', '3', '4', '5'].map((k) => body(poetry, 1, k))).toEqual(['one\n\\q2 more of one', 'two', 'three', 'four', 'five']);
     for (const e of entries) expect(poetry.slice(e.start - `\\v ${e.verseKey} `.length, e.start)).toBe(`\\v ${e.verseKey} `);
   });
 
@@ -195,7 +196,23 @@ describe('inline markers belong to the body; paragraph-level markers end it', ()
     expect(body(raw, 1, '2')).toBe('Second with \\add added\\add* and \\k keyword\\k* inline');
   });
 
-  it('a line-start poetry marker ends the body (only the first segment is the body)', () => {
+  it('numbered paragraph variants (\\pi2, \\q3) end the body like their base marker', () => {
+    const raw = ['\\id TST', '\\c 1', '\\v 1 head', '\\pi2 indented', '\\v 2 x', '\\q3 deeper', '\\v 3 y', ''].join('\n');
+    expect(body(raw, 1, '1')).toBe('head');
+    expect(body(raw, 1, '2')).toBe('x');
+  });
+});
+
+// #786: a poetry verse spans several lines, one `\q1`/`\q2` line per line of
+// the poem. The ways this can fail, written before the fix:
+//   1. The body stops at the first inner poem line: the editor shows one line
+//      and a save leaves the old lines after the new text (the defect).
+//   2. The body swallows the next verse's own `\q1 \v N` line, or a marker-only
+//      line (`\p`, `\q1` alone, `\ts\*`) that belongs between two verses.
+//   3. A poem line after a heading, or before the first verse, joins a body.
+//   4. A `\q3` line (the editor shows two levels) joins a body.
+describe('#786 — the inner poem lines of a verse belong to its body', () => {
+  it('\\q, \\q1 and \\q2 lines with text continue the open verse (way 1)', () => {
     const raw = [
       '\\id TST synthetic',
       '\\c 1',
@@ -203,16 +220,56 @@ describe('inline markers belong to the body; paragraph-level markers end it', ()
       '\\v 8 first segment',
       '\\q1 second printed segment of the verse',
       '\\q2 third printed segment',
+      '\\q fourth',
       '\\v 9 next verse',
       '',
     ].join('\n');
-    expect(body(raw, 1, '8')).toBe('first segment');
+    expect(body(raw, 1, '8')).toBe('first segment\n\\q1 second printed segment of the verse\n\\q2 third printed segment\n\\q fourth');
     expect(body(raw, 1, '9')).toBe('next verse');
   });
 
-  it('numbered paragraph variants (\\pi2, \\q3) end the body like their base marker', () => {
-    const raw = ['\\id TST', '\\c 1', '\\v 1 head', '\\pi2 indented', '\\v 2 x', ''].join('\n');
-    expect(body(raw, 1, '1')).toBe('head');
+  it('the next verse\'s own line and marker-only lines stay outside (way 2)', () => {
+    const raw = ['\\id TST', '\\c 1', '\\q1 \\v 1 one', '\\q2 more of one', '\\q1', '\\v 2 two', '\\q2 more of two', '\\ts\\*', '\\p', '\\v 3 three', ''].join('\n');
+    expect(['1', '2', '3'].map((k) => body(raw, 1, k))).toEqual(['one\n\\q2 more of one', 'two\n\\q2 more of two', 'three']);
+  });
+
+  it('a `\\v` line with no text: the body starts after the first poem marker, which stays outside (way 2)', () => {
+    const raw = ['\\id PSA', '\\c 131', '\\v 2', '\\q1 But I have calmed', '\\q2 and quieted my soul.', '\\q1 \\v 3 Hope', ''].join('\n');
+    const e = findVerse(indexBook(raw), 131, '2')!;
+    expect(raw.slice(e.start, e.end)).toBe('But I have calmed\n\\q2 and quieted my soul.');
+    expect(raw.slice(0, e.start)).toMatch(/\\v 2\n\\q1 $/);
+    expect(body(raw, 131, '3')).toBe('Hope');
+  });
+
+  it('a poem line after a heading or before any verse joins no body (way 3)', () => {
+    const raw = ['\\id TST', '\\c 1', '\\q1 before any verse', '\\v 1 one', '\\s1 A heading', '\\q1 after the heading', '\\v 2 two', ''].join('\n');
+    expect(body(raw, 1, '1')).toBe('one');
+    expect(body(raw, 1, '2')).toBe('two');
+  });
+
+  it('en_ult Gen 49:6 holds all its poem lines, and the verses around it keep their own', () => {
+    const raw = corpora['en_ult GEN-773 (49:6 follows \\q1 on its line)'];
+    const b = body(raw, 49, '6');
+    expect(b.match(/\n\\q[12] /g)?.length).toBeGreaterThan(0);
+    expect(b).not.toMatch(/\\v /);
+  });
+
+  // The check that keeps the class closed: for every verse of the en_ult
+  // fixtures, the editable body holds every word usfm-js reads in the verse.
+  // A body that stops early fails here, whatever marker stopped it.
+  it('every verse body of the en_ult fixtures holds all the words of its verse', async () => {
+    const { parseChapters, verseText } = await import('../src/data/bookModel.js');
+    type Chapters = Record<string, Record<string, unknown>>;
+    const words = (s: string): string[] => s.split(/\s+/).filter(Boolean);
+    for (const file of ['test/fixtures/en_ult/GEN-773.usfm', 'test/fixtures/en_ult/PSA-3.usfm']) {
+      const raw = read(file);
+      const chapters = parseChapters(raw) as Chapters;
+      for (const e of indexBook(raw)) {
+        const whole = words(verseText(chapters[e.chapter]?.[e.verseKey]));
+        const alone = parseChapters(`\\id TST\n\\c 1\n\\v 1 ${raw.slice(e.start, e.end)}\n`) as Chapters;
+        expect(words(verseText(alone['1']?.['1'])), `${file} ${e.chapter}:${e.verseKey}`).toEqual(whole);
+      }
+    }
   });
 });
 

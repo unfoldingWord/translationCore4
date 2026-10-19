@@ -61,10 +61,14 @@ const escapable = (line, pins) => {
   return !!m && runOf(m[2], pins) !== null;
 };
 
-/** Indent every continuation line of a body that would read as a marker. */
+/** Indent every continuation line of a body that would read as a marker. An
+ * inner poem line (#786) keeps its leading tabs; the space goes after them. */
 const escapeBody = (body, pins) => String(body)
   .split('\n')
-  .map((line, i) => (i > 0 && escapable(line, pins) ? ` ${line}` : line))
+  .map((line, i) => {
+    const tabs = /^\t*/.exec(line)[0];
+    return i > 0 && escapable(line.slice(tabs.length), pins) ? `${tabs} ${line.slice(tabs.length)}` : line;
+  })
   .join('\n');
 
 /** Add (delta > 0, max 2) or remove (delta < 0) one leading tab at the caret's line (#54). */
@@ -216,9 +220,11 @@ export const sectionGroups = (markers, pins, keys = pins) => {
 export const sectionKeys = (markers, pins, keys = pins) => sectionGroups(markers, pins, keys).map((g) => g.key);
 
 /** The text of each verse from the pinned word list: a verse (or span) runs
- * from its pin to the next pin, words joined by their own separators. Only
- * verses with text are returned, keyed by the key the save writes. */
-export const sectionVerses = (words, seps, markers, pins, keys = pins) => {
+ * from its pin to the next pin, words joined by their own separators. A line
+ * inside a verse that `blocks` marks q1/q2 is an inner poem line and keeps its
+ * tabs (#786). Only verses with text are returned, keyed by the key the save
+ * writes. */
+export const sectionVerses = (words, seps, markers, pins, keys = pins, blocks = {}) => {
   const groups = sectionGroups(markers, pins, keys);
   const at = {};
   for (const g of groups) if (g.at !== undefined) at[g.at] = g.key;
@@ -226,7 +232,8 @@ export const sectionVerses = (words, seps, markers, pins, keys = pins) => {
   let cur = groups[0].key; // words before any pin belong to the first verse
   words.forEach((w, i) => {
     if (at[i] !== undefined) cur = at[i];
-    buf[cur] = (buf[cur] ?? '') + w + (seps[i] ?? '');
+    const tabs = at[i] === undefined && i > 0 ? { q1: '\t', q2: '\t\t' }[blocks?.[i]] ?? '' : '';
+    buf[cur] = (buf[cur] ?? '') + tabs + w + (seps[i] ?? '');
   });
   const out = {};
   for (const g of groups) {
@@ -242,7 +249,7 @@ export const sectionVerses = (words, seps, markers, pins, keys = pins) => {
 
 /** Write the pinned word list back out as Type-mode text, one verse per line (#54). */
 export const serializeDraft = (words, seps, markers, pins, keys = pins, blocks = {}) => {
-  const verses = sectionVerses(words, seps, markers, pins, keys);
+  const verses = sectionVerses(words, seps, markers, pins, keys, blocks);
   const groups = sectionGroups(markers, pins, keys).filter((g) => verses[g.key]);
   return groups.map((g, i) => {
     const body = escapeBody(verses[g.key], pins);

@@ -328,3 +328,38 @@ describe('#54 — paragraph breaks and poetry lines from Type pane', () => {
   });
 });
 
+
+// #786: a verse body holds its inner poem lines as tab lines (one tab \q1, two
+// \q2, src/data/usfm/poemLines.ts). The ways this can fail, written before the fix:
+//   1. Type mode drops the tabs of an inner line: the save turns the poem line
+//      into a plain line break, and the \q marker is gone.
+//   2. An inner line that starts with a verse number of the section is read as
+//      that verse's start.
+//   3. Place mode, or a switch back to Type, loses the inner tabs.
+describe('#786 — the inner poem lines of a verse in the section editor', () => {
+  const verses = [
+    { n: '9', drafted: true, body: 'a\n\t\tbetween you\n\tand between' },
+    { n: '10', drafted: true, body: 'b', format: 'q1' },
+  ];
+
+  it('the card opens with the inner lines under the verse, tabs kept (way 1)', () => {
+    expect(initialDraftText(verses, KEYS)).toBe('9 a\n\t\tbetween you\n\tand between\n\t10 b');
+  });
+
+  it('the save gets each verse with its inner tab lines (way 1)', () => {
+    const d = parseDraft(initialDraftText(verses, KEYS), KEYS);
+    expect(sectionVerses(d.words, d.seps, d.markers, KEYS, KEYS, d.blocks)).toEqual({ 9: 'a\n\t\tbetween you\n\tand between', 10: 'b' });
+  });
+
+  it('an inner line that starts with a verse number stays in its verse (way 2)', () => {
+    const text = initialDraftText([{ n: '9', drafted: true, body: 'a\n\t\t10 talentos' }, { n: '10', drafted: true, body: 'b' }], KEYS);
+    const d = parseDraft(text, KEYS);
+    expect(sectionVerses(d.words, d.seps, d.markers, KEYS, KEYS, d.blocks)).toEqual({ 9: 'a\n\t\t10 talentos', 10: 'b' });
+  });
+
+  it('Type to Place and back keeps the inner tabs (way 3)', () => {
+    const text = initialDraftText(verses, KEYS);
+    const d = parseDraft(text, KEYS);
+    expect(serializeDraft(d.words, d.seps, d.markers, KEYS, KEYS, d.blocks)).toBe(text);
+  });
+});

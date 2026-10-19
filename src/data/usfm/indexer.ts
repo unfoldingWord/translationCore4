@@ -5,11 +5,14 @@
 //
 // A verse BODY is the editable text after `\v <key> ` up to the next line-start
 // marker that ends a body: the next `\v`, `\c`, or a paragraph-level marker line.
+// The inner poem lines of a verse (`\q1 …`, `\q2 …` with no `\v`) belong to its
+// body (#786, poemLines.ts): a poetry verse is one body over several lines.
 // Inline markup that USFM permits inside verse text (`\w`, `\zaln-s/-e`, `\f`,
 // `\k`, `\add`, …) belongs to the body even when it starts a line — aligned
 // tC3-imported drafts put `\zaln-s`/`\w` at line starts (T7). Trailing line
 // terminators before the next marker stay OUTSIDE the body, so a splice can
 // never eat the line structure around a verse.
+import { isInnerPoemLine } from './poemLines';
 
 export interface VerseEntry {
   /** Exact `\c` token, e.g. "1". Compared as a string. */
@@ -128,6 +131,10 @@ const baseTag = (tag: string): string => (tag.includes('-') ? tag : tag.replace(
 
 const endsBody = (tag: string): boolean => BODY_ENDING_TAGS.has(baseTag(tag.toLowerCase()));
 
+/** A line-start marker line that ends the open body. An inner poem line of a
+ * verse does not (#786); with no verse open it closes nothing either way. */
+const endsBodyLine = (line: string, tag: string): boolean => endsBody(tag) && !isInnerPoemLine(line);
+
 /** #784: Paratext and the aligned texts put a verse on its poetry or paragraph
  * marker's line (`\q1 \v 15 …`, and `\p\v 6` with no space in Zechariah). For
  * such a line, the length of the marker and its spaces, where the verse's own
@@ -182,6 +189,16 @@ export const indexBook = (rawBook: string): VerseEntry[] => {
     open = null;
   };
 
+  // A paragraph-level marker line that is not a verse's own: it ends the open
+  // body, or it is an inner poem line that the body goes on over (#786). When
+  // the `\v` line held no text (`\v 2` / `\q1 But I …`), the body starts after
+  // that first poem marker, which stays outside it like the `\q1 ` of a
+  // `\q1 \v 15 …` line.
+  const markerLine = (line: string, tag: string, at: number): void => {
+    if (endsBodyLine(line, tag)) closeOpen(at);
+    else if (open && open.start === at && isInnerPoemLine(line)) open.start = at + line.indexOf(' ') + 1;
+  };
+
   let lineStart = 0;
   const len = rawBook.length;
   while (lineStart < len) {
@@ -209,10 +226,11 @@ export const indexBook = (rawBook: string): VerseEntry[] => {
         closeOpen(lineStart);
         const cm = /^\\c[ \t]+(\S+)/.exec(line);
         chapter = cm ? cm[1] : chapter;
-      } else if (endsBody(tag)) {
-        closeOpen(lineStart);
+      } else {
+        // A paragraph-level marker line, or inline verse content at a line
+        // start (the body continues).
+        markerLine(line, tag, lineStart);
       }
-      // Any other line-start marker is inline verse content — the body continues.
     }
     lineStart = lineEnd + 1;
   }

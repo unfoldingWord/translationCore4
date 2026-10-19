@@ -203,7 +203,7 @@ export function SectionEditor({ chapter, keys, verses, span, dir, editType }) {
     actions.saveSection(
       chapter,
       keys,
-      sectionVerses(draft.words, draft.seps, draft.markers, pins, keys),
+      sectionVerses(draft.words, draft.seps, draft.markers, pins, keys, draft.blocks),
       sectionKeys(draft.markers, pins, keys),
       formats,
     );

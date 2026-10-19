@@ -1255,6 +1255,11 @@ test.describe('J2 — a translator drafts a verse', () => {
         expect(psaOnDisk().equals(before)).toBe(true);
         seen.psalm3SectionSaveUnchanged = true;
       });
+      const verse15 = (buf: Buffer): string => {
+        const s = buf.toString('utf8');
+        const span = verseTextSpan(s, 3, 15);
+        return s.slice(span.start, span.end);
+      };
       const EDIT = 'Pondré enemistad entre ti y la mujer (#784).';
       await test.step('Translate shows Gen 3:15; an edit saves only that verse, and its \\q1 stays', async () => {
         await page.goto('/');
@@ -1277,6 +1282,76 @@ test.describe('J2 — a translator drafts a verse', () => {
         await testInfo.attach('j02-gen-3-15-saved', { path: shot, contentType: 'image/png' });
         const at = after.toString('utf8').indexOf(`\\v 15 ${EDIT}`);
         seen.savedLine = after.toString('utf8').slice(after.toString('utf8').lastIndexOf('\n', at) + 1, at + `\\v 15 ${EDIT}`.length);
+        // #786: the save replaced the whole verse, not its first poem line only.
+        expect(verse15(after)).not.toMatch(/woman|offspring|zaln/);
+      });
+
+      // #786: en_ult Gen 3:15 was four poem lines (`\q1 \v 15 …`, then `\q2`,
+      // `\q2`, `\q1` lines). The editor showed the first only, and a save left
+      // the other three after the new text (the step above now proves they go).
+      // These steps write a two-line poem verse and edit it in both modes.
+      const LINE2 = 'entre tu descendencia y la suya (#786).';
+      const LINE2B = 'entre tu descendencia y la suya (#786, sección).';
+      await test.step('Verse: a two-line poem verse saves as \\q1 \\v 15 and \\q2, and reopens with every line (#786)', async () => {
+        const before = genOnDisk();
+        await page.getByTitle('Edit this verse').filter({ hasText: EDIT }).first().click();
+        const editor = page.getByRole('textbox', { name: 'Verse 15' });
+        await editor.fill(`${EDIT}\n\t\t${LINE2}`);
+        await editor.blur();
+        await expect.poll(() => genOnDisk().toString('utf8'), { timeout: 30_000 }).toContain(`\\q2 ${LINE2}`);
+        const after = genOnDisk();
+        expect(byteStrictViolation(before, after, 3, 15)).toBeNull();
+        expect(after.toString('utf8')).toContain(`\\q1 \\v 15 ${EDIT}\n\\q2 ${LINE2}\n`);
+        seen.verse15AfterVerseSave = verse15(after);
+        await page.getByTitle('Edit this verse').filter({ hasText: EDIT }).first().click();
+        await expect(editor).toHaveValue(`${EDIT}\n\t\t${LINE2}`);
+        await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+        await expect(editor).toHaveCount(0);
+        expect(genOnDisk().equals(after)).toBe(true);
+      });
+
+      await test.step('Verse: en_ult Gen 3:16 opens with all its poem lines, and Cancel changes nothing (#786)', async () => {
+        const before = genOnDisk();
+        const s = before.toString('utf8');
+        const span = verseTextSpan(s, 3, 16);
+        const inFile = s.slice(span.start, span.end).split('\n').filter((l) => /^\\q[12] \S/.test(l)).length;
+        await page.getByTitle('Edit this verse').filter({ hasText: 'childbearing' }).first().click();
+        const editor = page.getByRole('textbox', { name: 'Verse 16' });
+        const inEditor = (await editor.inputValue()).split('\n').filter((l) => /^\t{1,2}\S/.test(l)).length;
+        seen.verse16InnerPoemLines = { inFile, inEditor };
+        expect(inFile).toBeGreaterThan(0);
+        expect(inEditor).toBe(inFile);
+        await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+        await expect(editor).toHaveCount(0);
+        expect(genOnDisk().equals(before)).toBe(true);
+      });
+
+      await test.step('Section: Gen 3:15 shows its inner line with tabs, and an edit of it keeps its \\q2 (#786)', async () => {
+        await page.getByRole('tab', { name: 'Section', exact: true }).click();
+        const buttons = page.getByRole('button', { name: /^Draft section / });
+        const names = await buttons.evaluateAll((els) => els.map((el) => el.getAttribute('aria-label') ?? el.textContent ?? ''));
+        const holds15 = names.findIndex((n) => {
+          const m = /(\d+)(?:[–-](\d+))?\s*$/.exec(n);
+          return !!m && Number(m[1]) <= 15 && 15 <= Number(m[2] ?? m[1]);
+        });
+        seen.sectionWith15 = names[holds15];
+        expect(holds15).toBeGreaterThanOrEqual(0);
+        const before = genOnDisk();
+        await buttons.nth(holds15).click();
+        const box = page.getByRole('textbox', { name: /^Section / });
+        const text = await box.inputValue();
+        expect(text).toContain(`15 ${EDIT}\n\t\t${LINE2}`);
+        await box.fill(text.replace(LINE2, LINE2B));
+        await page.getByRole('button', { name: 'Save section' }).click();
+        await expect(page.getByTestId('section-editor')).toHaveCount(0);
+        await expect.poll(() => genOnDisk().toString('utf8'), { timeout: 30_000 }).toContain(LINE2B);
+        const after = genOnDisk();
+        expect(byteStrictViolation(before, after, 3, 15)).toBeNull();
+        expect(after.toString('utf8')).toContain(`\\q1 \\v 15 ${EDIT}\n\\q2 ${LINE2B}\n`);
+        seen.verse15AfterSectionSave = verse15(after);
+        const shot = testInfo.outputPath('j02-gen-3-15-poem-lines.png');
+        await page.screenshot({ path: shot, animations: 'disabled' });
+        await testInfo.attach('j02-gen-3-15-poem-lines', { path: shot, contentType: 'image/png' });
       });
 
       const artifactPath = testInfo.outputPath('j02-poetry-verses.json');
