@@ -7,6 +7,7 @@
 // A file leaves only as a browser download: the renderer has no file-system
 // access, and Electron routes a download to the operating-system save dialog
 // [VERIFIED — scripts/desktop-main.cjs, 2026-09-22].
+import type { AlignedWord } from '../align/zaln';
 import type { BurritoStore, ProjectSummary, Story } from '../burritoStore';
 import { checkpointMessage } from '../checkpoint';
 import { Refusal, failedReport, okReport, type Report } from '../journal/runtime';
@@ -22,13 +23,19 @@ export type ExportProducer = {
 /** `storyPictures` (OBS projects, #360) gives one story's frame pictures as
  * Community Checking resolves them: picture address by frame number ("1" is
  * the first frame); a frame with no picture has no key. It gets the story as
- * the export already read it (#460). */
+ * the export already read it (#460).
+ * `alignSource` (Bible projects, #790, D107) reads the pinned original-language book once and
+ * resolves to the words of one verse by project-frame ref (`chapter:verse`). The aligned USFM
+ * calls it, only when a record needs fitting, to fit each stored record's source cards to the
+ * pinned verse before it weaves. A temporary state rejects with a plain Error; a permanent one
+ * gives `[]` for every ref. */
 export type ExportInput = {
   store: BurritoStore;
   project: ProjectSummary;
   book?: string;
   pageSetup?: PageSetup;
   storyPictures?: (number: number, story: Story) => Promise<Record<string, string>>;
+  alignSource?: () => Promise<(ref: string) => Promise<AlignedWord[]>>;
 };
 /** `skipped` (#796): the verses the file leaves out although the project holds an alignment of
  * the translator's for them, as `chapter:verse` refs in book order. Only the aligned USFM sets
