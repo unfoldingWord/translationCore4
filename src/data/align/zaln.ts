@@ -15,6 +15,15 @@ export interface AlignedWord {
   [key: string]: unknown;
 }
 
+/** One word of a stored verse, as the export counts it (#796): the word, its
+ * 1-based place among identical words, and how many identical words the verse has.
+ * The shape of `verseWords` in verseWords.mjs, and of a bank word without its keys. */
+export interface VerseWord {
+  word: string;
+  occurrence: number;
+  occurrences: number;
+}
+
 export interface Alignment {
   topWords: AlignedWord[];
   bottomWords: AlignedWord[];

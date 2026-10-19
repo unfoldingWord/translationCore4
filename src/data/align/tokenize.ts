@@ -1,5 +1,9 @@
 // tokenize.ts — the ONE word split for alignment (#255, D72 point 3).
 //
+// #796: the alignment editor's bank and writes no longer use this split; they take
+// the export's word list of the stored verse (verseWords.mjs). The suggestion
+// bridge still uses it, and the paragraphs below describe it as #255 made it.
+//
 // Two sides of the app split a target verse into words: the alignment editor
 // (bootstrap wordBank, I-2 occurrence numbering) and the bridge that feeds the
 // suggestion engine (#1). The engine's `wordmap-lexer` calls
@@ -13,10 +17,10 @@
 // (zero-width joiner) and U+2060 (word joiner) INSIDE a word — the Hebrew
 // fixtures write וַֽ⁠יְהִי֙ with a joiner; the old regex split it in two — and
 // runs of digits as a separate `number` token. Punctuation and whitespace are
-// kept as separators so `tokenizeTargetVerse` can rebuild the verse around the
-// `\w` markup. Characters the library classifies as neither (symbols, other
-// format characters) are dropped from the token stream; that stream only ever
-// feeds word identity and the bootstrap's throwaway `\w` string, never storage.
+// kept as separators so a caller can rebuild the verse around the words.
+// Characters the library classifies as neither (symbols, other format
+// characters) are dropped from the token stream; that stream only ever feeds
+// word identity, never storage.
 import { tokenize as sptTokenize } from 'string-punctuation-tokenizer';
 
 export interface VerseToken {
