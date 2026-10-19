@@ -29,26 +29,30 @@ export const bodyToEditorText = (body: string): string =>
  * heading there is the next verse's paragraph (indexer.ts). */
 const endsAVerse = (line: string): boolean => line.trim() !== '' && lineKind(line) !== 'break' && lineKind(line) !== 'heading';
 
-/** The body to write for an edited verse. `opened` is the body as it was when
- * the editor opened: each blank line takes back the break it had there, in
- * order (`\ts\*`, `\m`, …), and a new blank line is a `\p`. A line after the
- * first that starts with one to three tabs becomes a `\q1` to `\q3` line; a
- * line with no tab stays as it is. `nl` is the file's line end, so a CRLF file
- * stays CRLF.
+/** The verse to write for an edited editor text: its `body`, and its `tail`.
+ * `opened` is the body as it was when the editor opened: each blank line takes
+ * back the break it had there, in order (`\ts\*`, `\m`, …), and a new blank
+ * line is a `\p`. A line after the first that starts with one to three tabs
+ * becomes a `\q1` to `\q3` line; a line with no tab stays as it is. `nl` is the
+ * file's line end, so a CRLF file stays CRLF.
  *
  * The editor saves on every keystroke, and the next keystroke replaces the body
- * the index reads back. So this writes only what the index reads as the verse
+ * the index reads back. So the body is only what the index reads as the verse
  * (review of PR #810): no marker on a tab line with no text yet, no space
- * between the marker and the text, nothing blank before the first line, and
- * no break, heading or blank line after the last, which the index leaves
- * outside. */
-export const editorTextToBody = (text: string, nl: '\n' | '\r\n', opened = ''): string => {
+ * between the marker and the text, no tab and nothing blank before the first
+ * line, and no break, heading or blank line after the last. A break or a
+ * heading the translator left after the verse's last words is not lost: it is
+ * the `tail`, which the caller writes right after the verse (splice.ts
+ * `spliceVerseWithTail`), where the index leaves it outside the verse. */
+export const editorTextToVerse = (text: string, nl: '\n' | '\r\n', opened = ''): { body: string; tail: string[] } => {
   const breaks = opened.split(/\r?\n/).slice(1).filter((l) => lineKind(l) === 'break' || lineKind(l) === 'blank');
   const lines = text.split('\n');
   while (lines.length > 1 && lines[0].trim() === '') lines.shift();
-  while (lines.length > 1 && !endsAVerse(lines[lines.length - 1].replace(/^\t+/, ''))) lines.pop();
+  lines[0] = lines[0].replace(/^\t+/, '');
+  const left: string[] = [];
+  while (lines.length > 1 && !endsAVerse(lines[lines.length - 1].replace(/^\t+/, ''))) left.unshift(lines.pop()!);
   let b = 0;
-  return lines
+  const body = lines
     .map((line, i) => {
       if (i === 0) return line;
       const tabs = /^\t{1,3}/.exec(line)?.[0].length ?? 0;
@@ -57,4 +61,11 @@ export const editorTextToBody = (text: string, nl: '\n' | '\r\n', opened = ''): 
       return tabs ? `\\q${tabs} ${rest}` : line;
     })
     .join(nl);
+  // A blank line left last keeps a break it had; a new one is nothing.
+  const tail = left.flatMap((line) => (line.trim() !== '' ? [line.replace(/^\t+/, '')] : b < breaks.length ? [breaks[b++]] : []));
+  return { body, tail };
 };
+
+/** The body alone: for a write that replaces the lines after the verse too
+ * (a span joined or broken, `spliceSection`), or where no tail can be left. */
+export const editorTextToBody = (text: string, nl: '\n' | '\r\n', opened = ''): string => editorTextToVerse(text, nl, opened).body;

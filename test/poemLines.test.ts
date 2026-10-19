@@ -21,9 +21,9 @@
 //   9. A heading or a paragraph line with text (`\s1 …`, `\pmo …`) is changed
 //      or lost; a `\q3` line comes back as `\q2`.
 import { describe, expect, it } from 'vitest';
-import { bodyToEditorText, editorTextToBody } from '../src/data/usfm/poemLines';
+import { bodyToEditorText, editorTextToBody, editorTextToVerse } from '../src/data/usfm/poemLines';
 import { indexBook, findVerse } from '../src/data/usfm/indexer';
-import { spliceVerse, verseBody } from '../src/data/usfm/splice';
+import { spliceVerseWithTail, verseBody } from '../src/data/usfm/splice';
 
 const fs = process.getBuiltinModule('node:fs');
 const path = process.getBuiltinModule('node:path');
@@ -55,7 +55,8 @@ describe('#786 poem lines: body <-> editor text', () => {
   });
 
   it('never puts a marker on the first line, nor on a line with no tabs (ways 3, 5)', () => {
-    expect(editorTextToBody('\tfirst\nplain break\n\tpoem', '\n')).toBe('\tfirst\nplain break\n\\q1 poem');
+    // The first line takes no tab either (review of PR #810): it has the verse's own marker.
+    expect(editorTextToBody('\tfirst\nplain break\n\tpoem', '\n')).toBe('first\nplain break\n\\q1 poem');
   });
 
   it('a CRLF verse keeps CRLF on every line, also after an edit (way 6)', () => {
@@ -94,9 +95,14 @@ describe('#812 breaks, headings and \\q3 inside a verse', () => {
 });
 
 // Way 7. editVerse's write, as the Verse editor calls it on every keystroke:
-// the breaks come from the verse as it was when the editor opened.
-const keystroke = (book: string, chapter: string, key: string, text: string, opened: string): string =>
-  spliceVerse(book, chapter, key, text.trim() === '' ? '___' : editorTextToBody(text, '\n', opened));
+// the breaks come from the verse as it was when the editor opened, and the
+// lines left after its last words go right after it (`openedBook`: the book
+// then).
+const verseOf = (text: string, opened: string) => (text.trim() === '' ? { body: '___', tail: [] } : editorTextToVerse(text, '\n', opened));
+const keystroke = (book: string, chapter: string, key: string, text: string, opened: string, openedBook: string): string => {
+  const { body, tail } = verseOf(text, opened);
+  return spliceVerseWithTail(book, openedBook, chapter, key, body, tail, '\n');
+};
 
 /** Every editor text on the way from `from`: one character off the end at a
  * time, the way Backspace takes a line away. */
@@ -119,14 +125,17 @@ const keystrokeSuite = (file: string, chapter: string, verse: string, lineToEdit
     const lines = start.split('\n');
 
     /** Type each text in turn; after each one the index reads back exactly the
-     * body written, and every byte outside the verse is the original's. */
+     * body written, no written line starts with a tab (review of PR #810), the
+     * lines left after the verse's last words come right after it, and every
+     * other byte outside the verse is the original's. */
     const typeAll = (texts: string[]) => {
       let book = raw;
       for (const text of texts) {
-        book = keystroke(book, chapter, verse, text, opened);
-        const written = text.trim() === '' ? '___' : editorTextToBody(text, '\n', opened);
-        expect(verseBody(book, chapter, verse), JSON.stringify(text)).toBe(written);
-        expect(outside(book), JSON.stringify(text)).toEqual([raw.slice(0, e.start), raw.slice(e.end)]);
+        book = keystroke(book, chapter, verse, text, opened, raw);
+        const { body, tail } = verseOf(text, opened);
+        expect(verseBody(book, chapter, verse), JSON.stringify(text)).toBe(body);
+        expect(body.split('\n').filter((l) => l.startsWith('\t')), JSON.stringify(text)).toEqual([]);
+        expect(outside(book), JSON.stringify(text)).toEqual([raw.slice(0, e.start), tail.map((l) => `\n${l}`).join('') + raw.slice(e.end)]);
       }
       return book;
     };
@@ -166,10 +175,36 @@ const keystrokeSuite = (file: string, chapter: string, verse: string, lineToEdit
 
     it('Cancel after those keystrokes restores the file byte for byte', () => {
       let book = raw;
-      for (const text of backspaces(start, start.lastIndexOf('\n'))) book = keystroke(book, chapter, verse, text, opened);
-      expect(spliceVerse(book, chapter, verse, opened)).toBe(raw);
+      for (const text of backspaces(start, start.lastIndexOf('\n'))) book = keystroke(book, chapter, verse, text, opened, raw);
+      expect(spliceVerseWithTail(book, raw, chapter, verse, opened, [], '\n')).toBe(raw);
+    });
+
+    // Review of PR #810: everything after the line to edit taken away, line by
+    // line from the end, then typed back. The line (a heading, a break) is left
+    // after the verse's last words: it stays in the file, right after the verse,
+    // and typing the text back puts it inside the verse again, once.
+    it('the text after that line taken away, then typed back', () => {
+      const cut = lines.slice(0, k + 1).join('\n').length;
+      const steps = backspaces(start, cut);
+      const book = typeAll([...steps, ...steps.slice().reverse().slice(1), start]);
+      expect(book).toBe(raw);
+      let cancelled = raw;
+      for (const text of steps) cancelled = keystroke(cancelled, chapter, verse, text, opened, raw);
+      expect(spliceVerseWithTail(cancelled, raw, chapter, verse, opened, [], '\n')).toBe(raw);
     });
   });
+
+describe('#812 review — the lines left after a verse\'s last words, and an emptied first line', () => {
+  it('a heading or a break left last is not the body: it is the tail, written after the verse', () => {
+    expect(editorTextToVerse('a\n\\s1 Heading', '\n', 'a\n\\s1 Heading\nb')).toEqual({ body: 'a', tail: ['\\s1 Heading'] });
+    expect(editorTextToVerse('a\n', '\n', 'a\n\\ts\\*\nb')).toEqual({ body: 'a', tail: ['\\ts\\*'] });
+    expect(editorTextToVerse('a\n\n', '\n', 'a')).toEqual({ body: 'a', tail: [] });
+  });
+
+  it('an emptied first line: the next line starts the body with no tabs', () => {
+    expect(editorTextToBody('\n\t\tbetween you', '\n')).toBe('between you');
+  });
+});
 
 keystrokeSuite('en_ult/GEN-773', '49', '6', /^\t/);
 // 1SA 2:2: a `\ts\*` between its poem lines — the blank line is the one edited.

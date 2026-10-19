@@ -396,4 +396,55 @@ describe('#812 — breaks, headings and \\q3 lines of a verse in the section edi
     expect(indentLine('9 a\n\t\tb', 7, 1, KEYS).text).toBe('9 a\n\t\t\tb');
     expect(indentLine('9 a\n\t\t10 b', 7, 1, KEYS).text).toBe('9 a\n\t\t10 b');
   });
+
+  // Review of PR #810: the #575 rule (a blank line between verses joined into a
+  // span becomes a space) met a span the book already had, with a break inside
+  // it (en_ust 1SA 17:50-51): a save with no change deleted that break.
+  it('a span the book already has keeps its inner blank line; a span made now joins its verses', () => {
+    const span = initialDraftText([{ n: '9-10', drafted: true, body: 'a\n\nb' }], ['9', '10']);
+    const d = parseDraft(span, ['9', '10']);
+    expect(sectionVerses(d.words, d.seps, d.markers, ['9', '10'], ['9-10'], d.blocks)).toEqual({ '9-10': 'a\n\nb' });
+    const joined = parseDraft('9-10 a\n\nb', KEYS);
+    expect(sectionVerses(joined.words, joined.seps, joined.markers, KEYS, KEYS, joined.blocks)).toEqual({ '9-10': 'a b' });
+  });
+});
+
+// Review of PR #810: open each verse alone in the section editor and save it with
+// no change. The save must get back the editor text the verse opened with, or it
+// writes the verse (and, for a span, its breaks were lost). Over the fixtures in
+// CI, and over every verse of the rig's en_ult and en_ust where the rig is present.
+describe('#812 — a verse opened in the section editor and saved with no change is not written', () => {
+  const fs = process.getBuiltinModule('node:fs');
+  const path = process.getBuiltinModule('node:path');
+  const check = async (label: string, raw: string) => {
+    const { indexBook } = await import('../src/data/usfm/indexer');
+    const { bodyToEditorText } = await import('../src/data/usfm/poemLines');
+    const changed: string[] = [];
+    for (const e of indexBook(raw)) {
+      const body = raw.slice(e.start, e.end).trim();
+      if (body === '' || body === '___') continue;
+      const keys = [e.verseKey];
+      const pins = expandKeys(keys);
+      const text = bodyToEditorText(body);
+      const d = parseDraft(initialDraftText([{ n: e.verseKey, drafted: true, body: text }], pins), pins);
+      const saved = (sectionVerses(d.words, d.seps, d.markers, pins, keys, d.blocks) as Record<string, string>)[e.verseKey] ?? '';
+      if (saved !== text.trim()) changed.push(`${label} ${e.chapter}:${e.verseKey}`);
+    }
+    expect(changed).toEqual([]);
+  };
+  const read = (rel: string) => fs.readFileSync(path.resolve(process.cwd(), rel), 'utf8');
+
+  it('every verse of the fixtures', async () => {
+    for (const f of ['en_ult/GEN-773', 'en_ult/PSA-3', 'en_ult/1SA-2-812', 'en_ult/REV-7-812', 'en_ult/PSA-9-812', 'en_ult/MAT-27-812', 'en_ust/GEN-29-812', 'sample-burrito/JON']) {
+      await check(f, read(`test/fixtures/${f}.usfm`));
+    }
+  });
+
+  const rig = path.resolve(process.cwd(), 'dev-env/state/work/repos/_local_/_sideloaded_');
+  it.skipIf(!fs.existsSync(path.join(rig, 'en_ust/ingredients/1SA.usfm')))('every verse of the rig\'s en_ult and en_ust (rig required)', async () => {
+    for (const pkg of ['en_ult', 'en_ust']) {
+      const dir = path.join(rig, pkg, 'ingredients');
+      for (const f of fs.readdirSync(dir).filter((x: string) => x.endsWith('.usfm'))) await check(`${pkg}/${f}`, fs.readFileSync(path.join(dir, f), 'utf8'));
+    }
+  }, 600_000);
 });

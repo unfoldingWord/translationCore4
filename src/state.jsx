@@ -18,8 +18,8 @@ import { createObsPackCache, projectImageIngredients, readObsStoryPresentation }
 import { readPrintedStories } from './data/storyModel';
 import { recordRecentStory } from './data/obsRecency';
 import { modeOf, placeKey, recordPlace } from './data/place';
-import { spliceSection, spliceVerse, spliceVerseGap, verseBody } from './data/usfm/splice';
-import { bodyToEditorText, editorTextToBody } from './data/usfm/poemLines';
+import { spliceSection, spliceVerse, spliceVerseGap, spliceVerseWithTail, verseBody } from './data/usfm/splice';
+import { bodyToEditorText, editorTextToVerse } from './data/usfm/poemLines';
 import { draftPercent, findVerse, indexBook } from './data/usfm/indexer';
 import { bookModel, parseChapters, verseText } from './data/bookModel';
 import { RESOURCE_FRAME, forgetProjectFrames, resolveProjectFrame } from './data/projectFrame';
@@ -1843,6 +1843,17 @@ async function writeBookOrStructure({ store, structuralRef, alignSchedulerRef },
   await alignFileFor(store, alignSchedulerRef?.current, book);
 }
 
+/** #812: write one verse as the Verse card or a section save does: its body,
+ * and its `tail` right after it (splice.ts `spliceVerseWithTail`; `openedBook`
+ * is the book as the card opened). The scheduler splices the body alone; when
+ * the lines after the verse moved too, it takes the whole book. */
+function stageVerse({ rawRef, schedulerRef, stateRef }, chapter, verseKey, body, tail, openedBook) {
+  const was = rawRef.current;
+  rawRef.current = spliceVerseWithTail(was, openedBook ?? was, chapter, verseKey, body, tail, was.includes('\r\n') ? '\r\n' : '\n');
+  schedulerRef.current.markDirty(stateRef.current.book, chapter, verseKey, body);
+  if (rawRef.current !== spliceVerse(was, chapter, verseKey, body)) schedulerRef.current.replaceBook(stateRef.current.book, rawRef.current);
+}
+
 /** #63: stage a section save whose verse keys changed (a span created or
  * broken, D70). The book is rewritten ONCE over the affected verses — never
  * spliced verse by verse, which would pass through a slot set no action
@@ -1851,7 +1862,12 @@ function stageStructuralSection({ rawRef, schedulerRef, structuralRef, stateRef,
   const book = stateRef.current.book;
   const nl = rawRef.current.includes('\r\n') ? '\r\n' : '\n';
   // #812: a verse's blank lines take back the breaks it had; a new key has none.
-  const verses = newKeys.map((key) => ({ key, body: editorTextToBody((texts[key] ?? '').trim(), nl, keys.includes(key) ? verseBody(rawRef.current, chapter, key) ?? '' : '') }));
+  // This rewrite runs once, so a tail (a heading left after the verse's last
+  // words) is written right after the body, where the index leaves it outside.
+  const verses = newKeys.map((key) => {
+    const { body, tail } = editorTextToVerse((texts[key] ?? '').trim(), nl, keys.includes(key) ? verseBody(rawRef.current, chapter, key) ?? '' : '');
+    return { key, body: body + tail.map((l) => nl + l).join('') };
+  });
   rawRef.current = spliceSection(rawRef.current, chapter, keys, verses);
   structuralRef.current.add(book);
   schedulerRef.current.replaceBook(book, rawRef.current);
@@ -7490,12 +7506,15 @@ export function AppProvider({ children }) {
         // editors' tab lines become the verse's inner poem lines (#786), and
         // its blank lines take back the breaks the verse had when its editor
         // opened (#812): the Verse card's `before`, or the stored body for a
-        // section save, which writes each verse once.
+        // section save, which writes each verse once. A break or a heading left
+        // after the verse's last words goes right after it, never lost and never
+        // doubled by the next keystroke (`beforeRaw`: the book as the card opened).
         const e = stateRef.current.editing;
-        const opened = e?.key === `${chapter}:${verseKey}` ? e.before : verseBody(rawRef.current, chapter, verseKey) ?? '';
-        const body = text.trim() === '' ? '___' : editorTextToBody(text, rawRef.current.includes('\r\n') ? '\r\n' : '\n', opened);
-        rawRef.current = spliceVerse(rawRef.current, chapter, verseKey, body);
-        schedulerRef.current.markDirty(stateRef.current.book, chapter, verseKey, body);
+        const own = e?.key === `${chapter}:${verseKey}`;
+        const opened = own ? e.before : verseBody(rawRef.current, chapter, verseKey) ?? '';
+        const nl = rawRef.current.includes('\r\n') ? '\r\n' : '\n';
+        const { body, tail } = text.trim() === '' ? { body: '___', tail: [] } : editorTextToVerse(text, nl, opened);
+        stageVerse({ rawRef, schedulerRef, stateRef }, chapter, verseKey, body, tail, own ? e.beforeRaw : undefined);
         dispatch({ type: 'set', patch: { bookRaw: rawRef.current } });
         const st = stateRef.current;
         const repoPath = st.project?.repoPath || st.project?.id;
@@ -7580,8 +7599,8 @@ export function AppProvider({ children }) {
         const e = stateRef.current.editing;
         if (e && e.key === `${chapter}:${verseKey}`) {
           const body = e.before.trim() === '' ? '___' : e.before;
-          rawRef.current = spliceVerse(rawRef.current, chapter, verseKey, body);
-          schedulerRef.current.markDirty(stateRef.current.book, chapter, verseKey, body);
+          // #812: also takes away what the edit put after the verse (its tail).
+          stageVerse({ rawRef, schedulerRef, stateRef }, chapter, verseKey, body, [], e.beforeRaw);
           // The Resume snippet follows the restored text, never the cancelled
           // draft (Codex review of #138).
           const st = stateRef.current;

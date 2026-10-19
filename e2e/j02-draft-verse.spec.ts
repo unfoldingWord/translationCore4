@@ -1441,6 +1441,33 @@ test.describe('J2 — a translator drafts a verse', () => {
         seen.sa2SectionSaveUnchanged = true;
       });
 
+      // Review of PR #810: the text after a break deleted, so the break is left
+      // after the verse's last words. It must stay in the file, right after the
+      // verse, and not twice.
+      await test.step('Verse: the words after 1 Samuel 2:2\'s `\\ts\\*` deleted, the `\\ts\\*` stays in the file once (#812)', async () => {
+        await openChapter(/1 Samuel/, '2', 'Verse');
+        const before = saOnDisk().toString('utf8');
+        await page.getByTitle('Edit this verse').filter({ hasText: 'besides you' }).first().click();
+        const editor = page.getByRole('textbox', { name: 'Verse 2' });
+        const value = await editor.inputValue();
+        const lines = value.split('\n');
+        const lastBlank = lines.lastIndexOf('');
+        const cut = lines.slice(0, lastBlank + 1).join('\n').length + 1;
+        await editor.evaluate((el: HTMLTextAreaElement, [from, to]: number[]) => el.setSelectionRange(from, to), [cut, value.length]);
+        await editor.press('Backspace');
+        await editor.blur();
+        await expect.poll(() => saOnDisk().toString('utf8'), { timeout: 30_000 }).not.toBe(before);
+        const s = saOnDisk().toString('utf8');
+        const region = (t: string) => {
+          const span = verseTextSpan(t, 2, 2);
+          return t.slice(span.start, span.end);
+        };
+        seen.sa2v2AfterCut = { tsInVerseRegion: region(s).split('\\ts\\*').length - 1, tsBefore: region(before).split('\\ts\\*').length - 1 };
+        expect(seen.sa2v2AfterCut).toEqual({ tsInVerseRegion: 1, tsBefore: 1 });
+        expect(region(s)).not.toContain(lines[lastBlank + 1]);
+        expect(s.split('\\ts\\*').length).toBe(before.split('\\ts\\*').length);
+      });
+
       await test.step('Verse: Psalm 9:15 shows its `\\q3` line with three tabs, and Cancel changes nothing (#812)', async () => {
         await openChapter(/Psalms/, '9', 'Verse');
         const before = psaOnDisk();
