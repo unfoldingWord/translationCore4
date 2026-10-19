@@ -21,7 +21,6 @@ import {
   resetSeededChecking,
   resetPlaces,
   sideloadedIngredient,
-  sideloadedRepo,
 } from './helpers/rig';
 
 const PINS = () => ({
@@ -1038,14 +1037,15 @@ test.describe('J5 — a translator aligns a verse', () => {
 
   // #782: en_ult aligns one English phrase to two Hebrew words with one \zaln
   // inside another. Align (and Translate) read one level down, so Gen 1:1 lost
-  // "the heavens" and 633 Genesis verses lost words. Genesis is the rig's own
+  // "the heavens" and 633 Genesis verses lost words. The rail and Translate now
+  // show every word. Align does not open these verses until #553 (#794), so
+  // 1:1 shows its notice, not a word bank. Genesis is the rig's own
   // en_ult GEN.usfm, added to a new project with Add a book → USFM (the issue's
   // steps). A whole-project USFM import of that file refuses it (not NFC).
   test(
-    'Align and Translate show every word of en_ult Genesis, nested alignments included: 1:1 has "the heavens" in its text and its bank (#782)',
+    'en_ult Genesis: the Align rail and Translate show every word, nested alignments included; Align states that 1:1 holds an imported alignment (#782, #794)',
     { tag: ['@inc9', '@J5'] },
     async ({ page }, testInfo) => {
-      test.skip(!fs.existsSync(sideloadedRepo('hbo_uhb')), 'hbo_uhb v3.0.0 is not cached under dev-env/resources-cache, so the seed did not sideload it');
       test.setTimeout(240_000);
       const usfm = sideloadedIngredient('en_ult', 'GEN.usfm');
       const name = `Genesis 782 ${Date.now()}`;
@@ -1100,29 +1100,24 @@ test.describe('J5 — a translator aligns a verse', () => {
         expect(rail.find((r) => r.ref === '1:4')?.text).toBe('And God saw the light, that {it was} good. Then God separated between the light and the darkness.');
       });
 
-      await test.step('Align 1:1: the word bank holds "the" and "heavens", every word of the verse', async () => {
+      await test.step('Align 1:1: the verse states that it holds an imported alignment, with no word bank', async () => {
         const row = page.getByTestId('align-verse-list').locator('button[data-ref="1:1"]');
         await row.click();
         await expect(row).toHaveAttribute('data-selected', 'true');
         await expect(row).toContainText('In the beginning God created the heavens and the earth.');
-        // The seed sideloads hbo_uhb v3.0.0, the pin a new project gets.
-        await expect(page.getByTestId('align-session')).toBeVisible({ timeout: 60_000 });
-        const bank = page.getByTestId('align-bank').getByRole('button');
-        await expect(bank.first()).toBeVisible({ timeout: 60_000 });
-        const words = await wordsOf(bank);
-        expect(words).toEqual(expect.arrayContaining(['the', 'heavens']));
-        // Nothing is aligned in the verse yet, so the bank holds every word of it
-        // (a bootstrapped bank is not in verse order).
-        expect([...words].sort()).toEqual(wordTokens('In the beginning God created the heavens and the earth.').map((t) => t.text).sort());
-        const shotPath = testInfo.outputPath('j05-gen-1-1-nested.png');
+        const unavailable = page.getByTestId('align-unavailable');
+        await expect(unavailable).toBeVisible({ timeout: 60_000 });
+        await expect(unavailable).toContainText('This verse already holds an alignment');
+        await expect(page.getByTestId('align-session')).toHaveCount(0);
+        await expect(page.getByTestId('align-bank')).toHaveCount(0);
+        const shotPath = testInfo.outputPath('j05-gen-1-1-notice.png');
         await page.screenshot({ path: shotPath, animations: 'disabled' });
-        await testInfo.attach('j05-gen-1-1-nested', { path: shotPath, contentType: 'image/png' });
-        // The run's artifact: the counts, 1:1 and 1:4 as the rail states them, and the 1:1 bank.
+        await testInfo.attach('j05-gen-1-1-notice', { path: shotPath, contentType: 'image/png' });
+        // The run's artifact: the counts, and 1:1 and 1:4 as the rail states them.
         const artifact = {
           rows: rail.length,
           rowsLosingWords: rail.filter((r) => !holdsInOrder(r.text, fileWords.get(r.ref) ?? [])).length,
           rail: rail.filter((r) => r.ref === '1:1' || r.ref === '1:4'),
-          bank11: [...words].sort(),
         };
         const artifactPath = testInfo.outputPath('j05-gen-nested.json');
         fs.writeFileSync(artifactPath, `${JSON.stringify(artifact, null, 2)}\n`);
@@ -1139,6 +1134,46 @@ test.describe('J5 — a translator aligns a verse', () => {
         await page.screenshot({ path: shotPath, animations: 'disabled' });
         await testInfo.attach('j05-gen-1-translate', { path: shotPath, contentType: 'image/png' });
       });
+    },
+  );
+
+  // #794: a book added from an aligned USFM file keeps its `\zaln` markup inline
+  // until #553 extracts it. Align must not open such a verse as a plain draft:
+  // a later save would replace the imported alignment with the translator's.
+  test(
+    'Align does not open a verse that holds imported alignment markup: en_ult Titus 1:1 states it and shows no word bank (#794)',
+    { tag: ['@inc9', '@J5'] },
+    async ({ page }) => {
+      test.setTimeout(240_000);
+      const name = `Titus 794 ${Date.now()}`;
+      const abbr = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+      const usfm = fs.readFileSync(path.resolve('test/fixtures/en_ult/TIT.usfm'), 'utf8');
+      await page.goto('/');
+      await importFixture(page, path.join(MANIFEST_DIR, 'usfm', '32-JON.usfm'), { kind: 'usfm', edits: { name, language: 'es-419' } });
+      await expect(page.getByTestId('import-toast')).toBeVisible();
+      await page.goto('/');
+      const card = page.getByTestId(`project-_local_/_local_/${abbr}`);
+      await card.getByRole('button', { name: 'Add a book' }).click();
+      await page.getByTestId('ab-usfm-option').click();
+      await page.getByTestId('ab-usfm-input').setInputFiles([{ name: 'TIT.usfm', mimeType: 'text/plain', buffer: Buffer.from(usfm) }]);
+      await expect(page.getByTestId('ab-usfm-file')).toHaveAttribute('data-status', 'valid');
+      await page.getByTestId('ab-usfm-add').click();
+      await expect(page.getByTestId('ab-usfm')).toHaveCount(0, { timeout: 120_000 });
+      await card.getByRole('button', { name: /Titus/ }).click();
+      await expect(page.getByRole('heading', { name: /^Titus \d+$/ })).toBeVisible({ timeout: 120_000 });
+
+      await page.getByRole('tab', { name: 'Check', exact: true }).click();
+      await page.getByTestId('open-align').click();
+      const row = page.getByTestId('align-verse-list').locator('button[data-ref="1:1"]');
+      await expect(row).toBeVisible({ timeout: 120_000 });
+      await row.click();
+      await expect(row).toHaveAttribute('data-selected', 'true');
+      const unavailable = page.getByTestId('align-unavailable');
+      await expect(unavailable).toBeVisible({ timeout: 60_000 });
+      await expect(unavailable).toContainText('This verse already holds an alignment');
+      await expect(unavailable).toContainText('Titus was added from a file that already holds alignments.');
+      await expect(page.getByTestId('align-session')).toHaveCount(0);
+      await expect(page.getByTestId('align-bank')).toHaveCount(0);
     },
   );
 });

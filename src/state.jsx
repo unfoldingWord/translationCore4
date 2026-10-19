@@ -19,7 +19,7 @@ import { readPrintedStories } from './data/storyModel';
 import { recordRecentStory } from './data/obsRecency';
 import { modeOf, placeKey, recordPlace } from './data/place';
 import { spliceSection, spliceVerse, spliceVerseGap, verseBody } from './data/usfm/splice';
-import { draftPercent, indexBook } from './data/usfm/indexer';
+import { draftPercent, findVerse, indexBook } from './data/usfm/indexer';
 import { bookModel, parseChapters, verseText } from './data/bookModel';
 import { RESOURCE_FRAME, forgetProjectFrames, resolveProjectFrame } from './data/projectFrame';
 import { backfillCoverage } from './data/coverageBackfill';
@@ -56,6 +56,7 @@ import { TC_READY_TOPIC } from './data/serverApi';
 import { isLocale, setLocale, t, useLocale } from './i18n';
 import { checkpointMessage } from './data/checkpoint';
 import { runExport } from './data/export/kernel';
+import { holdsInlineAlignment } from './data/export/weave.mjs';
 import { runImport } from './data/import/shell';
 import { OpsLog, serialSettingsWriter } from './data/journal/opsLog';
 import { Door43Api } from './data/share/door43Api';
@@ -359,6 +360,15 @@ function verseTextIndex(bookRaw) {
     out[`${e.chapter}:${e.verseKey}`] = verseText(chapters[e.chapter]?.[e.verseKey]);
   }
   return out;
+}
+
+/** #794: the stored verse still holds the `\zaln` markup of an aligned import
+ * (I-1; #553 will extract it). tC4 writes no alignment for such a verse. A
+ * caller that asks about many verses passes `indexBook(bookRaw)` once. */
+function verseHoldsImportedAlignment(bookRaw, ref, entries = bookRaw ? indexBook(bookRaw) : []) {
+  const [chapter, verse] = ref.split(':');
+  const e = findVerse(entries, chapter, verse);
+  return e ? holdsInlineAlignment(bookRaw.slice(e.start, e.end)) : false;
 }
 
 /** OT/NT split for choosing the original-language resource. BOOK_NAMES is in
@@ -1183,7 +1193,9 @@ async function reflowAlignedVerses({ store, sched, book, bookRaw, stillCurrent =
   // scheduler (#100 teardown) — staging now would write project A's sidecar
   // through its torn-down store, after the D9 leave checkpoint. Refuse.
   if (!stillCurrent()) return;
+  const entries = bookRaw ? indexBook(bookRaw) : [];
   for (const ref of refs) {
+    if (verseHoldsImportedAlignment(bookRaw, ref, entries)) continue;
     const [chapter, verse] = ref.split(':');
     const next = reflowAlignment(file?.chapters?.[chapter]?.[verse], texts[ref] ?? '');
     if (next) sched.markDirty(book, chapter, verse, JSON.stringify(next));
@@ -3636,6 +3648,8 @@ export const __buildAlignmentSessionForTests = buildAlignmentSession;
 /** Test hook (#213): the reflow over the real align scheduler — changed verses
  * staged, untouched verses byte-identical. */
 export const __reflowAlignedVersesForTests = reflowAlignedVerses;
+/** Test hook (#794): the open decision — does this verse keep imported markup. */
+export const __verseHoldsImportedAlignmentForTests = verseHoldsImportedAlignment;
 /** Test hook (#792): the book scheduler's writer, driven over the real align
  * scheduler — a span save drains the align queue first. */
 export const __writeBookOrStructureForTests = writeBookOrStructure;
@@ -5201,6 +5215,8 @@ export function AppProvider({ children }) {
         if (st.bookRaw == null) return settle(st.bookError ? { error: st.bookError } : { loading: true });
         const ref = openingAlignRef(st);
         if (!ref) return settle({ unavailable: 'undrafted' });
+        // #794: an imported verse keeps its own alignment markup until #553.
+        if (verseHoldsImportedAlignment(st.bookRaw, ref)) return settle({ unavailable: 'inline-alignment' });
         settle({ loading: true });
         // Catch-to-absence sweep review: the try covers the WHOLE load —
         // frame resolution, reference mapping, and the stored-record read

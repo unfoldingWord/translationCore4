@@ -848,6 +848,8 @@
   "align.error.title": "Teks sumber tidak dapat dibaca",
   "align.unavailable.unreadable.title": "Teks bahasa asli tidak dapat dibaca",
   "align.unavailable.unreadable.body": "Teks untuk {book} ada di komputer ini tetapi tidak dapat diuraikan. Unduh ulang teks sumber, atau laporkan sumber daya tersebut.",
+  "align.unavailable.inline-alignment.title": "Ayat ini sudah memiliki penyelarasan",
+  "align.unavailable.inline-alignment.body": "{book} ditambahkan dari berkas yang sudah memuat penyelarasan. tC4 mempertahankan penyelarasan ayat ini apa adanya. Anda belum dapat mengubahnya di tC4.",
   "check.preflightError": "Catatan sumber daya terpasang tidak dapat dibaca, sehingga kesiapan alat tidak dapat ditentukan:",
   "check.oldTwl": "Versi pra-rilis translationCore menyematkan tautan Kata-kata Terjemahan proyek ini, sehingga aplikasi tidak membacanya. Buat proyek lagi.",
   "sources.checkableError": "Catatan sumber daya terpasang tidak dapat dibaca, sehingga bahasa yang dapat diperiksa mungkin tidak lengkap:",
