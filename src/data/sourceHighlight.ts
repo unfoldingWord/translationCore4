@@ -28,14 +28,38 @@ interface VerseObject {
   [key: string]: unknown;
 }
 
+/** Tags usfm-js gives a note: \f is typed as a footnote, the others are not. */
+const NOTE_TAG = /^(f|fe|ef|x|ex|fig)$/;
+
 /** Tokenize one verse's verseObjects for display. Footnotes and section
  * markers are dropped — the same content rule as verseText.js, so the token
- * stream reads identically to the plain flatten. */
+ * stream reads identically to the plain flatten. usfm-js keeps the character
+ * after a note's end marker in the note's `nextChar`. A dropped note gives it
+ * back only when it is all that separates two words: 'siervo\f …\f* de' reads
+ * 'siervo de', and a verse whose words are already apart keeps its text (#795). */
 export const tokenizeVerse = (vObj?: { verseObjects?: VerseObject[] }): SourceToken[] => {
   const out: SourceToken[] = [];
+  let gap = '';
+  let last = '';
+  const push = (tok: SourceToken) => {
+    if (tok.text !== '') {
+      if (gap && /\S/.test(last) && /^\S/.test(tok.text)) out.push({ text: gap, word: false, orig: [] });
+      gap = '';
+      last = tok.text.slice(-1);
+    }
+    out.push(tok);
+  };
+  // The note itself is not shown; remember what followed it.
+  const noteGap = (vo: VerseObject) => {
+    const note = vo.type === 'footnote' || NOTE_TAG.test(vo.tag ?? '');
+    if (note && !gap && typeof vo.nextChar === 'string') gap = vo.nextChar;
+  };
   const walk = (vos: VerseObject[], stack: SourceToken['orig']) => {
     for (const vo of vos) {
-      if (vo.type === 'footnote' || vo.tag === 'f') continue;
+      if (vo.type === 'footnote' || vo.tag === 'f') {
+        noteGap(vo);
+        continue;
+      }
       if (vo.tag === 'zaln' && vo.type === 'milestone') {
         const ref =
           vo.content != null
@@ -45,17 +69,18 @@ export const tokenizeVerse = (vObj?: { verseObjects?: VerseObject[] }): SourceTo
         continue;
       }
       if (vo.type === 'word') {
-        out.push({ text: vo.text ?? '', word: true, orig: stack });
+        push({ text: vo.text ?? '', word: true, orig: stack });
         continue;
       }
       // Same content rule as verseText historically applied: a section node's
       // own text is dropped but its children are walked; any other node with
       // text contributes the text and its children are NOT walked.
       if (vo.text != null && vo.type !== 'section') {
-        out.push({ text: vo.text, word: false, orig: [] });
+        push({ text: vo.text, word: false, orig: [] });
         continue;
       }
       if (vo.children) walk(vo.children, stack);
+      else noteGap(vo); // a cross reference or a figure: no text, no children
     }
   };
   walk(vObj?.verseObjects ?? [], []);

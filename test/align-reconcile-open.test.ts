@@ -64,7 +64,7 @@ const open = (file: AlignmentFile | null, raw: string, ref = '1:1', sched: SaveS
 
 /** applyAlignEdit's record pipeline (state.jsx), after the mutation. */
 const afterEdit = (next: AlignmentVerseRecord, text: string) =>
-  settleDone(stampTargetVerse(cardsInVerseOrder(next, text), text));
+  settleDone(stampTargetVerse(cardsInVerseOrder(next, text), md5Hex(text)));
 
 const key = (w: { word?: string; text?: string; occurrence: unknown }) => `${w.word ?? w.text}/${Number(w.occurrence)}`;
 const bankKeys = (r: AlignmentVerseRecord) => r.wordBank.map(key);
@@ -76,7 +76,7 @@ const multiset = (words: Array<{ word?: string; text?: string; occurrence: unkno
 /** The issue's steps 1: open a never-saved 1:1, place "Pablo", then unplace it. The
  * file now holds one card per Greek word, none holding a word. */
 const unplacedPablo = (): AlignmentVerseRecord => {
-  let r = bootstrapVerse(T1, ORIG, SV);
+  let r = bootstrapVerse(T1, ORIG, SV, md5Hex(T1));
   r = linkWord(r, 0, r.wordBank.find((w) => w.word === 'Pablo')!);
   r = unlinkWord(r, 0, r.alignments[0].bottomWords[0], T1);
   return afterEdit(r, T1);
@@ -95,7 +95,7 @@ describe('#787 a stored record is reconciled to the text when the verse opens', 
   });
 
   it('B2 Mark valid with nothing placed, then a text edit, then reopen', async () => {
-    const done = markDone(bootstrapVerse(T1, ORIG, SV), T1);
+    const done = markDone(bootstrapVerse(T1, ORIG, SV, md5Hex(T1)), md5Hex(T1));
     expect(done.done).toBe(true);
     const s = await open(fileOf(done), RAW2);
     expect(bankWords(s.record)).toContain('esclavo');
@@ -115,7 +115,7 @@ describe('#787 a stored record is reconciled to the text when the verse opens', 
   });
 
   it('keeps the links whose word is still in the text, and drops the ones that are not', async () => {
-    let r = bootstrapVerse(T1, ORIG, SV);
+    let r = bootstrapVerse(T1, ORIG, SV, md5Hex(T1));
     r = linkWord(r, 0, r.wordBank.find((w) => w.word === 'Pablo')!);
     r = linkWord(r, 1, r.wordBank.find((w) => w.word === 'siervo')!);
     const s = await open(fileOf(afterEdit(r, T1)), RAW2);
@@ -220,7 +220,7 @@ describe('#787 B7 a verse that was never saved opens with its bank in verse orde
 
 describe('#787 reconcileToText', () => {
   const placedRecord = () => {
-    let r = bootstrapVerse(T1, ORIG, SV);
+    let r = bootstrapVerse(T1, ORIG, SV, md5Hex(T1));
     r = linkWord(r, 0, r.wordBank.find((w) => w.word === 'Pablo')!);
     return afterEdit(r, T1);
   };
@@ -255,7 +255,7 @@ describe('#787 reconcileToText', () => {
     const noBank = partial as AlignmentVerseRecord;
     expect('wordBank' in noBank).toBe(false);
     expect(() => reconcileToText(noBank, T2)).not.toThrow();
-    const out = reflowAlignment(noBank, T2)!;
+    const out = reflowAlignment(noBank, T2, md5Hex(T2))!;
     expect(out).not.toBeNull();
     expect(out.invalid).toBe(false);
     expect(out.alignments[0].bottomWords.map(key)).toEqual(['Pablo/1']);

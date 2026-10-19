@@ -5,6 +5,7 @@
 // two real threads in test/align-suggest-handover.test.ts.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { bootstrapVerse, linkWord, stampTargetVerse } from '../src/data/align/edit';
+import { md5Hex } from '../src/data/httpStore';
 import { sessionInputFor, trainingVerseOf, trainingVersesFor } from '../src/data/align/suggest';
 import type { AlignedWord, AlignmentFile, AlignmentVerseRecord } from '../src/data/align/zaln';
 import { versesOfBook } from './helpers/ult-corpus';
@@ -32,17 +33,17 @@ const V11 = { text: 'Pablo, siervo de Dios', orig: [G('Παῦλος', 'G39720',
 const V14 = { text: 'A Tito, de Dios Padre', orig: [G('Τίτῳ', 'G51030', 'Τίτος', 'Gr,N,,,,,DMS,'), G('Θεοῦ', 'G23160', 'θεός', 'Gr,N,,,,,GMS,'), G('Πατρὸς', 'G39620', 'πατήρ', 'Gr,N,,,,,GMS,')] };
 
 const aligned11 = () => {
-  let r = bootstrapVerse(V11.text, V11.orig, SOURCE);
+  let r = bootstrapVerse(V11.text, V11.orig, SOURCE, md5Hex(V11.text));
   r = linkWord(r, 0, bankWord(r, 'Pablo'));
   r = linkWord(r, 1, bankWord(r, 'siervo'));
   r = linkWord(r, 2, bankWord(r, 'Dios'));
-  return stampTargetVerse(r, V11.text);
+  return stampTargetVerse(r, md5Hex(V11.text));
 };
 const aligned14 = () => {
-  let r = bootstrapVerse(V14.text, V14.orig, SOURCE);
+  let r = bootstrapVerse(V14.text, V14.orig, SOURCE, md5Hex(V14.text));
   r = linkWord(r, 0, bankWord(r, 'Tito'));
   r = linkWord(r, 1, bankWord(r, 'Dios'));
-  return stampTargetVerse(r, V14.text);
+  return stampTargetVerse(r, md5Hex(V14.text));
 };
 const file = (records: Record<string, AlignmentVerseRecord>): AlignmentFile => ({
   schemaVersion: 1,
@@ -50,7 +51,7 @@ const file = (records: Record<string, AlignmentVerseRecord>): AlignmentFile => (
   chapters: { '1': records },
 });
 const suggestOn = (ref: string, orig: typeof V11.orig, text: string, id: number, testament: 'ot' | 'nt' = 'nt') =>
-  handle({ type: 'suggest', id, testament, input: sessionInputFor(bootstrapVerse(text, orig, SOURCE), text), ref, session: 1 });
+  handle({ type: 'suggest', id, testament, input: sessionInputFor(bootstrapVerse(text, orig, SOURCE, md5Hex(text)), text), ref, session: 1 });
 
 describe('#516 answering worker — saves land at once; the memory only grows', () => {
   it('a save before any training starts a memory-only model that answers (append → suggest, no train between)', async () => {

@@ -9,6 +9,7 @@
 // a manual link through the same save path.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { bootstrapVerse, linkWord, stampTargetVerse } from '../src/data/align/edit';
+import { md5Hex } from '../src/data/httpStore';
 import { RETRAIN_BUDGET, crossesRetrainBudget, linksFor, rebindSuggestions, sessionInputFor, trainingVerseOf, trainingVersesFor } from '../src/data/align/suggest';
 import { MIN_BOOST_VERSES, appendVerse, boundCorpus, predictLinks, trainModel } from '../src/data/align/suggestEngine';
 import { handle } from '../src/data/align/suggestWorker';
@@ -24,17 +25,17 @@ const V11 = { text: 'Pablo, siervo de Dios', orig: [G('Παῦλος', 'G39720',
 const V14 = { text: 'A Tito, de Dios Padre', orig: [G('Τίτῳ', 'G51030', 'Τίτος', 'Gr,N,,,,,DMS,'), G('Θεοῦ', 'G23160', 'θεός', 'Gr,N,,,,,GMS,'), G('Πατρὸς', 'G39620', 'πατήρ', 'Gr,N,,,,,GMS,')] };
 
 const aligned11 = () => {
-  let r = bootstrapVerse(V11.text, V11.orig, SOURCE);
+  let r = bootstrapVerse(V11.text, V11.orig, SOURCE, md5Hex(V11.text));
   r = linkWord(r, 0, bankWord(r, 'Pablo'));
   r = linkWord(r, 1, bankWord(r, 'siervo'));
   r = linkWord(r, 2, bankWord(r, 'Dios'));
-  return stampTargetVerse(r, V11.text);
+  return stampTargetVerse(r, md5Hex(V11.text));
 };
 const aligned14 = () => {
-  let r = bootstrapVerse(V14.text, V14.orig, SOURCE);
+  let r = bootstrapVerse(V14.text, V14.orig, SOURCE, md5Hex(V14.text));
   r = linkWord(r, 0, bankWord(r, 'Tito'));
   r = linkWord(r, 1, bankWord(r, 'Dios'));
-  return stampTargetVerse(r, V14.text);
+  return stampTargetVerse(r, md5Hex(V14.text));
 };
 const file = (records: Record<string, AlignmentVerseRecord>): AlignmentFile => ({
   schemaVersion: 1,
@@ -44,7 +45,7 @@ const file = (records: Record<string, AlignmentVerseRecord>): AlignmentFile => (
 
 describe('#1 bridge — the engine sees positions, the editor sees words', () => {
   it('trainingVersesFor takes only verses with a placed word, tokens in verse order, links in positions', () => {
-    const f = file({ '1': aligned11(), '2': bootstrapVerse('Sin alinear', V11.orig, SOURCE), '4': aligned14() });
+    const f = file({ '1': aligned11(), '2': bootstrapVerse('Sin alinear', V11.orig, SOURCE, md5Hex('Sin alinear')), '4': aligned14() });
     const verses = trainingVersesFor('TIT', f, { '1:1': V11.text, '1:2': 'Sin alinear', '1:4': V14.text });
     expect(verses.map((v) => v.ref)).toEqual(['TIT 1:1', 'TIT 1:4']);
     const v11 = verses[0];
@@ -61,7 +62,7 @@ describe('#1 bridge — the engine sees positions, the editor sees words', () =>
   });
 
   it('sessionInputFor carries the placed links as manual context', () => {
-    let r = bootstrapVerse(V14.text, V14.orig, SOURCE);
+    let r = bootstrapVerse(V14.text, V14.orig, SOURCE, md5Hex(V14.text));
     r = linkWord(r, 2, bankWord(r, 'Padre'));
     const input = sessionInputFor(r, V14.text);
     expect(input.manual).toEqual([{ source: [2], target: [4] }]);
@@ -69,7 +70,7 @@ describe('#1 bridge — the engine sees positions, the editor sees words', () =>
   });
 
   it('linksFor proposes only bank words, each once, on the card of the source position; a placed word is never proposed', () => {
-    let r = bootstrapVerse(V14.text, V14.orig, SOURCE);
+    let r = bootstrapVerse(V14.text, V14.orig, SOURCE, md5Hex(V14.text));
     r = linkWord(r, 2, bankWord(r, 'Padre'));
     const raw = [
       { source: [1], target: [3], confidence: 0.9 }, // Θεοῦ → Dios (bank)
@@ -83,7 +84,7 @@ describe('#1 bridge — the engine sees positions, the editor sees words', () =>
   });
 
   it('a prediction whose source words sit on two cards is omitted, never truncated to the first card', () => {
-    const r = bootstrapVerse(V14.text, V14.orig, SOURCE);
+    const r = bootstrapVerse(V14.text, V14.orig, SOURCE, md5Hex(V14.text));
     const raw = [
       { source: [0, 1], target: [1], confidence: 0.9 }, // Τίτῳ+Θεοῦ → Tito: two cards — omitted
       { source: [2], target: [4], confidence: 0.8 }, // Πατρὸς → Padre: one card — kept
@@ -95,7 +96,7 @@ describe('#1 bridge — the engine sees positions, the editor sees words', () =>
 
   it('rebindSuggestions follows the predicted ORIGINAL word through a split (Codex round 2)', () => {
     // Τίτῳ and Θεοῦ merged into one card; the engine proposes Dios for Θεοῦ.
-    const r = bootstrapVerse(V14.text, V14.orig, SOURCE);
+    const r = bootstrapVerse(V14.text, V14.orig, SOURCE, md5Hex(V14.text));
     const merged = { ...r, alignments: [{ topWords: [...r.alignments[0].topWords, ...r.alignments[1].topWords], bottomWords: [] }, r.alignments[2]] };
     const links = linksFor(merged, V14.text, [{ source: [1], target: [3], confidence: 0.9 }]); // position 1 = Θεοῦ
     expect(links.map((l) => `${l.cardIndex}:${l.source.word}→${l.word.word}`)).toEqual(['0:Θεοῦ→Dios']);
@@ -105,7 +106,7 @@ describe('#1 bridge — the engine sees positions, the editor sees words', () =>
   });
 
   it('rebindSuggestions follows a card through a merge and drops a placed word', () => {
-    const r = bootstrapVerse(V14.text, V14.orig, SOURCE);
+    const r = bootstrapVerse(V14.text, V14.orig, SOURCE, md5Hex(V14.text));
     const links = linksFor(r, V14.text, [
       { source: [1], target: [3], confidence: 0.9 }, // Θεοῦ → Dios on card 1
       { source: [2], target: [4], confidence: 0.8 }, // Πατρὸς → Padre on card 2
@@ -144,7 +145,7 @@ describe('#1 engine — trains on confirmed alignments, proposes for the bank, n
   it('a project with no aligned verses trains nothing and suggests nothing', async () => {
     const trained = await trainModel('nt', []);
     expect(trained.verses).toBe(0);
-    const r = bootstrapVerse(V14.text, V14.orig, SOURCE);
+    const r = bootstrapVerse(V14.text, V14.orig, SOURCE, md5Hex(V14.text));
     expect(predictLinks(trained, sessionInputFor(r, V14.text))).toEqual([]);
   });
 
@@ -155,7 +156,7 @@ describe('#1 engine — trains on confirmed alignments, proposes for the bank, n
     expect(trained.verses).toBe(2);
     // A third verse: Θεοῦ Πατρὸς, draft "de Dios Padre", Padre already placed by hand.
     const orig = [V14.orig[1], V14.orig[2]];
-    let r = bootstrapVerse('de Dios Padre', orig, SOURCE);
+    let r = bootstrapVerse('de Dios Padre', orig, SOURCE, md5Hex('de Dios Padre'));
     r = linkWord(r, 1, bankWord(r, 'Padre'));
     const raw = predictLinks(trained, sessionInputFor(r, 'de Dios Padre'));
     const links = linksFor(r, 'de Dios Padre', raw);
@@ -189,7 +190,7 @@ describe('#1 engine — trains on confirmed alignments, proposes for the bank, n
     const verses = trainingVersesFor('TIT', f, { '1:1': V11.text, '1:4': V14.text });
     const loaded = await handle({ type: 'load', id: 1, testament: 'nt', verses });
     expect(loaded).toMatchObject({ type: 'memory', id: 1, testament: 'nt', verses: 2 });
-    const r = bootstrapVerse('de Dios Padre', [V14.orig[1], V14.orig[2]], SOURCE);
+    const r = bootstrapVerse('de Dios Padre', [V14.orig[1], V14.orig[2]], SOURCE, md5Hex('de Dios Padre'));
     const nt = await handle({ type: 'suggest', id: 2, testament: 'nt', input: sessionInputFor(r, 'de Dios Padre'), ref: '1:4', session: 7 });
     expect(nt).toMatchObject({ type: 'suggestions', ref: '1:4', session: 7 }); // echoed: the reply binds to its verse and session
     expect((nt as { links: unknown[] }).links.length).toBeGreaterThan(0);
@@ -206,7 +207,7 @@ describe('#516 engine — the memory answers from the first verse; the booster i
     const trained = await trainModel('nt', verses);
     expect(trained.verses).toBe(2);
     expect(trained.boosted).toBe(0); // no booster fit was attempted
-    const r = bootstrapVerse('de Dios Padre', [V14.orig[1], V14.orig[2]], SOURCE);
+    const r = bootstrapVerse('de Dios Padre', [V14.orig[1], V14.orig[2]], SOURCE, md5Hex('de Dios Padre'));
     const raw = predictLinks(trained, sessionInputFor(r, 'de Dios Padre'));
     const links = linksFor(r, 'de Dios Padre', raw);
     expect(links.length).toBeGreaterThan(0);
@@ -222,7 +223,7 @@ describe('#516 engine — the memory answers from the first verse; the booster i
     expect(trained.verses).toBe(2);
     // The appended verse answers on the NEXT predict, no training in between:
     // Τίτῳ → Tito exists only in the appended verse's links.
-    const r = bootstrapVerse('A Tito', [V14.orig[0]], SOURCE);
+    const r = bootstrapVerse('A Tito', [V14.orig[0]], SOURCE, md5Hex('A Tito'));
     const links = linksFor(r, 'A Tito', predictLinks(trained, sessionInputFor(r, 'A Tito')));
     expect(links.some((l) => l.word.word === 'Tito')).toBe(true);
     // A re-save of the same verse appends its current links, counted once.
@@ -232,7 +233,7 @@ describe('#516 engine — the memory answers from the first verse; the booster i
 
   it('trainingVerseOf derives one verse, and nothing from a verse with no links', () => {
     expect(trainingVerseOf('TIT 1:1', aligned11(), V11.text)).toMatchObject({ ref: 'TIT 1:1' });
-    expect(trainingVerseOf('TIT 1:2', bootstrapVerse('Sin alinear', V11.orig, SOURCE), 'Sin alinear')).toBeNull();
+    expect(trainingVerseOf('TIT 1:2', bootstrapVerse('Sin alinear', V11.orig, SOURCE, md5Hex('Sin alinear')), 'Sin alinear')).toBeNull();
     expect(trainingVerseOf('TIT 1:1', aligned11(), '')).toBeNull();
   });
 
