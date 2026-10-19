@@ -2932,13 +2932,15 @@ main 2b08ed3, 2026-10-17, issue #796]
    verse, because `merge` reads it. So no aligned word fails silently at export. Better
    support for list items and headings stays with the word-aligner upgrade (#420) and the
    verse-grammar work.
-2. **The bank comes from the verse.** A writer writes `wordBank` as the verse's words minus
-   the placed words. The comparison is a multiset on `word`, `occurrence` and `occurrences`.
-   A writer SHOULD write the bank in verse order. Readers MUST NOT use `wordBank` as truth.
+2. **The bank comes from the verse.** A writer that makes or changes the words of a record
+   (an Align edit, Mark valid, or a reflow after a text edit) writes `wordBank` as the verse's
+   words minus its placed words. The comparison is a multiset on `word`, `occurrence` and
+   `occurrences`. A writer SHOULD write the bank in verse order. The import writes the record
+   as its source held it (point 7). Readers MUST NOT use `wordBank` as truth.
    They use it only as evidence in the word clause (point 3). `wordBank` stays a written
    field, because `merge` and earlier readers need it.
-3. **I-3 word clause.** A record holds a placed word or `done`. It is current only when its
-   hash matches AND its placed words plus its bank equal the verse's words. This is a
+3. **I-3 word clause.** When a record holds a placed word or `done`, it is current only when
+   its hash matches AND its placed words plus its bank equal the verse's words. This is a
    conformance clarification, not a change of the stored shape. `schemaVersion` stays 1, and
    D47(a) does not apply. A word that is in the bank and also on a card now reads as needs
    review, although `merge` accepts it.
