@@ -1318,6 +1318,19 @@ async function buildAlignmentSession(store, sched, st, ref, source, origObjects)
   };
 }
 
+/** The session after one Align edit, from the session and the record the mutation
+ * made: the one pipeline `applyAlignEdit` runs after the mutation, apart from
+ * the provider so a test drives it (#796). #271, #754, #796: the record is made
+ * to match the session's word list, stamped and `done` settled (finalizeEdit).
+ * #1: a proposal for a word this edit placed is spent; the rest are re-bound to
+ * their card by its first original word (a merge or split moved the indexes)
+ * and dropped when that card is gone. */
+function alignSessionAfterEdit(a2, next, disarm) {
+  const record = finalizeEdit(next, a2.words, a2.targetMd5);
+  const suggestions = rebindSuggestions(record, a2.suggestions);
+  return { ...a2, ...(disarm ? { armed: null } : {}), record, stale: false, suggestions, refusal: null };
+}
+
 function understandArticleSet(st, kind, rung) {
   const sets = st.projectPins?.languageSets;
   const slotName = kind === 'tw' ? 'translationWords' : 'translationAcademy';
@@ -3707,6 +3720,8 @@ export const __alignSaveForTests = { makeAlignWriter, spliceAlignRecord, makeChe
 /** Test hook (#134): the session build, driven on a cross-frame project so the
  * read key and the write key are proven to be the same project-frame ref. */
 export const __buildAlignmentSessionForTests = buildAlignmentSession;
+/** Test hook (#796): the record pipeline of one Align edit, after the mutation. */
+export const __alignSessionAfterEditForTests = alignSessionAfterEdit;
 /** Test hook (#213): the reflow over the real align scheduler — changed verses
  * staged, untouched verses byte-identical. */
 export const __reflowAlignedVersesForTests = reflowAlignedVerses;
@@ -5406,17 +5421,12 @@ export function AppProvider({ children }) {
         // #754: every edit (place, move, merge, confirm a suggestion) leaves
         // each card's words in verse order, wherever the word was dropped.
         // #796: the record's words are made to match the session's word list, the
-        // export's list for the verse (finalizeEdit), so the file holds exactly the
-        // words `merge` checks.
-        const record = finalizeEdit(next, a2.words, a2.targetMd5);
-        // #1: a proposal for a word this edit placed is spent; the rest are
-        // re-bound to their card by its first original word (a merge or split
-        // moved the indexes) and dropped when that card is gone.
-        const suggestions = rebindSuggestions(record, a2.suggestions);
-        const optimistic = { ...a2, ...(disarm ? { armed: null } : {}), record, stale: false, suggestions, refusal: null };
+        // export's list for the verse (finalizeEdit, in alignSessionAfterEdit), so
+        // the file holds exactly the words `merge` checks.
+        const optimistic = alignSessionAfterEdit(a2, next, disarm);
         dispatch({ type: 'set', patch: { alignSession: optimistic } });
         const [chapter, verse] = a2.ref.split(':');
-        sched.markDirty(a2.book, chapter, verse, JSON.stringify(record));
+        sched.markDirty(a2.book, chapter, verse, JSON.stringify(optimistic.record));
         // D72 as amended by D93 (#516): the engine learns from every confirmed
         // save — the verse joins the worker's memory; no retrain is waited for.
         a.queueAlignSuggestionAppend(optimistic);
