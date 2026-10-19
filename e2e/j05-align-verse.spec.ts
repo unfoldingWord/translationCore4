@@ -968,6 +968,74 @@ test.describe('J5 — a translator aligns a verse', () => {
     },
   );
 
+  // #787: a verse opens with a word bank rebuilt from its current text. The
+  // seeded 1:1 starts with six words placed, and the reflow after a Translate
+  // edit keeps a record like that right. The defect needs a record with no
+  // word placed, so the steps take every word back first (the issue's end
+  // state: every Greek card empty; 1:1 has 10 cards for its 11 Greek words,
+  // as the merged Ἰησοῦ Χριστοῦ is one card).
+  test(
+    'a verse edited in Translate opens in Align with its new word in the bank and the banner on; a fresh verse opens in verse order (#787)',
+    { tag: ['@inc2', '@J5'] },
+    async ({ page }) => {
+      test.setTimeout(120_000);
+      writePinsWithOriginal();
+      const draft = () => fs.readFileSync(path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'TIT.usfm'), 'utf8');
+      const placedOnDisk = () =>
+        (alignmentFile()?.chapters?.['1']?.['1']?.alignments ?? []).reduce(
+          (n: number, a: { bottomWords: unknown[] }) => n + a.bottomWords.length,
+          0,
+        );
+      await openAlign(page);
+      const bank = page.getByTestId('align-bank').getByRole('button');
+
+      // Step 1: take every placed word back, "Pablo" first.
+      const placed = page.locator('[data-testid^="align-card-"]:not([data-count="0"])');
+      for (let n = await placed.count(); n > 0; n = await placed.count()) {
+        await placed.first().locator('button[data-word]').first().click();
+        await expect(placed).toHaveCount(n - 1);
+      }
+      await expect.poll(placedOnDisk, { timeout: 10_000 }).toBe(0);
+
+      // Step 2: Translate. "siervo" becomes "esclavo"; the verse is left.
+      await page.getByRole('tab', { name: 'Translate', exact: true }).click();
+      await page.getByRole('tab', { name: 'Verse', exact: true }).click();
+      await page.getByTitle('Edit this verse').filter({ hasText: 'Pablo, siervo de Dios' }).first().click();
+      const editor = page.getByRole('textbox', { name: 'Verse 1', exact: true });
+      const edited = (await editor.inputValue()).replace('siervo', 'esclavo');
+      await editor.fill(edited);
+      await editor.blur();
+      await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 15_000 });
+      await expect.poll(draft, { timeout: 15_000 }).toContain(edited);
+      // No word is placed, so the reflow leaves the record as it was: still "siervo".
+      expect(alignmentFile().chapters['1']['1'].wordBank.map((w: { word: string }) => w.word)).toContain('siervo');
+
+      // Step 3: back in Align at 1:1, the bank holds "esclavo" and not "siervo", and the banner shows.
+      // The Check tab may open the aligner on the remembered place or on its entry
+      // button; either way the rail row for 1:1 is clicked, so the verse is chosen.
+      await page.getByRole('tab', { name: 'Check', exact: true }).click();
+      const tool = page.getByTestId('open-align');
+      const session = page.getByTestId('align-session');
+      await expect(tool.or(session)).toBeVisible();
+      if (await tool.isVisible()) await tool.click();
+      await expect(session).toBeVisible();
+      const row11 = page.getByTestId('align-verse-list').locator('button[data-ref="1:1"]');
+      await row11.click();
+      await expect(row11).toHaveAttribute('data-selected', 'true');
+      await expect.poll(() => wordsOf(bank)).toContain('esclavo');
+      expect(await wordsOf(bank)).not.toContain('siervo');
+      expect(await wordsOf(bank)).toEqual(wordTokens(edited).map((t) => t.text));
+      await expect(page.getByTestId('align-stale')).toBeVisible();
+
+      // A verse that was never saved opens with its bank in verse order, and no banner.
+      expect(alignmentFile().chapters['1']['2']).toBeUndefined();
+      const fresh = /^\\v 2 (.+)$/m.exec(draft())![1].trim();
+      await page.getByTestId('align-verse-list').locator('button[data-ref="1:2"]').click();
+      await expect.poll(() => wordsOf(bank)).toEqual(wordTokens(fresh).map((t) => t.text));
+      await expect(page.getByTestId('align-stale')).toHaveCount(0);
+    },
+  );
+
   // #782: en_ult aligns one English phrase to two Hebrew words with one \zaln
   // inside another. Align (and Translate) read one level down, so Gen 1:1 lost
   // "the heavens" and 633 Genesis verses lost words. Genesis is the rig's own

@@ -270,6 +270,47 @@ export const markDone = (record: AlignmentVerseRecord, targetText: string): Alig
 });
 
 /**
+ * #787 — a record's words made to match the text, and nothing else. Same walk
+ * as the reflow below: a placed word stays when its word and occurrence are
+ * still in the text, numbered again from the text; the bank is every other
+ * word of the text, in text order. No guard and no restamp — `invalid`,
+ * `done`, the hash, the source version and every `topWords` stay as they are.
+ * `changed` is true when the words (word + occurrence + occurrences, linked or
+ * banked) differ from the input's: a new word, a removed word, a dropped link
+ * or a count change.
+ */
+export const reconcileToText = (
+  record: AlignmentVerseRecord,
+  targetText: string,
+): { record: AlignmentVerseRecord; changed: boolean } => {
+  const words = wordTokens(targetText);
+  const present = new Map(words.map((t) => [`${t.text} ${t.occurrence}`, t]));
+  const kept = new Set<string>();
+  const alignments: Alignment[] = record.alignments.map((a) => ({
+    ...a,
+    bottomWords: a.bottomWords.flatMap((w): AlignedWord[] => {
+      const key = `${w.word} ${Number(w.occurrence)}`;
+      const now = present.get(key);
+      if (!now) return [];
+      kept.add(key);
+      return [normalizeOccurrences({ ...w, occurrence: now.occurrence, occurrences: now.occurrences })];
+    }),
+  }));
+  const wordBank: AlignedWord[] = words
+    .filter((t) => !kept.has(`${t.text} ${t.occurrence}`))
+    .map((t) => ({ word: t.text, occurrence: t.occurrence, occurrences: t.occurrences }));
+  const next: AlignmentVerseRecord = { ...record, alignments, wordBank };
+  // A stored record may lack `wordBank`; the old reflow did not read it, so count it as empty.
+  const tally = (r: AlignmentVerseRecord) =>
+    JSON.stringify(
+      allTargetWords({ ...r, wordBank: r.wordBank ?? [] })
+        .map((w) => `${w.word}|${Number(w.occurrence)}|${Number(w.occurrences)}`)
+        .sort(),
+    );
+  return { record: next, changed: tally(record) !== tally(next) };
+};
+
+/**
  * #213 — reflow after a verse edit: keep every link whose target word is
  * still in the new text, drop the rest, and rebuild the bank from the new
  * text. Word identity is text plus occurrence (I-2), from the one tokenizer
@@ -289,24 +330,8 @@ export const reflowAlignment = (
   if (!record || record.invalid === true) return null;
   if (!record.alignments.some((a) => a.bottomWords.length)) return null;
   if (!alignmentIsStale(record, targetText)) return null;
-  const words = wordTokens(targetText);
-  if (!words.length) return null;
-  const present = new Map(words.map((t) => [`${t.text} ${t.occurrence}`, t]));
-  const kept = new Set<string>();
-  const alignments: Alignment[] = record.alignments.map((a) => ({
-    ...a,
-    bottomWords: a.bottomWords.flatMap((w): AlignedWord[] => {
-      const key = `${w.word} ${Number(w.occurrence)}`;
-      const now = present.get(key);
-      if (!now) return [];
-      kept.add(key);
-      return [normalizeOccurrences({ ...w, occurrence: now.occurrence, occurrences: now.occurrences })];
-    }),
-  }));
-  const wordBank: AlignedWord[] = words
-    .filter((t) => !kept.has(`${t.text} ${t.occurrence}`))
-    .map((t) => ({ word: t.text, occurrence: t.occurrence, occurrences: t.occurrences }));
+  if (!wordTokens(targetText).length) return null;
   // #271: a reflow is an edit — `done` follows the reflowed record (set when
   // every surviving word is placed and the bank is empty, else removed).
-  return settleDone({ ...record, alignments, wordBank, invalid: false, targetVerseMd5: md5Hex(targetText) });
+  return settleDone({ ...reconcileToText(record, targetText).record, invalid: false, targetVerseMd5: md5Hex(targetText) });
 };
