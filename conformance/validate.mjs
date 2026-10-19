@@ -261,6 +261,8 @@ const verseText = bookJson.chapters['1']['1'].verseObjects.filter(vo => vo.type 
   };
   const phantom = { ...stored, wordBank: [...stored.wordBank, { word: 'inventada', occurrence: 1, occurrences: 1 }] };
   const bankShort = { ...stored, wordBank: stored.wordBank.slice(1) };
+  // Cards with no target word and a complete bank: nothing is placed, and the words match the verse.
+  const emptyCards = { ...stored, alignments: stored.alignments.map(a => ({ ...a, bottomWords: [] })), wordBank: words.map(w => ({ ...w })) };
 
   // H1 — the writer rule. The sample's bank is the verse's words minus its placed words.
   check('alignment: wordBank writer rule — the sample record\'s wordBank is the verse\'s words minus its placed words; a record with a phantom bank word fails (D105)',
@@ -284,14 +286,20 @@ const verseText = bookJson.chapters['1']['1'].verseObjects.filter(vo => vo.type 
   const lostWord = { ...stored, alignments: stored.alignments.map((a, i) => (i === 0 ? { ...a, bottomWords: [] } : a)) };
   const twoPlaces = { ...stored, wordBank: [...stored.wordBank, placedOf(stored)[0]] };
   const nothingPlaced = { ...stored, alignments: stored.alignments.map(a => ({ ...a, bottomWords: [] })), wordBank: words.slice(1) };
+  // The banked `de 1/5` becomes `de 2/5`: the bank has the same length, but it is not the verse's words.
+  const bankMisnumbered = { ...stored, wordBank: stored.wordBank.map(w => (w.word === 'de' && w.occurrence === 1 ? { ...w, occurrence: 2 } : w)) };
+  // Nothing placed and a hash that is not the verse's: the record vouches for nothing, so only `done` makes the hash count.
+  const staleNothingPlaced = { ...emptyCards, targetVerseMd5: '0'.repeat(32) };
   const hashIsCurrent = rec => rec.targetVerseMd5 === verseTextMd5(slot);
   check('alignment: I-3 word clause — a record with the current hash and a word on no card and not in the bank needs review; the sample record does not (D105)',
-    [stored, lostWord, twoPlaces, nothingPlaced].every(hashIsCurrent) &&
+    [stored, lostWord, twoPlaces, bankMisnumbered, nothingPlaced].every(hashIsCurrent) && !hashIsCurrent(staleNothingPlaced) &&
+    bankMisnumbered.wordBank.length === stored.wordBank.length &&
     !needsReview(stored, slot) &&
-    needsReview(lostWord, slot) && needsReview(twoPlaces, slot) &&
-    // A record that vouches for nothing (no placed word, no `done`) never reads as needs review; with `done` it does.
-    !needsReview(nothingPlaced, slot) && needsReview({ ...nothingPlaced, done: true }, slot),
-    'lost word, word on a card and in the bank → review; nothing placed and not done → no review');
+    needsReview(lostWord, slot) && needsReview(twoPlaces, slot) && needsReview(bankMisnumbered, slot) &&
+    // A record that vouches for nothing (no placed word, no `done`) never reads as needs review, with any hash; with `done` it does.
+    !needsReview(nothingPlaced, slot) && needsReview({ ...nothingPlaced, done: true }, slot) &&
+    !needsReview(staleNothingPlaced, slot) && needsReview({ ...staleNothingPlaced, done: true }, slot),
+    'lost word, word on a card and in the bank, a bank number that is not the verse\'s → review; nothing placed and not done → no review, even with a stale hash');
 
   // H4 — D73 amended. A text edit appends a `Dios`: both earlier `Dios` renumber (n of 2 → n of 3).
   const edited = slot.replace(/\n$/, ' Dios\n');
@@ -331,7 +339,6 @@ const verseText = bookJson.chapters['1']['1'].verseObjects.filter(vo => vo.type 
   // H5 — the export of a record with no placed word. Each shape below has nothing placed, so the export
   // keeps the stored bytes (no `\w` wrapping of every word); one placed word is enough to weave.
   const removalForm = { ...stored, alignments: [], wordBank: [] };
-  const emptyCards = { ...stored, alignments: stored.alignments.map(a => ({ ...a, bottomWords: [] })), wordBank: words.map(w => ({ ...w })) };
   const emptyCardsDone = { ...emptyCards, done: true };
   const pablo = placedOf(stored)[0];
   const oneWord = {
@@ -341,10 +348,13 @@ const verseText = bookJson.chapters['1']['1'].verseObjects.filter(vo => vo.type 
   };
   const keptStored = [removalForm, emptyCards, emptyCardsDone].map(rec => weave(usfm, rec));
   const oneWordWeave = weave(usfm, oneWord);
+  // `invalid: true` with nothing placed is a record that needs review: the stored bytes stay, and the export says so.
+  const invalidNothingPlaced = weave(usfm, { ...emptyCards, invalid: true });
   check('export: a record with no placed word exports the verse\'s stored bytes; one placed word weaves (D105)',
     keptStored.every(w => w.out === usfm && w.reports.length === 0) &&
+    namedSkip(invalidNothingPlaced) &&
     oneWordWeave.out !== usfm && count(oneWordWeave.out, /\\zaln-s/g) === 1 && oneWordWeave.reports.length === 0,
-    `removal form, empty cards and done-with-nothing-placed keep the stored bytes; one placed word gives ${count(oneWordWeave.out, /\\zaln-s/g)} zaln-s`);
+    `removal form, empty cards and done-with-nothing-placed keep the stored bytes with no report; invalid with nothing placed keeps them and reports needs-review; one placed word gives ${count(oneWordWeave.out, /\\zaln-s/g)} zaln-s`);
 }
 
 // ---------- 5. Selections validity against the draft text (RCL invalidation machinery) ----------
