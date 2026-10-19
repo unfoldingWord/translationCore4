@@ -3,6 +3,7 @@
 // range identical (FR-7). Corpora as in indexer.test.ts.
 import { describe, expect, it } from 'vitest';
 import { indexBook } from '../src/data/usfm/indexer';
+import { bookModel } from '../src/data/bookModel';
 import { spliceSection, spliceVerse, spliceVerseGap, verseBody, verseGapMarker, VerseNotFoundError } from '../src/data/usfm/splice';
 
 // Real node builtins via the runtime, NOT `import 'node:fs'` — the app's
@@ -173,6 +174,37 @@ describe('#54 — spliceVerseGap and verseGapMarker', () => {
     expect(withQ1).toBe(['\\id TST', '\\c 1', '\\v 1 one', '', '\\q1', '\\v 2 two', ''].join('\n'));
     const stripped = spliceVerseGap(withQ1, 1, '1', null);
     expect(stripped).toBe(['\\id TST', '\\c 1', '\\v 1 one', '', '\\v 2 two', ''].join('\n'));
+  });
+
+  // #784: once `\q1 \v 2 …` is indexed, the gap after verse 1 ends on the line
+  // `\q1 ` itself. Ways this can fail: the editor does not see the marker; a new
+  // marker is added in front of it (`\q1 \q1`); a change rewrites the line around it.
+  it('#784: a marker on the line of the next \\v is read, changed in place and removed', () => {
+    const raw = ['\\id TST', '\\c 1', '\\q1 \\v 1 one', '\\q1 \\v 2 two', ''].join('\n');
+    expect(verseGapMarker(raw, 1, '1')).toBe('q1');
+    expect(spliceVerseGap(raw, 1, '1', 'q1')).toBe(raw);
+    const withQ2 = spliceVerseGap(raw, 1, '1', 'q2');
+    expect(withQ2).toBe(['\\id TST', '\\c 1', '\\q1 \\v 1 one', '\\q2 \\v 2 two', ''].join('\n'));
+    expect(verseBody(withQ2, 1, '2')).toBe('two');
+    const removed = spliceVerseGap(raw, 1, '1', null);
+    expect(removed).toBe(['\\id TST', '\\c 1', '\\q1 \\v 1 one', '\\v 2 two', ''].join('\n'));
+    expect(verseBody(removed, 1, '2')).toBe('two');
+    // An edit of verse 2 changes its body only; the marker in front stays.
+    expect(spliceVerse(raw, 1, '2', 'dos')).toBe(['\\id TST', '\\c 1', '\\q1 \\v 1 one', '\\q1 \\v 2 dos', ''].join('\n'));
+  });
+
+  // #785 review: Translate reads each verse's format from bookModel, and a section
+  // Save writes it back with spliceVerseGap. Both must see the same gap, or a Save
+  // with no change removes the `\q1 ` (and Translate shows no poetry indent).
+  it('#784: the format Translate reads is the marker the section Save keeps, so an unchanged Save writes nothing', () => {
+    const raw = ['\\id TST', '\\c 1', '\\q1 \\v 1 one', '\\q2 \\v 2 two', '\\p\\v 3 three', ''].join('\n');
+    const verses = bookModel(raw).byChapter['1'] as Array<{ n: string; format: string | null }>;
+    expect(verses.map((v) => v.format)).toEqual([null, 'q2', 'p']);
+    let saved = raw;
+    // What a section Save of 1-3 does with the formats the card was opened with (state.jsx saveSection).
+    for (const [prev, v] of [['1', verses[1]], ['2', verses[2]]] as const)
+      saved = spliceVerseGap(saved, 1, prev, v.format as 'p' | 'q1' | 'q2' | null);
+    expect(saved).toBe(raw);
   });
 
   it('span verse gap round-trip: spliceVerseGap(raw, ch, "9-10", "q1") puts \\q1 before \\v 11 and null restores byte-identical raw', () => {
