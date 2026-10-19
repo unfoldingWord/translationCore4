@@ -8,7 +8,7 @@
 // never stores a pin without its sha (D82).
 import { unzipSync, zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
-import { TC3_PARSER, applyVersions, carryOverNeeds, resolveVersions, unresolvedSlots } from '../../src/data/import/tc3';
+import { TC3_PARSER, applyVersions, carryOverNeeds, importedAlignmentRecord, resolveVersions, unresolvedSlots } from '../../src/data/import/tc3';
 import { runImport } from '../../src/data/import/shell';
 import { USFM_PARSER } from '../../src/data/import/usfm';
 import type { ImportBundle, ImportFile } from '../../src/data/import/types';
@@ -437,5 +437,141 @@ describe('#21 the tC3 import end to end on the fake rig', { timeout: 60_000 }, (
     const noLicense = await runImport(TC3_PARSER, MULTI.map((rel) => fixtureFile(rel)), {}, { api, store, resolve: async (b) => applyVersions(b, INSTALLED_SUITE as never, await resolveVersions(b.versions!, lookup), { 'translationWords/LUK': [] }).bundle });
     expect(noLicense.ok).toBe(false);
     expect([...rig.repos.keys()]).toEqual(before);
+  });
+});
+
+// #796 slice 4 (D36, D105 point 7): tC3 writes an invalid marker when its own editor changes a
+// linked word. A text edited outside tC3 leaves no marker, so the record imported as current
+// with a hash that vouched for words the verse no longer holds. The import now tests the
+// record's words against the verse, flags a record that fails, and never rewrites it.
+//
+// The ways this can fail, written before the code:
+// 1. a linked word left the text and the record imports with `invalid: false` (B1b, the parse);
+// 2. the import rewrites the record to fit: the link or the bank changes (B1b, the parse);
+// 3. the flag lands on a record that fits: the three tC3 fixtures change (B2);
+// 4. the flag lands on a record that holds no link, which vouches for nothing (B1d);
+// 5. the clause reads NFD text as other words (B1e), or NFD tC3 words as other words (B1g);
+// 6. a marker is dropped when the words do not fit (B1c).
+describe('#796 the tC3 import flags a record whose words do not fit the verse', { timeout: 60_000 }, () => {
+  const fs = process.getBuiltinModule('node:fs');
+  const path = process.getBuiltinModule('node:path');
+  const SAMPLE = path.resolve(__dirname, '../../conformance/sample-burrito/ingredients');
+  const RAW: string = fs.readFileSync(path.join(SAMPLE, 'TIT.usfm'), 'utf8');
+  const SLOT = (decompose(RAW).verses as Record<string, string>)['1:1'];
+  const STORED = (JSON.parse(fs.readFileSync(path.join(SAMPLE, 'checking/alignments/TIT.json'), 'utf8')) as { chapters: Record<string, Record<string, { alignments: Array<{ topWords: unknown[]; bottomWords: Array<{ word: string }> }>; wordBank: unknown[] }>> }).chapters['1']['1'];
+  /** What tC3 holds for the verse: the two lists, no stamp. */
+  const DATA = { alignments: STORED.alignments, wordBank: STORED.wordBank } as Parameters<typeof importedAlignmentRecord>[0];
+  const SV = 'dcs::unfoldingWord/el-x-koine_ugnt@master';
+  const bytes = (value: unknown) => JSON.stringify(value);
+
+  it('preconditions: the sample slot holds the linked word, and the record links it', () => {
+    expect(SLOT).toContain('siervo');
+    expect(STORED.alignments.flatMap((a) => a.bottomWords).map((w) => w.word)).toContain('siervo');
+    expect(STORED.alignments.flatMap((a) => a.bottomWords).length).toBeGreaterThan(0);
+  });
+
+  it('B1a the text is unchanged: the record is current, and its lists are what tC3 held', () => {
+    const record = importedAlignmentRecord(DATA, SLOT, false, SV);
+    expect(record.invalid).toBe(false);
+    expect(record.alignments).toEqual(STORED.alignments);
+    expect(record.wordBank).toEqual(STORED.wordBank);
+    expect(record.targetVerseMd5).toBe(verseTextMd5(SLOT));
+    expect(record.sourceVersion).toBe(SV);
+  });
+
+  it('B1b a linked word left the text: the record is flagged, and its lists are byte for byte what tC3 held', () => {
+    const edited = SLOT.replace('siervo', 'esclavo');
+    expect(edited).not.toBe(SLOT);
+    const record = importedAlignmentRecord(DATA, edited, false, SV);
+    expect(record.invalid).toBe(true);
+    expect(bytes(record.alignments)).toBe(bytes(STORED.alignments));
+    expect(bytes(record.wordBank)).toBe(bytes(STORED.wordBank));
+    // the hash is the text's, as before: the flag, not a stale hash, carries the news
+    expect(record.targetVerseMd5).toBe(verseTextMd5(edited));
+  });
+
+  it('B1b a word more or fewer in the text, and a changed count, are flagged too', () => {
+    for (const edited of [`${SLOT} extra`, SLOT.replace('Pablo, ', ''), SLOT.replace('siervo', 'siervo siervo')]) {
+      expect(edited, 'the edit changes the text').not.toBe(SLOT);
+      expect(importedAlignmentRecord(DATA, edited, false, SV).invalid, edited).toBe(true);
+    }
+  });
+
+  it('B1c tC3 kept an invalid marker: the record is flagged though its words fit, and when they do not', () => {
+    const record = importedAlignmentRecord(DATA, SLOT, true, SV);
+    expect(record.invalid).toBe(true);
+    expect(record.alignments).toEqual(STORED.alignments);
+    // the usual real tC3 case: the marker is there and a linked word has left the text
+    expect(importedAlignmentRecord(DATA, SLOT.replace('siervo', 'esclavo'), true, SV).invalid).toBe(true);
+    // a marker on a record with no link that does not fit: the marker alone flags it
+    const unlinked = { ...DATA, alignments: DATA.alignments!.map((a) => ({ ...a, bottomWords: [] })) } as Parameters<typeof importedAlignmentRecord>[0];
+    expect(importedAlignmentRecord(unlinked, SLOT, true, SV).invalid).toBe(true);
+  });
+
+  it('B1d a record with no link vouches for nothing: no flag, though its words do not fit the verse', () => {
+    const bare = {
+      alignments: STORED.alignments.map((a) => ({ topWords: a.topWords, bottomWords: [] })),
+      wordBank: [{ word: 'zzz', occurrence: 1, occurrences: 1 }],
+    } as Parameters<typeof importedAlignmentRecord>[0];
+    expect(importedAlignmentRecord(bare, SLOT, false, SV).invalid).toBe(false);
+    // the control: one link on the same record and the clause answers yes
+    const linked = { ...bare, alignments: bare.alignments!.map((a, i) => (i === 0 ? { ...a, bottomWords: [{ word: 'Pablo', occurrence: 1, occurrences: 1 }] } : a)) } as Parameters<typeof importedAlignmentRecord>[0];
+    expect(importedAlignmentRecord(linked, SLOT, false, SV).invalid).toBe(true);
+  });
+
+  it('B1e NFD content is compared as its NFC words: the verse in NFD fits its NFC record', () => {
+    expect(SLOT.normalize('NFD')).not.toBe(SLOT);
+    expect(importedAlignmentRecord(DATA, SLOT.normalize('NFD'), false, SV).invalid).toBe(false);
+  });
+
+  it('B1f occurrence numbers written as strings (tC3 does this) fit as the numbers', () => {
+    const asStrings = JSON.parse(JSON.stringify(DATA), (k, v) => (k === 'occurrence' || k === 'occurrences' ? String(v) : v));
+    const record = importedAlignmentRecord(asStrings, SLOT, false, SV);
+    expect(record.invalid).toBe(false);
+    expect(record.alignments).toEqual(STORED.alignments);
+  });
+
+  it('B1g tC3 words in NFD (bank and placed) fit the verse in NFD: they are compared as NFC words', () => {
+    const nfd = JSON.parse(JSON.stringify(DATA), (_k, v) => (typeof v === 'string' ? v.normalize('NFD') : v)) as typeof DATA;
+    expect(bytes(nfd), 'the tC3 words are NFD').not.toBe(bytes(DATA));
+    expect(importedAlignmentRecord(nfd, SLOT.normalize('NFD'), false, SV).invalid).toBe(false);
+  });
+
+  it('B2 the fixtures: a parsed record is invalid exactly where tC3 kept a marker', async () => {
+    let linked = 0;
+    let marked = 0;
+    for (const rel of [TIT, ...MULTI]) {
+      const files = zip(rel);
+      const book = json(files, 'manifest.json').project.id as string;
+      const bundle = await parsed(rel);
+      const stored = sidecar<{ chapters: Record<string, Record<string, { invalid: boolean; alignments: Array<{ bottomWords: unknown[] }> }>> }>(bundle, `checking/alignments/${book.toUpperCase()}.json`)?.chapters ?? {};
+      for (const [chapter, verses] of Object.entries(stored)) {
+        for (const [verse, record] of Object.entries(verses)) {
+          const marker = `${APP}/tools/wordAlignment/invalid/${chapter}/${verse}.json` in files;
+          expect(record.invalid, `${book} ${chapter}:${verse}`).toBe(marker);
+          if (record.alignments.some((a) => a.bottomWords.length)) linked += 1;
+          if (marker) marked += 1;
+        }
+      }
+    }
+    // the fixtures hold two linked records (JHN 1:1, LUK 1:1) and one marker (LUK 1:1)
+    expect(linked).toBe(2);
+    expect(marked).toBe(1);
+  });
+
+  it('B1b through the parse: a linked word edited out of the text outside tC3 imports flagged, the record kept', async () => {
+    const files = zip(MULTI[0]);
+    const aligned = json(files, `${APP}/alignmentData/jhn/1.json`) as Record<string, { alignments: Array<{ bottomWords: Array<{ word: string }> }> }>;
+    const word = aligned['1'].alignments.flatMap((a) => a.bottomWords)[0].word;
+    const chapter = json(files, 'jhn/1.json') as Record<string, string>;
+    const text = chapter['1'].replace(new RegExp(`\\b${word}\\b`), 'Zzzzz');
+    expect(text, 'the edit changes the text').not.toBe(chapter['1']);
+    const outside = { ...files, 'jhn/1.json': new TextEncoder().encode(JSON.stringify({ ...chapter, 1: text })) };
+    const before = sidecar<{ chapters: Record<string, Record<string, Record<string, unknown>>> }>(await parsed(MULTI[0]), 'checking/alignments/JHN.json').chapters['1']['1'];
+    const after = sidecar<{ chapters: Record<string, Record<string, Record<string, unknown>>> }>(await TC3_PARSER.parse([{ name: 'outside_jhn_book.zip', bytes: zipSync(outside) }]), 'checking/alignments/JHN.json').chapters['1']['1'];
+    expect(before.invalid).toBe(false);
+    expect(after.invalid).toBe(true);
+    const lists = (record: Record<string, unknown>) => ({ alignments: record.alignments, wordBank: record.wordBank });
+    expect(bytes(lists(after))).toBe(bytes(lists(before)));
   });
 });
