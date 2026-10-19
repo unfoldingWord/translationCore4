@@ -1681,12 +1681,17 @@ function validateNewBible(form) {
  * `intent: 'spans'`; every other write is the per-verse path (writeBook
  * refuses a slot-set change by design, #62). The store derives the key
  * mapping from what IT projects at write time, so the flag is all the app
- * keeps: taken before the write, put back when the write fails (the retry
- * carries the same buffer), re-set by any later span save. */
+ * keeps: taken before the align drain and the write, put back when either
+ * fails (the retry carries the same buffer), re-set by any later span save. */
 async function writeBookOrStructure({ store, structuralRef, alignSchedulerRef }, book, whole) {
   if (!structuralRef.current.has(book)) return store.writeBook(book, whole);
+  // Take the flag BEFORE the drain: the drain can wait, and a span save staged during
+  // that wait sets the flag again — a take after the wait would erase it (#792).
   structuralRef.current.delete(book);
   try {
+    // #792: save the align queue first, or a kept align write republishes old records on the keys this save removes.
+    const align = alignSchedulerRef?.current;
+    if (align && !(await align.drain())) throw new Error(t('upgrade.alignUnsaved'));
     await store.applyStructuralEdit(book, whole, { intent: 'spans' });
   } catch (error) {
     structuralRef.current.add(book);
@@ -3645,6 +3650,9 @@ export const __buildAlignmentSessionForTests = buildAlignmentSession;
 export const __reflowAlignedVersesForTests = reflowAlignedVerses;
 /** Test hook (#794): the open decision — does this verse keep imported markup. */
 export const __verseHoldsImportedAlignmentForTests = verseHoldsImportedAlignment;
+/** Test hook (#792): the book scheduler's writer, driven over the real align
+ * scheduler — a span save drains the align queue first. */
+export const __writeBookOrStructureForTests = writeBookOrStructure;
 
 export function AppProvider({ children }) {
   const [s, dispatch] = useReducer(reducer, undefined, initial);
@@ -5350,12 +5358,6 @@ export function AppProvider({ children }) {
         // D72 as amended by D93 (#516): the engine learns from every confirmed
         // save — the verse joins the worker's memory; no retrain is waited for.
         a.queueAlignSuggestionAppend(optimistic);
-      },
-
-      placeAlignWord: (cardIndex) => {
-        const armed = stateRef.current.alignSession?.armed;
-        if (!armed) return;
-        a.applyAlignEdit((record) => armed.reduce((r, w) => linkWord(r, cardIndex, w), record), true);
       },
 
       unplaceAlignWord: (cardIndex, word) =>
