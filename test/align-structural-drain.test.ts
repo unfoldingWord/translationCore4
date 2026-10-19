@@ -8,10 +8,12 @@
 // then Retry publishes the old buffer again, with no base, on the key the span
 // removed. The fold reports that record as orphaned (R-8.6.6).
 //
-// The fix: on a span save, writeBookOrStructure drains the align scheduler
-// BEFORE it takes the structural flag. A failed drain throws, leaves the flag
-// set and writes nothing, so the draft scheduler keeps the book write as a
-// failure with Retry. A plain write never drains.
+// The fix: on a span save, writeBookOrStructure takes the structural flag FIRST,
+// then drains the align scheduler inside the same try. A failed drain throws,
+// puts the flag back and writes nothing, so the draft scheduler keeps the book
+// write as a failure with Retry. A plain write never drains. The flag is taken
+// before the drain because the drain can wait: a span save staged during that
+// wait sets the flag again, and the take must not erase it (B4).
 //
 // Real JournalingStore over the in-memory rig (the store suites' fake
 // pankosmia-web), the production align writer and splice, and a real
@@ -60,8 +62,9 @@ const orphans = (store: JournalingStore) =>
     .foldNow().invalid.filter((x) => x.book === 'TIT' && x.orphaned).map((x) => x.verse);
 
 /** A project with TIT, an aligned 1:1, and an align scheduler on the store whose
- * alignment writes fail while `ctl.failing` is set — a network error on the write. */
-const setup = async (opts: { failing: boolean }) => {
+ * alignment writes fail while `ctl.failing` is set — a network error on the write.
+ * `gate` holds each alignment write until it resolves — a slow network. */
+const setup = async (opts: { failing: boolean; gate?: Promise<void> }) => {
   forgetSharedClocks(); forgetProjectQueues();
   const rig = journalingRig(); const kv = memKv(); const clock = tickingNow('2026-08-19T09:00:00.000Z');
   const api = new ServerApi({ baseUrl: 'http://rig.test/api', fetchFn: rig.fetchFn });
@@ -73,7 +76,7 @@ const setup = async (opts: { failing: boolean }) => {
   await real.writeAlignments('TIT', { schemaVersion: 1, book: 'TIT', chapters: { '1': { '1': ALIGNED as never } } });
   const ctl = { failing: opts.failing };
   const store = new Proxy(real, { get(target, key) {
-    if (key === 'writeAlignments') return async (...args: Parameters<JournalingStore['writeAlignments']>) => { if (ctl.failing) throw new Error('network'); return target.writeAlignments(...args); };
+    if (key === 'writeAlignments') return async (...args: Parameters<JournalingStore['writeAlignments']>) => { if (ctl.failing) throw new Error('network'); if (opts.gate) await opts.gate; return target.writeAlignments(...args); };
     const v = Reflect.get(target, key, target); return typeof v === 'function' ? v.bind(target) : v;
   } });
   const sched = new SaveScheduler({ writeBook: makeAlignWriter({ store }), splice: spliceAlignRecord, reconcile: () => real.reconcileStaged(), clock: manual });
@@ -143,6 +146,38 @@ describe('#792 a span save drains the align queue first', () => {
     expect(file.chapters['1']['1-2'].invalid).toBe(true); // the span's empty invalid record is there
     expect(file.chapters['1']['1-2'].alignments).toEqual([]);
     expect(file.chapters['2']['1']).toBeDefined(); // the Align edit that failed landed
+  });
+
+  it('B4: a span save staged while the drain waits keeps its flag, so the next draft write is a span write', async () => {
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => { open = resolve; });
+    const { rig, store, sched } = await setup({ failing: false, gate });
+    const refs = refsFor(store, sched, false);
+    const drain = vi.spyOn(sched, 'drain');
+    const draft = new SaveScheduler({ writeBook: (book: string, whole: string) => writeBookOrStructure(refs, book, whole), splice: (raw: string) => raw, clock: manual });
+    draft.loadBook('TIT', TIT_USFM);
+    sched.markDirty('TIT', '2', '1', JSON.stringify(REC21)); // an align write in flight on a slow network
+    const alignWrite = sched.flushOnBlur();
+
+    refs.structuralRef.current.add('TIT'); // span save 1 (stageStructuralSection): join verses 1 and 2
+    draft.replaceBook('TIT', SPAN(TIT_USFM));
+    const firstWrite = draft.flushOnBlur(); // blurVerse -> flushOnBlur: the drain starts at once and waits
+    await vi.waitFor(() => expect(drain).toHaveBeenCalled());
+
+    refs.structuralRef.current.add('TIT'); // span save 2, while the drain waits: break the span again
+    draft.replaceBook('TIT', TIT_USFM);
+    open(); // the network answers
+    await alignWrite;
+    await firstWrite;
+
+    expect(diskBook(rig)).toContain('\\v 1-2 Pablo, siervo de Dios.'); // span save 1 landed
+    expect(refs.structuralRef.current.has('TIT')).toBe(true); // span save 2 is still flagged
+    await draft.flushOnBlur(); // the draft buffer holds span save 2
+    expect(draft.getFailure()).toBeNull();
+    expect(draft.getState()).toBe('saved');
+    expect(refs.structuralRef.current.has('TIT')).toBe(false);
+    expect(diskBook(rig)).toContain('\\v 2 ___'); // span save 2 landed: the verses are split again
+    expect(diskBook(rig)).not.toContain('\\v 1-2');
   });
 
   it('B3: with no pending align work a span save behaves as before, and a plain save never drains', async () => {
