@@ -52,12 +52,12 @@ const file = (records: Record<string, AlignmentVerseRecord>): AlignmentFile => (
   chapters: { '1': records },
 });
 const suggestOn = (ref: string, orig: typeof V11.orig, text: string, id: number, testament: 'ot' | 'nt' = 'nt') =>
-  handle({ type: 'suggest', id, testament, input: sessionInputFor(bootstrapVerse(verseWords(text), orig, SOURCE, md5Hex(text)), text), ref, session: 1 });
+  handle({ type: 'suggest', id, testament, input: sessionInputFor(bootstrapVerse(verseWords(text), orig, SOURCE, md5Hex(text)), verseWords(text)), ref, session: 1 });
 
 describe('#516 answering worker — saves land at once; the memory only grows', () => {
   it('a save before any training starts a memory-only model that answers (append → suggest, no train between)', async () => {
     // A fresh worker: no model was trained or loaded for any testament.
-    const v = trainingVerseOf('JON 1:1', aligned11(), V11.text)!;
+    const v = trainingVerseOf('JON 1:1', aligned11(), verseWords(V11.text))!;
     const appended = await handle({ type: 'append', id: 1, testament: 'ot', verse: v });
     expect(appended).toMatchObject({ type: 'memory', id: 1, testament: 'ot', verses: 1, boosted: false, saved: true });
     // A second verse that shares the source word Θεοῦ: its target word is
@@ -72,12 +72,12 @@ describe('#516 answering worker — saves land at once; the memory only grows', 
   });
 
   it('a re-saved verse appends its links but is counted once; a new verse counts', async () => {
-    const v = trainingVerseOf('JON 1:1', aligned11(), V11.text)!;
+    const v = trainingVerseOf('JON 1:1', aligned11(), verseWords(V11.text))!;
     const first = await handle({ type: 'append', id: 1, testament: 'ot', verse: v });
     expect(first).toMatchObject({ type: 'memory', verses: 1 });
     const again = await handle({ type: 'append', id: 2, testament: 'ot', verse: v });
     expect(again).toMatchObject({ type: 'memory', verses: 1 }); // same ref: counted once
-    const v2 = trainingVerseOf('JON 1:2', aligned14(), V14.text)!;
+    const v2 = trainingVerseOf('JON 1:2', aligned14(), verseWords(V14.text))!;
     const more = await handle({ type: 'append', id: 3, testament: 'ot', verse: v2 });
     expect(more).toMatchObject({ type: 'memory', verses: 2 });
   });
@@ -86,7 +86,7 @@ describe('#516 answering worker — saves land at once; the memory only grows', 
     // The project's copy of TIT 1:4 knows only Dios; the save of it knows Tito.
     const corpus = trainingVersesFor('TIT', file({ '1': aligned11(), '4': aligned11() }), { '1:1': V11.text, '1:4': V11.text });
     expect(corpus.map((v) => v.ref)).toEqual(['TIT 1:1', 'TIT 1:4']);
-    const v14 = trainingVerseOf('TIT 1:4', aligned14(), V14.text)!;
+    const v14 = trainingVerseOf('TIT 1:4', aligned14(), verseWords(V14.text))!;
     const knowsTito = async (id: number) => {
       const reply = await suggestOn('TIT 1:9', [V14.orig[0]], 'A Tito', id);
       return (reply as { links: Array<{ source: number[]; target: number[] }> }).links.some((l) => l.source.includes(0) && l.target.includes(1));
