@@ -7,7 +7,7 @@
 // `sync.no-write-access`.
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { REFUSAL_CODES, Refusal, failedReport, okReport, reportError, type Report, type RefusalCode } from '../src/data/journal/runtime';
 import { t } from '../src/i18n/index.js';
 
@@ -363,5 +363,52 @@ describe('#680 — the result names each teammate through actorLabel', () => {
     const { default: Home } = await import('../src/views/Home.jsx');
     render(<Home />);
     expect(screen.getByTestId('sync-received-from').textContent).toContain('maria');
+  });
+});
+
+describe('D108 (#791) — the result names each alignment that a teammate\'s newer record replaced', () => {
+  const team = { me: 'a0000000000000aa', names: { c0000000000000bb: 'maria' }, actors: ['a0000000000000aa', 'b0000000000000aa', 'c0000000000000bb'] };
+  const replaced = [
+    { book: 'TIT', ref: '1:1', actor: 'c0000000000000bb' },
+    { book: 'JON', ref: '2:3', actor: 'b0000000000000aa' },
+  ];
+  const draw = (facts: Record<string, unknown>, withTeam: typeof team | null = team) =>
+    render(<SyncResult result={result(okSync(facts))} team={withTeam} onReview={vi.fn()} onDownload={vi.fn()} onDismiss={vi.fn()} />);
+
+  it('one notice row per verse: the book, the verse and the teammate; the newest-version count stays', () => {
+    draw({ alignReplaced: replaced });
+    const rows = within(screen.getByTestId('sync-align-replaced')).getAllByRole('listitem');
+    expect(rows.map((row) => row.textContent)).toEqual([
+      t('syncResult.alignReplaced', { book: 'Titus', ref: '1:1', name: 'maria' }),
+      t('syncResult.alignReplaced', { book: 'Jonah', ref: '2:3', name: t('conflicts.teammate', { n: 1 }) }), // the review's label for the unnamed teammate
+    ]);
+    expect(screen.getByTestId('sync-count-newest').getAttribute('data-count')).toBe('1');
+    expect(screen.getByTestId('sync-count-conflicts').getAttribute('data-count')).toBe('2');
+  });
+
+  it('a notice only: no button, no link, and the review link follows the verse conflicts alone', () => {
+    draw({ alignReplaced: replaced, textConflicts: [] });
+    const list = screen.getByTestId('sync-align-replaced');
+    expect(within(list).queryAllByRole('button')).toEqual([]);
+    expect(within(list).queryAllByRole('link')).toEqual([]);
+    expect(screen.queryByTestId('sync-review')).toBeNull();
+  });
+
+  it('with no team, a teammate shows by the folded name of the Report', () => {
+    draw({ alignReplaced: replaced, names: { c0000000000000bb: 'maria' } }, null);
+    expect(within(screen.getByTestId('sync-align-replaced')).getAllByRole('listitem')[0].textContent)
+      .toBe(t('syncResult.alignReplaced', { book: 'Titus', ref: '1:1', name: 'maria' }));
+  });
+
+  it('no list when nothing was replaced, for an older Report without the fact, and for a refused sync', () => {
+    draw({ alignReplaced: [] });
+    expect(screen.queryByTestId('sync-align-replaced')).toBeNull();
+    expect(screen.getByTestId('sync-count-newest')).toBeTruthy();
+    cleanup();
+    draw({});
+    expect(screen.queryByTestId('sync-align-replaced')).toBeNull();
+    cleanup();
+    render(<SyncResult result={result(refused('sync.offline'))} team={team} onReview={vi.fn()} onDownload={vi.fn()} onDismiss={vi.fn()} />);
+    expect(screen.queryByTestId('sync-align-replaced')).toBeNull();
   });
 });

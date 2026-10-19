@@ -975,6 +975,7 @@
   "syncResult.from": "Зміни від: {names}",
   "syncResult.newestOne": "Конфлікти, де залишено найновішу версію: 1",
   "syncResult.newestMany": "Конфлікти, де залишено найновішу версію: {n}",
+  "syncResult.alignReplaced": "{book} {ref}: вирівнювання від {name} замінило ваше.",
   "syncResult.conflictsOne": "Конфлікти віршів для перегляду: 1",
   "syncResult.conflictsMany": "Конфлікти віршів для перегляду: {n}",
   "syncResult.restoredOne": "На Door43 не було змін від команди: 1. tC4 надіслав їх знову.",
