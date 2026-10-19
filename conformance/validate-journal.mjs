@@ -412,9 +412,15 @@ const buildSeed = () => {
     ['text.skeleton.set skeleton', mkEvent({ op: 'text.skeleton.set', actor: 'actor-a', ts: t(13), base: t(0), book: 'TIT', skeleton: skelNfd }), (b) => b.skeleton, skelNfc],
     ['book.add skeleton', mkEvent({ op: 'book.add', actor: 'actor-a', ts: t(14), book: 'TIT', scope: [], skeleton: skelNfd, initialVerses: {} }), (b) => b.skeleton, skelNfc],
     ['text.structure.apply skeleton', mkEvent({ op: 'text.structure.apply', actor: 'actor-a', ts: t(15), base: t(0), book: 'TIT', skeleton: skelNfd, transitions: { '1:1': { text: 'uno\n', sources: [] } }, dispositions: [] }), (b) => b.skeleton, skelNfc],
+    // Alignment words (R-8.5.9): the words of all three lists and the lemma are NFC; the identity fields stay as they were.
+    ['align.verse.set alignment words (identity unchanged)', mkEvent({ op: 'align.verse.set', actor: 'actor-a', ts: t(16), generation: t(0), book: 'TIT', chapter: '1', verse: '1',
+      alignments: [{ topWords: [{ word: NFD_H, lemma: NFD_H, strong: 'G1', occurrence: 1, occurrences: 1 }], bottomWords: [{ word: NFD_H, occurrence: 1, occurrences: 1 }] }],
+      wordBank: [{ word: NFD_H, occurrence: 1, occurrences: 1 }], targetVerseMd5: md5('x') }),
+      (b) => [b.book, b.chapter, b.verse, b.targetVerseMd5, b.alignments[0].topWords[0].word, b.alignments[0].topWords[0].lemma, b.alignments[0].bottomWords[0].word, b.wordBank[0].word].join('|'),
+      ['TIT', '1', '1', md5('x'), NFC_H, NFC_H, NFC_H, NFC_H].join('|')],
   ];
   const misses = normalized.filter(([, e, get, expect]) => get(bodyOf(e)) !== (expect ?? NFC));
-  check('JC-14f (I-4): sealAction NORMALIZES every text a writer journals — verse content, skeletons, note text, initial verse content, structural destination text, and settings/metadata string values are NFC in the sealed bytes [covers R-8.5.9]',
+  check('JC-14f (I-4): sealAction NORMALIZES every text a writer journals — verse content, skeletons, note text, alignment words, initial verse content, structural destination text, and settings/metadata string values are NFC in the sealed bytes [covers R-8.5.9]',
     misses.length === 0, `${normalized.length - misses.length}/${normalized.length} normalized${misses.length ? ` · missed: ${misses.map(([l]) => l).join(', ')}` : ''}`);
 
   // (b) the refusal — an IDENTITY is never silently rewritten. Pre-fix, the two decision
