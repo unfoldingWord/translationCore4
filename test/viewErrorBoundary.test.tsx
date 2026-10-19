@@ -17,7 +17,7 @@ const backToProjects = vi.fn();
 let state: Record<string, unknown> = {};
 
 vi.mock('../src/state.jsx', () => ({
-  useApp: () => ({ s: state, actions: { backToProjects, go: vi.fn() } }),
+  useApp: () => ({ s: state, actions: { backToProjects, go: vi.fn(), saveRefused: () => false } }),
 }));
 // The project view that breaks: it throws while it renders.
 vi.mock('../src/views/Draft.jsx', () => ({
