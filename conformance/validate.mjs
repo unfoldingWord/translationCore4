@@ -9,7 +9,7 @@ import crypto from 'crypto';
 import { pinSlotError, scopeError } from '../journal/grammar.mjs';
 import { writeActionSegment, validateSegment, validateActorDoc, segmentName, readSegments, actorDirFor } from '../journal/files.mjs';
 import { parseStory, seedStory, writeFrame, writeRef, applyStoryState, storyIpath, STORY_COUNT } from '../journal/story.mjs';
-import { fold } from '../journal/fold.mjs';
+import { fold, verseTextMd5 } from '../journal/fold.mjs';
 import { validateEvent } from '../journal/schema.mjs';
 import { derivedProjections } from '../journal/checkpoint.mjs';
 import { seedFromSidecars } from '../journal/reconcile.mjs';
@@ -18,6 +18,9 @@ import { shiftChapter } from './fixtures/renumber.mjs';
 import { relationshipsFromPins } from '../journal/relationships.mjs';
 import { checkIngredients, compileSbValidator } from '../src/data/import/burritoCheck.mjs';
 import { weaveBook } from '../src/data/export/weave.mjs';
+import { decompose, recompose } from '../journal/skeleton.mjs';
+import { sameWords, verseWords } from '../src/data/align/verseWords.mjs';
+import { needsReview } from '../src/data/align/review.mjs';
 
 const require = createRequire(import.meta.url);
 const usfmjs = require('usfm-js');
@@ -219,6 +222,129 @@ const verseText = bookJson.chapters['1']['1'].verseObjects.filter(vo => vo.type 
   check('alignment: done is additive — a record with done:true exports the same zaln and the field is boolean where present',
     usfmWithDone === usfmOut && everyRecord.every(r => !('done' in r) || typeof r.done === 'boolean'),
     `${everyRecord.length} records, ${everyRecord.filter(r => 'done' in r).length} carry done`);
+}
+
+// ---------- 4b. The verse's words (BURRITO-SPEC §5.1, D105, issue #796) ----------
+// Five rules, one firing case each. The sample record is the positive case, and each check also
+// fires on deliberately broken records inside itself. The verse's words are `verseWords` (a linear
+// copy of the walk that word-aligner `merge` makes over the stored verse slot); the review question
+// is `needsReview`. The weave runs `weaveBook` with its report callback, so a skipped verse is seen.
+{
+  const usfm = read(ING('TIT.usfm'));
+  const { skeleton, verses } = decompose(usfm);
+  const slot = verses['1:1'];
+  const words = verseWords(slot);
+  const placedOf = rec => rec.alignments.flatMap(a => a.bottomWords);
+  const keyOf = w => `${w.word}|${Number(w.occurrence)}|${Number(w.occurrences)}`;
+  const count = (text, re) => (text.match(re) || []).length;
+  // The multiset `list` minus the multiset `drop`, in the order of `list`; null when `drop` is not inside `list`.
+  const minus = (list, drop) => {
+    const owed = new Map();
+    for (const w of drop) owed.set(keyOf(w), (owed.get(keyOf(w)) ?? 0) + 1);
+    const rest = list.filter(w => {
+      const n = owed.get(keyOf(w));
+      if (!n) return true;
+      owed.set(keyOf(w), n - 1);
+      return false;
+    });
+    return [...owed.values()].every(n => n === 0) ? rest : null;
+  };
+  // The writer rule: the bank is the verse's words minus the placed words.
+  const bankFollowsRule = (rec, verseWordList) => {
+    const rest = minus(verseWordList, placedOf(rec));
+    return rest !== null && sameWords(rec.wordBank, rest);
+  };
+  const weave = (book, rec) => {
+    const reports = [];
+    const out = weaveBook(book, { chapters: { '1': { '1': rec } } }, wal.AlignmentHelpers, r => reports.push(r));
+    return { out, reports };
+  };
+  const phantom = { ...stored, wordBank: [...stored.wordBank, { word: 'inventada', occurrence: 1, occurrences: 1 }] };
+  const bankShort = { ...stored, wordBank: stored.wordBank.slice(1) };
+
+  // H1 — the writer rule. The sample's bank is the verse's words minus its placed words.
+  check('alignment: wordBank writer rule — the sample record\'s wordBank is the verse\'s words minus its placed words; a record with a phantom bank word fails (D105)',
+    bankFollowsRule(stored, words) && !bankFollowsRule(phantom, words) && !bankFollowsRule(bankShort, words),
+    `${words.length} verse words = ${placedOf(stored).length} placed + ${stored.wordBank.length} banked; a phantom word and a missing word both fail`);
+
+  // H2 — readers do not take the bank as truth. Order does not change the export; a bank that is not the
+  // rest of the verse's words is evidence the record is wrong, so the verse keeps its stored bytes and is named.
+  const base = weave(usfm, stored);
+  const reordered = weave(usfm, { ...stored, wordBank: [...stored.wordBank].reverse() });
+  const corrupted = weave(usfm, phantom);
+  const corruptedShort = weave(usfm, bankShort);
+  const namedSkip = w => w.out === usfm && w.reports.length === 1 && w.reports[0].ref === '1:1' && w.reports[0].reason === 'needs-review';
+  check('alignment: readers do not use wordBank as truth — a reordered bank exports the same zaln; a corrupted bank is skipped and reported (D105)',
+    base.out.includes('\\zaln-s') && base.reports.length === 0 &&
+    reordered.out === base.out && reordered.reports.length === 0 &&
+    namedSkip(corrupted) && namedSkip(corruptedShort),
+    `sample ${count(base.out, /\\zaln-s/g)} zaln-s; reversed bank same bytes; phantom and short banks keep the stored verse and report needs-review`);
+
+  // H3 — the I-3 word clause. The hash is current in every record below, so only the words decide.
+  const lostWord = { ...stored, alignments: stored.alignments.map((a, i) => (i === 0 ? { ...a, bottomWords: [] } : a)) };
+  const twoPlaces = { ...stored, wordBank: [...stored.wordBank, placedOf(stored)[0]] };
+  const nothingPlaced = { ...stored, alignments: stored.alignments.map(a => ({ ...a, bottomWords: [] })), wordBank: words.slice(1) };
+  const hashIsCurrent = rec => rec.targetVerseMd5 === verseTextMd5(slot);
+  check('alignment: I-3 word clause — a record with the current hash and a word on no card and not in the bank needs review; the sample record does not (D105)',
+    [stored, lostWord, twoPlaces, nothingPlaced].every(hashIsCurrent) &&
+    !needsReview(stored, slot) &&
+    needsReview(lostWord, slot) && needsReview(twoPlaces, slot) &&
+    // A record that vouches for nothing (no placed word, no `done`) never reads as needs review; with `done` it does.
+    !needsReview(nothingPlaced, slot) && needsReview({ ...nothingPlaced, done: true }, slot),
+    'lost word, word on a card and in the bank → review; nothing placed and not done → no review');
+
+  // H4 — D73 amended. A text edit appends a `Dios`: both earlier `Dios` renumber (n of 2 → n of 3).
+  const edited = slot.replace(/\n$/, ' Dios\n');
+  const book2 = recompose(skeleton, { ...verses, '1:1': edited });
+  const words2 = verseWords(edited);
+  const restamp = rec => ({ ...rec, targetVerseMd5: verseTextMd5(edited) });
+  // The harness's own reference reconcile: keep a placed word whose word and occurrence are in the verse,
+  // number it again from the verse, and derive the bank from the verse.
+  const reconcile = (rec, verseWordList) => {
+    const at = new Map(verseWordList.map(w => [`${w.word}|${w.occurrence}`, w]));
+    const kept = new Set();
+    const alignments = rec.alignments.map(a => ({
+      ...a,
+      bottomWords: a.bottomWords.flatMap(b => {
+        const key = `${b.word}|${Number(b.occurrence)}`;
+        const now = at.get(key);
+        if (!now || kept.has(key)) return [];
+        kept.add(key);
+        return [{ ...b, occurrence: now.occurrence, occurrences: now.occurrences }];
+      }),
+    }));
+    const wordBank = verseWordList.filter(w => !kept.has(`${w.word}|${w.occurrence}`)).map(w => ({ word: w.word, occurrence: w.occurrence, occurrences: w.occurrences }));
+    return { ...rec, alignments, wordBank };
+  };
+  const restampedOnly = restamp(stored);
+  const reconciled = restamp(reconcile(stored, words2));
+  const restampWeave = weave(book2, restampedOnly);
+  const reconcileWeave = weave(book2, reconciled);
+  check('alignment: D73 amended — after a text edit, a restamp alone needs review; a reconcile, then a restamp, passes and weaves (D105)',
+    words2.length === words.length + 1 &&
+    needsReview(restampedOnly, edited) && restampWeave.out === book2 &&
+    restampWeave.reports.length === 1 && restampWeave.reports[0].reason === 'needs-review' &&
+    !needsReview(reconciled, edited) && bankFollowsRule(reconciled, words2) &&
+    reconcileWeave.reports.length === 0 && count(reconcileWeave.out, /\\zaln-s/g) === count(base.out, /\\zaln-s/g),
+    `restamp alone: stored verse kept, needs-review; reconcile then restamp: ${count(reconcileWeave.out, /\\zaln-s/g)} zaln-s, no report`);
+
+  // H5 — the export of a record with no placed word. Each shape below has nothing placed, so the export
+  // keeps the stored bytes (no `\w` wrapping of every word); one placed word is enough to weave.
+  const removalForm = { ...stored, alignments: [], wordBank: [] };
+  const emptyCards = { ...stored, alignments: stored.alignments.map(a => ({ ...a, bottomWords: [] })), wordBank: words.map(w => ({ ...w })) };
+  const emptyCardsDone = { ...emptyCards, done: true };
+  const pablo = placedOf(stored)[0];
+  const oneWord = {
+    ...emptyCards,
+    alignments: emptyCards.alignments.map((a, i) => (i === 0 ? { ...a, bottomWords: [pablo] } : a)),
+    wordBank: minus(words, [pablo]),
+  };
+  const keptStored = [removalForm, emptyCards, emptyCardsDone].map(rec => weave(usfm, rec));
+  const oneWordWeave = weave(usfm, oneWord);
+  check('export: a record with no placed word exports the verse\'s stored bytes; one placed word weaves (D105)',
+    keptStored.every(w => w.out === usfm && w.reports.length === 0) &&
+    oneWordWeave.out !== usfm && count(oneWordWeave.out, /\\zaln-s/g) === 1 && oneWordWeave.reports.length === 0,
+    `removal form, empty cards and done-with-nothing-placed keep the stored bytes; one placed word gives ${count(oneWordWeave.out, /\\zaln-s/g)} zaln-s`);
 }
 
 // ---------- 5. Selections validity against the draft text (RCL invalidation machinery) ----------
