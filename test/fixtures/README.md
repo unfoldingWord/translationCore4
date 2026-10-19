@@ -14,7 +14,8 @@ These files are pinned copies. Do not edit them. Tests read them read-only.
 | `en_ult/PSA-3.usfm` | unfoldingWord en_ult (aligned USFM), Psalms header (the lines before `\c 1`) plus chapter 3 up to `\v 3` (the title and verses 1-2; verse 2 ends with an aligned "Selah" inside `\qs … \qs*`) | v91 | `35d215957f3203fd2e2fac5702ce14902d417f9d` | rig cache `dev-env/resources-cache/en_ult-v91-unwrapped.zip`, `ingredients/PSA.usfm` (sha256 `f3753ca75732d3e7a1738014f4e845a39041c2ce8df7b5797f728f63b7baabbe`), lines 1-11 and 349-398; extract sha256 `6068efd5b0a5b47ac342b69a1caaf3b1c4be795d2ba039c6b189b48d3806b05a` | 2026-10-17 |
 
 `test/align-tokenize.test.ts` (issue #255) reads `hbo_uhb/JON.usfm` for its right-to-left
-verses. `test/align-gateway-label.test.ts` (issue #768) reads the two `GEN-1-1.usfm`
+verses. `test/align-source-nfc.test.ts` (issue #793) reads the same file for its non-NFC Hebrew
+words. `test/align-gateway-label.test.ts` (issue #768) reads the two `GEN-1-1.usfm`
 extracts; their commit hashes match the `revision` field of the sideloaded burritos
 (verified 2026-10-16). `test/sourceHighlight.test.ts` (issue #773) reads `en_ult/GEN-773.usfm`;
 its source file has the same sha256 as the full `GEN.usfm` above. `test/bookModel-nested-alignment.test.ts` (issue #782) reads `en_ult/GEN-1-1.usfm`, `en_ult/GEN-1.usfm`, `en_ult/PSA-3.usfm` and `hbo_uhb/GEN-1-1.usfm`. The two `en_*` TIT copies came from the dev rig at
