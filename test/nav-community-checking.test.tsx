@@ -82,7 +82,8 @@ vi.mock('../src/state.jsx', () => ({
       get: (_, name) => (name === 'go' ? go
         : name === 'exportFile' && exportFile ? exportFile
           : name === 'readPrintStories' ? readPrintStories
-            : (...args: unknown[]) => unexpectedAction(name, args)),
+            : name === 'saveRefused' ? () => false // #801: a read the top bar makes on each render
+              : (...args: unknown[]) => unexpectedAction(name, args)),
     }),
   }),
   AppProvider: ({ children }: { children: unknown }) => children,
