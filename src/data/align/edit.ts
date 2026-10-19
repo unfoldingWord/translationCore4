@@ -233,11 +233,13 @@ export const moveWord = (
 };
 
 /** Re-stamp the draft hash after the alignment is edited against a verse.
- * `md5` is the export's hash of the stored verse (#795). */
+ * `md5` is the export's hash of the stored verse (#795). It leaves `invalid` as
+ * it is (#796, D105 point 4): a record the translator must review stays flagged
+ * through every edit, and Mark valid (`markDone`) is the one place the flag clears. */
 export const stampTargetVerse = (
   record: AlignmentVerseRecord,
   md5: string,
-): AlignmentVerseRecord => ({ ...record, targetVerseMd5: md5, invalid: false });
+): AlignmentVerseRecord => ({ ...record, targetVerseMd5: md5 });
 
 /** I-3: does this record still describe the verse as it now reads? */
 export const alignmentIsStale = (record: AlignmentVerseRecord, md5: string): boolean =>

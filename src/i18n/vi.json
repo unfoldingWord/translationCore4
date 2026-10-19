@@ -762,6 +762,7 @@
   "cc.exportSaved": "Đã lưu {filename}",
   "cc.exportInterrupted": "{filename} chưa tải xuống xong. Hãy xuất lại.",
   "cc.exportReady": "Bản xuất đã sẵn sàng: {filename}",
+  "cc.exportSkipped": "Căn chỉnh của bạn cho các câu này không có trong tệp. Hãy kiểm tra trong Căn chỉnh: {refs}",
   "cc.exportsLater": "Tính năng xuất sẽ ra mắt trong giai đoạn sau (J7).",
   "cc.pageSetup": "Thiết lập trang",
   "cc.columns": "Cột",
