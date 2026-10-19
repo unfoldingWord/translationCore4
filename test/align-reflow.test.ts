@@ -151,6 +151,16 @@ describe('#213 reflowAlignment — keep what still fits, drop what changed', () 
       expect(placed(next!)).toEqual([[], [], ['Dios/2/2']]);
       expect(next!.invalid).toBe(true);
     });
+    it('a linked word that lands on a copy with another number flags, though no copy of its string is lost before it or gained before its new place', () => {
+      // Before: Dios(1 of 2, linked), a, Dios(2 of 2), b. After: a, Dios(1 of 2), b, Dios(2 of 2). Both passes send
+      // the first Dios to the last Dios. The lost copy is the linked word itself, at index 0, and the new copy is
+      // the one it lands on, so neither the lost-before nor the new-before test fires. Only its number, 1 to 2, flags.
+      let r = bootstrapVerse(verseWords('Dios a Dios b'), ORIG, SOURCE, md5Hex('Dios a Dios b'));
+      r = linkWord(r, 0, wordIn(r, 'Dios', 1));
+      const next = reflowTo(stampTargetVerse(r, md5Hex('Dios a Dios b')), 'Dios a Dios b', 'a Dios b Dios');
+      expect(placed(next!)).toEqual([['Dios/2/2'], [], []]);
+      expect(next!.invalid).toBe(true);
+    });
     it('a recased word is a new word: its link goes, and a linked word after it that is renumbered flags', () => {
       let r = bootstrapVerse(verseWords('dios y Dios'), ORIG, SOURCE, md5Hex('dios y Dios'));
       r = linkWord(r, 0, wordIn(r, 'Dios'));
