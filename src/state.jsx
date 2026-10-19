@@ -391,10 +391,11 @@ function slotMd5Of(bookRaw, ref) {
   if (!(ref in slotMemo.md5)) slotMemo.md5[ref] = verseTextMd5(slot);
   return slotMemo.md5[ref];
 }
-/** #796: the drafted body of a verse as the rail reads it (`indexBook`: it stops at a
- * `\p`, `\s5`, `\q2` or `\s` line, where a slot runs on to the next `\v`, as
- * `slotMd5Index` and `verseHoldsImportedAlignment` read it). `''` when the verse
- * is absent, empty or a `___` stub. */
+/** #796: the drafted body of a verse as the rail reads it (`indexBook`: since #786 and
+ * #812 it runs over the verse's poem lines, breaks and headings up to its last words,
+ * where a slot runs on to the next `\v`, as `slotMd5Index` and
+ * `verseHoldsImportedAlignment` read it). `''` when the verse is absent, empty or a
+ * `___` stub. */
 function draftedBodyOf(bookRaw, ref) {
   const [chapter, verse] = ref.split(':');
   const e = findVerse(indexBook(bookRaw), chapter, verse);
