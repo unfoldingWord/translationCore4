@@ -284,7 +284,11 @@ describe('#675 the sync core', () => {
     const ct = idx.cases['check-two-ways'];
     const remote = door43();
     const first = await run(remote);
-    expect(factsOf(first.report).newestWins).toEqual([{ key: ct.key, kind: 'dec', winner: ct.newest }]);
+    const at = idx.cases['align-two-ways'];
+    expect(factsOf(first.report).newestWins).toEqual([
+      { key: ct.key, kind: 'dec', winner: ct.newest },
+      { key: at.key, kind: 'align', winner: at.newest },
+    ]);
     // the next sync: A holds every file now, and Door43 main holds A's pushed files
     const after = new Map([...remote, ...first.write]);
     const journal = new Map([...after].filter(([p]) => isJournal(p)));
@@ -296,30 +300,77 @@ describe('#675 the sync core', () => {
   });
 
   it('[G7] an alignment set two ways keeps the newest and is counted once', async () => {
-    // D98 ruling 8: alignments follow the newest head too. B and C each set the TIT 1:1
-    // alignment from the seed head; C is newest. (Built here, not in the #674 fixture, whose
-    // JC-35 checks count its forks.)
-    const seedAlign = refFiles.validateSegment(readFix(creation)).events.find((e) => e.op === 'align.verse.set')!;
-    const record = { ...seedAlign };
-    delete record.seed; // an edit is not seeded
-    const alignBy = (actor: Actor, iso: string, done: boolean) => {
-      const ev = { ...record, actor, ts: `${iso}|0000|${actor}`, base: seedAlign.ts, ...(done ? { done: true } : {}) };
-      return [`checking/journal/${actor}/segments/${refFiles.segmentName(ev.ts)}`, refFiles.sealAction([ev])] as const;
-    };
+    // D98 ruling 8: alignments follow the newest head too. B and C each took one pair of
+    // TIT 1:1 apart from the seed record (the `align-two-ways` case); C is newest.
+    const at = idx.cases['align-two-ways'];
     const remote = door43();
-    const [bPath, bBytes] = alignBy(B, '2026-10-13T10:40:00.000Z', true);
-    const [cPath, cBytes] = alignBy(C, '2026-10-13T10:41:00.000Z', false);
-    remote.set(bPath, bBytes);
-    remote.set(cPath, cBytes);
     const first = await run(remote);
     expect(first.report.ok).toBe(true);
     const wins = factsOf(first.report).newestWins;
-    expect(wins.filter((w) => w.kind === 'align')).toEqual([{ key: 'align|TIT|1:1', kind: 'align', winner: '2026-10-13T10:41:00.000Z|0000|translator-c' }]);
-    expect(factsOf(first.report).textConflicts.map((c) => c.key)).not.toContain('align|TIT|1:1');
-    expect(JSON.parse(first.write.get('checking/alignments/TIT.json')!).chapters['1']['1'].done).toBeUndefined(); // C's record, the newest
+    expect(wins.filter((w) => w.kind === 'align')).toEqual([{ key: at.key, kind: 'align', winner: at.newest }]);
+    expect(factsOf(first.report).textConflicts.map((c) => c.key)).not.toContain(at.key);
+    const [bAlign, cAlign] = at.segments.map((rel: string) => refFiles.validateSegment(readFix(rel)).events[0]);
+    const wordsOf = (words: Array<{ word: string }>) => words.map((w) => w.word);
+    const projected = JSON.parse(first.write.get('checking/alignments/TIT.json')!).chapters['1']['1'];
+    expect(wordsOf(projected.wordBank)).toEqual(wordsOf(cAlign.wordBank as Array<{ word: string }>)); // C's record, the newest
+    expect(wordsOf(projected.wordBank)).not.toEqual(wordsOf(bAlign.wordBank as Array<{ word: string }>));
     const after = new Map([...remote, ...first.write]);
     const second = await run(after, { actor: A, journal: new Map([...after].filter(([p]) => isJournal(p))), outbox: new Map() });
     expect(factsOf(second.report).newestWins).toEqual([]);
+  });
+
+  describe('D108 — the Report names each alignment that a teammate\'s newer record replaced', () => {
+    const at = idx.cases['align-two-ways'];
+    const [bSeg, cSeg]: string[] = at.segments;
+    /** Door43 main as `door43()` makes it, and a computer of `actor` that holds its own files and A's creation. */
+    const mineOf = (actor: Actor) => ({ actor, journal: toMap([...new Set([creation, ...filesOf(actor)])]), outbox: new Map<string, string>() });
+    const replacedFor = async (actor: Actor, remote = door43()) => factsOf((await run(remote, mineOf(actor))).report).alignReplaced;
+
+    it('[G7] B, whose record C replaced, is told the verse and C', async () => {
+      expect(await replacedFor(B)).toEqual([{ book: 'TIT', ref: '1:1', actor: C }]);
+    });
+
+    it('[G7] C, whose record is the newest, is told nothing', async () => {
+      expect(await replacedFor(C)).toEqual([]);
+    });
+
+    it('[G7] A, who did not align the verse, is told nothing, though the fork is new to A', async () => {
+      const first = await run();
+      expect(factsOf(first.report).newestWins.some((w) => w.kind === 'align')).toBe(true); // the fork is counted
+      expect(factsOf(first.report).alignReplaced).toEqual([]); // but no record of A's was replaced
+    });
+
+    it('[G7] the notice comes once: the next sync, which holds the fork already, lists nothing', async () => {
+      const remote = door43();
+      const first = await run(remote, mineOf(B));
+      expect(factsOf(first.report).alignReplaced).toHaveLength(1);
+      const after = new Map([...remote, ...first.write]);
+      const journal = new Map([...after].filter(([p]) => isJournal(p)));
+      const second = await run(after, { actor: B, journal, outbox: new Map() });
+      expect(second.report.ok).toBe(true);
+      expect(factsOf(second.report).alignReplaced).toEqual([]);
+    });
+
+    it('[G7] two equal records are no fork, and nothing is listed', async () => {
+      // B and C set the same record from the seed: the fold merges them (JC-5), so no fork
+      const remote = door43();
+      const equal = (actor: Actor, iso: string) => {
+        const record = { ...refFiles.validateSegment(readFix(cSeg)).events[0], actor, ts: `${iso}|0000|${actor}` };
+        return [`checking/journal/${actor}/segments/${refFiles.segmentName(record.ts as string)}`, refFiles.sealAction([record])] as const;
+      };
+      const [bPath, bBytes] = equal(B, '2026-10-13T10:42:00.000Z');
+      const [cPath, cBytes] = equal(C, '2026-10-13T10:43:00.000Z');
+      for (const rel of [bSeg, cSeg]) remote.delete(ipathOf(rel));
+      remote.set(bPath, bBytes);
+      remote.set(cPath, cBytes);
+      const mine = mineOf(B);
+      mine.journal.delete(ipathOf(bSeg));
+      mine.journal.set(bPath, bBytes);
+      const { report } = await run(remote, mine);
+      expect(report.ok).toBe(true);
+      expect(factsOf(report).newestWins.filter((w) => w.kind === 'align')).toEqual([]);
+      expect(factsOf(report).alignReplaced).toEqual([]);
+    });
   });
 
   it('[G7] a verse changed two ways appears once in textConflicts', async () => {
@@ -341,7 +392,7 @@ describe('#675 the sync core', () => {
     for (const key of dv.keys) expect(keys).not.toContain(key);
     const usfm = write.get('TIT.usfm')!;
     for (const rel of dv.segments) expect(usfm).toContain(String(refFiles.validateSegment(readFix(rel)).events[0].text).trim());
-    expect(factsOf(report).received).toEqual({ [B]: 4, [C]: 3 });
+    expect(factsOf(report).received).toEqual({ [B]: 5, [C]: 4 });
     expect(factsOf(report).names).toEqual({ [A]: 'fixture-translator-a', [B]: 'fixture-translator-b', [C]: 'fixture-translator-c' });
   });
 

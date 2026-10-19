@@ -975,6 +975,7 @@
   "syncResult.from": "Cambios de: {names}",
   "syncResult.newestOne": "1 conflicto conservó la versión más reciente",
   "syncResult.newestMany": "{n} conflictos conservaron la versión más reciente",
+  "syncResult.alignReplaced": "{book} {ref}: la alineación de {name} reemplazó la tuya.",
   "syncResult.conflictsOne": "1 conflicto de versículo para revisar",
   "syncResult.conflictsMany": "{n} conflictos de versículos para revisar",
   "syncResult.restoredOne": "Door43 no tenía 1 cambio de un compañero. tC4 lo envió de nuevo.",
