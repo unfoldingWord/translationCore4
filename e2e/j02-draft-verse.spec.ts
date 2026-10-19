@@ -1459,6 +1459,32 @@ test.describe('J2 — a translator drafts a verse', () => {
       await testInfo.attach('j02-poetry-verses.json', { path: artifactPath, contentType: 'application/json' });
     },
   );
+
+  test(
+    'a footnote right after a word keeps the space after it in the verse text (Titus 2:3, #795): "porte\\f…\\f* y" reads "porte y", not "portey"',
+    { tag: ['@inc9', '@J2'] },
+    async ({ page }) => {
+      const TYPED = 'Las ancianas, asimismo, sean reverentes en su porte\\f + \\ft o conducta\\f* y no calumniadoras.';
+      const SHOWN = 'Las ancianas, asimismo, sean reverentes en su porte y no calumniadoras.';
+
+      await page.goto('/');
+      await page.getByTestId('project-_local_/_local_/sample_burrito').getByRole('button', { name: /Titus/ }).click();
+      await page.getByRole('button', { name: '2', exact: true }).click();
+      await page.getByRole('tab', { name: 'Verse', exact: true }).click();
+      await page.getByText('Draft verse 3', { exact: true }).click();
+      const editor = page.getByRole('textbox', { name: 'Verse 3' });
+      await editor.fill(TYPED);
+      await editor.blur();
+      await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 10_000 });
+
+      await test.step('the file keeps the note; Translate shows the verse without it and with its space', async () => {
+        await expect
+          .poll(() => readIngredient(SEEDED_PROJECT, BOOK_IPATH).toString('utf8'), { timeout: 10_000 })
+          .toContain(TYPED);
+        await expect(page.getByText(SHOWN)).toBeVisible();
+      });
+    },
+  );
 });
 
 // Issue #62 teardown: after this journey's mutations, every journaled local

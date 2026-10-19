@@ -16,6 +16,8 @@
 //   4. The test misses the window: Jonah has no non-NFC word, so 1 cannot show.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { usfmjs } from '../src/data/vendor';
+import { md5Hex } from '../src/data/httpStore';
+import { verseWords } from '../src/data/align/verseWords.mjs';
 import { bootstrapVerse, linkWord, stampTargetVerse } from '../src/data/align/edit';
 import { linksFor, sessionInputFor, trainingVerseOf } from '../src/data/align/suggest';
 import { predictLinks, trainModel } from '../src/data/align/suggestEngine';
@@ -54,7 +56,7 @@ describe('#793 source words of a fresh bootstrap equal those of the saved verse'
 
   it('every Jonah verse: the fresh source words are the sealed source words, field for field (failure modes 1 and 3)', () => {
     for (const [ch, v] of verseKeys) {
-      const fresh = bootstrapVerse('draft', verseObjects(ch, v), SOURCE);
+      const fresh = bootstrapVerse(verseWords('draft'), verseObjects(ch, v), SOURCE, md5Hex('draft'));
       const sealed = seal(fresh);
       expect(topWordsOf(fresh), `JON ${ch}:${v}`).toEqual(topWordsOf(sealed));
     }
@@ -63,7 +65,7 @@ describe('#793 source words of a fresh bootstrap equal those of the saved verse'
   it('a word that is already NFC, and every non-text field, is left as it is (failure mode 3)', () => {
     const [ch, v] = verseKeys[0];
     const objects = verseObjects(ch, v);
-    const fresh = topWordsOf(bootstrapVerse('draft', objects, SOURCE));
+    const fresh = topWordsOf(bootstrapVerse(verseWords('draft'), objects, SOURCE, md5Hex('draft')));
     const original = objects.filter((o) => o.tag === 'w') as Array<{ text: string; lemma: string; strong: string; morph: string }>;
     expect(fresh.length).toBe(original.length);
     fresh.forEach((w, i) => {
@@ -89,25 +91,25 @@ describe('#793 suggestion memory trained on saved verses finds a fresh verse\'s 
     return gloss.get(key) as string;
   };
   const draftOf = (ch: string, v: string) =>
-    topWordsOf(bootstrapVerse('draft', verseObjects(ch, v), SOURCE)).map((w) => glossOf(w.word)).join(' ');
+    topWordsOf(bootstrapVerse(verseWords('draft'), verseObjects(ch, v), SOURCE, md5Hex('draft'))).map((w) => glossOf(w.word)).join(' ');
   const alignedAndSealed = (ch: string, v: string) => {
     const text = draftOf(ch, v);
-    let r = bootstrapVerse(text, verseObjects(ch, v), SOURCE);
+    let r = bootstrapVerse(verseWords(text), verseObjects(ch, v), SOURCE, md5Hex(text));
     r.alignments.forEach((a, i) => {
       const word = r.wordBank.find((b) => b.word === glossOf(a.topWords[0].word)) as AlignedWord;
       if (word) r = linkWord(r, i, word);
     });
-    return { text, record: seal(stampTargetVerse(r, text)) };
+    return { text, record: seal(stampTargetVerse(r, md5Hex(text))) };
   };
 
   const TRAIN = ['1', '2', '3', '4', '5', '6', '7', '8'];
   const FRESH = '9';
   const training = TRAIN.map((v) => {
     const { text, record } = alignedAndSealed('1', v);
-    return trainingVerseOf(`JON 1:${v}`, record, text);
+    return trainingVerseOf(`JON 1:${v}`, record, verseWords(text));
   }).filter((t): t is NonNullable<typeof t> => t !== null);
   const freshText = draftOf('1', FRESH);
-  const fresh = bootstrapVerse(freshText, verseObjects('1', FRESH), SOURCE);
+  const fresh = bootstrapVerse(verseWords(freshText), verseObjects('1', FRESH), SOURCE, md5Hex(freshText));
 
   // The Math.random seed of align-suggest.test.ts: the booster is stochastic by design.
   beforeEach(() => {
@@ -123,7 +125,7 @@ describe('#793 suggestion memory trained on saved verses finds a fresh verse\'s 
 
   // The words the memory holds and the fresh verse asks about, by their NFC form.
   const trained = new Set(training.flatMap((t) => t.source.map((s) => s.text.normalize('NFC'))));
-  const shared = sessionInputFor(fresh, freshText).source.filter((s) => trained.has(s.text.normalize('NFC')));
+  const shared = sessionInputFor(fresh, verseWords(freshText)).source.filter((s) => trained.has(s.text.normalize('NFC')));
 
   it('the fixture verses share words that the resource holds as non-NFC (failure mode 4)', () => {
     expect(training.length).toBe(TRAIN.length);
@@ -138,11 +140,11 @@ describe('#793 suggestion memory trained on saved verses finds a fresh verse\'s 
 
   it('the engine answers a fresh verse as it answers the same verse after a save, and right', async () => {
     const model = await trainModel('ot', training);
-    const asked = predictLinks(model, sessionInputFor(fresh, freshText));
-    const askedSaved = predictLinks(model, sessionInputFor(seal(fresh), freshText));
+    const asked = predictLinks(model, sessionInputFor(fresh, verseWords(freshText)));
+    const askedSaved = predictLinks(model, sessionInputFor(seal(fresh), verseWords(freshText)));
     expect(asked.length).toBeGreaterThan(0);
     expect(asked).toEqual(askedSaved);
-    const links = linksFor(fresh, freshText, asked);
+    const links = linksFor(fresh, verseWords(freshText), asked);
     expect(links.filter((l) => l.word.word !== glossOf(l.source.word))).toEqual([]);
   }, 120_000); // training is CPU work: about 3 s alone, 15 s when the whole suite runs in parallel
 });

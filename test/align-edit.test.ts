@@ -8,7 +8,9 @@ import {
   alignmentIsStale,
   allTargetWords,
 } from '../src/data/align/edit';
+import { verseWords } from '../src/data/align/verseWords.mjs';
 import { wordTokens } from '../src/data/align/tokenize';
+import { verseTextMd5 } from '../journal/fold.mjs';
 import type { AlignedWord } from '../src/data/align/zaln';
 
 const ORIG = [
@@ -16,9 +18,10 @@ const ORIG = [
   { tag: 'w', type: 'word', text: 'δοῦλος', strong: 'G14010', lemma: 'δοῦλος', morph: 'Gr,N', occurrence: 1, occurrences: 1 },
 ];
 const TARGET = 'Pablo, siervo de Dios y de Dios';
+const TARGET_MD5 = verseTextMd5(TARGET);
 const SOURCE = 'dcs::unfoldingWord/el-x-koine_ugnt@v0.34';
 
-const boot = () => bootstrapVerse(TARGET, ORIG, SOURCE);
+const boot = () => bootstrapVerse(verseWords(TARGET), ORIG, SOURCE, TARGET_MD5);
 const wordIn = (words: AlignedWord[], w: string, occ = 1) =>
   words.find((x) => x.word === w && Number(x.occurrence) === occ) as AlignedWord;
 
@@ -52,7 +55,7 @@ describe('C2.12 bootstrap — an unaligned verse starts usable, not empty', () =
     expect(record.targetVerseMd5).toMatch(/^[0-9a-f]{32}$/);
     expect(record.sourceVersion).toBe(SOURCE);
     expect(record.invalid).toBe(false);
-    expect(alignmentIsStale(record, TARGET)).toBe(false);
+    expect(alignmentIsStale(record, TARGET_MD5)).toBe(false);
   });
 
   it('distinguishes repeated words by occurrence — both "Dios" are bankable', () => {
@@ -89,7 +92,7 @@ describe('C2.11 link / unlink — a word is in exactly one place', () => {
 
   it('unlinking a word that is not there is a no-op', () => {
     const record = boot();
-    expect(unlinkWord(record, 0, wordIn(record.wordBank, 'Pablo'), TARGET)).toBe(record);
+    expect(unlinkWord(record, 0, wordIn(record.wordBank, 'Pablo'), verseWords(TARGET))).toBe(record);
   });
 
   it('edits never mutate the record they were given', () => {
@@ -113,9 +116,9 @@ describe('#734 unlink — the bank follows the verse order', () => {
     let rec = boot();
     rec = linkWord(rec, 0, wordIn(rec.wordBank, 'de', 2));
     rec = linkWord(rec, 1, wordIn(rec.wordBank, 'Dios', 1));
-    rec = unlinkWord(rec, 0, { word: 'de', occurrence: 2, occurrences: 2 }, TARGET);
+    rec = unlinkWord(rec, 0, { word: 'de', occurrence: 2, occurrences: 2 }, verseWords(TARGET));
     expect(rec.wordBank.map(key)).toEqual(verseOrder(rec.wordBank));
-    rec = unlinkWord(rec, 1, { word: 'Dios', occurrence: 1, occurrences: 2 }, TARGET);
+    rec = unlinkWord(rec, 1, { word: 'Dios', occurrence: 1, occurrences: 2 }, verseWords(TARGET));
     expect(rec.wordBank.map(key)).toEqual(wordTokens(TARGET).map(key));
   });
 
@@ -123,7 +126,7 @@ describe('#734 unlink — the bank follows the verse order', () => {
     let rec = boot();
     rec = linkWord(rec, 0, wordIn(rec.wordBank, 'siervo'));
     rec = { ...rec, wordBank: [...rec.wordBank].reverse() };
-    rec = unlinkWord(rec, 0, { word: 'siervo', occurrence: 1, occurrences: 1 }, TARGET);
+    rec = unlinkWord(rec, 0, { word: 'siervo', occurrence: 1, occurrences: 1 }, verseWords(TARGET));
     expect(rec.wordBank.map(key)).toEqual(wordTokens(TARGET).map(key));
   });
 
@@ -131,7 +134,7 @@ describe('#734 unlink — the bank follows the verse order', () => {
     let rec = boot();
     rec = linkWord(rec, 0, wordIn(rec.wordBank, 'Pablo'));
     const edited = TARGET.replace('Pablo', 'Saulo');
-    rec = unlinkWord(rec, 0, { word: 'Pablo', occurrence: 1, occurrences: 1 }, edited);
+    rec = unlinkWord(rec, 0, { word: 'Pablo', occurrence: 1, occurrences: 1 }, verseWords(edited));
     expect(rec.wordBank.map(key)).toEqual([...wordTokens(edited).map(key).filter((k) => k !== 'Saulo/1'), 'Pablo/1']);
   });
 });
@@ -201,7 +204,7 @@ describe('#129 review round 1 — merge adjacency and move purity', () => {
     ...ORIG,
     { tag: 'w', type: 'word', text: 'Θεοῦ', strong: 'G23160', lemma: 'θεός', morph: 'Gr,N', occurrence: 1, occurrences: 1 },
   ];
-  const boot3 = () => bootstrapVerse(TARGET, THREE_ORIG, SOURCE);
+  const boot3 = () => bootstrapVerse(verseWords(TARGET), THREE_ORIG, SOURCE, TARGET_MD5);
 
   it('a NON-adjacent merge is rejected — flattened topWords must stay in verse order', () => {
     const rec = boot3();

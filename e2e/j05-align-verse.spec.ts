@@ -967,74 +967,6 @@ test.describe('J5 — a translator aligns a verse', () => {
     },
   );
 
-  // #787: a verse opens with a word bank rebuilt from its current text. The
-  // seeded 1:1 starts with six words placed, and the reflow after a Translate
-  // edit keeps a record like that right. The defect needs a record with no
-  // word placed, so the steps take every word back first (the issue's end
-  // state: every Greek card empty; 1:1 has 10 cards for its 11 Greek words,
-  // as the merged Ἰησοῦ Χριστοῦ is one card).
-  test(
-    'a verse edited in Translate opens in Align with its new word in the bank and the banner on; a fresh verse opens in verse order (#787)',
-    { tag: ['@inc2', '@J5'] },
-    async ({ page }) => {
-      test.setTimeout(120_000);
-      writePinsWithOriginal();
-      const draft = () => fs.readFileSync(path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'TIT.usfm'), 'utf8');
-      const placedOnDisk = () =>
-        (alignmentFile()?.chapters?.['1']?.['1']?.alignments ?? []).reduce(
-          (n: number, a: { bottomWords: unknown[] }) => n + a.bottomWords.length,
-          0,
-        );
-      await openAlign(page);
-      const bank = page.getByTestId('align-bank').getByRole('button');
-
-      // Step 1: take every placed word back, "Pablo" first.
-      const placed = page.locator('[data-testid^="align-card-"]:not([data-count="0"])');
-      for (let n = await placed.count(); n > 0; n = await placed.count()) {
-        await placed.first().locator('button[data-word]').first().click();
-        await expect(placed).toHaveCount(n - 1);
-      }
-      await expect.poll(placedOnDisk, { timeout: 10_000 }).toBe(0);
-
-      // Step 2: Translate. "siervo" becomes "esclavo"; the verse is left.
-      await page.getByRole('tab', { name: 'Translate', exact: true }).click();
-      await page.getByRole('tab', { name: 'Verse', exact: true }).click();
-      await page.getByTitle('Edit this verse').filter({ hasText: 'Pablo, siervo de Dios' }).first().click();
-      const editor = page.getByRole('textbox', { name: 'Verse 1', exact: true });
-      const edited = (await editor.inputValue()).replace('siervo', 'esclavo');
-      await editor.fill(edited);
-      await editor.blur();
-      await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 15_000 });
-      await expect.poll(draft, { timeout: 15_000 }).toContain(edited);
-      // No word is placed, so the reflow leaves the record as it was: still "siervo".
-      expect(alignmentFile().chapters['1']['1'].wordBank.map((w: { word: string }) => w.word)).toContain('siervo');
-
-      // Step 3: back in Align at 1:1, the bank holds "esclavo" and not "siervo", and the banner shows.
-      // The Check tab may open the aligner on the remembered place or on its entry
-      // button; either way the rail row for 1:1 is clicked, so the verse is chosen.
-      await page.getByRole('tab', { name: 'Check', exact: true }).click();
-      const tool = page.getByTestId('open-align');
-      const session = page.getByTestId('align-session');
-      await expect(tool.or(session)).toBeVisible();
-      if (await tool.isVisible()) await tool.click();
-      await expect(session).toBeVisible();
-      const row11 = page.getByTestId('align-verse-list').locator('button[data-ref="1:1"]');
-      await row11.click();
-      await expect(row11).toHaveAttribute('data-selected', 'true');
-      await expect.poll(() => wordsOf(bank)).toContain('esclavo');
-      expect(await wordsOf(bank)).not.toContain('siervo');
-      expect(await wordsOf(bank)).toEqual(wordTokens(edited).map((t) => t.text));
-      await expect(page.getByTestId('align-stale')).toBeVisible();
-
-      // A verse that was never saved opens with its bank in verse order, and no banner.
-      expect(alignmentFile().chapters['1']['2']).toBeUndefined();
-      const fresh = /^\\v 2 (.+)$/m.exec(draft())![1].trim();
-      await page.getByTestId('align-verse-list').locator('button[data-ref="1:2"]').click();
-      await expect.poll(() => wordsOf(bank)).toEqual(wordTokens(fresh).map((t) => t.text));
-      await expect(page.getByTestId('align-stale')).toHaveCount(0);
-    },
-  );
-
   // #782: en_ult aligns one English phrase to two Hebrew words with one \zaln
   // inside another. Align (and Translate) read one level down, so Gen 1:1 lost
   // "the heavens" and 633 Genesis verses lost words. The rail and Translate now
@@ -1134,6 +1066,223 @@ test.describe('J5 — a translator aligns a verse', () => {
         await page.screenshot({ path: shotPath, animations: 'disabled' });
         await testInfo.attach('j05-gen-1-translate', { path: shotPath, contentType: 'image/png' });
       });
+    },
+  );
+
+  // #787: a verse opens with a word bank rebuilt from its current text. The
+  // seeded 1:1 starts with six words placed, and the reflow after a Translate
+  // edit keeps a record like that right. The defect needs a record with no
+  // word placed, so the steps take every word back first (the issue's end
+  // state: every Greek card empty; 1:1 has 10 cards for its 11 Greek words,
+  // as the merged Ἰησοῦ Χριστοῦ is one card).
+  test(
+    'a verse edited in Translate opens in Align with its new word in the bank and the banner on; a fresh verse opens in verse order (#787)',
+    { tag: ['@inc2', '@J5'] },
+    async ({ page }) => {
+      test.setTimeout(120_000);
+      writePinsWithOriginal();
+      const draft = () => fs.readFileSync(path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'TIT.usfm'), 'utf8');
+      const placedOnDisk = () =>
+        (alignmentFile()?.chapters?.['1']?.['1']?.alignments ?? []).reduce(
+          (n: number, a: { bottomWords: unknown[] }) => n + a.bottomWords.length,
+          0,
+        );
+      await openAlign(page);
+      const bank = page.getByTestId('align-bank').getByRole('button');
+
+      // Step 1: take every placed word back, "Pablo" first.
+      const placed = page.locator('[data-testid^="align-card-"]:not([data-count="0"])');
+      for (let n = await placed.count(); n > 0; n = await placed.count()) {
+        await placed.first().locator('button[data-word]').first().click();
+        await expect(placed).toHaveCount(n - 1);
+      }
+      await expect.poll(placedOnDisk, { timeout: 10_000 }).toBe(0);
+
+      // Step 2: Translate. "siervo" becomes "esclavo"; the verse is left.
+      await page.getByRole('tab', { name: 'Translate', exact: true }).click();
+      await page.getByRole('tab', { name: 'Verse', exact: true }).click();
+      await page.getByTitle('Edit this verse').filter({ hasText: 'Pablo, siervo de Dios' }).first().click();
+      const editor = page.getByRole('textbox', { name: 'Verse 1', exact: true });
+      const edited = (await editor.inputValue()).replace('siervo', 'esclavo');
+      await editor.fill(edited);
+      await editor.blur();
+      await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 15_000 });
+      await expect.poll(draft, { timeout: 15_000 }).toContain(edited);
+      // No word is placed, so the reflow leaves the record as it was: still "siervo".
+      expect(alignmentFile().chapters['1']['1'].wordBank.map((w: { word: string }) => w.word)).toContain('siervo');
+
+      // Step 3: back in Align at 1:1, the bank holds "esclavo" and not "siervo". No banner shows:
+      // every word was taken back, so the record holds no link and is not done, and it vouches for
+      // nothing (#796, D105 point 4; the #787 banner for this record is withdrawn).
+      // The Check tab may open the aligner on the remembered place or on its entry
+      // button; either way the rail row for 1:1 is clicked, so the verse is chosen.
+      await page.getByRole('tab', { name: 'Check', exact: true }).click();
+      const tool = page.getByTestId('open-align');
+      const session = page.getByTestId('align-session');
+      await expect(tool.or(session)).toBeVisible();
+      if (await tool.isVisible()) await tool.click();
+      await expect(session).toBeVisible();
+      const row11 = page.getByTestId('align-verse-list').locator('button[data-ref="1:1"]');
+      await row11.click();
+      await expect(row11).toHaveAttribute('data-selected', 'true');
+      await expect.poll(() => wordsOf(bank)).toContain('esclavo');
+      expect(await wordsOf(bank)).not.toContain('siervo');
+      expect(await wordsOf(bank)).toEqual(wordTokens(edited).map((t) => t.text));
+      await expect(page.getByTestId('align-stale')).toHaveCount(0);
+
+      // A verse that was never saved opens with its bank in verse order, and no banner.
+      expect(alignmentFile().chapters['1']['2']).toBeUndefined();
+      const fresh = /^\\v 2 (.+)$/m.exec(draft())![1].trim();
+      await page.getByTestId('align-verse-list').locator('button[data-ref="1:2"]').click();
+      await expect.poll(() => wordsOf(bank)).toEqual(wordTokens(fresh).map((t) => t.text));
+      await expect(page.getByTestId('align-stale')).toHaveCount(0);
+    },
+  );
+
+  // #789 (D106): after a Translate save, a link follows its word. Titus 1:1 has "Dios" twice,
+  // and Θεοῦ/1 holds the first, Θεοῦ/2 the second. Deleting "de Dios" after "siervo" removes
+  // the first one: its link goes, the other link stays on the "escogidos" Dios (now Dios 1 of 1),
+  // and the verse is flagged for review, because a copy of a linked word went before it. Putting
+  // the words back does not give the first link back: the second link follows its Dios to 2 of 2.
+  // Two saves in a row prove that each edit starts from the text as the last one left it.
+  type AlignRecord = {
+    invalid?: boolean;
+    alignments: Array<{
+      topWords: Array<{ word: string; occurrence: number }>;
+      bottomWords: Array<{ word: string; occurrence: number; occurrences: number }>;
+    }>;
+  };
+  const theta = (record: AlignRecord, n: number): string[] =>
+    record.alignments
+      .find((a) => a.topWords.some((t) => t.word === 'Θεοῦ' && Number(t.occurrence) === n))!
+      .bottomWords.map((w) => `${w.word}/${w.occurrence}/${w.occurrences}`);
+  const record11 = (): AlignRecord => alignmentFile()!.chapters['1']['1'];
+  const withoutDeDios = (v: string) => v.replace('siervo de Dios y apóstol', 'siervo y apóstol');
+  const state11 = () => ({ theta1: theta(record11(), 1), theta2: theta(record11(), 2), invalid: record11().invalid });
+
+  test(
+    'a Translate edit keeps each link on its word: deleting "de Dios" flags the verse, and putting it back keeps the first link gone (#789)',
+    { tag: ['@inc9', '@J5'] },
+    async ({ page }, testInfo) => {
+      test.setTimeout(120_000);
+      writePinsWithOriginal();
+      expect(theta(record11(), 1)).toEqual(['Dios/1/2']);
+      expect(theta(record11(), 2)).toEqual(['Dios/2/2']);
+      const artifact: Record<string, unknown> = { start: state11() };
+
+      await page.goto('/');
+      await page
+        .getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`)
+        .getByRole('button', { name: /Titus/ })
+        .click();
+      await page.getByRole('tab', { name: 'Translate', exact: true }).click();
+      await page.getByRole('tab', { name: 'Verse', exact: true }).click();
+      const editor = page.getByRole('textbox', { name: 'Verse 1', exact: true });
+      const saved = page.getByTestId('save-indicator');
+
+      // Step 1: delete "de Dios" after "siervo"; leave the verse.
+      await page.getByTitle('Edit this verse').filter({ hasText: 'Pablo, siervo de Dios' }).first().click();
+      const original = await editor.inputValue();
+      const deleted = withoutDeDios(original);
+      expect(deleted).not.toBe(original);
+      await editor.fill(deleted);
+      await editor.blur();
+      await expect(saved).toHaveAttribute('data-state', 'saved', { timeout: 15_000 });
+      await expect.poll(() => theta(record11(), 1), { timeout: 15_000 }).toEqual([]);
+      expect(theta(record11(), 2)).toEqual(['Dios/1/1']);
+      expect(record11().invalid).toBe(true);
+      artifact.afterDelete = state11();
+
+      // In Align at 1:1 the verse shows the review banner.
+      await page.getByRole('tab', { name: 'Check', exact: true }).click();
+      const tool = page.getByTestId('open-align');
+      const session = page.getByTestId('align-session');
+      await expect(tool.or(session)).toBeVisible();
+      if (await tool.isVisible()) await tool.click();
+      await expect(session).toBeVisible();
+      const row11 = page.getByTestId('align-verse-list').locator('button[data-ref="1:1"]');
+      await row11.click();
+      await expect(row11).toHaveAttribute('data-selected', 'true');
+      await expect(page.getByTestId('align-stale')).toBeVisible();
+
+      // Step 2: back in Translate, put the words back. The first link stays gone; the second follows its Dios.
+      await page.getByRole('tab', { name: 'Translate', exact: true }).click();
+      await page.getByRole('tab', { name: 'Verse', exact: true }).click();
+      await page.getByTitle('Edit this verse').filter({ hasText: 'Pablo, siervo y apóstol' }).first().click();
+      await editor.fill(original);
+      await editor.blur();
+      await expect(saved).toHaveAttribute('data-state', 'saved', { timeout: 15_000 });
+      await expect.poll(() => theta(record11(), 2), { timeout: 15_000 }).toEqual(['Dios/2/2']);
+      expect(theta(record11(), 1)).toEqual([]);
+      expect(record11().invalid).toBe(true);
+      artifact.afterRestore = state11();
+
+      const artifactPath = testInfo.outputPath('j05-link-follows-word.json');
+      fs.writeFileSync(artifactPath, `${JSON.stringify(artifact, null, 2)}\n`);
+      await testInfo.attach('j05-link-follows-word.json', { path: artifactPath, contentType: 'application/json' });
+    },
+  );
+
+  // #789 (D106, AC6): a Section save takes the same rule as a verse blur. The card that starts
+  // at verse 1 is edited in Type mode (no verse number moves), so the keys do not change and
+  // the save goes through the verse path of `saveSection`, one reflow for the changed verses.
+  test(
+    'a Section save follows the same rule: deleting "de Dios" in verse 1 flags it, the second link stays on its Dios (#789)',
+    { tag: ['@inc9', '@J5'] },
+    async ({ page }, testInfo) => {
+      test.setTimeout(120_000);
+      writePinsWithOriginal();
+      await page.goto('/');
+      await page
+        .getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`)
+        .getByRole('button', { name: /Titus/ })
+        .click();
+      await page.getByRole('tab', { name: 'Translate', exact: true }).click();
+      await page.getByRole('tab', { name: 'Section', exact: true }).click();
+      await page.getByRole('button', { name: /^Draft section 1[–-]/ }).click();
+      const text = page.getByRole('textbox', { name: /^Section 1[–-]/ });
+      const original = await text.inputValue();
+      const deleted = withoutDeDios(original);
+      expect(deleted).not.toBe(original);
+      await text.fill(deleted);
+      await page.getByRole('button', { name: 'Save section' }).click();
+      await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 15_000 });
+      await expect(page.getByTestId('section-editor')).toHaveCount(0);
+      await expect.poll(() => theta(record11(), 1), { timeout: 15_000 }).toEqual([]);
+      expect(theta(record11(), 2)).toEqual(['Dios/1/1']);
+      expect(record11().invalid).toBe(true);
+      const artifactPath = testInfo.outputPath('j05-section-link-follows-word.json');
+      fs.writeFileSync(artifactPath, `${JSON.stringify(state11(), null, 2)}\n`);
+      await testInfo.attach('j05-section-link-follows-word.json', { path: artifactPath, contentType: 'application/json' });
+    },
+  );
+
+  // #796: the bank is the word list the export checks (word-aligner `merge`), taken
+  // from the stored verse. A footnote glued to a word used to leave "mediode" in the
+  // bank: the display text joined the words either side of the footnote.
+  test(
+    'a verse with a footnote glued to a word opens with that word and the next one apart in the bank (#796)',
+    { tag: ['@inc9', '@J5'] },
+    async ({ page }) => {
+      writePinsWithOriginal();
+      const bookPath = path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'TIT.usfm');
+      const book = fs.readFileSync(bookPath, 'utf8');
+      const verse3 = /^\\v 3 (.+)$/m.exec(book)![1].trim();
+      expect(verse3).toContain('por medio de');
+      fs.writeFileSync(bookPath, book.replace('por medio de', 'por medio\\f + \\ft nota\\f* de'));
+
+      await openAlign(page);
+      const row13 = page.getByTestId('align-verse-list').locator('button[data-ref="1:3"]');
+      await row13.click();
+      await expect(row13).toHaveAttribute('data-selected', 'true');
+      const bank = page.getByTestId('align-bank').getByRole('button');
+      // The words of the verse as it was typed: the footnote adds none.
+      const expected = verse3.match(/\p{L}[\p{L}\p{M}]*/gu)!;
+      await expect.poll(() => wordsOf(bank)).toEqual(expected);
+      const words = await wordsOf(bank);
+      expect(words).toContain('medio');
+      expect(words).toContain('de');
+      expect(words).not.toContain('mediode');
     },
   );
 

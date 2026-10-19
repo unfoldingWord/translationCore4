@@ -2906,6 +2906,107 @@ size of each en_ult v91 book from the rig cache, branch issue-767-usfm-too-large
    4.0.0-rc.2 build went out with the 4 MiB limit. [VERIFIED — no `v4.0.0-rc.2` tag or
    release on origin, 2026-10-16; owner: no rc.2 build was distributed, PR #780]
 
+## D105 (2026-10-19, project-owner ruling) **The §5.1 word bank comes from the verse. One word list, the words that word-aligner `merge` checks, and one review rule, `needsReview`, serve the Align editor, the rail, Mark valid, the tC3 import and the aligned USFM export. The export skips and names a verse that needs review. Amends D73 points 2 and 3 (BURRITO-SPEC 1.27).** [owner rulings on #796, 2026-10-19 (points 1 to 4, and the rail cost in point 8); points 5 to 7 are the proposed fix of #796, which the owner approved for building; issue #796; investigation 2026-10-17, model B "derived bank, same format"]
+
+Context. The Align bank took its words from a second word split of the display text. The
+export checks the words that `merge` reads from the stored verse. When the two lists
+differed, `merge` refused the record. The export then kept the verse unaligned and gave no
+message (F6, F8). The rail and the editor used different review rules (F14). A valid record
+with no placed word exported every word wrapped in `\w` (F20). [VERIFIED — scratch tests on
+main 2b08ed3, 2026-10-17, issue #796]
+
+1. **One word list.** The verse's words are the words that word-aligner 1.0.3 `merge`
+   checks. `merge` reads them from the stored verse slot with
+   `getOrderedVerseObjectsFromString`, after word-aligner-lib `cleanAlignmentMarkersFromString`.
+   tC4 computes them with `verseWords` (`src/data/align/verseWords.mjs`), a linear copy of
+   that walk. The library call takes 3.4–4.0 s for all Genesis slots. The copy takes 67–102 ms.
+   [VERIFIED — read-only probes on en_ult v91 Genesis, 1,533 slots, 2026-10-17 to 2026-10-19;
+   owner decision comment on #796, 2026-10-19] A CI test (`test/align-verse-words.test.ts`)
+   keeps the copy equal to the library on the fixtures. The copy had 0 differences on every
+   en_ult and en_ust v91 slot [VERIFIED — the v91 sweep named in the same owner decision
+   comment]. This is an exception to the AGENTS.md reuse rule. It is for speed. Before a
+   pinned version moves (#420), the parity test and the v91 sweep MUST pass. A second owner
+   ruling of 2026-10-19 (#796, comment 6269651708) names the two rare verse shapes that
+   change. A word inside a `\li` list item can no longer be aligned, because `merge` never
+   reads it. A word in a `\qa` or `\sp` heading before a verse counts as a word of that
+   verse, because `merge` reads it. So no aligned word fails silently at export. Better
+   support for list items and headings stays with the word-aligner upgrade (#420) and the
+   verse-grammar work.
+2. **The bank comes from the verse.** A writer that makes or changes the words of a record
+   (an Align edit, Mark valid, or a reflow after a text edit) writes `wordBank` as the verse's
+   words minus its placed words. The comparison is a multiset on `word`, `occurrence` and
+   `occurrences`. A writer SHOULD write the bank in verse order. The import writes the record
+   as its source held it (point 7). Readers MUST NOT use `wordBank` as truth.
+   They use it only as evidence in the word clause (point 3). `wordBank` stays a written
+   field, because `merge` and earlier readers need it.
+3. **I-3 word clause.** When a record holds a placed word or `done`, it is current only when
+   its hash matches AND its placed words plus its bank equal the verse's words. This is a
+   conformance clarification, not a change of the stored shape. `schemaVersion` stays 1, and
+   D47(a) does not apply. A word that is in the bank and also on a card now reads as needs
+   review, although `merge` accepts it.
+4. **One review rule.** `needsReview = invalid OR ((a placed word OR done) AND (the hash
+   differs OR the word clause fails))`. A record with no placed word and no `done` needs
+   review only when it carries `invalid: true`. Its bank is rebuilt in memory when the verse
+   opens, and the file changes at the next edit. This reverses one case of the #787 banner
+   rule: such a record showed the banner after a text change, and it shows none now.
+5. **D73 amended.** A writer reconciles a record with the current verse words before it
+   restamps the hash. This covers an edit, Mark valid and a reflow. To reconcile a record,
+   keep each placed word whose word and occurrence are in the verse. Number it again from the
+   verse. Derive the bank from the verse. An edit never clears `invalid`. Only Mark valid
+   clears it. A span or renumber record (#63) keeps `invalid` through every edit until Mark
+   valid. This amends D73 point 2 (Mark valid reconciles first) and D73 point 3 (an edit
+   keeps `invalid`, and a reflow reconciles before it restamps).
+6. **Export.** A verse whose record needs review keeps its stored bytes, and the export names
+   it in a notice. This includes a record with `invalid: true` and nothing placed, for
+   example a record that an original-language upgrade flagged. A verse that `merge` refuses
+   also keeps its stored bytes, and the notice names it. A record with no placed word exports
+   the stored bytes (F20). A verse with imported `\zaln` keeps it. If the verse also has tC4
+   links, the notice names it. The export reads the stored book, which is NFC by I-4
+   (R-8.5.9). Its word check reads each verse slot as stored. The notice is one line in the
+   export menu. It shows the first 20 verses, then `, …` when there are more. The stored
+   export facts keep at most 20 refs and the total count.
+7. **tC3 import.** The import flags a record that holds a link and whose words do not fit
+   the verse. The record gets `invalid: true`. The import never rewrites a record to fit, in
+   the spirit of D36 (invalidate and retain). A record that tC3 marked invalid stays
+   `invalid: true`.
+8. **Known limits, accepted.**
+   - When the verse first opens, these records show needs review: rc.1 or pilot records with
+     a stale bank, about 145 `\qs` and 56 footnote-join verse shapes [INFERRED — v91 proxy],
+     and every linked old-client record on a book with imported `\zaln`. The export of today
+     already drops all of them.
+   - Until every teammate has this change, the reflow of an older build can drop new-client
+     links on verses where the two word lists differ.
+   - A verse with `\wj` or `\add` around `\+nd` can now be aligned. word-aligner 1.0.3 empties
+     the inner marker on export until #420 (F10). No text is lost.
+   - **Rail cost.** [VERIFIED — slice-3 review, fully aligned en_ult v91 Genesis, one record
+     per verse, medians of 9 interleaved runs, 2026-10-19; the owner accepted these numbers on
+     #796, 2026-10-19] The first rail build goes from about 17 ms to about 88 ms. A later build
+     goes from about 5.7 ms to about 15 ms. A Translate save makes a new book text, so the next
+     build is a first build again. With 10 records, the first build is within 20% (8.97 ms to
+     10.47 ms). One edit stays at 0.045 ms. The save path does not change.
+
+Where it lands: `src/data/align/verseWords.mjs` and `review.mjs` (the word list and the
+rule); `src/data/align/edit.ts`, `suggest.ts` and `src/state.jsx` (the Align writers, the
+suggestions, the rail and Mark valid); `src/data/import/tc3.ts`; `src/data/export/weave.mjs`,
+`usfm.ts` and `kernel.ts`, `src/views/ExportMenu.jsx` and the string `cc.exportSkipped` in the
+ten catalogs; `docs/BURRITO-SPEC.md` §5.1 and §7 (version 1.27); `conformance/validate.mjs` §4
+(five Stage-1 checks, each named in a §5.1 bullet). The conformance suite becomes 57 checks,
+Stage-1 45. The journal suite (369) and the normative gate (105 rules) do not change.
+
+## D106 (2026-10-19, project-owner ruling) **After a Translate save, an alignment link follows its word. An insert or delete before a linked copy of a repeated word flags the verse for review. Replaces the #213 rule "same word, same occurrence number".** [owner ruling on #789, 2026-10-19: option 2, "position diff"; amendment the same day: a tie flags; issue #789]
+
+Context. The reflow kept a link when the same word with the same occurrence number was still in the verse. An edit that added or removed an earlier copy moved a link to another copy, and nothing showed it. [VERIFIED — main 2b08ed3, scratch test on the conformance sample, 2026-10-17, issue #789]
+
+1. **A link follows its word.** The reflow compares the verse's words before and after the save by position. It uses a longest-common-subsequence diff of the export's word list (#796). A link stays on its word with the word's new occurrence number. A removed word loses its link. A respelled word is a new word. A moved word keeps its link.
+   The diff is a small function in `edit.ts`. This is an exception to the AGENTS.md reuse rule, as D105 point 1 is. No pinned or Pankosmia code gives a position diff: word-aligner-lib 1.0.1 `updateAlignmentsToTargetVerse` and Pankosmia `uw-client-checks` (`handleAddedWordsInNewText`, `handleDeletedWords`) match by text and occurrence, which is the rule this decision replaces; `@gabrielaillet/word-aligner-rcl` 1.3.18 `findWordChanges` is a greedy look-ahead that moves the link in the "de Dios" append case and pulls a React library into the bundle; word-aligner 1.0.3, usfm-js and string-punctuation-tokenizer have no diff. Both diff passes and the link moves cost a median 0.069 ms on the longest Genesis verse. The whole reflow (`reflowAlignment`, which also reconciles the record, checks `needsReview`, restamps the hash and settles `done`) costs a median 0.12 ms on the same verse (bench: `test/align-bench.test.ts`).
+2. **The flag.** The reflow writes `invalid: true` when the save adds, removes or moves a copy of a linked word before that word. It does the same when the text cannot show which copy changed. Every other edit keeps its links and does not flag.
+3. **The flag stays.** A record that needed review before a save still needs it after the save. Only Mark valid clears `invalid`.
+4. **No reflow declines.** Each save of a verse whose record holds a link and no longer fits the new text writes the reflowed record, `invalid` or not. As before, a verse that holds imported alignment markup, or that has no slot, is skipped. A save after which the record already fits the new text, with the same hash and the same words, writes nothing. A save that empties the verse removes every link.
+5. **No text before.** A sync or Keep this version does not reflow. The verse opens with the review banner when its record holds a link or is done (#787, #796).
+6. **Not in the format.** BURRITO-SPEC does not change. §5.1 already sets `invalid` for re-review, and D73 point 3 stands.
+
+Where it lands: `src/data/align/edit.ts`, `src/state.jsx` (`reflowAlignedVerses` and its two callers), `test/align-position-diff.test.ts`, `test/align-reflow.test.ts`, `e2e/j05-align-verse.spec.ts`.
+
 ## D108 (2026-10-19, project-owner ruling) **The sync result names each verse whose alignment a teammate's newer version replaced. It is a notice: nothing merges automatically. Adds to D98 point 8 and amends R-8.7.12 (BURRITO-SPEC 1.26).** [owner ruling on #791, 2026-10-19: "name it in the sync result"; issue #791]
 
 Context. One `align.verse.set` event holds the whole alignment record of one verse. Two

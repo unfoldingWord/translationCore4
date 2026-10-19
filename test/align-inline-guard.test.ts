@@ -14,6 +14,7 @@
 // 4. the predicate misses the markup (or matches a different `\zaln-` marker).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { bootstrapVerse, linkWord, stampTargetVerse } from '../src/data/align/edit';
+import { verseWords } from '../src/data/align/verseWords.mjs';
 import { md5Hex } from '../src/data/httpStore';
 import { SaveScheduler } from '../src/data/saveScheduler';
 import { parseChapters, verseText } from '../src/data/bookModel';
@@ -85,10 +86,10 @@ const BOOK = 'TIT';
 const wordIn = (r: AlignmentVerseRecord, word: string) => r.wordBank.find((w) => w.word === word) as AlignedWord;
 /** A record with Pablo→Παῦλος and siervo→δοῦλος linked, stamped for TEXT. */
 const linkedRecord = () => {
-  let r = bootstrapVerse(TEXT, ORIG, SOURCE);
+  let r = bootstrapVerse(verseWords(TEXT), ORIG, SOURCE, md5Hex(TEXT));
   r = linkWord(r, 0, wordIn(r, 'Pablo'));
   r = linkWord(r, 1, wordIn(r, 'siervo'));
-  return stampTargetVerse(r, TEXT);
+  return stampTargetVerse(r, md5Hex(TEXT));
 };
 
 describe('#794 weaveBook — a verse that holds imported alignment markup keeps its stored bytes', () => {
@@ -96,7 +97,7 @@ describe('#794 weaveBook — a verse that holds imported alignment markup keeps 
     const stored = decompose(EN_ULT).verses as Record<string, string>;
     // The translator's partial record: two links, stamped so the I-3 check passes.
     const text = verseText((parseChapters(EN_ULT) as Record<string, Record<string, unknown>>)['1']['1']);
-    let record = bootstrapVerse(text, ORIG, SOURCE);
+    let record = bootstrapVerse(verseWords(text), ORIG, SOURCE, md5Hex(text));
     record = linkWord(record, 0, wordIn(record, 'Paul'));
     record = linkWord(record, 1, wordIn(record, 'servant'));
     record = { ...record, targetVerseMd5: verseTextMd5(stored['1:1']) };
@@ -112,6 +113,37 @@ describe('#794 weaveBook — a verse that holds imported alignment markup keeps 
     const woven = (decompose(out).verses as Record<string, string>)['1:1'];
     expect(woven).not.toBe(stored['1:1']);
     expect(woven).toMatch(/\\zaln-s/);
+  });
+
+  // #796 slice 5: the verse keeps its bytes, and the export names it when the translator has links there.
+  const importedFile = (links: number, extra: Partial<AlignmentVerseRecord> = {}): AlignmentFile => {
+    const stored = decompose(EN_ULT).verses as Record<string, string>;
+    const text = verseText((parseChapters(EN_ULT) as Record<string, Record<string, unknown>>)['1']['1']);
+    let record = bootstrapVerse(verseWords(text), ORIG, SOURCE, md5Hex(text));
+    ['Paul', 'servant'].slice(0, links).forEach((word, card) => {
+      record = linkWord(record, card, wordIn(record, word));
+    });
+    record = { ...record, ...extra, targetVerseMd5: verseTextMd5(stored['1:1']) };
+    return { schemaVersion: 2, book: 'TIT', chapters: { '1': { '1': record } } } as unknown as AlignmentFile;
+  };
+  const weaveReported = (alignments: AlignmentFile) => {
+    const skips: Array<{ ref: string; reason: string }> = [];
+    const out = weave(EN_ULT, alignments, AlignmentHelpers, (skip: { ref: string; reason: string }) => skips.push(skip));
+    return { out, skips };
+  };
+
+  it('a linked record for en_ult Titus 1:1: the stored bytes, and an inline-alignment report', () => {
+    const { out, skips } = weaveReported(importedFile(2));
+    expect(out).toBe(EN_ULT);
+    expect(skips).toEqual([{ ref: '1:1', reason: 'inline-alignment' }]);
+  });
+
+  it('a record with no link for en_ult Titus 1:1, or one marked done: the stored bytes, no report', () => {
+    for (const file of [importedFile(0), importedFile(0, { done: true })]) {
+      const { out, skips } = weaveReported(file);
+      expect(out).toBe(EN_ULT);
+      expect(skips).toEqual([]);
+    }
   });
 });
 
@@ -157,11 +189,15 @@ describe('#794 reflowAlignedVerses — a changed verse that holds imported marku
 
     const imported = verseBody(EN_ULT, '1', '1')!;
     const raw = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${imported}\n\\v 2 ${NEW_TEXT}\n`;
+    // #789: the book as it read before the save: 1:2 holds the text its record was made on.
+    const beforeRaw = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${imported}\n\\v 2 ${TEXT}\n`;
     const sched = new SaveScheduler({ writeBook: makeAlignWriter({ store }), splice: spliceAlignRecord });
-    await __reflowAlignedVersesForTests({ store, sched, book: BOOK, bookRaw: raw }, ['1:1', '1:2']);
+    await __reflowAlignedVersesForTests({ store, sched, book: BOOK, bookRaw: raw, beforeRaw }, ['1:1', '1:2']);
     await settle();
 
     expect(JSON.stringify(store.file!.chapters['1']['1'])).toBe(v1Bytes);
-    expect((store.file!.chapters['1']['2'] as AlignmentVerseRecord).targetVerseMd5).toBe(md5Hex(NEW_TEXT));
+    const v2 = store.file!.chapters['1']['2'] as AlignmentVerseRecord;
+    expect(v2.targetVerseMd5).toBe(md5Hex(NEW_TEXT));
+    expect(v2.invalid).toBe(false); // "siervo" became "esclavo": no copy of a linked word moved
   });
 });
