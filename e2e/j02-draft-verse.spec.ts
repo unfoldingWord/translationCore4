@@ -1326,6 +1326,37 @@ test.describe('J2 — a translator drafts a verse', () => {
         expect(genOnDisk().equals(before)).toBe(true);
       });
 
+      // Review of PR #810: the editor saves on every keystroke. Backspace through
+      // one inner poem line of Gen 3:16, key by key, must leave the file holding
+      // exactly what the editor shows, and nothing outside the verse may move.
+      await test.step('Verse: Backspace takes one poem line of Gen 3:16 away, key by key, and the file follows (#786)', async () => {
+        const before = genOnDisk();
+        await page.getByTitle('Edit this verse').filter({ hasText: 'childbearing' }).first().click();
+        const editor = page.getByRole('textbox', { name: 'Verse 16' });
+        const value = await editor.inputValue();
+        const lines = value.split('\n');
+        const k = lines.findIndex((l, i) => i > 0 && /^\t/.test(l) && i < lines.length - 1);
+        const end = lines.slice(0, k + 1).join('\n').length;
+        await editor.evaluate((el: HTMLTextAreaElement, at: number) => el.setSelectionRange(at, at), end);
+        // The line's characters, its tabs, then the line break before it.
+        for (let i = 0; i <= lines[k].length; i++) await editor.press('Backspace');
+        const shown = await editor.inputValue();
+        expect(shown).toBe(lines.slice(0, k).concat(lines.slice(k + 1)).join('\n'));
+        await editor.blur();
+        await expect.poll(() => genOnDisk().equals(before), { timeout: 30_000 }).toBe(false);
+        const after = genOnDisk();
+        expect(byteStrictViolation(before, after, 3, 16)).toBeNull();
+        const s = after.toString('utf8');
+        const span = verseTextSpan(s, 3, 16);
+        const saved = s.slice(span.start, span.end);
+        const removed = lines[k].replace(/^\t+/, '');
+        seen.verse16AfterBackspace = { removedLine: k, innerLinesBefore: lines.filter((l) => /^\t/.test(l)).length, innerLinesAfter: saved.split('\n').filter((l) => /^\\q[12] \S/.test(l)).length };
+        expect(saved).not.toContain(removed);
+        // Every other poem line is there once: none left behind, none doubled.
+        for (const l of lines.filter((x, i) => i !== k && /^\t/.test(x))) expect(saved.split(l.replace(/^\t+/, '')).length - 1, l.slice(0, 60)).toBe(1);
+        expect(saved).not.toMatch(/^\\q[12] ?$/m);
+      });
+
       await test.step('Section: Gen 3:15 shows its inner line with tabs, and an edit of it keeps its \\q2 (#786)', async () => {
         await page.getByRole('tab', { name: 'Section', exact: true }).click();
         const buttons = page.getByRole('button', { name: /^Draft section / });

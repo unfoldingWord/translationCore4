@@ -233,7 +233,10 @@ export const sectionVerses = (words, seps, markers, pins, keys = pins, blocks = 
   words.forEach((w, i) => {
     if (at[i] !== undefined) cur = at[i];
     const tabs = at[i] === undefined && i > 0 ? { q1: '\t', q2: '\t\t' }[blocks?.[i]] ?? '' : '';
-    buf[cur] = (buf[cur] ?? '') + tabs + w + (seps[i] ?? '');
+    // The spaces typed after the tabs sit in the separator before the line:
+    // they go, so the tabs start the line (review of PR #810).
+    const before = tabs ? (buf[cur] ?? '').replace(/\n[ ]+$/, '\n') : buf[cur] ?? '';
+    buf[cur] = before + tabs + w + (seps[i] ?? '');
   });
   const out = {};
   for (const g of groups) {

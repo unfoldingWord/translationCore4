@@ -16,13 +16,23 @@ export const bodyToEditorText = (body: string): string =>
 
 /** The body to write for an edited verse: a line after the first that starts
  * with one tab becomes a `\q1` line, with two a `\q2` line. A line with no tab
- * is a line break only. `nl` is the file's line end, so a CRLF file stays CRLF. */
-export const editorTextToBody = (text: string, nl: '\n' | '\r\n'): string =>
-  text
-    .split('\n')
+ * is a line break only. `nl` is the file's line end, so a CRLF file stays CRLF.
+ *
+ * The editor saves on every keystroke, and the next keystroke replaces the body
+ * the index reads back. So this writes only what the index reads as the verse
+ * (review of PR #810): no marker on a tab line with no text yet, no space
+ * between the marker and the text (`isInnerPoemLine`), and no blank line at
+ * either end of the body, which the index leaves outside. */
+export const editorTextToBody = (text: string, nl: '\n' | '\r\n'): string => {
+  const lines = text.split('\n');
+  while (lines.length > 1 && lines[0].trim() === '') lines.shift();
+  while (lines.length > 1 && lines[lines.length - 1].trim() === '') lines.pop();
+  return lines
     .map((line, i) => {
-      if (i === 0) return line;
-      const tabs = /^\t\t?/.exec(line)?.[0].length ?? 0;
-      return tabs ? `\\q${tabs} ${line.slice(tabs)}` : line;
+      const tabs = i === 0 ? 0 : /^\t\t?/.exec(line)?.[0].length ?? 0;
+      if (!tabs) return line;
+      const text = line.slice(tabs).replace(/^[ \t]+/, '');
+      return text ? `\\q${tabs} ${text}` : '';
     })
     .join(nl);
+};

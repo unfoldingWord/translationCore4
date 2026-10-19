@@ -362,4 +362,12 @@ describe('#786 — the inner poem lines of a verse in the section editor', () =>
     const d = parseDraft(text, KEYS);
     expect(serializeDraft(d.words, d.seps, d.markers, KEYS, KEYS, d.blocks)).toBe(text);
   });
+
+  // Review of PR #810: a space typed after the tabs went into the separator
+  // before the line, so the tabs no longer started it and the save wrote them
+  // into the file as text, with no \q2.
+  it('a space typed after the tabs: the line still starts with its tabs', () => {
+    const d = parseDraft('9 a\n\t\t between you\n\t10 b', KEYS);
+    expect(sectionVerses(d.words, d.seps, d.markers, KEYS, KEYS, d.blocks)).toEqual({ 9: 'a\n\t\tbetween you', 10: 'b' });
+  });
 });
