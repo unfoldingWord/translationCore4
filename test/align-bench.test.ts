@@ -162,10 +162,11 @@ describe.skipIf(!RUN)('#796 bench — Genesis, en_ult v91', () => {
   // shape: one placed word each, on one card that holds one source word; a card with no source
   // word makes `merge` throw, so every verse would be refused). Reported, not asserted. The same case ran on the
   // base (weave.mjs read only the flag and the hash) and on the branch (it asks `needsReview` too);
-  // the base ignores the fourth argument, so `reported` counts only on the branch. Median of 3
-  // weaves of the 1.5 MB book, each run in turn in one session (267a147, the slice 3 head, vs the
-  // slice 5 branch): the base 3635, 3272, 2605 and 2709 ms; the branch 2667, 2675 and 2675 ms. All
-  // 1533 verses weave on both, none reported. If the line does not print, add --disable-console-intercept.
+  // the base ignores the fourth argument, so `reported` counts only on the branch. Each figure is
+  // the median of 3 weaves of the 1.5 MB book, one figure per run, the runs in turn in one session
+  // (267a147, the slice 3 head, vs the slice 5 branch). Four runs on the base: 3635, 3272, 2605 and
+  // 2709 ms; three runs on the branch: 2667, 2675 and 2675 ms. All 1533 verses weave on both, none
+  // reported. If the line does not print, add --disable-console-intercept.
   it('measures weaveBook on Genesis, one record per verse', () => {
     const raw = strFromU8(unzipSync(new Uint8Array(fs.readFileSync(ZIP)))['ingredients/GEN.usfm']);
     const { skeleton, verses: stored } = decompose(toNfc(raw) as string) as { skeleton: string; verses: Record<string, string> };

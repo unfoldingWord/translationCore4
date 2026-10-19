@@ -76,12 +76,23 @@ describe('#375 runExport', () => {
     const named = (skipped?: string[]): ExportProducer['produce'] => async () => ({ bytes: new TextEncoder().encode('x'), filename: exportFilename('puntos-TIT', 'txt'), mime: 'text/plain', skipped });
     const some = await runExport(fake(named(['1:1', '2:3'])), { store, project: PROJECT, book: 'TIT' });
     expect(reportError(some)).toBeNull();
-    expect(some).toMatchObject({ op: 'export', ok: true, facts: { producer: 'usfm-plain', skipped: ['1:1', '2:3'] } });
+    expect(some).toMatchObject({ op: 'export', ok: true, facts: { producer: 'usfm-plain', skipped: ['1:1', '2:3'], skippedTotal: 2 } });
     for (const skipped of [[], undefined]) {
       const none = await runExport(fake(named(skipped)), { store, project: PROJECT, book: 'TIT' });
       expect(none.ok).toBe(true);
       expect('skipped' in none.facts).toBe(false);
+      expect('skippedTotal' in none.facts).toBe(false);
     }
+  });
+
+  it('the stored facts keep at most 20 skipped refs, in book order, and the full count (#796)', async () => {
+    const { store } = await seeded();
+    const refs = Array.from({ length: 25 }, (_, i) => `1:${i + 1}`);
+    const produce: ExportProducer['produce'] = async () => ({ bytes: new TextEncoder().encode('x'), filename: exportFilename('puntos-TIT', 'txt'), mime: 'text/plain', skipped: refs });
+    const report = await runExport(fake(produce), { store, project: PROJECT, book: 'TIT' });
+    expect(reportError(report)).toBeNull();
+    expect(report.facts.skipped).toEqual(refs.slice(0, 20));
+    expect(report.facts.skippedTotal).toBe(25);
   });
 
   it('a producer that throws delivers nothing and returns export.read-failed', async () => {

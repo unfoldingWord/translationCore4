@@ -90,7 +90,8 @@ describe('#382 — the export menu reports the download result', () => {
 
 describe('#796 — the export menu names the verses an export left out', () => {
   const refs = (n: number): string[] => Array.from({ length: n }, (_, i) => `1:${i + 1}`);
-  const withFacts = (skipped?: string[]) => ({ ok: true, facts: { producer: 'usfm-plain', filename: FILE, bytes: 10, ...(skipped ? { skipped } : {}) } });
+  /** The facts the kernel stores: at most 20 refs, and the full count in `skippedTotal` (the count defaults to the refs). */
+  const withFacts = (skipped?: string[], skippedTotal = skipped?.length) => ({ ok: true, facts: { producer: 'usfm-plain', filename: FILE, bytes: 10, ...(skipped ? { skipped, skippedTotal } : {}) } });
   const skippedNotice = () => screen.queryByTestId('export-skipped');
   /** Run one more export in a menu that is already on screen. */
   const exportAgain = async () => {
@@ -127,7 +128,7 @@ describe('#796 — the export menu names the verses an export left out', () => {
     expect(screen.getByTestId('export-failure')).not.toBeNull();
   });
 
-  it('names at most 20 refs, then an ellipsis', async () => {
+  it('names the refs the facts keep, and an ellipsis only when the total is larger', async () => {
     actions.exportFile.mockResolvedValueOnce(withFacts(refs(20)));
     render(<ExportMenu pageSetup={{}} />);
     await exportOnce();
@@ -135,11 +136,20 @@ describe('#796 — the export menu names the verses an export left out', () => {
     expect(skippedNotice()?.textContent).not.toContain('…');
     cleanup();
     actions.exportFile.mockClear();
-    actions.exportFile.mockResolvedValueOnce(withFacts(refs(21)));
+    // 25 skipped: the facts keep the first 20 and the total 25.
+    actions.exportFile.mockResolvedValueOnce(withFacts(refs(20), 25));
     render(<ExportMenu pageSetup={{}} />);
     await exportOnce();
     expect(skippedNotice()?.textContent).toMatch(/: 1:1, 1:2,.* 1:20, …$/);
     expect(skippedNotice()?.textContent).not.toContain('1:21');
+    cleanup();
+    actions.exportFile.mockClear();
+    // 3 skipped: all 3 show, with no ellipsis.
+    actions.exportFile.mockResolvedValueOnce(withFacts(refs(3)));
+    render(<ExportMenu pageSetup={{}} />);
+    await exportOnce();
+    expect(skippedNotice()?.textContent).toMatch(/: 1:1, 1:2, 1:3$/);
+    expect(skippedNotice()?.textContent).not.toContain('…');
   });
 
   it('browser: the notice sits beside the "Export ready" toast, not instead of it', async () => {
