@@ -160,7 +160,9 @@ same `Report`.
 The Home banner (`src/state.jsx` `failureText`) shows a failed open's or checkpoint's thrown
 diagnosis. It appends the recovery sentence of the catalog key `refusal.<code>` (`src/i18n/en.json`).
 Every live code has one, approved by the owner on 2026-09-22; a test fails when a live code has
-none. A reserved code shows the diagnosis alone until its issue adds the sentence.
+none. A reserved code shows the diagnosis alone until its issue adds the sentence. One code is an
+exception: `sync.project-replaced` shows its sentence alone, because its diagnosis holds the
+project path [decided 2026-10-18, #801].
 
 **The ops log (issue #374, TEAM-SYNC-PLAN 1.4).** Each open, checkpoint, import and export writes
 one ops record before its first side effect and closes it with its Report. The records are in
