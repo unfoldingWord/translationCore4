@@ -100,14 +100,15 @@ interface GapMarkerMatch {
   end: number;
 }
 
-/** Scan a gap string for a line that is exactly \p, \q1 or \q2 (#54). */
+/** Scan a gap string for a line that is exactly \p, \q1 or \q2 (#54). The
+ * line may end in spaces: a gap that ends on the next verse's own line
+ * (`\q1 \v 15`, #784) ends with `\q1 `. */
 export const gapMarkerOf = (gapText: string): 'p' | 'q1' | 'q2' | null => {
   let pos = 0;
   while (pos < gapText.length) {
     const nextNl = gapText.indexOf('\n', pos);
     const lineEnd = nextNl === -1 ? gapText.length : nextNl;
-    let line = gapText.slice(pos, lineEnd);
-    if (line.endsWith('\r')) line = line.slice(0, -1);
+    const line = gapText.slice(pos, lineEnd).trimEnd();
     if (line === '\\p' || line === '\\q1' || line === '\\q2') {
       return line.slice(1) as 'p' | 'q1' | 'q2';
     }
@@ -146,8 +147,7 @@ const findGapMarker = (rawBook: string, gapStart: number, gapEnd: number): GapMa
     const nextNl = gap.indexOf('\n', pos);
     const lineEnd = nextNl === -1 ? gap.length : nextNl;
     const nextPos = nextNl === -1 ? gap.length : nextNl + 1;
-    let line = gap.slice(pos, lineEnd);
-    if (line.endsWith('\r')) line = line.slice(0, -1);
+    const line = gap.slice(pos, lineEnd).trimEnd();
     if (line === `\\${marker}`) {
       return {
         marker,
@@ -191,8 +191,9 @@ export const spliceVerseGap = (
     if (marker === null) {
       return rawBook.slice(0, match.start) + rawBook.slice(match.end);
     }
-    const nl = rawBook.slice(match.start, match.end).endsWith('\r\n') ? '\r\n' : '\n';
-    return rawBook.slice(0, match.start) + '\\' + marker + nl + rawBook.slice(match.end);
+    // Only the marker token changes; what follows it (a line end, or the
+    // space before the next `\v` on the same line, #784) stays.
+    return rawBook.slice(0, match.start) + '\\' + marker + rawBook.slice(match.start + 1 + match.marker.length);
   }
   if (marker === null) return rawBook;
   const nl = rawBook.slice(gap.start, gap.end).includes('\r\n') || rawBook.includes('\r\n') ? '\r\n' : '\n';
