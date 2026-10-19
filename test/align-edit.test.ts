@@ -9,6 +9,7 @@ import {
   allTargetWords,
 } from '../src/data/align/edit';
 import { wordTokens } from '../src/data/align/tokenize';
+import { verseTextMd5 } from '../journal/fold.mjs';
 import type { AlignedWord } from '../src/data/align/zaln';
 
 const ORIG = [
@@ -16,9 +17,10 @@ const ORIG = [
   { tag: 'w', type: 'word', text: 'δοῦλος', strong: 'G14010', lemma: 'δοῦλος', morph: 'Gr,N', occurrence: 1, occurrences: 1 },
 ];
 const TARGET = 'Pablo, siervo de Dios y de Dios';
+const TARGET_MD5 = verseTextMd5(TARGET);
 const SOURCE = 'dcs::unfoldingWord/el-x-koine_ugnt@v0.34';
 
-const boot = () => bootstrapVerse(TARGET, ORIG, SOURCE);
+const boot = () => bootstrapVerse(TARGET, ORIG, SOURCE, TARGET_MD5);
 const wordIn = (words: AlignedWord[], w: string, occ = 1) =>
   words.find((x) => x.word === w && Number(x.occurrence) === occ) as AlignedWord;
 
@@ -52,7 +54,7 @@ describe('C2.12 bootstrap — an unaligned verse starts usable, not empty', () =
     expect(record.targetVerseMd5).toMatch(/^[0-9a-f]{32}$/);
     expect(record.sourceVersion).toBe(SOURCE);
     expect(record.invalid).toBe(false);
-    expect(alignmentIsStale(record, TARGET)).toBe(false);
+    expect(alignmentIsStale(record, TARGET_MD5)).toBe(false);
   });
 
   it('distinguishes repeated words by occurrence — both "Dios" are bankable', () => {
@@ -201,7 +203,7 @@ describe('#129 review round 1 — merge adjacency and move purity', () => {
     ...ORIG,
     { tag: 'w', type: 'word', text: 'Θεοῦ', strong: 'G23160', lemma: 'θεός', morph: 'Gr,N', occurrence: 1, occurrences: 1 },
   ];
-  const boot3 = () => bootstrapVerse(TARGET, THREE_ORIG, SOURCE);
+  const boot3 = () => bootstrapVerse(TARGET, THREE_ORIG, SOURCE, TARGET_MD5);
 
   it('a NON-adjacent merge is rejected — flattened topWords must stay in verse order', () => {
     const rec = boot3();

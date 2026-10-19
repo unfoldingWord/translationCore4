@@ -9,6 +9,7 @@ import { usfmjs } from '../src/data/vendor';
 import { gatewayQuote, matchQuote, quoteToWords, tokenizeVerse, tokensText } from '../src/data/sourceHighlight';
 import { tnQuoteWords } from '../src/data/derive';
 import { verseText } from '../src/views/verseText.js';
+import { verseText as displayText } from '../src/data/bookModel';
 
 // Real node builtins via the runtime, NOT `import 'node:fs'` — the app's
 // vite-plugin-node-polyfills aliases node builtins to browser mocks (issue #35).
@@ -32,6 +33,50 @@ describe('tokenizeVerse', () => {
       const tokens = tokenizeVerse(verse('1', v));
       expect(tokensText(tokens).replace(/\s+/g, ' ').trim()).toBe(verseText(verse('1', v)));
     }
+  });
+
+  // #795: usfm-js keeps the character after a note's end marker in the note's `nextChar`.
+  // The verse text drops the note and must keep that separator when it is all that
+  // separates two words, and only then.
+  describe('a note between two words (#795)', () => {
+    const tit = fs.readFileSync('conformance/sample-burrito/ingredients/TIT.usfm', 'utf8');
+    const textOf = (book: string) => {
+      const v = (usfmjs.toJSON(book) as { chapters: Record<string, Record<string, never>> }).chapters['1']['1'];
+      return tokensText(tokenizeVerse(v)).trim();
+    };
+    const plain = textOf(tit);
+
+    it('keeps the space after a footnote that follows a word: siervo\\f…\\f* de', () => {
+      expect(textOf(tit.replace('siervo de', 'siervo\\f + \\fr 1:1 \\ft o esclavo\\f* de'))).toBe(plain);
+    });
+
+    it('keeps it for a cross reference, an extended note and a figure, which usfm-js does not type as footnotes', () => {
+      expect(textOf(tit.replace('siervo de', 'siervo\\x - \\xt Rom 1:1\\x* de'))).toBe(plain);
+      expect(textOf(tit.replace('siervo de', 'siervo\\fe + \\ft o esclavo\\fe* de'))).toBe(plain);
+      expect(textOf(tit.replace('siervo de', 'siervo\\ef + \\ft o esclavo\\ef* de'))).toBe(plain);
+      expect(textOf(tit.replace('siervo de', 'siervo\\fig a|src="b"\\fig* de'))).toBe(plain);
+    });
+
+    it('a note that already has a space before it keeps the text it had', () => {
+      expect(textOf(tit.replace('siervo de', 'siervo \\f + \\ft o esclavo\\f* de'))).toBe(plain);
+    });
+
+    it('two notes in a row give one space; a note and a space give one space', () => {
+      expect(textOf(tit.replace('siervo de', 'siervo\\f + \\ft a\\f*\\f + \\ft b\\f* de'))).toBe(plain);
+      expect(textOf(tit.replace('siervo de', 'siervo\\f + \\ft a\\f* \\f + \\ft b\\f* de'))).toBe(plain);
+    });
+
+    it('a note before the punctuation, or at the start or the end of the verse, adds nothing', () => {
+      expect(textOf(tit.replace('siervo de', 'siervo\\f + \\ft a\\f*, de'))).toBe(plain.replace('siervo de', 'siervo, de'));
+      expect(textOf(tit.replace('\\v 1 Pablo', '\\v 1 \\f + \\ft a\\f* Pablo'))).toBe(plain);
+      expect(textOf(tit.replace('piedad,', 'piedad,\\f + \\ft a\\f*'))).toBe(plain);
+    });
+
+    it('verseText (what Translate and Check show) reads "siervo de Dios"', () => {
+      const raw = '\\id TIT x\n\\c 1\n\\p\n\\v 1 Pablo, siervo\\f + \\fr 1:1 \\ft o esclavo\\f* de Dios.\n';
+      const verse = (usfmjs.toJSON(raw) as { chapters: Record<string, Record<string, never>> }).chapters['1']['1'];
+      expect(displayText(verse)).toBe('Pablo, siervo de Dios.');
+    });
   });
 
   it('carries the verse-level orig occurrence on every word', () => {

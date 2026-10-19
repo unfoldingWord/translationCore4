@@ -850,6 +850,8 @@
   "align.unavailable.unreadable.body": "The text for {book} is on this computer but could not be parsed. Re-download the source texts, or report the resource.",
   "align.unavailable.inline-alignment.title": "This verse already holds an alignment",
   "align.unavailable.inline-alignment.body": "{book} was added from a file that already holds alignments. tC4 keeps this verse's alignment as it is. You cannot change it in tC4 yet.",
+  "align.unavailable.no-slot.title": "tC4 cannot save an alignment for this verse",
+  "align.unavailable.no-slot.body": "tC4 cannot find this verse in the saved text of {book}, so it cannot save an alignment for it. If the verse text starts on the line after its verse number, move it onto the same line.",
   "check.preflightError": "The installed-resource record could not be read, so tool readiness cannot resolve:",
   "check.oldTwl": "A pre-release version of translationCore pinned the Translation Words links of this project, so the app does not read them. Create the project again.",
   "sources.checkableError": "The installed-resource record could not be read, so the checkable languages may be incomplete:",

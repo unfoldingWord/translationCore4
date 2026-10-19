@@ -23,6 +23,8 @@ const ORIG = [
 ];
 const SOURCE = 'dcs::unfoldingWord/el-x-koine_ugnt@v0.34';
 const TEXT = 'Pablo, siervo de Dios y de Dios';
+/** reflowAlignment with the hash a plain one-line text stamps (md5Hex of the text, as the export hashes it). */
+const reflowTo = (record: AlignmentVerseRecord | undefined, text: string) => reflowAlignment(record, text, md5Hex(text));
 
 const bank = (r: AlignmentVerseRecord) => r.wordBank.map((w) => `${w.word}/${w.occurrence}/${w.occurrences}`);
 const placed = (r: AlignmentVerseRecord) => r.alignments.map((a) => a.bottomWords.map((w) => `${w.word}/${w.occurrence}/${w.occurrences}`));
@@ -31,27 +33,27 @@ const wordIn = (r: AlignmentVerseRecord, word: string, occ = 1) =>
 
 /** A record with Pablo→Παῦλος, siervo→δοῦλος and Dios(2)→θεοῦ linked. */
 const linkedRecord = () => {
-  let r = bootstrapVerse(TEXT, ORIG, SOURCE);
+  let r = bootstrapVerse(TEXT, ORIG, SOURCE, md5Hex(TEXT));
   r = linkWord(r, 0, wordIn(r, 'Pablo'));
   r = linkWord(r, 1, wordIn(r, 'siervo'));
   r = linkWord(r, 2, wordIn(r, 'Dios', 2));
-  return stampTargetVerse(r, TEXT);
+  return stampTargetVerse(r, md5Hex(TEXT));
 };
 
 describe('#213 reflowAlignment — keep what still fits, drop what changed', () => {
   it('a link whose target word is still present is kept; a new word lands in the bank', () => {
-    const next = reflowAlignment(linkedRecord(), 'Pablo, siervo de Dios y apóstol de Dios');
+    const next = reflowTo(linkedRecord(), 'Pablo, siervo de Dios y apóstol de Dios');
     expect(next).not.toBeNull();
     expect(placed(next!)).toEqual([['Pablo/1/1'], ['siervo/1/1'], ['Dios/2/2']]);
     expect(bank(next!)).toEqual(['de/1/2', 'Dios/1/2', 'y/1/1', 'apóstol/1/1', 'de/2/2']);
     // The source side is untouched, and the record now vouches for the new text.
     expect(next!.alignments.map((a) => a.topWords)).toEqual(linkedRecord().alignments.map((a) => a.topWords));
     expect(next!.invalid).toBe(false);
-    expect(alignmentIsStale(next!, 'Pablo, siervo de Dios y apóstol de Dios')).toBe(false);
+    expect(alignmentIsStale(next!, md5Hex('Pablo, siervo de Dios y apóstol de Dios'))).toBe(false);
   });
 
   it('a target word the edit changed loses its link and is not in the bank; its replacement is', () => {
-    const next = reflowAlignment(linkedRecord(), 'Pablo, esclavo de Dios y de Dios');
+    const next = reflowTo(linkedRecord(), 'Pablo, esclavo de Dios y de Dios');
     expect(placed(next!)).toEqual([['Pablo/1/1'], [], ['Dios/2/2']]);
     expect(bank(next!)).toContain('esclavo/1/1');
     expect(bank(next!)).not.toContain('siervo/1/1');
@@ -61,7 +63,7 @@ describe('#213 reflowAlignment — keep what still fits, drop what changed', () 
     // Removing the first "Dios" makes the old Dios(2) vanish: its link drops
     // (identity is text + occurrence) and the surviving "Dios" is Dios(1),
     // total 1, in the bank.
-    const next = reflowAlignment(linkedRecord(), 'Pablo, siervo de y de Dios');
+    const next = reflowTo(linkedRecord(), 'Pablo, siervo de y de Dios');
     expect(placed(next!)).toEqual([['Pablo/1/1'], ['siervo/1/1'], []]);
     expect(bank(next!)).toContain('Dios/1/1');
     for (const w of [...next!.wordBank, ...next!.alignments.flatMap((a) => a.bottomWords)]) {
@@ -69,23 +71,23 @@ describe('#213 reflowAlignment — keep what still fits, drop what changed', () 
       expect(typeof w.occurrences).toBe('number');
     }
     // A kept word whose total changed carries the new total.
-    const more = reflowAlignment(linkedRecord(), 'Pablo, siervo de Dios y de Dios de Dios');
+    const more = reflowTo(linkedRecord(), 'Pablo, siervo de Dios y de Dios de Dios');
     expect(placed(more!)[2]).toEqual(['Dios/2/3']);
   });
 
   it('nothing to reflow → null, so the caller leaves the record exactly as it is (D36)', () => {
     const r = linkedRecord();
-    expect(reflowAlignment(undefined, TEXT)).toBeNull();
-    expect(reflowAlignment(r, TEXT)).toBeNull(); // unchanged text
-    expect(reflowAlignment({ ...r, invalid: true }, 'Pablo, siervo')).toBeNull(); // a span create/break's flag
-    expect(reflowAlignment(bootstrapVerse(TEXT, ORIG, SOURCE), 'Pablo, siervo')).toBeNull(); // nothing placed
-    expect(reflowAlignment(r, '___')).toBeNull(); // no words in the new text
-    expect(reflowAlignment(r, '')).toBeNull();
+    expect(reflowTo(undefined, TEXT)).toBeNull();
+    expect(reflowTo(r, TEXT)).toBeNull(); // unchanged text
+    expect(reflowTo({ ...r, invalid: true }, 'Pablo, siervo')).toBeNull(); // a span create/break's flag
+    expect(reflowTo(bootstrapVerse(TEXT, ORIG, SOURCE, md5Hex(TEXT)), 'Pablo, siervo')).toBeNull(); // nothing placed
+    expect(reflowTo(r, '___')).toBeNull(); // no words in the new text
+    expect(reflowTo(r, '')).toBeNull();
   });
 
   it('never creates a link the translator did not make', () => {
     const before = linkedRecord();
-    const next = reflowAlignment(before, 'Pablo, siervo de Dios y de Dios y Pablo');
+    const next = reflowTo(before, 'Pablo, siervo de Dios y de Dios y Pablo');
     const linksBefore = before.alignments.reduce((n, a) => n + a.bottomWords.length, 0);
     const linksAfter = next!.alignments.reduce((n, a) => n + a.bottomWords.length, 0);
     expect(linksAfter).toBeLessThanOrEqual(linksBefore);
