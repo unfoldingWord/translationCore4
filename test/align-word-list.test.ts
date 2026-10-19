@@ -154,3 +154,49 @@ describe('#796 B3 (e) a word is written once', () => {
     expect([...out.wordBank, ...out.alignments.flatMap((a) => a.bottomWords)]).toHaveLength(4);
   });
 });
+
+// #796 review fix: "missing" is decided on the body the rail tests, not on the slot.
+// A slot runs to the next \v or \c, so it keeps a trailing \p, \s5, \q2 or \s line;
+// `indexBook` stops the body at those markers. Books that keep paragraph or chunk
+// markers between verses (imported books) have this shape.
+describe('#796 a stub or empty verse is "missing" when a paragraph marker follows it', () => {
+  const followed = (marker: string) => `\\id TIT\n\\c 1\n\\p\n\\v 1 ___\n${marker}\n\\v 2 Hola\n`;
+  it.each(['\\p', '\\s5', '\\q2', '\\s Encabezado'])('a "___" stub followed by %s', async (marker) => {
+    const s = await open(followed(marker));
+    expect(s.unavailable).toBe('missing');
+    expect(s.record).toBeUndefined();
+  });
+
+  it('an empty verse (blanks only) followed by \\p', async () => {
+    const s = await open('\\id TIT\n\\c 1\n\\p\n\\v 1  \n\\p\n\\v 2 Hola\n');
+    expect(s.unavailable).toBe('missing');
+  });
+
+  // A marker line that HOLDS words keeps the slot's word list non-empty, so the words
+  // check cannot decide these: only the drafted body (nothing, or a stub) does.
+  it.each([
+    ['a "___" stub followed by a \\q2 line that holds a word', '\\v 1 ___\n\\q2 palabras\n\\v 2 Hola'],
+    ['a blank verse followed by a \\q2 line that holds a word', '\\v 1 \n\\q2 palabras\n\\v 2 Hola'],
+    ['a "___" stub followed by a \\qa line that holds a word', '\\v 1 ___\n\\qa Alef\n\\v 2 Hola'],
+  ])('%s', async (_name, verses) => {
+    const s = await open(`\\id TIT\n\\c 1\n\\p\n${verses}\n`);
+    expect(s.unavailable).toBe('missing');
+    expect(s.record).toBeUndefined();
+  });
+
+  it('a verse that holds only a footnote has no word to align', async () => {
+    const s = await open('\\id TIT\n\\c 1\n\\p\n\\v 1 \\f + \\fr 1:1 \\ft solo nota\\f*\n\\v 2 Hola\n');
+    expect(s.unavailable).toBe('missing');
+  });
+
+  it('the verse after the stub still opens', async () => {
+    const s = await open(followed('\\p'), null, '1:2', ORIG.slice(0, 1));
+    expect(s.unavailable).toBeUndefined();
+    expect(bankOf(s)).toEqual(['Hola 1/1']);
+  });
+
+  it('a stub with no trailing marker is still "missing" (unchanged)', async () => {
+    const s = await open('\\id TIT\n\\c 1\n\\p\n\\v 1 ___\n\\v 2 Hola\n');
+    expect(s.unavailable).toBe('missing');
+  });
+});

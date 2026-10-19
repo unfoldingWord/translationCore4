@@ -189,7 +189,7 @@ async function setup() {
 }
 
 /** What buildAlignmentSession returns for an openable verse. */
-type Session = { record: AlignmentVerseRecord; targetText: string; words: VerseWord[]; targetMd5: string; stale: boolean };
+type Session = { record: AlignmentVerseRecord; words: VerseWord[]; targetMd5: string; stale: boolean };
 
 /** Type verse 1:1, align two words in one session, save, then reload from the projected book. */
 async function alignThenReload(typed: string) {

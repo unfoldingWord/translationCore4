@@ -41,7 +41,7 @@ const SUGGESTION = { cardIndex: 8, source: { word: 'ἐκλεκτῶν', occurre
 const calls: Array<[string, unknown[]]> = [];
 const spy = (name: string) => (...args: unknown[]) => { calls.push([name, args]); };
 const session = (armed: W[] | null, suggestions: unknown[] | null) => ({
-  loading: false, ref: '1:1', book: 'tit', record: RECORD, targetText: TEXT, origObjects: [],
+  loading: false, ref: '1:1', book: 'tit', record: RECORD, origObjects: [],
   stale: false, armed, suggestions, testament: 'nt', targetDir: 'ltr', origDir: 'ltr', seq: 1,
 });
 const state: Record<string, unknown> = {

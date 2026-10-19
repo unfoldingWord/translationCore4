@@ -165,7 +165,7 @@ describe('#787 B5 one edit on a reconciled verse saves exactly the verse words, 
 
   it('the edit keeps bank + placed equal to the text; the weave writes \\zaln-s', async () => {
     const s = await open(fileOf(unplacedPablo()), RAW2);
-    const after = afterEdit(linkWord(s.record, 0, s.record.wordBank.find((w: AlignedWord) => w.word === 'Pablo')), s.targetText);
+    const after = afterEdit(linkWord(s.record, 0, s.record.wordBank.find((w: AlignedWord) => w.word === 'Pablo')), T2);
     expect(multiset(everyWord(after))).toEqual(multiset(wordTokens(T2)));
     expect(after.targetVerseMd5).toBe(md5Hex(T2));
     const woven = weaveVerse(RAW2, after);

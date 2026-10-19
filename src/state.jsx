@@ -390,6 +390,16 @@ function slotMd5Of(bookRaw, ref) {
   if (!(ref in slotMemo.md5)) slotMemo.md5[ref] = verseTextMd5(slot);
   return slotMemo.md5[ref];
 }
+/** #796: the drafted body of a verse as the rail reads it (`indexBook`: it stops at a
+ * `\p`, `\s5`, `\q2` or `\s` line, where a slot runs on to the next `\v`, as
+ * `slotMd5Index` and `verseHoldsImportedAlignment` read it). `''` when the verse
+ * is absent, empty or a `___` stub. */
+function draftedBodyOf(bookRaw, ref) {
+  const [chapter, verse] = ref.split(':');
+  const e = findVerse(indexBook(bookRaw), chapter, verse);
+  const body = e ? bookRaw.slice(e.start, e.end).trim() : '';
+  return body === '___' ? '' : body;
+}
 /** The export's word list of one stored verse; `[]` when the slots hold no such verse. */
 function slotWordsOf(bookRaw, ref) {
   const slot = slotOf(bookRaw, ref);
@@ -1210,14 +1220,16 @@ async function prepareAlignmentSource(store, st, ref) {
  * word across the project's books of that testament, as the engine's
  * positional view (suggest.ts). The open book reads from the live draft and
  * the align buffer. The other books read from disk. So does the open book
- * while it loads (`bookRaw` null: openBookText). */
+ * while it loads (`bookRaw` null: openBookText).
+ * #796: a verse's target words are `verseWords` of its stored slot
+ * (`decompose(toNfc(book)).verses`), the list the bank is made of. */
 async function collectTrainingVerses({ store, sched, project, book, bookRaw, testament }) {
   const codes = (project?.bookCodes || []).filter((code) => (isOldTestament(code) ? 'ot' : 'nt') === testament);
   const out = [];
   for (const code of codes) {
     const raw = code === book && bookRaw != null ? bookRaw : (await store.readBook(code)).usfm;
     const { file } = code === book ? await alignFileFor(store, sched, code) : await alignFileFor(store, null, code);
-    out.push(...trainingVersesFor(code, file, verseTextIndex(raw)));
+    out.push(...trainingVersesFor(code, file, decompose(toNfc(raw)).verses));
   }
   return out;
 }
@@ -1274,16 +1286,16 @@ function openedRecord(stored, reconciled, slot, words, targetMd5) {
  * that fetched `origObjects` is a lookup for the source text only and never
  * reaches this read (#134; test/align-session-frame.test.ts). */
 async function buildAlignmentSession(store, sched, st, ref, source, origObjects) {
-  const targetText = verseTextIndex(st.bookRaw)[ref] ?? '';
-  if (!origObjects.length || !targetText) return { unavailable: 'missing' };
   // #795: the stamp is the export's hash of the stored verse. #796: the words are the
-  // export's list for the same slot; `targetText` is for the suggestions until they
-  // read the words too. A verse the stored text has no slot for has no stamp the
-  // export would accept: no session, so no edit or Mark valid writes a record the
-  // journal refuses to seal.
+  // export's list for the same slot, and the suggestions read them too. A verse the
+  // stored text has no slot for has no stamp the export would accept: no session, so
+  // no edit or Mark valid writes a record the journal refuses to seal.
   const targetMd5 = slotMd5Of(st.bookRaw, ref);
   if (targetMd5 === undefined) return { unavailable: 'no-slot' };
+  // "Missing" is decided on the body the rail tests (a slot keeps a trailing \p, \s5,
+  // \q2 or \s line, the body does not), and a verse with no word has nothing to align.
   const words = slotWordsOf(st.bookRaw, ref);
+  if (!origObjects.length || !draftedBodyOf(st.bookRaw, ref) || !words.length) return { unavailable: 'missing' };
   const { file, md5 } = await alignFileFor(store, sched, st.book);
   const [chapter, verse] = ref.split(':');
   const stored = file?.chapters?.[chapter]?.[verse];
@@ -1313,7 +1325,6 @@ async function buildAlignmentSession(store, sched, st, ref, source, origObjects)
     book: st.book,
     record,
     md5,
-    targetText,
     slot: slotOf(st.bookRaw, ref),
     words,
     targetMd5,
@@ -5661,7 +5672,7 @@ export function AppProvider({ children }) {
         const sched = suggestRef.current?.sched;
         if (!sched || !session?.record) return;
         const ref = `${session.book} ${session.ref}`;
-        sched.save(isOldTestament(session.book) ? 'ot' : 'nt', ref, trainingVerseOf(ref, session.record, session.targetText));
+        sched.save(isOldTestament(session.book) ? 'ot' : 'nt', ref, trainingVerseOf(ref, session.record, session.words));
       },
 
       /** The engine's proposals for a verse. Bound to the verse and session
@@ -5670,7 +5681,7 @@ export function AppProvider({ children }) {
       showAlignSuggestions: (reply) => {
         const a2 = stateRef.current.alignSession;
         if (!a2?.record || a2.ref !== reply.ref || a2.seq !== reply.session) return;
-        const links = linksFor(a2.record, a2.targetText, reply.links);
+        const links = linksFor(a2.record, a2.words, reply.links);
         dispatch({ type: 'set', patch: { alignSession: { ...a2, suggestions: links, suggesting: false, refusal: null } } });
       },
 
@@ -5682,7 +5693,7 @@ export function AppProvider({ children }) {
         const sched = suggestRef.current?.sched;
         if (!a2?.record || !sched) return;
         const testament = isOldTestament(a2.book ?? '') ? 'ot' : 'nt';
-        if (!sched.suggest(testament, sessionInputFor(a2.record, a2.targetText), a2.ref, a2.seq)) return;
+        if (!sched.suggest(testament, sessionInputFor(a2.record, a2.words), a2.ref, a2.seq)) return;
         dispatch({ type: 'set', patch: { alignSession: { ...a2, suggesting: true, refusal: null } } });
       },
 

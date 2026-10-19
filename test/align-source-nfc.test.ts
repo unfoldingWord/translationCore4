@@ -106,7 +106,7 @@ describe('#793 suggestion memory trained on saved verses finds a fresh verse\'s 
   const FRESH = '9';
   const training = TRAIN.map((v) => {
     const { text, record } = alignedAndSealed('1', v);
-    return trainingVerseOf(`JON 1:${v}`, record, text);
+    return trainingVerseOf(`JON 1:${v}`, record, verseWords(text));
   }).filter((t): t is NonNullable<typeof t> => t !== null);
   const freshText = draftOf('1', FRESH);
   const fresh = bootstrapVerse(verseWords(freshText), verseObjects('1', FRESH), SOURCE, md5Hex(freshText));
@@ -125,7 +125,7 @@ describe('#793 suggestion memory trained on saved verses finds a fresh verse\'s 
 
   // The words the memory holds and the fresh verse asks about, by their NFC form.
   const trained = new Set(training.flatMap((t) => t.source.map((s) => s.text.normalize('NFC'))));
-  const shared = sessionInputFor(fresh, freshText).source.filter((s) => trained.has(s.text.normalize('NFC')));
+  const shared = sessionInputFor(fresh, verseWords(freshText)).source.filter((s) => trained.has(s.text.normalize('NFC')));
 
   it('the fixture verses share words that the resource holds as non-NFC (failure mode 4)', () => {
     expect(training.length).toBe(TRAIN.length);
@@ -140,11 +140,11 @@ describe('#793 suggestion memory trained on saved verses finds a fresh verse\'s 
 
   it('the engine answers a fresh verse as it answers the same verse after a save, and right', async () => {
     const model = await trainModel('ot', training);
-    const asked = predictLinks(model, sessionInputFor(fresh, freshText));
-    const askedSaved = predictLinks(model, sessionInputFor(seal(fresh), freshText));
+    const asked = predictLinks(model, sessionInputFor(fresh, verseWords(freshText)));
+    const askedSaved = predictLinks(model, sessionInputFor(seal(fresh), verseWords(freshText)));
     expect(asked.length).toBeGreaterThan(0);
     expect(asked).toEqual(askedSaved);
-    const links = linksFor(fresh, freshText, asked);
+    const links = linksFor(fresh, verseWords(freshText), asked);
     expect(links.filter((l) => l.word.word !== glossOf(l.source.word))).toEqual([]);
   }, 120_000); // training is CPU work: about 3 s alone, 15 s when the whole suite runs in parallel
 });

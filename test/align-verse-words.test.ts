@@ -71,7 +71,7 @@ describe('#796 B1 verseWords equals the export word list', () => {
     }
     expect(FIXTURES.length).toBe(14);
     expect(slots).toBe(421);
-  });
+  }, 60_000); // the library oracle is slow on purpose: about 1 s alone, more than 5 s when the whole suite runs in parallel
 
   /** One verse slot per marker shape, with the words the export counts in it. */
   const SHAPES: Array<[string, string, string[]]> = [
