@@ -196,8 +196,10 @@ describe('inline markers belong to the body; paragraph-level markers end it', ()
     expect(body(raw, 1, '2')).toBe('Second with \\add added\\add* and \\k keyword\\k* inline');
   });
 
-  it('numbered paragraph variants (\\pi2, \\q3) end the body like their base marker', () => {
-    const raw = ['\\id TST', '\\c 1', '\\v 1 head', '\\pi2 indented', '\\v 2 x', '\\q3 deeper', '\\v 3 y', ''].join('\n');
+  it('numbered paragraph variants (\\pi2 alone, \\q3 alone) end the body like their base marker', () => {
+    // #812: with text after them they would be verse text; on their own line
+    // before the next \v they are the next verse's paragraph.
+    const raw = ['\\id TST', '\\c 1', '\\v 1 head', '\\pi2', '\\v 2 x', '\\q3', '\\v 3 y', ''].join('\n');
     expect(body(raw, 1, '1')).toBe('head');
     expect(body(raw, 1, '2')).toBe('x');
   });
@@ -209,8 +211,9 @@ describe('inline markers belong to the body; paragraph-level markers end it', ()
 //      and a save leaves the old lines after the new text (the defect).
 //   2. The body swallows the next verse's own `\q1 \v N` line, or a marker-only
 //      line (`\p`, `\q1` alone, `\ts\*`) that belongs between two verses.
-//   3. A poem line after a heading, or before the first verse, joins a body.
-//   4. A `\q3` line (the editor shows two levels) joins a body.
+//   3. A poem line before the first verse joins a body.
+// (#812 turned the former ways 3b and 4 around: a `\q3` line and the verse
+// text after a mid-verse heading belong to the verse too; see below.)
 describe('#786 — the inner poem lines of a verse belong to its body', () => {
   it('\\q, \\q1 and \\q2 lines with text continue the open verse (way 1)', () => {
     const raw = [
@@ -241,8 +244,8 @@ describe('#786 — the inner poem lines of a verse belong to its body', () => {
     expect(body(raw, 131, '3')).toBe('Hope');
   });
 
-  it('a poem line after a heading or before any verse joins no body (way 3)', () => {
-    const raw = ['\\id TST', '\\c 1', '\\q1 before any verse', '\\v 1 one', '\\s1 A heading', '\\q1 after the heading', '\\v 2 two', ''].join('\n');
+  it('a poem line before any verse joins no body (way 3)', () => {
+    const raw = ['\\id TST', '\\c 1', '\\q1 before any verse', '\\v 1 one', '\\v 2 two', ''].join('\n');
     expect(body(raw, 1, '1')).toBe('one');
     expect(body(raw, 1, '2')).toBe('two');
   });
@@ -254,23 +257,81 @@ describe('#786 — the inner poem lines of a verse belong to its body', () => {
     expect(b).not.toMatch(/\\v /);
   });
 
-  // The check that keeps the class closed: for every verse of the en_ult
-  // fixtures, the editable body holds every word usfm-js reads in the verse.
-  // A body that stops early fails here, whatever marker stopped it.
-  it('every verse body of the en_ult fixtures holds all the words of its verse', async () => {
+});
+
+// #812: what else a verse holds between its lines. The ways this can fail,
+// written before the fix:
+//   1. A paragraph or stanza break (`\p`, `\m`, `\pi1`, `\b`, `\qm1` alone) or a
+//      `\ts\*` inside a verse ends its body: the editor shows part of the verse
+//      and a save leaves the rest after the new text (the defect).
+//   2. A paragraph line with text (`\pmo …`), a `\q3` line, or the verse text
+//      after a mid-verse heading (`\s1`, `\sr`, `\sp`) is left out the same way.
+//   3. A break or a heading that comes after the verse's last words, before the
+//      next `\v` or `\c`, joins the body (it belongs between two verses).
+//   4. A `\v` line with no text, then a break: the body starts on the break.
+describe('#812 — breaks, headings and \\q3 inside a verse belong to its body', () => {
+  it('a break inside a verse continues its body; breaks after its last words stay outside (ways 1, 3)', () => {
+    const raw = ['\\id REV', '\\c 7', '\\v 12 saying,', '\\pi1', '“Amen! Praise', '\\ts\\*', '\\m', 'and glory.”', '\\b', '\\qm1', 'Amen.', '\\ts\\*', '\\p', '\\v 13 Then', ''].join('\n');
+    expect(body(raw, 7, '12')).toBe('saying,\n\\pi1\n“Amen! Praise\n\\ts\\*\n\\m\nand glory.”\n\\b\n\\qm1\nAmen.');
+    expect(body(raw, 7, '13')).toBe('Then');
+  });
+
+  it('a paragraph line with text, a \\q3 line, and the text after a heading continue the body (way 2)', () => {
+    const raw = ['\\id GEN', '\\c 29', '\\v 14 Laban said,', '\\pmo “You are my bone.”', '\\q3 deeper line', '\\s1 Jacob marries', '\\sr (29:15-30)', 'After a month', '\\v 15 Then', ''].join('\n');
+    expect(body(raw, 29, '14')).toBe('Laban said,\n\\pmo “You are my bone.”\n\\q3 deeper line\n\\s1 Jacob marries\n\\sr (29:15-30)\nAfter a month');
+  });
+
+  it('a heading after the verse\'s last words stays outside, as LAM 2:5 `\\qa` does (way 3)', () => {
+    const raw = ['\\id LAM', '\\c 2', '\\q1 \\v 5 The Lord', '\\q2 has swallowed', '\\qa WAW', '\\q1 \\v 6 He', ''].join('\n');
+    expect(body(raw, 2, '5')).toBe('The Lord\n\\q2 has swallowed');
+  });
+
+  it('a `\\v` line with no text, then a break: the body starts after the break (way 4)', () => {
+    const raw = ['\\id TST', '\\c 1', '\\v 2', '\\p', 'text of two', '\\v 3 three', ''].join('\n');
+    const e = findVerse(indexBook(raw), 1, '2')!;
+    expect(raw.slice(e.start, e.end)).toBe('text of two');
+    expect(raw.slice(0, e.start)).toMatch(/\\v 2\n\\p\n$/);
+  });
+});
+
+describe('#786/#812 — every verse body holds all the words of its verse', () => {
+  type Chapters = Record<string, Record<string, unknown>>;
+  const words = (s: string): string[] => s.split(/\s+/).filter(Boolean);
+  // The words a heading line holds (`\qa WAW` at a verse's end): usfm-js puts
+  // them in the verse, and they are not verse text.
+  const HEADING = /^\\(?:s\d?|sr|sp|qa|ms\d?|mr|r|d|cl|qd)\s+(.*)$/;
+  const check = async (label: string, raw: string) => {
     const { parseChapters, verseText } = await import('../src/data/bookModel.js');
-    type Chapters = Record<string, Record<string, unknown>>;
-    const words = (s: string): string[] => s.split(/\s+/).filter(Boolean);
-    for (const file of ['test/fixtures/en_ult/GEN-773.usfm', 'test/fixtures/en_ult/PSA-3.usfm']) {
-      const raw = read(file);
-      const chapters = parseChapters(raw) as Chapters;
-      for (const e of indexBook(raw)) {
-        const whole = words(verseText(chapters[e.chapter]?.[e.verseKey]));
-        const alone = parseChapters(`\\id TST\n\\c 1\n\\v 1 ${raw.slice(e.start, e.end)}\n`) as Chapters;
-        expect(words(verseText(alone['1']?.['1'])), `${file} ${e.chapter}:${e.verseKey}`).toEqual(whole);
-      }
+    const chapters = parseChapters(raw) as Chapters;
+    const entries = indexBook(raw);
+    // The words usfm-js reads in a text put alone in a verse.
+    const asVerse = (text: string): string[] => words(verseText((parseChapters(`\\id TST\n\\c 1\n\\v 1 ${text}\n`) as Chapters)['1']?.['1']));
+    entries.forEach((e, i) => {
+      const whole = words(verseText(chapters[e.chapter]?.[e.verseKey]));
+      const got = asVerse(raw.slice(e.start, e.end));
+      const next = entries[i + 1]?.start ?? raw.length;
+      const after = raw.slice(e.end, next).split('\n').flatMap((l) => asVerse(HEADING.exec(l)?.[1] ?? ''));
+      expect(got.length === whole.length ? got : [...got, ...after], `${label} ${e.chapter}:${e.verseKey}`).toEqual(whole);
+    });
+  };
+
+  // The check that keeps the class closed: a body that stops early fails here,
+  // whatever marker stopped it.
+  it('every verse of the en_ult and en_ust fixtures', async () => {
+    for (const file of ['en_ult/GEN-773', 'en_ult/PSA-3', 'en_ult/1SA-2-812', 'en_ult/REV-7-812', 'en_ult/PSA-9-812', 'en_ult/MAT-27-812', 'en_ust/GEN-29-812']) {
+      await check(file, read(`test/fixtures/${file}.usfm`));
     }
   });
+
+  // The same over every book of the rig's en_ult and en_ust (rig required:
+  // the books are the rig's sideloaded copies, not in this repository).
+  const rigBooks = path.resolve(process.cwd(), 'dev-env/state/work/repos/_local_/_sideloaded_');
+  it.skipIf(!fs.existsSync(path.join(rigBooks, 'en_ult/ingredients/GEN.usfm')))('every verse of the rig\'s en_ult and en_ust (rig required)', async () => {
+    for (const pkg of ['en_ult', 'en_ust']) {
+      const dir = path.join(rigBooks, pkg, 'ingredients');
+      for (const f of fs.readdirSync(dir).filter((x: string) => x.endsWith('.usfm'))) await check(`${pkg}/${f}`, fs.readFileSync(path.join(dir, f), 'utf8'));
+    }
+  }, 600_000);
 });
 
 describe('partial-book files are legal (property 5, D26)', () => {

@@ -1710,7 +1710,8 @@ async function writeBookOrStructure({ store, structuralRef, alignSchedulerRef },
 function stageStructuralSection({ rawRef, schedulerRef, structuralRef, stateRef, dispatch, recordLastEdit }, chapter, keys, texts, newKeys) {
   const book = stateRef.current.book;
   const nl = rawRef.current.includes('\r\n') ? '\r\n' : '\n';
-  const verses = newKeys.map((key) => ({ key, body: editorTextToBody((texts[key] ?? '').trim(), nl) }));
+  // #812: a verse's blank lines take back the breaks it had; a new key has none.
+  const verses = newKeys.map((key) => ({ key, body: editorTextToBody((texts[key] ?? '').trim(), nl, keys.includes(key) ? verseBody(rawRef.current, chapter, key) ?? '' : '') }));
   rawRef.current = spliceSection(rawRef.current, chapter, keys, verses);
   structuralRef.current.add(book);
   schedulerRef.current.replaceBook(book, rawRef.current);
@@ -7344,8 +7345,13 @@ export function AppProvider({ children }) {
         // Synchronous local splice keeps the raw string authoritative in-session;
         // the scheduler owns the debounced whole-file write (W-5). An emptied
         // verse returns to the platform stub convention `___` (§4.1). The
-        // editors' tab lines become the verse's inner poem lines (#786).
-        const body = text.trim() === '' ? '___' : editorTextToBody(text, rawRef.current.includes('\r\n') ? '\r\n' : '\n');
+        // editors' tab lines become the verse's inner poem lines (#786), and
+        // its blank lines take back the breaks the verse had when its editor
+        // opened (#812): the Verse card's `before`, or the stored body for a
+        // section save, which writes each verse once.
+        const e = stateRef.current.editing;
+        const opened = e?.key === `${chapter}:${verseKey}` ? e.before : verseBody(rawRef.current, chapter, verseKey) ?? '';
+        const body = text.trim() === '' ? '___' : editorTextToBody(text, rawRef.current.includes('\r\n') ? '\r\n' : '\n', opened);
         rawRef.current = spliceVerse(rawRef.current, chapter, verseKey, body);
         schedulerRef.current.markDirty(stateRef.current.book, chapter, verseKey, body);
         dispatch({ type: 'set', patch: { bookRaw: rawRef.current } });

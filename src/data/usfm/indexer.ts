@@ -3,16 +3,18 @@
 // usfm-js provides structure for rendering only and NEVER re-serializes (D8/AD-1).
 // This module therefore works on the raw string alone.
 //
-// A verse BODY is the editable text after `\v <key> ` up to the next line-start
-// marker that ends a body: the next `\v`, `\c`, or a paragraph-level marker line.
-// The inner poem lines of a verse (`\q1 …`, `\q2 …` with no `\v`) belong to its
-// body (#786, poemLines.ts): a poetry verse is one body over several lines.
+// A verse BODY is the editable text after `\v <key> ` up to the next `\v` or
+// `\c`. The lines between belong to it as long as verse text follows them: the
+// inner poem lines of a poetry verse (#786), and the paragraph or stanza
+// breaks, `\ts\*` milestones and headings in the middle of a verse (#812). The
+// breaks and headings after a verse's last words, before the next `\v` or `\c`,
+// stay OUTSIDE every body: they are the next verse's paragraph. poemLines.ts
+// shows a body in the editors and writes it back by the same line kinds.
 // Inline markup that USFM permits inside verse text (`\w`, `\zaln-s/-e`, `\f`,
 // `\k`, `\add`, …) belongs to the body even when it starts a line — aligned
 // tC3-imported drafts put `\zaln-s`/`\w` at line starts (T7). Trailing line
 // terminators before the next marker stay OUTSIDE the body, so a splice can
 // never eat the line structure around a verse.
-import { isInnerPoemLine } from './poemLines';
 
 export interface VerseEntry {
   /** Exact `\c` token, e.g. "1". Compared as a string. */
@@ -131,9 +133,34 @@ const baseTag = (tag: string): string => (tag.includes('-') ? tag : tag.replace(
 
 const endsBody = (tag: string): boolean => BODY_ENDING_TAGS.has(baseTag(tag.toLowerCase()));
 
-/** A line-start marker line that ends the open body. An inner poem line of a
- * verse does not (#786); with no verse open it closes nothing either way. */
-const endsBodyLine = (line: string, tag: string): boolean => endsBody(tag) && !isInnerPoemLine(line);
+// The paragraph-level tags whose text is a heading or a title, not verse text
+// (#812): a heading after a verse's last words stays outside its body.
+const HEADING_TAGS = new Set([
+  'id', 'usfm', 'ide', 'sts', 'rem', 'h', 'toc', 'toca',
+  'imt', 'is', 'ip', 'ipi', 'im', 'imi', 'ipq', 'imq', 'ipr', 'iq', 'ib', 'ili', 'iot', 'io', 'ior', 'iex', 'imte', 'ie',
+  'mt', 'mte', 'cl', 'cd', 'ms', 'mr', 's', 'sr', 'r', 'd', 'sp', 'sd', 'qa', 'qd', 'cp', 'pb', 'esb', 'esbe',
+]);
+
+/** What a line that is not a `\v` or `\c` line is, for a verse body (#786, #812):
+ * - `blank`: whitespace only;
+ * - `poem`: a `\q`, `\q1`, `\q2` or `\q3` line with text after one space — the
+ *   editors show it with one to three leading tabs;
+ * - `break`: a paragraph-level marker with nothing after it (`\p`, `\m`, `\b`,
+ *   `\pi1`, `\q1` alone, `\ts\*`) — the editors show a blank line;
+ * - `heading`: a heading or title marker with text (`\s1 …`, `\qa …`);
+ * - `text`: verse text — plain text, an inline marker, or a paragraph marker
+ *   with text (`\pmo …`). */
+export type LineKind = 'blank' | 'poem' | 'break' | 'heading' | 'text';
+
+export const lineKind = (line: string): LineKind => {
+  if (line.trim() === '') return 'blank';
+  const m = LINE_MARKER.exec(line);
+  if (!m || !endsBody(m[1])) return 'text';
+  const rest = line.slice(m[0].length).replace(/^\\\*/, '');
+  if (rest.trim() === '') return 'break';
+  if (/^q[123]?$/i.test(m[1]) && /^ \S/.test(rest)) return 'poem';
+  return HEADING_TAGS.has(baseTag(m[1].toLowerCase())) ? 'heading' : 'text';
+};
 
 /** #784: Paratext and the aligned texts put a verse on its poetry or paragraph
  * marker's line (`\q1 \v 15 …`, and `\p\v 6` with no space in Zechariah). For
@@ -189,14 +216,28 @@ export const indexBook = (rawBook: string): VerseEntry[] => {
     open = null;
   };
 
-  // A paragraph-level marker line that is not a verse's own: it ends the open
-  // body, or it is an inner poem line that the body goes on over (#786). When
-  // the `\v` line held no text (`\v 2` / `\q1 But I …`), the body starts after
-  // that first poem marker, which stays outside it like the `\q1 ` of a
-  // `\q1 \v 15 …` line.
-  const markerLine = (line: string, tag: string, at: number): void => {
-    if (endsBodyLine(line, tag)) closeOpen(at);
-    else if (open && open.start === at && isInnerPoemLine(line)) open.start = at + line.indexOf(' ') + 1;
+  // Where the open body ends if no more verse text comes: the first break or
+  // heading after its last words (#812).
+  let pending: number | null = null;
+  const close = (at: number): void => {
+    closeOpen(pending ?? at);
+    pending = null;
+  };
+
+  // A line inside a verse that is not a `\v` or `\c` line. When the body has
+  // nothing yet (the `\v` line held no text), a break, a heading or a blank
+  // line stays outside it, and a poem line's marker does, like the `\q1 ` of
+  // a `\q1 \v 15 …` line (`\v 2` / `\q1 But I …`).
+  const otherLine = (line: string, at: number, lineEnd: number): void => {
+    if (!open) return;
+    const kind = lineKind(line);
+    if (open.start === at && kind !== 'text') {
+      open.start = kind === 'poem' ? at + line.indexOf(' ') + 1 : Math.min(lineEnd + 1, len);
+    } else if (kind === 'break' || kind === 'heading') {
+      pending ??= at;
+    } else if (kind !== 'blank') {
+      pending = null;
+    }
   };
 
   let lineStart = 0;
@@ -207,34 +248,29 @@ export const indexBook = (rawBook: string): VerseEntry[] => {
     const line = rawBook.slice(lineStart, lineEnd);
     const m = LINE_MARKER.exec(line);
     const lead = m ? verseLead(line, m[1]) : null;
-    if (m) {
-      const tag = m[1];
-      if (tag === 'v' || lead !== null) {
-        closeOpen(lineStart);
-        const at = lead ?? 0;
-        // `\v` + whitespace + key token (exact string; spans like "9-10" stay intact).
-        const vm = /^\\v[ \t]+(\S+)[ \t]?/.exec(line.slice(at));
-        if (vm && chapter !== null) {
-          const markerEnd = lineStart + at + vm[0].length;
-          let start = markerEnd;
-          // Marker line with no same-line text (aligned drafts put the body on
-          // the following lines): the body starts past the line terminator.
-          if (rawBook.slice(start, lineEnd).trim() === '') start = Math.min(lineEnd + 1, len);
-          open = { chapter, verseKey: vm[1], start, markerEnd };
-        }
-      } else if (tag === 'c') {
-        closeOpen(lineStart);
-        const cm = /^\\c[ \t]+(\S+)/.exec(line);
-        chapter = cm ? cm[1] : chapter;
-      } else {
-        // A paragraph-level marker line, or inline verse content at a line
-        // start (the body continues).
-        markerLine(line, tag, lineStart);
+    if (m && (m[1] === 'v' || lead !== null)) {
+      close(lineStart);
+      const at = lead ?? 0;
+      // `\v` + whitespace + key token (exact string; spans like "9-10" stay intact).
+      const vm = /^\\v[ \t]+(\S+)[ \t]?/.exec(line.slice(at));
+      if (vm && chapter !== null) {
+        const markerEnd = lineStart + at + vm[0].length;
+        let start = markerEnd;
+        // Marker line with no same-line text (aligned drafts put the body on
+        // the following lines): the body starts past the line terminator.
+        if (rawBook.slice(start, lineEnd).trim() === '') start = Math.min(lineEnd + 1, len);
+        open = { chapter, verseKey: vm[1], start, markerEnd };
       }
+    } else if (m && m[1] === 'c') {
+      close(lineStart);
+      const cm = /^\\c[ \t]+(\S+)/.exec(line);
+      chapter = cm ? cm[1] : chapter;
+    } else {
+      otherLine(line, lineStart, lineEnd);
     }
     lineStart = lineEnd + 1;
   }
-  closeOpen(len);
+  close(len);
   return entries;
 };
 

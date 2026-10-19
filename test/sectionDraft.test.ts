@@ -371,3 +371,29 @@ describe('#786 — the inner poem lines of a verse in the section editor', () =>
     expect(sectionVerses(d.words, d.seps, d.markers, KEYS, KEYS, d.blocks)).toEqual({ 9: 'a\n\t\tbetween you', 10: 'b' });
   });
 });
+
+// #812: a verse body can also hold blank lines (its breaks), raw heading lines
+// and \q3 lines (three tabs). The ways this can fail, written before the fix:
+//   1. A blank line inside a verse is lost, or read as the next verse's \p.
+//   2. A \q3 line comes back with two tabs.
+//   3. Tab cannot give a line three tabs, or gives a verse line three, which
+//      its format cannot hold (\p, \q1 and \q2 only).
+describe('#812 — breaks, headings and \\q3 lines of a verse in the section editor', () => {
+  const verses = [
+    { n: '9', drafted: true, body: 'a\n\nafter the break\n\\s1 A heading\n\t\t\tdeeper' },
+    { n: '10', drafted: true, body: 'b', format: 'p' },
+  ];
+
+  it('the card opens with them, and the save gets each verse back as it was (ways 1, 2)', () => {
+    const text = initialDraftText(verses, KEYS);
+    expect(text).toBe('9 a\n\nafter the break\n\\s1 A heading\n\t\t\tdeeper\n\n10 b');
+    const d = parseDraft(text, KEYS);
+    expect(sectionVerses(d.words, d.seps, d.markers, KEYS, KEYS, d.blocks)).toEqual({ 9: 'a\n\nafter the break\n\\s1 A heading\n\t\t\tdeeper', 10: 'b' });
+    expect(serializeDraft(d.words, d.seps, d.markers, KEYS, KEYS, d.blocks)).toBe(text);
+  });
+
+  it('Tab gives a line inside a verse up to three tabs, and a verse line up to two (way 3)', () => {
+    expect(indentLine('9 a\n\t\tb', 7, 1, KEYS).text).toBe('9 a\n\t\t\tb');
+    expect(indentLine('9 a\n\t\t10 b', 7, 1, KEYS).text).toBe('9 a\n\t\t10 b');
+  });
+});

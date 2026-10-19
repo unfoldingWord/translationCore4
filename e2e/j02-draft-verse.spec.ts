@@ -1191,6 +1191,8 @@ test.describe('J2 — a translator drafts a verse', () => {
       test.setTimeout(400_000);
       const gen = sideloadedIngredient('en_ult', 'GEN.usfm');
       const psa = sideloadedIngredient('en_ult', 'PSA.usfm');
+      // #812: 1 Samuel 2:2 holds a `\ts\*` between its poem lines.
+      const sa1 = sideloadedIngredient('en_ult', '1SA.usfm');
       // The verses each file states, counted from the raw text: every `\v`.
       const versesIn = (usfm: string) => (usfm.match(/\\v \d/g) ?? []).length;
       const name = `Poesia 784 ${Date.now()}`;
@@ -1198,7 +1200,7 @@ test.describe('J2 — a translator drafts a verse', () => {
       const card = page.getByTestId(`project-_local_/_local_/${abbr}`);
       const seen: Record<string, unknown> = { genesisVersesInFile: versesIn(gen), psalmsVersesInFile: versesIn(psa) };
 
-      await test.step('a new project gets en_ult Genesis and Psalms from USFM files', async () => {
+      await test.step('a new project gets en_ult Genesis, Psalms and 1 Samuel from USFM files', async () => {
         await page.goto('/');
         await importFixture(page, path.join(MANIFEST_DIR, 'usfm', '32-JON.usfm'), { kind: 'usfm', edits: { name, language: 'es-419' } });
         await expect(page.getByTestId('import-toast')).toBeVisible();
@@ -1208,8 +1210,9 @@ test.describe('J2 — a translator drafts a verse', () => {
         await page.getByTestId('ab-usfm-input').setInputFiles([
           { name: 'GEN.usfm', mimeType: 'text/plain', buffer: Buffer.from(gen) },
           { name: 'PSA.usfm', mimeType: 'text/plain', buffer: Buffer.from(psa) },
+          { name: '1SA.usfm', mimeType: 'text/plain', buffer: Buffer.from(sa1) },
         ]);
-        await expect(page.getByTestId('ab-usfm-file')).toHaveCount(2);
+        await expect(page.getByTestId('ab-usfm-file')).toHaveCount(3);
         await page.getByTestId('ab-usfm-add').click();
         await expect(page.getByTestId('ab-usfm')).toHaveCount(0, { timeout: 240_000 });
       });
@@ -1383,6 +1386,72 @@ test.describe('J2 — a translator drafts a verse', () => {
         const shot = testInfo.outputPath('j02-gen-3-15-poem-lines.png');
         await page.screenshot({ path: shot, animations: 'disabled' });
         await testInfo.attach('j02-gen-3-15-poem-lines', { path: shot, contentType: 'image/png' });
+      });
+
+      // #812: a break, a `\ts\*` or a heading inside a verse, and a `\q3` line.
+      const saOnDisk = () => fs.readFileSync(path.join(repo, 'ingredients', '1SA.usfm'));
+      const openChapter = async (book: RegExp, chapter: string, mode: 'Verse' | 'Section') => {
+        await page.goto('/');
+        await card.getByRole('button', { name: book }).click();
+        await page.getByRole('tab', { name: 'Translate', exact: true }).click();
+        await page.getByRole('button', { name: chapter, exact: true }).click();
+        await page.getByRole('tab', { name: mode, exact: true }).click();
+      };
+      await test.step('Verse: 1 Samuel 2:2 opens with all its lines, its `\\ts\\*` as a blank line, and an edit keeps the `\\ts\\*` (#812)', async () => {
+        await openChapter(/1 Samuel/, '2', 'Verse');
+        const before = saOnDisk();
+        await page.getByTitle('Edit this verse').filter({ hasText: 'besides you' }).first().click();
+        const editor = page.getByRole('textbox', { name: 'Verse 2' });
+        const value = await editor.inputValue();
+        const lines = value.split('\n');
+        seen.sa2v2Editor = { lines: lines.length, blankLines: lines.filter((l) => l === '').length, tabLines: lines.filter((l) => /^\t/.test(l)).length };
+        expect(value).toContain('besides');
+        // One blank line for each blank or break line between the verse's words (here a blank line, then `\ts\*`).
+        expect(lines.filter((l) => l === '').length).toBeGreaterThan(0);
+        const shot = testInfo.outputPath('j02-1sa-2-2-editor.png');
+        await page.screenshot({ path: shot, animations: 'disabled' });
+        await testInfo.attach('j02-1sa-2-2-editor', { path: shot, contentType: 'image/png' });
+        const last = lines[lines.length - 1];
+        await editor.fill(`${value} (#812)`);
+        await editor.blur();
+        await expect.poll(() => saOnDisk().toString('utf8'), { timeout: 30_000 }).toContain(`${last} (#812)`);
+        const after = saOnDisk();
+        expect(byteStrictViolation(before, after, 2, 2)).toBeNull();
+        // The only change is the text added at the verse's end: the `\ts\*` and every poem line are where they were.
+        const s = before.toString('utf8');
+        const at = s.indexOf(`${last}\n`, verseTextSpan(s, 2, 2).start);
+        expect(after.toString('utf8')).toBe(`${s.slice(0, at)}${last} (#812)${s.slice(at + last.length)}`);
+      });
+
+      await test.step('Section: the section that holds 1 Samuel 2:2 saved with no change leaves 1SA.usfm byte-identical (#812)', async () => {
+        await openChapter(/1 Samuel/, '2', 'Section');
+        const buttons = page.getByRole('button', { name: /^Draft section / });
+        const names = await buttons.evaluateAll((els) => els.map((el) => el.getAttribute('aria-label') ?? el.textContent ?? ''));
+        const holds2 = names.findIndex((n) => {
+          const m = /(\d+)(?:[–-](\d+))?\s*$/.exec(n);
+          return !!m && Number(m[1]) <= 2 && 2 <= Number(m[2] ?? m[1]);
+        });
+        expect(holds2).toBeGreaterThanOrEqual(0);
+        const before = saOnDisk();
+        await buttons.nth(holds2).click();
+        await expect(page.getByRole('textbox', { name: /^Section / })).toHaveValue(/\(#812\)/);
+        await page.getByRole('button', { name: 'Save section' }).click();
+        await expect(page.getByTestId('section-editor')).toHaveCount(0);
+        expect(saOnDisk().equals(before)).toBe(true);
+        seen.sa2SectionSaveUnchanged = true;
+      });
+
+      await test.step('Verse: Psalm 9:15 shows its `\\q3` line with three tabs, and Cancel changes nothing (#812)', async () => {
+        await openChapter(/Psalms/, '9', 'Verse');
+        const before = psaOnDisk();
+        await page.getByTitle('Edit this verse').filter({ hasText: 'their foot' }).first().click();
+        const editor = page.getByRole('textbox', { name: 'Verse 15' });
+        const threeTabs = (await editor.inputValue()).split('\n').filter((l) => /^\t\t\t\S/.test(l)).length;
+        seen.psa9v15ThreeTabLines = threeTabs;
+        expect(threeTabs).toBeGreaterThan(0);
+        await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+        await expect(editor).toHaveCount(0);
+        expect(psaOnDisk().equals(before)).toBe(true);
       });
 
       const artifactPath = testInfo.outputPath('j02-poetry-verses.json');

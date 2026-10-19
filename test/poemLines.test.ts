@@ -14,6 +14,12 @@
 //      part of the verse (an emptied tab line `\q2 `, a space after the tabs
 //      `\q2  x`, a blank first line, a blank last line) shortens that range,
 //      and the next keystroke leaves old lines after the verse.
+// #812, written before the fix:
+//   8. A break inside a verse (`\ts\*`, `\p`, `\m`, `\pi1`, `\b`) shows as a
+//      blank line, and the save does not give it back its own marker: a
+//      `\ts\*` comes back as `\p`, or a blank line gets no marker at all.
+//   9. A heading or a paragraph line with text (`\s1 …`, `\pmo …`) is changed
+//      or lost; a `\q3` line comes back as `\q2`.
 import { describe, expect, it } from 'vitest';
 import { bodyToEditorText, editorTextToBody } from '../src/data/usfm/poemLines';
 import { indexBook, findVerse } from '../src/data/usfm/indexer';
@@ -23,6 +29,8 @@ const fs = process.getBuiltinModule('node:fs');
 const path = process.getBuiltinModule('node:path');
 const read = (rel: string): string => fs.readFileSync(path.resolve(process.cwd(), rel), 'utf8');
 
+const FIXTURES = ['en_ult/GEN-773', 'en_ult/PSA-3', 'en_ult/1SA-2-812', 'en_ult/REV-7-812', 'en_ult/PSA-9-812', 'en_ult/MAT-27-812', 'en_ust/GEN-29-812'];
+
 describe('#786 poem lines: body <-> editor text', () => {
   const body = 'I will also put hostility\n\\q2 between you and the woman,\n\\q1 and between your offspring.';
 
@@ -31,18 +39,17 @@ describe('#786 poem lines: body <-> editor text', () => {
   });
 
   it('writes the tabs back as the markers, and an unchanged verse is byte-identical (ways 1, 2, 4)', () => {
-    expect(editorTextToBody(bodyToEditorText(body), '\n')).toBe(body);
+    expect(editorTextToBody(bodyToEditorText(body), '\n', body)).toBe(body);
     const spaced = 'a\n\\q2 two  spaces\tand a tab \n\\q1 b';
-    expect(editorTextToBody(bodyToEditorText(spaced), '\n')).toBe(spaced);
+    expect(editorTextToBody(bodyToEditorText(spaced), '\n', spaced)).toBe(spaced);
   });
 
-  it('every verse body of the en_ult fixtures round-trips byte for byte (way 1)', async () => {
-    const { indexBook } = await import('../src/data/usfm/indexer');
-    for (const file of ['test/fixtures/en_ult/GEN-773.usfm', 'test/fixtures/en_ult/PSA-3.usfm']) {
-      const raw = read(file);
+  it('every verse body of the fixtures round-trips byte for byte (ways 1, 8, 9)', () => {
+    for (const file of FIXTURES) {
+      const raw = read(`test/fixtures/${file}.usfm`);
       for (const e of indexBook(raw)) {
         const b = raw.slice(e.start, e.end);
-        expect(editorTextToBody(bodyToEditorText(b), '\n')).toBe(b);
+        expect(editorTextToBody(bodyToEditorText(b), '\n', b), `${file} ${e.chapter}:${e.verseKey}`).toBe(b);
       }
     }
   });
@@ -52,11 +59,11 @@ describe('#786 poem lines: body <-> editor text', () => {
   });
 
   it('a CRLF verse keeps CRLF on every line, also after an edit (way 6)', () => {
-    const crlf = 'one\r\n\\q2 two\r\n\\q1 three';
+    const crlf = 'one\r\n\\q2 two\r\n\\ts\\*\r\n\\q1 three';
     const text = bodyToEditorText(crlf);
-    expect(text).toBe('one\n\t\ttwo\n\tthree');
-    expect(editorTextToBody(text, '\r\n')).toBe(crlf);
-    expect(editorTextToBody(text.replace('two', 'dos'), '\r\n')).toBe('one\r\n\\q2 dos\r\n\\q1 three');
+    expect(text).toBe('one\n\t\ttwo\n\n\tthree');
+    expect(editorTextToBody(text, '\r\n', crlf)).toBe(crlf);
+    expect(editorTextToBody(text.replace('two', 'dos'), '\r\n', crlf)).toBe('one\r\n\\q2 dos\r\n\\ts\\*\r\n\\q1 three');
   });
 
   it('a bare \\q shows as one tab, like \\q1', () => {
@@ -64,9 +71,32 @@ describe('#786 poem lines: body <-> editor text', () => {
   });
 });
 
-// Way 7. editVerse's write, as the Verse editor calls it on every keystroke.
-const keystroke = (book: string, chapter: string, key: string, text: string): string =>
-  spliceVerse(book, chapter, key, text.trim() === '' ? '___' : editorTextToBody(text, '\n'));
+describe('#812 breaks, headings and \\q3 inside a verse', () => {
+  const body = 'saying,\n\\pi1\nAmen! Praise\n\\ts\\*\n\\m\nand glory.\n\\q3 deeper\n\\s1 A heading\n\\pmo “Quoted”';
+
+  it('a break shows as a blank line, \\q3 as three tabs, a heading or a paragraph line with text as it is', () => {
+    expect(bodyToEditorText(body)).toBe('saying,\n\nAmen! Praise\n\n\nand glory.\n\t\t\tdeeper\n\\s1 A heading\n\\pmo “Quoted”');
+  });
+
+  it('each blank line takes back the break it had, in order (way 8)', () => {
+    const text = bodyToEditorText(body).replace('Amen! Praise', 'Amén, alabanza');
+    expect(editorTextToBody(text, '\n', body)).toBe(body.replace('Amen! Praise', 'Amén, alabanza'));
+  });
+
+  it('a new blank line is a \\p; one taken away gives its break to the next blank line', () => {
+    expect(editorTextToBody('one\n\ntwo', '\n', 'one')).toBe('one\n\\p\ntwo');
+    expect(editorTextToBody('one\n\ntwo', '\n', 'one\n\\ts\\*\ntwo\n\\b\nthree')).toBe('one\n\\ts\\*\ntwo');
+  });
+
+  it('a \\q3 line keeps its level (way 9)', () => {
+    expect(editorTextToBody('a\n\t\t\tdeeper', '\n')).toBe('a\n\\q3 deeper');
+  });
+});
+
+// Way 7. editVerse's write, as the Verse editor calls it on every keystroke:
+// the breaks come from the verse as it was when the editor opened.
+const keystroke = (book: string, chapter: string, key: string, text: string, opened: string): string =>
+  spliceVerse(book, chapter, key, text.trim() === '' ? '___' : editorTextToBody(text, '\n', opened));
 
 /** Every editor text on the way from `from`: one character off the end at a
  * time, the way Backspace takes a line away. */
@@ -76,66 +106,75 @@ const backspaces = (from: string, upTo: number): string[] => {
   return out;
 };
 
-describe('#786 way 7 — every keystroke leaves the file holding exactly the verse', () => {
-  const raw = read('test/fixtures/en_ult/GEN-773.usfm');
-  const e = findVerse(indexBook(raw), 49, '6')!;
-  const outside = (book: string) => {
-    const f = findVerse(indexBook(book), 49, '6')!;
-    return [book.slice(0, f.start), book.slice(f.end)];
-  };
-  const start = bodyToEditorText(raw.slice(e.start, e.end));
-  const lines = start.split('\n');
+const keystrokeSuite = (file: string, chapter: string, verse: string, lineToEdit: RegExp) =>
+  describe(`#786/#812 way 7 — every keystroke leaves the file holding exactly the verse (${file} ${chapter}:${verse})`, () => {
+    const raw = read(`test/fixtures/${file}.usfm`);
+    const e = findVerse(indexBook(raw), chapter, verse)!;
+    const opened = raw.slice(e.start, e.end);
+    const outside = (book: string) => {
+      const f = findVerse(indexBook(book), chapter, verse)!;
+      return [book.slice(0, f.start), book.slice(f.end)];
+    };
+    const start = bodyToEditorText(opened);
+    const lines = start.split('\n');
 
-  /** Type each text in turn; after each one the index reads back exactly the
-   * body written, and every byte outside the verse is the original's. */
-  const typeAll = (texts: string[]) => {
-    let book = raw;
-    for (const text of texts) {
-      book = keystroke(book, '49', '6', text);
-      const written = text.trim() === '' ? '___' : editorTextToBody(text, '\n');
-      expect(verseBody(book, 49, '6'), JSON.stringify(text)).toBe(written);
-      expect(outside(book), JSON.stringify(text)).toEqual([raw.slice(0, e.start), raw.slice(e.end)]);
-    }
-    return book;
-  };
+    /** Type each text in turn; after each one the index reads back exactly the
+     * body written, and every byte outside the verse is the original's. */
+    const typeAll = (texts: string[]) => {
+      let book = raw;
+      for (const text of texts) {
+        book = keystroke(book, chapter, verse, text, opened);
+        const written = text.trim() === '' ? '___' : editorTextToBody(text, '\n', opened);
+        expect(verseBody(book, chapter, verse), JSON.stringify(text)).toBe(written);
+        expect(outside(book), JSON.stringify(text)).toEqual([raw.slice(0, e.start), raw.slice(e.end)]);
+      }
+      return book;
+    };
 
-  it('the fixture verse has inner poem lines to edit', () => {
-    expect(lines.filter((l) => /^\t/.test(l)).length).toBeGreaterThan(1);
+    // The first line of the kind to edit that has a line after it.
+    const k = lines.findIndex((l, i) => i > 0 && lineToEdit.test(l) && i < lines.length - 1);
+
+    it('the fixture verse has that line to edit', () => {
+      expect(k).toBeGreaterThan(0);
+    });
+
+    it('Backspace through that line and its line break', () => {
+      const head = lines.slice(0, k).join('\n');
+      const tail = lines.slice(k + 1).join('\n');
+      const steps: string[] = [];
+      for (let n = lines[k].length; n >= 0; n--) steps.push(`${head}\n${lines[k].slice(0, n)}\n${tail}`);
+      steps.push(`${head}\n${tail}`);
+      typeAll(steps);
+    });
+
+    it('a space typed at the start of that line, after any tabs, then more text', () => {
+      const at = lines.slice(0, k).join('\n').length + 1 + (/^\t*/.exec(lines[k])![0].length);
+      typeAll([`${start.slice(0, at)} ${start.slice(at)}`, `${start.slice(0, at)} x${start.slice(at)}`]);
+    });
+
+    it('the first line emptied, then typed again', () => {
+      const rest = start.slice(lines[0].length);
+      typeAll([...backspaces(lines[0], 0).map((l) => l + rest), `N${rest}`]);
+    });
+
+    it('the last line taken away to its line break, then the verse typed again', () => {
+      const last = start.lastIndexOf('\n');
+      typeAll(backspaces(start, last));
+      const book = typeAll([start.slice(0, last), start]);
+      expect(book).toBe(raw);
+    });
+
+    it('Cancel after those keystrokes restores the file byte for byte', () => {
+      let book = raw;
+      for (const text of backspaces(start, start.lastIndexOf('\n'))) book = keystroke(book, chapter, verse, text, opened);
+      expect(spliceVerse(book, chapter, verse, opened)).toBe(raw);
+    });
   });
 
-  // The first inner poem line (a tab line) that has a line after it.
-  const k = lines.findIndex((l, i) => i > 0 && /^\t/.test(l) && i < lines.length - 1);
-
-  it('Backspace through an inner poem line, its tabs and its line break', () => {
-    const head = lines.slice(0, k).join('\n');
-    const tail = lines.slice(k + 1).join('\n');
-    const steps: string[] = [];
-    for (let n = lines[k].length; n >= 0; n--) steps.push(`${head}\n${lines[k].slice(0, n)}\n${tail}`);
-    steps.push(`${head}\n${tail}`);
-    typeAll(steps);
-  });
-
-  it('a space typed after the tabs, then more text', () => {
-    const at = lines.slice(0, k).join('\n').length + 1 + /^\t+/.exec(lines[k])![0].length;
-    typeAll([`${start.slice(0, at)} ${start.slice(at)}`, `${start.slice(0, at)} x${start.slice(at)}`]);
-  });
-
-  it('the first line emptied, then typed again', () => {
-    const rest = start.slice(lines[0].length);
-    typeAll([...backspaces(lines[0], 0).map((l) => l + rest), `N${rest}`]);
-  });
-
-  it('the last line taken away to its line break, then the verse typed again', () => {
-    const last = start.lastIndexOf('\n');
-    typeAll(backspaces(start, last));
-    const book = typeAll([start.slice(0, last), start]);
-    expect(book).toBe(raw);
-  });
-
-  it('Cancel after those keystrokes restores the file byte for byte', () => {
-    const steps = backspaces(start, start.lastIndexOf('\n'));
-    let book = raw;
-    for (const text of steps) book = keystroke(book, '49', '6', text);
-    expect(spliceVerse(book, 49, '6', raw.slice(e.start, e.end))).toBe(raw);
-  });
-});
+keystrokeSuite('en_ult/GEN-773', '49', '6', /^\t/);
+// 1SA 2:2: a `\ts\*` between its poem lines — the blank line is the one edited.
+keystrokeSuite('en_ult/1SA-2-812', '2', '2', /^$/);
+// REV 7:12: `\pi1`, `\ts\*` and `\m` lines between its words.
+keystrokeSuite('en_ult/REV-7-812', '7', '12', /^$/);
+// GEN 29:14 (en_ust): an `\s1` heading and an `\sr` line inside the verse.
+keystrokeSuite('en_ust/GEN-29-812', '29', '14', /^\\s1 /);

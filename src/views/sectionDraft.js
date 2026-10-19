@@ -71,15 +71,19 @@ const escapeBody = (body, pins) => String(body)
   })
   .join('\n');
 
-/** Add (delta > 0, max 2) or remove (delta < 0) one leading tab at the caret's line (#54). */
-export const indentLine = (text, caret, delta) => {
+/** Add (delta > 0) or remove (delta < 0) one leading tab at the caret's line
+ * (#54). A verse line holds two at most (its format: \q1 or \q2); with the
+ * section's `pins`, a line inside a verse holds three (\q3, #812). */
+export const indentLine = (text, caret, delta, pins) => {
   const t = String(text ?? '');
   const c = Math.max(0, Math.min(caret ?? 0, t.length));
   const lineStart = t.lastIndexOf('\n', c - 1) + 1;
   let tabs = 0;
   while (t[lineStart + tabs] === '\t') tabs++;
   if (delta > 0) {
-    if (tabs >= 2) return { text: t, caret: c };
+    const lineEnd = t.indexOf('\n', lineStart);
+    const max = pins && !markerLine(t.slice(lineStart, lineEnd === -1 ? t.length : lineEnd), pins) ? 3 : 2;
+    if (tabs >= max) return { text: t, caret: c };
     return { text: `${t.slice(0, lineStart)}\t${t.slice(lineStart)}`, caret: c + 1 };
   }
   if (delta < 0) {
@@ -92,7 +96,8 @@ export const indentLine = (text, caret, delta) => {
 /** Determine block format from leading tabs and blank line context. */
 const lineFormat = (tabs, precededByBlank, isMarker) => {
   if (tabs === 1) return 'q1';
-  if (tabs >= 2) return 'q2';
+  if (tabs === 2) return 'q2';
+  if (tabs >= 3) return 'q3';
   if (precededByBlank || !isMarker) return 'p';
   return null;
 };
@@ -232,7 +237,7 @@ export const sectionVerses = (words, seps, markers, pins, keys = pins, blocks = 
   let cur = groups[0].key; // words before any pin belong to the first verse
   words.forEach((w, i) => {
     if (at[i] !== undefined) cur = at[i];
-    const tabs = at[i] === undefined && i > 0 ? { q1: '\t', q2: '\t\t' }[blocks?.[i]] ?? '' : '';
+    const tabs = at[i] === undefined && i > 0 ? { q1: '\t', q2: '\t\t', q3: '\t\t\t' }[blocks?.[i]] ?? '' : '';
     // The spaces typed after the tabs sit in the separator before the line:
     // they go, so the tabs start the line (review of PR #810).
     const before = tabs ? (buf[cur] ?? '').replace(/\n[ ]+$/, '\n') : buf[cur] ?? '';
