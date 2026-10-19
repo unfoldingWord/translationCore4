@@ -106,7 +106,7 @@ type Tc3Verse = { alignments?: Array<{ topWords: WithOccurrences[]; bottomWords:
 /** One §5.1 record from tC3's record of a verse, keyed to the verse text `content` (I-3).
  * It is invalid when tC3 kept an invalid marker (`marked`), or when the record holds a link
  * and its words are not the verse's words: the text was edited outside tC3, which wrote no
- * marker. The record is flagged and kept as tC3 held it, never rewritten to fit (D36). */
+ * marker. The record is flagged and kept as tC3 held it, never rewritten to fit: D105 point 7 (in the spirit of D36). */
 export function importedAlignmentRecord(data: Tc3Verse, content: string, marked: boolean, sourceVersion: string): AlignmentRecord {
   const alignments = nfc((data.alignments ?? []).map((a) => ({ topWords: a.topWords.map(normalizeOccurrences), bottomWords: a.bottomWords.map(unmergeWord) })));
   const wordBank = nfc((data.wordBank ?? []).map(normalizeOccurrences));

@@ -450,7 +450,8 @@ describe('#21 the tC3 import end to end on the fake rig', { timeout: 60_000 }, (
 // 2. the import rewrites the record to fit: the link or the bank changes (B1b, the parse);
 // 3. the flag lands on a record that fits: the three tC3 fixtures change (B2);
 // 4. the flag lands on a record that holds no link, which vouches for nothing (B1d);
-// 5. the clause reads NFD text as other words (B1e).
+// 5. the clause reads NFD text as other words (B1e), or NFD tC3 words as other words (B1g);
+// 6. a marker is dropped when the words do not fit (B1c).
 describe('#796 the tC3 import flags a record whose words do not fit the verse', { timeout: 60_000 }, () => {
   const fs = process.getBuiltinModule('node:fs');
   const path = process.getBuiltinModule('node:path');
@@ -496,10 +497,15 @@ describe('#796 the tC3 import flags a record whose words do not fit the verse', 
     }
   });
 
-  it('B1c tC3 kept an invalid marker: the record is flagged though its words fit', () => {
+  it('B1c tC3 kept an invalid marker: the record is flagged though its words fit, and when they do not', () => {
     const record = importedAlignmentRecord(DATA, SLOT, true, SV);
     expect(record.invalid).toBe(true);
     expect(record.alignments).toEqual(STORED.alignments);
+    // the usual real tC3 case: the marker is there and a linked word has left the text
+    expect(importedAlignmentRecord(DATA, SLOT.replace('siervo', 'esclavo'), true, SV).invalid).toBe(true);
+    // a marker on a record with no link that does not fit: the marker alone flags it
+    const unlinked = { ...DATA, alignments: DATA.alignments!.map((a) => ({ ...a, bottomWords: [] })) } as Parameters<typeof importedAlignmentRecord>[0];
+    expect(importedAlignmentRecord(unlinked, SLOT, true, SV).invalid).toBe(true);
   });
 
   it('B1d a record with no link vouches for nothing: no flag, though its words do not fit the verse', () => {
@@ -523,6 +529,12 @@ describe('#796 the tC3 import flags a record whose words do not fit the verse', 
     const record = importedAlignmentRecord(asStrings, SLOT, false, SV);
     expect(record.invalid).toBe(false);
     expect(record.alignments).toEqual(STORED.alignments);
+  });
+
+  it('B1g tC3 words in NFD (bank and placed) fit the verse in NFD: they are compared as NFC words', () => {
+    const nfd = JSON.parse(JSON.stringify(DATA), (_k, v) => (typeof v === 'string' ? v.normalize('NFD') : v)) as typeof DATA;
+    expect(bytes(nfd), 'the tC3 words are NFD').not.toBe(bytes(DATA));
+    expect(importedAlignmentRecord(nfd, SLOT.normalize('NFD'), false, SV).invalid).toBe(false);
   });
 
   it('B2 the fixtures: a parsed record is invalid exactly where tC3 kept a marker', async () => {
