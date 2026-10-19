@@ -16,9 +16,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { bookModel } from '../src/data/bookModel.js';
 import {
-  bootstrapVerse, cardsInVerseOrder, linkWord, markDone, reconcileToText, reflowAlignment, settleDone, stampTargetVerse,
-  unlinkWord,
+  bootstrapVerse, cardsInVerseOrder, finalizeEdit, linkWord, markDone, reconcileToWords, reflowAlignment, settleDone,
+  stampTargetVerse, unlinkWord,
 } from '../src/data/align/edit';
+import { verseWords } from '../src/data/align/verseWords.mjs';
 import { wordTokens } from '../src/data/align/tokenize';
 import { weaveBook } from '../src/data/export/weave.mjs';
 import { md5Hex } from '../src/data/httpStore';
@@ -63,8 +64,7 @@ const open = (file: AlignmentFile | null, raw: string, ref = '1:1', sched: SaveS
   buildAlignmentSession(makeStore(file), sched, { book: 'TIT', bookRaw: raw, project: { scriptDirection: 'ltr' } }, ref, SOURCE, orig);
 
 /** applyAlignEdit's record pipeline (state.jsx), after the mutation. */
-const afterEdit = (next: AlignmentVerseRecord, text: string) =>
-  settleDone(stampTargetVerse(cardsInVerseOrder(next, text), md5Hex(text)));
+const afterEdit = (next: AlignmentVerseRecord, text: string) => finalizeEdit(next, verseWords(text), md5Hex(text));
 
 const key = (w: { word?: string; text?: string; occurrence: unknown }) => `${w.word ?? w.text}/${Number(w.occurrence)}`;
 const bankKeys = (r: AlignmentVerseRecord) => r.wordBank.map(key);
@@ -76,9 +76,9 @@ const multiset = (words: Array<{ word?: string; text?: string; occurrence: unkno
 /** The issue's steps 1: open a never-saved 1:1, place "Pablo", then unplace it. The
  * file now holds one card per Greek word, none holding a word. */
 const unplacedPablo = (): AlignmentVerseRecord => {
-  let r = bootstrapVerse(T1, ORIG, SV, md5Hex(T1));
+  let r = bootstrapVerse(verseWords(T1), ORIG, SV, md5Hex(T1));
   r = linkWord(r, 0, r.wordBank.find((w) => w.word === 'Pablo')!);
-  r = unlinkWord(r, 0, r.alignments[0].bottomWords[0], T1);
+  r = unlinkWord(r, 0, r.alignments[0].bottomWords[0], verseWords(T1));
   return afterEdit(r, T1);
 };
 
@@ -95,7 +95,7 @@ describe('#787 a stored record is reconciled to the text when the verse opens', 
   });
 
   it('B2 Mark valid with nothing placed, then a text edit, then reopen', async () => {
-    const done = markDone(bootstrapVerse(T1, ORIG, SV, md5Hex(T1)), md5Hex(T1));
+    const done = markDone(bootstrapVerse(verseWords(T1), ORIG, SV, md5Hex(T1)), md5Hex(T1));
     expect(done.done).toBe(true);
     const s = await open(fileOf(done), RAW2);
     expect(bankWords(s.record)).toContain('esclavo');
@@ -115,7 +115,7 @@ describe('#787 a stored record is reconciled to the text when the verse opens', 
   });
 
   it('keeps the links whose word is still in the text, and drops the ones that are not', async () => {
-    let r = bootstrapVerse(T1, ORIG, SV, md5Hex(T1));
+    let r = bootstrapVerse(verseWords(T1), ORIG, SV, md5Hex(T1));
     r = linkWord(r, 0, r.wordBank.find((w) => w.word === 'Pablo')!);
     r = linkWord(r, 1, r.wordBank.find((w) => w.word === 'siervo')!);
     const s = await open(fileOf(afterEdit(r, T1)), RAW2);
@@ -164,11 +164,19 @@ describe('#787 B5 one edit on a reconciled verse saves exactly the verse words, 
     expect(woven).toContain('esclavo');
   });
 
-  it('control: the same edit on the stored record, as it was, saves siervo and the weave drops the alignment', () => {
+  it('control: the same edit on the stored record, with no reconcile (the pipeline before #796), saves siervo and the weave drops the alignment', () => {
     const stored = unplacedPablo();
-    const after = afterEdit(linkWord(stored, 0, stored.wordBank.find((w) => w.word === 'Pablo')!), T2);
+    const next = linkWord(stored, 0, stored.wordBank.find((w) => w.word === 'Pablo')!);
+    const after = settleDone(stampTargetVerse(cardsInVerseOrder(next, verseWords(T2)), md5Hex(T2)));
     expect(multiset(everyWord(after))).not.toEqual(multiset(wordTokens(T2)));
     expect(weaveVerse(RAW2, after)).not.toContain('\\zaln-s');
+  });
+
+  it('finalizeEdit repairs that same stored record: the verse words are saved and the weave writes \\zaln-s (#796)', () => {
+    const stored = unplacedPablo();
+    const after = afterEdit(linkWord(stored, 0, stored.wordBank.find((w) => w.word === 'Pablo')!), T2);
+    expect(multiset(everyWord(after))).toEqual(multiset(wordTokens(T2)));
+    expect(weaveVerse(RAW2, after)).toContain('\\zaln-s');
   });
 });
 
@@ -218,44 +226,44 @@ describe('#787 B7 a verse that was never saved opens with its bank in verse orde
   });
 });
 
-describe('#787 reconcileToText', () => {
+describe('#787 reconcileToWords', () => {
   const placedRecord = () => {
-    let r = bootstrapVerse(T1, ORIG, SV, md5Hex(T1));
+    let r = bootstrapVerse(verseWords(T1), ORIG, SV, md5Hex(T1));
     r = linkWord(r, 0, r.wordBank.find((w) => w.word === 'Pablo')!);
     return afterEdit(r, T1);
   };
 
   it('a record that matches the text is unchanged', () => {
-    expect(reconcileToText(FILE.chapters['1']['1'], T1).changed).toBe(false);
-    expect(reconcileToText(placedRecord(), T1).changed).toBe(false);
+    expect(reconcileToWords(FILE.chapters['1']['1'], verseWords(T1)).changed).toBe(false);
+    expect(reconcileToWords(placedRecord(), verseWords(T1)).changed).toBe(false);
   });
 
   it('a new word, a removed word, a dropped link and a count change are each a change', () => {
     const r = placedRecord();
-    expect(reconcileToText(r, T2).changed).toBe(true);
-    expect(reconcileToText(r, T1.replace('Pablo', 'Saulo')).changed).toBe(true);
+    expect(reconcileToWords(r, verseWords(T2)).changed).toBe(true);
+    expect(reconcileToWords(r, verseWords(T1.replace('Pablo', 'Saulo'))).changed).toBe(true);
     // a second "Pablo": the first one is still placed, but its total is now 2
-    expect(reconcileToText(r, `Pablo ${T1}`).changed).toBe(true);
+    expect(reconcileToWords(r, verseWords(`Pablo ${T1}`)).changed).toBe(true);
   });
 
   it('changes only the words: invalid, done, the hash, the source and every topWords stay', () => {
     const r: AlignmentVerseRecord = { ...placedRecord(), invalid: true, done: true, sourceVersion: 'x', targetVerseMd5: '0'.repeat(32) };
-    const out = reconcileToText(r, T2).record;
+    const out = reconcileToWords(r, verseWords(T2)).record;
     expect(out).toMatchObject({ invalid: true, done: true, sourceVersion: 'x', targetVerseMd5: '0'.repeat(32) });
     expect(out.alignments.map((a) => a.topWords)).toEqual(r.alignments.map((a) => a.topWords));
     expect(multiset(everyWord(out))).toEqual(multiset(wordTokens(T2)));
   });
 
   // The reflow before #787 never read `wordBank`, so a record without one (placed
-  // words only) reflowed fine; reconcileToText must not throw on it, or one such
+  // words only) reflowed fine; reconcileToWords must not throw on it, or one such
   // record skips the rest of a save's reflow.
   it('a record with a placed word and no wordBank key reflows as before and does not throw', () => {
     const partial: Partial<AlignmentVerseRecord> = { ...placedRecord() };
     delete partial.wordBank;
     const noBank = partial as AlignmentVerseRecord;
     expect('wordBank' in noBank).toBe(false);
-    expect(() => reconcileToText(noBank, T2)).not.toThrow();
-    const out = reflowAlignment(noBank, T2, md5Hex(T2))!;
+    expect(() => reconcileToWords(noBank, verseWords(T2))).not.toThrow();
+    const out = reflowAlignment(noBank, verseWords(T2), md5Hex(T2))!;
     expect(out).not.toBeNull();
     expect(out.invalid).toBe(false);
     expect(out.alignments[0].bottomWords.map(key)).toEqual(['Pablo/1']);

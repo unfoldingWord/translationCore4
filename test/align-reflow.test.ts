@@ -10,7 +10,8 @@
 // scheduler: only the changed verse is staged; an untouched verse's record is
 // byte-identical; a record the reflow cannot account for is left alone.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { bootstrapVerse, linkWord, reflowAlignment, alignmentIsStale, stampTargetVerse } from '../src/data/align/edit';
+import { bootstrapVerse, linkWord, reflowAlignment, alignmentIsStale, settleDone, stampTargetVerse } from '../src/data/align/edit';
+import { verseWords } from '../src/data/align/verseWords.mjs';
 import { md5Hex } from '../src/data/httpStore';
 import { SaveScheduler } from '../src/data/saveScheduler';
 import { __alignSaveForTests, __reflowAlignedVersesForTests, alignFileJson } from '../src/state.jsx';
@@ -24,7 +25,7 @@ const ORIG = [
 const SOURCE = 'dcs::unfoldingWord/el-x-koine_ugnt@v0.34';
 const TEXT = 'Pablo, siervo de Dios y de Dios';
 /** reflowAlignment with the hash a plain one-line text stamps (md5Hex of the text, as the export hashes it). */
-const reflowTo = (record: AlignmentVerseRecord | undefined, text: string) => reflowAlignment(record, text, md5Hex(text));
+const reflowTo = (record: AlignmentVerseRecord | undefined, text: string) => reflowAlignment(record, verseWords(text), md5Hex(text));
 
 const bank = (r: AlignmentVerseRecord) => r.wordBank.map((w) => `${w.word}/${w.occurrence}/${w.occurrences}`);
 const placed = (r: AlignmentVerseRecord) => r.alignments.map((a) => a.bottomWords.map((w) => `${w.word}/${w.occurrence}/${w.occurrences}`));
@@ -33,7 +34,7 @@ const wordIn = (r: AlignmentVerseRecord, word: string, occ = 1) =>
 
 /** A record with Pablo→Παῦλος, siervo→δοῦλος and Dios(2)→θεοῦ linked. */
 const linkedRecord = () => {
-  let r = bootstrapVerse(TEXT, ORIG, SOURCE, md5Hex(TEXT));
+  let r = bootstrapVerse(verseWords(TEXT), ORIG, SOURCE, md5Hex(TEXT));
   r = linkWord(r, 0, wordIn(r, 'Pablo'));
   r = linkWord(r, 1, wordIn(r, 'siervo'));
   r = linkWord(r, 2, wordIn(r, 'Dios', 2));
@@ -80,9 +81,48 @@ describe('#213 reflowAlignment — keep what still fits, drop what changed', () 
     expect(reflowTo(undefined, TEXT)).toBeNull();
     expect(reflowTo(r, TEXT)).toBeNull(); // unchanged text
     expect(reflowTo({ ...r, invalid: true }, 'Pablo, siervo')).toBeNull(); // a span create/break's flag
-    expect(reflowTo(bootstrapVerse(TEXT, ORIG, SOURCE, md5Hex(TEXT)), 'Pablo, siervo')).toBeNull(); // nothing placed
+    expect(reflowTo(bootstrapVerse(verseWords(TEXT), ORIG, SOURCE, md5Hex(TEXT)), 'Pablo, siervo')).toBeNull(); // nothing placed
     expect(reflowTo(r, '___')).toBeNull(); // no words in the new text
     expect(reflowTo(r, '')).toBeNull();
+  });
+
+  // #796 — the write rule: a record whose hash is current but whose stored words are not the
+  // verse's words is reflowed. At base the hash alone decided, so such a record stayed as it was
+  // and `merge` (the export) refused it.
+  describe('a current hash with different stored words (#796)', () => {
+    const SLOT = 'Y \\add el \\+nd Señor\\+nd* dijo\\add* así.';
+    /** A fully placed, done record for a slot, built on the OLD bank: no 'Señor', no 'dijo'. */
+    const oldBankRecord = () => {
+      let r = bootstrapVerse(verseWords('Y el así.'), ORIG, SOURCE, md5Hex(SLOT));
+      r = linkWord(r, 0, wordIn(r, 'Y'));
+      r = linkWord(r, 1, wordIn(r, 'el'));
+      r = linkWord(r, 2, wordIn(r, 'así'));
+      return settleDone(stampTargetVerse(r, md5Hex(SLOT)));
+    };
+
+    it('reflows to the verse words, keeps the links, and takes done back', () => {
+      const before = oldBankRecord();
+      expect(before.done).toBe(true);
+      expect(alignmentIsStale(before, md5Hex(SLOT))).toBe(false); // the hash is current
+      expect(verseWords(SLOT).map((w) => w.word)).toEqual(['Y', 'el', 'Señor', 'dijo', 'así']);
+      const next = reflowAlignment(before, verseWords(SLOT), md5Hex(SLOT));
+      expect(next).not.toBeNull();
+      expect(placed(next!)).toEqual([['Y/1/1'], ['el/1/1'], ['así/1/1']]);
+      expect(bank(next!)).toEqual(['Señor/1/1', 'dijo/1/1']);
+      expect('done' in next!).toBe(false);
+      expect(next!.targetVerseMd5).toBe(md5Hex(SLOT));
+    });
+
+    it('the same words in another order, or with string counts, are not a change → null', () => {
+      let r = bootstrapVerse(verseWords('Y el así.'), ORIG, SOURCE, md5Hex(SLOT));
+      r = stampTargetVerse(linkWord(r, 0, wordIn(r, 'Y')), md5Hex(SLOT));
+      const shuffled = {
+        ...r,
+        wordBank: [...r.wordBank].reverse().map((w) => ({ ...w, occurrence: String(w.occurrence), occurrences: String(w.occurrences) })),
+      } as unknown as AlignmentVerseRecord;
+      expect(alignmentIsStale(shuffled, md5Hex(SLOT))).toBe(false);
+      expect(reflowAlignment(shuffled, verseWords('Y el así.'), md5Hex(SLOT))).toBeNull();
+    });
   });
 
   it('never creates a link the translator did not make', () => {

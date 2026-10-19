@@ -14,6 +14,7 @@
 // 4. the predicate misses the markup (or matches a different `\zaln-` marker).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { bootstrapVerse, linkWord, stampTargetVerse } from '../src/data/align/edit';
+import { verseWords } from '../src/data/align/verseWords.mjs';
 import { md5Hex } from '../src/data/httpStore';
 import { SaveScheduler } from '../src/data/saveScheduler';
 import { parseChapters, verseText } from '../src/data/bookModel';
@@ -85,7 +86,7 @@ const BOOK = 'TIT';
 const wordIn = (r: AlignmentVerseRecord, word: string) => r.wordBank.find((w) => w.word === word) as AlignedWord;
 /** A record with Pablo→Παῦλος and siervo→δοῦλος linked, stamped for TEXT. */
 const linkedRecord = () => {
-  let r = bootstrapVerse(TEXT, ORIG, SOURCE, md5Hex(TEXT));
+  let r = bootstrapVerse(verseWords(TEXT), ORIG, SOURCE, md5Hex(TEXT));
   r = linkWord(r, 0, wordIn(r, 'Pablo'));
   r = linkWord(r, 1, wordIn(r, 'siervo'));
   return stampTargetVerse(r, md5Hex(TEXT));
@@ -96,7 +97,7 @@ describe('#794 weaveBook — a verse that holds imported alignment markup keeps 
     const stored = decompose(EN_ULT).verses as Record<string, string>;
     // The translator's partial record: two links, stamped so the I-3 check passes.
     const text = verseText((parseChapters(EN_ULT) as Record<string, Record<string, unknown>>)['1']['1']);
-    let record = bootstrapVerse(text, ORIG, SOURCE, md5Hex(text));
+    let record = bootstrapVerse(verseWords(text), ORIG, SOURCE, md5Hex(text));
     record = linkWord(record, 0, wordIn(record, 'Paul'));
     record = linkWord(record, 1, wordIn(record, 'servant'));
     record = { ...record, targetVerseMd5: verseTextMd5(stored['1:1']) };

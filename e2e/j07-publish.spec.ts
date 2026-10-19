@@ -406,6 +406,27 @@ test.describe('J7 — USFM', () => {
     },
   );
 
+  // #796: the footnote sits right after "siervo", a word the record places. The words of
+  // the verse are the same, so the record still merges and the footnote stays.
+  test(
+    'USFM, aligned: a footnote glued to a placed word stays in the download and 1:1 is woven',
+    { tag: ['@inc9', '@J7'] },
+    async ({ page }) => {
+      const ingredients = path.join(rigRepo(SEEDED_PROJECT), 'ingredients');
+      const bookPath = path.join(ingredients, 'TIT.usfm');
+      const footnote = '\\f + \\ft Nota de siervo.\\f*';
+      fs.writeFileSync(bookPath, fs.readFileSync(bookPath, 'utf8').replace('Pablo, siervo de Dios', `Pablo, siervo${footnote} de Dios`));
+      const alignmentsPath = path.join(ingredients, 'checking', 'alignments', 'TIT.json');
+      const alignments = JSON.parse(fs.readFileSync(alignmentsPath, 'utf8')) as AlignmentFile;
+      alignments.chapters['1']['1'].targetVerseMd5 = verseTextMd5((decompose(fs.readFileSync(bookPath, 'utf8')).verses as Record<string, string>)['1:1']);
+      fs.writeFileSync(alignmentsPath, `${JSON.stringify(alignments, null, 2)}\n`);
+
+      await openTitusCommunityChecking(page, SEEDED_PROJECT);
+      const download = await exportUsfm(page, 'USFM, aligned');
+      expect(expectAlignedDownload(download)).toContain(footnote); // and 1:1 is woven: the helper checks it
+    },
+  );
+
   test(
     'USFM, plain: the download is the stored book file byte for byte',
     { tag: ['@inc8', '@J7'] },
