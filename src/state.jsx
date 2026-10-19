@@ -1673,6 +1673,9 @@ function validateNewBible(form) {
  * carries the same buffer), re-set by any later span save. */
 async function writeBookOrStructure({ store, structuralRef, alignSchedulerRef }, book, whole) {
   if (!structuralRef.current.has(book)) return store.writeBook(book, whole);
+  // #792: save the align queue first, or a kept align write republishes old records on the keys this save removes.
+  const align = alignSchedulerRef?.current;
+  if (align && !(await align.drain())) throw new Error(t('upgrade.alignUnsaved'));
   structuralRef.current.delete(book);
   try {
     await store.applyStructuralEdit(book, whole, { intent: 'spans' });
@@ -3631,6 +3634,9 @@ export const __buildAlignmentSessionForTests = buildAlignmentSession;
 /** Test hook (#213): the reflow over the real align scheduler — changed verses
  * staged, untouched verses byte-identical. */
 export const __reflowAlignedVersesForTests = reflowAlignedVerses;
+/** Test hook (#792): the book scheduler's writer, driven over the real align
+ * scheduler — a span save drains the align queue first. */
+export const __writeBookOrStructureForTests = writeBookOrStructure;
 
 export function AppProvider({ children }) {
   const [s, dispatch] = useReducer(reducer, undefined, initial);
