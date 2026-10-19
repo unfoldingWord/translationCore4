@@ -15,6 +15,9 @@
 // 5. the rail makes a verse's word list for a record that cannot need it: one that is
 //    stale by hash, flagged `invalid`, does not vouch (no link, not done) or is absent
 // 6. a vouching record with the current hash makes its word list more than once
+// #789 gives the reflow the text from before the save, and its own laziness:
+// 7. the reflow makes the before text (a slot hash, a word list) before the read settles, or for a
+//    verse whose record holds no link (it has no link to move)
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { verseTextMd5 } from '../src/data/journal/runtime';
 import { verseWords } from '../src/data/align/verseWords.mjs';
@@ -76,6 +79,50 @@ describe('#795 the reflow hashes only a verse that has a record', () => {
     const pending = reflowAlignedVerses({ store: { readAlignmentsWithMd5: () => new Promise(() => {}) }, sched: null, book: 'TIT', bookRaw: book('reflow-sync') }, ['1:1']);
     expect(pending).toBeInstanceOf(Promise);
     expect(hashes).not.toHaveBeenCalled();
+  });
+});
+
+describe('#789 the reflow makes the text from before the save only for a verse that holds a link, after the read', () => {
+  beforeEach(() => {
+    hashes.mockClear();
+    wordLists.mockClear();
+  });
+  const linked = () => record({ alignments: [{ topWords: [], bottomWords: [{ word: 'Pablo', occurrence: 1, occurrences: 1 }] }], wordBank: [], done: false });
+  /** A scheduler with the four calls `alignFileFor` makes and the one the reflow stages with. */
+  const stubSched = (file: unknown) => ({
+    getState: () => 'saved',
+    bookText: () => JSON.stringify(file),
+    loadBook: () => {},
+    seedIfAbsent: () => {},
+    markDirty: vi.fn(),
+  });
+
+  it('a record with a link: nothing before the read settles; after it, one hash and one word list for each slot', async () => {
+    const beforeRaw = book('reflow-before-a');
+    const bookRaw = beforeRaw.replace('Pablo, siervo de Dios 3\n', 'Pablo, siervo de Dios 3 y mas\n');
+    expect(bookRaw).not.toBe(beforeRaw);
+    const pending = reflowAlignedVerses({ store: { readAlignmentsWithMd5: () => new Promise(() => {}) }, sched: null, book: 'TIT', bookRaw, beforeRaw }, ['1:3']);
+    expect(pending).toBeInstanceOf(Promise);
+    expect(hashes).not.toHaveBeenCalled();
+    expect(wordLists).not.toHaveBeenCalled();
+
+    const file = fileWith({ '3': linked() });
+    const sched = stubSched(file);
+    await reflowAlignedVerses({ store: storeOf(file), sched, book: 'TIT', bookRaw, beforeRaw }, ['1:3']);
+    expect(sched.markDirty).toHaveBeenCalledTimes(1); // the record was reflowed: a link was there to move
+    expect(hashes).toHaveBeenCalledTimes(2); // the slot after the save, the slot before it
+    expect(wordLists).toHaveBeenCalledTimes(2);
+  });
+
+  it('a record with no link: only the slot after the save is hashed, and no word list is made', async () => {
+    const beforeRaw = book('reflow-before-b');
+    const bookRaw = beforeRaw.replace('Pablo, siervo de Dios 3\n', 'Pablo, siervo de Dios 3 y mas\n');
+    const file = fileWith({ '3': record() });
+    const sched = stubSched(file);
+    await reflowAlignedVerses({ store: storeOf(file), sched, book: 'TIT', bookRaw, beforeRaw }, ['1:3']);
+    expect(sched.markDirty).not.toHaveBeenCalled();
+    expect(hashes).toHaveBeenCalledTimes(1);
+    expect(wordLists).not.toHaveBeenCalled();
   });
 });
 
