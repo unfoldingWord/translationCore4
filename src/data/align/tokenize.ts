@@ -2,7 +2,8 @@
 //
 // #796: the alignment editor's bank and writes no longer use this split; they take
 // the export's word list of the stored verse (verseWords.mjs). The suggestion
-// bridge still uses it, and the paragraphs below describe it as #255 made it.
+// bridge does not use it now. No file in src imports this module; only tests do.
+// The paragraphs below describe it as #255 made it.
 //
 // Two sides of the app split a target verse into words: the alignment editor
 // (bootstrap wordBank, I-2 occurrence numbering) and the bridge that feeds the

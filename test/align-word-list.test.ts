@@ -172,6 +172,18 @@ describe('#796 a stub or empty verse is "missing" when a paragraph marker follow
     expect(s.unavailable).toBe('missing');
   });
 
+  // A marker line that HOLDS words keeps the slot's word list non-empty, so the words
+  // check cannot decide these: only the drafted body (nothing, or a stub) does.
+  it.each([
+    ['a "___" stub followed by a \\q2 line that holds a word', '\\v 1 ___\n\\q2 palabras\n\\v 2 Hola'],
+    ['a blank verse followed by a \\q2 line that holds a word', '\\v 1 \n\\q2 palabras\n\\v 2 Hola'],
+    ['a "___" stub followed by a \\qa line that holds a word', '\\v 1 ___\n\\qa Alef\n\\v 2 Hola'],
+  ])('%s', async (_name, verses) => {
+    const s = await open(`\\id TIT\n\\c 1\n\\p\n${verses}\n`);
+    expect(s.unavailable).toBe('missing');
+    expect(s.record).toBeUndefined();
+  });
+
   it('a verse that holds only a footnote has no word to align', async () => {
     const s = await open('\\id TIT\n\\c 1\n\\p\n\\v 1 \\f + \\fr 1:1 \\ft solo nota\\f*\n\\v 2 Hola\n');
     expect(s.unavailable).toBe('missing');

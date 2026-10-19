@@ -103,4 +103,18 @@ describe('suggestion training reads the stored verse words (#796)', () => {
     expect(verses[0].target.map((t) => t.text)).toEqual(['Y', 'el', 'Señor', 'dijo', 'así']);
     expect(verses[0].links).toEqual([{ source: [0], target: [2] }]);
   });
+
+  // The record's words are NFC (the bank is made of the NFC slot). A book typed in NFD
+  // gives the same words only when the text is made NFC before the slots are cut.
+  it('a book typed in NFD: the training targets are NFC, and the link on the word stays', async () => {
+    const nfc = 'Hola caf\u00e9';
+    const nfd = 'Hola cafe\u0301';
+    let r = bootstrapVerse(verseWords(nfc), ORIG.slice(0, 1), SOURCE, md5Hex(nfc));
+    r = linkWord(r, 0, bankWord(r, 'caf\u00e9'));
+    const file: AlignmentFile = { schemaVersion: 1, book: 'TIT', chapters: { '1': { '1': stampTargetVerse(r, md5Hex(nfc)) } } };
+    const verses = await collectFrom(`\\id TIT\n\\c 1\n\\p\n\\v 1 ${nfd}\n`, file);
+    expect(verses.map((v) => v.ref)).toEqual(['TIT 1:1']);
+    expect(verses[0].target.map((t) => t.text)).toEqual(['Hola', 'caf\u00e9']);
+    expect(verses[0].links).toEqual([{ source: [0], target: [1] }]);
+  });
 });
