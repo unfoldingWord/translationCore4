@@ -1111,7 +1111,9 @@ test.describe('J5 — a translator aligns a verse', () => {
       // No word is placed, so the reflow leaves the record as it was: still "siervo".
       expect(alignmentFile().chapters['1']['1'].wordBank.map((w: { word: string }) => w.word)).toContain('siervo');
 
-      // Step 3: back in Align at 1:1, the bank holds "esclavo" and not "siervo", and the banner shows.
+      // Step 3: back in Align at 1:1, the bank holds "esclavo" and not "siervo". No banner shows:
+      // every word was taken back, so the record holds no link and is not done, and it vouches for
+      // nothing (#796, D105 point 4; the #787 banner for this record is withdrawn).
       // The Check tab may open the aligner on the remembered place or on its entry
       // button; either way the rail row for 1:1 is clicked, so the verse is chosen.
       await page.getByRole('tab', { name: 'Check', exact: true }).click();
@@ -1126,7 +1128,7 @@ test.describe('J5 — a translator aligns a verse', () => {
       await expect.poll(() => wordsOf(bank)).toContain('esclavo');
       expect(await wordsOf(bank)).not.toContain('siervo');
       expect(await wordsOf(bank)).toEqual(wordTokens(edited).map((t) => t.text));
-      await expect(page.getByTestId('align-stale')).toBeVisible();
+      await expect(page.getByTestId('align-stale')).toHaveCount(0);
 
       // A verse that was never saved opens with its bank in verse order, and no banner.
       expect(alignmentFile().chapters['1']['2']).toBeUndefined();

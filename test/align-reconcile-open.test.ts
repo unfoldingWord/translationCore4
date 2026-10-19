@@ -13,6 +13,12 @@
 // 3. an edit on the opened verse saves a record the export cannot weave (B5);
 // 4. a record that matches its text opens changed or with its banner on (B6);
 // 5. a verse that was never saved opens with its bank out of verse order (B7).
+//
+// #796 slice 3 (D105 point 4): the banner is `needsReview` of the stored record, the rule the
+// rail and the Mark valid gate read. A record with no link and not `done` vouches for nothing,
+// so B1, B3 and B4 open it rebuilt but with no banner. The banner for a record that does
+// vouch (a link or `done`) with a changed text or words is B2 here, and S1-S5 of
+// test/align-review-rule.test.ts.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { bookModel } from '../src/data/bookModel.js';
 import {
@@ -91,7 +97,8 @@ describe('#787 a stored record is reconciled to the text when the verse opens', 
     expect(bankWords(s.record)).toContain('esclavo');
     expect(bankWords(s.record)).not.toContain('siervo');
     expect(bankKeys(s.record)).toEqual(wordTokens(T2).map(key));
-    expect(s.stale).toBe(true);
+    // No link and not done: the record vouches for nothing, so no banner (D105 point 4).
+    expect(s.stale).toBe(false);
   });
 
   it('B2 Mark valid with nothing placed, then a text edit, then reopen', async () => {
@@ -103,7 +110,7 @@ describe('#787 a stored record is reconciled to the text when the verse opens', 
     expect(s.stale).toBe(true);
   });
 
-  it('B3 a record whose hash is current but whose words are not opens with the banner and the right words', async () => {
+  it('B3 a record whose hash is current but whose words are not opens with the right words (no banner: it vouches for nothing)', async () => {
     const damaged = { ...unplacedPablo(), targetVerseMd5: md5Hex(T2) };
     expect(damaged.targetVerseMd5).toBe(md5Hex(T2)); // the hash check alone passes
     expect(bankWords(damaged)).toContain('siervo');
@@ -111,7 +118,7 @@ describe('#787 a stored record is reconciled to the text when the verse opens', 
     const s = await open(fileOf(damaged), RAW2);
     expect(bankWords(s.record)).not.toContain('siervo');
     expect(bankWords(s.record)).toContain('esclavo');
-    expect(s.stale).toBe(true);
+    expect(s.stale).toBe(false); // D105 point 4: no link and not done
   });
 
   it('keeps the links whose word is still in the text, and drops the ones that are not', async () => {
@@ -133,7 +140,8 @@ describe('#787 B4 opening a verse writes nothing', () => {
     const stale = fileOf(unplacedPablo());
     const withoutScheduler = makeStore(stale);
     const a = await buildAlignmentSession(withoutScheduler, null, { book: 'TIT', bookRaw: RAW2, project: {} }, '1:1', SOURCE, ORIG);
-    expect(a.stale).toBe(true);
+    expect(bankWords(a.record)).toContain('esclavo'); // the open did rebuild the words
+    expect(a.stale).toBe(false); // D105 point 4: no link and not done
     expect(withoutScheduler.writeAlignments).not.toHaveBeenCalled();
 
     const store = makeStore(stale);
@@ -141,7 +149,8 @@ describe('#787 B4 opening a verse writes nothing', () => {
     const sched = new SaveScheduler({ writeBook: makeAlignWriter({ store }), splice: spliceAlignRecord });
     const markDirty = vi.spyOn(sched, 'markDirty');
     const b = await buildAlignmentSession(store, sched, { book: 'TIT', bookRaw: RAW2, project: {} }, '1:1', SOURCE, ORIG);
-    expect(b.stale).toBe(true);
+    expect(bankWords(b.record)).toContain('esclavo');
+    expect(b.stale).toBe(false);
     await vi.advanceTimersByTimeAsync(2500);
     await vi.advanceTimersByTimeAsync(0);
     expect(markDirty).not.toHaveBeenCalled();
