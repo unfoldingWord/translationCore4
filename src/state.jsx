@@ -1691,7 +1691,12 @@ async function writeBookOrStructure({ store, structuralRef, alignSchedulerRef },
   try {
     // #792: save the align queue first, or a kept align write republishes old records on the keys this save removes.
     const align = alignSchedulerRef?.current;
-    if (align && !(await align.drain())) throw new Error(t('upgrade.alignUnsaved'));
+    if (align && !(await align.drain())) {
+      // #807: an align buffer that holds a sync.project-replaced refusal means this store refuses the
+      // span save too. Throw that refusal, so Home drops the draft buffer as well (#801).
+      const failure = align.getFailure();
+      throw isProjectReplaced(failure?.error) ? failure.error : new Error(t('upgrade.alignUnsaved'));
+    }
     await store.applyStructuralEdit(book, whole, { intent: 'spans' });
   } catch (error) {
     structuralRef.current.add(book);
