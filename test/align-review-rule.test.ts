@@ -20,7 +20,9 @@
 //    red dot (S2, S3 rail) or no banner;
 // 2. an upgraded record (`invalid: true`) with the current hash opens with no banner (S4);
 // 3. one edit on an `invalid` record clears the flag, the rail or the banner (B2);
-// 4. the rule flags a record that matches its verse (S0, S0d).
+// 4. the rule flags a record that matches its verse (S0, S0d);
+// 5. the open drops the `invalid` flag of a span record (#63, no link), so the editor's
+//    bootstrap record (`invalid: false`) is what the first edit saves (B2, the span record).
 import { describe, expect, it } from 'vitest';
 import { bookModel } from '../src/data/bookModel.js';
 import { bootstrapVerse, finalizeEdit, linkWord, markDone, reconcileToWords, stampTargetVerse } from '../src/data/align/edit';
@@ -137,6 +139,34 @@ describe('#796 slice 3 B2 an edit keeps `invalid` until Mark valid (acceptance c
     expect(finalizeEdit(linkWord(open.record, card, bankWord(open.record, 'según')), open.words, open.targetMd5).invalid).toBe(true);
 
     // Mark valid (markAlignValid's record pipeline): the one place the flag clears.
+    const marked = markDone(reconcileToWords(edited.record, open.words).record, open.targetMd5);
+    expect(marked.invalid).toBe(false);
+    expect(rail(marked)).toBe('valid');
+  });
+
+  it('the span record (#63): the open carries its `invalid`, one link keeps it, Mark valid clears it', async () => {
+    // journalingStore.spanInvalidRecords writes `align.verse.set` with `alignments: []`,
+    // `wordBank: []`, the new key's text hash and `invalid: true`, and no `sourceVersion`.
+    // The projection spreads the event, so this is the sidecar record as it is stored.
+    const span = { alignments: [], wordBank: [], targetVerseMd5: md5Of(RAW), invalid: true } as unknown as AlignmentVerseRecord;
+    const file = fileOf(span);
+    const rail = (record: AlignmentVerseRecord) =>
+      (alignIndexItems(RAW, fileOf(record)) as Array<{ ref: string; status: string }>).find((i) => i.ref === '1:1')?.status;
+    // The record has no link, so the open builds the editor's record from the bootstrap,
+    // whose flag is false: the carry in `openedRecord` is the only thing that keeps the stored one.
+    const open = await buildAlignmentSession(storeOf(file), null, { book: 'TIT', bookRaw: RAW, project: {} }, '1:1', SOURCE, ORIG);
+    expect(open.stale).toBe(true);
+    expect(open.record.invalid).toBe(true);
+    expect(rail(span)).toBe('invalid');
+
+    // One link: the first bank word to the first card, what applyAlignEdit runs.
+    const card = open.record.alignments.findIndex((a: { bottomWords: AlignedWord[] }) => a.bottomWords.length === 0);
+    const edited = alignSessionAfterEdit(open, linkWord(open.record, card, open.record.wordBank[0]), false);
+    expect(edited.record.alignments[card].bottomWords).toHaveLength(1);
+    expect(edited.record.invalid).toBe(true);
+    expect(edited.stale).toBe(true);
+    expect(rail(edited.record)).toBe('invalid');
+
     const marked = markDone(reconcileToWords(edited.record, open.words).record, open.targetMd5);
     expect(marked.invalid).toBe(false);
     expect(rail(marked)).toBe('valid');
