@@ -31,13 +31,14 @@ import { spliceVerse, verseBody } from '../src/data/usfm/splice';
 import { parseChapters, verseText } from '../src/data/bookModel';
 import { indexBook } from '../src/data/usfm/indexer';
 import { md5Hex } from '../src/data/httpStore';
-import { bootstrapVerse, cardsInVerseOrder, linkWord, settleDone, stampTargetVerse } from '../src/data/align/edit';
+import { bootstrapVerse, finalizeEdit, linkWord, stampTargetVerse } from '../src/data/align/edit';
+import { verseWords } from '../src/data/align/verseWords.mjs';
 import { verseTextMd5 } from '../journal/fold.mjs';
 import { toNfc } from '../journal/grammar.mjs';
 import { decompose } from '../journal/skeleton.mjs';
 import { holdsInlineAlignment, weaveBook } from '../src/data/export/weave.mjs';
 import { AlignmentHelpers } from '../src/data/vendor';
-import type { AlignedWord, AlignmentFile, AlignmentVerseRecord } from '../src/data/align/zaln';
+import type { AlignedWord, AlignmentFile, AlignmentVerseRecord, VerseWord } from '../src/data/align/zaln';
 import {
   __alignIndexItemsForTests as alignIndexItems,
   __alignSaveForTests,
@@ -188,7 +189,7 @@ async function setup() {
 }
 
 /** What buildAlignmentSession returns for an openable verse. */
-type Session = { record: AlignmentVerseRecord; targetText: string; targetMd5: string; stale: boolean };
+type Session = { record: AlignmentVerseRecord; targetText: string; words: VerseWord[]; targetMd5: string; stale: boolean };
 
 /** Type verse 1:1, align two words in one session, save, then reload from the projected book. */
 async function alignThenReload(typed: string) {
@@ -204,7 +205,7 @@ async function alignThenReload(typed: string) {
   const bankWord = (rec: AlignmentVerseRecord, w: string) => rec.wordBank.find((b: AlignedWord) => sameNfc(b.word, w)) as AlignedWord;
   let next = linkWord(s1.record, 0, bankWord(s1.record, 'Pablo'));
   next = linkWord(next, 3, bankWord(next, 'apóstol'));
-  const record = settleDone(stampTargetVerse(cardsInVerseOrder(next, s1.targetText), s1.targetMd5));
+  const record = finalizeEdit(next, s1.words, s1.targetMd5);
   sched.markDirty('TIT', '1', '1', JSON.stringify(record));
   await sched.flushOnBlur();
 
@@ -257,7 +258,7 @@ describe('#795 a record stamped with the export hash does not replace imported a
       { tag: 'w', type: 'word', text: 'Παῦλος', strong: 'G39720', lemma: 'Παῦλος', morph: 'Gr,N', occurrence: 1, occurrences: 1 },
       { tag: 'w', type: 'word', text: 'δοῦλος', strong: 'G14010', lemma: 'δοῦλος', morph: 'Gr,N', occurrence: 1, occurrences: 1 },
     ];
-    let record = bootstrapVerse(text, orig, 'dcs::unfoldingWord/el-x-koine_ugnt@v0.34', stamp);
+    let record = bootstrapVerse(verseWords(text), orig, 'dcs::unfoldingWord/el-x-koine_ugnt@v0.34', stamp);
     record = linkWord(record, 0, record.wordBank.find((w) => w.word === 'Paul') as AlignedWord);
     record = linkWord(record, 1, record.wordBank.find((w) => w.word === 'servant') as AlignedWord);
     record = stampTargetVerse(record, stamp);
@@ -332,7 +333,7 @@ describe('#795 a verse with no stored slot cannot be stamped, so nothing is writ
     const store = countingStore();
     const old = 'Pablo, siervo de Dios';
     const linked = (): AlignmentVerseRecord => {
-      let r = bootstrapVerse(old, ORIG, 'dcs::unfoldingWord/el-x-koine_ugnt@v0.34', md5Hex(old));
+      let r = bootstrapVerse(verseWords(old), ORIG, 'dcs::unfoldingWord/el-x-koine_ugnt@v0.34', md5Hex(old));
       r = linkWord(r, 0, r.wordBank.find((w) => w.word === 'Pablo') as AlignedWord);
       return stampTargetVerse(r, md5Hex(old));
     };

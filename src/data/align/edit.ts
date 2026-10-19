@@ -14,25 +14,10 @@
 //        a later edit is detectable rather than silently invalidating. The hash
 //        is the export's own (`verseTextMd5` of the stored verse slot, #795); the
 //        caller makes it and these functions only stamp and compare it.
-import { usfmjs, wordaligner } from '../vendor';
+import { wordaligner } from '../vendor';
 import { normalizeOccurrences } from './occurrences';
-import { tokenizeVerse, wordTokens } from './tokenize';
-import type { AlignedWord, Alignment, AlignmentVerseRecord } from './zaln';
-
-/** Render a plain draft verse as USFM3 `\w` tokens carrying occurrence data.
- * word-aligner's `unmerge` only banks words it can see as word objects, so a
- * plain-text verse yields an EMPTY wordBank [VERIFIED 2026-08-03] — the verse
- * must be tokenized first for the bootstrap to have anything to offer. The
- * split is the one tokenizer of tokenize.ts (#255), shared with the
- * suggestion bridge, so the bank's word identity and the engine's agree. */
-export const tokenizeTargetVerse = (text: string): string =>
-  tokenizeVerse(text)
-    .map((t) =>
-      t.isWord
-        ? `\\w ${t.text}|x-occurrence="${t.occurrence}" x-occurrences="${t.occurrences}"\\w*`
-        : t.text,
-    )
-    .join('');
+import { sameWords } from './verseWords.mjs';
+import type { AlignedWord, Alignment, AlignmentVerseRecord, VerseWord } from './zaln';
 
 const asWords = (list: unknown[]): AlignedWord[] =>
   (list as AlignedWord[]).map((w) => normalizeOccurrences(w));
@@ -41,24 +26,22 @@ const asWords = (list: unknown[]): AlignedWord[] =>
  * C2.12 — the bootstrap: what an unaligned (or undrafted) verse starts from.
  *
  * One alignment per original word with NO target words yet, and every target
- * word sitting in the wordBank. Produced by the same `unmerge` the conformance
- * harness uses, so the bootstrap and the round-trip agree by construction.
+ * word sitting in the wordBank. The cards are the ones `unmerge` makes for the
+ * original words alone (an empty target gives an empty bank): the same `unmerge`
+ * the conformance harness uses, so the bootstrap and the round-trip agree by
+ * construction. The bank is `words`, the export's word list of the stored verse
+ * (#796, verseWords.mjs), so it is the list `merge` will check.
  */
 export const bootstrapVerse = (
-  targetText: string,
+  words: VerseWord[],
   origVerseObjects: Array<Record<string, unknown>>,
   sourceVersion: string,
   md5: string,
 ): AlignmentVerseRecord => {
-  const tokenized = tokenizeTargetVerse(targetText);
-  const parsed = usfmjs.toJSON(`\\v 1 ${tokenized}`, { chunk: true }) as unknown as {
-    verses: { [n: string]: { verseObjects: Array<Record<string, unknown>> } };
-  };
-  const targetObjects = parsed.verses['1']?.verseObjects ?? [];
   const unmerged = wordaligner.unmerge(
-    { verseObjects: targetObjects },
+    { verseObjects: [] },
     { verseObjects: origVerseObjects },
-  ) as unknown as { alignment?: unknown[]; alignments?: unknown[]; wordBank: unknown[] };
+  ) as unknown as { alignment?: unknown[]; alignments?: unknown[] };
   const raw = (unmerged.alignment ?? unmerged.alignments ?? []) as Array<{
     topWords: unknown[];
     bottomWords: unknown[];
@@ -68,7 +51,7 @@ export const bootstrapVerse = (
       topWords: asWords(a.topWords),
       bottomWords: asWords(a.bottomWords),
     })),
-    wordBank: asWords(unmerged.wordBank),
+    wordBank: words.map((w) => ({ word: w.word, occurrence: w.occurrence, occurrences: w.occurrences })),
     invalid: false,
     targetVerseMd5: md5,
     sourceVersion,
@@ -101,11 +84,18 @@ export const linkWord = (
   };
 };
 
+/** A word's place in the verse: its position in `words`; a word the verse no
+ * longer has goes last. One map serves a whole sort. */
+const placeIn = (words: VerseWord[]) => {
+  const position = new Map(words.map((w, i) => [`${w.word} ${w.occurrence}`, i]));
+  return (w: AlignedWord): number => position.get(`${w.word} ${Number(w.occurrence)}`) ?? Number.MAX_SAFE_INTEGER;
+};
+
 /** #734: bank words in the verse's word order (tC3 kept its bank in verse
- * order). A word the text no longer has goes last. */
-export const inVerseOrder = (bank: AlignedWord[], targetText: string): AlignedWord[] => {
-  const position = new Map(wordTokens(targetText).map((t, i) => [`${t.text} ${t.occurrence}`, i]));
-  const at = (w: AlignedWord) => position.get(`${w.word} ${Number(w.occurrence)}`) ?? Number.MAX_SAFE_INTEGER;
+ * order). A word the verse no longer has goes last. `words` is the verse's
+ * word list (#796, verseWords.mjs). */
+export const inVerseOrder = (bank: AlignedWord[], words: VerseWord[]): AlignedWord[] => {
+  const at = placeIn(words);
   return [...bank].sort((a, b) => at(a) - at(b));
 };
 
@@ -113,10 +103,13 @@ export const inVerseOrder = (bank: AlignedWord[], targetText: string): AlignedWo
  * drop and on load. Only `bottomWords` move; the exported USFM is already in
  * verse order (word-aligner `merge`), so this changes what the card shows and
  * what the file stores, never the export. */
-export const cardsInVerseOrder = (record: AlignmentVerseRecord, targetText: string): AlignmentVerseRecord => ({
-  ...record,
-  alignments: record.alignments.map((a) => ({ ...a, bottomWords: inVerseOrder(a.bottomWords, targetText) })),
-});
+export const cardsInVerseOrder = (record: AlignmentVerseRecord, words: VerseWord[]): AlignmentVerseRecord => {
+  const at = placeIn(words);
+  return {
+    ...record,
+    alignments: record.alignments.map((a) => ({ ...a, bottomWords: [...a.bottomWords].sort((x, y) => at(x) - at(y)) })),
+  };
+};
 
 /** Unlink a target word, returning it to the bank in its place in the verse.
  * #734: the whole bank is put in verse order, so a bank stored in another
@@ -125,11 +118,11 @@ export const unlinkWord = (
   record: AlignmentVerseRecord,
   alignmentIndex: number,
   word: AlignedWord,
-  targetText: string,
+  words: VerseWord[],
 ): AlignmentVerseRecord => {
   const target = record.alignments[alignmentIndex];
   if (!target?.bottomWords.some((w) => sameWord(w, word))) return record;
-  const bank = inVerseOrder([...record.wordBank, normalizeOccurrences(word)], targetText);
+  const bank = inVerseOrder([...record.wordBank, normalizeOccurrences(word)], words);
   return {
     ...record,
     alignments: record.alignments.map((a, i) =>
@@ -273,69 +266,75 @@ export const markDone = (record: AlignmentVerseRecord, md5: string): AlignmentVe
 });
 
 /**
- * #787 — a record's words made to match the text, and nothing else. Same walk
- * as the reflow below: a placed word stays when its word and occurrence are
- * still in the text, numbered again from the text; the bank is every other
- * word of the text, in text order. No guard and no restamp — `invalid`,
- * `done`, the hash, the source version and every `topWords` stay as they are.
- * `changed` is true when the words (word + occurrence + occurrences, linked or
- * banked) differ from the input's: a new word, a removed word, a dropped link
- * or a count change.
+ * #787 — a record's words made to match the verse, and nothing else. `words`
+ * is the verse's word list (#796, verseWords.mjs). A placed word stays when its
+ * word and occurrence are still in the verse, numbered again from the verse;
+ * when two placed words share a word and occurrence, the first card keeps it.
+ * The bank is every other word of the verse, in verse order, and each card's
+ * words are in verse order. No guard and no restamp — `invalid`, `done`, the
+ * hash, the source version and every `topWords` stay as they are. `changed` is
+ * true when the words (word + occurrence + occurrences, linked or banked) differ
+ * from the input's: a new word, a removed word, a dropped link, a doubled word
+ * or a count change. Order alone is not a change.
  */
-export const reconcileToText = (
+export const reconcileToWords = (
   record: AlignmentVerseRecord,
-  targetText: string,
+  words: VerseWord[],
 ): { record: AlignmentVerseRecord; changed: boolean } => {
-  const words = wordTokens(targetText);
-  const present = new Map(words.map((t) => [`${t.text} ${t.occurrence}`, t]));
+  const present = new Map(words.map((w) => [`${w.word} ${w.occurrence}`, w]));
   const kept = new Set<string>();
   const alignments: Alignment[] = record.alignments.map((a) => ({
     ...a,
     bottomWords: a.bottomWords.flatMap((w): AlignedWord[] => {
       const key = `${w.word} ${Number(w.occurrence)}`;
       const now = present.get(key);
-      if (!now) return [];
+      if (!now || kept.has(key)) return [];
       kept.add(key);
       return [normalizeOccurrences({ ...w, occurrence: now.occurrence, occurrences: now.occurrences })];
     }),
   }));
   const wordBank: AlignedWord[] = words
-    .filter((t) => !kept.has(`${t.text} ${t.occurrence}`))
-    .map((t) => ({ word: t.text, occurrence: t.occurrence, occurrences: t.occurrences }));
-  const next: AlignmentVerseRecord = { ...record, alignments, wordBank };
+    .filter((w) => !kept.has(`${w.word} ${w.occurrence}`))
+    .map((w) => ({ word: w.word, occurrence: w.occurrence, occurrences: w.occurrences }));
+  const next = cardsInVerseOrder({ ...record, alignments, wordBank }, words);
   // A stored record may lack `wordBank`; the old reflow did not read it, so count it as empty.
-  const tally = (r: AlignmentVerseRecord) =>
-    JSON.stringify(
-      allTargetWords({ ...r, wordBank: r.wordBank ?? [] })
-        .map((w) => `${w.word}|${Number(w.occurrence)}|${Number(w.occurrences)}`)
-        .sort(),
-    );
-  return { record: next, changed: tally(record) !== tally(next) };
+  const before = allTargetWords({ ...record, wordBank: record.wordBank ?? [] });
+  return { record: next, changed: !sameWords(before, allTargetWords(next)) };
 };
 
 /**
  * #213 — reflow after a verse edit: keep every link whose target word is
- * still in the new text, drop the rest, and rebuild the bank from the new
- * text. Word identity is text plus occurrence (I-2), from the one tokenizer
- * of #255; occurrence totals are recomputed for the new text. The source
- * side of a link is never touched, and no link is created (that is #1).
+ * still in the verse, drop the rest, and rebuild the bank from the verse. Word
+ * identity is word plus occurrence (I-2) in the export's word list (#796); the
+ * counts are recomputed for the verse. The source side of a link is never
+ * touched, and no link is created (that is #1).
  *
  * Returns null when there is nothing to reflow — the record is absent, already
  * flagged `invalid` (a span create/break, #63), holds no placed word, or still
- * matches the text — and when the new text has no words at all. In every null
- * case the caller leaves the record exactly as it is: invalidate-and-retain
- * (D36) stays the outcome the I-3 hash already produces.
+ * matches the verse (the hash is current and no word changed) — and when the
+ * verse has no words at all. In every null case the caller leaves the record
+ * exactly as it is: invalidate-and-retain (D36) stays the outcome the I-3 hash
+ * already produces.
  */
 export const reflowAlignment = (
   record: AlignmentVerseRecord | undefined,
-  targetText: string,
+  words: VerseWord[],
   md5: string,
 ): AlignmentVerseRecord | null => {
   if (!record || record.invalid === true) return null;
   if (!record.alignments.some((a) => a.bottomWords.length)) return null;
-  if (!alignmentIsStale(record, md5)) return null;
-  if (!wordTokens(targetText).length) return null;
+  if (!words.length) return null;
+  const reconciled = reconcileToWords(record, words);
+  if (!alignmentIsStale(record, md5) && !reconciled.changed) return null;
   // #271: a reflow is an edit — `done` follows the reflowed record (set when
   // every surviving word is placed and the bank is empty, else removed).
-  return settleDone({ ...reconcileToText(record, targetText).record, invalid: false, targetVerseMd5: md5 });
+  return settleDone(stampTargetVerse(reconciled.record, md5));
 };
+
+/**
+ * #796 — the one writer of an alignment edit: the edited record made to match
+ * the verse's words (so the file always holds exactly the words `merge` checks),
+ * stamped with the export's hash of the verse (I-3), and `done` settled (#271).
+ */
+export const finalizeEdit = (next: AlignmentVerseRecord, words: VerseWord[], md5: string): AlignmentVerseRecord =>
+  settleDone(stampTargetVerse(reconcileToWords(next, words).record, md5));

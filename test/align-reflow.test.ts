@@ -11,6 +11,7 @@
 // byte-identical; a record the reflow cannot account for is left alone.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { bootstrapVerse, linkWord, reflowAlignment, alignmentIsStale, stampTargetVerse } from '../src/data/align/edit';
+import { verseWords } from '../src/data/align/verseWords.mjs';
 import { md5Hex } from '../src/data/httpStore';
 import { SaveScheduler } from '../src/data/saveScheduler';
 import { __alignSaveForTests, __reflowAlignedVersesForTests, alignFileJson } from '../src/state.jsx';
@@ -24,7 +25,7 @@ const ORIG = [
 const SOURCE = 'dcs::unfoldingWord/el-x-koine_ugnt@v0.34';
 const TEXT = 'Pablo, siervo de Dios y de Dios';
 /** reflowAlignment with the hash a plain one-line text stamps (md5Hex of the text, as the export hashes it). */
-const reflowTo = (record: AlignmentVerseRecord | undefined, text: string) => reflowAlignment(record, text, md5Hex(text));
+const reflowTo = (record: AlignmentVerseRecord | undefined, text: string) => reflowAlignment(record, verseWords(text), md5Hex(text));
 
 const bank = (r: AlignmentVerseRecord) => r.wordBank.map((w) => `${w.word}/${w.occurrence}/${w.occurrences}`);
 const placed = (r: AlignmentVerseRecord) => r.alignments.map((a) => a.bottomWords.map((w) => `${w.word}/${w.occurrence}/${w.occurrences}`));
@@ -33,7 +34,7 @@ const wordIn = (r: AlignmentVerseRecord, word: string, occ = 1) =>
 
 /** A record with Pablo→Παῦλος, siervo→δοῦλος and Dios(2)→θεοῦ linked. */
 const linkedRecord = () => {
-  let r = bootstrapVerse(TEXT, ORIG, SOURCE, md5Hex(TEXT));
+  let r = bootstrapVerse(verseWords(TEXT), ORIG, SOURCE, md5Hex(TEXT));
   r = linkWord(r, 0, wordIn(r, 'Pablo'));
   r = linkWord(r, 1, wordIn(r, 'siervo'));
   r = linkWord(r, 2, wordIn(r, 'Dios', 2));
@@ -80,7 +81,7 @@ describe('#213 reflowAlignment — keep what still fits, drop what changed', () 
     expect(reflowTo(undefined, TEXT)).toBeNull();
     expect(reflowTo(r, TEXT)).toBeNull(); // unchanged text
     expect(reflowTo({ ...r, invalid: true }, 'Pablo, siervo')).toBeNull(); // a span create/break's flag
-    expect(reflowTo(bootstrapVerse(TEXT, ORIG, SOURCE, md5Hex(TEXT)), 'Pablo, siervo')).toBeNull(); // nothing placed
+    expect(reflowTo(bootstrapVerse(verseWords(TEXT), ORIG, SOURCE, md5Hex(TEXT)), 'Pablo, siervo')).toBeNull(); // nothing placed
     expect(reflowTo(r, '___')).toBeNull(); // no words in the new text
     expect(reflowTo(r, '')).toBeNull();
   });

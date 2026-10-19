@@ -17,6 +17,7 @@ import {
   stampTargetVerse,
   alignmentIsStale,
 } from '../src/data/align/edit';
+import { verseWords } from '../src/data/align/verseWords.mjs';
 import { __alignVerseStatusForTests as alignVerseStatus } from '../src/state.jsx';
 import { verseTextMd5 } from '../journal/fold.mjs';
 import type { AlignedWord, AlignmentVerseRecord } from '../src/data/align/zaln';
@@ -34,7 +35,7 @@ const bankWord = (r: AlignmentVerseRecord, word: string) => r.wordBank.find((w) 
 
 /** Pablo→Παῦλος placed; "siervo" still in the bank. */
 const halfAligned = () => {
-  const r = bootstrapVerse(TEXT, ORIG, SOURCE, MD5);
+  const r = bootstrapVerse(verseWords(TEXT), ORIG, SOURCE, MD5);
   return stampTargetVerse(linkWord(r, 0, bankWord(r, 'Pablo')), MD5);
 };
 
@@ -45,7 +46,7 @@ describe('#271 isFullyAligned — tC3’s areAlgnmentsComplete', () => {
     const full = linkWord(half, 1, bankWord(half, 'siervo'));
     expect(isFullyAligned(full)).toBe(true);
     // A bootstrap (nothing placed) is not aligned even if the bank were empty.
-    expect(isFullyAligned({ ...bootstrapVerse(TEXT, ORIG, SOURCE, MD5), wordBank: [] })).toBe(false);
+    expect(isFullyAligned({ ...bootstrapVerse(verseWords(TEXT), ORIG, SOURCE, MD5), wordBank: [] })).toBe(false);
   });
 });
 
@@ -80,11 +81,11 @@ describe('#271 the #213 reflow recomputes done', () => {
     const full = settleDone(linkWord(half, 1, bankWord(half, 'siervo')));
     expect(full.done).toBe(true);
     // "siervo" becomes "esclavo": its link drops, the bank is not empty — not done.
-    const dropped = reflowAlignment(full, 'Pablo esclavo', verseTextMd5('Pablo esclavo'));
+    const dropped = reflowAlignment(full, verseWords('Pablo esclavo'), verseTextMd5('Pablo esclavo'));
     expect(dropped).not.toBeNull();
     expect('done' in dropped!).toBe(false);
     // Only punctuation changed: every word still placed — still done.
-    const kept = reflowAlignment(full, 'Pablo, siervo.', verseTextMd5('Pablo, siervo.'));
+    const kept = reflowAlignment(full, verseWords('Pablo, siervo.'), verseTextMd5('Pablo, siervo.'));
     expect(kept!.done).toBe(true);
   });
 });

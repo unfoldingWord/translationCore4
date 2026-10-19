@@ -3,6 +3,7 @@
 // load). Birch's ruling replaces the before/after drop preview of #753.
 import { describe, expect, it } from 'vitest';
 import { bootstrapVerse, cardsInVerseOrder, linkWord } from '../src/data/align/edit';
+import { verseWords } from '../src/data/align/verseWords.mjs';
 import { wordTokens } from '../src/data/align/tokenize';
 import { weaveBook } from '../src/data/export/weave.mjs';
 import { AlignmentHelpers } from '../src/data/vendor';
@@ -27,24 +28,24 @@ const card = (r: AlignmentVerseRecord, i: number) => r.alignments[i].bottomWords
 
 describe('#754 cardsInVerseOrder', () => {
   it('"la fe de los" dropped as fe, la, los reads la, fe, los', () => {
-    let r = bootstrapVerse(TEXT, ORIG, SOURCE, MD5);
+    let r = bootstrapVerse(verseWords(TEXT), ORIG, SOURCE, MD5);
     for (const w of ['fe', 'la', 'los']) r = linkWord(r, 0, bank(r, w));
     expect(card(r, 0)).toEqual(['fe/1', 'la/1', 'los/1']); // drop order, before the sort
-    expect(card(cardsInVerseOrder(r, TEXT), 0)).toEqual(['la/1', 'fe/1', 'los/1']);
+    expect(card(cardsInVerseOrder(r, verseWords(TEXT)), 0)).toEqual(['la/1', 'fe/1', 'los/1']);
   });
 
   it('repeated words go by occurrence: la¹ before la²', () => {
-    let r = bootstrapVerse(TEXT, ORIG, SOURCE, MD5);
+    let r = bootstrapVerse(verseWords(TEXT), ORIG, SOURCE, MD5);
     r = linkWord(r, 1, bank(r, 'la', 2));
     r = linkWord(r, 1, bank(r, 'la', 1));
-    expect(card(cardsInVerseOrder(r, TEXT), 1)).toEqual(['la/1', 'la/2']);
+    expect(card(cardsInVerseOrder(r, verseWords(TEXT)), 1)).toEqual(['la/1', 'la/2']);
   });
 
   it('touches only the target words, and every card', () => {
-    let r = bootstrapVerse(TEXT, ORIG, SOURCE, MD5);
+    let r = bootstrapVerse(verseWords(TEXT), ORIG, SOURCE, MD5);
     r = linkWord(linkWord(r, 0, bank(r, 'los')), 0, bank(r, 'según'));
     r = linkWord(linkWord(r, 1, bank(r, 'verdad')), 1, bank(r, 'y'));
-    const sorted = cardsInVerseOrder(r, TEXT);
+    const sorted = cardsInVerseOrder(r, verseWords(TEXT));
     expect(card(sorted, 0)).toEqual(['según/1', 'los/1']);
     expect(card(sorted, 1)).toEqual(['y/1', 'verdad/1']);
     expect(sorted.alignments.map((a) => a.topWords)).toEqual(r.alignments.map((a) => a.topWords));
@@ -52,17 +53,17 @@ describe('#754 cardsInVerseOrder', () => {
   });
 
   it('a word the text no longer has goes last in its card', () => {
-    let r = bootstrapVerse(TEXT, ORIG, SOURCE, MD5);
+    let r = bootstrapVerse(verseWords(TEXT), ORIG, SOURCE, MD5);
     r = linkWord(linkWord(r, 0, bank(r, 'fe')), 0, bank(r, 'según'));
     const edited = TEXT.replace('según', 'conforme a');
-    expect(card(cardsInVerseOrder(r, edited), 0)).toEqual(['fe/1', 'según/1']);
+    expect(card(cardsInVerseOrder(r, verseWords(edited)), 0)).toEqual(['fe/1', 'según/1']);
     expect(wordTokens(edited).map(key)).not.toContain('según/1');
   });
 });
 
 describe('#754 load — a stored out-of-order card shows in verse order, the file is not rewritten', () => {
   it('the session record is sorted; the store sees no write', async () => {
-    let r = bootstrapVerse(TEXT, ORIG, SOURCE, MD5);
+    let r = bootstrapVerse(verseWords(TEXT), ORIG, SOURCE, MD5);
     for (const w of ['los', 'fe', 'la']) r = linkWord(r, 0, bank(r, w));
     const file = { schemaVersion: 1, book: 'TIT', chapters: { '1': { '1': r } } };
     const stored = JSON.stringify(file);

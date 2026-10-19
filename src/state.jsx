@@ -45,7 +45,8 @@ import {
 } from './data/derive';
 import { readTwArticle, readTaArticle, readTaTitle } from './data/articles';
 import { revalidateAgainstDraft, resolutionWarning } from './data/revalidate';
-import { bootstrapVerse, cardsInVerseOrder, inVerseOrder, linkWord, unlinkWord, moveWord, mergeAlignments, splitAlignment, stampTargetVerse, alignmentIsStale, reflowAlignment, reconcileToText, settleDone, markDone } from './data/align/edit';
+import { bootstrapVerse, finalizeEdit, linkWord, unlinkWord, moveWord, mergeAlignments, splitAlignment, alignmentIsStale, reflowAlignment, reconcileToWords, markDone } from './data/align/edit';
+import { verseWords } from './data/align/verseWords.mjs';
 import { linksFor, rebindSuggestions, sessionInputFor, trainingVerseOf, trainingVersesFor } from './data/align/suggest';
 import { SuggestScheduler } from './data/align/suggestScheduler';
 import { consequencesOfGatewayChange, applyGatewayChange, completeLanguageSets, uncoveredByChange, sourcePanesForGateway, gatewaysCoveringProject, literalPaneId } from './data/gatewayChange';
@@ -371,13 +372,29 @@ function verseTextIndex(bookRaw) {
  * per book text (the last one asked about is kept) and a verse is hashed once,
  * when first asked. `undefined` = the slots hold no such verse. `decompose` needs
  * a space or tab after the verse number, so `\v 1` with its text on the next
- * line has no slot. */
-let slotMemo = { raw: null, slots: {}, md5: {} };
-function slotMd5Of(bookRaw, ref) {
+ * line has no slot.
+ * #796: the same slot gives the verse's words (`slotWordsOf`, verseWords.mjs): the
+ * list word-aligner `merge` checks, so the bank and every Align write use the
+ * export's own words. A words list is a usfm-js parse, so it is made when asked,
+ * once per verse, and shared: a caller must not change it. */
+let slotMemo = { raw: null, slots: {}, md5: {}, words: {} };
+function slotOf(bookRaw, ref) {
   if (!bookRaw) return undefined;
-  if (slotMemo.raw !== bookRaw) slotMemo = { raw: bookRaw, slots: decompose(toNfc(bookRaw)).verses, md5: {} };
-  if (!(ref in slotMemo.md5)) slotMemo.md5[ref] = slotMemo.slots[ref] === undefined ? undefined : verseTextMd5(slotMemo.slots[ref]);
+  if (slotMemo.raw !== bookRaw) slotMemo = { raw: bookRaw, slots: decompose(toNfc(bookRaw)).verses, md5: {}, words: {} };
+  return slotMemo.slots[ref];
+}
+function slotMd5Of(bookRaw, ref) {
+  const slot = slotOf(bookRaw, ref);
+  if (slot === undefined) return undefined;
+  if (!(ref in slotMemo.md5)) slotMemo.md5[ref] = verseTextMd5(slot);
   return slotMemo.md5[ref];
+}
+/** The export's word list of one stored verse; `[]` when the slots hold no such verse. */
+function slotWordsOf(bookRaw, ref) {
+  const slot = slotOf(bookRaw, ref);
+  if (slot === undefined) return [];
+  if (!(ref in slotMemo.words)) slotMemo.words[ref] = verseWords(slot);
+  return slotMemo.words[ref];
 }
 
 /** Tests only: every drafted verse's hash, by `slotMd5Of`. */
@@ -1225,10 +1242,9 @@ async function reflowAlignedVerses({ store, sched, book, bookRaw, stillCurrent =
   // through its torn-down store, after the D9 leave checkpoint. Refuse.
   if (!stillCurrent()) return;
   const entries = bookRaw ? indexBook(bookRaw) : [];
-  // #795: a blur reaches here in the save's own task, so nothing is parsed
-  // before the read: the book's texts, and a slot hash, only for a verse that
-  // has a record to reflow.
-  let texts;
+  // #795, #796: a blur reaches here in the save's own task, so nothing is parsed
+  // before the read: a slot hash and the slot's words, only for a verse that has
+  // a record to reflow.
   for (const ref of refs) {
     const [chapter, verse] = ref.split(':');
     const rec = file?.chapters?.[chapter]?.[verse];
@@ -1237,8 +1253,7 @@ async function reflowAlignedVerses({ store, sched, book, bookRaw, stillCurrent =
     // A verse with no slot has no hash the export would accept: stage nothing.
     const md5 = slotMd5Of(bookRaw, ref);
     if (md5 === undefined) continue;
-    texts ??= verseTextIndex(bookRaw);
-    const next = reflowAlignment(rec, texts[ref] ?? '', md5);
+    const next = reflowAlignment(rec, slotWordsOf(bookRaw, ref), md5);
     if (next) sched.markDirty(book, chapter, verse, JSON.stringify(next));
   }
 }
@@ -1250,11 +1265,14 @@ async function reflowAlignedVerses({ store, sched, book, bookRaw, stillCurrent =
 async function buildAlignmentSession(store, sched, st, ref, source, origObjects) {
   const targetText = verseTextIndex(st.bookRaw)[ref] ?? '';
   if (!origObjects.length || !targetText) return { unavailable: 'missing' };
-  // #795: the stamp is the export's hash of the stored verse; the text is for the words.
-  // A verse the stored text has no slot for has no stamp the export would accept: no
-  // session, so no edit or Mark valid writes a record the journal refuses to seal.
+  // #795: the stamp is the export's hash of the stored verse. #796: the words are the
+  // export's list for the same slot; `targetText` is for the suggestions until they
+  // read the words too. A verse the stored text has no slot for has no stamp the
+  // export would accept: no session, so no edit or Mark valid writes a record the
+  // journal refuses to seal.
   const targetMd5 = slotMd5Of(st.bookRaw, ref);
   if (targetMd5 === undefined) return { unavailable: 'no-slot' };
+  const words = slotWordsOf(st.bookRaw, ref);
   const { file, md5 } = await alignFileFor(store, sched, st.book);
   const [chapter, verse] = ref.split(':');
   const stored = file?.chapters?.[chapter]?.[verse];
@@ -1263,25 +1281,20 @@ async function buildAlignmentSession(store, sched, st, ref, source, origObjects)
   // `invalid` record a span create/break leaves on the new key (#63) — has
   // nothing to edit: the editor starts from the bootstrap; the file keeps
   // its flag until the translator saves an alignment.
-  // #787: a stored record opens rebuilt from the current text, in memory only —
-  // new words in the bank, removed words gone; the file keeps its bytes until
-  // the next edit. `stale` also stands when the rebuild added or removed a
+  // #787, #796: a stored record opens rebuilt from the verse's words, in memory
+  // only — new words in the bank, removed words gone; the file keeps its bytes
+  // until the next edit. `stale` also stands when the rebuild added or removed a
   // word, dropped a link or changed a count (order alone does not), not only
   // when the hash differs.
   // #734, #754: a bank or a card is shown in verse order, the bank of a
   // never-saved verse too; the file takes that order on the next edit.
+  // #790 (D107) repairs the cards here, from the pinned source.
+  const base = stored?.alignments?.length ? stored : bootstrapVerse(words, origObjects, sourceVersion, targetMd5);
+  const reconciled = reconcileToWords(base, words);
   // `any`, as the stored record was before #754: callers read it untyped.
   /** @type {any} */
-  let record;
-  let changed = false;
-  if (stored?.alignments?.length) {
-    const reconciled = reconcileToText(stored, targetText);
-    record = cardsInVerseOrder(reconciled.record, targetText);
-    changed = reconciled.changed;
-  } else {
-    const fresh = bootstrapVerse(targetText, origObjects, sourceVersion, targetMd5);
-    record = { ...fresh, wordBank: inVerseOrder(fresh.wordBank, targetText) };
-  }
+  const record = reconciled.record;
+  const changed = reconciled.changed;
   return {
     loading: false,
     ref,
@@ -1289,6 +1302,8 @@ async function buildAlignmentSession(store, sched, st, ref, source, origObjects)
     record,
     md5,
     targetText,
+    slot: slotOf(st.bookRaw, ref),
+    words,
     targetMd5,
     origObjects,
     sourceVersion,
@@ -5390,7 +5405,10 @@ export function AppProvider({ children }) {
         // aligned, removed otherwise (an edit takes back Mark valid).
         // #754: every edit (place, move, merge, confirm a suggestion) leaves
         // each card's words in verse order, wherever the word was dropped.
-        const record = settleDone(stampTargetVerse(cardsInVerseOrder(next, a2.targetText), a2.targetMd5));
+        // #796: the record's words are made to match the session's word list, the
+        // export's list for the verse (finalizeEdit), so the file holds exactly the
+        // words `merge` checks.
+        const record = finalizeEdit(next, a2.words, a2.targetMd5);
         // #1: a proposal for a word this edit placed is spent; the rest are
         // re-bound to their card by its first original word (a merge or split
         // moved the indexes) and dropped when that card is gone.
@@ -5405,7 +5423,7 @@ export function AppProvider({ children }) {
       },
 
       unplaceAlignWord: (cardIndex, word) =>
-        a.applyAlignEdit((record) => unlinkWord(record, cardIndex, word, stateRef.current.alignSession.targetText)),
+        a.applyAlignEdit((record) => unlinkWord(record, cardIndex, word, stateRef.current.alignSession.words)),
 
       /** #129 drag-and-drop: place banked words without the arm step (#736:
        * a drag of a selected word carries the whole selection, in one edit). */
@@ -5437,7 +5455,7 @@ export function AppProvider({ children }) {
           dispatch({ type: 'set', patch: { alignSession: { ...a2, refusal: 'suggestions' } } });
           return;
         }
-        const record = markDone(a2.record, a2.targetMd5);
+        const record = markDone(reconcileToWords(a2.record, a2.words).record, a2.targetMd5);
         dispatch({ type: 'set', patch: { alignSession: { ...a2, record, stale: false, refusal: null } } });
         const [chapter, verse] = a2.ref.split(':');
         sched.markDirty(a2.book, chapter, verse, JSON.stringify(record));

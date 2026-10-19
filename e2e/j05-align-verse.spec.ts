@@ -1137,6 +1137,35 @@ test.describe('J5 — a translator aligns a verse', () => {
     },
   );
 
+  // #796: the bank is the word list the export checks (word-aligner `merge`), taken
+  // from the stored verse. A footnote glued to a word used to leave "mediode" in the
+  // bank: the display text joined the words either side of the footnote.
+  test(
+    'a verse with a footnote glued to a word opens with that word and the next one apart in the bank (#796)',
+    { tag: ['@inc9', '@J5'] },
+    async ({ page }) => {
+      writePinsWithOriginal();
+      const bookPath = path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'TIT.usfm');
+      const book = fs.readFileSync(bookPath, 'utf8');
+      const verse3 = /^\\v 3 (.+)$/m.exec(book)![1].trim();
+      expect(verse3).toContain('por medio de');
+      fs.writeFileSync(bookPath, book.replace('por medio de', 'por medio\\f + \\ft nota\\f* de'));
+
+      await openAlign(page);
+      const row13 = page.getByTestId('align-verse-list').locator('button[data-ref="1:3"]');
+      await row13.click();
+      await expect(row13).toHaveAttribute('data-selected', 'true');
+      const bank = page.getByTestId('align-bank').getByRole('button');
+      // The words of the verse as it was typed: the footnote adds none.
+      const expected = verse3.match(/\p{L}[\p{L}\p{M}]*/gu)!;
+      await expect.poll(() => wordsOf(bank)).toEqual(expected);
+      const words = await wordsOf(bank);
+      expect(words).toContain('medio');
+      expect(words).toContain('de');
+      expect(words).not.toContain('mediode');
+    },
+  );
+
   // #794: a book added from an aligned USFM file keeps its `\zaln` markup inline
   // until #553 extracts it. Align must not open such a verse as a plain draft:
   // a later save would replace the imported alignment with the translator's.

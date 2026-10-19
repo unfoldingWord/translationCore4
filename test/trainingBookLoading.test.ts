@@ -5,6 +5,7 @@
 // pair the open book's alignments with the previous book's text.
 import { describe, expect, it } from 'vitest';
 import { bootstrapVerse, linkWord, stampTargetVerse } from '../src/data/align/edit';
+import { verseWords } from '../src/data/align/verseWords.mjs';
 import { md5Hex } from '../src/data/httpStore';
 import type { AlignedWord, AlignmentFile, AlignmentVerseRecord } from '../src/data/align/zaln';
 import { __trainingTextForTests } from '../src/state.jsx';
@@ -17,7 +18,7 @@ const TEXT = 'Pablo, siervo de Dios';
 const ORIG = [G('Παῦλος', 'G39720', 'Παῦλος', 'Gr,N,,,,,NMS,'), G('δοῦλος', 'G14010', 'δοῦλος', 'Gr,N,,,,,NMS,'), G('Θεοῦ', 'G23160', 'θεός', 'Gr,N,,,,,GMS,')];
 const bankWord = (r: AlignmentVerseRecord, word: string) => r.wordBank.find((w) => w.word === word) as AlignedWord;
 const aligned11 = () => {
-  let r = bootstrapVerse(TEXT, ORIG, SOURCE, md5Hex(TEXT));
+  let r = bootstrapVerse(verseWords(TEXT), ORIG, SOURCE, md5Hex(TEXT));
   r = linkWord(r, 0, bankWord(r, 'Pablo'));
   r = linkWord(r, 1, bankWord(r, 'siervo'));
   r = linkWord(r, 2, bankWord(r, 'Dios'));
