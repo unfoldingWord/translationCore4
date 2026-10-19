@@ -67,7 +67,8 @@ fi
 # en_tq rides with the English package: D64/#110 made `translationQuestions` a
 # §5.3 slot and the shipped English package pins it, so a rig without it cannot
 # exercise the Understand screen's Questions tab.
-for R in en_ult:v91 en_ust:v91 en_tn:v91 en_twl:v91 en_tw:v91 en_ta:v91 en_tq:v91 el-x-koine_ugnt:v0.34 \
+# #782: hbo_uhb rides with the Greek New Testament, so Align opens Old Testament verses.
+for R in en_ult:v91 en_ust:v91 en_tn:v91 en_twl:v91 en_tw:v91 en_ta:v91 en_tq:v91 el-x-koine_ugnt:v0.34 hbo_uhb:v3.0.0 \
          es-419_tn:v66 es-419_twl:v18 es-419_tw:v37 es-419_ta:v4 es-419_glt:v42 es-419_gst:v40 \
          es-419_obs:v2 es-419_obs-tn:v2 es-419_obs-twl:v2 \
          en_obs:v9 en_obs-tn:v13 en_obs-twl:v3 en_obs-tq:v10; do
