@@ -332,7 +332,7 @@ export interface VerseText {
  * Returns, for each index of `a`, the index in `b` of the word it matches, or -1. Equal words match,
  * so matches go as early as they can and each insert or delete goes as late as it can. The table is
  * the suffix LCS, `L[i][j]` = the LCS of `a[i:]` and `b[j:]`; the walk starts at the front. A verse
- * is under 70 words, so the table is small (0.07 ms on the longest Genesis verse).
+ * is under 70 words, so the table is small (about 0.015 ms on the longest Genesis verse).
  */
 export const matchWords = (a: string[], b: string[]): Int32Array => {
   const n = a.length;
