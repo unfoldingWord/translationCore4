@@ -140,6 +140,17 @@ describe('#213 reflowAlignment — keep what still fits, drop what changed', () 
       expect(placed(next!)).toEqual([['Dios/1/1'], [], []]);
       expect(next!.invalid).toBe(true);
     });
+    it('a copy moves from before the linked word to after another word, and the linked word keeps its number: it still flags', () => {
+      // Before: Dios(1 of 2), a, b, Dios(2 of 2, linked). After: a, Dios(1 of 2), b, Dios(2 of 2). The first Dios
+      // moved past "a". The linked word is Dios 2 of 2 before and after, and the early pass, which keeps the
+      // second Dios in place, sees nothing. Only the late pass sees a copy of its own string lost before it and
+      // another gained before it, so an unchanged number does not clear the flag.
+      let r = bootstrapVerse(verseWords('Dios a b Dios'), ORIG, SOURCE, md5Hex('Dios a b Dios'));
+      r = linkWord(r, 2, wordIn(r, 'Dios', 2));
+      const next = reflowTo(stampTargetVerse(r, md5Hex('Dios a b Dios')), 'Dios a b Dios', 'a Dios b Dios');
+      expect(placed(next!)).toEqual([[], [], ['Dios/2/2']]);
+      expect(next!.invalid).toBe(true);
+    });
     it('a recased word is a new word: its link goes, and a linked word after it that is renumbered flags', () => {
       let r = bootstrapVerse(verseWords('dios y Dios'), ORIG, SOURCE, md5Hex('dios y Dios'));
       r = linkWord(r, 0, wordIn(r, 'Dios'));
@@ -175,6 +186,13 @@ describe('#213 reflowAlignment — keep what still fits, drop what changed', () 
       expect(Array.from(matchWords(['a', 'b', 'c'], ['a', 'c']))).toEqual([0, -1, 1]);
       expect(Array.from(matchWords([], ['a']))).toEqual([]);
       expect(Array.from(matchWords(['a'], []))).toEqual([-1]);
+    });
+    it('on a tie it drops the before word first, so the insert lands as late as it can', () => {
+      // Two matches are as long as each other when the two words cross. At the first pair the walk takes the
+      // before word out, so the before word is the one with no match and its copy in the after list is the later one.
+      expect(Array.from(matchWords(['a', 'b'], ['b', 'a']))).toEqual([-1, 0]);
+      // The verse of a linked repeated word: the first Dios has no match, the second Dios and "a" and "b" do.
+      expect(Array.from(matchWords(['Dios', 'a', 'b', 'Dios'], ['a', 'Dios', 'b', 'Dios']))).toEqual([-1, 0, 2, 3]);
     });
   });
 
