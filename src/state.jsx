@@ -389,6 +389,16 @@ function slotMd5Of(bookRaw, ref) {
   if (!(ref in slotMemo.md5)) slotMemo.md5[ref] = verseTextMd5(slot);
   return slotMemo.md5[ref];
 }
+/** #796: the drafted body of a verse as the rail reads it (`indexBook`: it stops at a
+ * `\p`, `\s5`, `\q2` or `\s` line, where a slot runs on to the next `\v`, as
+ * `slotMd5Index` and `verseHoldsImportedAlignment` read it). `''` when the verse
+ * is absent, empty or a `___` stub. */
+function draftedBodyOf(bookRaw, ref) {
+  const [chapter, verse] = ref.split(':');
+  const e = findVerse(indexBook(bookRaw), chapter, verse);
+  const body = e ? bookRaw.slice(e.start, e.end).trim() : '';
+  return body === '___' ? '' : body;
+}
 /** The export's word list of one stored verse; `[]` when the slots hold no such verse. */
 function slotWordsOf(bookRaw, ref) {
   const slot = slotOf(bookRaw, ref);
@@ -1271,9 +1281,10 @@ async function buildAlignmentSession(store, sched, st, ref, source, origObjects)
   // no edit or Mark valid writes a record the journal refuses to seal.
   const targetMd5 = slotMd5Of(st.bookRaw, ref);
   if (targetMd5 === undefined) return { unavailable: 'no-slot' };
-  const body = slotOf(st.bookRaw, ref).trim();
-  if (!origObjects.length || !body || body === '___') return { unavailable: 'missing' };
+  // "Missing" is decided on the body the rail tests (a slot keeps a trailing \p, \s5,
+  // \q2 or \s line, the body does not), and a verse with no word has nothing to align.
   const words = slotWordsOf(st.bookRaw, ref);
+  if (!origObjects.length || !draftedBodyOf(st.bookRaw, ref) || !words.length) return { unavailable: 'missing' };
   const { file, md5 } = await alignFileFor(store, sched, st.book);
   const [chapter, verse] = ref.split(':');
   const stored = file?.chapters?.[chapter]?.[verse];
