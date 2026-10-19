@@ -9,13 +9,17 @@
 //   2. the open of that verse: its words, and the bootstrap built on them
 //      (median of 200 runs);
 //   3. the Align rail, `alignIndexItems`, with 10 records and with one record per
-//      verse (5 cold runs each; a run is cold when the book text is new).
+//      verse (5 cold runs each; a run is cold when the book text is new), and the
+//      warm rebuild of the same two files on a book text the memo already holds
+//      (#796 slice 3: the rail reads the words of a vouching record, once per verse).
 // The numbers of the base (463cbf9, before this slice) are in BASE. The slice must
 // stay within 1.2 times the base edit. The open and rail numbers are reported, not
-// asserted: this slice does not change the rail's work (it still hashes each
-// verse's slot once), so no second pipeline exists to compare it with in the same
-// run, and a number measured in another session varies from run to run on the same
-// code.
+// asserted: slice 1 did not change the rail's work (it still hashed each verse's slot
+// once), so no second pipeline existed to compare it with in the same run, and a number
+// measured in another session varies from run to run on the same code. Slice 3 makes one
+// word list per vouching record, once per verse, on a cold rail build; the warm rebuild
+// stays on the slot memo. Its numbers were taken against the slice 1 head, in the same
+// session, one run of each in turn.
 import { describe, expect, it } from 'vitest';
 import { unzipSync, strFromU8 } from 'fflate';
 import { bootstrapVerse, finalizeEdit, linkWord } from '../src/data/align/edit';
@@ -28,6 +32,8 @@ import { verseTextMd5 } from '../journal/fold.mjs';
 import { toNfc } from '../journal/grammar.mjs';
 import { __alignIndexItemsForTests as alignIndexItems } from '../src/state.jsx';
 import { UsfmFileConversionHelpers } from 'word-aligner-lib';
+import { weaveBook } from '../src/data/export/weave.mjs';
+import { AlignmentHelpers } from '../src/data/vendor';
 
 const fs = process.getBuiltinModule('node:fs');
 const path = process.getBuiltinModule('node:path');
@@ -103,7 +109,8 @@ describe.skipIf(!RUN)('#796 bench — Genesis, en_ult v91', () => {
 
     // 3 — the rail.
     const recordFor = (ref: string): AlignmentVerseRecord => {
-      const words = wordTokens(plainSlots[ref]).map((t) => ({ word: t.text, occurrence: t.occurrence, occurrences: t.occurrences }));
+      // The verse's own words, as a record saved since #796 holds them, so that a record matches its verse.
+      const words = verseWords(plainSlots[ref]).map((w) => ({ word: w.word, occurrence: w.occurrence, occurrences: w.occurrences }));
       return {
         alignments: [{ topWords: [], bottomWords: words.slice(0, 1) }], wordBank: words.slice(1), invalid: false,
         targetVerseMd5: verseTextMd5(plainSlots[ref]) as string, sourceVersion: 'dcs::unfoldingWord/hbo_uhb@v0.0.0',
@@ -127,14 +134,63 @@ describe.skipIf(!RUN)('#796 bench — Genesis, en_ult v91', () => {
       }
       return median(samples);
     };
-    const rail10 = rail(fileFor(refs.slice(0, 10)));
-    const railAll = rail(fileFor(refs));
+    // One string for every warm run: the slot memo compares the book text with `!==`, which is a
+    // pointer check for the same string and a full compare of 1.5 MB for an equal copy. The
+    // app holds one `bookRaw` string, so a copy per measure would time the compare, not the memo.
+    const warm = book.replace('\\id GEN', '\\id GEN warm');
+    const railWarm = (file: AlignmentFile) => {
+      alignIndexItems(warm, file); // fills the slot memo
+      return time(() => { alignIndexItems(warm, file); }, 5);
+    };
+    const file10 = fileFor(refs.slice(0, 10));
+    const fileAll = fileFor(refs);
+    const rail10 = rail(file10);
+    const railAll = rail(fileAll);
+    const warm10 = railWarm(file10);
+    const warmAll = railWarm(fileAll);
 
     const fixed = (n: number) => n.toFixed(3);
     console.log(
       `[align bench] verse ${longest} (${wordCount} words): edit ${fixed(edit)} ms, open words ${fixed(openWords)} ms, open bootstrap ${fixed(openBootstrap)} ms; ` +
-        `rail 10 records ${fixed(rail10)} ms, rail ${refs.length} records ${fixed(railAll)} ms`,
+        `rail 10 records ${fixed(rail10)} ms, rail ${refs.length} records ${fixed(railAll)} ms; ` +
+        `warm rail 10 records ${fixed(warm10)} ms, warm rail ${refs.length} records ${fixed(warmAll)} ms`,
     );
     expect(edit).toBeLessThanOrEqual(BASE.edit * 1.2);
+  }, 30 * 60 * 1000);
+
+  // #796 slice 5 — the aligned export of the whole book: one record per verse (the rail's `recordFor`
+  // shape: one placed word each, on one card that holds one source word; a card with no source
+  // word makes `merge` throw, so every verse would be refused). Reported, not asserted. The same case ran on the
+  // base (weave.mjs read only the flag and the hash) and on the branch (it asks `needsReview` too);
+  // the base ignores the fourth argument, so `reported` counts only on the branch. Each figure is
+  // the median of 3 weaves of the 1.5 MB book, one figure per run, the runs in turn in one session
+  // (267a147, the slice 3 head, vs the slice 5 branch). Four runs on the base: 3635, 3272, 2605 and
+  // 2709 ms; three runs on the branch: 2667, 2675 and 2675 ms. All 1533 verses weave on both, none
+  // reported. If the line does not print, add --disable-console-intercept.
+  it('measures weaveBook on Genesis, one record per verse', () => {
+    const raw = strFromU8(unzipSync(new Uint8Array(fs.readFileSync(ZIP)))['ingredients/GEN.usfm']);
+    const { skeleton, verses: stored } = decompose(toNfc(raw) as string) as { skeleton: string; verses: Record<string, string> };
+    const plainSlots: Record<string, string> = Object.fromEntries(Object.entries(stored).map(([k, s]) => [k, clean(s)]));
+    const book = recompose(skeleton, plainSlots) as string;
+    const refs = Object.keys(plainSlots).filter((k) => !k.startsWith('0:') && wordTokens(plainSlots[k]).length > 0);
+    const TOP: AlignedWord = { word: 'בְּ', strong: 'H9003', lemma: 'בְּ', morph: 'He,R', occurrence: 1, occurrences: 1 };
+    const chapters: AlignmentFile['chapters'] = {};
+    for (const ref of refs) {
+      const [c, v] = ref.split(':');
+      const words = verseWords(plainSlots[ref]).map((w) => ({ word: w.word, occurrence: w.occurrence, occurrences: w.occurrences }));
+      (chapters[c] ??= {})[v] = {
+        alignments: [{ topWords: [TOP], bottomWords: words.slice(0, 1) }], wordBank: words.slice(1), invalid: false,
+        targetVerseMd5: verseTextMd5(plainSlots[ref]) as string, sourceVersion: 'dcs::unfoldingWord/hbo_uhb@v0.0.0',
+      };
+    }
+    const file: AlignmentFile = { schemaVersion: 1, book: 'GEN', chapters };
+    const reasons: Record<string, number> = {};
+    const report = (skip: { reason: string }) => { reasons[skip.reason] = (reasons[skip.reason] ?? 0) + 1; };
+    let out = '';
+    const ms = time(() => { out = weaveBook(book, file, AlignmentHelpers, report) as string; }, 3);
+    const outVerses = decompose(out).verses as Record<string, string>;
+    const woven = refs.filter((r) => outVerses[r] !== plainSlots[r]).length;
+    console.log(`[align bench] weaveBook GEN: ${refs.length} records, ${ms.toFixed(0)} ms (median of 3), ${woven} woven, reported ${JSON.stringify(reasons)}`);
+    expect(woven).toBeGreaterThan(0);
   }, 30 * 60 * 1000);
 });

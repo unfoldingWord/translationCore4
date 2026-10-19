@@ -19,6 +19,9 @@
 //   is the `<lang>_twl` release closest in date (D97 ruling 8).
 import { t } from '../../i18n';
 import { normalizeOccurrences, type WithOccurrences } from '../align/occurrences';
+import { hasLinks, recordWords } from '../align/review.mjs';
+import { sameWords, verseWords } from '../align/verseWords.mjs';
+import type { AlignmentVerseRecord } from '../align/zaln';
 import type { DecisionFile, ResourcePin, ResourcesFile } from '../burritoStore';
 import { carryOverDecisions } from '../carryOver';
 import type { CheckItem } from '../derive';
@@ -97,25 +100,39 @@ const dcsRef = (url: string | undefined) => {
   return m ? { repoPath: `git.door43.org/${m[1]}/${m[2]}`, version: m[3] } : null;
 };
 
+/** One verse of tC3's `alignmentData`. */
+type Tc3Verse = { alignments?: Array<{ topWords: WithOccurrences[]; bottomWords: WithOccurrences[] }>; wordBank?: WithOccurrences[] };
+
+/** One §5.1 record from tC3's record of a verse, keyed to the verse text `content` (I-3).
+ * It is invalid when tC3 kept an invalid marker (`marked`), or when the record holds a link
+ * and its words are not the verse's words: the text was edited outside tC3, which wrote no
+ * marker. The record is flagged and kept as tC3 held it, never rewritten to fit: D105 point 7 (in the spirit of D36). */
+export function importedAlignmentRecord(data: Tc3Verse, content: string, marked: boolean, sourceVersion: string): AlignmentRecord {
+  const alignments = nfc((data.alignments ?? []).map((a) => ({ topWords: a.topWords.map(normalizeOccurrences), bottomWords: a.bottomWords.map(unmergeWord) })));
+  const wordBank = nfc((data.wordBank ?? []).map(normalizeOccurrences));
+  const words = { alignments, wordBank } as unknown as AlignmentVerseRecord;
+  return {
+    alignments,
+    wordBank,
+    invalid: marked || (hasLinks(words) && !sameWords(recordWords(words), verseWords(content.normalize('NFC')))),
+    targetVerseMd5: verseTextMd5(content),
+    sourceVersion,
+  };
+}
+
 /** One §5.1 file: a record for each verse of `alignmentData`, keyed to the
- * verse text of `usfm` (I-3), invalid where tC3 kept an invalid marker. */
+ * verse text of `usfm` (I-3), invalid where `importedAlignmentRecord` says so. */
 function alignmentFile(files: Files, book: string, code: string, usfm: string, sourceVersion: string) {
   const { verses } = decompose(usfm);
   const out: Record<string, Record<string, AlignmentRecord>> = {};
   const dir = `${APP}/alignmentData/${book}/`;
   for (const name of Object.keys(files).filter((n) => n.startsWith(dir) && /^\d+\.json$/.test(n.slice(dir.length))).sort((a, b) => byNumber(a.slice(dir.length, -5), b.slice(dir.length, -5)))) {
     const chapter = name.slice(dir.length, -5);
-    const data = json(files[name]) as Record<string, { alignments?: Array<{ topWords: WithOccurrences[]; bottomWords: WithOccurrences[] }>; wordBank?: WithOccurrences[] }>;
+    const data = json(files[name]) as Record<string, Tc3Verse>;
     for (const verse of Object.keys(data).sort(byNumber)) {
       const content = verses[`${chapter}:${verse}`];
       if (content === undefined) continue; // no such verse in the text: nothing to key the record to
-      (out[chapter] ??= {})[verse] = {
-        alignments: nfc((data[verse].alignments ?? []).map((a) => ({ topWords: a.topWords.map(normalizeOccurrences), bottomWords: a.bottomWords.map(unmergeWord) }))),
-        wordBank: nfc((data[verse].wordBank ?? []).map(normalizeOccurrences)),
-        invalid: `${APP}/tools/wordAlignment/invalid/${chapter}/${verse}.json` in files,
-        targetVerseMd5: verseTextMd5(content),
-        sourceVersion,
-      };
+      (out[chapter] ??= {})[verse] = importedAlignmentRecord(data[verse], content, `${APP}/tools/wordAlignment/invalid/${chapter}/${verse}.json` in files, sourceVersion);
     }
   }
   return { schemaVersion: 1, book: code, chapters: out };

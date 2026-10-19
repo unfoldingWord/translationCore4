@@ -336,8 +336,8 @@ test.describe('J7 — PDF', () => {
 // records woven in as `\zaln` and `\w`) and as plain USFM (the stored file).
 // Each download is attached to the run as its artifact.
 test.describe('J7 — USFM', () => {
-  /** Export the open book with `item` and prove the project did not change. */
-  const exportUsfm = async (page: Page, item: string): Promise<{ bytes: Buffer; filename: string }> => {
+  /** Export the open book with `item` and prove the project did not change. The export names no skipped verse (#796), unless the case expects it. */
+  const exportUsfm = async (page: Page, item: string, expectSkipped = false): Promise<{ bytes: Buffer; filename: string }> => {
     let download: { bytes: Buffer; filename: string } = { bytes: Buffer.alloc(0), filename: '' };
     const commits = await assertProjectUnchanged(rigRepo(SEEDED_PROJECT), async () => {
       await page.getByTestId('export-menu-trigger').click();
@@ -345,6 +345,7 @@ test.describe('J7 — USFM', () => {
     });
     expect(commits).toBe(0); // a clean project makes no checkpoint
     await expect(page.getByTestId('export-failure')).toHaveCount(0);
+    if (!expectSkipped) await expect(page.getByTestId('export-skipped')).toHaveCount(0);
     await test.info().attach(download.filename, { body: download.bytes, contentType: 'text/plain' });
     return download;
   };
@@ -424,6 +425,35 @@ test.describe('J7 — USFM', () => {
       await openTitusCommunityChecking(page, SEEDED_PROJECT);
       const download = await exportUsfm(page, 'USFM, aligned');
       expect(expectAlignedDownload(download)).toContain(footnote); // and 1:1 is woven: the helper checks it
+    },
+  );
+
+  // #796 (D105): the text of 1:1 changed after it was aligned and the record was not restamped,
+  // as an edit on disk or from another tool leaves it. The export leaves the verse as stored and
+  // names it, so the translator learns that their alignment of 1:1 is not in the file.
+  test(
+    'USFM, aligned: a verse whose text changed after it was aligned is left out of the file, and the notice names it',
+    { tag: ['@inc9', '@J7'] },
+    async ({ page }) => {
+      const ingredients = path.join(rigRepo(SEEDED_PROJECT), 'ingredients');
+      const bookPath = path.join(ingredients, 'TIT.usfm');
+      fs.writeFileSync(bookPath, fs.readFileSync(bookPath, 'utf8').replace('Pablo, siervo de Dios', 'Pablo, esclavo de Dios'));
+      const alignmentsBefore = fs.readFileSync(path.join(ingredients, 'checking', 'alignments', 'TIT.json'));
+
+      await openTitusCommunityChecking(page, SEEDED_PROJECT);
+      const download = await exportUsfm(page, 'USFM, aligned', true);
+
+      await expect(page.getByTestId('export-skipped')).toHaveCount(1);
+      await expect(page.getByTestId('export-skipped')).toHaveText(/Check them in Align: 1:1$/);
+      const storedBook = readIngredient(SEEDED_PROJECT, 'ingredients/TIT.usfm').toString('utf8');
+      expect(storedBook).toContain('Pablo, esclavo de Dios');
+      // 1:1 is the one record: nothing is woven, so the download is the stored book.
+      const out = decompose(download.bytes.toString('utf8')).verses as Record<string, string>;
+      expect(out['1:1']).toBe((decompose(storedBook).verses as Record<string, string>)['1:1']);
+      expect(download.bytes.toString('utf8')).toBe(storedBook);
+      expect(download.bytes.toString('utf8')).not.toMatch(/\\zaln-s/);
+      // The record is not touched: the export reads it and writes nothing.
+      expect(fs.readFileSync(path.join(ingredients, 'checking', 'alignments', 'TIT.json')).equals(alignmentsBefore)).toBe(true);
     },
   );
 

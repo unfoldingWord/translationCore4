@@ -71,7 +71,7 @@ describe('#271 markDone — Mark valid restamps and flags', () => {
     // A record flagged for re-review (a span create/break, #63) is re-reviewed by Mark valid.
     const flagged = markDone({ ...stale, invalid: true }, verseTextMd5(newText));
     expect(flagged.invalid).toBe(false);
-    expect(alignVerseStatus(flagged, newText, verseTextMd5(newText)).status).toBe('valid');
+    expect(alignVerseStatus(flagged, newText, newText).status).toBe('valid');
   });
 });
 
@@ -90,16 +90,25 @@ describe('#271 the #213 reflow recomputes done', () => {
   });
 });
 
+// The third argument of the status is the verse's stored slot text (#796, `needsReview`).
 describe('#271 the rail’s status reads valid from done only', () => {
   it('fully placed but not done → todo; done → valid; done but stale → invalid; done + invalid flag → invalid', () => {
     const half = halfAligned();
     const fullNoFlag = linkWord(half, 1, bankWord(half, 'siervo')); // no settleDone: a legacy record
-    expect(alignVerseStatus(fullNoFlag, TEXT, MD5).status).toBe('todo');
-    expect(alignVerseStatus(settleDone(fullNoFlag), TEXT, MD5).status).toBe('valid');
-    expect(alignVerseStatus(markDone(half, MD5), TEXT, MD5).status).toBe('valid'); // words in the bank, marked valid
-    expect(alignVerseStatus(markDone(half, MD5), 'Pablo siervo de Dios', verseTextMd5('Pablo siervo de Dios')).status).toBe('invalid'); // stale
-    expect(alignVerseStatus({ ...markDone(half, MD5), invalid: true }, TEXT, MD5).status).toBe('invalid');
-    expect(alignVerseStatus(undefined, TEXT, MD5).status).toBe('todo');
+    expect(alignVerseStatus(fullNoFlag, TEXT, TEXT).status).toBe('todo');
+    expect(alignVerseStatus(settleDone(fullNoFlag), TEXT, TEXT).status).toBe('valid');
+    expect(alignVerseStatus(markDone(half, MD5), TEXT, TEXT).status).toBe('valid'); // words in the bank, marked valid
+    expect(alignVerseStatus(markDone(half, MD5), 'Pablo siervo de Dios', 'Pablo siervo de Dios').status).toBe('invalid'); // stale
+    expect(alignVerseStatus({ ...markDone(half, MD5), invalid: true }, TEXT, TEXT).status).toBe('invalid');
+    expect(alignVerseStatus(undefined, TEXT, TEXT).status).toBe('todo');
     expect(alignVerseStatus(undefined, '', undefined).status).toBe('undrafted');
+  });
+
+  // #796 slice 3 (D105 point 4): a record with no link and not `done` vouches for nothing, so a
+  // changed text leaves it `todo`; the `invalid` flag is the one thing it can still carry.
+  it('a record with no link and not done reads todo whatever the text; flagged invalid, it reads invalid', () => {
+    const bootstrap = bootstrapVerse(verseWords(TEXT), ORIG, SOURCE, MD5);
+    expect(alignVerseStatus(bootstrap, 'Pablo siervo de Dios', 'Pablo siervo de Dios').status).toBe('todo');
+    expect(alignVerseStatus({ ...bootstrap, invalid: true }, TEXT, TEXT).status).toBe('invalid');
   });
 });

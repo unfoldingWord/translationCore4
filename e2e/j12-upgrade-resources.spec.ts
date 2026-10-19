@@ -556,6 +556,11 @@ test.describe('J12 — a facilitator upgrades the original-language text (#258)'
       for (const { ref } of marked) {
         await expect(page.getByTestId('align-verse-list').locator(`button[data-ref="${ref}"]`)).toHaveAttribute('data-status', 'invalid');
       }
+      // The editor reads the same rule as the rail (#796, D105 point 4): a marked verse opens with the banner.
+      const firstMarked = page.getByTestId('align-verse-list').locator(`button[data-ref="${marked[0].ref}"]`);
+      await firstMarked.click();
+      await expect(firstMarked).toHaveAttribute('data-selected', 'true');
+      await expect(page.getByTestId('align-stale')).toBeVisible();
     },
   );
 });

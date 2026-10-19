@@ -45,8 +45,9 @@ import {
 } from './data/derive';
 import { readTwArticle, readTaArticle, readTaTitle } from './data/articles';
 import { revalidateAgainstDraft, resolutionWarning } from './data/revalidate';
-import { bootstrapVerse, finalizeEdit, linkWord, unlinkWord, moveWord, mergeAlignments, splitAlignment, alignmentIsStale, reflowAlignment, reconcileToWords, markDone } from './data/align/edit';
+import { bootstrapVerse, finalizeEdit, linkWord, unlinkWord, moveWord, mergeAlignments, splitAlignment, reflowAlignment, reconcileToWords, markDone } from './data/align/edit';
 import { verseWords } from './data/align/verseWords.mjs';
+import { needsReview } from './data/align/review.mjs';
 import { linksFor, rebindSuggestions, sessionInputFor, trainingVerseOf, trainingVersesFor } from './data/align/suggest';
 import { SuggestScheduler } from './data/align/suggestScheduler';
 import { consequencesOfGatewayChange, applyGatewayChange, completeLanguageSets, uncoveredByChange, sourcePanesForGateway, gatewaysCoveringProject, literalPaneId } from './data/gatewayChange';
@@ -1270,6 +1271,16 @@ async function reflowAlignedVerses({ store, sched, book, bookRaw, stillCurrent =
   }
 }
 
+/** #796 (D105 point 4): the record a verse opens with, and whether the banner stands.
+ * The bootstrap has `invalid: false`, so a stored record's flag is carried over: it clears
+ * on Mark valid, not on an open or an edit. `stale` is `needsReview` of the STORED record,
+ * as the reconciled one passes it by construction; a verse with no stored record has none. */
+function openedRecord(stored, reconciled, slot, words, targetMd5) {
+  const record = stored?.invalid === true ? { ...reconciled, invalid: true } : reconciled;
+  const stale = stored ? needsReview(stored, slot, { wordsOf: () => words, md5Of: () => targetMd5 }) : false;
+  return { record, stale };
+}
+
 /** The §5.1 record is keyed by the PROJECT-frame ref — the draft's own
  * chapter:verse, the key applyAlignEdit writes under. The eng-frame mapping
  * that fetched `origObjects` is a lookup for the source text only and never
@@ -1291,22 +1302,23 @@ async function buildAlignmentSession(store, sched, st, ref, source, origObjects)
   const sourceVersion = `dcs::${source.pin.repoPath.split('/').slice(-2).join('/')}@${source.pin.version}`;
   // A stored record with no alignments — the §8.5 removal form, or the
   // `invalid` record a span create/break leaves on the new key (#63) — has
-  // nothing to edit: the editor starts from the bootstrap; the file keeps
-  // its flag until the translator saves an alignment.
+  // nothing to edit: the editor starts from the bootstrap, which keeps the
+  // record's `invalid` flag (below); the file keeps its flag until the
+  // translator marks the verse valid.
   // #787, #796: a stored record opens rebuilt from the verse's words, in memory
   // only — new words in the bank, removed words gone; the file keeps its bytes
-  // until the next edit. `stale` also stands when the rebuild added or removed a
-  // word, dropped a link or changed a count (order alone does not), not only
-  // when the hash differs.
+  // until the next edit. #796 (D105 point 4): `stale` is `needsReview` of the
+  // STORED record, the rule the rail and the Mark valid gate use. The rebuilt
+  // record passes it by construction, so the stored one is judged: the flag, the
+  // hash, and the words (a new or removed word, a dropped link or a count change;
+  // order alone is not one). A record with no link and not `done` vouches for
+  // nothing, so it opens with no banner.
   // #734, #754: a bank or a card is shown in verse order, the bank of a
   // never-saved verse too; the file takes that order on the next edit.
   // #790 (D107) repairs the cards here, from the pinned source.
   const base = stored?.alignments?.length ? stored : bootstrapVerse(words, origObjects, sourceVersion, targetMd5);
   const reconciled = reconcileToWords(base, words);
-  // `any`, as the stored record was before #754: callers read it untyped.
-  /** @type {any} */
-  const record = reconciled.record;
-  const changed = reconciled.changed;
+  const { record, stale } = openedRecord(stored, reconciled.record, slotOf(st.bookRaw, ref), words, targetMd5);
   return {
     loading: false,
     ref,
@@ -1318,7 +1330,7 @@ async function buildAlignmentSession(store, sched, st, ref, source, origObjects)
     targetMd5,
     origObjects,
     sourceVersion,
-    stale: alignmentIsStale(record, targetMd5) || changed,
+    stale,
     armed: null,
     targetDir: st.project?.scriptDirection === 'rtl' ? 'rtl' : 'ltr',
     origDir: source.testament === 'ot' ? 'rtl' : 'ltr',
@@ -1339,7 +1351,10 @@ async function buildAlignmentSession(store, sched, st, ref, source, origObjects)
 function alignSessionAfterEdit(a2, next, disarm) {
   const record = finalizeEdit(next, a2.words, a2.targetMd5);
   const suggestions = rebindSuggestions(record, a2.suggestions);
-  return { ...a2, ...(disarm ? { armed: null } : {}), record, stale: false, suggestions, refusal: null };
+  // #796 (D105 point 4): the edit made the record match the session's words and hash, so only
+  // an `invalid` flag still asks for review; the banner and the Mark valid gate stay on for it.
+  const stale = needsReview(record, a2.slot, { wordsOf: () => a2.words, md5Of: () => a2.targetMd5 });
+  return { ...a2, ...(disarm ? { armed: null } : {}), record, stale, suggestions, refusal: null };
 }
 
 function understandArticleSet(st, kind, rung) {
@@ -1357,17 +1372,17 @@ function isCurrentArticleRequest(now, seq, currentSeq, repoPath, key) {
 
 /** #129: one verse's alignment status for the align rail. Mirrors the shared
  * check status model: 'valid' = the record says `done` (#271, D73 — set when
- * every word is placed, or by Mark valid), 'invalid' = the draft changed
- * under the record (align.stale), 'todo' = otherwise — plus 'undrafted',
- * which the other tools do not have. `md5` (#795) is read only for a drafted
- * verse with a record that is not flagged `invalid`; elsewhere it may be absent. */
-function alignVerseStatus(rec, text, md5) {
+ * every word is placed, or by Mark valid), 'invalid' = the record needs review
+ * (`needsReview`, #796: the §5.1 flag, a stale hash, or words that are not the
+ * verse's), 'todo' = otherwise — plus 'undrafted', which the other tools do not
+ * have. `slot` is the verse's stored content. A record that needs no hash or words
+ * to be judged (flagged, or vouching for nothing) pays for neither; `lazy` is
+ * `needsReview`'s memoized `wordsOf` and `md5Of`. */
+function alignVerseStatus(rec, text, slot, lazy = {}) {
   if (!text) return { status: 'undrafted', placed: 0, total: 0 };
   const placed = rec ? rec.alignments.reduce((n, x) => n + x.bottomWords.length, 0) : 0;
   const total = rec ? placed + rec.wordBank.length : 0;
-  // §5.1's own re-review flag outranks the hash check — either means the
-  // record no longer vouches for the draft (PR #135 review round 1).
-  if (rec && (rec.invalid === true || alignmentIsStale(rec, md5))) return { status: 'invalid', placed, total };
+  if (rec && needsReview(rec, slot, lazy)) return { status: 'invalid', placed, total };
   if (rec && rec.done === true) return { status: 'valid', placed, total };
   return { status: 'todo', placed, total };
 }
@@ -1397,9 +1412,11 @@ function alignIndexItems(bookRaw, file) {
     const ref = `${e.chapter}:${e.verseKey}`;
     const text = texts[ref] ?? '';
     const rec = file?.chapters?.[String(e.chapter)]?.[String(e.verseKey)];
-    // #795: hashed only when the status reads it (see alignVerseStatus).
-    const md5 = rec && text && rec.invalid !== true ? slotMd5Of(bookRaw, ref) : undefined;
-    items.push({ ref, text, ...alignVerseStatus(rec, text, md5) });
+    // #795, #796: the slot's hash and words are made only when the status reads them
+    // (see alignVerseStatus), and once per verse (the slot memo).
+    const slot = rec && text ? slotOf(bookRaw, ref) : undefined;
+    const lazy = { wordsOf: () => slotWordsOf(bookRaw, ref), md5Of: () => slotMd5Of(bookRaw, ref) };
+    items.push({ ref, text, ...alignVerseStatus(rec, text, slot, lazy) });
   }
   return items;
 }

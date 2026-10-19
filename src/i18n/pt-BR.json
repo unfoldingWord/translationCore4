@@ -762,6 +762,7 @@
   "cc.exportSaved": "{filename} salvo",
   "cc.exportInterrupted": "O download de {filename} não foi concluído. Exporte-o novamente.",
   "cc.exportReady": "Exportação pronta: {filename}",
+  "cc.exportSkipped": "Seu alinhamento destes versículos não está no arquivo. Verifique-os em Alinhar: {refs}",
   "cc.exportsLater": "As exportações chegam mais tarde neste incremento (J7).",
   "cc.pageSetup": "Configuração de página",
   "cc.columns": "Colunas",
