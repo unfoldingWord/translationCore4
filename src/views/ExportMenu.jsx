@@ -6,6 +6,8 @@
 // The desktop app reports each download's result (#382, D80): the menu says
 // "Saved" only after a completed download. A browser reports nothing, so there
 // the menu says only that the export is ready.
+// An export that leaves verses out names them (#796, D105): the aligned USFM skips a verse
+// whose alignment needs review, and the Report's `skipped` refs show here, under the menu.
 import React from 'react';
 import { useApp } from '../state.jsx';
 import { t } from '../i18n';
@@ -18,10 +20,16 @@ const failureText = (report) => {
   return recovery ? `${report.facts.error} ${recovery}` : String(report.facts.error);
 };
 
+/** How many skipped verses the notice names; the rest are cut with an ellipsis. */
+const SKIPPED_SHOWN = 20;
+/** The verses an export left out, as one line: the first 20 refs, then `, …` when there are more. */
+const skippedText = (refs) => t('cc.exportSkipped', { refs: refs.slice(0, SKIPPED_SHOWN).join(', ') + (refs.length > SKIPPED_SHOWN ? ', …' : '') });
+
 export default function ExportMenu({ pageSetup }) {
   const { s, actions } = useApp();
   const [running, setRunning] = React.useState(false);
   const [failure, setFailure] = React.useState(null);
+  const [skipped, setSkipped] = React.useState(null); // the refs the last export left out, or null
   const [notice, setNotice] = React.useState(null); // { tone, message }: the download's toast
   const desktop = globalThis.window?.tc4Desktop?.onDownloadDone;
 
@@ -42,11 +50,15 @@ export default function ExportMenu({ pageSetup }) {
   const run = async (producer) => {
     setRunning(true);
     setFailure(null);
+    setSkipped(null);
     setNotice(null);
     try {
       const report = await actions.exportFile(producer, pageSetup);
       if (report && !report.ok) setFailure(failureText(report));
-      else if (report && !desktop) setNotice({ tone: 'info', message: t('cc.exportReady', { filename: report.facts.filename }) });
+      else if (report) {
+        if (report.facts.skipped?.length) setSkipped(report.facts.skipped);
+        if (!desktop) setNotice({ tone: 'info', message: t('cc.exportReady', { filename: report.facts.filename }) });
+      }
     } finally {
       setRunning(false);
     }
@@ -61,6 +73,7 @@ export default function ExportMenu({ pageSetup }) {
       {/* The side panel is narrower than the toast's 300px minimum width. */}
       {notice && <Toast tone={notice.tone} message={notice.message} onDismiss={() => setNotice(null)} dismissLabel={t('common.dismiss')} data-testid="export-toast" style={{ marginTop: 10, '--toast-w-min': '0px' }} />}
       {failure && <Callout tone="warn" data-testid="export-failure" style={{ marginTop: 10 }}>{failure}</Callout>}
+      {skipped && <Callout tone="warn" data-testid="export-skipped" style={{ marginTop: 10 }}>{skippedText(skipped)}</Callout>}
     </div>
   );
 }

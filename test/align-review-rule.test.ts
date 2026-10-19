@@ -22,7 +22,9 @@
 // 3. one edit on an `invalid` record clears the flag, the rail or the banner (B2);
 // 4. the rule flags a record that matches its verse (S0, S0d);
 // 5. the open drops the `invalid` flag of a span record (#63, no link), so the editor's
-//    bootstrap record (`invalid: false`) is what the first edit saves (B2, the span record).
+//    bootstrap record (`invalid: false`) is what the first edit saves (B2, the span record);
+// 6. (slice 5) the export weaves a record that the other three flag, or leaves out and
+//    names a record that they pass: the export column of S0-S5.
 import { describe, expect, it } from 'vitest';
 import { bookModel } from '../src/data/bookModel.js';
 import { bootstrapVerse, finalizeEdit, linkWord, markDone, reconcileToWords, stampTargetVerse } from '../src/data/align/edit';
@@ -31,6 +33,8 @@ import { verseWords } from '../src/data/align/verseWords.mjs';
 import { invalidateAlignments } from '../src/data/upgrade';
 import { decompose } from '../journal/skeleton.mjs';
 import { verseTextMd5 } from '../journal/fold.mjs';
+import { weaveBook } from '../src/data/export/weave.mjs';
+import { AlignmentHelpers } from '../src/data/vendor';
 import {
   __alignIndexItemsForTests as alignIndexItems,
   __alignSessionAfterEditForTests as alignSessionAfterEdit,
@@ -214,5 +218,35 @@ describe('#796 slice 3 needsReview, step by step', () => {
   it('stampTargetVerse stamps the hash and leaves `invalid` as it is', () => {
     expect(stampTargetVerse({ ...STORED, invalid: true }, 'h')).toMatchObject({ invalid: true, targetVerseMd5: 'h' });
     expect(stampTargetVerse({ ...STORED, invalid: false }, 'h')).toMatchObject({ invalid: false, targetVerseMd5: 'h' });
+  });
+});
+
+// #796 slice 5: the export column. The weave asks the same `needsReview`, so a record that the
+// rail, the banner and the gate flag is left out of the file and named, and a record they pass
+// is woven. S0d is the control that shows a `done` record that matches its verse is woven.
+describe('#796 slice 5 B3 the export reads the same rule', () => {
+  const exported = (record: AlignmentVerseRecord, raw: string) => {
+    const skips: Array<{ ref: string; reason: string }> = [];
+    const out = weaveBook(raw, fileOf(record), AlignmentHelpers, (skip: { ref: string; reason: string }) => skips.push(skip));
+    return { out, skips, woven: out !== raw };
+  };
+
+  const table: Array<[string, () => AlignmentVerseRecord, string, { woven: boolean; reported: boolean }]> = [
+    ['S0 the sample as it is', () => STORED, RAW, { woven: true, reported: false }],
+    ['S0d control: the sample, marked done', () => done(STORED), RAW, { woven: true, reported: false }],
+    ['S1 the text was edited, no reflow', () => done(STORED), RAW_EDITED, { woven: false, reported: true }],
+    ['S2 a word on no card and not in the bank, current hash', s2, RAW, { woven: false, reported: true }],
+    ['S3 a word in the bank and on a card, current hash', s3, RAW, { woven: false, reported: true }],
+    ['S4 invalidateAlignments, current hash', s4, RAW, { woven: false, reported: true }],
+    ['S5 Mark valid with nothing placed, then a text edit', s5, RAW_EDITED, { woven: false, reported: true }],
+    // The record has no link and the text is as it was: nothing to review, and nothing to weave (F20).
+    ['S5c control: Mark valid with nothing placed, text not edited', s5, RAW, { woven: false, reported: false }],
+  ];
+  it.each(table)('%s', (_name, make, raw, expected) => {
+    const { out, skips, woven } = exported(make(), raw);
+    expect(woven).toBe(expected.woven);
+    expect(skips).toEqual(expected.reported ? [{ ref: '1:1', reason: 'needs-review' }] : []);
+    // A verse that is not woven is its stored bytes: the whole book is unchanged.
+    if (!expected.woven) expect(out).toBe(raw);
   });
 });

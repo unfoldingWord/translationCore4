@@ -32,6 +32,8 @@ import { verseTextMd5 } from '../journal/fold.mjs';
 import { toNfc } from '../journal/grammar.mjs';
 import { __alignIndexItemsForTests as alignIndexItems } from '../src/state.jsx';
 import { UsfmFileConversionHelpers } from 'word-aligner-lib';
+import { weaveBook } from '../src/data/export/weave.mjs';
+import { AlignmentHelpers } from '../src/data/vendor';
 
 const fs = process.getBuiltinModule('node:fs');
 const path = process.getBuiltinModule('node:path');
@@ -154,5 +156,40 @@ describe.skipIf(!RUN)('#796 bench — Genesis, en_ult v91', () => {
         `warm rail 10 records ${fixed(warm10)} ms, warm rail ${refs.length} records ${fixed(warmAll)} ms`,
     );
     expect(edit).toBeLessThanOrEqual(BASE.edit * 1.2);
+  }, 30 * 60 * 1000);
+
+  // #796 slice 5 — the aligned export of the whole book: one record per verse (the rail's `recordFor`
+  // shape: one placed word each, on one card that holds one source word; a card with no source
+  // word makes `merge` throw, so every verse would be refused). Reported, not asserted. The same case ran on the
+  // base (weave.mjs read only the flag and the hash) and on the branch (it asks `needsReview` too);
+  // the base ignores the fourth argument, so `reported` counts only on the branch. Median of 3
+  // weaves of the 1.5 MB book, each run in turn in one session (267a147, the slice 3 head, vs the
+  // slice 5 branch): the base 3635, 3272, 2605 and 2709 ms; the branch 2667, 2675 and 2675 ms. All
+  // 1533 verses weave on both, none reported. If the line does not print, add --disable-console-intercept.
+  it('measures weaveBook on Genesis, one record per verse', () => {
+    const raw = strFromU8(unzipSync(new Uint8Array(fs.readFileSync(ZIP)))['ingredients/GEN.usfm']);
+    const { skeleton, verses: stored } = decompose(toNfc(raw) as string) as { skeleton: string; verses: Record<string, string> };
+    const plainSlots: Record<string, string> = Object.fromEntries(Object.entries(stored).map(([k, s]) => [k, clean(s)]));
+    const book = recompose(skeleton, plainSlots) as string;
+    const refs = Object.keys(plainSlots).filter((k) => !k.startsWith('0:') && wordTokens(plainSlots[k]).length > 0);
+    const TOP: AlignedWord = { word: 'בְּ', strong: 'H9003', lemma: 'בְּ', morph: 'He,R', occurrence: 1, occurrences: 1 };
+    const chapters: AlignmentFile['chapters'] = {};
+    for (const ref of refs) {
+      const [c, v] = ref.split(':');
+      const words = verseWords(plainSlots[ref]).map((w) => ({ word: w.word, occurrence: w.occurrence, occurrences: w.occurrences }));
+      (chapters[c] ??= {})[v] = {
+        alignments: [{ topWords: [TOP], bottomWords: words.slice(0, 1) }], wordBank: words.slice(1), invalid: false,
+        targetVerseMd5: verseTextMd5(plainSlots[ref]) as string, sourceVersion: 'dcs::unfoldingWord/hbo_uhb@v0.0.0',
+      };
+    }
+    const file: AlignmentFile = { schemaVersion: 1, book: 'GEN', chapters };
+    const reasons: Record<string, number> = {};
+    const report = (skip: { reason: string }) => { reasons[skip.reason] = (reasons[skip.reason] ?? 0) + 1; };
+    let out = '';
+    const ms = time(() => { out = weaveBook(book, file, AlignmentHelpers, report) as string; }, 3);
+    const outVerses = decompose(out).verses as Record<string, string>;
+    const woven = refs.filter((r) => outVerses[r] !== plainSlots[r]).length;
+    console.log(`[align bench] weaveBook GEN: ${refs.length} records, ${ms.toFixed(0)} ms (median of 3), ${woven} woven, reported ${JSON.stringify(reasons)}`);
+    expect(woven).toBeGreaterThan(0);
   }, 30 * 60 * 1000);
 });

@@ -114,6 +114,37 @@ describe('#794 weaveBook — a verse that holds imported alignment markup keeps 
     expect(woven).not.toBe(stored['1:1']);
     expect(woven).toMatch(/\\zaln-s/);
   });
+
+  // #796 slice 5: the verse keeps its bytes, and the export names it when the translator has links there.
+  const importedFile = (links: number, extra: Partial<AlignmentVerseRecord> = {}): AlignmentFile => {
+    const stored = decompose(EN_ULT).verses as Record<string, string>;
+    const text = verseText((parseChapters(EN_ULT) as Record<string, Record<string, unknown>>)['1']['1']);
+    let record = bootstrapVerse(verseWords(text), ORIG, SOURCE, md5Hex(text));
+    ['Paul', 'servant'].slice(0, links).forEach((word, card) => {
+      record = linkWord(record, card, wordIn(record, word));
+    });
+    record = { ...record, ...extra, targetVerseMd5: verseTextMd5(stored['1:1']) };
+    return { schemaVersion: 2, book: 'TIT', chapters: { '1': { '1': record } } } as unknown as AlignmentFile;
+  };
+  const weaveReported = (alignments: AlignmentFile) => {
+    const skips: Array<{ ref: string; reason: string }> = [];
+    const out = weave(EN_ULT, alignments, AlignmentHelpers, (skip: { ref: string; reason: string }) => skips.push(skip));
+    return { out, skips };
+  };
+
+  it('a linked record for en_ult Titus 1:1: the stored bytes, and an inline-alignment report', () => {
+    const { out, skips } = weaveReported(importedFile(2));
+    expect(out).toBe(EN_ULT);
+    expect(skips).toEqual([{ ref: '1:1', reason: 'inline-alignment' }]);
+  });
+
+  it('a record with no link for en_ult Titus 1:1, or one marked done: the stored bytes, no report', () => {
+    for (const file of [importedFile(0), importedFile(0, { done: true })]) {
+      const { out, skips } = weaveReported(file);
+      expect(out).toBe(EN_ULT);
+      expect(skips).toEqual([]);
+    }
+  });
 });
 
 // ---- reflow --------------------------------------------------------------

@@ -762,6 +762,7 @@
   "cc.exportSaved": "{filename} सहेजा गया",
   "cc.exportInterrupted": "{filename} का डाउनलोड पूरा नहीं हुआ। इसे फिर से निर्यात करें।",
   "cc.exportReady": "निर्यात तैयार: {filename}",
+  "cc.exportSkipped": "इन पदों का आपका संरेखण फ़ाइल में नहीं है। संरेखण में इनकी जाँच करें: {refs}",
   "cc.exportsLater": "निर्यात इस इंक्रीमेंट में बाद में आते हैं (J7)।",
   "cc.pageSetup": "पृष्ठ सेटअप",
   "cc.columns": "स्तंभ",

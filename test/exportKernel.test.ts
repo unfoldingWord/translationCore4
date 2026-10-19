@@ -71,6 +71,19 @@ describe('#375 runExport', () => {
     expect(report.facts.bytes).toBe(new TextEncoder().encode(TIT.replace('\\v 2 ___', '\\v 2 Nueva vida.')).byteLength);
   });
 
+  it('a file that names skipped verses puts them in the facts (#796); an empty or missing list leaves the key out', async () => {
+    const { store } = await seeded();
+    const named = (skipped?: string[]): ExportProducer['produce'] => async () => ({ bytes: new TextEncoder().encode('x'), filename: exportFilename('puntos-TIT', 'txt'), mime: 'text/plain', skipped });
+    const some = await runExport(fake(named(['1:1', '2:3'])), { store, project: PROJECT, book: 'TIT' });
+    expect(reportError(some)).toBeNull();
+    expect(some).toMatchObject({ op: 'export', ok: true, facts: { producer: 'usfm-plain', skipped: ['1:1', '2:3'] } });
+    for (const skipped of [[], undefined]) {
+      const none = await runExport(fake(named(skipped)), { store, project: PROJECT, book: 'TIT' });
+      expect(none.ok).toBe(true);
+      expect('skipped' in none.facts).toBe(false);
+    }
+  });
+
   it('a producer that throws delivers nothing and returns export.read-failed', async () => {
     const { store } = await seeded();
     const report = await runExport(fake(async () => { throw new Error('no such book'); }), { store, project: PROJECT });

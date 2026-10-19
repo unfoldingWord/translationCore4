@@ -762,6 +762,7 @@
   "cc.exportSaved": "تم حفظ {filename}",
   "cc.exportInterrupted": "لم يكتمل تنزيل {filename}. قم بتصديره مرة أخرى.",
   "cc.exportReady": "التصدير جاهز: {filename}",
+  "cc.exportSkipped": "محاذاتك لهذه الآيات غير موجودة في الملف. تحقّق منها في المحاذاة: {refs}",
   "cc.exportsLater": "ستتوفر خيارات التصدير لاحقاً في هذا التحديث (J7).",
   "cc.pageSetup": "إعداد الصفحة",
   "cc.columns": "الأعمدة",

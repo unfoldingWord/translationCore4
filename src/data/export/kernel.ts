@@ -30,10 +30,14 @@ export type ExportInput = {
   pageSetup?: PageSetup;
   storyPictures?: (number: number, story: Story) => Promise<Record<string, string>>;
 };
-export type ExportFile = { bytes: Uint8Array; filename: string; mime: string };
+/** `skipped` (#796): the verses the file leaves out although the project holds an alignment of
+ * the translator's for them, as `chapter:verse` refs. Only the aligned USFM sets it, and only
+ * when it is not empty. */
+export type ExportFile = { bytes: Uint8Array; filename: string; mime: string; skipped?: string[] };
 
-/** The facts of an ok export Report: which producer, the file name, its size in bytes. */
-export type ExportFacts = { producer: ExportProducer['id']; filename: string; bytes: number };
+/** The facts of an ok export Report: which producer, the file name, its size in bytes, and
+ * `skipped` (#796): the file's `skipped` verses, present only when there are some. */
+export type ExportFacts = { producer: ExportProducer['id']; filename: string; bytes: number; skipped?: string[] };
 
 /** The one file-name form of every export: `<subject>-<YYYY-MM-DD>.<ext>`, on
  * the translator's local date. */
@@ -89,6 +93,11 @@ async function exportRecorded(producer: ExportProducer, input: ExportInput): Pro
     if (error instanceof Refusal) return failedReport('export', startedAt, new Date().toISOString(), error, { producer: producer.id });
     return fail('export.read-failed', error);
   }
-  const facts: ExportFacts = { producer: producer.id, filename: file.filename, bytes: file.bytes.byteLength };
+  const facts: ExportFacts = {
+    producer: producer.id,
+    filename: file.filename,
+    bytes: file.bytes.byteLength,
+    ...(file.skipped?.length ? { skipped: file.skipped } : {}),
+  };
   return okReport('export', startedAt, new Date().toISOString(), facts);
 }
