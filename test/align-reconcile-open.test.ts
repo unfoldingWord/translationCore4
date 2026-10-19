@@ -272,9 +272,11 @@ describe('#787 reconcileToWords', () => {
     const noBank = partial as AlignmentVerseRecord;
     expect('wordBank' in noBank).toBe(false);
     expect(() => reconcileToWords(noBank, verseWords(T2))).not.toThrow();
-    const out = reflowAlignment(noBank, verseWords(T2), md5Hex(T2))!;
+    const verse = (text: string) => ({ slot: text, words: verseWords(text), md5: md5Hex(text) });
+    const out = reflowAlignment(noBank, verse(T1), verse(T2))!;
     expect(out).not.toBeNull();
-    expect(out.invalid).toBe(false);
+    // #789: the record holds no `wordBank`, so it did not fit its verse before this save (slice 3's rule): it is flagged.
+    expect(out.invalid).toBe(true);
     expect(out.alignments[0].bottomWords.map(key)).toEqual(['Pablo/1']);
     expect(bankKeys(out)).toEqual(wordTokens(T2).map(key).filter((k) => k !== 'Pablo/1'));
   });
