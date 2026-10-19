@@ -979,6 +979,7 @@
   "syncResult.from": "Modifications de : {names}",
   "syncResult.newestOne": "1 conflit a gardé la version la plus récente",
   "syncResult.newestMany": "{n} conflits ont gardé la version la plus récente",
+  "syncResult.alignReplaced": "{book} {ref} : l’alignement de {name} a remplacé le vôtre.",
   "syncResult.conflictsOne": "1 conflit de verset à examiner",
   "syncResult.conflictsMany": "{n} conflits de versets à examiner",
   "syncResult.restoredOne": "Door43 n’avait pas 1 modification d’un coéquipier. tC4 l’a envoyée de nouveau.",

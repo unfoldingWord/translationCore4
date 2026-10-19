@@ -979,6 +979,7 @@
   "syncResult.from": "Thay đổi từ: {names}",
   "syncResult.newestOne": "1 xung đột đã giữ phiên bản mới nhất",
   "syncResult.newestMany": "{n} xung đột đã giữ phiên bản mới nhất",
+  "syncResult.alignReplaced": "{book} {ref}: căn chỉnh của {name} đã thay thế căn chỉnh của bạn.",
   "syncResult.conflictsOne": "1 xung đột câu cần xem xét",
   "syncResult.conflictsMany": "{n} xung đột câu cần xem xét",
   "syncResult.restoredOne": "Door43 chưa có 1 thay đổi của một thành viên. tC4 đã gửi lại thay đổi đó.",

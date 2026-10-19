@@ -19,7 +19,8 @@
         "journals/translator-b/segments/2026-10-13T09_00_01.000Z,0000,translator-b.action.json",
         "journals/translator-b/segments/2026-10-13T10_01_00.000Z,0000,translator-b.action.json",
         "journals/translator-b/segments/2026-10-13T10_11_00.000Z,0000,translator-b.action.json",
-        "journals/translator-b/segments/2026-10-13T10_20_00.000Z,0000,translator-b.action.json"
+        "journals/translator-b/segments/2026-10-13T10_20_00.000Z,0000,translator-b.action.json",
+        "journals/translator-b/segments/2026-10-13T10_40_00.000Z,0000,translator-b.action.json"
       ]
     },
     "translator-c": {
@@ -28,7 +29,8 @@
       "segments": [
         "journals/translator-c/segments/2026-10-13T09_00_02.000Z,0000,translator-c.action.json",
         "journals/translator-c/segments/2026-10-13T10_02_00.000Z,0000,translator-c.action.json",
-        "journals/translator-c/segments/2026-10-13T10_21_00.000Z,0000,translator-c.action.json"
+        "journals/translator-c/segments/2026-10-13T10_21_00.000Z,0000,translator-c.action.json",
+        "journals/translator-c/segments/2026-10-13T10_41_00.000Z,0000,translator-c.action.json"
       ]
     }
   },
@@ -77,6 +79,15 @@
       ],
       "key": "dec|translationWords|a9p2|tit|1|1|1",
       "newest": "2026-10-13T10:21:00.000Z|0000|translator-c"
+    },
+    "align-two-ways": {
+      "description": "B and C each take one placed pair of TIT 1:1 apart, from the same base. A non-text fork on an align key; C is newest.",
+      "segments": [
+        "journals/translator-b/segments/2026-10-13T10_40_00.000Z,0000,translator-b.action.json",
+        "journals/translator-c/segments/2026-10-13T10_41_00.000Z,0000,translator-c.action.json"
+      ],
+      "key": "align|TIT|1:1",
+      "newest": "2026-10-13T10:41:00.000Z|0000|translator-c"
     },
     "invalid-file": {
       "description": "A segment of C whose body does not match its sha256. Not in journals/.",

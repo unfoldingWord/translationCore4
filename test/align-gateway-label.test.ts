@@ -1,10 +1,11 @@
 // #768 — the gateway lens's card label after an alignment is saved.
 //
 // A saved alignment passes through the journal seal, which writes every content
-// string in NFC (I-4). The Hebrew of hbo_uhb is not NFC, so the seal changes
-// some `topWords[].word` values. The ULT's `x-content` keeps the resource's
-// form. The card label (`gwLabelFor`) must still find the ULT words for every
-// card. Inputs are the pinned resources' own Genesis 1:1 (test/fixtures/README.md).
+// string in NFC (I-4). The Hebrew of hbo_uhb is not NFC, so a saved record holds
+// the NFC form of those words (since #793 the bootstrap builds them in NFC
+// before the seal). The ULT's `x-content` keeps the resource's form. The card
+// label (`gwLabelFor`) must still find the ULT words for every card. Inputs are
+// the pinned resources' own Genesis 1:1 (test/fixtures/README.md).
 //
 // The ways this can fail, written before the fix:
 //   1. A word the seal changed no longer matches its `x-content`: the label is
@@ -45,11 +46,10 @@ const sealed = normalizeEvent({
 const labels = (r: typeof record) => r.alignments.map((a) => gwLabelFor(a.topWords, ultTokens));
 
 describe('#768 gateway card label survives the journal seal (Genesis 1:1)', () => {
-  it('the seal changes the non-NFC Hebrew words (failure mode 4)', () => {
-    const changed = record.alignments
-      .map((a, i) => (a.topWords[0].word !== sealed.alignments[i].topWords[0].word ? a.topWords[0].word : null))
-      .filter((w): w is string => w !== null);
-    expect(changed.every((w) => w !== w.normalize('NFC'))).toBe(true);
+  it('the resource holds non-NFC Hebrew words, so the ULT form and the saved form differ (failure mode 4)', () => {
+    const changed = (uhb.verseObjects as Array<{ tag?: string; text: string }>)
+      .filter((o) => o.tag === 'w' && o.text !== o.text.normalize('NFC'))
+      .map((o) => o.text);
     // The literals here are NFC: compare in that form.
     expect(changed.map((w) => w.normalize('NFC'))).toEqual(['בְּ⁠רֵאשִׁ֖ית', 'בָּרָ֣א', 'הַ⁠שָּׁמַ֖יִם']);
   });
