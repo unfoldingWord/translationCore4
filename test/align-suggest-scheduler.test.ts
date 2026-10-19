@@ -57,11 +57,11 @@ const verse = (ref: string, titus = false): TrainingVerse => {
   const v = titus ? TITUS : PAUL;
   let r = bootstrapVerse(verseWords(v.text), v.orig, SOURCE, md5Hex(v.text));
   for (const [card, word] of titus ? [[0, 'Tito']] : [[0, 'Pablo'], [1, 'siervo'], [2, 'Dios']]) r = linkWord(r, card as number, bankWord(r, word as string));
-  return trainingVerseOf(ref, stampTargetVerse(r, md5Hex(v.text)), v.text)!;
+  return trainingVerseOf(ref, stampTargetVerse(r, md5Hex(v.text)), verseWords(v.text))!;
 };
 const verses = (n: number, from = 1) => Array.from({ length: n }, (_, i) => verse(`TIT 1:${from + i}`));
 /** A Suggest for a verse whose only original word is Τίτῳ, drafted "A Tito". */
-const askTitus = sessionInputFor(bootstrapVerse(verseWords(TITUS.text), TITUS.orig, SOURCE, md5Hex(TITUS.text)), TITUS.text);
+const askTitus = sessionInputFor(bootstrapVerse(verseWords(TITUS.text), TITUS.orig, SOURCE, md5Hex(TITUS.text)), verseWords(TITUS.text));
 /** True when the answer links Τίτῳ to "Tito" (word 1). Only a model whose
  * memory holds the Titus verse does; any other model links it to word 0. */
 const knowsTito = (reply: { links: Array<{ source: number[]; target: number[] }> }) =>
