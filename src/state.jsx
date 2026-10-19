@@ -45,7 +45,7 @@ import {
 } from './data/derive';
 import { readTwArticle, readTaArticle, readTaTitle } from './data/articles';
 import { revalidateAgainstDraft, resolutionWarning } from './data/revalidate';
-import { bootstrapVerse, cardsInVerseOrder, inVerseOrder, linkWord, unlinkWord, moveWord, mergeAlignments, splitAlignment, stampTargetVerse, alignmentIsStale, reflowAlignment, settleDone, markDone } from './data/align/edit';
+import { bootstrapVerse, cardsInVerseOrder, inVerseOrder, linkWord, unlinkWord, moveWord, mergeAlignments, splitAlignment, stampTargetVerse, alignmentIsStale, reflowAlignment, reconcileToText, settleDone, markDone } from './data/align/edit';
 import { linksFor, rebindSuggestions, sessionInputFor, trainingVerseOf, trainingVersesFor } from './data/align/suggest';
 import { SuggestScheduler } from './data/align/suggestScheduler';
 import { consequencesOfGatewayChange, applyGatewayChange, completeLanguageSets, uncoveredByChange, sourcePanesForGateway, gatewaysCoveringProject, literalPaneId } from './data/gatewayChange';
@@ -1205,12 +1205,25 @@ async function buildAlignmentSession(store, sched, st, ref, source, origObjects)
   // `invalid` record a span create/break leaves on the new key (#63) — has
   // nothing to edit: the editor starts from the bootstrap; the file keeps
   // its flag until the translator saves an alignment.
-  // #734, #754: a bank or a card stored in another order (an older save, an
-  // import) is shown in verse order; the file takes that order on the next edit.
+  // #787: a stored record opens rebuilt from the current text, in memory only —
+  // new words in the bank, removed words gone; the file keeps its bytes until
+  // the next edit. `stale` also stands when the rebuild added or removed a
+  // word, dropped a link or changed a count (order alone does not), not only
+  // when the hash differs.
+  // #734, #754: a bank or a card is shown in verse order, the bank of a
+  // never-saved verse too; the file takes that order on the next edit.
   // `any`, as the stored record was before #754: callers read it untyped.
-  const record = /** @type {any} */ (stored?.alignments?.length
-    ? cardsInVerseOrder({ ...stored, wordBank: inVerseOrder(stored.wordBank, targetText) }, targetText)
-    : bootstrapVerse(targetText, origObjects, sourceVersion));
+  /** @type {any} */
+  let record;
+  let changed = false;
+  if (stored?.alignments?.length) {
+    const reconciled = reconcileToText(stored, targetText);
+    record = cardsInVerseOrder(reconciled.record, targetText);
+    changed = reconciled.changed;
+  } else {
+    const fresh = bootstrapVerse(targetText, origObjects, sourceVersion);
+    record = { ...fresh, wordBank: inVerseOrder(fresh.wordBank, targetText) };
+  }
   return {
     loading: false,
     ref,
@@ -1220,7 +1233,7 @@ async function buildAlignmentSession(store, sched, st, ref, source, origObjects)
     targetText,
     origObjects,
     sourceVersion,
-    stale: alignmentIsStale(record, targetText),
+    stale: alignmentIsStale(record, targetText) || changed,
     armed: null,
     targetDir: st.project?.scriptDirection === 'rtl' ? 'rtl' : 'ltr',
     origDir: source.testament === 'ot' ? 'rtl' : 'ltr',
