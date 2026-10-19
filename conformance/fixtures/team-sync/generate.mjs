@@ -129,6 +129,22 @@ export const buildTeamSyncFixture = (outDir = HERE, sampleDir = SAMPLE) => {
   const changedPath = path.join(changedDir, segmentName(a11.ts));
   fs.writeFileSync(changedPath, sealAction([{ ...a11, text: 'Pablo, siervo de Dios y apóstol de Jesucristo, conforme a la fe de los escogidos de Dios,\n' }]));
 
+  // ---- align-two-ways: B and C each take one placed pair of TIT 1:1 apart, from the seed's
+  // record — a non-text fork on an `align|` key. It follows the invalid-file case, so that case keeps its ts ----
+  const alignKey = 'align|TIT|1:1';
+  const seedAlign = seed.find((e) => e.op === 'align.verse.set' && `align|${e.book}|${e.chapter}:${e.verse}` === alignKey);
+  const alignRecord = { ...seedAlign };
+  delete alignRecord.seed; // an edit is not seeded
+  const alignEdit = (actor, iso, pair) => ({
+    ...alignRecord, actor, ts: issue(actor, iso), base: seeded.headsTs[alignKey],
+    alignments: alignRecord.alignments.filter((_, i) => i !== pair),
+    wordBank: [...alignRecord.wordBank, ...alignRecord.alignments[pair].bottomWords], // the freed words go back to the bank
+  });
+  const bAlign = alignEdit(ACTORS.b, '2026-10-13T10:40:00.000Z', 1);
+  const cAlign = alignEdit(ACTORS.c, '2026-10-13T10:41:00.000Z', 0);
+  const alignTwoWays = [write(ACTORS.b, [bAlign]), write(ACTORS.c, [cAlign])];
+  files[ACTORS.b].segments.push(alignTwoWays[0]); files[ACTORS.c].segments.push(alignTwoWays[1]);
+
   const index = {
     fixture: 'team-sync',
     decision: 'D98',
@@ -139,6 +155,7 @@ export const buildTeamSyncFixture = (outDir = HERE, sampleDir = SAMPLE) => {
       'different-verses': { description: 'A changes TIT 1:1, B changes TIT 1:2, C changes TIT 1:3. No fork.', segments: differentVerses, keys: ['text|TIT|1:1', 'text|TIT|1:2', 'text|TIT|1:3'] },
       'verse-two-ways': { description: 'A and B change TIT 1:4 from the same base. A verse-text fork; B is newest.', segments: verseTwoWays, key: 'text|TIT|1:4', newest: b14.ts },
       'check-two-ways': { description: 'B and C set one translationWords check result two ways (status valid, then todo). A non-text fork; C is newest.', segments: checkTwoWays, key: decKey, newest: cDec.ts },
+      'align-two-ways': { description: 'B and C each take one placed pair of TIT 1:1 apart, from the same base. A non-text fork on an align key; C is newest.', segments: alignTwoWays, key: alignKey, newest: cAlign.ts },
       'invalid-file': { description: 'A segment of C whose body does not match its sha256. Not in journals/.', path: rel(invalidPath), actor: ACTORS.c },
       'changed-own-file': { description: 'A different valid action at the path of A\'s own TIT 1:1 segment. Not in journals/.', path: rel(changedPath), own: differentVerses[0], actor: ACTORS.a },
     },

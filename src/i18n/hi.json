@@ -979,6 +979,7 @@
   "syncResult.from": "इनके बदलाव: {names}",
   "syncResult.newestOne": "1 टकराव में सबसे नया संस्करण रखा गया",
   "syncResult.newestMany": "{n} टकरावों में सबसे नया संस्करण रखा गया",
+  "syncResult.alignReplaced": "{book} {ref}: {name} के संरेखण ने आपके संरेखण की जगह ले ली।",
   "syncResult.conflictsOne": "देखने के लिए 1 पद टकराव",
   "syncResult.conflictsMany": "देखने के लिए {n} पद टकराव",
   "syncResult.restoredOne": "Door43 पर एक साथी का 1 बदलाव नहीं था। tC4 ने उसे फिर से भेजा।",

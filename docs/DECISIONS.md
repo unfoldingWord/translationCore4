@@ -2675,6 +2675,8 @@ this computer does not have, rebuilds, and pushes [VERIFIED — `journal/fold.mj
    them new ids.
 8. **Check results and alignments: the newest wins.** Only verse text goes to the conflict
    review. Each other fork keeps its newest head, and the sync result counts it once.
+   [amended 2026-10-19 — D108: the result also names each alignment fork where a
+   teammate's newer record replaced this actor's, as a notice]
 
 **The guarantees.** Each guarantee has an id. Each test that proves one starts its name with
 the id, for example `[G1] keeps every own file`, so `git grep "\[G1\]"` lists every proof.
@@ -2688,7 +2690,7 @@ This table is the home of the guarantees; epic #24 links here.
 | G4 | Door43 `main` only moves forward: never a force push; a push that is not a fast-forward starts the sync again. | 3 | app rule (§8.7) | #676 |
 | G5 | Identity holds: after a sync, the project is at the same path with the same actor id. | 3 | app rule (§8.7) | #676 |
 | G6 | Same journals, same project: two computers with the same journals have the same project files. | 2 | R-8.7.11 | #674 (JC-35), #675 |
-| G7 | Only verse text reaches a person: other conflicts keep the newest version, and the result counts each one once. | 1, 2, 4 | R-8.7.12 | #674 (JC-35), #675, #679 |
+| G7 | Only verse text reaches a person: other conflicts keep the newest version, and the result counts each one once. [amended 2026-10-19 — D108: a notice names each alignment that a teammate's newer record replaced] | 1, 2, 4 | R-8.7.12 | #674 (JC-35), #675, #679, #791 |
 | G8 | A crash during the apply never makes the project unopenable, never loses own work, and never reverts or re-attributes teammate work; the next start finishes the apply. [amended 2026-10-14 — D101] After a power loss, the start applies a scratch copy only when it is the fold of its journal. If it is not, the next sync brings Door43 main (D101 point 2, Ledger #11). [decided 2026-10-14 — owner, PR #688] | 3 | app rule (§8.7) | #676 |
 
 The refusal codes of the format-facing rules are in `journal/report.mjs`:
@@ -2903,3 +2905,63 @@ size of each en_ult v91 book from the rig cache, branch issue-767-usfm-too-large
    this project is damaged". 4.0.0-rc.2 reads and writes 8 MiB segments, because no
    4.0.0-rc.2 build went out with the 4 MiB limit. [VERIFIED — no `v4.0.0-rc.2` tag or
    release on origin, 2026-10-16; owner: no rc.2 build was distributed, PR #780]
+
+## D108 (2026-10-19, project-owner ruling) **The sync result names each verse whose alignment a teammate's newer version replaced. It is a notice: nothing merges automatically. Adds to D98 point 8 and amends R-8.7.12 (BURRITO-SPEC 1.26).** [owner ruling on #791, 2026-10-19: "name it in the sync result"; issue #791]
+
+Context. One `align.verse.set` event holds the whole alignment record of one verse. Two
+teammates who align the same verse from the same base make a fork. The fold keeps the newest
+record (D98 point 8, R-8.7.12). The placements of the other record leave the project, and the
+journal keeps them. Before this decision, the sync result counted the fork once ("N conflicts
+kept the newest version"). It named no verse and no teammate. `src/data/journal/verseConflicts.ts`
+lists only verse-text forks, so no review row appeared. [VERIFIED — scratch test through the
+real sync core on the team-sync fixture, main 2b08ed3, 2026-10-17, issue #791]
+
+1. **The result names the verse and the teammate.** After a sync, the result shows one notice
+   row for each alignment fork where a teammate's record is the newest and this computer's
+   actor wrote one of the other records. The row names the book, the chapter and verse, and
+   the teammate. The teammate shows as in the conflict review (D98 point 5).
+2. **A notice only.** The row has no button and no review link. Only a verse-text fork goes
+   to a person (R-8.7.12). The count "N conflicts kept the newest version" stays, and it
+   counts this fork too.
+3. **Each fork shows once.** A fork that the fold of this computer's own journal already had
+   is not named again at the next sync.
+4. **Three cases name nothing.** This computer's actor wrote the newest record. This
+   computer's actor wrote none of the records. The two records are equal, so the fold merges
+   them and there is no fork.
+5. **Nothing merges.** The sync keeps the newest record and does not combine placements. The
+   other record stays in the journal (R-8.1.15). Merging word by word and a review link for
+   an alignment fork are out of scope.
+
+Where it lands: `docs/BURRITO-SPEC.md` §8.7 (version 1.26: R-8.7.12 and the Report line);
+`journal/sync.mjs` (the `alignReplaced` fact of the sync Report); `src/views/SyncResult.jsx` and
+the string `syncResult.alignReplaced` in the ten catalogs; the `align-two-ways` case of
+`conformance/fixtures/team-sync/` and its JC-35 check.
+
+## D109 (2026-10-19, project-owner ruling) **Alignment words are NFC. The client builds source words in NFC. The journal seal writes saved alignment words in NFC. Amends R-8.5.9 (BURRITO-SPEC 1.25).** [owner ruling on #793, 2026-10-19: "NFC everywhere"; issue #793]
+
+Context. The Hebrew of hbo_uhb is not NFC: 304 of 688 Jonah words (44%). A verse that
+was never saved took its source words from the resource as they are. A saved verse
+holds NFC words, because the journal seal makes every content string NFC (I-4). The
+suggestion engine keys its memory by exact text. It trained on the saved NFC words
+and was asked about the fresh words. On Genesis 1 with 20 training verses, it gave
+about 12% fewer correct suggestions. [VERIFIED — scratch tests on hbo_uhb v3.0.0, main
+2b08ed3, 2026-10-17, issue #793]
+
+1. **The rule.** The `word` and `lemma` of `topWords`, `bottomWords` and `wordBank`
+   entries are content. Writers normalize them to NFC. They are not identity. The
+   identity of an alignment record is `book`, `chapter`, `verse` and
+   `targetVerseMd5`. R-8.5.13 does not change.
+2. **The seal.** The seal already normalizes alignment words. It does not change.
+3. **The client.** `bootstrapVerse` builds the source words in NFC (`word`, `lemma`,
+   `text` and `content`). `strong`, `morph` and the occurrence numbers do not change. A
+   verse that was never saved then holds the same spelling of a word as a saved
+   verse, and the suggestion memory finds it. [VERIFIED — `test/align-source-nfc.test.ts`
+   fails on main 9ad4d5c and passes with this change]
+4. **The harness.** JC-14f has one more row: an `align.verse.set` action with NFD
+   words seals to NFC words, and its identity fields do not change. No rule id is new.
+   The check counts do not change (BURRITO-SPEC §9).
+5. **Not in this change.** Target words and the word bank of a verse that was never
+   saved are the work of issue #796.
+
+Where it lands: `src/data/align/edit.ts`, `test/align-source-nfc.test.ts`,
+`docs/BURRITO-SPEC.md` (R-8.5.9, version 1.25), `conformance/validate-journal.mjs`.

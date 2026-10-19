@@ -22,6 +22,20 @@ import type { AlignedWord, Alignment, AlignmentVerseRecord, VerseWord } from './
 const asWords = (list: unknown[]): AlignedWord[] =>
   (list as AlignedWord[]).map((w) => normalizeOccurrences(w));
 
+/** Source words are NFC, as the journal seal writes a saved record (I-4, D109).
+ * A verse that was never saved then holds the same spelling of a word as a saved
+ * one, so the suggestion memory, which keys by exact text, finds it (#793). */
+const NFC_FIELDS = ['word', 'lemma', 'text', 'content'] as const;
+const asSourceWords = (list: unknown[]): AlignedWord[] =>
+  asWords(list).map((w) => {
+    const out: AlignedWord = { ...w };
+    for (const f of NFC_FIELDS) {
+      const v = out[f];
+      if (typeof v === 'string') out[f] = v.normalize('NFC');
+    }
+    return out;
+  });
+
 /**
  * C2.12 — the bootstrap: what an unaligned (or undrafted) verse starts from.
  *
@@ -48,7 +62,7 @@ export const bootstrapVerse = (
   }>;
   return {
     alignments: raw.map((a) => ({
-      topWords: asWords(a.topWords),
+      topWords: asSourceWords(a.topWords),
       bottomWords: asWords(a.bottomWords),
     })),
     wordBank: words.map((w) => ({ word: w.word, occurrence: w.occurrence, occurrences: w.occurrences })),

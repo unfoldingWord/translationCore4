@@ -17,7 +17,7 @@ import { pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import type { Page } from '@playwright/test';
 import { test, expect } from './helpers/test';
-import { SEEDED_PROJECT, RIG_CLIENT_SETTINGS, RIG_LOCAL_REPOS, rigRepo, writePlace } from './helpers/rig';
+import { SEEDED_PROJECT, RIG_CLIENT_SETTINGS, RIG_LOCAL_REPOS, resetSeededChecking, rigRepo, writePlace } from './helpers/rig';
 import { USER, dropOrigin, expectConvergedOpen, expectIngredientsEqualMain, fakeShare, git, head, mainIngredients, opsIds, shot, signIn, gateOff, type BareRemote } from './helpers/door43Share';
 import { recordExternal } from './helpers/externalRequests';
 import { verifyAllJournaledProjects } from './helpers/journal';
@@ -55,7 +55,9 @@ function makeOrgRemote(): BareRemote {
   };
 }
 
-/** Two teammates change TIT 1:1 from the same base on Door43 main: one verse-text conflict. */
+/** Two teammates change TIT 1:1 from the same base on Door43 main: one verse-text conflict.
+ * The second teammate also aligns TIT 1:1 from no base, as one who never saw the seeded record
+ * would. That is a newer fork with the alignment that the seed made for this computer (D108). */
 function teammatesChangeOneVerse(remote: BareRemote): void {
   const work = path.join(remote.tmp, 'teammates');
   execFileSync('git', ['clone', '-q', pathToFileURL(remote.bare).href, work]);
@@ -63,6 +65,11 @@ function teammatesChangeOneVerse(remote: BareRemote): void {
   const union = readUnion(journalDir);
   const base = (fold(union).headsTs as Record<string, string>)['text|TIT|1:1'];
   expect(base, 'Door43 main holds the head of TIT 1:1').toBeTruthy();
+  type Alignment = { op: string; book?: string; chapter?: string; verse?: string; seed?: unknown; alignments: Array<{ bottomWords: unknown[] }>; wordBank: unknown[] };
+  const seeded = union.find((e: Alignment) => e.op === 'align.verse.set' && e.book === 'TIT' && e.chapter === '1' && e.verse === '1') as Alignment | undefined;
+  expect(seeded, 'Door43 main holds the seeded alignment of TIT 1:1').toBeTruthy();
+  const record = { ...seeded! };
+  delete record.seed; // an edit is not seeded
   const last = union.map((e: { ts: string }) => e.ts).sort().pop();
   let now = Date.now();
   TEAMMATES.forEach((actor, i) => {
@@ -71,6 +78,11 @@ function teammatesChangeOneVerse(remote: BareRemote): void {
     now += 1000;
     const event = { v: 1, op: 'text.verse.set', actor, ts: clock.issue(), base, book: 'TIT', chapter: '1', verse: '1', text: `Pablo, versión del compañero ${i + 1}.\n` };
     writeActionSegment(actorDirFor(journalDir, actor), [event]);
+    if (i === 1) {
+      // the second teammate takes the first placed pair apart: its words go back to the bank
+      const [first, ...rest] = record.alignments;
+      writeActionSegment(actorDirFor(journalDir, actor), [{ ...record, actor, ts: clock.issue(), base: null, alignments: rest, wordBank: [...record.wordBank, ...first.bottomWords] }]);
+    }
   });
   git(work, '-c', 'user.name=teammates', '-c', 'user.email=teammates@rig.test', 'add', 'ingredients/checking/journal');
   git(work, '-c', 'user.name=teammates', '-c', 'user.email=teammates@rig.test', 'commit', '-q', '-m', 'two teammates change TIT 1:1');
@@ -102,6 +114,9 @@ test.describe('#678 — Sync with Door43', () => {
 
   test.beforeAll(() => {
     dropOrigin(SEEDED_PROJECT);
+    // No journal from an earlier spec: the open below seeds it as this computer's actor, who
+    // then wrote the seeded alignment of TIT 1:1 (D108 needs a record of this actor in the fork)
+    resetSeededChecking();
     remote = makeOrgRemote();
     settingsBefore = fs.readFileSync(RIG_CLIENT_SETTINGS, 'utf8');
     const doc = JSON.parse(settingsBefore);
@@ -219,7 +234,7 @@ test.describe('#678 — Sync with Door43', () => {
     await page.getByTestId('sync-dismiss').click();
     await expect(first).toHaveCount(0);
 
-    // ---- sync 2: two teammates changed TIT 1:1 on Door43 ----
+    // ---- sync 2: two teammates changed TIT 1:1 on Door43, and one aligned it (D108) ----
     teammatesChangeOneVerse(remote);
     const teammatesMain = remote.main();
     // #530 edge: a double press runs one sync (one clone, one push)
@@ -230,9 +245,16 @@ test.describe('#678 — Sync with Door43', () => {
     const second = page.getByTestId('sync-result');
     await expect(second).toBeVisible({ timeout: 120_000 });
     await expect(second).toHaveAttribute('data-ok', '1');
-    await expect(page.getByTestId('sync-count-received')).toHaveAttribute('data-count', '2');
+    // 3 segment files: the first teammate's verse; the second teammate's verse and alignment
+    await expect(page.getByTestId('sync-count-received')).toHaveAttribute('data-count', '3');
     await expect(page.getByTestId('sync-count-conflicts')).toHaveAttribute('data-count', '1');
-    await expect(page.getByTestId('sync-count-newest')).toHaveAttribute('data-count', '0');
+    // the one fork that the result keeps on its newest version: the alignment of TIT 1:1
+    await expect(page.getByTestId('sync-count-newest')).toHaveAttribute('data-count', '1');
+    // D108: that alignment replaced this computer's seeded one, so the result names the verse and the teammate
+    const replaced = page.getByTestId('sync-align-replaced').getByRole('listitem');
+    await expect(replaced).toHaveCount(1);
+    await expect(replaced).toContainText('Titus 1:1');
+    await expect(replaced).toContainText(/Teammate \d/);
     await expect(page.getByTestId('sync-review')).toBeVisible();
     // D88 point 6: Download is always offered while a pin names a version this computer
     // lacks: the seeded project pins hbo_uhb v3.0.0, and this file's computer lacks that pin
