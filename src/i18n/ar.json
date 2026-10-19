@@ -975,6 +975,7 @@
   "syncResult.from": "تغييرات من: {names}",
   "syncResult.newestOne": "تعارض واحد حُسم بالاحتفاظ بأحدث نسخة",
   "syncResult.newestMany": "التعارضات التي حُسمت بالاحتفاظ بأحدث نسخة: {n}",
+  "syncResult.alignReplaced": "{book} {ref}: حلّت محاذاة {name} محل محاذاتك.",
   "syncResult.conflictsOne": "تعارض واحد في آية للمراجعة",
   "syncResult.conflictsMany": "تعارضات الآيات للمراجعة: {n}",
   "syncResult.restoredOne": "لم يكن لدى Door43 تغيير واحد من أحد زملاء الفريق. أرسله tC4 مرة أخرى.",

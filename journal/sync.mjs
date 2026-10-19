@@ -26,7 +26,9 @@
 //   G7 (R-8.7.12) Only verse text reaches a person. A `text|` fork goes to `textConflicts`.
 //                 Each other fork keeps its newest head (the fold does that) and is counted
 //                 once in `newestWins`: a fork that the fold of this computer's journal
-//                 alone already had is not counted again.
+//                 alone already had is not counted again. An alignment fork whose newest
+//                 record is a teammate's, and where this actor wrote a losing record, is
+//                 also named in `alignReplaced` (D108): a notice, never a review.
 // The app rule of D98: an OBS project refuses (`sync.obs-unsupported`).
 //
 // A refusal returns an empty `write`, an empty `remove` and a failed Report with the code. The function changes
@@ -119,6 +121,9 @@ const kindOf = (key) => key.slice(0, key.indexOf('|'));
  *                    (`text|` key) of the fold; `provisional` is the ts of the newest head
  *     newestWins:    [{ key, kind, winner }] — each other fork, kept on its newest head
  *                    (`winner`, a ts), that the fold of `mine.journal` alone did not have
+ *     alignReplaced: [{ book, ref, actor }] — each `newestWins` alignment fork whose newest
+ *                    head is a teammate's (`actor`) and where this actor wrote a losing
+ *                    head: the verse (`ref` is `chapter:verse`) whose alignment was replaced
  *     names:         { [actor]: username } — the folded Door43 usernames (R-8.5.25)
  */
 export const syncCore = async ({ remote, mine, resolve, files }) => {
@@ -236,9 +241,17 @@ const syncOrRefuse = async ({ remote, mine, resolve, files }) => {
   }));
   const forkId = (f) => `${f.key}\u0000${f.heads.join(',')}`;
   const hadBefore = new Set(fold(heldEvents).forks.map(forkId));
-  const newestWins = out.forks
-    .filter((f) => kindOf(f.key) !== 'text' && !hadBefore.has(forkId(f)))
-    .map((f) => ({ key: f.key, kind: kindOf(f.key), winner: f.provisional }));
+  const newForks = out.forks.filter((f) => kindOf(f.key) !== 'text' && !hadBefore.has(forkId(f)));
+  const newestWins = newForks.map((f) => ({ key: f.key, kind: kindOf(f.key), winner: f.provisional }));
+  // D108: an alignment fork where a teammate's record is the newest and this actor wrote a
+  // losing one — the Report names the verse and the teammate, as a notice (no review)
+  const actorOfTs = (ts) => eventByTs.get(ts)?.actor;
+  const alignReplaced = newForks
+    .filter((f) => kindOf(f.key) === 'align' && actorOfTs(f.provisional) !== actor && f.heads.some((ts) => actorOfTs(ts) === actor))
+    .map((f) => {
+      const [, book, ref] = f.key.split('|');
+      return { book, ref, actor: actorOfTs(f.provisional) };
+    });
 
-  return { write, remove, facts: { carried, restored, received, textConflicts, newestWins, names: { ...out.names } } };
+  return { write, remove, facts: { carried, restored, received, textConflicts, newestWins, alignReplaced, names: { ...out.names } } };
 };

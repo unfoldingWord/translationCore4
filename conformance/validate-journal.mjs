@@ -27,6 +27,7 @@ import {
   classifyDivergence, isUnjournaledIngredient,
 } from '../journal/checkpoint.mjs';
 import { REFUSAL_CODES } from '../journal/report.mjs';
+import { syncCore } from '../journal/sync.mjs';
 import { buildTeamSyncFixture, sampleInputs, ACTORS, USERNAMES } from './fixtures/team-sync/generate.mjs';
 
 const require = createRequire(import.meta.url);
@@ -5033,7 +5034,7 @@ const sameRegister = (a, b) => {
 
   // [G7] R-8.7.12 — only the verse-text fork goes to a person; the non-text fork keeps the newest head
   {
-    const vt = idx.cases['verse-two-ways']; const ct = idx.cases['check-two-ways'];
+    const vt = idx.cases['verse-two-ways']; const ct = idx.cases['check-two-ways']; const at = idx.cases['align-two-ways'];
     const forkOf = (o, key) => o.forks.find((f) => f.key === key);
     const decOf = (o) => o.decisions.translationWords.find((d) => `dec|translationWords|${identityKeyOf(d.contextId)}` === ct.key);
     const textForks = out.forks.filter((f) => f.key.startsWith('text|'));
@@ -5042,14 +5043,35 @@ const sameRegister = (a, b) => {
     const evOf = (seg) => validateSegment(fs.readFileSync(path.join(FIX, seg), 'utf8')).events[0];
     const [bDec, cDec] = ct.segments.map(evOf);
     const projected = forkOf(out, ct.key)?.provisional === ct.newest && decOf(out).status === cDec.decision.status &&
-      out.books.TIT.verses['1:4'] === evOf(vt.segments[1]).text && forkOf(out, vt.key)?.provisional === vt.newest;
+      out.books.TIT.verses['1:4'] === evOf(vt.segments[1]).text && forkOf(out, vt.key)?.provisional === vt.newest &&
+      forkOf(out, at.key)?.provisional === at.newest;
     // negative control: make B's check result the newer one — the projection follows the newest head
     const bLater = { ...bDec, ts: '2026-10-13T10:22:00.000Z|0000|translator-b' };
     const swapped = fold([...union.filter((e) => e.ts !== bDec.ts), bLater]);
     const flips = forkOf(swapped, ct.key)?.provisional === bLater.ts && decOf(swapped).status === bDec.decision.status && bDec.decision.status !== cDec.decision.status;
-    check('[G7] JC-35: non-text conflict takes the newest head — over the fixture, the one verse-text fork (TIT 1:4) is the only fork for a person; the check-two-ways fork projects its provisional head, the highest ts (C, status todo); when B\'s result is made newer the projection follows it [covers R-8.7.12]',
-      textForks.length === 1 && textForks[0].key === vt.key && otherForks.length === 1 && otherForks[0].key === ct.key && newestEach && projected && flips,
+    check('[G7] JC-35: non-text conflict takes the newest head — over the fixture, the one verse-text fork (TIT 1:4) is the only fork for a person; the check-two-ways and align-two-ways forks each project their provisional head, the highest ts (C: status todo; C\'s alignment of TIT 1:1); when B\'s result is made newer the projection follows it [covers R-8.7.12]',
+      textForks.length === 1 && textForks[0].key === vt.key && deepEq(otherForks.map((f) => f.key).sort(), [at.key, ct.key].sort()) && newestEach && projected && flips,
       JSON.stringify({ forks: out.forks.map((f) => f.key), projected, flips }));
+  }
+
+  // [G7] R-8.7.12 (D108) — the sync Report names each alignment fork whose newest record is another actor's
+  {
+    const at = idx.cases['align-two-ways'];
+    const ipathOf = (rel) => `checking/journal/${rel.replace(/^journals\//, '')}`;
+    const remote = new Map(Object.entries(filesUnder(JOURNALS)).map(([rel, bytes]) => [`checking/journal/${rel}`, bytes]));
+    remote.set('metadata.json', fs.readFileSync(path.join(BURRITO, 'metadata.json'), 'utf8'));
+    const creation = ipathOf(idx.cases.creation.segments[0]);
+    // a computer that holds its own files and A's creation, as one that opened the project from Door43 does
+    const mineOf = (actor) => ({ actor, journal: new Map([...remote].filter(([p]) => p.startsWith(`checking/journal/${actor}/`) || p === creation)), outbox: new Map() });
+    const resolve = (tool) => s.decisionFiles[tool].resource;
+    const reportOf = async (actor) => (await syncCore({ remote, mine: mineOf(actor), resolve, files: { validateSegment, validateActorDoc, segmentName } })).report;
+    const [asB, asC, asA] = [await reportOf(ACTORS.b), await reportOf(ACTORS.c), await reportOf(ACTORS.a)];
+    const replaced = (r) => r.facts.alignReplaced;
+    const counted = (r) => (r.facts.newestWins || []).some((w) => w.key === at.key && w.winner === at.newest);
+    // B lost to C: the Report names TIT 1:1 and C. C won, and A wrote neither record: nothing is named. Each Report counts the fork.
+    check('[G7] JC-35: the sync Report names an alignment that a teammate\'s newer record replaced — over the align-two-ways case (B and C each changed TIT 1:1 from the seed; C is newest), B\'s Report names TIT 1:1 and C; C\'s Report (C\'s record won) and A\'s Report (A wrote neither record) name nothing; each Report still counts the fork in newestWins (D108) [covers R-8.7.12]',
+      asB.ok && asC.ok && asA.ok && deepEq(replaced(asB), [{ book: 'TIT', ref: '1:1', actor: ACTORS.c }]) && replaced(asC).length === 0 && replaced(asA).length === 0 && counted(asB) && counted(asC) && counted(asA),
+      JSON.stringify({ B: replaced(asB), C: replaced(asC), A: replaced(asA), counted: [counted(asB), counted(asC), counted(asA)] }));
   }
 
   // R-8.5.25 / R-8.5.26 — the name action

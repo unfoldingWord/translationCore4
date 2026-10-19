@@ -975,6 +975,7 @@
   "syncResult.from": "Perubahan dari: {names}",
   "syncResult.newestOne": "1 konflik menyimpan versi terbaru",
   "syncResult.newestMany": "{n} konflik menyimpan versi terbaru",
+  "syncResult.alignReplaced": "{book} {ref}: penyelarasan dari {name} menggantikan penyelarasan Anda.",
   "syncResult.conflictsOne": "1 konflik ayat untuk ditinjau",
   "syncResult.conflictsMany": "{n} konflik ayat untuk ditinjau",
   "syncResult.restoredOne": "Door43 tidak memiliki 1 perubahan dari rekan tim. tC4 mengirimnya lagi.",

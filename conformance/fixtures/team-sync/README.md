@@ -34,11 +34,9 @@ Find a case by its name in `cases.json`.
 | `different-verses` | A changes Titus 1:1, B changes Titus 1:2, and C changes Titus 1:3. | No fork. All three verses project. The Titus 1:1 alignment becomes invalid, because its text changed (I-3). |
 | `verse-two-ways` | A and B change Titus 1:4 from the same base. | A verse-text fork on `text\|TIT\|1:4`. B is the newest head, so B's text shows, flagged provisional. This is the fork for the conflict review. |
 | `check-two-ways` | B sets one translationWords check result to `valid`. Then C sets the same check result to `todo`. | A non-text fork on the decision key. C is the newest head, so `todo` projects (G7). |
+| `align-two-ways` | B and C each take one placed pair of Titus 1:1 apart, from the seed record of A. | A non-text fork on `align\|TIT\|1:1`. C is the newest head, so C's record shows (G7). The sync Report of B names Titus 1:1 and C (D108). The Reports of C and A name nothing: C's record won, and A wrote neither record. |
 | `invalid-file` | A segment of C whose body does not match its `sha256`. | The one validator refuses it (`checksum`). A sync that meets it refuses (G2). |
 | `changed-own-file` | A different valid action at the path of A's own Titus 1:1 segment. | A sync that meets it on Door43 refuses and changes nothing (G1). |
-
-Not yet a case: an alignment set two ways (a non-text fork on an `align|` key). The sync core
-(#675) adds it here first, with its test.
 
 ## How to use a case
 

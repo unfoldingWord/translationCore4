@@ -4,11 +4,14 @@
 // won (`newestWins`), and the verse conflicts (`textConflicts`), with a link to
 // the review (#679) when there is one. A refused sync shows the one message of
 // its code. #680: the teammates who sent changes, each by actorLabel over the
-// team that the read after the sync folds (`team`, syncTeam). The owner's mockup (2026-10-13, "HomeConflicts"): a white toast at
+// team that the read after the sync folds (`team`, syncTeam). D108 (#791): each
+// alignment that a teammate's newer record replaced (`alignReplaced`), as a notice.
+// The owner's mockup (2026-10-13, "HomeConflicts"): a white toast at
 // the bottom of Home, a dot, one line, an Ocean link, and a dismiss button.
 import React from 'react';
 import { t } from '../i18n';
 import { actorLabel } from './actorLabel.js';
+import { bookName } from '../data/bookNames';
 
 /** One message for each refusal code that a sync can return (journal/report.mjs). */
 export const SYNC_REFUSALS = {
@@ -92,6 +95,24 @@ function From({ ok, facts = {}, team }) {
   return <span data-testid="sync-received-from" style={NOTE}>{t('syncResult.from', { names: labels.join(' · ') })}</span>;
 }
 
+/** D108 (#791): each alignment that a teammate's newer record replaced (`alignReplaced`),
+ * one notice row for each verse. A notice only: the sync keeps the newest record and the
+ * journal keeps the other one, so a row has no button and no link. The teammate shows by
+ * the team's label (actorLabel), else by the folded names of the Report. */
+function AlignReplaced({ ok, facts = {}, team }) {
+  const rows = ok && Array.isArray(facts.alignReplaced) ? facts.alignReplaced : [];
+  if (!rows.length) return null;
+  const names = team?.names ?? facts.names;
+  const actors = team?.actors ?? [...new Set(rows.map((r) => r.actor))].sort();
+  return (
+    <ul data-testid="sync-align-replaced" style={{ ...NOTE, margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 2 }}>
+      {rows.map(({ book, ref, actor }) => (
+        <li key={`${book}|${ref}`}>{t('syncResult.alignReplaced', { book: bookName(book), ref, name: actorLabel(actor, names, team?.me ?? null, actors) })}</li>
+      ))}
+    </ul>
+  );
+}
+
 /** #680: the team the result labels by — the open store's (`s.team`, with
  * `me`) when the synced project is open, else Home's read-only one. */
 export const syncTeam = (s, repoPath) => (s.project?.id === repoPath ? s.team : s.teamByProject?.[repoPath]) ?? null;
@@ -130,6 +151,7 @@ export default function SyncResult({ result, team = null, onReview, onDownload, 
           </span>
         )}
         <From ok={ok} facts={report.facts} team={team} />
+        <AlignReplaced ok={ok} facts={report.facts} team={team} />
         <Note testId="sync-restored" n={restored} one="syncResult.restoredOne" many="syncResult.restoredMany" />
         <Note testId="sync-missing-pins" n={missingPins} one="syncResult.missingPinsOne" many="syncResult.missingPinsMany" />
       </div>
