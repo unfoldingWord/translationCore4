@@ -158,11 +158,15 @@ describe('#794 reflowAlignedVerses — a changed verse that holds imported marku
 
     const imported = verseBody(EN_ULT, '1', '1')!;
     const raw = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${imported}\n\\v 2 ${NEW_TEXT}\n`;
+    // #789: the book as it read before the save: 1:2 holds the text its record was made on.
+    const beforeRaw = `\\id TIT\n\\c 1\n\\p\n\\v 1 ${imported}\n\\v 2 ${TEXT}\n`;
     const sched = new SaveScheduler({ writeBook: makeAlignWriter({ store }), splice: spliceAlignRecord });
-    await __reflowAlignedVersesForTests({ store, sched, book: BOOK, bookRaw: raw }, ['1:1', '1:2']);
+    await __reflowAlignedVersesForTests({ store, sched, book: BOOK, bookRaw: raw, beforeRaw }, ['1:1', '1:2']);
     await settle();
 
     expect(JSON.stringify(store.file!.chapters['1']['1'])).toBe(v1Bytes);
-    expect((store.file!.chapters['1']['2'] as AlignmentVerseRecord).targetVerseMd5).toBe(md5Hex(NEW_TEXT));
+    const v2 = store.file!.chapters['1']['2'] as AlignmentVerseRecord;
+    expect(v2.targetVerseMd5).toBe(md5Hex(NEW_TEXT));
+    expect(v2.invalid).toBe(false); // "siervo" became "esclavo": no copy of a linked word moved
   });
 });

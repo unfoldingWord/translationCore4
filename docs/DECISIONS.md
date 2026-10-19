@@ -2906,6 +2906,20 @@ size of each en_ult v91 book from the rig cache, branch issue-767-usfm-too-large
    4.0.0-rc.2 build went out with the 4 MiB limit. [VERIFIED — no `v4.0.0-rc.2` tag or
    release on origin, 2026-10-16; owner: no rc.2 build was distributed, PR #780]
 
+## D106 (2026-10-19, project-owner ruling) **After a Translate save, an alignment link follows its word. An insert or delete before a linked copy of a repeated word flags the verse for review. Replaces the #213 rule "same word, same occurrence number".** [owner ruling on #789, 2026-10-19: option 2, "position diff"; amendment the same day: a tie flags; issue #789]
+
+Context. The reflow kept a link when the same word with the same occurrence number was still in the verse. An edit that added or removed an earlier copy moved a link to another copy, and nothing showed it. [VERIFIED — main 2b08ed3, scratch test on the conformance sample, 2026-10-17, issue #789]
+
+1. **A link follows its word.** The reflow compares the verse's words before and after the save by position. It uses a longest-common-subsequence diff of the export's word list (#796). A link stays on its word with the word's new occurrence number. A removed word loses its link. A respelled word is a new word. A moved word keeps its link.
+   The diff is a small function in `edit.ts`. This is an exception to the AGENTS.md reuse rule, as D105 point 1 is. No pinned or Pankosmia code gives a position diff: word-aligner-lib 1.0.1 `updateAlignmentsToTargetVerse` and Pankosmia `uw-client-checks` (`handleAddedWordsInNewText`, `handleDeletedWords`) match by text and occurrence, which is the rule this decision replaces; `@gabrielaillet/word-aligner-rcl` 1.3.18 `findWordChanges` is a greedy look-ahead that moves the link in the "de Dios" append case and pulls a React library into the bundle; word-aligner 1.0.3, usfm-js and string-punctuation-tokenizer have no diff. The diff costs a median 0.069 ms on the longest Genesis verse.
+2. **The flag.** The reflow writes `invalid: true` when the save adds, removes or moves a copy of a linked word before that word. It does the same when the text cannot show which copy changed. Every other edit keeps its links and does not flag.
+3. **The flag stays.** A record that needed review before a save still needs it after the save. Only Mark valid clears `invalid`.
+4. **No reflow declines.** Each save of a verse whose record holds a link writes the reflowed record, `invalid` or not. A save that empties the verse removes every link.
+5. **No text before.** A sync or Keep this version does not reflow. The verse opens with the review banner when its record holds a link or is done (#787, #796).
+6. **Not in the format.** BURRITO-SPEC does not change. §5.1 already sets `invalid` for re-review, and D73 point 3 stands.
+
+Where it lands: `src/data/align/edit.ts`, `src/state.jsx` (`reflowAlignedVerses` and its two callers), `test/align-position-diff.test.ts`, `test/align-reflow.test.ts`, `e2e/j05-align-verse.spec.ts`.
+
 ## D108 (2026-10-19, project-owner ruling) **The sync result names each verse whose alignment a teammate's newer version replaced. It is a notice: nothing merges automatically. Adds to D98 point 8 and amends R-8.7.12 (BURRITO-SPEC 1.26).** [owner ruling on #791, 2026-10-19: "name it in the sync result"; issue #791]
 
 Context. One `align.verse.set` event holds the whole alignment record of one verse. Two

@@ -16,6 +16,7 @@
 //        caller makes it and these functions only stamp and compare it.
 import { wordaligner } from '../vendor';
 import { normalizeOccurrences } from './occurrences';
+import { hasLinks, needsReview, recordWords } from './review.mjs';
 import { sameWords } from './verseWords.mjs';
 import type { AlignedWord, Alignment, AlignmentVerseRecord, VerseWord } from './zaln';
 
@@ -318,33 +319,173 @@ export const reconcileToWords = (
   return { record: next, changed: !sameWords(before, allTargetWords(next)) };
 };
 
+/** One verse's text as the reflow compares it: the stored slot (`decompose(toNfc(book)).verses[ref]`),
+ * the export's word list of that slot (#796) and the slot's hash (#795). */
+export interface VerseText {
+  slot: string;
+  words: VerseWord[];
+  md5: string;
+}
+
 /**
- * #213 — reflow after a verse edit: keep every link whose target word is
- * still in the verse, drop the rest, and rebuild the bank from the verse. Word
- * identity is word plus occurrence (I-2) in the export's word list (#796); the
- * counts are recomputed for the verse. The source side of a link is never
- * touched, and no link is created (that is #1).
+ * #789 — an LCS diff of two word-string lists (no pinned or Pankosmia code diffs by position, D106).
+ * Returns, for each index of `a`, the index in `b` of the word it matches, or -1. Equal words match,
+ * so matches go as early as they can and each insert or delete goes as late as it can. The table is
+ * the suffix LCS, `L[i][j]` = the LCS of `a[i:]` and `b[j:]`; the walk starts at the front. A verse
+ * is under 70 words, so the table is small (0.07 ms on the longest Genesis verse).
+ */
+export const matchWords = (a: string[], b: string[]): Int32Array => {
+  const n = a.length;
+  const m = b.length;
+  const w = m + 1;
+  const L = new Int32Array((n + 1) * w);
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      L[i * w + j] = a[i] === b[j] ? L[(i + 1) * w + j + 1] + 1 : Math.max(L[(i + 1) * w + j], L[i * w + j + 1]);
+    }
+  }
+  const match = new Int32Array(n).fill(-1);
+  let i = 0;
+  let j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) match[i++] = j++;
+    else if (L[(i + 1) * w + j] >= L[i * w + j + 1]) i++;
+    else j++;
+  }
+  return match;
+};
+
+/** One diff pass: where each word of the before list goes in the after list (`dest`, -1 when it
+ * is gone), and the first before index and first after index of every string that no match holds. */
+interface Pass {
+  dest: Int32Array;
+  firstLostBefore: Map<string, number>;
+  firstNewAfter: Map<string, number>;
+}
+
+/** A word no match holds is a delete or an insert. The k-th deleted copy of a string and the k-th
+ * inserted copy of the same string are one move: the word keeps its identity (D106 point 1). */
+const passOf = (before: string[], after: string[], match: Int32Array): Pass => {
+  const held = new Set<number>();
+  for (const k of match) if (k >= 0) held.add(k);
+  const newAfter = new Map<string, number[]>();
+  after.forEach((s, k) => {
+    if (held.has(k)) return;
+    const list = newAfter.get(s);
+    if (list) list.push(k);
+    else newAfter.set(s, [k]);
+  });
+  const firstNewAfter = new Map([...newAfter].map(([s, ks]) => [s, ks[0]]));
+  const next = new Map<string, number>();
+  const firstLostBefore = new Map<string, number>();
+  const dest = Int32Array.from(match);
+  before.forEach((s, i) => {
+    if (match[i] >= 0) return;
+    if (!firstLostBefore.has(s)) firstLostBefore.set(s, i);
+    const at = next.get(s) ?? 0;
+    next.set(s, at + 1);
+    dest[i] = newAfter.get(s)?.[at] ?? -1;
+  });
+  return { dest, firstLostBefore, firstNewAfter };
+};
+
+/** The late pass puts each insert and delete as late as it can; the early pass, run on the
+ * reversed lists and mapped back, as early as it can. */
+const passesOf = (before: string[], after: string[]): { late: Pass; early: Pass } => {
+  const n = before.length;
+  const m = after.length;
+  const back = matchWords([...before].reverse(), [...after].reverse());
+  const early = new Int32Array(n);
+  for (let i = 0; i < n; i++) early[i] = back[n - 1 - i] < 0 ? -1 : m - 1 - back[n - 1 - i];
+  return { late: passOf(before, after, matchWords(before, after)), early: passOf(before, after, early) };
+};
+
+/**
+ * #789 — a record's links moved to the verse after a save, each with its word, and whether the
+ * text can say that they moved right (D106 point 2). `before` and `after` are the verse's word
+ * lists on either side of the save; every placed word of `record` is a word of `before`
+ * (`reconcileToWords` makes it so). A link goes to `after[late.dest]` with that word's occurrence
+ * and counts; a word with no destination is gone, with its link, and it is not in the bank. The
+ * bank is every after word that no link holds, in verse order.
+ * `flag` is true when, for a linked word: an insert or delete of a copy of its string sits before
+ * it, or its occurrence number changes, in either pass (it moved because of the edit); or the two
+ * passes disagree where it goes (the text does not say which copy changed). An edit that touches
+ * no copy of a linked word, or only copies after it, flags nothing.
+ */
+const followWords = (
+  record: AlignmentVerseRecord,
+  before: VerseWord[],
+  after: VerseWord[],
+): { record: AlignmentVerseRecord; flag: boolean } => {
+  const { late, early } = passesOf(
+    before.map((w) => w.word),
+    after.map((w) => w.word),
+  );
+  const at = new Map(before.map((w, i) => [`${w.word} ${w.occurrence}`, i]));
+  const shifted = (p: Pass, i: number): boolean => {
+    const k = p.dest[i];
+    if (k < 0) return false;
+    const s = before[i].word;
+    return (
+      (p.firstLostBefore.get(s) ?? Infinity) < i ||
+      (p.firstNewAfter.get(s) ?? Infinity) < k ||
+      before[i].occurrence !== after[k].occurrence
+    );
+  };
+  const held = new Set<number>();
+  let flag = false;
+  const alignments: Alignment[] = record.alignments.map((a) => ({
+    ...a,
+    bottomWords: a.bottomWords.flatMap((w): AlignedWord[] => {
+      const i = at.get(`${w.word} ${Number(w.occurrence)}`);
+      if (i === undefined) return [];
+      if (shifted(late, i) || shifted(early, i) || late.dest[i] !== early.dest[i]) flag = true;
+      const k = late.dest[i];
+      if (k < 0) return [];
+      held.add(k);
+      return [normalizeOccurrences({ ...w, occurrence: after[k].occurrence, occurrences: after[k].occurrences })];
+    }),
+  }));
+  const wordBank: AlignedWord[] = after
+    .filter((_, k) => !held.has(k))
+    .map((w) => ({ word: w.word, occurrence: w.occurrence, occurrences: w.occurrences }));
+  return { record: cardsInVerseOrder({ ...record, alignments, wordBank }, after), flag };
+};
+
+/**
+ * #213, #789 — reflow after a verse edit: a link follows its word, and the verse is flagged for
+ * review when the text cannot show the link stayed right (D106). `before` is the verse as it read
+ * before the save, `after` as it reads now; `before` is undefined when the old book held no slot
+ * for the verse. The source side of a link is never touched, and no link is created (that is #1).
  *
- * Returns null when there is nothing to reflow — the record is absent, already
- * flagged `invalid` (a span create/break, #63), holds no placed word, or still
- * matches the verse (the hash is current and no word changed) — and when the
- * verse has no words at all. In every null case the caller leaves the record
- * exactly as it is: invalidate-and-retain (D36) stays the outcome the I-3 hash
- * already produces.
+ * Returns null when there is nothing to reflow: the record is absent, holds no link (the open builds
+ * its bank, D105 point 2), or already fits the text after the save (the hash is current and no word
+ * differs). Every other save returns the record, so no reflow declines (D106 point 4): `invalid`
+ * and an emptied verse included. The steps:
+ * 1. `review` is `needsReview` of the stored record against the text BEFORE the save (#796): a
+ *    record that did not fit its own verse before the save still does not vouch for it after.
+ * 2. With `before`, the record is made to fit `before` (`reconcileToWords`, #787) and its links
+ *    move to `after` by `followWords`. Without `before` there is nothing to compare, so the links
+ *    stay where word and occurrence say, and the verse is flagged.
+ * 3. The record is stamped with the new hash, `done` follows the placed words (#271), and the
+ *    verse is flagged `invalid: true` when `review` or the move said so. The flag stays until
+ *    Mark valid (D105 point 4): `stampTargetVerse` does not clear it.
  */
 export const reflowAlignment = (
   record: AlignmentVerseRecord | undefined,
-  words: VerseWord[],
-  md5: string,
+  before: VerseText | undefined,
+  after: VerseText,
 ): AlignmentVerseRecord | null => {
-  if (!record || record.invalid === true) return null;
-  if (!record.alignments.some((a) => a.bottomWords.length)) return null;
-  if (!words.length) return null;
-  const reconciled = reconcileToWords(record, words);
-  if (!alignmentIsStale(record, md5) && !reconciled.changed) return null;
-  // #271: a reflow is an edit — `done` follows the reflowed record (set when
-  // every surviving word is placed and the bank is empty, else removed).
-  return settleDone(stampTargetVerse(reconciled.record, md5));
+  if (!record || !hasLinks(record)) return null;
+  if (record.targetVerseMd5 === after.md5 && sameWords(recordWords(record), after.words)) return null;
+  if (!before) {
+    // Nothing to compare with: the links stay where word and occurrence say, and the verse is flagged.
+    return { ...settleDone(stampTargetVerse(reconcileToWords(record, after.words).record, after.md5)), invalid: true };
+  }
+  const review = needsReview(record, before.slot, { wordsOf: () => before.words, md5Of: () => before.md5 });
+  const moved = followWords(reconcileToWords(record, before.words).record, before.words, after.words);
+  const next = settleDone(stampTargetVerse(moved.record, after.md5));
+  return review || moved.flag ? { ...next, invalid: true } : next;
 };
 
 /**

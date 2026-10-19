@@ -346,7 +346,7 @@ describe('#795 a verse with no stored slot cannot be stamped, so nothing is writ
     const writesBefore = store.calls.writes;
 
     const sched = new SaveScheduler({ writeBook: makeAlignWriter({ store }), splice: spliceAlignRecord });
-    await reflowAlignedVerses({ store, sched, book: 'TIT', bookRaw: NO_SLOT.replace(/siervo/g, 'esclavo') }, ['1:1', '1:2']);
+    await reflowAlignedVerses({ store, sched, book: 'TIT', bookRaw: NO_SLOT.replace(/siervo/g, 'esclavo'), beforeRaw: NO_SLOT }, ['1:1', '1:2']);
     await settle();
 
     // 1:2 is the control: it has a slot, so the reflow restamped it with the slot hash.

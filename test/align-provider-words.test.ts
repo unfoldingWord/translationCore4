@@ -82,7 +82,7 @@ describe('W1 reflowAlignedVerses takes the verse words from the stored slot', ()
     const store = makeStore(fileOf(record));
     const before = JSON.stringify(store.file);
     const sched = new SaveScheduler({ writeBook: makeAlignWriter({ store }), splice: spliceAlignRecord });
-    await reflowAlignedVerses({ store, sched, book: BOOK, bookRaw: RAW }, ['1:1']);
+    await reflowAlignedVerses({ store, sched, book: BOOK, bookRaw: RAW, beforeRaw: RAW }, ['1:1']);
     await vi.advanceTimersByTimeAsync(2000);
     await vi.advanceTimersByTimeAsync(0);
     return { before, after: store.file!, record: store.file!.chapters['1']['1'] as AlignmentVerseRecord };
@@ -103,6 +103,8 @@ describe('W1 reflowAlignedVerses takes the verse words from the stored slot', ()
     expect(bank(record)).toEqual(['Señor/1/1', 'dijo/1/1']);
     expect(sameWords(everyWord(record), WORDS)).toBe(true);
     expect(record.targetVerseMd5).toBe(MD5);
+    // #789 (D106 point 3): the record did not hold its verse's words before the save, so it needs review after it.
+    expect(record.invalid).toBe(true);
   });
 
   it('control: a record that already holds the slot words is not staged, its bytes stay', async () => {

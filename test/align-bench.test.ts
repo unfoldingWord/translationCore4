@@ -22,7 +22,7 @@
 // session, one run of each in turn.
 import { describe, expect, it } from 'vitest';
 import { unzipSync, strFromU8 } from 'fflate';
-import { bootstrapVerse, finalizeEdit, linkWord } from '../src/data/align/edit';
+import { bootstrapVerse, finalizeEdit, linkWord, reflowAlignment } from '../src/data/align/edit';
 import type { AlignedWord, AlignmentFile, AlignmentVerseRecord } from '../src/data/align/zaln';
 import { verseWords } from '../src/data/align/verseWords.mjs';
 import { wordTokens } from '../src/data/align/tokenize';
@@ -105,6 +105,17 @@ describe.skipIf(!RUN)('#796 bench — Genesis, en_ult v91', () => {
     const openWords = time(() => { verseWords(slot); }, 200);
     const openBootstrap = time(() => { bootstrapVerse(verseWords(slot), orig, 'dcs::unfoldingWord/hbo_uhb@v0.0.0', md5); }, 200);
 
+    // #789 — the reflow after a save: the record moved from the verse before the save to the verse after it, one
+    // word inserted (both diff passes and the link moves). The slots, words and hashes are made after the read, so
+    // `decompose(toNfc(book))`, the one parse the before text adds per reflow call, is timed apart (5 runs).
+    const verseText = (text: string) => ({ slot: text, words: verseWords(text), md5: verseTextMd5(text) as string });
+    const beforeText = verseText(slot);
+    const afterText = verseText(slot.replace(' ', ' nuevo '));
+    expect(afterText.words.length).toBe(wordCount + 1);
+    expect(reflowAlignment(next, beforeText, afterText)).not.toBeNull();
+    const reflow = time(() => { reflowAlignment(next, beforeText, afterText); }, 200);
+    const decomposeBook = time(() => { decompose(toNfc(book) as string); }, 5);
+
     // 3 — the rail.
     const recordFor = (ref: string): AlignmentVerseRecord => {
       // The verse's own words, as a record saved since #796 holds them, so that a record matches its verse.
@@ -151,8 +162,10 @@ describe.skipIf(!RUN)('#796 bench — Genesis, en_ult v91', () => {
     console.log(
       `[align bench] verse ${longest} (${wordCount} words): edit ${fixed(edit)} ms, open words ${fixed(openWords)} ms, open bootstrap ${fixed(openBootstrap)} ms; ` +
         `rail 10 records ${fixed(rail10)} ms, rail ${refs.length} records ${fixed(railAll)} ms; ` +
-        `warm rail 10 records ${fixed(warm10)} ms, warm rail ${refs.length} records ${fixed(warmAll)} ms`,
+        `warm rail 10 records ${fixed(warm10)} ms, warm rail ${refs.length} records ${fixed(warmAll)} ms; ` +
+        `reflow ${fixed(reflow)} ms, decompose(toNfc(book)) ${fixed(decomposeBook)} ms`,
     );
     expect(edit).toBeLessThanOrEqual(BASE.edit * 1.2);
+    expect(reflow).toBeLessThanOrEqual(1);
   }, 30 * 60 * 1000);
 });

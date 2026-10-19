@@ -1139,6 +1139,124 @@ test.describe('J5 — a translator aligns a verse', () => {
     },
   );
 
+  // #789 (D106): after a Translate save, a link follows its word. Titus 1:1 has "Dios" twice,
+  // and Θεοῦ/1 holds the first, Θεοῦ/2 the second. Deleting "de Dios" after "siervo" removes
+  // the first one: its link goes, the other link stays on the "escogidos" Dios (now Dios 1 of 1),
+  // and the verse is flagged for review, because a copy of a linked word went before it. Putting
+  // the words back does not give the first link back: the second link follows its Dios to 2 of 2.
+  // Two saves in a row prove that each edit starts from the text as the last one left it.
+  type AlignRecord = {
+    invalid?: boolean;
+    alignments: Array<{
+      topWords: Array<{ word: string; occurrence: number }>;
+      bottomWords: Array<{ word: string; occurrence: number; occurrences: number }>;
+    }>;
+  };
+  const theta = (record: AlignRecord, n: number): string[] =>
+    record.alignments
+      .find((a) => a.topWords.some((t) => t.word === 'Θεοῦ' && Number(t.occurrence) === n))!
+      .bottomWords.map((w) => `${w.word}/${w.occurrence}/${w.occurrences}`);
+  const record11 = (): AlignRecord => alignmentFile()!.chapters['1']['1'];
+  const withoutDeDios = (v: string) => v.replace('siervo de Dios y apóstol', 'siervo y apóstol');
+  const state11 = () => ({ theta1: theta(record11(), 1), theta2: theta(record11(), 2), invalid: record11().invalid });
+
+  test(
+    'a Translate edit keeps each link on its word: deleting "de Dios" flags the verse, and putting it back keeps the first link gone (#789)',
+    { tag: ['@inc9', '@J5'] },
+    async ({ page }, testInfo) => {
+      test.setTimeout(120_000);
+      writePinsWithOriginal();
+      expect(theta(record11(), 1)).toEqual(['Dios/1/2']);
+      expect(theta(record11(), 2)).toEqual(['Dios/2/2']);
+      const artifact: Record<string, unknown> = { start: state11() };
+
+      await page.goto('/');
+      await page
+        .getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`)
+        .getByRole('button', { name: /Titus/ })
+        .click();
+      await page.getByRole('tab', { name: 'Translate', exact: true }).click();
+      await page.getByRole('tab', { name: 'Verse', exact: true }).click();
+      const editor = page.getByRole('textbox', { name: 'Verse 1', exact: true });
+      const saved = page.getByTestId('save-indicator');
+
+      // Step 1: delete "de Dios" after "siervo"; leave the verse.
+      await page.getByTitle('Edit this verse').filter({ hasText: 'Pablo, siervo de Dios' }).first().click();
+      const original = await editor.inputValue();
+      const deleted = withoutDeDios(original);
+      expect(deleted).not.toBe(original);
+      await editor.fill(deleted);
+      await editor.blur();
+      await expect(saved).toHaveAttribute('data-state', 'saved', { timeout: 15_000 });
+      await expect.poll(() => theta(record11(), 1), { timeout: 15_000 }).toEqual([]);
+      expect(theta(record11(), 2)).toEqual(['Dios/1/1']);
+      expect(record11().invalid).toBe(true);
+      artifact.afterDelete = state11();
+
+      // In Align at 1:1 the verse shows the review banner.
+      await page.getByRole('tab', { name: 'Check', exact: true }).click();
+      const tool = page.getByTestId('open-align');
+      const session = page.getByTestId('align-session');
+      await expect(tool.or(session)).toBeVisible();
+      if (await tool.isVisible()) await tool.click();
+      await expect(session).toBeVisible();
+      const row11 = page.getByTestId('align-verse-list').locator('button[data-ref="1:1"]');
+      await row11.click();
+      await expect(row11).toHaveAttribute('data-selected', 'true');
+      await expect(page.getByTestId('align-stale')).toBeVisible();
+
+      // Step 2: back in Translate, put the words back. The first link stays gone; the second follows its Dios.
+      await page.getByRole('tab', { name: 'Translate', exact: true }).click();
+      await page.getByRole('tab', { name: 'Verse', exact: true }).click();
+      await page.getByTitle('Edit this verse').filter({ hasText: 'Pablo, siervo y apóstol' }).first().click();
+      await editor.fill(original);
+      await editor.blur();
+      await expect(saved).toHaveAttribute('data-state', 'saved', { timeout: 15_000 });
+      await expect.poll(() => theta(record11(), 2), { timeout: 15_000 }).toEqual(['Dios/2/2']);
+      expect(theta(record11(), 1)).toEqual([]);
+      expect(record11().invalid).toBe(true);
+      artifact.afterRestore = state11();
+
+      const artifactPath = testInfo.outputPath('j05-link-follows-word.json');
+      fs.writeFileSync(artifactPath, `${JSON.stringify(artifact, null, 2)}\n`);
+      await testInfo.attach('j05-link-follows-word.json', { path: artifactPath, contentType: 'application/json' });
+    },
+  );
+
+  // #789 (D106, AC6): a Section save takes the same rule as a verse blur. The card that starts
+  // at verse 1 is edited in Type mode (no verse number moves), so the keys do not change and
+  // the save goes through the verse path of `saveSection`, one reflow for the changed verses.
+  test(
+    'a Section save follows the same rule: deleting "de Dios" in verse 1 flags it, the second link stays on its Dios (#789)',
+    { tag: ['@inc9', '@J5'] },
+    async ({ page }, testInfo) => {
+      test.setTimeout(120_000);
+      writePinsWithOriginal();
+      await page.goto('/');
+      await page
+        .getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`)
+        .getByRole('button', { name: /Titus/ })
+        .click();
+      await page.getByRole('tab', { name: 'Translate', exact: true }).click();
+      await page.getByRole('tab', { name: 'Section', exact: true }).click();
+      await page.getByRole('button', { name: /^Draft section 1[–-]/ }).click();
+      const text = page.getByRole('textbox', { name: /^Section 1[–-]/ });
+      const original = await text.inputValue();
+      const deleted = withoutDeDios(original);
+      expect(deleted).not.toBe(original);
+      await text.fill(deleted);
+      await page.getByRole('button', { name: 'Save section' }).click();
+      await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 15_000 });
+      await expect(page.getByTestId('section-editor')).toHaveCount(0);
+      await expect.poll(() => theta(record11(), 1), { timeout: 15_000 }).toEqual([]);
+      expect(theta(record11(), 2)).toEqual(['Dios/1/1']);
+      expect(record11().invalid).toBe(true);
+      const artifactPath = testInfo.outputPath('j05-section-link-follows-word.json');
+      fs.writeFileSync(artifactPath, `${JSON.stringify(state11(), null, 2)}\n`);
+      await testInfo.attach('j05-section-link-follows-word.json', { path: artifactPath, contentType: 'application/json' });
+    },
+  );
+
   // #796: the bank is the word list the export checks (word-aligner `merge`), taken
   // from the stored verse. A footnote glued to a word used to leave "mediode" in the
   // bank: the display text joined the words either side of the footnote.

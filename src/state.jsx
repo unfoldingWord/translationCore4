@@ -47,7 +47,7 @@ import { readTwArticle, readTaArticle, readTaTitle } from './data/articles';
 import { revalidateAgainstDraft, resolutionWarning } from './data/revalidate';
 import { bootstrapVerse, finalizeEdit, linkWord, unlinkWord, moveWord, mergeAlignments, splitAlignment, reflowAlignment, reconcileToWords, markDone } from './data/align/edit';
 import { verseWords } from './data/align/verseWords.mjs';
-import { needsReview } from './data/align/review.mjs';
+import { hasLinks, needsReview } from './data/align/review.mjs';
 import { linksFor, rebindSuggestions, sessionInputFor, trainingVerseOf, trainingVersesFor } from './data/align/suggest';
 import { SuggestScheduler } from './data/align/suggestScheduler';
 import { consequencesOfGatewayChange, applyGatewayChange, completeLanguageSets, uncoveredByChange, sourcePanesForGateway, gatewaysCoveringProject, literalPaneId } from './data/gatewayChange';
@@ -408,6 +408,23 @@ function slotWordsOf(bookRaw, ref) {
   return slotMemo.words[ref];
 }
 
+/** #789: the stored slots of one book text, by `ref`, with no memo (the text from before a
+ * save is read once per reflow call). `{}` when there is no text or it does not decompose. */
+function slotsOfText(raw) {
+  if (!raw) return {};
+  try {
+    return decompose(toNfc(raw)).verses;
+  } catch {
+    return {};
+  }
+}
+
+/** #789: a stored slot as the reflow compares it: the slot, its export word list and its hash.
+ * `undefined` when the text held no slot for the verse. */
+function verseTextOf(slot) {
+  return slot === undefined ? undefined : { slot, words: verseWords(slot), md5: verseTextMd5(slot) };
+}
+
 /** Tests only: every drafted verse's hash, by `slotMd5Of`. */
 function slotMd5Index(bookRaw) {
   const index = {};
@@ -502,7 +519,7 @@ const initial = () => ({
   storySource: null,
   sources: {}, // { ult: {raw, chapters}|'missing'|undefined, ust: … }
   sourceTab: 'ult',
-  editing: null, // { key: "1:3", before: <body before this edit session> } | null
+  editing: null, // { key: "1:3", before: <body before this edit session>, beforeRaw: <the book text then, #789> } | null
   saveState: 'saved', // saved | dirty | saving | error
   rail: true,
   helps: true,
@@ -1243,12 +1260,15 @@ function trainingCollector({ storeRef, alignSchedulerRef, stateRef, rawRef }) {
 }
 export const __trainingTextForTests = { collectTrainingVerses, trainingCollector };
 
-/** #213: reflow the alignment records of the verses a draft save changed.
- * One buffered read of the §5.1 file, then one staged record per verse that
- * has links to keep or drop; a verse the reflow cannot account for (or that
- * the save did not change) is not staged, so its record stays byte-identical
- * and the I-3 hash keeps reporting it invalid-and-retained. */
-async function reflowAlignedVerses({ store, sched, book, bookRaw, stillCurrent = () => true }, refs) {
+/** #213, #789: reflow the alignment records of the verses a draft save changed.
+ * One buffered read of the §5.1 file, then one staged record per verse that holds
+ * a link the save moved or restamped; a verse with no record, no link, no slot or
+ * inline `\zaln`, or whose record already fits the text, is not staged, so its
+ * record stays byte-identical. `beforeRaw` is the book text from before the save:
+ * the reflow compares each verse's words before and after it, so a link follows its
+ * word (D106). A caller with no such text passes none, and the verse is flagged.
+ * @param {{ store: any, sched: any, book: any, bookRaw: any, beforeRaw?: string, stillCurrent?: () => boolean }} args */
+async function reflowAlignedVerses({ store, sched, book, bookRaw, beforeRaw, stillCurrent = () => true }, refs) {
   const { file } = await alignFileFor(store, sched, book);
   // The read awaited; leaving the project meanwhile drained and disposed this
   // scheduler (#100 teardown) — staging now would write project A's sidecar
@@ -1257,7 +1277,10 @@ async function reflowAlignedVerses({ store, sched, book, bookRaw, stillCurrent =
   const entries = bookRaw ? indexBook(bookRaw) : [];
   // #795, #796: a blur reaches here in the save's own task, so nothing is parsed
   // before the read: a slot hash and the slot's words, only for a verse that has
-  // a record to reflow.
+  // a record to reflow. #789: the text from before the save is cut once, for the
+  // first verse that holds a link. It is not `slotMemo`'s: the memo holds one book
+  // text, and the rail needs the current one.
+  let beforeSlots;
   for (const ref of refs) {
     const [chapter, verse] = ref.split(':');
     const rec = file?.chapters?.[chapter]?.[verse];
@@ -1266,7 +1289,10 @@ async function reflowAlignedVerses({ store, sched, book, bookRaw, stillCurrent =
     // A verse with no slot has no hash the export would accept: stage nothing.
     const md5 = slotMd5Of(bookRaw, ref);
     if (md5 === undefined) continue;
-    const next = reflowAlignment(rec, slotWordsOf(bookRaw, ref), md5);
+    if (!hasLinks(rec)) continue;
+    beforeSlots ??= slotsOfText(beforeRaw);
+    const after = { slot: slotOf(bookRaw, ref), words: slotWordsOf(bookRaw, ref), md5 };
+    const next = reflowAlignment(rec, verseTextOf(beforeSlots[ref]), after);
     if (next) sched.markDirty(book, chapter, verse, JSON.stringify(next));
   }
 }
@@ -7444,7 +7470,9 @@ export function AppProvider({ children }) {
         // Remember the pre-edit body so Cancel (design's editing card) can
         // restore it through the same splice path.
         const before = verseBody(rawRef.current, chapter, verseKey) ?? '___';
-        dispatch({ type: 'set', patch: { editing: { key: `${chapter}:${verseKey}`, before } } });
+        // #789: `beforeRaw` is the whole book text as the edit starts: a reference, no copy. The
+        // reflow on blur compares the verse's words before and after the edit with it.
+        dispatch({ type: 'set', patch: { editing: { key: `${chapter}:${verseKey}`, before, beforeRaw: rawRef.current } } });
       },
       editVerse: (chapter, verseKey, text) => {
         // Synchronous local splice keeps the raw string authoritative in-session;
@@ -7467,23 +7495,24 @@ export function AppProvider({ children }) {
         // #213: the verse card's text is committed — keep the alignment links
         // its words still carry. A section key (`c:s<k>`) is reflowed by
         // saveSection per changed verse, not here.
-        if (editing?.key && !editing.keys) a.reflowAlignedVerses([editing.key]);
+        if (editing?.key && !editing.keys) a.reflowAlignedVerses([editing.key], editing.beforeRaw);
       },
-      /** #213: after a verse edit, keep the alignment links whose target words
-       * are still in the new text and return the rest to the bank, through the
-       * align scheduler (the one §5.1 save path). Fire-and-forget: the draft
+      /** #213, #789: after a verse edit, move each alignment link with its word and
+       * flag the verse when the text cannot show the link stayed right (D106), through
+       * the align scheduler (the one §5.1 save path). `beforeRaw` is the book text from
+       * before the edit. Fire-and-forget: the draft
        * save never waits on the sidecar read. A write that fails after staging
        * is the scheduler's retained failure (Retry). A read that fails BEFORE
        * staging stages nothing: the record stays as it was, the I-3 hash keeps
        * the verse `invalid` on the rail, and the translator re-links it — the
        * pre-#213 outcome, never a lost draft (Codex round 1, P2). */
-      reflowAlignedVerses: (refs) => {
+      reflowAlignedVerses: (refs, beforeRaw) => {
         const store = storeRef.current;
         const sched = alignSchedulerRef.current;
         const book = stateRef.current.book;
         if (!store || !sched || !book) return;
         const stillCurrent = () => storeRef.current === store && alignSchedulerRef.current === sched;
-        void reflowAlignedVerses({ store, sched, book, bookRaw: rawRef.current, stillCurrent }, refs).catch(() => {});
+        void reflowAlignedVerses({ store, sched, book, bookRaw: rawRef.current, beforeRaw, stillCurrent }, refs).catch(() => {});
       },
       // #141: the section editing card. It holds its own text until Save, so
       // opening it writes nothing; `keys` are the section's verse keys.
@@ -7504,6 +7533,8 @@ export function AppProvider({ children }) {
           stageStructuralSection({ rawRef, schedulerRef, structuralRef, stateRef, dispatch, recordLastEdit }, chapter, keys, texts, newKeys);
         } else {
           const changed = [];
+          // #789: the text from before the save, for the reflow (the same rule as a verse blur).
+          const beforeRaw = rawRef.current;
           for (const verseKey of keys) {
             const stored = verseBody(rawRef.current, chapter, verseKey);
             if (stored == null) continue;
@@ -7515,7 +7546,7 @@ export function AppProvider({ children }) {
           }
           // #213: only the verses this save changed — an untouched verse keeps
           // its alignment record byte for byte.
-          if (changed.length) a.reflowAlignedVerses(changed);
+          if (changed.length) a.reflowAlignedVerses(changed, beforeRaw);
         }
         let entries = indexBook(rawRef.current);
         for (const [key, marker] of Object.entries(formats)) {

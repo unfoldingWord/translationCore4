@@ -31,6 +31,9 @@ const TEXT = 'Pablo siervo';
 /** The hash a record stamps for a plain one-line verse: the export's own. */
 const MD5 = verseTextMd5(TEXT);
 
+/** A plain one-line verse as the reflow compares it (#789): its slot, the export's words and hash. */
+const verse = (text: string) => ({ slot: text, words: verseWords(text), md5: verseTextMd5(text) });
+
 const bankWord = (r: AlignmentVerseRecord, word: string) => r.wordBank.find((w) => w.word === word) as AlignedWord;
 
 /** Pablo→Παῦλος placed; "siervo" still in the bank. */
@@ -81,11 +84,11 @@ describe('#271 the #213 reflow recomputes done', () => {
     const full = settleDone(linkWord(half, 1, bankWord(half, 'siervo')));
     expect(full.done).toBe(true);
     // "siervo" becomes "esclavo": its link drops, the bank is not empty — not done.
-    const dropped = reflowAlignment(full, verseWords('Pablo esclavo'), verseTextMd5('Pablo esclavo'));
+    const dropped = reflowAlignment(full, verse(TEXT), verse('Pablo esclavo'));
     expect(dropped).not.toBeNull();
     expect('done' in dropped!).toBe(false);
     // Only punctuation changed: every word still placed — still done.
-    const kept = reflowAlignment(full, verseWords('Pablo, siervo.'), verseTextMd5('Pablo, siervo.'));
+    const kept = reflowAlignment(full, verse(TEXT), verse('Pablo, siervo.'));
     expect(kept!.done).toBe(true);
   });
 });
