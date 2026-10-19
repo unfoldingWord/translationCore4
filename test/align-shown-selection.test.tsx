@@ -15,6 +15,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render } from '@testing-library/react';
 import { finalizeEdit, linkWord } from '../src/data/align/edit';
 import { verseWords } from '../src/data/align/verseWords.mjs';
+import { verseTextMd5 } from '../src/data/journal/runtime';
 
 const fs = process.getBuiltinModule('node:fs');
 const path = process.getBuiltinModule('node:path');
@@ -26,6 +27,8 @@ const EN = JSON.parse(fs.readFileSync(path.join(ROOT, 'src/i18n/en.json'), 'utf8
 const HINT_IDLE: string = EN['align.hintIdle'];
 const HINT_ARMED: string = EN['align.hintArmed'];
 const TEXT = /\\v 1 (.*)/.exec(USFM)![1].trim();
+// The hash the app stamps: the export's own hash of the stored verse (#795); the sample record carries the same one.
+const MD5 = verseTextMd5(TEXT);
 
 type W = { word: string; occurrence: number; occurrences: number };
 type Card = { topWords: W[]; bottomWords: W[] };
@@ -53,7 +56,7 @@ const known: Record<string, unknown> = {
     calls.push(['placeAlignWordsAt', [cardIndex, words]]);
     const a = state.alignSession as ReturnType<typeof session>;
     const next = words.reduce((r, w) => linkWord(r, cardIndex, w), a.record);
-    const record = finalizeEdit(next, verseWords(TEXT), TEXT);
+    const record = finalizeEdit(next, verseWords(TEXT), MD5);
     state.alignSession = { ...a, record, armed: null };
   },
 };
@@ -153,7 +156,7 @@ describe('#788: a card click places the shown selection', () => {
     fireEvent.click(getByTestId('align-card-4'));
     expect(placements().map(([name, args]) => [name, args[0], wordsOf(args[1] as W[])])).toEqual([['placeAlignWordsAt', 4, ['fe', 'escogidos']]]);
     // The record is what the old click path (linkWord over the raw armed list) wrote.
-    const old = finalizeEdit(armed.reduce((r, w) => linkWord(r, 4, w), RECORD), verseWords(TEXT), TEXT);
+    const old = finalizeEdit(armed.reduce((r, w) => linkWord(r, 4, w), RECORD), verseWords(TEXT), MD5);
     const after = state.alignSession as ReturnType<typeof session>;
     expect(after.record).toEqual(old);
     expect((after.record.alignments[4] as Card).bottomWords.map((w) => w.word)).toEqual(['fe', 'escogidos']);

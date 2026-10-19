@@ -59,7 +59,7 @@ import { checkpointMessage } from './data/checkpoint';
 import { runExport } from './data/export/kernel';
 import { holdsInlineAlignment } from './data/export/weave.mjs';
 import { runImport } from './data/import/shell';
-import { OpsLog, serialSettingsWriter } from './data/journal/opsLog';
+import { OpsLog, nextSyncGeneration, serialSettingsWriter } from './data/journal/opsLog';
 import { Door43Api } from './data/share/door43Api';
 import { InternetSwitch, ensureGate, startGate } from './data/internet';
 import { currentSession, hasKeptToken, resumeKeptSession, signIn as door43SignIn, signOut as door43SignOut } from './data/share/session';
@@ -1841,6 +1841,33 @@ async function drainBothSchedulers({ schedulerRef, noteSchedulerRef }) {
 export const __drainBothSchedulersForTests = drainBothSchedulers;
 export const __drainSchedulersForTests = drainSchedulers;
 
+/** #801: an error of a store that a sync replaced (G1). That store opened
+ * before the sync's apply, and it refuses each later queued action before the
+ * action runs (journalingStore.ts `queue`), so the refused action staged nothing. */
+const isProjectReplaced = (error) => refusalCodeOf(error) === 'sync.project-replaced';
+
+/** #801: a buffer that holds a sync.project-replaced failure. Its store refuses
+ * each later write and reconcile, so the buffer can never reach rest. Only
+ * 'error': a buffer whose Retry is in flight reads 'saving', and a drain joins
+ * that retry. */
+const replacedFailure = (sched) => sched?.getState() === 'error' && isProjectReplaced(sched.getFailure()?.error);
+
+/** #801: Home's drain. It skips each buffer that holds a sync.project-replaced
+ * failure when Home is selected; the dispose in backToProjects then drops it.
+ * Nothing durable is lost: the old store refused the action before it ran.
+ * Every other failure holds Home, and every other navigation drains all
+ * buffers (FR-32). */
+async function drainForHome(refs) {
+  return drainSchedulers(refs.filter((ref) => !replacedFailure(ref.current)));
+}
+
+export const __drainForHomeForTests = drainForHome;
+
+/** #801: the screen's own text of a failed save, or null for a save that a
+ * replaced store refused: the sentence next to the save indicator says that. */
+const ownSaveError = (failure, state) =>
+  isProjectReplaced(failure?.error) ? null : String(failure?.error?.message || failure?.error || state);
+
 /** The scheduler registry of an open context — older test callers may pass
  * only the verse and note refs; production passes all five schedulers. */
 const saveRefsOf = (ctx) =>
@@ -1875,7 +1902,7 @@ function installAlignCheckSchedulers({ alignSchedulerRef, checkSchedulerRef, che
       dispatch({
         type: 'checkSaveState',
         state,
-        saveError: state === 'error' ? String(failure?.error?.message || failure?.error || state) : null,
+        saveError: state === 'error' ? ownSaveError(failure, state) : null,
         saveErrorKey: state === 'error' ? (failure?.book ?? null) : null,
       });
     });
@@ -1902,15 +1929,20 @@ async function releaseParkedDecision(checkSched, tool, book) {
  * sentence the catalog holds for the refusal code, `refusal.<code>`. Every live
  * code has one (test/report.test.ts); a code without one — a reserved export,
  * import or share code before its issue adds the sentence — shows the diagnosis
- * alone and never renders its key. */
+ * alone and never renders its key. #801: sync.project-replaced shows its
+ * sentence alone (decided 2026-10-18, an exception to #156): its diagnosis
+ * holds the project path and tells the user nothing the sentence does not. */
 const failureText = (e) => {
   const detail = e?.reason || e?.message || String(e);
   const code = refusalCodeOf(e);
   if (code === null) return detail;
   const recoveryKey = 'refusal.' + code;
   const recovery = t(recoveryKey, undefined, '');
+  if (recovery && isProjectReplaced(e)) return recovery;
   return recovery ? `${detail} ${recovery}` : detail;
 };
+
+export const __failureTextForTests = failureText;
 
 /** #378: whether a refusal's recovery sentence tells the user to ask for help.
  * Read from the catalogue, so a new sentence that says so gets the control. */
@@ -2006,6 +2038,9 @@ function startCheckpoint({ store, storeRef, dispatch }, reason) {
     .then(() => { if (storeRef.current === store) dispatch({ type: 'set', patch: { commitError: null } }); })
     .catch((e) => {
       if (storeRef.current !== store) return;
+      // #801: a store that a sync replaced owes no checkpoint. The sync's apply
+      // committed the project, or the next start finishes that apply.
+      if (isProjectReplaced(e)) return;
       const text = failureText(e);
       dispatch({ type: 'set', patch: { commitError: text, commitErrorHelp: askHelpFor(e, text, store) } });
     });
@@ -2060,6 +2095,7 @@ function startLeaveCheckpoint({ store, repoPath, stateRef, dispatch }) {
       if (stateRef.current.commitErrorRepo === repoPath) dispatch({ type: 'set', patch: { commitError: null, commitErrorRepo: null } });
     })
     .catch((e) => {
+      if (isProjectReplaced(e)) return; // #801: as startCheckpoint; nothing is owed
       const st = stateRef.current;
       const visible = st.view === 'home' || st.project?.repoPath === repoPath;
       const message = `${t('app.commitError')}: ${failureText(e)}`;
@@ -2344,10 +2380,7 @@ async function performProjectOpen(ctx, repoPath, bookCode, view = 'read') {
       dispatch({
         type: 'noteSaveState',
         state: noteSaveState,
-        saveError:
-          noteSaveState === 'error'
-            ? String(failure?.error?.message || failure?.error || noteSaveState)
-            : null,
+        saveError: noteSaveState === 'error' ? ownSaveError(failure, noteSaveState) : null,
       });
     });
     installStoryScheduler({
@@ -3834,6 +3867,26 @@ export function AppProvider({ children }) {
       if (kept) dispatch({ type: 'set', patch: { door43Kept: true } });
     });
     return unsubscribe;
+  }, []);
+
+  // #801: a development-only hook for the journeys. It makes the open store old,
+  // as a sync's apply does, so each later action of that store is refused with
+  // sync.project-replaced. Gated as the fake export is (producers.ts).
+  useEffect(() => {
+    if (import.meta.env.DEV) {
+      let enabled = false;
+      try {
+        enabled = globalThis.localStorage?.getItem('tc4.e2e.staleStore') === '1';
+      } catch {
+        enabled = false;
+      }
+      if (enabled) {
+        window.__tc4StaleStore = () => {
+          const repoPath = stateRef.current?.project?.repoPath;
+          if (repoPath) nextSyncGeneration(repoPath);
+        };
+      }
+    }
   }, []);
 
   // Silent-loss guard (review finding M5): warn before the window closes with
@@ -7153,7 +7206,7 @@ export function AppProvider({ children }) {
           raw = await loadEditorBook(store, code); // #679: the fold with every staged action, never the disk file
         } catch (e) {
           if (seq === openSeqRef.current) {
-            dispatch({ type: 'set', patch: { bookError: e?.reason || e?.message || String(e) } });
+            dispatch({ type: 'set', patch: { bookError: failureText(e) } });
           }
           return;
         }
@@ -7471,6 +7524,9 @@ export function AppProvider({ children }) {
       // failure (each retry reconciles inside the machine, round 31).
       retrySave: () =>
         Promise.all(saveRefs.map((ref) => (ref.current?.getFailure() ? ref.current.retry() : Promise.resolve()))),
+      // #801: whether a save buffer holds a sync.project-replaced failure. Read
+      // when the top bar renders; each buffer's state change renders it again.
+      saveRefused: () => saveRefs.some((ref) => replacedFailure(ref.current)),
       backToProjects: async () => {
         await keepSettled(); // #679
         // Never navigate away from unsaved work or a visible failure (FR-32).
@@ -7484,7 +7540,9 @@ export function AppProvider({ children }) {
         // this project's store is gone (#129 rounds 2–3 kept their guarantee
         // through the registry, not a second queue). From the drain to the
         // store teardown below is synchronous, so nothing can stage in between.
-        if (!(await drainSchedulers(saveRefs))) return;
+        // #801: Home alone skips a buffer whose store a sync replaced; the
+        // dispose below drops it (drainForHome).
+        if (!(await drainForHome(saveRefs))) return;
         // #183 (D9): leaving the project is a checkpoint. It is started AFTER
         // this synchronous teardown, on the captured store (startLeaveCheckpoint):
         // an await here would reopen the window the drain just closed.
@@ -7510,7 +7568,10 @@ export function AppProvider({ children }) {
         alignSessionSeq++;
         dispatch({
           type: 'set',
-          patch: { view: 'home', project: null, book: null, bookRaw: null, editing: null, sources: {}, verseConflicts: [], team: null, conflictReview: null, storyNumbers: [], storyNumber: null, story: null, sourceStory: null, storyImages: {}, storyImageNote: null, storyLoading: false, storyError: null, storySource: null, saveState: 'saved', noteSaveState: 'saved', alignSaveState: 'saved', checkSaveState: 'saved', storySaveState: 'saved', storySaveError: null, commitError: null, projectPins: null, projectPinsLoaded: false, projectPinsError: null, preflight: null, preflightError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null, aligning: false, alignSession: null, alignVerse: null, alignIndex: null, alignSuggest: { status: 'off', verses: 0, boosted: false, error: null }, pickerProgress: null, toolPos: {}, upgrade: UPGRADE_IDLE },
+          patch: { view: 'home', project: null, book: null, bookRaw: null, editing: null, sources: {}, verseConflicts: [], team: null, conflictReview: null, storyNumbers: [], storyNumber: null, story: null, sourceStory: null, storyImages: {}, storyImageNote: null, storyLoading: false, storyError: null, storySource: null, saveState: 'saved', noteSaveState: 'saved', alignSaveState: 'saved', checkSaveState: 'saved', storySaveState: 'saved', storySaveError: null, commitError: null, projectPins: null, projectPinsLoaded: false, projectPinsError: null, preflight: null, preflightError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null, aligning: false, alignSession: null, alignVerse: null, alignIndex: null, alignSuggest: { status: 'off', verses: 0, boosted: false, error: null }, pickerProgress: null, toolPos: {}, upgrade: UPGRADE_IDLE,
+            // #801: a book-load error belongs to the project left. Only on a leave:
+            // the brand button also comes here, and an open error on Home stays.
+            ...(leaving ? { bookError: null, bookErrorHelp: null } : {}) },
         });
         refreshProjects(); // re-order: the project just left goes to the top
         if (leaving && leavingStore) startLeaveCheckpoint({ store: leavingStore, repoPath: leaving.repoPath, stateRef, dispatch });

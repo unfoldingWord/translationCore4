@@ -83,6 +83,26 @@ function SaveIndicator() {
   );
 }
 
+/** #801: the sentence of a save that a replaced store refused
+ * (sync.project-replaced), next to the save indicator. It hangs under the bar,
+ * or under the indicator when a narrow window wraps the indicator's label, so
+ * the bar keeps its layout at any width. The bar is a dark ground: the sentence
+ * sets its own light colours. */
+function SaveRefusal() {
+  const { s, actions } = useApp();
+  if (!s.project || s.view === 'home' || !actions.saveRefused()) return null;
+  return (
+    <div role="alert" data-testid="save-refusal" data-on="light"
+      style={{ position: 'absolute', top: 'max(calc(100% + 8px), calc(50% + var(--header-height) / 2 + 8px))', insetInlineEnd: 0, zIndex: 'var(--z-popover)',
+        width: 'max-content', maxWidth: 'min(360px, calc(100vw - 32px))', padding: '10px 12px', overflowWrap: 'anywhere',
+        fontSize: 'var(--fs-caption-lg)', fontWeight: 'var(--fw-medium)', lineHeight: 'var(--lh-body)', letterSpacing: 'normal',
+        color: 'var(--tc-warn-text)', background: 'var(--tc-warn-surface)', border: 'var(--stroke) solid var(--tc-warn-border)',
+        borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-hover)' }}>
+      {t('refusal.sync.project-replaced')}
+    </div>
+  );
+}
+
 function TopBar() {
   const { s, actions } = useApp();
   const inProject = !!s.project && s.view !== 'home';
@@ -118,9 +138,10 @@ function TopBar() {
         </span>
       ) : null}
       right={(
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, position: 'relative' }}>
           <SaveIndicator />
           <AccountMenu />
+          <SaveRefusal />
         </div>
       )}
     />
