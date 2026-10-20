@@ -457,6 +457,37 @@ test.describe('J7 — USFM', () => {
     },
   );
 
+  // #790 (D107): the record was made against another source version. Its stored Παῦλος is 1 of 2, and the
+  // pinned verse (UGNT v0.34, read from the rig) has it as 1 of 1. The export fits the record to the pinned verse
+  // before it weaves, finds the link to a source word that the pin does not hold, leaves 1:1 out and names it.
+  // Without the fit it would weave that link.
+  test(
+    'USFM, aligned: a record with a link to a source word that the pinned verse does not hold is left out of the file, and the notice names it',
+    { tag: ['@inc9', '@J7'] },
+    async ({ page }) => {
+      const ingredients = path.join(rigRepo(SEEDED_PROJECT), 'ingredients');
+      const alignmentsPath = path.join(ingredients, 'checking', 'alignments', 'TIT.json');
+      const alignments = JSON.parse(fs.readFileSync(alignmentsPath, 'utf8')) as AlignmentFile;
+      const record = alignments.chapters['1']['1'];
+      record.sourceVersion = 'dcs::unfoldingWord/el-x-koine_ugnt@v0.33';
+      record.alignments[0].topWords = record.alignments[0].topWords.map((w) => ({ ...w, occurrences: 2 }));
+      fs.writeFileSync(alignmentsPath, `${JSON.stringify(alignments, null, 2)}\n`);
+      const alignmentsBefore = fs.readFileSync(alignmentsPath);
+
+      await openTitusCommunityChecking(page, SEEDED_PROJECT);
+      const download = await exportUsfm(page, 'USFM, aligned', true);
+
+      await expect(page.getByTestId('export-skipped')).toHaveCount(1);
+      await expect(page.getByTestId('export-skipped')).toHaveText(/Check them in Align: 1:1$/);
+      // 1:1 is the one record: nothing is woven, so the download is the stored book.
+      const storedBook = readIngredient(SEEDED_PROJECT, 'ingredients/TIT.usfm').toString('utf8');
+      expect(download.bytes.toString('utf8')).toBe(storedBook);
+      expect(download.bytes.toString('utf8')).not.toMatch(/\\zaln-s/);
+      // The record is not touched: the export reads it and writes nothing.
+      expect(fs.readFileSync(alignmentsPath).equals(alignmentsBefore)).toBe(true);
+    },
+  );
+
   test(
     'USFM, plain: the download is the stored book file byte for byte',
     { tag: ['@inc8', '@J7'] },

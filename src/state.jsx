@@ -49,6 +49,7 @@ import { revalidateAgainstDraft, resolutionWarning } from './data/revalidate';
 import { bootstrapVerse, finalizeEdit, linkWord, unlinkWord, moveWord, mergeAlignments, splitAlignment, reflowAlignment, reconcileToWords, markDone } from './data/align/edit';
 import { verseWords } from './data/align/verseWords.mjs';
 import { hasLinks, needsReview } from './data/align/review.mjs';
+import { fitSourceCards, sourceVersionOf, stampSource } from './data/align/source.mjs';
 import { linksFor, rebindSuggestions, sessionInputFor, trainingVerseOf, trainingVersesFor } from './data/align/suggest';
 import { SuggestScheduler } from './data/align/suggestScheduler';
 import { consequencesOfGatewayChange, applyGatewayChange, completeLanguageSets, uncoveredByChange, sourcePanesForGateway, gatewaysCoveringProject, literalPaneId } from './data/gatewayChange';
@@ -460,17 +461,28 @@ export function isOldTestament(bookCode) {
  * input. A span ("9-10", #63) is its member verses' objects in order: the
  * span's draft is aligned against both original verses as one text. */
 function verseObjectsFor(usfmText, chapter, verse) {
-  // Catch-to-absence sweep (D30): null = the text is PRESENT but could not
-  // be parsed — the alignment surface states 'unreadable', never the false
-  // "not on this computer" claim that sends the user to re-download.
+  const chapters = parseSourceBook(usfmText);
+  return chapters === null ? null : verseObjectsIn(chapters, chapter, verse);
+}
+
+/** The chapters of a source book (usfm-js), parsed once; null = the text is PRESENT but could
+ * not be parsed. Catch-to-absence sweep (D30): the alignment surface states 'unreadable', never
+ * the false "not on this computer" claim that sends the user to re-download. */
+function parseSourceBook(usfmText) {
   try {
-    const verses = usfm.toJSON(usfmText)?.chapters?.[String(chapter)] ?? {};
-    const m = /^(\d+)-(\d+)$/.exec(String(verse));
-    const members = m ? Array.from({ length: Number(m[2]) - Number(m[1]) + 1 }, (_, i) => String(Number(m[1]) + i)) : [String(verse)];
-    return members.flatMap((v) => verses[v]?.verseObjects ?? []);
+    return usfm.toJSON(usfmText)?.chapters ?? {};
   } catch {
     return null;
   }
+}
+
+/** The usfm-js verse objects of one verse of a parsed source book (`parseSourceBook`). A span
+ * ("9-10", #63) is its member verses' objects in order. */
+function verseObjectsIn(chapters, chapter, verse) {
+  const verses = chapters?.[String(chapter)] ?? {};
+  const m = /^(\d+)-(\d+)$/.exec(String(verse));
+  const members = m ? Array.from({ length: Number(m[2]) - Number(m[1]) + 1 }, (_, i) => String(Number(m[1]) + i)) : [String(verse)];
+  return members.flatMap((v) => verses[v]?.verseObjects ?? []);
 }
 
 /** The first verse that actually has a draft — alignment needs target words. */
@@ -1235,6 +1247,43 @@ async function prepareAlignmentSource(store, st, ref) {
   return { testament, pin, usfmText, ref };
 }
 
+/** #790 (D107): the pinned original-language book, read once for the aligned export. It
+ * resolves to `wordsFor(ref)`: the pinned verse's words for a project-frame ref, mapped to the
+ * resource frame as the Align open maps it (a span counterpart gives its member verses).
+ * The export fits each stored record to these words before it weaves.
+ * A temporary state throws a plain Error: the export reports `export.read-failed` ("Try the
+ * export again"), so a state that passes is never made a permanent claim (D30). They are the
+ * resource pins still loading (`projectPinsLoaded`, #268) and a versification frame whose
+ * scheme data did not load (`unavailable`). A permanent state (D107, P1: name it) gives `[]`
+ * for every ref: every record the export fits then drops its cards, so the verse is named as
+ * needing review and the file holds its stored text. They are no pin, a pin whose text is not
+ * on this computer, a book that cannot be parsed, and an unknown versification frame. Any other
+ * read failure propagates, as the Align open lets it. `projectFrame` is the actions' own. */
+async function readPinnedSource(store, st, projectFrame) {
+  const name = bookName(st.book);
+  if (st.projectPinsLoaded !== true) {
+    throw new Error(`This project's resource pins are not loaded, so the aligned export cannot check the alignments of ${name} against the original-language text.`);
+  }
+  const none = async () => [];
+  const source = await prepareAlignmentSource(store, st, null);
+  if (source.unavailable) return none;
+  const frame = await projectFrame();
+  if (frame.state === 'unavailable') {
+    throw new Error(`This project uses a versification other than the default, and the numbering data needed to find the source verses of ${name} could not be loaded.`);
+  }
+  if (frame.state !== 'ready') return none;
+  const chapters = parseSourceBook(source.usfmText);
+  if (chapters === null) return none;
+  return async (ref) => {
+    const [chapter, verse] = ref.split(':');
+    const srcRef = await mapReference({ from: frame.name, to: RESOURCE_FRAME, book: st.book, chapter: Number(chapter), verse, schemes: frame.schemes });
+    if (!srcRef.ok) return [];
+    return sourceWordsOf(verseObjectsIn(chapters, srcRef.reference.chapter, srcRef.reference.verse));
+  };
+}
+export const __readPinnedSourceForTests = readPinnedSource;
+export const __sourceBookForTests = { parseSourceBook, verseObjectsIn };
+
 /** #1: the training corpus for one testament — every verse with a placed
  * word across the project's books of that testament, as the engine's
  * positional view (suggest.ts). The open book reads from the live draft and
@@ -1302,12 +1351,24 @@ async function reflowAlignedVerses({ store, sched, book, bookRaw, beforeRaw, sti
 /** #796 (D105 point 4): the record a verse opens with, and whether the banner stands.
  * The bootstrap has `invalid: false`, so a stored record's flag is carried over: it clears
  * on Mark valid, not on an open or an edit. `stale` is `needsReview` of the STORED record,
- * as the reconciled one passes it by construction; a verse with no stored record has none. */
-function openedRecord(stored, reconciled, slot, words, targetMd5) {
-  const record = stored?.invalid === true ? { ...reconciled, invalid: true } : reconciled;
-  const stale = stored ? needsReview(stored, slot, { wordsOf: () => words, md5Of: () => targetMd5 }) : false;
+ * as the reconciled one passes its hash and word checks by construction; a verse with no stored
+ * record has none.
+ * #790 (D107): `flagged` is true when the source fit flagged the record (a dropped link, or a
+ * `done` record that gained or lost a card). It is a review reason the stored record does not
+ * show, so it sets the banner and the in-memory `invalid`; `needsReview` of the open record
+ * then gives the same answer. */
+function openedRecord(stored, reconciled, slot, words, targetMd5, flagged = false) {
+  const record = stored?.invalid === true || flagged ? { ...reconciled, invalid: true } : reconciled;
+  const stale = flagged || (stored ? needsReview(stored, slot, { wordsOf: () => words, md5Of: () => targetMd5 }) : false);
   return { record, stale };
 }
+
+/** #790 (D107): the pinned verse's words, in order, as `bootstrapVerse`'s `unmerge` makes them
+ * from the verse's objects alone. The open and the aligned export fit stored cards to these. */
+function sourceWordsOf(objects) {
+  return bootstrapVerse([], objects, '', '').alignments.flatMap((card) => card.topWords);
+}
+export const __sourceWordsOfForTests = sourceWordsOf;
 
 /** The §5.1 record is keyed by the PROJECT-frame ref — the draft's own
  * chapter:verse, the key applyAlignEdit writes under. The eng-frame mapping
@@ -1327,7 +1388,7 @@ async function buildAlignmentSession(store, sched, st, ref, source, origObjects)
   const { file, md5 } = await alignFileFor(store, sched, st.book);
   const [chapter, verse] = ref.split(':');
   const stored = file?.chapters?.[chapter]?.[verse];
-  const sourceVersion = `dcs::${source.pin.repoPath.split('/').slice(-2).join('/')}@${source.pin.version}`;
+  const sourceVersion = sourceVersionOf(source.pin);
   // A stored record with no alignments — the §8.5 removal form, or the
   // `invalid` record a span create/break leaves on the new key (#63) — has
   // nothing to edit: the editor starts from the bootstrap, which keeps the
@@ -1337,16 +1398,22 @@ async function buildAlignmentSession(store, sched, st, ref, source, origObjects)
   // only — new words in the bank, removed words gone; the file keeps its bytes
   // until the next edit. #796 (D105 point 4): `stale` is `needsReview` of the
   // STORED record, the rule the rail and the Mark valid gate use. The rebuilt
-  // record passes it by construction, so the stored one is judged: the flag, the
-  // hash, and the words (a new or removed word, a dropped link or a count change;
-  // order alone is not one). A record with no link and not `done` vouches for
-  // nothing, so it opens with no banner.
+  // record passes its hash and word checks by construction, so the stored one is
+  // judged: the flag, the hash, and the words (a new or removed word, a dropped
+  // link or a count change; order alone is not one). A record with no link and
+  // not `done` vouches for nothing, so it opens with no banner. The source fit
+  // (#790, below) adds one reason of its own: it flags the rebuilt record.
   // #734, #754: a bank or a card is shown in verse order, the bank of a
   // never-saved verse too; the file takes that order on the next edit.
-  // #790 (D107) repairs the cards here, from the pinned source.
+  // #790 (D107): the cards are fitted to the pinned verse first (fitSourceCards): a card with a
+  // source word the pin does not hold drops with its links, a pinned word on no card gets an
+  // empty card, and cards follow the pinned order. A drop that held a link, or a `done` record
+  // that gained or lost a card, flags the verse for review. The open writes nothing.
+  const sourceWords = sourceWordsOf(origObjects);
   const base = stored?.alignments?.length ? stored : bootstrapVerse(words, origObjects, sourceVersion, targetMd5);
-  const reconciled = reconcileToWords(base, words);
-  const { record, stale } = openedRecord(stored, reconciled.record, slotOf(st.bookRaw, ref), words, targetMd5);
+  const fitted = fitSourceCards(base, sourceWords);
+  const reconciled = reconcileToWords(fitted.record, words);
+  const { record, stale } = openedRecord(stored, reconciled.record, slotOf(st.bookRaw, ref), words, targetMd5, fitted.record.invalid === true);
   return {
     loading: false,
     ref,
@@ -1357,6 +1424,7 @@ async function buildAlignmentSession(store, sched, st, ref, source, origObjects)
     words,
     targetMd5,
     origObjects,
+    sourceWords,
     sourceVersion,
     stale,
     armed: null,
@@ -1375,15 +1443,30 @@ async function buildAlignmentSession(store, sched, st, ref, source, origObjects)
  * to match the session's word list, stamped and `done` settled (finalizeEdit).
  * #1: a proposal for a word this edit placed is spent; the rest are re-bound to
  * their card by its first original word (a merge or split moved the indexes)
- * and dropped when that card is gone. */
+ * and dropped when that card is gone.
+ * #790 (D107): the edited record is fitted to the pinned verse first, so cards and `topWords`
+ * are in the pinned order after a split or a merge, and it is stamped with the pin it was
+ * fitted to (`sourceVersion`). For a link, an unlink and a move the session record is already
+ * fitted, so the fit returns the same cards. */
 function alignSessionAfterEdit(a2, next, disarm) {
-  const record = finalizeEdit(next, a2.words, a2.targetMd5);
+  const record = stampSource(finalizeEdit(fitSourceCards(next, a2.sourceWords).record, a2.words, a2.targetMd5), a2.sourceVersion);
   const suggestions = rebindSuggestions(record, a2.suggestions);
   // #796 (D105 point 4): the edit made the record match the session's words and hash, so only
   // an `invalid` flag still asks for review; the banner and the Mark valid gate stay on for it.
   const stale = needsReview(record, a2.slot, { wordsOf: () => a2.words, md5Of: () => a2.targetMd5 });
   return { ...a2, ...(disarm ? { armed: null } : {}), record, stale, suggestions, refusal: null };
 }
+
+/** #271, #790 (D107): the record Mark valid saves: the session record fitted to the pinned verse,
+ * reconciled to the session's words, restamped to the current draft, `done`, with the review flag
+ * cleared (markDone) and the pin it was fitted to. */
+function markedValidRecord(a2) {
+  return stampSource(
+    markDone(reconcileToWords(fitSourceCards(a2.record, a2.sourceWords).record, a2.words).record, a2.targetMd5),
+    a2.sourceVersion,
+  );
+}
+export const __markedValidRecordForTests = markedValidRecord;
 
 function understandArticleSet(st, kind, rung) {
   const sets = st.projectPins?.languageSets;
@@ -1432,8 +1515,15 @@ function alignFileWith(current, book, ref, record) {
 }
 
 /** #129: the align rail's rows — every verse of the book in document order,
- * with the verse text and its derived status. */
-function alignIndexItems(bookRaw, file) {
+ * with the verse text and its derived status.
+ * #790 (D107): the rail holds no original-language text, so the open verse is the one row that
+ * can see the source side. `open` is `{ ref, stale }` of the open Align session: when its banner
+ * stands, the row of that verse is `invalid` too, so the dot and the banner agree. It only adds
+ * red. A row of an unopened verse judges the stored record.
+ * @param {string} bookRaw
+ * @param {any} file
+ * @param {{ ref: string, stale: boolean } | null} [open] */
+function alignIndexItems(bookRaw, file, open = null) {
   const texts = verseTextIndex(bookRaw);
   const items = [];
   for (const e of indexBook(bookRaw)) {
@@ -1444,7 +1534,9 @@ function alignIndexItems(bookRaw, file) {
     // (see alignVerseStatus), and once per verse (the slot memo).
     const slot = rec && text ? slotOf(bookRaw, ref) : undefined;
     const lazy = { wordsOf: () => slotWordsOf(bookRaw, ref), md5Of: () => slotMd5Of(bookRaw, ref) };
-    items.push({ ref, text, ...alignVerseStatus(rec, text, slot, lazy) });
+    const status = alignVerseStatus(rec, text, slot, lazy);
+    const flagged = open?.stale === true && open.ref === ref && status.status !== 'undrafted';
+    items.push({ ref, text, ...(flagged ? { ...status, status: 'invalid' } : status) });
   }
   return items;
 }
@@ -4356,7 +4448,10 @@ export function AppProvider({ children }) {
         if (!st.project || !store) return null;
         const project = st.project;
         const storyPictures = project.flavor === 'textStories' ? obsStoryPictures(st, store) : undefined;
-        return runExport(producer, { store, project, book: st.book ?? undefined, pageSetup, storyPictures }, opsLog);
+        // #790 (D107): the aligned export fits each record to the pinned original-language verse,
+        // so it reads that book through the same pin and frame as the Align open (readPinnedSource).
+        const alignSource = () => readPinnedSource(store, st, () => a.projectFrame());
+        return runExport(producer, { store, project, book: st.book ?? undefined, pageSetup, storyPictures, alignSource }, opsLog);
       },
 
       /** The printed stories of the open OBS project (#454) as the OBS PDF
@@ -5507,7 +5602,10 @@ export function AppProvider({ children }) {
         try {
           // #100: the rail reflects every edit, landed or buffered.
           const { file } = await alignFileFor(store, alignSchedulerRef.current, book);
-          alignIndex = { items: alignIndexItems(st.bookRaw, file) };
+          // #790 (D107): the open verse's banner, read after the await so the rail shows the
+          // session that is open now. A session that is loading or unavailable has no ref.
+          const open = stateRef.current.alignSession;
+          alignIndex = { items: alignIndexItems(st.bookRaw, file, open?.book === book && open.ref ? { ref: open.ref, stale: open.stale === true } : null) };
         } catch (error) {
           // Catch-to-absence sweep (D30): a failed read is stated, retryable.
           alignIndex = { error: String(error?.message || error) };
@@ -5605,7 +5703,7 @@ export function AppProvider({ children }) {
           dispatch({ type: 'set', patch: { alignSession: { ...a2, refusal: 'suggestions' } } });
           return;
         }
-        const record = markDone(reconcileToWords(a2.record, a2.words).record, a2.targetMd5);
+        const record = markedValidRecord(a2);
         dispatch({ type: 'set', patch: { alignSession: { ...a2, record, stale: false, refusal: null } } });
         const [chapter, verse] = a2.ref.split(':');
         sched.markDirty(a2.book, chapter, verse, JSON.stringify(record));

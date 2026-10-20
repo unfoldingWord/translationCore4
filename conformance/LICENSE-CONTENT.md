@@ -12,6 +12,9 @@ tokens from unfoldingWord's Greek New Testament (UGNT) and Hebrew Bible (UHB). B
 works are CC BY-SA 4.0, © unfoldingWord. The `relationships` array in `metadata.json`
 names the exact revisions (UGNT `v0.34`, UHB `v3.0.0`).
 
+The directory `fixtures/el-x-koine_ugnt/` holds UGNT text: Titus 1:1 of unfoldingWord's Greek
+New Testament, CC BY-SA 4.0, © unfoldingWord. The revision is in its `README.md` (UGNT `v0.34`).
+
 The Scripture Burrito schema bundle in `sb-schema/` is a verbatim copy from pankosmia
 `resource-core` (see `README.md`).
 
