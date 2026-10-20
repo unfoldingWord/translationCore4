@@ -334,7 +334,10 @@ export interface VerseText {
  * the suffix LCS, `L[i][j]` = the LCS of `a[i:]` and `b[j:]`; the walk starts at the front. A verse
  * is under 70 words, so the table is small (about 0.015 ms on the longest Genesis verse).
  */
-export const matchWords = (a: string[], b: string[]): Int32Array => {
+export const matchWords = (a: string[], b: string[]): Int32Array => walk(a, b, suffixLcs(a, b));
+
+/** The suffix LCS table of `a` and `b`: `L[i * (b.length + 1) + j]` = the LCS of `a[i:]` and `b[j:]`. */
+const suffixLcs = (a: string[], b: string[]): Int32Array => {
   const n = a.length;
   const m = b.length;
   const w = m + 1;
@@ -344,6 +347,13 @@ export const matchWords = (a: string[], b: string[]): Int32Array => {
       L[i * w + j] = a[i] === b[j] ? L[(i + 1) * w + j + 1] + 1 : Math.max(L[(i + 1) * w + j], L[i * w + j + 1]);
     }
   }
+  return L;
+};
+
+const walk = (a: string[], b: string[], L: Int32Array): Int32Array => {
+  const n = a.length;
+  const m = b.length;
+  const w = m + 1;
   const match = new Int32Array(n).fill(-1);
   let i = 0;
   let j = 0;
@@ -390,14 +400,30 @@ const passOf = (before: string[], after: string[], match: Int32Array): Pass => {
 };
 
 /** The late pass puts each insert and delete as late as it can; the early pass, run on the
- * reversed lists and mapped back, as early as it can. */
-const passesOf = (before: string[], after: string[]): { late: Pass; early: Pass } => {
+ * reversed lists and mapped back, as early as it can. `inDoubt(i, k)` is true when some LCS as long
+ * as the best matches `before[i]` to an after word other than `k` (-1: none), or matches another
+ * before word to `after[k]` (#820): the text cannot say which copy is `before[i]`. Two passes do
+ * not see this: on a replace of one of two copies, both keep the first copy. */
+const passesOf = (
+  before: string[],
+  after: string[],
+): { late: Pass; early: Pass; inDoubt: (i: number, k: number) => boolean } => {
   const n = before.length;
   const m = after.length;
-  const back = matchWords([...before].reverse(), [...after].reverse());
+  const w = m + 1;
+  const ahead = suffixLcs(before, after);
+  const reversed = [[...before].reverse(), [...after].reverse()];
+  // `behind[(n - i) * w + m - j]` = the LCS of `before[:i]` and `after[:j]`.
+  const behind = suffixLcs(reversed[0], reversed[1]);
+  const back = walk(reversed[0], reversed[1], behind);
   const early = new Int32Array(n);
   for (let i = 0; i < n; i++) early[i] = back[n - 1 - i] < 0 ? -1 : m - 1 - back[n - 1 - i];
-  return { late: passOf(before, after, matchWords(before, after)), early: passOf(before, after, early) };
+  const best = ahead[0];
+  const pairs = (i: number, j: number): boolean =>
+    before[i] === after[j] && behind[(n - i) * w + m - j] + 1 + ahead[(i + 1) * w + j + 1] === best;
+  const inDoubt = (i: number, k: number): boolean =>
+    after.some((_, j) => j !== k && pairs(i, j)) || (k >= 0 && before.some((_, h) => h !== i && pairs(h, k)));
+  return { late: passOf(before, after, walk(before, after, ahead)), early: passOf(before, after, early), inDoubt };
 };
 
 /**
@@ -409,15 +435,16 @@ const passesOf = (before: string[], after: string[]): { late: Pass; early: Pass 
  * bank is every after word that no link holds, in verse order.
  * `flag` is true when, for a linked word: an insert or delete of a copy of its string sits before
  * it, or its occurrence number changes, in either pass (it moved because of the edit); or the two
- * passes disagree where it goes (the text does not say which copy changed). An edit that touches
- * no copy of a linked word, or only copies after it, flags nothing.
+ * passes disagree where it goes, or another LCS as long as the best puts it elsewhere (`inDoubt`):
+ * the text does not say which copy changed. An edit that touches no copy of a linked word, or only
+ * copies after it, flags nothing.
  */
 const followWords = (
   record: AlignmentVerseRecord,
   before: VerseWord[],
   after: VerseWord[],
 ): { record: AlignmentVerseRecord; flag: boolean } => {
-  const { late, early } = passesOf(
+  const { late, early, inDoubt } = passesOf(
     before.map((w) => w.word),
     after.map((w) => w.word),
   );
@@ -439,7 +466,7 @@ const followWords = (
     bottomWords: a.bottomWords.flatMap((w): AlignedWord[] => {
       const i = at.get(`${w.word} ${Number(w.occurrence)}`);
       if (i === undefined) return [];
-      if (shifted(late, i) || shifted(early, i) || late.dest[i] !== early.dest[i]) flag = true;
+      if (shifted(late, i) || shifted(early, i) || late.dest[i] !== early.dest[i] || inDoubt(i, late.dest[i])) flag = true;
       const k = late.dest[i];
       if (k < 0) return [];
       held.add(k);
