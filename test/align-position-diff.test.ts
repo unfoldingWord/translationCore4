@@ -27,8 +27,12 @@
 //    reason to review, so a verse that needed review reads valid;
 // B6 a section save, which reflows several verses with one text from before, treats a verse that
 //    holds a link and an edit of unlinked words as flagged, or does not flag the first verse.
+// B7 (#820) a replace of one copy of a repeated word keeps a link on the copy that is left with no
+//    flag, though the text cannot say which copy was replaced; or a replace that leaves no doubt flags.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { bootstrapVerse, linkWord } from '../src/data/align/edit';
+import { bootstrapVerse, linkWord, reflowAlignment, stampTargetVerse } from '../src/data/align/edit';
+import type { VerseText } from '../src/data/align/edit';
+import { md5Hex } from '../src/data/httpStore';
 import { recordWords } from '../src/data/align/review.mjs';
 import { sameWords, verseWords } from '../src/data/align/verseWords.mjs';
 import { SaveScheduler } from '../src/data/saveScheduler';
@@ -289,5 +293,59 @@ describe('#789 B6 (AC6): the section shape, several verses with one text from be
     expect(r2.invalid).toBe(false);
     expect(r2.targetVerseMd5).toBe(md5Of(after, '1:2'));
     expect(fits(r2, after, '1:2')).toBe(true);
+  });
+});
+
+describe('#820 B7: a replace of one copy of a repeated word flags the verse; a replace that leaves no doubt does not', () => {
+  const ORIG3 = ORIG.slice(0, 3);
+  const verse = (text: string): VerseText => ({ slot: text, words: verseWords(text), md5: md5Hex(text) });
+  /** A record of `text` with the given copies linked, card n to the n-th entry, then the reflow to `after`. */
+  const reflowOf = (text: string, links: Array<[string, number]>, after: string) => {
+    let r = bootstrapVerse(verseWords(text), ORIG3, SV, md5Hex(text));
+    links.forEach(([w, occ], card) => {
+      r = linkWord(r, card, r.wordBank.find((b) => b.word === w && Number(b.occurrence) === occ) as AlignedWord);
+    });
+    return reflowAlignment(stampTargetVerse(r, md5Hex(text)), verse(text), verse(after))!;
+  };
+  const placed = (r: AlignmentVerseRecord) => r.alignments.map((a) => a.bottomWords.map(word));
+
+  it('"Dios Dios" with the first Dios linked, saved as "Dios Pablo": either Dios can be the one left, so the verse is flagged', () => {
+    const r = reflowOf('Dios Dios', [['Dios', 1]], 'Dios Pablo');
+    expect(r.targetVerseMd5).toBe(md5Hex('Dios Pablo'));
+    expect(r.invalid).toBe(true);
+  });
+  it('the mirror: the second Dios linked, saved as "Dios Pablo": the verse is flagged', () => {
+    const r = reflowOf('Dios Dios', [['Dios', 2]], 'Dios Pablo');
+    expect(r.targetVerseMd5).toBe(md5Hex('Dios Pablo'));
+    expect(r.invalid).toBe(true);
+  });
+  it('the replace before the link: "Dios Dios" with the second Dios linked, saved as "Pablo Dios": the verse is flagged', () => {
+    expect(reflowOf('Dios Dios', [['Dios', 2]], 'Pablo Dios').invalid).toBe(true);
+  });
+  it('a replace of a word that is not repeated, next to the link: the link stays and nothing flags', () => {
+    const r = reflowOf('Dios Pablo', [['Dios', 1]], 'Dios Juan');
+    expect(placed(r)).toEqual([['Dios/1/1'], [], []]);
+    expect(r.invalid).toBe(false);
+  });
+  it('a replace of the linked word, which is not repeated: its link goes and nothing flags', () => {
+    const r = reflowOf('Pablo Dios', [['Pablo', 1], ['Dios', 1]], 'Juan Dios');
+    expect(placed(r)).toEqual([[], ['Dios/1/1'], []]);
+    expect(r.invalid).toBe(false);
+  });
+  it('a word that is not repeated moves: its link follows it and nothing flags', () => {
+    const r = reflowOf('Dios Pablo', [['Dios', 1]], 'Pablo Dios');
+    expect(placed(r)).toEqual([['Dios/1/1'], [], []]);
+    expect(r.invalid).toBe(false);
+  });
+  it('Titus 1:1 through the save path: "siervo" replaced by "esclavo" drops its link, keeps the other links and does not flag', async () => {
+    const s = await seeded({ '1': STORED });
+    const after = edit(RAW, 'Pablo, siervo de', 'Pablo, esclavo de');
+    await save(s, RAW, after);
+    const r = recordOf(s);
+    expect(cardOf(r, 'δοῦλος')).toEqual([]);
+    expect(theta(r, 1)).toEqual(['Dios/1/2']);
+    expect(theta(r, 2)).toEqual(['Dios/2/2']);
+    expect(r.invalid).toBe(false);
+    expect(fits(r, after)).toBe(true);
   });
 });
