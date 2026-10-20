@@ -52,6 +52,24 @@ const alignmentFile = () => {
   return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : null;
 };
 
+/** UGNT v0.34 Titus 1:1, the pinned original-language verse of the seeded project: the 17 words of
+ * `conformance/fixtures/el-x-koine_ugnt/TIT-1-1.usfm` (D107, #790). The sample record holds the first 11. */
+const UGNT_TIT_1_1 = [
+  'Παῦλος', 'δοῦλος', 'Θεοῦ', 'ἀπόστολος', 'δὲ', 'Ἰησοῦ', 'Χριστοῦ', 'κατὰ', 'πίστιν', 'ἐκλεκτῶν', 'Θεοῦ',
+  'καὶ', 'ἐπίγνωσιν', 'ἀληθείας', 'τῆς', 'κατ’', 'εὐσέβειαν',
+];
+const V034 = 'dcs::unfoldingWord/el-x-koine_ugnt@v0.34';
+
+/** The original-language label of each card, in card order, without the occurrence number a repeated word shows. */
+const cardLabels = (page: import('@playwright/test').Page) =>
+  page.locator('[data-testid^="align-card-"] [lang="el"]').evaluateAll((els) =>
+    els.map((el) => {
+      const copy = el.cloneNode(true) as HTMLElement;
+      copy.querySelectorAll('sup').forEach((sup) => sup.remove());
+      return (copy.textContent ?? '').trim();
+    }),
+  );
+
 /** The words of these chips, without the occurrence number a repeated word
  * shows (#735). */
 const wordsOf = (chips: import('@playwright/test').Locator) =>
@@ -106,10 +124,14 @@ test.describe('J5 — a translator aligns a verse', () => {
 
       await openAlign(page);
 
-      // One card per original-language word, and the stored links are shown.
-      await expect(page.locator('[data-testid^="align-card-"]')).toHaveCount(
-        stored.alignments.length,
+      // #790 (D107): the open fits the stored cards to the pinned verse, so it shows one card for
+      // each word (or word group) of the 17-word UGNT v0.34 verse, not the 10 cards the sample stores.
+      expect(stored.alignments.length).toBe(10);
+      await expect(page.locator('[data-testid^="align-card-"]')).toHaveCount(16);
+      expect((await cardLabels(page)).join(' ').split(' ').map((w) => w.normalize('NFC'))).toEqual(
+        UGNT_TIT_1_1.map((w) => w.normalize('NFC')),
       );
+      // The stored links are shown.
       await expect(page.getByTestId('align-progress')).toHaveText(
         new RegExp(`${placedInFile} of \\d+ words placed`),
       );
@@ -206,6 +228,9 @@ test.describe('J5 — a translator aligns a verse', () => {
       // I-3: the record states which draft it was made against.
       expect(rec.targetVerseMd5).toMatch(/^[0-9a-f]{32}$/);
       expect(rec.sourceVersion).toContain('el-x-koine_ugnt');
+      // #790 (D107): the first edit saves the record fitted to the pinned verse, stamped with the pin.
+      expect(rec.alignments).toHaveLength(16);
+      expect(rec.sourceVersion).toBe(V034);
     },
   );
 
@@ -593,6 +618,9 @@ test.describe('J5 — a translator aligns a verse', () => {
       const marked = alignmentFile()!.chapters['1']['1'];
       expect(marked.wordBank.length).toBeGreaterThan(0);
       expect(marked.targetVerseMd5).toMatch(/^[0-9a-f]{32}$/);
+      // #790 (D107): Mark valid saves the record fitted to the pinned verse, with the pin's stamp.
+      expect(marked.alignments).toHaveLength(16);
+      expect(marked.sourceVersion).toBe(V034);
 
       // Un-align one placed word: the edit takes Mark valid back, on screen and on disk.
       const placedChip = page.locator('[data-testid^="align-card-"][data-count="1"]').first().getByRole('button').first();
@@ -604,6 +632,48 @@ test.describe('J5 — a translator aligns a verse', () => {
       await button.click();
       await expect(button).toHaveAttribute('data-active', '1');
       await expect.poll(() => alignmentFile()?.chapters?.['1']?.['1']?.done, { timeout: 10_000 }).toBe(true);
+    },
+  );
+
+  // #790 (D107, AC2 and D105): a record made against another source version. The stored Παῦλος is
+  // 1 of 2, and the pinned verse has it as 1 of 1. The open fits the cards to the pinned verse, drops
+  // that card with its link, shows the banner and a red rail row for the open verse, and writes
+  // nothing. The first edit saves the fitted record, still flagged, with the pin's stamp.
+  test(
+    '#790 a record made against another source version opens fitted: banner, red rail row, the dropped link back in the bank, nothing written until the first edit',
+    { tag: ['@inc9', '@J5'] },
+    async ({ page }) => {
+      writePinsWithOriginal();
+      const file = alignmentFile();
+      const record = file.chapters['1']['1'];
+      record.sourceVersion = 'dcs::unfoldingWord/el-x-koine_ugnt@v0.33';
+      record.alignments[0].topWords = record.alignments[0].topWords.map((w: object) => ({ ...w, occurrences: 2 }));
+      const alignmentsPath = path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking', 'alignments', 'TIT.json');
+      fs.writeFileSync(alignmentsPath, `${JSON.stringify(file, null, 2)}\n`);
+      const before = fs.readFileSync(alignmentsPath);
+
+      await openAlign(page);
+
+      await expect(page.getByTestId('align-stale')).toBeVisible();
+      await expect(page.getByTestId('align-verse-list').locator('button[data-ref="1:1"]')).toHaveAttribute('data-status', 'invalid');
+      await expect(page.locator('[data-testid^="align-card-"]')).toHaveCount(16);
+      expect((await cardLabels(page)).join(' ').split(' ').map((w) => w.normalize('NFC'))).toEqual(UGNT_TIT_1_1.map((w) => w.normalize('NFC')));
+      // The link of the dropped card is back in the bank.
+      await expect(page.getByTestId('align-bank').locator('[data-word="Pablo"]')).toHaveCount(1);
+      // The open wrote nothing.
+      expect(fs.readFileSync(alignmentsPath).equals(before)).toBe(true);
+
+      // The first edit saves the fitted record: still flagged, with the pin's stamp.
+      const bank = page.getByTestId('align-bank').getByRole('button');
+      await bank.first().click();
+      await page.locator('[data-testid^="align-card-"][data-count="0"]').first().click();
+      await expect
+        .poll(() => alignmentFile()?.chapters?.['1']?.['1']?.sourceVersion, { timeout: 10_000 })
+        .toBe(V034);
+      const saved = alignmentFile()!.chapters['1']['1'];
+      expect(saved.invalid).toBe(true);
+      expect(saved.alignments).toHaveLength(16);
+      await expect(page.getByTestId('align-stale')).toBeVisible();
     },
   );
 
