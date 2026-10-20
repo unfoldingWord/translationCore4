@@ -482,7 +482,7 @@ export default function Align({ embedded = false }) {
   );
 }
 
-const wordKey = (w) => `${w.word} ${Number(w.occurrence)}`;
+const wordKey = (w) => `${w.word}\u0000${Number(w.occurrence)}`;
 
 /** #736: the selected words that the bank shows, in bank order. A selected
  * word that has since become a suggestion is on its card, not in the bank. */
