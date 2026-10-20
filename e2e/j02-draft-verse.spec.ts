@@ -1191,6 +1191,8 @@ test.describe('J2 — a translator drafts a verse', () => {
       test.setTimeout(400_000);
       const gen = sideloadedIngredient('en_ult', 'GEN.usfm');
       const psa = sideloadedIngredient('en_ult', 'PSA.usfm');
+      // #812: 1 Samuel 2:2 holds a `\ts\*` between its poem lines.
+      const sa1 = sideloadedIngredient('en_ult', '1SA.usfm');
       // The verses each file states, counted from the raw text: every `\v`.
       const versesIn = (usfm: string) => (usfm.match(/\\v \d/g) ?? []).length;
       const name = `Poesia 784 ${Date.now()}`;
@@ -1198,7 +1200,7 @@ test.describe('J2 — a translator drafts a verse', () => {
       const card = page.getByTestId(`project-_local_/_local_/${abbr}`);
       const seen: Record<string, unknown> = { genesisVersesInFile: versesIn(gen), psalmsVersesInFile: versesIn(psa) };
 
-      await test.step('a new project gets en_ult Genesis and Psalms from USFM files', async () => {
+      await test.step('a new project gets en_ult Genesis, Psalms and 1 Samuel from USFM files', async () => {
         await page.goto('/');
         await importFixture(page, path.join(MANIFEST_DIR, 'usfm', '32-JON.usfm'), { kind: 'usfm', edits: { name, language: 'es-419' } });
         await expect(page.getByTestId('import-toast')).toBeVisible();
@@ -1208,8 +1210,9 @@ test.describe('J2 — a translator drafts a verse', () => {
         await page.getByTestId('ab-usfm-input').setInputFiles([
           { name: 'GEN.usfm', mimeType: 'text/plain', buffer: Buffer.from(gen) },
           { name: 'PSA.usfm', mimeType: 'text/plain', buffer: Buffer.from(psa) },
+          { name: '1SA.usfm', mimeType: 'text/plain', buffer: Buffer.from(sa1) },
         ]);
-        await expect(page.getByTestId('ab-usfm-file')).toHaveCount(2);
+        await expect(page.getByTestId('ab-usfm-file')).toHaveCount(3);
         await page.getByTestId('ab-usfm-add').click();
         await expect(page.getByTestId('ab-usfm')).toHaveCount(0, { timeout: 240_000 });
       });
@@ -1255,6 +1258,11 @@ test.describe('J2 — a translator drafts a verse', () => {
         expect(psaOnDisk().equals(before)).toBe(true);
         seen.psalm3SectionSaveUnchanged = true;
       });
+      const verse15 = (buf: Buffer): string => {
+        const s = buf.toString('utf8');
+        const span = verseTextSpan(s, 3, 15);
+        return s.slice(span.start, span.end);
+      };
       const EDIT = 'Pondré enemistad entre ti y la mujer (#784).';
       await test.step('Translate shows Gen 3:15; an edit saves only that verse, and its \\q1 stays', async () => {
         await page.goto('/');
@@ -1277,6 +1285,240 @@ test.describe('J2 — a translator drafts a verse', () => {
         await testInfo.attach('j02-gen-3-15-saved', { path: shot, contentType: 'image/png' });
         const at = after.toString('utf8').indexOf(`\\v 15 ${EDIT}`);
         seen.savedLine = after.toString('utf8').slice(after.toString('utf8').lastIndexOf('\n', at) + 1, at + `\\v 15 ${EDIT}`.length);
+        // #786: the save replaced the whole verse, not its first poem line only.
+        expect(verse15(after)).not.toMatch(/woman|offspring|zaln/);
+      });
+
+      // #786: en_ult Gen 3:15 was four poem lines (`\q1 \v 15 …`, then `\q2`,
+      // `\q2`, `\q1` lines). The editor showed the first only, and a save left
+      // the other three after the new text (the step above now proves they go).
+      // These steps write a two-line poem verse and edit it in both modes.
+      const LINE2 = 'entre tu descendencia y la suya (#786).';
+      const LINE2B = 'entre tu descendencia y la suya (#786, sección).';
+      await test.step('Verse: a two-line poem verse saves as \\q1 \\v 15 and \\q2, and reopens with every line (#786)', async () => {
+        const before = genOnDisk();
+        await page.getByTitle('Edit this verse').filter({ hasText: EDIT }).first().click();
+        const editor = page.getByRole('textbox', { name: 'Verse 15' });
+        await editor.fill(`${EDIT}\n\t\t${LINE2}`);
+        await editor.blur();
+        await expect.poll(() => genOnDisk().toString('utf8'), { timeout: 30_000 }).toContain(`\\q2 ${LINE2}`);
+        const after = genOnDisk();
+        expect(byteStrictViolation(before, after, 3, 15)).toBeNull();
+        expect(after.toString('utf8')).toContain(`\\q1 \\v 15 ${EDIT}\n\\q2 ${LINE2}\n`);
+        seen.verse15AfterVerseSave = verse15(after);
+        await page.getByTitle('Edit this verse').filter({ hasText: EDIT }).first().click();
+        await expect(editor).toHaveValue(`${EDIT}\n\t\t${LINE2}`);
+        await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+        await expect(editor).toHaveCount(0);
+        expect(genOnDisk().equals(after)).toBe(true);
+      });
+
+      await test.step('Verse: en_ult Gen 3:16 opens with all its poem lines, and Cancel changes nothing (#786)', async () => {
+        const before = genOnDisk();
+        const s = before.toString('utf8');
+        const span = verseTextSpan(s, 3, 16);
+        const inFile = s.slice(span.start, span.end).split('\n').filter((l) => /^\\q[12] \S/.test(l)).length;
+        await page.getByTitle('Edit this verse').filter({ hasText: 'childbearing' }).first().click();
+        const editor = page.getByRole('textbox', { name: 'Verse 16' });
+        const inEditor = (await editor.inputValue()).split('\n').filter((l) => /^\t{1,2}\S/.test(l)).length;
+        seen.verse16InnerPoemLines = { inFile, inEditor };
+        expect(inFile).toBeGreaterThan(0);
+        expect(inEditor).toBe(inFile);
+        await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+        await expect(editor).toHaveCount(0);
+        expect(genOnDisk().equals(before)).toBe(true);
+      });
+
+      // Review of PR #810: the editor saves on every keystroke. Backspace through
+      // one inner poem line of Gen 3:16, key by key, must leave the file holding
+      // exactly what the editor shows, and nothing outside the verse may move.
+      await test.step('Verse: Backspace takes one poem line of Gen 3:16 away, key by key, and the file follows (#786)', async () => {
+        const before = genOnDisk();
+        await page.getByTitle('Edit this verse').filter({ hasText: 'childbearing' }).first().click();
+        const editor = page.getByRole('textbox', { name: 'Verse 16' });
+        const value = await editor.inputValue();
+        const lines = value.split('\n');
+        const k = lines.findIndex((l, i) => i > 0 && /^\t/.test(l) && i < lines.length - 1);
+        const end = lines.slice(0, k + 1).join('\n').length;
+        await editor.evaluate((el: HTMLTextAreaElement, at: number) => el.setSelectionRange(at, at), end);
+        // The line's characters, its tabs, then the line break before it.
+        for (let i = 0; i <= lines[k].length; i++) await editor.press('Backspace');
+        const shown = await editor.inputValue();
+        expect(shown).toBe(lines.slice(0, k).concat(lines.slice(k + 1)).join('\n'));
+        await editor.blur();
+        await expect.poll(() => genOnDisk().equals(before), { timeout: 30_000 }).toBe(false);
+        const after = genOnDisk();
+        expect(byteStrictViolation(before, after, 3, 16)).toBeNull();
+        const s = after.toString('utf8');
+        const span = verseTextSpan(s, 3, 16);
+        const saved = s.slice(span.start, span.end);
+        const removed = lines[k].replace(/^\t+/, '');
+        seen.verse16AfterBackspace = { removedLine: k, innerLinesBefore: lines.filter((l) => /^\t/.test(l)).length, innerLinesAfter: saved.split('\n').filter((l) => /^\\q[12] \S/.test(l)).length };
+        expect(saved).not.toContain(removed);
+        // Every other poem line is there once: none left behind, none doubled.
+        for (const l of lines.filter((x, i) => i !== k && /^\t/.test(x))) expect(saved.split(l.replace(/^\t+/, '')).length - 1, l.slice(0, 60)).toBe(1);
+        expect(saved).not.toMatch(/^\\q[12] ?$/m);
+      });
+
+      await test.step('Section: Gen 3:15 shows its inner line with tabs, and an edit of it keeps its \\q2 (#786)', async () => {
+        await page.getByRole('tab', { name: 'Section', exact: true }).click();
+        const buttons = page.getByRole('button', { name: /^Draft section / });
+        const names = await buttons.evaluateAll((els) => els.map((el) => el.getAttribute('aria-label') ?? el.textContent ?? ''));
+        const holds15 = names.findIndex((n) => {
+          const m = /(\d+)(?:[–-](\d+))?\s*$/.exec(n);
+          return !!m && Number(m[1]) <= 15 && 15 <= Number(m[2] ?? m[1]);
+        });
+        seen.sectionWith15 = names[holds15];
+        expect(holds15).toBeGreaterThanOrEqual(0);
+        const before = genOnDisk();
+        await buttons.nth(holds15).click();
+        const box = page.getByRole('textbox', { name: /^Section / });
+        const text = await box.inputValue();
+        expect(text).toContain(`15 ${EDIT}\n\t\t${LINE2}`);
+        await box.fill(text.replace(LINE2, LINE2B));
+        await page.getByRole('button', { name: 'Save section' }).click();
+        await expect(page.getByTestId('section-editor')).toHaveCount(0);
+        await expect.poll(() => genOnDisk().toString('utf8'), { timeout: 30_000 }).toContain(LINE2B);
+        const after = genOnDisk();
+        expect(byteStrictViolation(before, after, 3, 15)).toBeNull();
+        expect(after.toString('utf8')).toContain(`\\q1 \\v 15 ${EDIT}\n\\q2 ${LINE2B}\n`);
+        seen.verse15AfterSectionSave = verse15(after);
+        const shot = testInfo.outputPath('j02-gen-3-15-poem-lines.png');
+        await page.screenshot({ path: shot, animations: 'disabled' });
+        await testInfo.attach('j02-gen-3-15-poem-lines', { path: shot, contentType: 'image/png' });
+      });
+
+      // #812: a break, a `\ts\*` or a heading inside a verse, and a `\q3` line.
+      const saOnDisk = () => fs.readFileSync(path.join(repo, 'ingredients', '1SA.usfm'));
+      // 1 Samuel 2:2 from its `\v 2 ` to the next `\v` (its body, and the lines after it).
+      const sa2Region = (t: string) => {
+        const span = verseTextSpan(t, 2, 2);
+        return t.slice(span.start, span.end);
+      };
+      const openChapter = async (book: RegExp, chapter: string, mode: 'Verse' | 'Section') => {
+        await page.goto('/');
+        await card.getByRole('button', { name: book }).click();
+        await page.getByRole('tab', { name: 'Translate', exact: true }).click();
+        await page.getByRole('button', { name: chapter, exact: true }).click();
+        await page.getByRole('tab', { name: mode, exact: true }).click();
+      };
+      await test.step('Verse: 1 Samuel 2:2 opens with all its lines, its `\\ts\\*` as a blank line, and an edit keeps the `\\ts\\*` (#812)', async () => {
+        await openChapter(/1 Samuel/, '2', 'Verse');
+        const before = saOnDisk();
+        await page.getByTitle('Edit this verse').filter({ hasText: 'besides you' }).first().click();
+        const editor = page.getByRole('textbox', { name: 'Verse 2' });
+        const value = await editor.inputValue();
+        const lines = value.split('\n');
+        seen.sa2v2Editor = { lines: lines.length, blankLines: lines.filter((l) => l === '').length, tabLines: lines.filter((l) => /^\t/.test(l)).length };
+        expect(value).toContain('besides');
+        // One blank line for each blank or break line between the verse's words (here a blank line, then `\ts\*`).
+        expect(lines.filter((l) => l === '').length).toBeGreaterThan(0);
+        const shot = testInfo.outputPath('j02-1sa-2-2-editor.png');
+        await page.screenshot({ path: shot, animations: 'disabled' });
+        await testInfo.attach('j02-1sa-2-2-editor', { path: shot, contentType: 'image/png' });
+        const last = lines[lines.length - 1];
+        await editor.fill(`${value} (#812)`);
+        await editor.blur();
+        await expect.poll(() => saOnDisk().toString('utf8'), { timeout: 30_000 }).toContain(`${last} (#812)`);
+        const after = saOnDisk();
+        expect(byteStrictViolation(before, after, 2, 2)).toBeNull();
+        // The only change is the text added at the verse's end: the `\ts\*` and every poem line are where they were.
+        const s = before.toString('utf8');
+        const at = s.indexOf(`${last}\n`, verseTextSpan(s, 2, 2).start);
+        expect(after.toString('utf8')).toBe(`${s.slice(0, at)}${last} (#812)${s.slice(at + last.length)}`);
+      });
+
+      await test.step('Section: the section that holds 1 Samuel 2:2 saved with no change leaves 1SA.usfm byte-identical (#812)', async () => {
+        await openChapter(/1 Samuel/, '2', 'Section');
+        const buttons = page.getByRole('button', { name: /^Draft section / });
+        const names = await buttons.evaluateAll((els) => els.map((el) => el.getAttribute('aria-label') ?? el.textContent ?? ''));
+        const holds2 = names.findIndex((n) => {
+          const m = /(\d+)(?:[–-](\d+))?\s*$/.exec(n);
+          return !!m && Number(m[1]) <= 2 && 2 <= Number(m[2] ?? m[1]);
+        });
+        expect(holds2).toBeGreaterThanOrEqual(0);
+        const before = saOnDisk();
+        await buttons.nth(holds2).click();
+        await expect(page.getByRole('textbox', { name: /^Section / })).toHaveValue(/\(#812\)/);
+        await page.getByRole('button', { name: 'Save section' }).click();
+        await expect(page.getByTestId('section-editor')).toHaveCount(0);
+        expect(saOnDisk().equals(before)).toBe(true);
+        seen.sa2SectionSaveUnchanged = true;
+      });
+
+      // Review of PR #810: the text after a break deleted, so the break is left
+      // after the verse's last words. It must stay in the file, right after the
+      // verse, and not twice.
+      await test.step('Verse: the words after 1 Samuel 2:2\'s `\\ts\\*` deleted, the `\\ts\\*` stays in the file once (#812)', async () => {
+        await openChapter(/1 Samuel/, '2', 'Verse');
+        const before = saOnDisk().toString('utf8');
+        await page.getByTitle('Edit this verse').filter({ hasText: 'besides you' }).first().click();
+        const editor = page.getByRole('textbox', { name: 'Verse 2' });
+        const value = await editor.inputValue();
+        const lines = value.split('\n');
+        const lastBlank = lines.lastIndexOf('');
+        const cut = lines.slice(0, lastBlank + 1).join('\n').length + 1;
+        await editor.evaluate((el: HTMLTextAreaElement, [from, to]: number[]) => el.setSelectionRange(from, to), [cut, value.length]);
+        await editor.press('Backspace');
+        // The card saves as the text changes; it stays open for Cancel below.
+        await expect.poll(() => saOnDisk().toString('utf8'), { timeout: 30_000 }).not.toBe(before);
+        const s = saOnDisk().toString('utf8');
+        seen.sa2v2AfterCut = { tsInVerseRegion: sa2Region(s).split('\\ts\\*').length - 1, tsBefore: sa2Region(before).split('\\ts\\*').length - 1 };
+        expect(seen.sa2v2AfterCut).toEqual({ tsInVerseRegion: 1, tsBefore: 1 });
+        expect(sa2Region(s)).not.toContain(lines[lastBlank + 1]);
+        expect(s.split('\\ts\\*').length).toBe(before.split('\\ts\\*').length);
+        // Cancel puts the verse back as it opened, and takes the `\ts\*` written after it away.
+        await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+        await expect(editor).toHaveCount(0);
+        await expect.poll(() => saOnDisk().toString('utf8'), { timeout: 30_000 }).toBe(before);
+      });
+
+      // Bench review of PR #810 (Codex round 3): the same cut in Section mode lost
+      // the `\ts\*`, because the save trimmed the blank lines after the verse's last words.
+      await test.step('Section: the words after 1 Samuel 2:2\'s `\\ts\\*` deleted and saved, the `\\ts\\*` stays in the file once (#812)', async () => {
+        await openChapter(/1 Samuel/, '2', 'Section');
+        const before = saOnDisk().toString('utf8');
+        const buttons = page.getByRole('button', { name: /^Draft section / });
+        const names = await buttons.evaluateAll((els) => els.map((el) => el.getAttribute('aria-label') ?? el.textContent ?? ''));
+        const holds2 = names.findIndex((n) => {
+          const m = /(\d+)(?:[–-](\d+))?\s*$/.exec(n);
+          return !!m && Number(m[1]) <= 2 && 2 <= Number(m[2] ?? m[1]);
+        });
+        await buttons.nth(holds2).click();
+        const box = page.getByRole('textbox', { name: /^Section / });
+        const text = await box.inputValue();
+        // 2:2 runs from its "2 " line to the next verse line, or to the end when it is the
+        // section's last verse (the source groups 2:1-2); cut it after its last blank line.
+        const lines = text.split('\n');
+        const start2 = lines.findIndex((l) => /^\t*2 /.test(l));
+        const found3 = lines.findIndex((l, i) => i > start2 && /^\t*3 /.test(l));
+        const start3 = found3 === -1 ? lines.length : found3;
+        seen.sa2SectionLastVerse = found3 === -1;
+        const own = lines.slice(start2, start3);
+        const lastBlank = start2 + own.lastIndexOf('');
+        const cutText = [...lines.slice(0, lastBlank + 1), ...lines.slice(start3)].join('\n');
+        expect(cutText).not.toBe(text);
+        await box.fill(cutText);
+        await page.getByRole('button', { name: 'Save section' }).click();
+        await expect(page.getByTestId('section-editor')).toHaveCount(0);
+        await expect.poll(() => saOnDisk().toString('utf8'), { timeout: 30_000 }).not.toBe(before);
+        const s = saOnDisk().toString('utf8');
+        seen.sa2v2SectionCut = { tsInVerseRegion: sa2Region(s).split('\\ts\\*').length - 1, tsInBook: s.split('\\ts\\*').length - 1, tsInBookBefore: before.split('\\ts\\*').length - 1 };
+        expect(seen.sa2v2SectionCut).toEqual({ tsInVerseRegion: 1, tsInBook: before.split('\\ts\\*').length - 1, tsInBookBefore: before.split('\\ts\\*').length - 1 });
+        expect(byteStrictViolation(Buffer.from(before), Buffer.from(s), 2, 2)).toBeNull();
+      });
+
+      await test.step('Verse: Psalm 9:15 shows its `\\q3` line with three tabs, and Cancel changes nothing (#812)', async () => {
+        await openChapter(/Psalms/, '9', 'Verse');
+        const before = psaOnDisk();
+        await page.getByTitle('Edit this verse').filter({ hasText: 'their foot' }).first().click();
+        const editor = page.getByRole('textbox', { name: 'Verse 15' });
+        const threeTabs = (await editor.inputValue()).split('\n').filter((l) => /^\t\t\t\S/.test(l)).length;
+        seen.psa9v15ThreeTabLines = threeTabs;
+        expect(threeTabs).toBeGreaterThan(0);
+        await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+        await expect(editor).toHaveCount(0);
+        expect(psaOnDisk().equals(before)).toBe(true);
       });
 
       const artifactPath = testInfo.outputPath('j02-poetry-verses.json');

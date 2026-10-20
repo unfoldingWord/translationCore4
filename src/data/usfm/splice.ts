@@ -51,6 +51,35 @@ export const spliceVerse = (
   return rawBook.slice(0, entry.start) + sep + newBody + rawBook.slice(entry.end);
 };
 
+/** #812: replace a verse body as the Verse editor saves it, keystroke by
+ * keystroke, with the `tail` written right after it: a break or a heading the
+ * translator left after the verse's last words (poemLines.ts
+ * `editorTextToVerse`). The index leaves those lines outside the verse, so the
+ * next keystroke would not replace them. `openedBook` is the book when the
+ * editor opened: whatever this edit has put after the verse since is replaced
+ * with the new tail, never left twice. So the tail is written once, typing the
+ * text back takes it into the verse again, and the opened body with no tail
+ * restores the book byte for byte (Cancel). */
+export const spliceVerseWithTail = (
+  rawBook: string,
+  openedBook: string,
+  chapter: string | number,
+  verseKey: string,
+  newBody: string,
+  tail: readonly string[],
+  nl: '\n' | '\r\n',
+): string => {
+  const entry = findVerse(indexBook(rawBook), chapter, verseKey);
+  if (!entry) throw new VerseNotFoundError(String(chapter), verseKey);
+  const then = openedBook === rawBook ? entry : findVerse(indexBook(openedBook), chapter, verseKey);
+  const afterNow = rawBook.length - entry.end;
+  const afterThen = then ? openedBook.length - then.end : afterNow;
+  const added = afterNow > afterThen && rawBook.endsWith(openedBook.slice(openedBook.length - afterThen)) ? afterNow - afterThen : 0;
+  const sep = newBody !== '' && entry.start > 0 && !/\s/.test(rawBook[entry.start - 1]) ? ' ' : '';
+  const lines = tail.map((l) => nl + l).join('');
+  return rawBook.slice(0, entry.start) + sep + newBody + lines + rawBook.slice(entry.end + added);
+};
+
 /** The start of an indexed verse's own `\\v` marker line (the body follows it). */
 const markerStart = (rawBook: string, entry: { start: number; verseKey: string }): number => {
   const at = rawBook.lastIndexOf('\\v', entry.start - 1);

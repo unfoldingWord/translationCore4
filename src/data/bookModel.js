@@ -5,6 +5,7 @@
 import usfm from 'usfm-js';
 import { gapMarkerOf } from './usfm/splice';
 import { indexBook } from './usfm/indexer';
+import { bodyToEditorText } from './usfm/poemLines';
 import { tokenizeVerse, tokensText } from './sourceHighlight';
 
 export const parseChapters = (raw) => {
@@ -30,7 +31,11 @@ export function buildChapterVerses(bookRaw, chapters, entries) {
     // spliceVerseGap's does: for `\q1 \v 15` (#784) its last line is `\q1 `,
     // the marker the section Save writes back.
     const gap = sameCh ? bookRaw.slice(prev.end, bookRaw.lastIndexOf('\\v', e.start - 1)) : '';
-    const para = !sameCh || PARA_IN_GAP.test(gap);
+    // #786, #812: the verse before may hold poem lines and breaks, which are
+    // its body now; a verse after them starts a paragraph, as when they were
+    // the gap. Read from that verse's own `\v`: its first poem marker or break
+    // may sit before the body (`\v 2` / `\q1 But I …`).
+    const para = !sameCh || PARA_IN_GAP.test(bookRaw.slice(bookRaw.lastIndexOf('\\v', prev.start - 1), bookRaw.lastIndexOf('\\v', e.start - 1)));
     const format = sameCh ? gapMarkerOf(gap) : null;
     (byChapter[e.chapter] ||= []).push({
       n: e.verseKey,
@@ -38,7 +43,8 @@ export function buildChapterVerses(bookRaw, chapters, entries) {
       para,
       format,
       text: drafted ? verseText(chapters[e.chapter]?.[e.verseKey]) : '',
-      body: drafted ? body : '',
+      // #786: the editors' text, inner poem lines as leading tabs.
+      body: drafted ? bodyToEditorText(body) : '',
     });
     prev = e;
   }
