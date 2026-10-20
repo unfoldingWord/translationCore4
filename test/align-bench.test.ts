@@ -20,6 +20,12 @@
 // word list per vouching record, once per verse, on a cold rail build; the warm rebuild
 // stays on the slot memo. Its numbers were taken against the slice 1 head, in the same
 // session, one run of each in turn.
+// #790 (D107): the edit row also times the new edit record step (fit to the pinned verse +
+// `finalizeEdit` + stamp) in the same run, in turn, and asserts that it adds at most 0.25 ms to
+// `finalizeEdit` alone (the difference of the medians). The open row reports the one more `unmerge`
+// the open makes (`sourceWordsOf`) and the fit. The export row reports the aligned export's source
+// fit on Genesis (UHB v3.0.0): the book parsed once, the words of each verse, the fit of one record
+// per verse.
 import { describe, expect, it } from 'vitest';
 import { unzipSync, strFromU8 } from 'fflate';
 import { bootstrapVerse, finalizeEdit, linkWord, reflowAlignment } from '../src/data/align/edit';
@@ -30,7 +36,8 @@ import { usfmjs } from '../src/data/vendor';
 import { decompose, recompose } from '../journal/skeleton.mjs';
 import { verseTextMd5 } from '../journal/fold.mjs';
 import { toNfc } from '../journal/grammar.mjs';
-import { __alignIndexItemsForTests as alignIndexItems } from '../src/state.jsx';
+import { fitSourceCards, stampSource } from '../src/data/align/source.mjs';
+import { __alignIndexItemsForTests as alignIndexItems, __sourceBookForTests, __sourceWordsOfForTests as sourceWordsOf } from '../src/state.jsx';
 import { UsfmFileConversionHelpers } from 'word-aligner-lib';
 import { weaveBook } from '../src/data/export/weave.mjs';
 import { AlignmentHelpers } from '../src/data/vendor';
@@ -103,9 +110,29 @@ describe.skipIf(!RUN)('#796 bench — Genesis, en_ult v91', () => {
     const next: AlignmentVerseRecord = linkWord(record, 0, banked);
     expect(next).not.toBe(record);
 
-    const edit = time(() => { finalizeEdit(next, words, md5); }, 200);
+    // #790: `finalizeEdit` alone and the edit record step of the app (`alignSessionAfterEdit`: fit + finalizeEdit + stamp),
+    // in turn, 2000 runs each. The session holds the pinned verse's words, so `sourceWords` is made once, as the open does.
+    const SV = 'dcs::unfoldingWord/hbo_uhb@v0.0.0';
+    const sourceWords = sourceWordsOf(orig);
+    const fittedOnce = fitSourceCards(next, sourceWords);
+    expect(fittedOnce.dropped).toBe(0);
+    expect(fittedOnce.reshaped).toBe(false);
+    const aloneRuns: number[] = [];
+    const stepRuns: number[] = [];
+    for (let i = 0; i < 2000; i++) {
+      let t0 = performance.now();
+      finalizeEdit(next, words, md5);
+      aloneRuns.push(performance.now() - t0);
+      t0 = performance.now();
+      stampSource(finalizeEdit(fitSourceCards(next, sourceWords).record, words, md5), SV);
+      stepRuns.push(performance.now() - t0);
+    }
+    const edit = median(aloneRuns);
+    const editStep = median(stepRuns);
     const openWords = time(() => { verseWords(slot); }, 200);
     const openBootstrap = time(() => { bootstrapVerse(verseWords(slot), orig, 'dcs::unfoldingWord/hbo_uhb@v0.0.0', md5); }, 200);
+    const openSourceWords = time(() => { sourceWordsOf(orig); }, 200);
+    const openFit = time(() => { fitSourceCards(next, sourceWords); }, 200);
 
     // #789 — the reflow after a save: the record moved from the verse before the save to the verse after it, one
     // word inserted (both diff passes and the link moves). The slots, words and hashes are made after the read, so
@@ -162,12 +189,16 @@ describe.skipIf(!RUN)('#796 bench — Genesis, en_ult v91', () => {
 
     const fixed = (n: number) => n.toFixed(3);
     console.log(
-      `[align bench] verse ${longest} (${wordCount} words): edit ${fixed(edit)} ms, open words ${fixed(openWords)} ms, open bootstrap ${fixed(openBootstrap)} ms; ` +
+      `[align bench] verse ${longest} (${wordCount} words): edit ${fixed(edit)} ms, edit with the source fit ${fixed(editStep)} ms (difference ${fixed(editStep - edit)} ms, ${sourceWords.length} source words), ` +
+        `open words ${fixed(openWords)} ms, open bootstrap ${fixed(openBootstrap)} ms, open source words ${fixed(openSourceWords)} ms, open fit ${fixed(openFit)} ms; ` +
         `rail 10 records ${fixed(rail10)} ms, rail ${refs.length} records ${fixed(railAll)} ms; ` +
         `warm rail 10 records ${fixed(warm10)} ms, warm rail ${refs.length} records ${fixed(warmAll)} ms; ` +
         `reflow ${fixed(reflow)} ms, decompose(toNfc(book)) ${fixed(decomposeBook)} ms`,
     );
     expect(edit).toBeLessThanOrEqual(BASE.edit * 1.2);
+    // #790 (D107): the fit adds work to the Align save path; it is an accepted exception to "the save path must
+    // not slow the aligner", and it stays under a quarter of a millisecond.
+    expect(editStep - edit).toBeLessThanOrEqual(0.25);
     expect(reflow).toBeLessThanOrEqual(1);
   }, 30 * 60 * 1000);
 
@@ -205,5 +236,48 @@ describe.skipIf(!RUN)('#796 bench — Genesis, en_ult v91', () => {
     const woven = refs.filter((r) => outVerses[r] !== plainSlots[r]).length;
     console.log(`[align bench] weaveBook GEN: ${refs.length} records, ${ms.toFixed(0)} ms (median of 3), ${woven} woven, reported ${JSON.stringify(reasons)}`);
     expect(woven).toBeGreaterThan(0);
+  }, 30 * 60 * 1000);
+
+  // #790 (D107) — the aligned export fits each record to the pinned verse before it weaves. Reported, not asserted.
+  // The pinned book is UHB v3.0.0 Genesis from the rig cache: parsed once (`parseSourceBook`), the words of each
+  // verse (`sourceWordsOf`), and the fit of one record per verse (`bootstrapVerse` on the verse's own objects, one
+  // link). The source read over HTTP and `mapReference` (an `eng` project short-circuits) are not in the figures.
+  it('measures the aligned export source fit on Genesis (UHB v3.0.0), one record per verse', () => {
+    const UHB = process.env.TC4_UHB_ZIP ?? path.resolve(process.cwd(), 'dev-env/resources-cache/hbo_uhb-v3.0.0-unwrapped.zip');
+    const uhbText = strFromU8(unzipSync(new Uint8Array(fs.readFileSync(UHB)))['ingredients/GEN.usfm']);
+    const raw = strFromU8(unzipSync(new Uint8Array(fs.readFileSync(ZIP)))['ingredients/GEN.usfm']);
+    const { verses: stored } = decompose(toNfc(raw) as string) as { skeleton: string; verses: Record<string, string> };
+    const plainSlots: Record<string, string> = Object.fromEntries(Object.entries(stored).map(([k, s]) => [k, clean(s)]));
+    const refs = Object.keys(plainSlots).filter((k) => !k.startsWith('0:') && wordTokens(plainSlots[k]).length > 0);
+    const { parseSourceBook, verseObjectsIn } = __sourceBookForTests;
+    let t0 = performance.now();
+    const chapters = parseSourceBook(uhbText);
+    const parseMs = performance.now() - t0;
+    expect(chapters).not.toBeNull();
+    const objectsOf = new Map<string, Array<Record<string, unknown>>>();
+    for (const ref of refs) {
+      const [c, v] = ref.split(':');
+      const objects = verseObjectsIn(chapters, c, v) as Array<Record<string, unknown>>;
+      if (objects.length) objectsOf.set(ref, objects);
+    }
+    const covered = [...objectsOf.keys()];
+    t0 = performance.now();
+    const wordsOf = new Map(covered.map((ref) => [ref, sourceWordsOf(objectsOf.get(ref))]));
+    const wordsMs = performance.now() - t0;
+    const SV = 'dcs::unfoldingWord/hbo_uhb@v3.0.0';
+    const records = covered.map((ref) => {
+      const words = verseWords(plainSlots[ref]);
+      const record = bootstrapVerse(words, objectsOf.get(ref)!, SV, verseTextMd5(plainSlots[ref]) as string);
+      return linkWord(record, 0, record.wordBank[0]);
+    });
+    t0 = performance.now();
+    let dropped = 0;
+    covered.forEach((ref, i) => { dropped += fitSourceCards(records[i], wordsOf.get(ref)!).dropped; });
+    const fitMs = performance.now() - t0;
+    console.log(
+      `[align bench] export source fit GEN: ${covered.length} of ${refs.length} records have a pinned verse; parse ${parseMs.toFixed(0)} ms, ` +
+        `words of ${covered.length} verses ${wordsMs.toFixed(0)} ms, fit of ${covered.length} records ${fitMs.toFixed(0)} ms, ${dropped} cards dropped`,
+    );
+    expect(covered.length).toBeGreaterThan(0);
   }, 30 * 60 * 1000);
 });
