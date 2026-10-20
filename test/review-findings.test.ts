@@ -102,7 +102,9 @@ describe('B1 — seeding reads mid-line \\v markers (marker stream, not line wal
 });
 
 describe('M3 — splice never glues a body onto a contentless \\v key', () => {
-  const raw = PSALM_SHAPE;
+  // #786: the `\q1` line after `\v 2` is verse 2's own text now, so the empty
+  // verse this finding is about is a `\v 2` with nothing before `\v 3`.
+  const raw = PSALM_SHAPE.replace('\\q1 But I have calmed and quieted my soul.\n', '');
   it('writing into the empty verse inserts a separator and stays addressable', () => {
     const once = spliceVerse(raw, 131, '2', 'Hola');
     expect(once).toMatch(/^\\v 2 Hola$/m);

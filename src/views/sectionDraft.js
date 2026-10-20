@@ -61,21 +61,29 @@ const escapable = (line, pins) => {
   return !!m && runOf(m[2], pins) !== null;
 };
 
-/** Indent every continuation line of a body that would read as a marker. */
+/** Indent every continuation line of a body that would read as a marker. An
+ * inner poem line (#786) keeps its leading tabs; the space goes after them. */
 const escapeBody = (body, pins) => String(body)
   .split('\n')
-  .map((line, i) => (i > 0 && escapable(line, pins) ? ` ${line}` : line))
+  .map((line, i) => {
+    const tabs = /^\t*/.exec(line)[0];
+    return i > 0 && escapable(line.slice(tabs.length), pins) ? `${tabs} ${line.slice(tabs.length)}` : line;
+  })
   .join('\n');
 
-/** Add (delta > 0, max 2) or remove (delta < 0) one leading tab at the caret's line (#54). */
-export const indentLine = (text, caret, delta) => {
+/** Add (delta > 0) or remove (delta < 0) one leading tab at the caret's line
+ * (#54). A verse line holds two at most (its format: \q1 or \q2); with the
+ * section's `pins`, a line inside a verse holds three (\q3, #812). */
+export const indentLine = (text, caret, delta, pins) => {
   const t = String(text ?? '');
   const c = Math.max(0, Math.min(caret ?? 0, t.length));
   const lineStart = t.lastIndexOf('\n', c - 1) + 1;
   let tabs = 0;
   while (t[lineStart + tabs] === '\t') tabs++;
   if (delta > 0) {
-    if (tabs >= 2) return { text: t, caret: c };
+    const lineEnd = t.indexOf('\n', lineStart);
+    const max = pins && !markerLine(t.slice(lineStart, lineEnd === -1 ? t.length : lineEnd), pins) ? 3 : 2;
+    if (tabs >= max) return { text: t, caret: c };
     return { text: `${t.slice(0, lineStart)}\t${t.slice(lineStart)}`, caret: c + 1 };
   }
   if (delta < 0) {
@@ -88,7 +96,8 @@ export const indentLine = (text, caret, delta) => {
 /** Determine block format from leading tabs and blank line context. */
 const lineFormat = (tabs, precededByBlank, isMarker) => {
   if (tabs === 1) return 'q1';
-  if (tabs >= 2) return 'q2';
+  if (tabs === 2) return 'q2';
+  if (tabs >= 3) return 'q3';
   if (precededByBlank || !isMarker) return 'p';
   return null;
 };
@@ -216,9 +225,11 @@ export const sectionGroups = (markers, pins, keys = pins) => {
 export const sectionKeys = (markers, pins, keys = pins) => sectionGroups(markers, pins, keys).map((g) => g.key);
 
 /** The text of each verse from the pinned word list: a verse (or span) runs
- * from its pin to the next pin, words joined by their own separators. Only
- * verses with text are returned, keyed by the key the save writes. */
-export const sectionVerses = (words, seps, markers, pins, keys = pins) => {
+ * from its pin to the next pin, words joined by their own separators. A line
+ * inside a verse that `blocks` marks q1/q2 is an inner poem line and keeps its
+ * tabs (#786). Only verses with text are returned, keyed by the key the save
+ * writes. */
+export const sectionVerses = (words, seps, markers, pins, keys = pins, blocks = {}) => {
   const groups = sectionGroups(markers, pins, keys);
   const at = {};
   for (const g of groups) if (g.at !== undefined) at[g.at] = g.key;
@@ -226,23 +237,43 @@ export const sectionVerses = (words, seps, markers, pins, keys = pins) => {
   let cur = groups[0].key; // words before any pin belong to the first verse
   words.forEach((w, i) => {
     if (at[i] !== undefined) cur = at[i];
-    buf[cur] = (buf[cur] ?? '') + w + (seps[i] ?? '');
+    const tabs = at[i] === undefined && i > 0 ? { q1: '\t', q2: '\t\t', q3: '\t\t\t' }[blocks?.[i]] ?? '' : '';
+    // The spaces typed after the tabs sit in the separator before the line:
+    // they go, so the tabs start the line (review of PR #810).
+    const before = tabs ? (buf[cur] ?? '').replace(/\n[ ]+$/, '\n') : buf[cur] ?? '';
+    buf[cur] = before + tabs + w + (seps[i] ?? '');
   });
   const out = {};
-  for (const g of groups) {
-    let t = (buf[g.key] ?? '').trim();
+  groups.forEach((g, gi) => {
+    const next = groups.slice(gi + 1).find((x) => x.at !== undefined);
+    let t = ownText(buf[g.key] ?? '', next !== undefined, next !== undefined && blocks?.[next.at] === 'p');
     // #575 (D94): verses joined into a span are one paragraph. A blank line
     // inside it (the `\p` between the joined verses) becomes one space, so the
     // stored span has no bare blank line. A single line break stays as typed.
-    if (g.members.length > 1) t = t.replace(/[ \t]*\n(?:[ \t]*\n)+[ \t]*/g, ' ');
-    if (t) out[g.key] = t;
-  }
+    // A span the book already has keeps its blank lines: they are its own
+    // breaks (#812, en_ust 1SA 17:50-51 holds a `\p`), not a join made now.
+    if (g.members.length > 1 && !keys.includes(g.key)) t = t.trim().replace(/[ \t]*\n(?:[ \t]*\n)+[ \t]*/g, ' ');
+    if (t.trim()) out[g.key] = t;
+  });
   return out;
+};
+
+/** A verse's own text from its words and separators: no space before it, and
+ * after its last words the blank lines that are its own (#812, review of PR
+ * #810). Its line end, when a verse line follows (`hasNext`), is not one of
+ * them, and neither is the blank line that gives that verse its `\p`
+ * (`nextIsP`). A verse's own blank lines left after its last words keep the
+ * breaks they stand for (a `\ts\*`): the save writes them right after the
+ * verse (poemLines.ts `editorTextToVerse`). */
+const ownText = (text, hasNext, nextIsP) => {
+  const end = /\s*$/.exec(text)[0];
+  const blanks = (end.match(/\n/g) ?? []).length - (hasNext ? 1 : 0) - (nextIsP ? 1 : 0);
+  return text.slice(0, text.length - end.length).replace(/^\s+/, '') + '\n'.repeat(Math.max(0, blanks));
 };
 
 /** Write the pinned word list back out as Type-mode text, one verse per line (#54). */
 export const serializeDraft = (words, seps, markers, pins, keys = pins, blocks = {}) => {
-  const verses = sectionVerses(words, seps, markers, pins, keys);
+  const verses = sectionVerses(words, seps, markers, pins, keys, blocks);
   const groups = sectionGroups(markers, pins, keys).filter((g) => verses[g.key]);
   return groups.map((g, i) => {
     const body = escapeBody(verses[g.key], pins);

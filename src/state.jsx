@@ -9,7 +9,7 @@ import { ServerApi } from './data/serverApi';
 // BEFORE any derived file changes. The raw HttpStore is never constructed here
 // (test/noBypass.test.ts enforces it); read-only surfaces use ProjectReader.
 import { StaleWriteError } from './data/httpStore';
-import { STORY_FILE, refusalCodeOf } from './data/journal/runtime';
+import { STORY_FILE, decompose, refusalCodeOf, toNfc, verseTextMd5 } from './data/journal/runtime';
 import { JournalingStore, ProjectReader, bookAddFits } from './data/journal/journalingStore';
 import { parseVerseKey } from './data/journal/verseConflicts';
 import { SaveScheduler } from './data/saveScheduler';
@@ -19,7 +19,9 @@ import { readPrintedStories } from './data/storyModel';
 import { recordRecentStory } from './data/obsRecency';
 import { modeOf, placeKey, recordPlace } from './data/place';
 import { spliceSection, spliceVerse, spliceVerseGap, verseBody } from './data/usfm/splice';
-import { draftPercent, indexBook } from './data/usfm/indexer';
+import { bodyToEditorText, editorTextToVerse } from './data/usfm/poemLines';
+import { cancelVerse as cancelVerseEdit, openVerse, writeVerse } from './data/usfm/verseEdit';
+import { draftPercent, findVerse, indexBook } from './data/usfm/indexer';
 import { bookModel, parseChapters, verseText } from './data/bookModel';
 import { RESOURCE_FRAME, forgetProjectFrames, resolveProjectFrame } from './data/projectFrame';
 import { backfillCoverage } from './data/coverageBackfill';
@@ -45,7 +47,10 @@ import {
 } from './data/derive';
 import { readTwArticle, readTaArticle, readTaTitle } from './data/articles';
 import { revalidateAgainstDraft, resolutionWarning } from './data/revalidate';
-import { bootstrapVerse, cardsInVerseOrder, inVerseOrder, linkWord, unlinkWord, moveWord, mergeAlignments, splitAlignment, stampTargetVerse, alignmentIsStale, reflowAlignment, settleDone, markDone } from './data/align/edit';
+import { bootstrapVerse, finalizeEdit, linkWord, unlinkWord, moveWord, mergeAlignments, splitAlignment, reflowAlignment, reconcileToWords, markDone } from './data/align/edit';
+import { verseWords } from './data/align/verseWords.mjs';
+import { hasLinks, needsReview } from './data/align/review.mjs';
+import { fitSourceCards, sourceVersionOf, stampSource } from './data/align/source.mjs';
 import { linksFor, rebindSuggestions, sessionInputFor, trainingVerseOf, trainingVersesFor } from './data/align/suggest';
 import { SuggestScheduler } from './data/align/suggestScheduler';
 import { consequencesOfGatewayChange, applyGatewayChange, completeLanguageSets, uncoveredByChange, sourcePanesForGateway, gatewaysCoveringProject, literalPaneId } from './data/gatewayChange';
@@ -56,8 +61,9 @@ import { TC_READY_TOPIC } from './data/serverApi';
 import { isLocale, setLocale, t, useLocale } from './i18n';
 import { checkpointMessage } from './data/checkpoint';
 import { runExport } from './data/export/kernel';
+import { holdsInlineAlignment } from './data/export/weave.mjs';
 import { runImport } from './data/import/shell';
-import { OpsLog, serialSettingsWriter } from './data/journal/opsLog';
+import { OpsLog, nextSyncGeneration, serialSettingsWriter } from './data/journal/opsLog';
 import { Door43Api } from './data/share/door43Api';
 import { InternetSwitch, ensureGate, startGate } from './data/internet';
 import { currentSession, hasKeptToken, resumeKeptSession, signIn as door43SignIn, signOut as door43SignOut } from './data/share/session';
@@ -361,6 +367,91 @@ function verseTextIndex(bookRaw) {
   return out;
 }
 
+/** #795: the hash the export checks for one drafted verse (I-3): `verseTextMd5`
+ * of the stored slot, `decompose(toNfc(book)).verses[ref]`, the journal seal's own
+ * expression. So text typed in a non-NFC form, or a verse that holds inline
+ * `\zaln`, is stamped with what the fold and the export compute. The text of
+ * verseTextIndex is for display only. Lazy, as a hash is a usfm-js parse and a
+ * Translate blur must not pay one per verse of the book: the slots are cut once
+ * per book text (the last one asked about is kept) and a verse is hashed once,
+ * when first asked. `undefined` = the slots hold no such verse. `decompose` needs
+ * a space or tab after the verse number, so `\v 1` with its text on the next
+ * line has no slot.
+ * #796: the same slot gives the verse's words (`slotWordsOf`, verseWords.mjs): the
+ * list word-aligner `merge` checks, so the bank and every Align write use the
+ * export's own words. A words list is a usfm-js parse, so it is made when asked,
+ * once per verse, and shared: a caller must not change it. */
+let slotMemo = { raw: null, slots: {}, md5: {}, words: {} };
+function slotOf(bookRaw, ref) {
+  if (!bookRaw) return undefined;
+  if (slotMemo.raw !== bookRaw) slotMemo = { raw: bookRaw, slots: decompose(toNfc(bookRaw)).verses, md5: {}, words: {} };
+  return slotMemo.slots[ref];
+}
+function slotMd5Of(bookRaw, ref) {
+  const slot = slotOf(bookRaw, ref);
+  if (slot === undefined) return undefined;
+  if (!(ref in slotMemo.md5)) slotMemo.md5[ref] = verseTextMd5(slot);
+  return slotMemo.md5[ref];
+}
+/** #796: the drafted body of a verse as the rail reads it (`indexBook`: since #786 and
+ * #812 it runs over the verse's poem lines, breaks and headings up to its last words,
+ * where a slot runs on to the next `\v`, as `slotMd5Index` and
+ * `verseHoldsImportedAlignment` read it). `''` when the verse is absent, empty or a
+ * `___` stub. */
+function draftedBodyOf(bookRaw, ref) {
+  const [chapter, verse] = ref.split(':');
+  const e = findVerse(indexBook(bookRaw), chapter, verse);
+  const body = e ? bookRaw.slice(e.start, e.end).trim() : '';
+  return body === '___' ? '' : body;
+}
+/** The export's word list of one stored verse; `[]` when the slots hold no such verse. */
+function slotWordsOf(bookRaw, ref) {
+  const slot = slotOf(bookRaw, ref);
+  if (slot === undefined) return [];
+  if (!(ref in slotMemo.words)) slotMemo.words[ref] = verseWords(slot);
+  return slotMemo.words[ref];
+}
+
+/** #789: the stored slots of one book text, by `ref`, with no memo (the text from before a
+ * save is read once per reflow call). `{}` when there is no text or it does not decompose. */
+function slotsOfText(raw) {
+  if (!raw) return {};
+  try {
+    return decompose(toNfc(raw)).verses;
+  } catch {
+    return {};
+  }
+}
+
+/** #789: a stored slot as the reflow compares it: the slot, its export word list and its hash.
+ * `undefined` when the text held no slot for the verse. */
+function verseTextOf(slot) {
+  return slot === undefined ? undefined : { slot, words: verseWords(slot), md5: verseTextMd5(slot) };
+}
+
+/** Tests only: every drafted verse's hash, by `slotMd5Of`. */
+function slotMd5Index(bookRaw) {
+  const index = {};
+  if (!bookRaw) return index;
+  for (const e of indexBook(bookRaw)) {
+    const ref = `${e.chapter}:${e.verseKey}`;
+    const body = bookRaw.slice(e.start, e.end).trim();
+    if (body === '' || body === '___') continue;
+    const md5 = slotMd5Of(bookRaw, ref);
+    if (md5 !== undefined) index[ref] = md5;
+  }
+  return index;
+}
+
+/** #794: the stored verse still holds the `\zaln` markup of an aligned import
+ * (I-1; #553 will extract it). tC4 writes no alignment for such a verse. A
+ * caller that asks about many verses passes `indexBook(bookRaw)` once. */
+function verseHoldsImportedAlignment(bookRaw, ref, entries = bookRaw ? indexBook(bookRaw) : []) {
+  const [chapter, verse] = ref.split(':');
+  const e = findVerse(entries, chapter, verse);
+  return e ? holdsInlineAlignment(bookRaw.slice(e.start, e.end)) : false;
+}
+
 /** OT/NT split for choosing the original-language resource. BOOK_NAMES is in
  * canonical order, so the first 39 entries are the Old Testament. */
 export function isOldTestament(bookCode) {
@@ -371,17 +462,28 @@ export function isOldTestament(bookCode) {
  * input. A span ("9-10", #63) is its member verses' objects in order: the
  * span's draft is aligned against both original verses as one text. */
 function verseObjectsFor(usfmText, chapter, verse) {
-  // Catch-to-absence sweep (D30): null = the text is PRESENT but could not
-  // be parsed — the alignment surface states 'unreadable', never the false
-  // "not on this computer" claim that sends the user to re-download.
+  const chapters = parseSourceBook(usfmText);
+  return chapters === null ? null : verseObjectsIn(chapters, chapter, verse);
+}
+
+/** The chapters of a source book (usfm-js), parsed once; null = the text is PRESENT but could
+ * not be parsed. Catch-to-absence sweep (D30): the alignment surface states 'unreadable', never
+ * the false "not on this computer" claim that sends the user to re-download. */
+function parseSourceBook(usfmText) {
   try {
-    const verses = usfm.toJSON(usfmText)?.chapters?.[String(chapter)] ?? {};
-    const m = /^(\d+)-(\d+)$/.exec(String(verse));
-    const members = m ? Array.from({ length: Number(m[2]) - Number(m[1]) + 1 }, (_, i) => String(Number(m[1]) + i)) : [String(verse)];
-    return members.flatMap((v) => verses[v]?.verseObjects ?? []);
+    return usfm.toJSON(usfmText)?.chapters ?? {};
   } catch {
     return null;
   }
+}
+
+/** The usfm-js verse objects of one verse of a parsed source book (`parseSourceBook`). A span
+ * ("9-10", #63) is its member verses' objects in order. */
+function verseObjectsIn(chapters, chapter, verse) {
+  const verses = chapters?.[String(chapter)] ?? {};
+  const m = /^(\d+)-(\d+)$/.exec(String(verse));
+  const members = m ? Array.from({ length: Number(m[2]) - Number(m[1]) + 1 }, (_, i) => String(Number(m[1]) + i)) : [String(verse)];
+  return members.flatMap((v) => verses[v]?.verseObjects ?? []);
 }
 
 /** The first verse that actually has a draft — alignment needs target words. */
@@ -432,7 +534,7 @@ const initial = () => ({
   storySource: null,
   sources: {}, // { ult: {raw, chapters}|'missing'|undefined, ust: … }
   sourceTab: 'ult',
-  editing: null, // { key: "1:3", before: <body before this edit session> } | null
+  editing: null, // { key: "1:3", before: <body before this edit session>, beforeRaw: <the book text then, #789> } | null
   saveState: 'saved', // saved | dirty | saving | error
   rail: true,
   helps: true,
@@ -1146,18 +1248,57 @@ async function prepareAlignmentSource(store, st, ref) {
   return { testament, pin, usfmText, ref };
 }
 
+/** #790 (D107): the pinned original-language book, read once for the aligned export. It
+ * resolves to `wordsFor(ref)`: the pinned verse's words for a project-frame ref, mapped to the
+ * resource frame as the Align open maps it (a span counterpart gives its member verses).
+ * The export fits each stored record to these words before it weaves.
+ * A temporary state throws a plain Error: the export reports `export.read-failed` ("Try the
+ * export again"), so a state that passes is never made a permanent claim (D30). They are the
+ * resource pins still loading (`projectPinsLoaded`, #268) and a versification frame whose
+ * scheme data did not load (`unavailable`). A permanent state (D107, P1: name it) gives `[]`
+ * for every ref: every record the export fits then drops its cards, so the verse is named as
+ * needing review and the file holds its stored text. They are no pin, a pin whose text is not
+ * on this computer, a book that cannot be parsed, and an unknown versification frame. Any other
+ * read failure propagates, as the Align open lets it. `projectFrame` is the actions' own. */
+async function readPinnedSource(store, st, projectFrame) {
+  const name = bookName(st.book);
+  if (st.projectPinsLoaded !== true) {
+    throw new Error(`This project's resource pins are not loaded, so the aligned export cannot check the alignments of ${name} against the original-language text.`);
+  }
+  const none = async () => [];
+  const source = await prepareAlignmentSource(store, st, null);
+  if (source.unavailable) return none;
+  const frame = await projectFrame();
+  if (frame.state === 'unavailable') {
+    throw new Error(`This project uses a versification other than the default, and the numbering data needed to find the source verses of ${name} could not be loaded.`);
+  }
+  if (frame.state !== 'ready') return none;
+  const chapters = parseSourceBook(source.usfmText);
+  if (chapters === null) return none;
+  return async (ref) => {
+    const [chapter, verse] = ref.split(':');
+    const srcRef = await mapReference({ from: frame.name, to: RESOURCE_FRAME, book: st.book, chapter: Number(chapter), verse, schemes: frame.schemes });
+    if (!srcRef.ok) return [];
+    return sourceWordsOf(verseObjectsIn(chapters, srcRef.reference.chapter, srcRef.reference.verse));
+  };
+}
+export const __readPinnedSourceForTests = readPinnedSource;
+export const __sourceBookForTests = { parseSourceBook, verseObjectsIn };
+
 /** #1: the training corpus for one testament — every verse with a placed
  * word across the project's books of that testament, as the engine's
  * positional view (suggest.ts). The open book reads from the live draft and
  * the align buffer. The other books read from disk. So does the open book
- * while it loads (`bookRaw` null: openBookText). */
+ * while it loads (`bookRaw` null: openBookText).
+ * #796: a verse's target words are `verseWords` of its stored slot
+ * (`decompose(toNfc(book)).verses`), the list the bank is made of. */
 async function collectTrainingVerses({ store, sched, project, book, bookRaw, testament }) {
   const codes = (project?.bookCodes || []).filter((code) => (isOldTestament(code) ? 'ot' : 'nt') === testament);
   const out = [];
   for (const code of codes) {
     const raw = code === book && bookRaw != null ? bookRaw : (await store.readBook(code)).usfm;
     const { file } = code === book ? await alignFileFor(store, sched, code) : await alignFileFor(store, null, code);
-    out.push(...trainingVersesFor(code, file, verseTextIndex(raw)));
+    out.push(...trainingVersesFor(code, file, decompose(toNfc(raw)).verses));
   }
   return out;
 }
@@ -1171,56 +1312,122 @@ function trainingCollector({ storeRef, alignSchedulerRef, stateRef, rawRef }) {
 }
 export const __trainingTextForTests = { collectTrainingVerses, trainingCollector };
 
-/** #213: reflow the alignment records of the verses a draft save changed.
- * One buffered read of the §5.1 file, then one staged record per verse that
- * has links to keep or drop; a verse the reflow cannot account for (or that
- * the save did not change) is not staged, so its record stays byte-identical
- * and the I-3 hash keeps reporting it invalid-and-retained. */
-async function reflowAlignedVerses({ store, sched, book, bookRaw, stillCurrent = () => true }, refs) {
-  const texts = verseTextIndex(bookRaw);
+/** #213, #789: reflow the alignment records of the verses a draft save changed.
+ * One buffered read of the §5.1 file, then one staged record per verse that holds
+ * a link the save moved or restamped; a verse with no record, no link, no slot or
+ * inline `\zaln`, or whose record already fits the text, is not staged, so its
+ * record stays byte-identical. `beforeRaw` is the book text from before the save:
+ * the reflow compares each verse's words before and after it, so a link follows its
+ * word (D106). A caller with no such text passes none, and the verse is flagged.
+ * @param {{ store: any, sched: any, book: any, bookRaw: any, beforeRaw?: string, stillCurrent?: () => boolean }} args */
+async function reflowAlignedVerses({ store, sched, book, bookRaw, beforeRaw, stillCurrent = () => true }, refs) {
   const { file } = await alignFileFor(store, sched, book);
   // The read awaited; leaving the project meanwhile drained and disposed this
   // scheduler (#100 teardown) — staging now would write project A's sidecar
   // through its torn-down store, after the D9 leave checkpoint. Refuse.
   if (!stillCurrent()) return;
+  const entries = bookRaw ? indexBook(bookRaw) : [];
+  // #795, #796: a blur reaches here in the save's own task, so nothing is parsed
+  // before the read: a slot hash and the slot's words, only for a verse that has
+  // a record to reflow. #789: the text from before the save is cut once, for the
+  // first verse that holds a link. It is not `slotMemo`'s: the memo holds one book
+  // text, and the rail needs the current one.
+  let beforeSlots;
   for (const ref of refs) {
     const [chapter, verse] = ref.split(':');
-    const next = reflowAlignment(file?.chapters?.[chapter]?.[verse], texts[ref] ?? '');
+    const rec = file?.chapters?.[chapter]?.[verse];
+    if (!rec) continue;
+    if (verseHoldsImportedAlignment(bookRaw, ref, entries)) continue;
+    // A verse with no slot has no hash the export would accept: stage nothing.
+    const md5 = slotMd5Of(bookRaw, ref);
+    if (md5 === undefined) continue;
+    if (!hasLinks(rec)) continue;
+    beforeSlots ??= slotsOfText(beforeRaw);
+    const after = { slot: slotOf(bookRaw, ref), words: slotWordsOf(bookRaw, ref), md5 };
+    const next = reflowAlignment(rec, verseTextOf(beforeSlots[ref]), after);
     if (next) sched.markDirty(book, chapter, verse, JSON.stringify(next));
   }
 }
+
+/** #796 (D105 point 4): the record a verse opens with, and whether the banner stands.
+ * The bootstrap has `invalid: false`, so a stored record's flag is carried over: it clears
+ * on Mark valid, not on an open or an edit. `stale` is `needsReview` of the STORED record,
+ * as the reconciled one passes its hash and word checks by construction; a verse with no stored
+ * record has none.
+ * #790 (D107): `flagged` is true when the source fit flagged the record (a dropped link, or a
+ * `done` record that gained or lost a card). It is a review reason the stored record does not
+ * show, so it sets the banner and the in-memory `invalid`; `needsReview` of the open record
+ * then gives the same answer. */
+function openedRecord(stored, reconciled, slot, words, targetMd5, flagged = false) {
+  const record = stored?.invalid === true || flagged ? { ...reconciled, invalid: true } : reconciled;
+  const stale = flagged || (stored ? needsReview(stored, slot, { wordsOf: () => words, md5Of: () => targetMd5 }) : false);
+  return { record, stale };
+}
+
+/** #790 (D107): the pinned verse's words, in order, as `bootstrapVerse`'s `unmerge` makes them
+ * from the verse's objects alone. The open and the aligned export fit stored cards to these. */
+function sourceWordsOf(objects) {
+  return bootstrapVerse([], objects, '', '').alignments.flatMap((card) => card.topWords);
+}
+export const __sourceWordsOfForTests = sourceWordsOf;
 
 /** The §5.1 record is keyed by the PROJECT-frame ref — the draft's own
  * chapter:verse, the key applyAlignEdit writes under. The eng-frame mapping
  * that fetched `origObjects` is a lookup for the source text only and never
  * reaches this read (#134; test/align-session-frame.test.ts). */
 async function buildAlignmentSession(store, sched, st, ref, source, origObjects) {
-  const targetText = verseTextIndex(st.bookRaw)[ref] ?? '';
-  if (!origObjects.length || !targetText) return { unavailable: 'missing' };
+  // #795: the stamp is the export's hash of the stored verse. #796: the words are the
+  // export's list for the same slot, and the suggestions read them too. A verse the
+  // stored text has no slot for has no stamp the export would accept: no session, so
+  // no edit or Mark valid writes a record the journal refuses to seal.
+  const targetMd5 = slotMd5Of(st.bookRaw, ref);
+  if (targetMd5 === undefined) return { unavailable: 'no-slot' };
+  // "Missing" is decided on the body the rail tests (a slot keeps a trailing \p, \s5,
+  // \q2 or \s line, the body does not), and a verse with no word has nothing to align.
+  const words = slotWordsOf(st.bookRaw, ref);
+  if (!origObjects.length || !draftedBodyOf(st.bookRaw, ref) || !words.length) return { unavailable: 'missing' };
   const { file, md5 } = await alignFileFor(store, sched, st.book);
   const [chapter, verse] = ref.split(':');
   const stored = file?.chapters?.[chapter]?.[verse];
-  const sourceVersion = `dcs::${source.pin.repoPath.split('/').slice(-2).join('/')}@${source.pin.version}`;
+  const sourceVersion = sourceVersionOf(source.pin);
   // A stored record with no alignments — the §8.5 removal form, or the
   // `invalid` record a span create/break leaves on the new key (#63) — has
-  // nothing to edit: the editor starts from the bootstrap; the file keeps
-  // its flag until the translator saves an alignment.
-  // #734, #754: a bank or a card stored in another order (an older save, an
-  // import) is shown in verse order; the file takes that order on the next edit.
-  // `any`, as the stored record was before #754: callers read it untyped.
-  const record = /** @type {any} */ (stored?.alignments?.length
-    ? cardsInVerseOrder({ ...stored, wordBank: inVerseOrder(stored.wordBank, targetText) }, targetText)
-    : bootstrapVerse(targetText, origObjects, sourceVersion));
+  // nothing to edit: the editor starts from the bootstrap, which keeps the
+  // record's `invalid` flag (below); the file keeps its flag until the
+  // translator marks the verse valid.
+  // #787, #796: a stored record opens rebuilt from the verse's words, in memory
+  // only — new words in the bank, removed words gone; the file keeps its bytes
+  // until the next edit. #796 (D105 point 4): `stale` is `needsReview` of the
+  // STORED record, the rule the rail and the Mark valid gate use. The rebuilt
+  // record passes its hash and word checks by construction, so the stored one is
+  // judged: the flag, the hash, and the words (a new or removed word, a dropped
+  // link or a count change; order alone is not one). A record with no link and
+  // not `done` vouches for nothing, so it opens with no banner. The source fit
+  // (#790, below) adds one reason of its own: it flags the rebuilt record.
+  // #734, #754: a bank or a card is shown in verse order, the bank of a
+  // never-saved verse too; the file takes that order on the next edit.
+  // #790 (D107): the cards are fitted to the pinned verse first (fitSourceCards): a card with a
+  // source word the pin does not hold drops with its links, a pinned word on no card gets an
+  // empty card, and cards follow the pinned order. A drop that held a link, or a `done` record
+  // that gained or lost a card, flags the verse for review. The open writes nothing.
+  const sourceWords = sourceWordsOf(origObjects);
+  const base = stored?.alignments?.length ? stored : bootstrapVerse(words, origObjects, sourceVersion, targetMd5);
+  const fitted = fitSourceCards(base, sourceWords);
+  const reconciled = reconcileToWords(fitted.record, words);
+  const { record, stale } = openedRecord(stored, reconciled.record, slotOf(st.bookRaw, ref), words, targetMd5, fitted.record.invalid === true);
   return {
     loading: false,
     ref,
     book: st.book,
     record,
     md5,
-    targetText,
+    slot: slotOf(st.bookRaw, ref),
+    words,
+    targetMd5,
     origObjects,
+    sourceWords,
     sourceVersion,
-    stale: alignmentIsStale(record, targetText),
+    stale,
     armed: null,
     targetDir: st.project?.scriptDirection === 'rtl' ? 'rtl' : 'ltr',
     origDir: source.testament === 'ot' ? 'rtl' : 'ltr',
@@ -1230,6 +1437,37 @@ async function buildAlignmentSession(store, sched, st, ref, source, origObjects)
     testament: source.testament,
   };
 }
+
+/** The session after one Align edit, from the session and the record the mutation
+ * made: the one pipeline `applyAlignEdit` runs after the mutation, apart from
+ * the provider so a test drives it (#796). #271, #754, #796: the record is made
+ * to match the session's word list, stamped and `done` settled (finalizeEdit).
+ * #1: a proposal for a word this edit placed is spent; the rest are re-bound to
+ * their card by its first original word (a merge or split moved the indexes)
+ * and dropped when that card is gone.
+ * #790 (D107): the edited record is fitted to the pinned verse first, so cards and `topWords`
+ * are in the pinned order after a split or a merge, and it is stamped with the pin it was
+ * fitted to (`sourceVersion`). For a link, an unlink and a move the session record is already
+ * fitted, so the fit returns the same cards. */
+function alignSessionAfterEdit(a2, next, disarm) {
+  const record = stampSource(finalizeEdit(fitSourceCards(next, a2.sourceWords).record, a2.words, a2.targetMd5), a2.sourceVersion);
+  const suggestions = rebindSuggestions(record, a2.suggestions);
+  // #796 (D105 point 4): the edit made the record match the session's words and hash, so only
+  // an `invalid` flag still asks for review; the banner and the Mark valid gate stay on for it.
+  const stale = needsReview(record, a2.slot, { wordsOf: () => a2.words, md5Of: () => a2.targetMd5 });
+  return { ...a2, ...(disarm ? { armed: null } : {}), record, stale, suggestions, refusal: null };
+}
+
+/** #271, #790 (D107): the record Mark valid saves: the session record fitted to the pinned verse,
+ * reconciled to the session's words, restamped to the current draft, `done`, with the review flag
+ * cleared (markDone) and the pin it was fitted to. */
+function markedValidRecord(a2) {
+  return stampSource(
+    markDone(reconcileToWords(fitSourceCards(a2.record, a2.sourceWords).record, a2.words).record, a2.targetMd5),
+    a2.sourceVersion,
+  );
+}
+export const __markedValidRecordForTests = markedValidRecord;
 
 function understandArticleSet(st, kind, rung) {
   const sets = st.projectPins?.languageSets;
@@ -1246,20 +1484,23 @@ function isCurrentArticleRequest(now, seq, currentSeq, repoPath, key) {
 
 /** #129: one verse's alignment status for the align rail. Mirrors the shared
  * check status model: 'valid' = the record says `done` (#271, D73 — set when
- * every word is placed, or by Mark valid), 'invalid' = the draft changed
- * under the record (align.stale), 'todo' = otherwise — plus 'undrafted',
- * which the other tools do not have. */
-function alignVerseStatus(rec, text) {
+ * every word is placed, or by Mark valid), 'invalid' = the record needs review
+ * (`needsReview`, #796: the §5.1 flag, a stale hash, or words that are not the
+ * verse's), 'todo' = otherwise — plus 'undrafted', which the other tools do not
+ * have. `slot` is the verse's stored content. A record that needs no hash or words
+ * to be judged (flagged, or vouching for nothing) pays for neither; `lazy` is
+ * `needsReview`'s memoized `wordsOf` and `md5Of`. */
+function alignVerseStatus(rec, text, slot, lazy = {}) {
   if (!text) return { status: 'undrafted', placed: 0, total: 0 };
   const placed = rec ? rec.alignments.reduce((n, x) => n + x.bottomWords.length, 0) : 0;
   const total = rec ? placed + rec.wordBank.length : 0;
-  // §5.1's own re-review flag outranks the hash check — either means the
-  // record no longer vouches for the draft (PR #135 review round 1).
-  if (rec && (rec.invalid === true || alignmentIsStale(rec, text))) return { status: 'invalid', placed, total };
+  if (rec && needsReview(rec, slot, lazy)) return { status: 'invalid', placed, total };
   if (rec && rec.done === true) return { status: 'valid', placed, total };
   return { status: 'todo', placed, total };
 }
 export const __alignVerseStatusForTests = alignVerseStatus;
+export const __alignIndexItemsForTests = alignIndexItems;
+export const __slotMd5IndexForTests = slotMd5Index;
 
 /** The §5.1 file with one verse's record replaced (persistAlign's merge). */
 function alignFileWith(current, book, ref, record) {
@@ -1275,15 +1516,28 @@ function alignFileWith(current, book, ref, record) {
 }
 
 /** #129: the align rail's rows — every verse of the book in document order,
- * with the verse text and its derived status. */
-function alignIndexItems(bookRaw, file) {
+ * with the verse text and its derived status.
+ * #790 (D107): the rail holds no original-language text, so the open verse is the one row that
+ * can see the source side. `open` is `{ ref, stale }` of the open Align session: when its banner
+ * stands, the row of that verse is `invalid` too, so the dot and the banner agree. It only adds
+ * red. A row of an unopened verse judges the stored record.
+ * @param {string} bookRaw
+ * @param {any} file
+ * @param {{ ref: string, stale: boolean } | null} [open] */
+function alignIndexItems(bookRaw, file, open = null) {
   const texts = verseTextIndex(bookRaw);
   const items = [];
   for (const e of indexBook(bookRaw)) {
     const ref = `${e.chapter}:${e.verseKey}`;
     const text = texts[ref] ?? '';
     const rec = file?.chapters?.[String(e.chapter)]?.[String(e.verseKey)];
-    items.push({ ref, text, ...alignVerseStatus(rec, text) });
+    // #795, #796: the slot's hash and words are made only when the status reads them
+    // (see alignVerseStatus), and once per verse (the slot memo).
+    const slot = rec && text ? slotOf(bookRaw, ref) : undefined;
+    const lazy = { wordsOf: () => slotWordsOf(bookRaw, ref), md5Of: () => slotMd5Of(bookRaw, ref) };
+    const status = alignVerseStatus(rec, text, slot, lazy);
+    const flagged = open?.stale === true && open.ref === ref && status.status !== 'undrafted';
+    items.push({ ref, text, ...(flagged ? { ...status, status: 'invalid' } : status) });
   }
   return items;
 }
@@ -1656,12 +1910,22 @@ function validateNewBible(form) {
  * `intent: 'spans'`; every other write is the per-verse path (writeBook
  * refuses a slot-set change by design, #62). The store derives the key
  * mapping from what IT projects at write time, so the flag is all the app
- * keeps: taken before the write, put back when the write fails (the retry
- * carries the same buffer), re-set by any later span save. */
+ * keeps: taken before the align drain and the write, put back when either
+ * fails (the retry carries the same buffer), re-set by any later span save. */
 async function writeBookOrStructure({ store, structuralRef, alignSchedulerRef }, book, whole) {
   if (!structuralRef.current.has(book)) return store.writeBook(book, whole);
+  // Take the flag BEFORE the drain: the drain can wait, and a span save staged during
+  // that wait sets the flag again — a take after the wait would erase it (#792).
   structuralRef.current.delete(book);
   try {
+    // #792: save the align queue first, or a kept align write republishes old records on the keys this save removes.
+    const align = alignSchedulerRef?.current;
+    if (align && !(await align.drain())) {
+      // #807: an align buffer that holds a sync.project-replaced refusal means this store refuses the
+      // span save too. Throw that refusal, so Home drops the draft buffer as well (#801).
+      const failure = align.getFailure();
+      throw isProjectReplaced(failure?.error) ? failure.error : new Error(t('upgrade.alignUnsaved'));
+    }
     await store.applyStructuralEdit(book, whole, { intent: 'spans' });
   } catch (error) {
     structuralRef.current.add(book);
@@ -1672,13 +1936,31 @@ async function writeBookOrStructure({ store, structuralRef, alignSchedulerRef },
   await alignFileFor(store, alignSchedulerRef?.current, book);
 }
 
+/** #812: stage one verse write (verseEdit.ts): the new book, and the body it
+ * wrote. The scheduler splices the body alone; when the lines after the verse
+ * moved too (a tail written or taken away), it takes the whole book. */
+function stageVerse({ rawRef, schedulerRef, stateRef }, chapter, verseKey, { raw, body }) {
+  const was = rawRef.current;
+  rawRef.current = raw;
+  schedulerRef.current.markDirty(stateRef.current.book, chapter, verseKey, body);
+  if (raw !== spliceVerse(was, chapter, verseKey, body)) schedulerRef.current.replaceBook(stateRef.current.book, raw);
+}
+
 /** #63: stage a section save whose verse keys changed (a span created or
  * broken, D70). The book is rewritten ONCE over the affected verses — never
  * spliced verse by verse, which would pass through a slot set no action
  * describes — and the book is flagged for the scheduler's writer. */
 function stageStructuralSection({ rawRef, schedulerRef, structuralRef, stateRef, dispatch, recordLastEdit }, chapter, keys, texts, newKeys) {
   const book = stateRef.current.book;
-  const verses = newKeys.map((key) => ({ key, body: (texts[key] ?? '').trim() }));
+  const nl = rawRef.current.includes('\r\n') ? '\r\n' : '\n';
+  // #812: a verse's blank lines take back the breaks it had; a new key has none.
+  // This rewrite runs once, so a tail (a heading left after the verse's last
+  // words) is written right after the body, where the index leaves it outside.
+  const verses = newKeys.map((key) => {
+    // Not trimmed at the end: the blank lines after a verse's last words are its own breaks.
+    const { body, tail } = editorTextToVerse((texts[key] ?? '').replace(/^\s+/, ''), nl, keys.includes(key) ? verseBody(rawRef.current, chapter, key) ?? '' : '');
+    return { key, body: body + tail.map((l) => nl + l).join('') };
+  });
   rawRef.current = spliceSection(rawRef.current, chapter, keys, verses);
   structuralRef.current.add(book);
   schedulerRef.current.replaceBook(book, rawRef.current);
@@ -1731,6 +2013,33 @@ async function drainBothSchedulers({ schedulerRef, noteSchedulerRef }) {
 export const __drainBothSchedulersForTests = drainBothSchedulers;
 export const __drainSchedulersForTests = drainSchedulers;
 
+/** #801: an error of a store that a sync replaced (G1). That store opened
+ * before the sync's apply, and it refuses each later queued action before the
+ * action runs (journalingStore.ts `queue`), so the refused action staged nothing. */
+const isProjectReplaced = (error) => refusalCodeOf(error) === 'sync.project-replaced';
+
+/** #801: a buffer that holds a sync.project-replaced failure. Its store refuses
+ * each later write and reconcile, so the buffer can never reach rest. Only
+ * 'error': a buffer whose Retry is in flight reads 'saving', and a drain joins
+ * that retry. */
+const replacedFailure = (sched) => sched?.getState() === 'error' && isProjectReplaced(sched.getFailure()?.error);
+
+/** #801: Home's drain. It skips each buffer that holds a sync.project-replaced
+ * failure when Home is selected; the dispose in backToProjects then drops it.
+ * Nothing durable is lost: the old store refused the action before it ran.
+ * Every other failure holds Home, and every other navigation drains all
+ * buffers (FR-32). */
+async function drainForHome(refs) {
+  return drainSchedulers(refs.filter((ref) => !replacedFailure(ref.current)));
+}
+
+export const __drainForHomeForTests = drainForHome;
+
+/** #801: the screen's own text of a failed save, or null for a save that a
+ * replaced store refused: the sentence next to the save indicator says that. */
+const ownSaveError = (failure, state) =>
+  isProjectReplaced(failure?.error) ? null : String(failure?.error?.message || failure?.error || state);
+
 /** The scheduler registry of an open context — older test callers may pass
  * only the verse and note refs; production passes all five schedulers. */
 const saveRefsOf = (ctx) =>
@@ -1765,7 +2074,7 @@ function installAlignCheckSchedulers({ alignSchedulerRef, checkSchedulerRef, che
       dispatch({
         type: 'checkSaveState',
         state,
-        saveError: state === 'error' ? String(failure?.error?.message || failure?.error || state) : null,
+        saveError: state === 'error' ? ownSaveError(failure, state) : null,
         saveErrorKey: state === 'error' ? (failure?.book ?? null) : null,
       });
     });
@@ -1792,15 +2101,20 @@ async function releaseParkedDecision(checkSched, tool, book) {
  * sentence the catalog holds for the refusal code, `refusal.<code>`. Every live
  * code has one (test/report.test.ts); a code without one — a reserved export,
  * import or share code before its issue adds the sentence — shows the diagnosis
- * alone and never renders its key. */
+ * alone and never renders its key. #801: sync.project-replaced shows its
+ * sentence alone (decided 2026-10-18, an exception to #156): its diagnosis
+ * holds the project path and tells the user nothing the sentence does not. */
 const failureText = (e) => {
   const detail = e?.reason || e?.message || String(e);
   const code = refusalCodeOf(e);
   if (code === null) return detail;
   const recoveryKey = 'refusal.' + code;
   const recovery = t(recoveryKey, undefined, '');
+  if (recovery && isProjectReplaced(e)) return recovery;
   return recovery ? `${detail} ${recovery}` : detail;
 };
+
+export const __failureTextForTests = failureText;
 
 /** #378: whether a refusal's recovery sentence tells the user to ask for help.
  * Read from the catalogue, so a new sentence that says so gets the control. */
@@ -1896,6 +2210,9 @@ function startCheckpoint({ store, storeRef, dispatch }, reason) {
     .then(() => { if (storeRef.current === store) dispatch({ type: 'set', patch: { commitError: null } }); })
     .catch((e) => {
       if (storeRef.current !== store) return;
+      // #801: a store that a sync replaced owes no checkpoint. The sync's apply
+      // committed the project, or the next start finishes that apply.
+      if (isProjectReplaced(e)) return;
       const text = failureText(e);
       dispatch({ type: 'set', patch: { commitError: text, commitErrorHelp: askHelpFor(e, text, store) } });
     });
@@ -1950,6 +2267,7 @@ function startLeaveCheckpoint({ store, repoPath, stateRef, dispatch }) {
       if (stateRef.current.commitErrorRepo === repoPath) dispatch({ type: 'set', patch: { commitError: null, commitErrorRepo: null } });
     })
     .catch((e) => {
+      if (isProjectReplaced(e)) return; // #801: as startCheckpoint; nothing is owed
       const st = stateRef.current;
       const visible = st.view === 'home' || st.project?.repoPath === repoPath;
       const message = `${t('app.commitError')}: ${failureText(e)}`;
@@ -2234,10 +2552,7 @@ async function performProjectOpen(ctx, repoPath, bookCode, view = 'read') {
       dispatch({
         type: 'noteSaveState',
         state: noteSaveState,
-        saveError:
-          noteSaveState === 'error'
-            ? String(failure?.error?.message || failure?.error || noteSaveState)
-            : null,
+        saveError: noteSaveState === 'error' ? ownSaveError(failure, noteSaveState) : null,
       });
     });
     installStoryScheduler({
@@ -3615,9 +3930,16 @@ export const __alignSaveForTests = { makeAlignWriter, spliceAlignRecord, makeChe
 /** Test hook (#134): the session build, driven on a cross-frame project so the
  * read key and the write key are proven to be the same project-frame ref. */
 export const __buildAlignmentSessionForTests = buildAlignmentSession;
+/** Test hook (#796): the record pipeline of one Align edit, after the mutation. */
+export const __alignSessionAfterEditForTests = alignSessionAfterEdit;
 /** Test hook (#213): the reflow over the real align scheduler — changed verses
  * staged, untouched verses byte-identical. */
 export const __reflowAlignedVersesForTests = reflowAlignedVerses;
+/** Test hook (#794): the open decision — does this verse keep imported markup. */
+export const __verseHoldsImportedAlignmentForTests = verseHoldsImportedAlignment;
+/** Test hook (#792): the book scheduler's writer, driven over the real align
+ * scheduler — a span save drains the align queue first. */
+export const __writeBookOrStructureForTests = writeBookOrStructure;
 
 export function AppProvider({ children }) {
   const [s, dispatch] = useReducer(reducer, undefined, initial);
@@ -3717,6 +4039,26 @@ export function AppProvider({ children }) {
       if (kept) dispatch({ type: 'set', patch: { door43Kept: true } });
     });
     return unsubscribe;
+  }, []);
+
+  // #801: a development-only hook for the journeys. It makes the open store old,
+  // as a sync's apply does, so each later action of that store is refused with
+  // sync.project-replaced. Gated as the fake export is (producers.ts).
+  useEffect(() => {
+    if (import.meta.env.DEV) {
+      let enabled = false;
+      try {
+        enabled = globalThis.localStorage?.getItem('tc4.e2e.staleStore') === '1';
+      } catch {
+        enabled = false;
+      }
+      if (enabled) {
+        window.__tc4StaleStore = () => {
+          const repoPath = stateRef.current?.project?.repoPath;
+          if (repoPath) nextSyncGeneration(repoPath);
+        };
+      }
+    }
   }, []);
 
   // Silent-loss guard (review finding M5): warn before the window closes with
@@ -4107,7 +4449,10 @@ export function AppProvider({ children }) {
         if (!st.project || !store) return null;
         const project = st.project;
         const storyPictures = project.flavor === 'textStories' ? obsStoryPictures(st, store) : undefined;
-        return runExport(producer, { store, project, book: st.book ?? undefined, pageSetup, storyPictures }, opsLog);
+        // #790 (D107): the aligned export fits each record to the pinned original-language verse,
+        // so it reads that book through the same pin and frame as the Align open (readPinnedSource).
+        const alignSource = () => readPinnedSource(store, st, () => a.projectFrame());
+        return runExport(producer, { store, project, book: st.book ?? undefined, pageSetup, storyPictures, alignSource }, opsLog);
       },
 
       /** The printed stories of the open OBS project (#454) as the OBS PDF
@@ -5180,6 +5525,8 @@ export function AppProvider({ children }) {
         if (st.bookRaw == null) return settle(st.bookError ? { error: st.bookError } : { loading: true });
         const ref = openingAlignRef(st);
         if (!ref) return settle({ unavailable: 'undrafted' });
+        // #794: an imported verse keeps its own alignment markup until #553.
+        if (verseHoldsImportedAlignment(st.bookRaw, ref)) return settle({ unavailable: 'inline-alignment' });
         settle({ loading: true });
         // Catch-to-absence sweep review: the try covers the WHOLE load —
         // frame resolution, reference mapping, and the stored-record read
@@ -5256,7 +5603,10 @@ export function AppProvider({ children }) {
         try {
           // #100: the rail reflects every edit, landed or buffered.
           const { file } = await alignFileFor(store, alignSchedulerRef.current, book);
-          alignIndex = { items: alignIndexItems(st.bookRaw, file) };
+          // #790 (D107): the open verse's banner, read after the await so the rail shows the
+          // session that is open now. A session that is loading or unavailable has no ref.
+          const open = stateRef.current.alignSession;
+          alignIndex = { items: alignIndexItems(st.bookRaw, file, open?.book === book && open.ref ? { ref: open.ref, stale: open.stale === true } : null) };
         } catch (error) {
           // Catch-to-absence sweep (D30): a failed read is stated, retryable.
           alignIndex = { error: String(error?.message || error) };
@@ -5309,28 +5659,20 @@ export function AppProvider({ children }) {
         // aligned, removed otherwise (an edit takes back Mark valid).
         // #754: every edit (place, move, merge, confirm a suggestion) leaves
         // each card's words in verse order, wherever the word was dropped.
-        const record = settleDone(stampTargetVerse(cardsInVerseOrder(next, a2.targetText), a2.targetText));
-        // #1: a proposal for a word this edit placed is spent; the rest are
-        // re-bound to their card by its first original word (a merge or split
-        // moved the indexes) and dropped when that card is gone.
-        const suggestions = rebindSuggestions(record, a2.suggestions);
-        const optimistic = { ...a2, ...(disarm ? { armed: null } : {}), record, stale: false, suggestions, refusal: null };
+        // #796: the record's words are made to match the session's word list, the
+        // export's list for the verse (finalizeEdit, in alignSessionAfterEdit), so
+        // the file holds exactly the words `merge` checks.
+        const optimistic = alignSessionAfterEdit(a2, next, disarm);
         dispatch({ type: 'set', patch: { alignSession: optimistic } });
         const [chapter, verse] = a2.ref.split(':');
-        sched.markDirty(a2.book, chapter, verse, JSON.stringify(record));
+        sched.markDirty(a2.book, chapter, verse, JSON.stringify(optimistic.record));
         // D72 as amended by D93 (#516): the engine learns from every confirmed
         // save — the verse joins the worker's memory; no retrain is waited for.
         a.queueAlignSuggestionAppend(optimistic);
       },
 
-      placeAlignWord: (cardIndex) => {
-        const armed = stateRef.current.alignSession?.armed;
-        if (!armed) return;
-        a.applyAlignEdit((record) => armed.reduce((r, w) => linkWord(r, cardIndex, w), record), true);
-      },
-
       unplaceAlignWord: (cardIndex, word) =>
-        a.applyAlignEdit((record) => unlinkWord(record, cardIndex, word, stateRef.current.alignSession.targetText)),
+        a.applyAlignEdit((record) => unlinkWord(record, cardIndex, word, stateRef.current.alignSession.words)),
 
       /** #129 drag-and-drop: place banked words without the arm step (#736:
        * a drag of a selected word carries the whole selection, in one edit). */
@@ -5362,7 +5704,7 @@ export function AppProvider({ children }) {
           dispatch({ type: 'set', patch: { alignSession: { ...a2, refusal: 'suggestions' } } });
           return;
         }
-        const record = markDone(a2.record, a2.targetText);
+        const record = markedValidRecord(a2);
         dispatch({ type: 'set', patch: { alignSession: { ...a2, record, stale: false, refusal: null } } });
         const [chapter, verse] = a2.ref.split(':');
         sched.markDirty(a2.book, chapter, verse, JSON.stringify(record));
@@ -5480,7 +5822,7 @@ export function AppProvider({ children }) {
         const sched = suggestRef.current?.sched;
         if (!sched || !session?.record) return;
         const ref = `${session.book} ${session.ref}`;
-        sched.save(isOldTestament(session.book) ? 'ot' : 'nt', ref, trainingVerseOf(ref, session.record, session.targetText));
+        sched.save(isOldTestament(session.book) ? 'ot' : 'nt', ref, trainingVerseOf(ref, session.record, session.words));
       },
 
       /** The engine's proposals for a verse. Bound to the verse and session
@@ -5489,7 +5831,7 @@ export function AppProvider({ children }) {
       showAlignSuggestions: (reply) => {
         const a2 = stateRef.current.alignSession;
         if (!a2?.record || a2.ref !== reply.ref || a2.seq !== reply.session) return;
-        const links = linksFor(a2.record, a2.targetText, reply.links);
+        const links = linksFor(a2.record, a2.words, reply.links);
         dispatch({ type: 'set', patch: { alignSession: { ...a2, suggestions: links, suggesting: false, refusal: null } } });
       },
 
@@ -5501,7 +5843,7 @@ export function AppProvider({ children }) {
         const sched = suggestRef.current?.sched;
         if (!a2?.record || !sched) return;
         const testament = isOldTestament(a2.book ?? '') ? 'ot' : 'nt';
-        if (!sched.suggest(testament, sessionInputFor(a2.record, a2.targetText), a2.ref, a2.seq)) return;
+        if (!sched.suggest(testament, sessionInputFor(a2.record, a2.words), a2.ref, a2.seq)) return;
         dispatch({ type: 'set', patch: { alignSession: { ...a2, suggesting: true, refusal: null } } });
       },
 
@@ -7042,7 +7384,7 @@ export function AppProvider({ children }) {
           raw = await loadEditorBook(store, code); // #679: the fold with every staged action, never the disk file
         } catch (e) {
           if (seq === openSeqRef.current) {
-            dispatch({ type: 'set', patch: { bookError: e?.reason || e?.message || String(e) } });
+            dispatch({ type: 'set', patch: { bookError: failureText(e) } });
           }
           return;
         }
@@ -7251,16 +7593,27 @@ export function AppProvider({ children }) {
       startVerse: (chapter, verseKey) => {
         // Remember the pre-edit body so Cancel (design's editing card) can
         // restore it through the same splice path.
-        const before = verseBody(rawRef.current, chapter, verseKey) ?? '___';
-        dispatch({ type: 'set', patch: { editing: { key: `${chapter}:${verseKey}`, before } } });
+        // #789: `beforeRaw` is the whole book text as the edit starts: a reference, no copy. The
+        // reflow on blur compares the verse's words before and after the edit with it, and
+        // each keystroke's write starts from it (#812, verseEdit.ts).
+        const { before, beforeRaw } = openVerse(rawRef.current, chapter, verseKey);
+        dispatch({ type: 'set', patch: { editing: { key: `${chapter}:${verseKey}`, before, beforeRaw } } });
       },
       editVerse: (chapter, verseKey, text) => {
         // Synchronous local splice keeps the raw string authoritative in-session;
         // the scheduler owns the debounced whole-file write (W-5). An emptied
-        // verse returns to the platform stub convention `___` (§4.1).
-        const body = text.trim() === '' ? '___' : text;
-        rawRef.current = spliceVerse(rawRef.current, chapter, verseKey, body);
-        schedulerRef.current.markDirty(stateRef.current.book, chapter, verseKey, body);
+        // verse returns to the platform stub convention `___` (§4.1). The
+        // editors' tab lines become the verse's inner poem lines (#786), and
+        // its blank lines take back the breaks the verse had when its editor
+        // opened (#812): the Verse card's `before`, or the stored body for a
+        // section save, which writes each verse once. A break or a heading left
+        // after the verse's last words goes right after it, never lost and never
+        // doubled by the next keystroke (`beforeRaw`: the book as the card opened).
+        const e = stateRef.current.editing;
+        const session = e?.key === `${chapter}:${verseKey}` && e.beforeRaw ? e : null;
+        const written = writeVerse(rawRef.current, session, chapter, verseKey, text);
+        const { body } = written;
+        stageVerse({ rawRef, schedulerRef, stateRef }, chapter, verseKey, written);
         dispatch({ type: 'set', patch: { bookRaw: rawRef.current } });
         const st = stateRef.current;
         const repoPath = st.project?.repoPath || st.project?.id;
@@ -7275,23 +7628,24 @@ export function AppProvider({ children }) {
         // #213: the verse card's text is committed — keep the alignment links
         // its words still carry. A section key (`c:s<k>`) is reflowed by
         // saveSection per changed verse, not here.
-        if (editing?.key && !editing.keys) a.reflowAlignedVerses([editing.key]);
+        if (editing?.key && !editing.keys) a.reflowAlignedVerses([editing.key], editing.beforeRaw);
       },
-      /** #213: after a verse edit, keep the alignment links whose target words
-       * are still in the new text and return the rest to the bank, through the
-       * align scheduler (the one §5.1 save path). Fire-and-forget: the draft
+      /** #213, #789: after a verse edit, move each alignment link with its word and
+       * flag the verse when the text cannot show the link stayed right (D106), through
+       * the align scheduler (the one §5.1 save path). `beforeRaw` is the book text from
+       * before the edit. Fire-and-forget: the draft
        * save never waits on the sidecar read. A write that fails after staging
        * is the scheduler's retained failure (Retry). A read that fails BEFORE
        * staging stages nothing: the record stays as it was, the I-3 hash keeps
        * the verse `invalid` on the rail, and the translator re-links it — the
        * pre-#213 outcome, never a lost draft (Codex round 1, P2). */
-      reflowAlignedVerses: (refs) => {
+      reflowAlignedVerses: (refs, beforeRaw) => {
         const store = storeRef.current;
         const sched = alignSchedulerRef.current;
         const book = stateRef.current.book;
         if (!store || !sched || !book) return;
         const stillCurrent = () => storeRef.current === store && alignSchedulerRef.current === sched;
-        void reflowAlignedVerses({ store, sched, book, bookRaw: rawRef.current, stillCurrent }, refs).catch(() => {});
+        void reflowAlignedVerses({ store, sched, book, bookRaw: rawRef.current, beforeRaw, stillCurrent }, refs).catch(() => {});
       },
       // #141: the section editing card. It holds its own text until Save, so
       // opening it writes nothing; `keys` are the section's verse keys.
@@ -7312,10 +7666,12 @@ export function AppProvider({ children }) {
           stageStructuralSection({ rawRef, schedulerRef, structuralRef, stateRef, dispatch, recordLastEdit }, chapter, keys, texts, newKeys);
         } else {
           const changed = [];
+          // #789: the text from before the save, for the reflow (the same rule as a verse blur).
+          const beforeRaw = rawRef.current;
           for (const verseKey of keys) {
             const stored = verseBody(rawRef.current, chapter, verseKey);
             if (stored == null) continue;
-            const current = stored.trim() === '___' ? '' : stored.trim();
+            const current = stored.trim() === '___' ? '' : bodyToEditorText(stored.trim());
             const text = texts[verseKey] ?? '';
             if (text.trim() === current) continue;
             a.editVerse(chapter, verseKey, text);
@@ -7323,7 +7679,7 @@ export function AppProvider({ children }) {
           }
           // #213: only the verses this save changed — an untouched verse keeps
           // its alignment record byte for byte.
-          if (changed.length) a.reflowAlignedVerses(changed);
+          if (changed.length) a.reflowAlignedVerses(changed, beforeRaw);
         }
         let entries = indexBook(rawRef.current);
         for (const [key, marker] of Object.entries(formats)) {
@@ -7341,9 +7697,8 @@ export function AppProvider({ children }) {
         // Restore the pre-edit body (still the one splice path), then close.
         const e = stateRef.current.editing;
         if (e && e.key === `${chapter}:${verseKey}`) {
-          const body = e.before.trim() === '' ? '___' : e.before;
-          rawRef.current = spliceVerse(rawRef.current, chapter, verseKey, body);
-          schedulerRef.current.markDirty(stateRef.current.book, chapter, verseKey, body);
+          // #812: also takes away what the edit put after the verse (its tail).
+          stageVerse({ rawRef, schedulerRef, stateRef }, chapter, verseKey, cancelVerseEdit(rawRef.current, { before: e.before, beforeRaw: e.beforeRaw ?? rawRef.current }, chapter, verseKey));
           // The Resume snippet follows the restored text, never the cancelled
           // draft (Codex review of #138).
           const st = stateRef.current;
@@ -7360,6 +7715,9 @@ export function AppProvider({ children }) {
       // failure (each retry reconciles inside the machine, round 31).
       retrySave: () =>
         Promise.all(saveRefs.map((ref) => (ref.current?.getFailure() ? ref.current.retry() : Promise.resolve()))),
+      // #801: whether a save buffer holds a sync.project-replaced failure. Read
+      // when the top bar renders; each buffer's state change renders it again.
+      saveRefused: () => saveRefs.some((ref) => replacedFailure(ref.current)),
       backToProjects: async () => {
         await keepSettled(); // #679
         // Never navigate away from unsaved work or a visible failure (FR-32).
@@ -7373,7 +7731,9 @@ export function AppProvider({ children }) {
         // this project's store is gone (#129 rounds 2–3 kept their guarantee
         // through the registry, not a second queue). From the drain to the
         // store teardown below is synchronous, so nothing can stage in between.
-        if (!(await drainSchedulers(saveRefs))) return;
+        // #801: Home alone skips a buffer whose store a sync replaced; the
+        // dispose below drops it (drainForHome).
+        if (!(await drainForHome(saveRefs))) return;
         // #183 (D9): leaving the project is a checkpoint. It is started AFTER
         // this synchronous teardown, on the captured store (startLeaveCheckpoint):
         // an await here would reopen the window the drain just closed.
@@ -7399,7 +7759,10 @@ export function AppProvider({ children }) {
         alignSessionSeq++;
         dispatch({
           type: 'set',
-          patch: { view: 'home', project: null, book: null, bookRaw: null, editing: null, sources: {}, verseConflicts: [], team: null, conflictReview: null, storyNumbers: [], storyNumber: null, story: null, sourceStory: null, storyImages: {}, storyImageNote: null, storyLoading: false, storyError: null, storySource: null, saveState: 'saved', noteSaveState: 'saved', alignSaveState: 'saved', checkSaveState: 'saved', storySaveState: 'saved', storySaveError: null, commitError: null, projectPins: null, projectPinsLoaded: false, projectPinsError: null, preflight: null, preflightError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null, aligning: false, alignSession: null, alignVerse: null, alignIndex: null, alignSuggest: { status: 'off', verses: 0, boosted: false, error: null }, pickerProgress: null, toolPos: {}, upgrade: UPGRADE_IDLE },
+          patch: { view: 'home', project: null, book: null, bookRaw: null, editing: null, sources: {}, verseConflicts: [], team: null, conflictReview: null, storyNumbers: [], storyNumber: null, story: null, sourceStory: null, storyImages: {}, storyImageNote: null, storyLoading: false, storyError: null, storySource: null, saveState: 'saved', noteSaveState: 'saved', alignSaveState: 'saved', checkSaveState: 'saved', storySaveState: 'saved', storySaveError: null, commitError: null, projectPins: null, projectPinsLoaded: false, projectPinsError: null, preflight: null, preflightError: null, sourcePanes: null, understand: null, checkTool: null, checkSession: null, aligning: false, alignSession: null, alignVerse: null, alignIndex: null, alignSuggest: { status: 'off', verses: 0, boosted: false, error: null }, pickerProgress: null, toolPos: {}, upgrade: UPGRADE_IDLE,
+            // #801: a book-load error belongs to the project left. Only on a leave:
+            // the brand button also comes here, and an open error on Home stays.
+            ...(leaving ? { bookError: null, bookErrorHelp: null } : {}) },
         });
         refreshProjects(); // re-order: the project just left goes to the top
         if (leaving && leavingStore) startLeaveCheckpoint({ store: leavingStore, repoPath: leaving.repoPath, stateRef, dispatch });

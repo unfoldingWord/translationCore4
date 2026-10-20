@@ -17,13 +17,15 @@ import { canDrop, dropPin, expandKeys, indentLine, initialDraftText, parseDraft,
 const SUP = { fontSize: 'var(--fs-label)', letterSpacing: 'var(--track-11)', fontWeight: 'var(--fw-bold)', color: 'var(--text-tertiary)', marginInlineEnd: 3, verticalAlign: 'super' };
 const WORD = { display: 'inline-block', borderRadius: 'var(--radius-xs)', padding: '0 .06em' };
 
-/** Formats for preceding keys from non-first groups (#54). */
+/** Formats for preceding keys from non-first groups (#54). A verse line pasted
+ * with three tabs is a \q2 verse: the format holds \p, \q1 and \q2 (#812). */
 const groupFormats = (groups, blocks) => {
   const formats = {};
   for (let i = 1; i < groups.length; i++) {
     const prevKey = groups[i - 1].key;
     const at = groups[i].at;
-    formats[prevKey] = (at !== undefined ? blocks?.[at] : null) ?? null;
+    const block = (at !== undefined ? blocks?.[at] : null) ?? null;
+    formats[prevKey] = block === 'q3' ? 'q2' : block;
   }
   return formats;
 };
@@ -174,7 +176,7 @@ export function SectionEditor({ chapter, keys, verses, span, dir, editType }) {
       e.preventDefault();
       const delta = e.shiftKey ? -1 : 1;
       const caret = e.target.selectionStart;
-      const next = indentLine(text, caret, delta);
+      const next = indentLine(text, caret, delta, pins);
       if (next.text !== text) {
         caretRef.current = next.caret;
         setText(next.text);
@@ -203,7 +205,7 @@ export function SectionEditor({ chapter, keys, verses, span, dir, editType }) {
     actions.saveSection(
       chapter,
       keys,
-      sectionVerses(draft.words, draft.seps, draft.markers, pins, keys),
+      sectionVerses(draft.words, draft.seps, draft.markers, pins, keys, draft.blocks),
       sectionKeys(draft.markers, pins, keys),
       formats,
     );

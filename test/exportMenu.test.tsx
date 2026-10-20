@@ -87,3 +87,76 @@ describe('#382 — the export menu reports the download result', () => {
     expect(document.body.textContent).not.toContain('Saved');
   });
 });
+
+describe('#796 — the export menu names the verses an export left out', () => {
+  const refs = (n: number): string[] => Array.from({ length: n }, (_, i) => `1:${i + 1}`);
+  /** The facts the kernel stores: at most 20 refs, and the full count in `skippedTotal` (the count defaults to the refs). */
+  const withFacts = (skipped?: string[], skippedTotal = skipped?.length) => ({ ok: true, facts: { producer: 'usfm-plain', filename: FILE, bytes: 10, ...(skipped ? { skipped, skippedTotal } : {}) } });
+  const skippedNotice = () => screen.queryByTestId('export-skipped');
+  /** Run one more export in a menu that is already on screen. */
+  const exportAgain = async () => {
+    await act(async () => { fireEvent.click(screen.getByTestId('export-menu-trigger')); });
+    await act(async () => fireEvent.click(screen.getByRole('menuitem', { name: 'USFM, plain' })));
+  };
+
+  it('shows a warning that names the refs, and none when the report names no verse', async () => {
+    actions.exportFile.mockResolvedValueOnce(withFacts(['1:1', '2:3']));
+    render(<ExportMenu pageSetup={{}} />);
+    await exportOnce();
+    expect(skippedNotice()?.textContent).toBe('Your alignment of these verses is not in the file. Check them in Align: 1:1, 2:3');
+    cleanup();
+    actions.exportFile.mockClear();
+    render(<ExportMenu pageSetup={{}} />);
+    await exportOnce();
+    expect(skippedNotice()).toBeNull();
+  });
+
+  it('the next export clears it: a run with nothing left out, and a failed run', async () => {
+    actions.exportFile.mockResolvedValueOnce(withFacts(['1:1']));
+    render(<ExportMenu pageSetup={{}} />);
+    await exportOnce();
+    expect(skippedNotice()).not.toBeNull();
+    actions.exportFile.mockResolvedValueOnce(withFacts());
+    await exportAgain();
+    expect(skippedNotice()).toBeNull();
+    actions.exportFile.mockResolvedValueOnce(withFacts(['1:1']));
+    await exportAgain();
+    expect(skippedNotice()).not.toBeNull();
+    actions.exportFile.mockResolvedValueOnce({ ok: false, code: 'export.read-failed', facts: { producer: 'usfm-plain', error: 'no such book' } } as never);
+    await exportAgain();
+    expect(skippedNotice()).toBeNull();
+    expect(screen.getByTestId('export-failure')).not.toBeNull();
+  });
+
+  it('names the refs the facts keep, and an ellipsis only when the total is larger', async () => {
+    actions.exportFile.mockResolvedValueOnce(withFacts(refs(20)));
+    render(<ExportMenu pageSetup={{}} />);
+    await exportOnce();
+    expect(skippedNotice()?.textContent).toMatch(/: 1:1, 1:2,.* 1:20$/);
+    expect(skippedNotice()?.textContent).not.toContain('…');
+    cleanup();
+    actions.exportFile.mockClear();
+    // 25 skipped: the facts keep the first 20 and the total 25.
+    actions.exportFile.mockResolvedValueOnce(withFacts(refs(20), 25));
+    render(<ExportMenu pageSetup={{}} />);
+    await exportOnce();
+    expect(skippedNotice()?.textContent).toMatch(/: 1:1, 1:2,.* 1:20, …$/);
+    expect(skippedNotice()?.textContent).not.toContain('1:21');
+    cleanup();
+    actions.exportFile.mockClear();
+    // 3 skipped: all 3 show, with no ellipsis.
+    actions.exportFile.mockResolvedValueOnce(withFacts(refs(3)));
+    render(<ExportMenu pageSetup={{}} />);
+    await exportOnce();
+    expect(skippedNotice()?.textContent).toMatch(/: 1:1, 1:2, 1:3$/);
+    expect(skippedNotice()?.textContent).not.toContain('…');
+  });
+
+  it('browser: the notice sits beside the "Export ready" toast, not instead of it', async () => {
+    actions.exportFile.mockResolvedValueOnce(withFacts(['1:1']));
+    render(<ExportMenu pageSetup={{}} />);
+    await exportOnce();
+    expect(toast()).toContain(`Export ready: ${FILE}`);
+    expect(skippedNotice()).not.toBeNull();
+  });
+});

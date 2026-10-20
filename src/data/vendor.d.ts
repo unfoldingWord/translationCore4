@@ -50,6 +50,11 @@ declare module 'word-aligner-lib' {
     [key: string]: unknown;
   };
   export const groupDataHelpers: Record<string, unknown>;
+  export const UsfmFileConversionHelpers: {
+    /** A verse slot with its `\zaln-s` and `\w` markup removed; a slot with neither is returned as it is. */
+    cleanAlignmentMarkersFromString: (verseUsfm: string) => string;
+    [key: string]: unknown;
+  };
 }
 
 declare module 'usfm-js' {

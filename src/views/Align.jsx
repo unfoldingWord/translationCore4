@@ -105,7 +105,7 @@ const cardState = (over, armed) => (over
     : { borderColor: 'var(--border-input)', background: 'var(--surface-card)' });
 
 function WordCard({ card, armed, mode, gwTokens, suggested = [], onPlace, onRemove, onConfirm, onDropOnCard, onSplit }) {
-  const canDrop = armed !== null;
+  const canDrop = armed.length > 0;
   const [over, setOver] = React.useState(false);
   return (
     <div
@@ -379,6 +379,8 @@ export default function Align({ embedded = false }) {
     else if (payload?.kind === 'placed' && hasWord(payload) && hasFrom(payload)) actions.moveAlignWord(payload.from, index, payload.word);
     else if (payload?.kind === 'card' && hasFrom(payload)) actions.mergeAlignCards(payload.from, index);
   };
+  // #788: a click places the shown selection, the words a drag would carry.
+  const onPlace = (index) => actions.placeAlignWordsAt(index, armed);
   const onDropOnBank = (e) => {
     e.preventDefault();
     const payload = dragPayload(e);
@@ -434,7 +436,7 @@ export default function Align({ embedded = false }) {
                         actions.armAlignWords(nextSelection(shownBank, armed, e, i));
                       }
                     }}
-                    title={a.armed ? t('align.hintArmed') : t('align.hintIdle')}
+                    title={armed.length > 0 ? t('align.hintArmed') : t('align.hintIdle')}
                     data-armed={isArmed ? '1' : '0'}
                     aria-label={occurrenceName(w)} data-word={w.word}
                     style={{
@@ -461,11 +463,11 @@ export default function Align({ embedded = false }) {
           {a.record.alignments.map((al, i) => (
             <WordCard key={`${al.topWords.map((w) => w.word).join('-')}-${i}`}
               card={{ ...al, index: i }}
-              armed={a.armed ?? null}
+              armed={armed}
               mode={effMode}
               gwTokens={gwTokens}
               suggested={(a.suggestions ?? []).filter((sg) => sg.cardIndex === i)}
-              onPlace={actions.placeAlignWord}
+              onPlace={onPlace}
               onRemove={actions.unplaceAlignWord}
               onConfirm={actions.acceptAlignSuggestion}
               onDropOnCard={onDropOnCard}
@@ -480,7 +482,7 @@ export default function Align({ embedded = false }) {
   );
 }
 
-const wordKey = (w) => `${w.word} ${Number(w.occurrence)}`;
+const wordKey = (w) => `${w.word}\u0000${Number(w.occurrence)}`;
 
 /** #736: the selected words that the bank shows, in bank order. A selected
  * word that has since become a suggestion is on its card, not in the bank. */

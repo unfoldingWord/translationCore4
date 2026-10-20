@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "tool": "scripts/prove.mjs",
-  "commit": "9b1d717afdd580a35b46b6dcb12590d59f8051b0",
+  "commit": "2b9b2e0499879ac0a47eda4c89f05418f245fd96",
   "dirty": false,
-  "date": "2026-10-13T20:33:55.744Z",
+  "date": "2026-10-19T23:42:36.410Z",
   "node": "v22.23.3",
   "platform": "linux-x64",
   "ci": true,
@@ -34,7 +34,7 @@
       "summary": [
         "✖ 1 problem (0 errors, 1 warning)"
       ],
-      "durationMs": 8431
+      "durationMs": 9188
     },
     {
       "id": "typecheck",
@@ -49,7 +49,7 @@
       "failed": null,
       "skippedTests": null,
       "summary": [],
-      "durationMs": 8150
+      "durationMs": 9990
     },
     {
       "id": "vitest",
@@ -60,14 +60,14 @@
       "skipped": null,
       "ok": true,
       "exitCode": 0,
-      "passed": 1448,
+      "passed": 2007,
       "failed": 0,
-      "skippedTests": 43,
+      "skippedTests": 51,
       "summary": [
-        "Test Files  141 passed | 6 skipped (147)",
-        "Tests  1448 passed | 43 skipped (1491)"
+        "Test Files  179 passed | 8 skipped (187)",
+        "Tests  2007 passed | 51 skipped (2058)"
       ],
-      "durationMs": 83426
+      "durationMs": 112324
     },
     {
       "id": "build",
@@ -82,9 +82,9 @@
       "failed": null,
       "skippedTests": null,
       "summary": [
-        "✓ built in 13.85s"
+        "✓ built in 13.23s"
       ],
-      "durationMs": 16264
+      "durationMs": 15462
     },
     {
       "id": "conformance:generate",
@@ -99,7 +99,7 @@
       "failed": null,
       "skippedTests": null,
       "summary": [],
-      "durationMs": 194
+      "durationMs": 192
     },
     {
       "id": "conformance:validate",
@@ -110,17 +110,17 @@
       "skipped": null,
       "ok": true,
       "exitCode": 0,
-      "passed": 52,
+      "passed": 59,
       "failed": 0,
       "skippedTests": null,
       "summary": [
-        "Stage-1 (path-authoritative — holds on today's pankosmia-web): 40 passed, 0 failed",
+        "Stage-1 (path-authoritative — holds on today's pankosmia-web): 47 passed, 0 failed",
         "Stage-2 (role/relationships durability — x-roles non-durable by design, D28; client re-asserts after remake): 2 passed, 0 failed",
         "Phase-2 (journal-merge design checks, §8.7): 3 passed, 0 failed",
         "OBS (the OBS project kind, §10 — sample-burrito-obs): 7 passed, 0 failed",
-        "52 passed, 0 failed"
+        "59 passed, 0 failed"
       ],
-      "durationMs": 644
+      "durationMs": 822
     },
     {
       "id": "conformance:journal",
@@ -131,13 +131,13 @@
       "skipped": null,
       "ok": true,
       "exitCode": 0,
-      "passed": 368,
+      "passed": 369,
       "failed": 0,
       "skippedTests": null,
       "summary": [
-        "Journal suite: 368 passed, 0 failed (fast-check seed 20260707)"
+        "Journal suite: 369 passed, 0 failed (fast-check seed 20260707)"
       ],
-      "durationMs": 3238
+      "durationMs": 3211
     },
     {
       "id": "conformance:normative",
@@ -157,7 +157,7 @@
         "uncovered          : 0",
         "stale claims       : 0"
       ],
-      "durationMs": 84
+      "durationMs": 78
     },
     {
       "id": "conformance:transport",
@@ -192,7 +192,7 @@
     {
       "id": "vitest:rig",
       "layer": "rig",
-      "command": ".$ npx vitest run test/httpStore.integration.test.ts test/journalStore.integration.test.ts test/obsImages.integration.test.ts test/serverApi.integration.test.ts test/storyStore.integration.test.ts",
+      "command": ".$ npx vitest run --no-file-parallelism test/httpStore.integration.test.ts test/journalStore.integration.test.ts test/obsImages.integration.test.ts test/serverApi.integration.test.ts test/share/shareRig.integration.test.ts test/storyStore.integration.test.ts test/sync/syncRig.integration.test.ts",
       "needsRig": true,
       "ran": false,
       "skipped": "no rig at http://127.0.0.1:19998/api (dev-env/scripts/run.zsh)",

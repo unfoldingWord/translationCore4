@@ -8,6 +8,8 @@
 import { test, expect } from './helpers/test';
 import { verifyAllJournaledProjects } from './helpers/journal';
 import { holdCheckpoints } from './helpers/checkpointHold';
+import { importFixture } from './helpers/import';
+import { MANIFEST_DIR } from '../test/helpers/import';
 import { wordTokens } from '../src/data/align/tokenize';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -18,6 +20,7 @@ import {
   writeProjectPins,
   resetSeededChecking,
   resetPlaces,
+  sideloadedIngredient,
 } from './helpers/rig';
 
 const PINS = () => ({
@@ -48,6 +51,24 @@ const alignmentFile = () => {
   const p = path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking', 'alignments', 'TIT.json');
   return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : null;
 };
+
+/** UGNT v0.34 Titus 1:1, the pinned original-language verse of the seeded project: the 17 words of
+ * `conformance/fixtures/el-x-koine_ugnt/TIT-1-1.usfm` (D107, #790). The sample record holds the first 11. */
+const UGNT_TIT_1_1 = [
+  'Παῦλος', 'δοῦλος', 'Θεοῦ', 'ἀπόστολος', 'δὲ', 'Ἰησοῦ', 'Χριστοῦ', 'κατὰ', 'πίστιν', 'ἐκλεκτῶν', 'Θεοῦ',
+  'καὶ', 'ἐπίγνωσιν', 'ἀληθείας', 'τῆς', 'κατ’', 'εὐσέβειαν',
+];
+const V034 = 'dcs::unfoldingWord/el-x-koine_ugnt@v0.34';
+
+/** The original-language label of each card, in card order, without the occurrence number a repeated word shows. */
+const cardLabels = (page: import('@playwright/test').Page) =>
+  page.locator('[data-testid^="align-card-"] [lang="el"]').evaluateAll((els) =>
+    els.map((el) => {
+      const copy = el.cloneNode(true) as HTMLElement;
+      copy.querySelectorAll('sup').forEach((sup) => sup.remove());
+      return (copy.textContent ?? '').trim();
+    }),
+  );
 
 /** The words of these chips, without the occurrence number a repeated word
  * shows (#735). */
@@ -103,10 +124,14 @@ test.describe('J5 — a translator aligns a verse', () => {
 
       await openAlign(page);
 
-      // One card per original-language word, and the stored links are shown.
-      await expect(page.locator('[data-testid^="align-card-"]')).toHaveCount(
-        stored.alignments.length,
+      // #790 (D107): the open fits the stored cards to the pinned verse, so it shows one card for
+      // each word (or word group) of the 17-word UGNT v0.34 verse, not the 10 cards the sample stores.
+      expect(stored.alignments.length).toBe(10);
+      await expect(page.locator('[data-testid^="align-card-"]')).toHaveCount(16);
+      expect((await cardLabels(page)).join(' ').split(' ').map((w) => w.normalize('NFC'))).toEqual(
+        UGNT_TIT_1_1.map((w) => w.normalize('NFC')),
       );
+      // The stored links are shown.
       await expect(page.getByTestId('align-progress')).toHaveText(
         new RegExp(`${placedInFile} of \\d+ words placed`),
       );
@@ -203,6 +228,9 @@ test.describe('J5 — a translator aligns a verse', () => {
       // I-3: the record states which draft it was made against.
       expect(rec.targetVerseMd5).toMatch(/^[0-9a-f]{32}$/);
       expect(rec.sourceVersion).toContain('el-x-koine_ugnt');
+      // #790 (D107): the first edit saves the record fitted to the pinned verse, stamped with the pin.
+      expect(rec.alignments).toHaveLength(16);
+      expect(rec.sourceVersion).toBe(V034);
     },
   );
 
@@ -590,6 +618,9 @@ test.describe('J5 — a translator aligns a verse', () => {
       const marked = alignmentFile()!.chapters['1']['1'];
       expect(marked.wordBank.length).toBeGreaterThan(0);
       expect(marked.targetVerseMd5).toMatch(/^[0-9a-f]{32}$/);
+      // #790 (D107): Mark valid saves the record fitted to the pinned verse, with the pin's stamp.
+      expect(marked.alignments).toHaveLength(16);
+      expect(marked.sourceVersion).toBe(V034);
 
       // Un-align one placed word: the edit takes Mark valid back, on screen and on disk.
       const placedChip = page.locator('[data-testid^="align-card-"][data-count="1"]').first().getByRole('button').first();
@@ -601,6 +632,48 @@ test.describe('J5 — a translator aligns a verse', () => {
       await button.click();
       await expect(button).toHaveAttribute('data-active', '1');
       await expect.poll(() => alignmentFile()?.chapters?.['1']?.['1']?.done, { timeout: 10_000 }).toBe(true);
+    },
+  );
+
+  // #790 (D107, AC2 and D105): a record made against another source version. The stored Παῦλος is
+  // 1 of 2, and the pinned verse has it as 1 of 1. The open fits the cards to the pinned verse, drops
+  // that card with its link, shows the banner and a red rail row for the open verse, and writes
+  // nothing. The first edit saves the fitted record, still flagged, with the pin's stamp.
+  test(
+    '#790 a record made against another source version opens fitted: banner, red rail row, the dropped link back in the bank, nothing written until the first edit',
+    { tag: ['@inc9', '@J5'] },
+    async ({ page }) => {
+      writePinsWithOriginal();
+      const file = alignmentFile();
+      const record = file.chapters['1']['1'];
+      record.sourceVersion = 'dcs::unfoldingWord/el-x-koine_ugnt@v0.33';
+      record.alignments[0].topWords = record.alignments[0].topWords.map((w: object) => ({ ...w, occurrences: 2 }));
+      const alignmentsPath = path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'checking', 'alignments', 'TIT.json');
+      fs.writeFileSync(alignmentsPath, `${JSON.stringify(file, null, 2)}\n`);
+      const before = fs.readFileSync(alignmentsPath);
+
+      await openAlign(page);
+
+      await expect(page.getByTestId('align-stale')).toBeVisible();
+      await expect(page.getByTestId('align-verse-list').locator('button[data-ref="1:1"]')).toHaveAttribute('data-status', 'invalid');
+      await expect(page.locator('[data-testid^="align-card-"]')).toHaveCount(16);
+      expect((await cardLabels(page)).join(' ').split(' ').map((w) => w.normalize('NFC'))).toEqual(UGNT_TIT_1_1.map((w) => w.normalize('NFC')));
+      // The link of the dropped card is back in the bank.
+      await expect(page.getByTestId('align-bank').locator('[data-word="Pablo"]')).toHaveCount(1);
+      // The open wrote nothing.
+      expect(fs.readFileSync(alignmentsPath).equals(before)).toBe(true);
+
+      // The first edit saves the fitted record: still flagged, with the pin's stamp.
+      const bank = page.getByTestId('align-bank').getByRole('button');
+      await bank.first().click();
+      await page.locator('[data-testid^="align-card-"][data-count="0"]').first().click();
+      await expect
+        .poll(() => alignmentFile()?.chapters?.['1']?.['1']?.sourceVersion, { timeout: 10_000 })
+        .toBe(V034);
+      const saved = alignmentFile()!.chapters['1']['1'];
+      expect(saved.invalid).toBe(true);
+      expect(saved.alignments).toHaveLength(16);
+      await expect(page.getByTestId('align-stale')).toBeVisible();
     },
   );
 
@@ -961,6 +1034,432 @@ test.describe('J5 — a translator aligns a verse', () => {
       await expect(page.getByTestId('align-session')).toBeVisible();
       await expect(row13).toHaveAttribute('data-selected', 'true');
       await expect(page.getByTestId('align-verse-list').locator('button[data-ref="1:1"]')).not.toHaveAttribute('data-selected', 'true');
+    },
+  );
+
+  // #782: en_ult aligns one English phrase to two Hebrew words with one \zaln
+  // inside another. Align (and Translate) read one level down, so Gen 1:1 lost
+  // "the heavens" and 633 Genesis verses lost words. The rail and Translate now
+  // show every word. Align does not open these verses until #553 (#794), so
+  // 1:1 shows its notice, not a word bank. Genesis is the rig's own
+  // en_ult GEN.usfm, added to a new project with Add a book → USFM (the issue's
+  // steps). A whole-project USFM import of that file refuses it (not NFC).
+  test(
+    'en_ult Genesis: the Align rail and Translate show every word, nested alignments included; Align states that 1:1 holds an imported alignment (#782, #794)',
+    { tag: ['@inc9', '@J5'] },
+    async ({ page }, testInfo) => {
+      test.setTimeout(240_000);
+      const usfm = sideloadedIngredient('en_ult', 'GEN.usfm');
+      const name = `Genesis 782 ${Date.now()}`;
+      const abbr = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+      await page.goto('/');
+      await importFixture(page, path.join(MANIFEST_DIR, 'usfm', '32-JON.usfm'), { kind: 'usfm', edits: { name, language: 'es-419' } });
+      await expect(page.getByTestId('import-toast')).toBeVisible();
+      await page.goto('/');
+      const card = page.getByTestId(`project-_local_/_local_/${abbr}`);
+      await card.getByRole('button', { name: 'Add a book' }).click();
+      await page.getByTestId('ab-usfm-option').click();
+      await page.getByTestId('ab-usfm-input').setInputFiles([{ name: 'GEN.usfm', mimeType: 'text/plain', buffer: Buffer.from(usfm) }]);
+      await expect(page.getByTestId('ab-usfm-file')).toHaveAttribute('data-status', 'valid');
+      await page.getByTestId('ab-usfm-add').click();
+      await expect(page.getByTestId('ab-usfm')).toHaveCount(0, { timeout: 120_000 });
+      await card.getByRole('button', { name: /Genesis/ }).click();
+      await expect(page.getByRole('heading', { name: /^Genesis \d+$/ })).toBeVisible({ timeout: 120_000 });
+
+      // The words of each verse as the file states them: every \w word, in file
+      // order, read from the raw USFM without usfm-js. Footnotes are not verse text.
+      const fileWords = new Map<string, string[]>();
+      for (const chapter of usfm.replace(/\\f .*?\\f\*/gs, '').split(/\\c (?=\d)/).slice(1)) {
+        const c = /^\d+/.exec(chapter)![0];
+        const parts = chapter.split(/\\v (\d+(?:-\d+)?)\s/);
+        for (let i = 1; i < parts.length; i += 2) fileWords.set(`${c}:${parts[i]}`, [...parts[i + 1].matchAll(/\\w ([^|\\]+)\|/g)].map((m) => m[1]));
+      }
+      const holdsInOrder = (text: string, words: string[]) => {
+        let at = 0;
+        for (const w of words) {
+          const found = text.slice(at).search(new RegExp(`(?<![\\p{L}\\p{N}])${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}])`, 'u'));
+          if (found < 0) return false;
+          at += found + w.length;
+        }
+        return true;
+      };
+
+      let rail: Array<{ ref: string; text: string }> = [];
+      await test.step('Align: every rail row holds its verse\'s words, in order', async () => {
+        await page.getByRole('tab', { name: 'Check', exact: true }).click();
+        await page.getByTestId('open-align').click();
+        const rows = page.getByTestId('align-verse-list').locator('button[data-ref]');
+        await expect(rows.first()).toBeVisible({ timeout: 120_000 });
+        rail = await rows.evaluateAll((els) => els.map((el) => ({ ref: el.getAttribute('data-ref') ?? '', text: el.children[2]?.textContent ?? '' })));
+        // Every row is a verse of the file. The rail leaves out 41 verses whose
+        // `\v` follows `\q1` on the same line (3:15, 49:2-27, …): a separate defect
+        // of the verse index, outside #782, so those verses are not compared here.
+        expect(rail.length).toBeGreaterThan(1400);
+        expect(rail.filter((r) => !fileWords.has(r.ref))).toEqual([]);
+        const losing = rail.filter((r) => !holdsInOrder(r.text, fileWords.get(r.ref) ?? [])).map((r) => r.ref);
+        expect(losing).toEqual([]);
+        expect(rail.find((r) => r.ref === '1:1')?.text).toBe('In the beginning God created the heavens and the earth.');
+        expect(rail.find((r) => r.ref === '1:4')?.text).toBe('And God saw the light, that {it was} good. Then God separated between the light and the darkness.');
+      });
+
+      await test.step('Align 1:1: the verse states that it holds an imported alignment, with no word bank', async () => {
+        const row = page.getByTestId('align-verse-list').locator('button[data-ref="1:1"]');
+        await row.click();
+        await expect(row).toHaveAttribute('data-selected', 'true');
+        await expect(row).toContainText('In the beginning God created the heavens and the earth.');
+        const unavailable = page.getByTestId('align-unavailable');
+        await expect(unavailable).toBeVisible({ timeout: 60_000 });
+        await expect(unavailable).toContainText('This verse already holds an alignment');
+        await expect(page.getByTestId('align-session')).toHaveCount(0);
+        await expect(page.getByTestId('align-bank')).toHaveCount(0);
+        const shotPath = testInfo.outputPath('j05-gen-1-1-notice.png');
+        await page.screenshot({ path: shotPath, animations: 'disabled' });
+        await testInfo.attach('j05-gen-1-1-notice', { path: shotPath, contentType: 'image/png' });
+        // The run's artifact: the counts, and 1:1 and 1:4 as the rail states them.
+        const artifact = {
+          rows: rail.length,
+          rowsLosingWords: rail.filter((r) => !holdsInOrder(r.text, fileWords.get(r.ref) ?? [])).length,
+          rail: rail.filter((r) => r.ref === '1:1' || r.ref === '1:4'),
+        };
+        const artifactPath = testInfo.outputPath('j05-gen-nested.json');
+        fs.writeFileSync(artifactPath, `${JSON.stringify(artifact, null, 2)}\n`);
+        await testInfo.attach('j05-gen-nested.json', { path: artifactPath, contentType: 'application/json' });
+      });
+
+      await test.step('Translate states Gen 1:1 and 1:4 whole', async () => {
+        const translate = page.getByRole('tab', { name: 'Translate', exact: true });
+        if ((await translate.getAttribute('aria-selected')) !== 'true') await translate.click();
+        const target = page.getByTestId('draft-target-text');
+        await expect(target.filter({ hasText: 'In the beginning' })).toContainText('In the beginning God created the heavens and the earth.', { timeout: 60_000 });
+        await expect(target.filter({ hasText: 'And God saw' }).first()).toContainText('And God saw the light, that {it was} good.');
+        const shotPath = testInfo.outputPath('j05-gen-1-translate.png');
+        await page.screenshot({ path: shotPath, animations: 'disabled' });
+        await testInfo.attach('j05-gen-1-translate', { path: shotPath, contentType: 'image/png' });
+      });
+    },
+  );
+
+  // #787: a verse opens with a word bank rebuilt from its current text. The
+  // seeded 1:1 starts with six words placed, and the reflow after a Translate
+  // edit keeps a record like that right. The defect needs a record with no
+  // word placed, so the steps take every word back first (the issue's end
+  // state: every Greek card empty; 1:1 has 10 cards for its 11 Greek words,
+  // as the merged Ἰησοῦ Χριστοῦ is one card).
+  test(
+    'a verse edited in Translate opens in Align with its new word in the bank and the banner on; a fresh verse opens in verse order (#787)',
+    { tag: ['@inc2', '@J5'] },
+    async ({ page }) => {
+      test.setTimeout(120_000);
+      writePinsWithOriginal();
+      const draft = () => fs.readFileSync(path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'TIT.usfm'), 'utf8');
+      const placedOnDisk = () =>
+        (alignmentFile()?.chapters?.['1']?.['1']?.alignments ?? []).reduce(
+          (n: number, a: { bottomWords: unknown[] }) => n + a.bottomWords.length,
+          0,
+        );
+      await openAlign(page);
+      const bank = page.getByTestId('align-bank').getByRole('button');
+
+      // Step 1: take every placed word back, "Pablo" first.
+      const placed = page.locator('[data-testid^="align-card-"]:not([data-count="0"])');
+      for (let n = await placed.count(); n > 0; n = await placed.count()) {
+        await placed.first().locator('button[data-word]').first().click();
+        await expect(placed).toHaveCount(n - 1);
+      }
+      await expect.poll(placedOnDisk, { timeout: 10_000 }).toBe(0);
+
+      // Step 2: Translate. "siervo" becomes "esclavo"; the verse is left.
+      await page.getByRole('tab', { name: 'Translate', exact: true }).click();
+      await page.getByRole('tab', { name: 'Verse', exact: true }).click();
+      await page.getByTitle('Edit this verse').filter({ hasText: 'Pablo, siervo de Dios' }).first().click();
+      const editor = page.getByRole('textbox', { name: 'Verse 1', exact: true });
+      const edited = (await editor.inputValue()).replace('siervo', 'esclavo');
+      await editor.fill(edited);
+      await editor.blur();
+      await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 15_000 });
+      await expect.poll(draft, { timeout: 15_000 }).toContain(edited);
+      // No word is placed, so the reflow leaves the record as it was: still "siervo".
+      expect(alignmentFile().chapters['1']['1'].wordBank.map((w: { word: string }) => w.word)).toContain('siervo');
+
+      // Step 3: back in Align at 1:1, the bank holds "esclavo" and not "siervo". No banner shows:
+      // every word was taken back, so the record holds no link and is not done, and it vouches for
+      // nothing (#796, D105 point 4; the #787 banner for this record is withdrawn).
+      // The Check tab may open the aligner on the remembered place or on its entry
+      // button; either way the rail row for 1:1 is clicked, so the verse is chosen.
+      await page.getByRole('tab', { name: 'Check', exact: true }).click();
+      const tool = page.getByTestId('open-align');
+      const session = page.getByTestId('align-session');
+      await expect(tool.or(session)).toBeVisible();
+      if (await tool.isVisible()) await tool.click();
+      await expect(session).toBeVisible();
+      const row11 = page.getByTestId('align-verse-list').locator('button[data-ref="1:1"]');
+      await row11.click();
+      await expect(row11).toHaveAttribute('data-selected', 'true');
+      await expect.poll(() => wordsOf(bank)).toContain('esclavo');
+      expect(await wordsOf(bank)).not.toContain('siervo');
+      expect(await wordsOf(bank)).toEqual(wordTokens(edited).map((t) => t.text));
+      await expect(page.getByTestId('align-stale')).toHaveCount(0);
+
+      // A verse that was never saved opens with its bank in verse order, and no banner.
+      expect(alignmentFile().chapters['1']['2']).toBeUndefined();
+      const fresh = /^\\v 2 (.+)$/m.exec(draft())![1].trim();
+      await page.getByTestId('align-verse-list').locator('button[data-ref="1:2"]').click();
+      await expect.poll(() => wordsOf(bank)).toEqual(wordTokens(fresh).map((t) => t.text));
+      await expect(page.getByTestId('align-stale')).toHaveCount(0);
+    },
+  );
+
+  // #789 (D106): after a Translate save, a link follows its word. Titus 1:1 has "Dios" twice,
+  // and Θεοῦ/1 holds the first, Θεοῦ/2 the second. Deleting "de Dios" after "siervo" removes
+  // the first one: its link goes, the other link stays on the "escogidos" Dios (now Dios 1 of 1),
+  // and the verse is flagged for review, because a copy of a linked word went before it. Putting
+  // the words back does not give the first link back: the second link follows its Dios to 2 of 2.
+  // Two saves in a row prove that each edit starts from the text as the last one left it.
+  type AlignRecord = {
+    invalid?: boolean;
+    alignments: Array<{
+      topWords: Array<{ word: string; occurrence: number }>;
+      bottomWords: Array<{ word: string; occurrence: number; occurrences: number }>;
+    }>;
+  };
+  const theta = (record: AlignRecord, n: number): string[] =>
+    record.alignments
+      .find((a) => a.topWords.some((t) => t.word === 'Θεοῦ' && Number(t.occurrence) === n))!
+      .bottomWords.map((w) => `${w.word}/${w.occurrence}/${w.occurrences}`);
+  const record11 = (): AlignRecord => alignmentFile()!.chapters['1']['1'];
+  const withoutDeDios = (v: string) => v.replace('siervo de Dios y apóstol', 'siervo y apóstol');
+  const state11 = () => ({ theta1: theta(record11(), 1), theta2: theta(record11(), 2), invalid: record11().invalid });
+
+  test(
+    'a Translate edit keeps each link on its word: deleting "de Dios" flags the verse, and putting it back keeps the first link gone (#789)',
+    { tag: ['@inc9', '@J5'] },
+    async ({ page }, testInfo) => {
+      test.setTimeout(120_000);
+      writePinsWithOriginal();
+      expect(theta(record11(), 1)).toEqual(['Dios/1/2']);
+      expect(theta(record11(), 2)).toEqual(['Dios/2/2']);
+      const artifact: Record<string, unknown> = { start: state11() };
+
+      await page.goto('/');
+      await page
+        .getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`)
+        .getByRole('button', { name: /Titus/ })
+        .click();
+      await page.getByRole('tab', { name: 'Translate', exact: true }).click();
+      await page.getByRole('tab', { name: 'Verse', exact: true }).click();
+      const editor = page.getByRole('textbox', { name: 'Verse 1', exact: true });
+      const saved = page.getByTestId('save-indicator');
+
+      // Step 1: delete "de Dios" after "siervo"; leave the verse.
+      await page.getByTitle('Edit this verse').filter({ hasText: 'Pablo, siervo de Dios' }).first().click();
+      const original = await editor.inputValue();
+      const deleted = withoutDeDios(original);
+      expect(deleted).not.toBe(original);
+      await editor.fill(deleted);
+      await editor.blur();
+      await expect(saved).toHaveAttribute('data-state', 'saved', { timeout: 15_000 });
+      await expect.poll(() => theta(record11(), 1), { timeout: 15_000 }).toEqual([]);
+      expect(theta(record11(), 2)).toEqual(['Dios/1/1']);
+      expect(record11().invalid).toBe(true);
+      artifact.afterDelete = state11();
+
+      // In Align at 1:1 the verse shows the review banner.
+      await page.getByRole('tab', { name: 'Check', exact: true }).click();
+      const tool = page.getByTestId('open-align');
+      const session = page.getByTestId('align-session');
+      await expect(tool.or(session)).toBeVisible();
+      if (await tool.isVisible()) await tool.click();
+      await expect(session).toBeVisible();
+      const row11 = page.getByTestId('align-verse-list').locator('button[data-ref="1:1"]');
+      await row11.click();
+      await expect(row11).toHaveAttribute('data-selected', 'true');
+      await expect(page.getByTestId('align-stale')).toBeVisible();
+
+      // Step 2: back in Translate, put the words back. The first link stays gone; the second follows its Dios.
+      await page.getByRole('tab', { name: 'Translate', exact: true }).click();
+      await page.getByRole('tab', { name: 'Verse', exact: true }).click();
+      await page.getByTitle('Edit this verse').filter({ hasText: 'Pablo, siervo y apóstol' }).first().click();
+      await editor.fill(original);
+      await editor.blur();
+      await expect(saved).toHaveAttribute('data-state', 'saved', { timeout: 15_000 });
+      await expect.poll(() => theta(record11(), 2), { timeout: 15_000 }).toEqual(['Dios/2/2']);
+      expect(theta(record11(), 1)).toEqual([]);
+      expect(record11().invalid).toBe(true);
+      artifact.afterRestore = state11();
+
+      const artifactPath = testInfo.outputPath('j05-link-follows-word.json');
+      fs.writeFileSync(artifactPath, `${JSON.stringify(artifact, null, 2)}\n`);
+      await testInfo.attach('j05-link-follows-word.json', { path: artifactPath, contentType: 'application/json' });
+    },
+  );
+
+  // #820 (D106 point 2): a replace of one copy of a repeated word. Save 1 makes 1:1 "Dios Dios":
+  // the two linked Dios keep their links (Θεοῦ/1 on the first, Θεοῦ/2 on the second), and nothing
+  // flags, because only one LCS keeps both. Save 2 makes it "Dios Pablo": either Dios can be the one
+  // that is left, so the text cannot show which link is right, and the verse is flagged. Align shows
+  // the banner and the red rail row until Mark valid.
+  test(
+    'a Translate replace of one copy of a repeated linked word flags the verse until Mark valid (#820)',
+    { tag: ['@inc9', '@J5'] },
+    async ({ page }, testInfo) => {
+      test.setTimeout(120_000);
+      writePinsWithOriginal();
+      const artifact: Record<string, unknown> = { start: state11() };
+
+      await page.goto('/');
+      await page
+        .getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`)
+        .getByRole('button', { name: /Titus/ })
+        .click();
+      await page.getByRole('tab', { name: 'Translate', exact: true }).click();
+      await page.getByRole('tab', { name: 'Verse', exact: true }).click();
+      const editor = page.getByRole('textbox', { name: 'Verse 1', exact: true });
+      const saved = page.getByTestId('save-indicator');
+
+      // Save 1: "Dios Dios". The other linked words go with their links; each Dios keeps its own.
+      await page.getByTitle('Edit this verse').filter({ hasText: 'Pablo, siervo de Dios' }).first().click();
+      await editor.fill('Dios Dios');
+      await editor.blur();
+      await expect(saved).toHaveAttribute('data-state', 'saved', { timeout: 15_000 });
+      await expect.poll(() => theta(record11(), 1), { timeout: 15_000 }).toEqual(['Dios/1/2']);
+      expect(theta(record11(), 2)).toEqual(['Dios/2/2']);
+      expect(record11().invalid).toBe(false);
+      artifact.afterDiosDios = state11();
+
+      // Save 2: "Dios Pablo". The first link stays on the one Dios, the second goes, and the verse is flagged.
+      await page.getByTitle('Edit this verse').filter({ hasText: 'Dios Dios' }).first().click();
+      await editor.fill('Dios Pablo');
+      await editor.blur();
+      await expect(saved).toHaveAttribute('data-state', 'saved', { timeout: 15_000 });
+      await expect.poll(() => theta(record11(), 2), { timeout: 15_000 }).toEqual([]);
+      expect(theta(record11(), 1)).toEqual(['Dios/1/1']);
+      expect(record11().invalid).toBe(true);
+      artifact.afterReplace = state11();
+
+      // In Align at 1:1: the banner and the red rail row, until Mark valid.
+      await page.getByRole('tab', { name: 'Check', exact: true }).click();
+      const tool = page.getByTestId('open-align');
+      const session = page.getByTestId('align-session');
+      await expect(tool.or(session)).toBeVisible();
+      if (await tool.isVisible()) await tool.click();
+      await expect(session).toBeVisible();
+      const row11 = page.getByTestId('align-verse-list').locator('button[data-ref="1:1"]');
+      await row11.click();
+      await expect(row11).toHaveAttribute('data-selected', 'true');
+      await expect(page.getByTestId('align-stale')).toBeVisible();
+      await expect(row11).toHaveAttribute('data-status', 'invalid');
+      await page.getByTestId('align-mark-valid').click();
+      await expect.poll(() => record11().invalid, { timeout: 10_000 }).toBe(false);
+      await expect(page.getByTestId('align-stale')).toHaveCount(0);
+      expect(theta(record11(), 1)).toEqual(['Dios/1/1']);
+      artifact.afterMarkValid = state11();
+
+      const artifactPath = testInfo.outputPath('j05-repeated-word-replace.json');
+      fs.writeFileSync(artifactPath, `${JSON.stringify(artifact, null, 2)}\n`);
+      await testInfo.attach('j05-repeated-word-replace.json', { path: artifactPath, contentType: 'application/json' });
+    },
+  );
+
+  // #789 (D106, AC6): a Section save takes the same rule as a verse blur. The card that starts
+  // at verse 1 is edited in Type mode (no verse number moves), so the keys do not change and
+  // the save goes through the verse path of `saveSection`, one reflow for the changed verses.
+  test(
+    'a Section save follows the same rule: deleting "de Dios" in verse 1 flags it, the second link stays on its Dios (#789)',
+    { tag: ['@inc9', '@J5'] },
+    async ({ page }, testInfo) => {
+      test.setTimeout(120_000);
+      writePinsWithOriginal();
+      await page.goto('/');
+      await page
+        .getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`)
+        .getByRole('button', { name: /Titus/ })
+        .click();
+      await page.getByRole('tab', { name: 'Translate', exact: true }).click();
+      await page.getByRole('tab', { name: 'Section', exact: true }).click();
+      await page.getByRole('button', { name: /^Draft section 1[–-]/ }).click();
+      const text = page.getByRole('textbox', { name: /^Section 1[–-]/ });
+      const original = await text.inputValue();
+      const deleted = withoutDeDios(original);
+      expect(deleted).not.toBe(original);
+      await text.fill(deleted);
+      await page.getByRole('button', { name: 'Save section' }).click();
+      await expect(page.getByTestId('save-indicator')).toHaveAttribute('data-state', 'saved', { timeout: 15_000 });
+      await expect(page.getByTestId('section-editor')).toHaveCount(0);
+      await expect.poll(() => theta(record11(), 1), { timeout: 15_000 }).toEqual([]);
+      expect(theta(record11(), 2)).toEqual(['Dios/1/1']);
+      expect(record11().invalid).toBe(true);
+      const artifactPath = testInfo.outputPath('j05-section-link-follows-word.json');
+      fs.writeFileSync(artifactPath, `${JSON.stringify(state11(), null, 2)}\n`);
+      await testInfo.attach('j05-section-link-follows-word.json', { path: artifactPath, contentType: 'application/json' });
+    },
+  );
+
+  // #796: the bank is the word list the export checks (word-aligner `merge`), taken
+  // from the stored verse. A footnote glued to a word used to leave "mediode" in the
+  // bank: the display text joined the words either side of the footnote.
+  test(
+    'a verse with a footnote glued to a word opens with that word and the next one apart in the bank (#796)',
+    { tag: ['@inc9', '@J5'] },
+    async ({ page }) => {
+      writePinsWithOriginal();
+      const bookPath = path.join(rigRepo(SEEDED_PROJECT), 'ingredients', 'TIT.usfm');
+      const book = fs.readFileSync(bookPath, 'utf8');
+      const verse3 = /^\\v 3 (.+)$/m.exec(book)![1].trim();
+      expect(verse3).toContain('por medio de');
+      fs.writeFileSync(bookPath, book.replace('por medio de', 'por medio\\f + \\ft nota\\f* de'));
+
+      await openAlign(page);
+      const row13 = page.getByTestId('align-verse-list').locator('button[data-ref="1:3"]');
+      await row13.click();
+      await expect(row13).toHaveAttribute('data-selected', 'true');
+      const bank = page.getByTestId('align-bank').getByRole('button');
+      // The words of the verse as it was typed: the footnote adds none.
+      const expected = verse3.match(/\p{L}[\p{L}\p{M}]*/gu)!;
+      await expect.poll(() => wordsOf(bank)).toEqual(expected);
+      const words = await wordsOf(bank);
+      expect(words).toContain('medio');
+      expect(words).toContain('de');
+      expect(words).not.toContain('mediode');
+    },
+  );
+
+  // #794: a book added from an aligned USFM file keeps its `\zaln` markup inline
+  // until #553 extracts it. Align must not open such a verse as a plain draft:
+  // a later save would replace the imported alignment with the translator's.
+  test(
+    'Align does not open a verse that holds imported alignment markup: en_ult Titus 1:1 states it and shows no word bank (#794)',
+    { tag: ['@inc9', '@J5'] },
+    async ({ page }) => {
+      test.setTimeout(240_000);
+      const name = `Titus 794 ${Date.now()}`;
+      const abbr = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+      const usfm = fs.readFileSync(path.resolve('test/fixtures/en_ult/TIT.usfm'), 'utf8');
+      await page.goto('/');
+      await importFixture(page, path.join(MANIFEST_DIR, 'usfm', '32-JON.usfm'), { kind: 'usfm', edits: { name, language: 'es-419' } });
+      await expect(page.getByTestId('import-toast')).toBeVisible();
+      await page.goto('/');
+      const card = page.getByTestId(`project-_local_/_local_/${abbr}`);
+      await card.getByRole('button', { name: 'Add a book' }).click();
+      await page.getByTestId('ab-usfm-option').click();
+      await page.getByTestId('ab-usfm-input').setInputFiles([{ name: 'TIT.usfm', mimeType: 'text/plain', buffer: Buffer.from(usfm) }]);
+      await expect(page.getByTestId('ab-usfm-file')).toHaveAttribute('data-status', 'valid');
+      await page.getByTestId('ab-usfm-add').click();
+      await expect(page.getByTestId('ab-usfm')).toHaveCount(0, { timeout: 120_000 });
+      await card.getByRole('button', { name: /Titus/ }).click();
+      await expect(page.getByRole('heading', { name: /^Titus \d+$/ })).toBeVisible({ timeout: 120_000 });
+
+      await page.getByRole('tab', { name: 'Check', exact: true }).click();
+      await page.getByTestId('open-align').click();
+      const row = page.getByTestId('align-verse-list').locator('button[data-ref="1:1"]');
+      await expect(row).toBeVisible({ timeout: 120_000 });
+      await row.click();
+      await expect(row).toHaveAttribute('data-selected', 'true');
+      const unavailable = page.getByTestId('align-unavailable');
+      await expect(unavailable).toBeVisible({ timeout: 60_000 });
+      await expect(unavailable).toContainText('This verse already holds an alignment');
+      await expect(unavailable).toContainText('Titus was added from a file that already holds alignments.');
+      await expect(page.getByTestId('align-session')).toHaveCount(0);
+      await expect(page.getByTestId('align-bank')).toHaveCount(0);
     },
   );
 });

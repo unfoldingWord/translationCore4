@@ -2675,6 +2675,8 @@ this computer does not have, rebuilds, and pushes [VERIFIED — `journal/fold.mj
    them new ids.
 8. **Check results and alignments: the newest wins.** Only verse text goes to the conflict
    review. Each other fork keeps its newest head, and the sync result counts it once.
+   [amended 2026-10-19 — D108: the result also names each alignment fork where a
+   teammate's newer record replaced this actor's, as a notice]
 
 **The guarantees.** Each guarantee has an id. Each test that proves one starts its name with
 the id, for example `[G1] keeps every own file`, so `git grep "\[G1\]"` lists every proof.
@@ -2688,7 +2690,7 @@ This table is the home of the guarantees; epic #24 links here.
 | G4 | Door43 `main` only moves forward: never a force push; a push that is not a fast-forward starts the sync again. | 3 | app rule (§8.7) | #676 |
 | G5 | Identity holds: after a sync, the project is at the same path with the same actor id. | 3 | app rule (§8.7) | #676 |
 | G6 | Same journals, same project: two computers with the same journals have the same project files. | 2 | R-8.7.11 | #674 (JC-35), #675 |
-| G7 | Only verse text reaches a person: other conflicts keep the newest version, and the result counts each one once. | 1, 2, 4 | R-8.7.12 | #674 (JC-35), #675, #679 |
+| G7 | Only verse text reaches a person: other conflicts keep the newest version, and the result counts each one once. [amended 2026-10-19 — D108: a notice names each alignment that a teammate's newer record replaced] | 1, 2, 4 | R-8.7.12 | #674 (JC-35), #675, #679, #791 |
 | G8 | A crash during the apply never makes the project unopenable, never loses own work, and never reverts or re-attributes teammate work; the next start finishes the apply. [amended 2026-10-14 — D101] After a power loss, the start applies a scratch copy only when it is the fold of its journal. If it is not, the next sync brings Door43 main (D101 point 2, Ledger #11). [decided 2026-10-14 — owner, PR #688] | 3 | app rule (§8.7) | #676 |
 
 The refusal codes of the format-facing rules are in `journal/report.mjs`:
@@ -2903,3 +2905,250 @@ size of each en_ult v91 book from the rig cache, branch issue-767-usfm-too-large
    this project is damaged". 4.0.0-rc.2 reads and writes 8 MiB segments, because no
    4.0.0-rc.2 build went out with the 4 MiB limit. [VERIFIED — no `v4.0.0-rc.2` tag or
    release on origin, 2026-10-16; owner: no rc.2 build was distributed, PR #780]
+
+## D105 (2026-10-19, project-owner ruling) **The §5.1 word bank comes from the verse. One word list, the words that word-aligner `merge` checks, and one review rule, `needsReview`, serve the Align editor, the rail, Mark valid, the tC3 import and the aligned USFM export. The export skips and names a verse that needs review. Amends D73 points 2 and 3 (BURRITO-SPEC 1.27).** [owner rulings on #796, 2026-10-19 (points 1 to 4, and the rail cost in point 8); points 5 to 7 are the proposed fix of #796, which the owner approved for building; issue #796; investigation 2026-10-17, model B "derived bank, same format"]
+
+Context. The Align bank took its words from a second word split of the display text. The
+export checks the words that `merge` reads from the stored verse. When the two lists
+differed, `merge` refused the record. The export then kept the verse unaligned and gave no
+message (F6, F8). The rail and the editor used different review rules (F14). A valid record
+with no placed word exported every word wrapped in `\w` (F20). [VERIFIED — scratch tests on
+main 2b08ed3, 2026-10-17, issue #796]
+
+1. **One word list.** The verse's words are the words that word-aligner 1.0.3 `merge`
+   checks. `merge` reads them from the stored verse slot with
+   `getOrderedVerseObjectsFromString`, after word-aligner-lib `cleanAlignmentMarkersFromString`.
+   tC4 computes them with `verseWords` (`src/data/align/verseWords.mjs`), a linear copy of
+   that walk. The library call takes 3.4–4.0 s for all Genesis slots. The copy takes 67–102 ms.
+   [VERIFIED — read-only probes on en_ult v91 Genesis, 1,533 slots, 2026-10-17 to 2026-10-19;
+   owner decision comment on #796, 2026-10-19] A CI test (`test/align-verse-words.test.ts`)
+   keeps the copy equal to the library on the fixtures. The copy had 0 differences on every
+   en_ult and en_ust v91 slot [VERIFIED — the v91 sweep named in the same owner decision
+   comment]. This is an exception to the AGENTS.md reuse rule. It is for speed. Before a
+   pinned version moves (#420), the parity test and the v91 sweep MUST pass. A second owner
+   ruling of 2026-10-19 (#796, comment 6269651708) names the two rare verse shapes that
+   change. A word inside a `\li` list item can no longer be aligned, because `merge` never
+   reads it. A word in a `\qa` or `\sp` heading before a verse counts as a word of that
+   verse, because `merge` reads it. So no aligned word fails silently at export. Better
+   support for list items and headings stays with the word-aligner upgrade (#420) and the
+   verse-grammar work.
+2. **The bank comes from the verse.** A writer that makes or changes the words of a record
+   (an Align edit, Mark valid, or a reflow after a text edit) writes `wordBank` as the verse's
+   words minus its placed words. The comparison is a multiset on `word`, `occurrence` and
+   `occurrences`. A writer SHOULD write the bank in verse order. The import writes the record
+   as its source held it (point 7). Readers MUST NOT use `wordBank` as truth.
+   They use it only as evidence in the word clause (point 3). `wordBank` stays a written
+   field, because `merge` and earlier readers need it.
+3. **I-3 word clause.** When a record holds a placed word or `done`, it is current only when
+   its hash matches AND its placed words plus its bank equal the verse's words. This is a
+   conformance clarification, not a change of the stored shape. `schemaVersion` stays 1, and
+   D47(a) does not apply. A word that is in the bank and also on a card now reads as needs
+   review, although `merge` accepts it.
+4. **One review rule.** `needsReview = invalid OR ((a placed word OR done) AND (the hash
+   differs OR the word clause fails))`. A record with no placed word and no `done` needs
+   review only when it carries `invalid: true`. Its bank is rebuilt in memory when the verse
+   opens, and the file changes at the next edit. This reverses one case of the #787 banner
+   rule: such a record showed the banner after a text change, and it shows none now.
+5. **D73 amended.** A writer reconciles a record with the current verse words before it
+   restamps the hash. This covers an edit, Mark valid and a reflow. To reconcile a record,
+   keep each placed word whose word and occurrence are in the verse. Number it again from the
+   verse. Derive the bank from the verse. An edit never clears `invalid`. Only Mark valid
+   clears it. A span or renumber record (#63) keeps `invalid` through every edit until Mark
+   valid. This amends D73 point 2 (Mark valid reconciles first) and D73 point 3 (an edit
+   keeps `invalid`, and a reflow reconciles before it restamps).
+6. **Export.** A verse whose record needs review keeps its stored bytes, and the export names
+   it in a notice. This includes a record with `invalid: true` and nothing placed, for
+   example a record that an original-language upgrade flagged. A verse that `merge` refuses
+   also keeps its stored bytes, and the notice names it. A record with no placed word exports
+   the stored bytes (F20). A verse with imported `\zaln` keeps it. If the verse also has tC4
+   links, the notice names it. The export reads the stored book, which is NFC by I-4
+   (R-8.5.9). Its word check reads each verse slot as stored. The notice is one line in the
+   export menu. It shows the first 20 verses, then `, …` when there are more. The stored
+   export facts keep at most 20 refs and the total count.
+7. **tC3 import.** The import flags a record that holds a link and whose words do not fit
+   the verse. The record gets `invalid: true`. The import never rewrites a record to fit, in
+   the spirit of D36 (invalidate and retain). A record that tC3 marked invalid stays
+   `invalid: true`.
+8. **Known limits, accepted.**
+   - When the verse first opens, these records show needs review: rc.1 or pilot records with
+     a stale bank, about 145 `\qs` and 56 footnote-join verse shapes [INFERRED — v91 proxy],
+     and every linked old-client record on a book with imported `\zaln`. The export of today
+     already drops all of them.
+   - Until every teammate has this change, the reflow of an older build can drop new-client
+     links on verses where the two word lists differ.
+   - A verse with `\wj` or `\add` around `\+nd` can now be aligned. word-aligner 1.0.3 empties
+     the inner marker on export until #420 (F10). No text is lost.
+   - **Rail cost.** [VERIFIED — slice-3 review, fully aligned en_ult v91 Genesis, one record
+     per verse, medians of 9 interleaved runs, 2026-10-19; the owner accepted these numbers on
+     #796, 2026-10-19] The first rail build goes from about 17 ms to about 88 ms. A later build
+     goes from about 5.7 ms to about 15 ms. A Translate save makes a new book text, so the next
+     build is a first build again. With 10 records, the first build is within 20% (8.97 ms to
+     10.47 ms). One edit stays at 0.045 ms. The save path does not change.
+
+Where it lands: `src/data/align/verseWords.mjs` and `review.mjs` (the word list and the
+rule); `src/data/align/edit.ts`, `suggest.ts` and `src/state.jsx` (the Align writers, the
+suggestions, the rail and Mark valid); `src/data/import/tc3.ts`; `src/data/export/weave.mjs`,
+`usfm.ts` and `kernel.ts`, `src/views/ExportMenu.jsx` and the string `cc.exportSkipped` in the
+ten catalogs; `docs/BURRITO-SPEC.md` §5.1 and §7 (version 1.27); `conformance/validate.mjs` §4
+(five Stage-1 checks, each named in a §5.1 bullet). The conformance suite becomes 57 checks,
+Stage-1 45. The journal suite (369) and the normative gate (105 rules) do not change.
+
+## D106 (2026-10-19, project-owner ruling) **After a Translate save, an alignment link follows its word. An insert or delete before a linked copy of a repeated word flags the verse for review. Replaces the #213 rule "same word, same occurrence number".** [owner ruling on #789, 2026-10-19: option 2, "position diff"; amendment the same day: a tie flags; issue #789]
+
+Context. The reflow kept a link when the same word with the same occurrence number was still in the verse. An edit that added or removed an earlier copy moved a link to another copy, and nothing showed it. [VERIFIED — main 2b08ed3, scratch test on the conformance sample, 2026-10-17, issue #789]
+
+1. **A link follows its word.** The reflow compares the verse's words before and after the save by position. It uses a longest-common-subsequence diff of the export's word list (#796). A link stays on its word with the word's new occurrence number. A removed word loses its link. A respelled word is a new word. A moved word keeps its link.
+   The diff is a small function in `edit.ts`. This is an exception to the AGENTS.md reuse rule, as D105 point 1 is. No pinned or Pankosmia code gives a position diff: word-aligner-lib 1.0.1 `updateAlignmentsToTargetVerse` and Pankosmia `uw-client-checks` (`handleAddedWordsInNewText`, `handleDeletedWords`) match by text and occurrence, which is the rule this decision replaces; `@gabrielaillet/word-aligner-rcl` 1.3.18 `findWordChanges` is a greedy look-ahead that moves the link in the "de Dios" append case and pulls a React library into the bundle; word-aligner 1.0.3, usfm-js and string-punctuation-tokenizer have no diff. Both diff passes and the link moves cost a median 0.069 ms on the longest Genesis verse. The whole reflow (`reflowAlignment`, which also reconciles the record, checks `needsReview`, restamps the hash and settles `done`) costs a median 0.12 ms on the same verse (bench: `test/align-bench.test.ts`).
+2. **The flag.** The reflow writes `invalid: true` when the save adds, removes or moves a copy of a linked word before that word. It does the same when the text cannot show which copy changed. Every other edit keeps its links and does not flag.
+3. **The flag stays.** A record that needed review before a save still needs it after the save. Only Mark valid clears `invalid`.
+4. **No reflow declines.** Each save of a verse whose record holds a link and no longer fits the new text writes the reflowed record, `invalid` or not. As before, a verse that holds imported alignment markup, or that has no slot, is skipped. A save after which the record already fits the new text, with the same hash and the same words, writes nothing. A save that empties the verse removes every link.
+5. **No text before.** A sync or Keep this version does not reflow. The verse opens with the review banner when its record holds a link or is done (#787, #796).
+6. **Not in the format.** BURRITO-SPEC does not change. §5.1 already sets `invalid` for re-review, and D73 point 3 stands.
+
+Where it lands: `src/data/align/edit.ts`, `src/state.jsx` (`reflowAlignedVerses` and its two callers), `test/align-position-diff.test.ts`, `test/align-reflow.test.ts`, `e2e/j05-align-verse.spec.ts`.
+
+## D107 (2026-10-19, project-owner ruling) **Align repairs the source cards from the pinned original-language verse, as tC3 did. The Align open, every Align write and the aligned USFM export fit a stored record to the pinned verse. A dropped link, or a card that the fit adds to or drops from a `done` record, flags the verse for review. Amends D105 point 4 (BURRITO-SPEC 1.28).** [owner rulings on #790, 2026-10-19 (comment 6276901462, rulings 1 to 4); points 1 to 9 are the proposed fix of #790, which the owner approved for building; issue #790; investigation 2026-10-19]
+
+Context. The open showed the stored source cards as stored. It never compared `topWords` with the pinned verse. The seeded sample TIT 1:1 holds 10 cards for 11 source words. UGNT v0.34 TIT 1:1 has 17 words. The 6 missing words (καὶ ἐπίγνωσιν ἀληθείας τῆς κατ’ εὐσέβειαν) all come after the last stored word. All 11 stored words match the pin by word, occurrence and occurrences. One morph differs: ἐκλεκτῶν is stored `Gr,AR,,,,GMP,`, and the pin has `Gr,NS,,,,GMP,`. No write restamped `sourceVersion`. `splitAlignment` and `mergeAlignments` do not sort. The aligned export wove the stored record and never read the pin. So it wove a link to a source word that the pin does not hold. [VERIFIED — main 8fc5431, read and scratch probes on the cached UGNT v0.34 (revision fc95b2b8), 2026-10-19, issue #790]
+
+tC3 repaired this at load (wordAlignment ae083b8). A group that uses a source word the pin does not hold is removed with its links. A group that uses a source word of an earlier group is dropped. Each source word that no group holds gets a new single card. The cards are sorted by their first source position. tC3 flags the verse when the number of groups changes (`areAlignmentsEquivalent`). [VERIFIED — `gh api` contents at ae083b8, read, 2026-10-19]
+
+1. **One fit.** `fitSourceCards(record, sourceWords)` (`src/data/align/source.mjs`, plain Node like `review.mjs`) makes the cards of a record cover the pinned verse. The Align open, every Align write and the aligned export call it. So they flag the same records. The steps are in BURRITO-SPEC §5.1 "Source cards". In short:
+   - Each `topWords` word takes the first free place of its key (NFC word, occurrence, occurrences) in the pinned verse.
+   - A card commits its places only when every word finds one. A card that does not commit is dropped whole.
+   - Each pinned word with no card gets an empty card. The cards are sorted by their first place.
+   - The fit sets `invalid: true` when a card that held a link dropped. It also sets it when the record is `done` and the fit added or dropped a card.
+   - The fit changes no other field.
+
+   `sourceWords` is always an array. The open puts it on the session. A call without one throws. No library does this. word-aligner-lib 1.0.1 `updateAlignedWordsFromOriginalForVerse` removes one unmatched word and keeps the group. It deletes every card with no target word. It adds no card. [VERIFIED — `node_modules/word-aligner-lib/dist/index.cjs.js`, read] tC3's repair is a redux reducer over positions, so it cannot be imported.
+2. **Identity.** Two source words are the same word when their NFC `word`, `occurrence` and `occurrences` are equal. This is tC3's `isSameOccurrence`. strong, lemma and morph do not count. With morph in the key, ἐκλεκτῶν would lose its card. §5.1 stores no position. So tC3's second rule (the same text at the same position) has no tC4 form. A word whose `occurrences` changed drops.
+3. **The open.** `buildAlignmentSession` fits the stored record (or the bootstrap) to the pinned verse. Then it reconciles the record to the verse's words. The pinned verse's words come from `sourceWordsOf(objects)` in `src/state.jsx`. They are the cards that `bootstrapVerse`'s `unmerge` makes from the verse's objects alone. The session carries `sourceWords`. The open writes nothing (AC3). It costs one more `unmerge` of one verse. For the sample, the open shows 16 cards and 17 words. The stored Ἰησοῦ+Χριστοῦ group stays one card. So "one card for each word" (AC1) reads as one card for each word or word group.
+4. **The banner and the rail.** A flag sets `invalid: true` on the open record in memory and `stale` on the session. So the banner and the Mark valid gate show it. Every edit keeps the flag (D105 point 4). The first edit writes it. Mark valid clears it.
+   - A fit that only adds or drops empty cards flags a `done` record only. A `done` record with a new empty card breaks D73's rule that no source group is left without a target word. `done` stays as stored (tC3 clears `finished`).
+   - A record that is not `done` and only gains empty cards is not flagged. The sample opens with no banner. The tC3 import writes no `done`.
+   - The Align rail row of the open verse is `invalid` when the banner stands. `alignIndexItems` takes the open session's `{ ref, stale }`. The rail holds no original-language text, so the open is the only reader that sees the source side. The rail only gains red.
+5. **Writes.** `sourceVersion` names the original-language pin that Align last fitted the cards to. It is `@<sha>` when the pin has no `version` (D58). An Align edit and Mark valid fit the cards, so they stamp it.
+   - The edit pipeline is `stampSource(finalizeEdit(fitSourceCards(next, sourceWords).record, …), sourceVersion)`. Mark valid is `markedValidRecord`.
+   - A reflow and the original-language upgrade do not fit the cards, so they keep the stored value. The import keeps tC3's value.
+   - No reader decides review from `sourceVersion` (owner ruling 4). The tC3 import stamps `waOriginalLang` values such as `@master`. Yet 2,076 of 2,076 tC3 fixture verses (35,733 groups; TIT 46, LUK 1151, JHN 879) fit v0.34. No group that holds a link dropped. [VERIFIED — scratch probe of the three tC3 fixtures against the pinned UGNT v0.34, 2026-10-19]
+   - The edit fit is an accepted exception to the rule that the save path must not slow the aligner. It adds 0.025 ms to a 0.045 ms edit on the longest Genesis verse (median of 2000 interleaved runs, 29 source words). `test/align-bench.test.ts` asserts at most 0.25 ms.
+   - For a link, an unlink and a move, the session record is already fitted. So the fit returns the same cards. Only a split and a merge need it.
+6. **Order.** Every Align write and the open run the fit. So cards and `topWords` are in source order. The split and merge operations do not change. Take a tC3 group [κατὰ ἐκλεκτῶν] with [πίστιν] after it. After a split, the cards read κατὰ | πίστιν | ἐκλεκτῶν. After a merge with the next card, they read κατὰ+πίστιν+ἐκλεκτῶν. A merge can give two interleaved groups. The export weaves them with no skip. `unmerge` of the woven verse gives the same linked groups. This is not a defect (`test/align-source-cards.test.ts`, B4).
+7. **Key safety.** UGNT v0.34 has no duplicate key. In UHB v3.0.0, 2 of 23,145 verses and 12 of 22,216 adjacent pairs have a duplicate key (for example JON 4:6-7). There, `unmerge` counts the two Unicode forms of one word apart, and NFC makes them one key.
+   - A first-match map drops a good link at every open of such a verse.
+   - A per-card claim, in stored order, drops none. A card that holds both words keeps both.
+   - A card that fails commits nothing. So its other words stay free for their own cards.
+   - tC3 matched raw text, so it never met this case.
+
+   [VERIFIED — scratch probes over the cached zips (UHB revision 74022f0f) and `test/fixtures/hbo_uhb/JON.usfm`; `test/align-source-cards.test.ts` S5 and S7]
+8. **Spec and harness.** BURRITO-SPEC 1.28 adds the §5.1 bullets "Source cards" (a writer rule and a reader rule) and `sourceVersion`. It adds one sentence to the I-3 bullet. `conformance/validate.mjs` §4b adds H6 (source order) and H7 (a record covers the pinned verse). They read the fixture `conformance/fixtures/el-x-koine_ugnt/TIT-1-1.usfm` (UGNT v0.34, revision fc95b2b8, CC BY-SA 4.0 © unfoldingWord). The conformance suite becomes 59 checks, Stage-1 47. The journal suite (369) and the normative gate (105 rules) do not change.
+9. **The aligned export fits before it weaves** (owner ruling 1b). `USFM_ALIGNED` fits each record that vouches and holds a card before `weaveBook` (`alignSource` on `ExportInput`).
+   - It reads the pinned book once, and only when such a record exists. It reads it through `readPinnedSource`, which uses the pin, the frame and the mapper of the Align open.
+   - A link that drops flags the record `invalid`. So `weaveBook` leaves the verse out with the reason `needs-review` (D105 point 6). The file holds the stored text of that verse, and the existing notice names it. The export writes and stamps nothing.
+   - A temporary state throws a plain Error. The export then reports `export.read-failed` ("Try the export again"). The states are: the resource pins are still loading, or the versification data did not load (D30).
+   - A permanent state is **named, not failed** (ruling P1, option B). The states are: no pin, a pin whose text is not on this computer, a book that cannot be parsed, an unknown frame. Each fitted record then drops every card. Each verse that holds a link, or is `done`, is named and keeps its stored text. The rest of the book exports.
+   - Reachability. Align writes no record without a pin (`prepareAlignmentSource` returns `unpinned`). A project with no pins gets the installed suite when it opens (`pinCreationChoice`, #766). So `unpinned` after the pins load is not a real state for a book with records. It goes through the same path as a defence.
+   - The real case is a pin whose text is not on this computer. Pins are journal events (`resource.pin.set`), and a sync can leave pins that name a version this computer lacks. The sync result then counts them and offers Download (`missingPinsAfterSync`, #678). [VERIFIED — read; not run end to end] "Check them in Align" then leads to Align's existing "not on this computer" screen.
+
+Differences from tC3. No positions: the identity is the key. A per-card claim for a key that NFC doubles. A fit that only touches empty cards flags a `done` record only. `done` stays as stored at the open (tC3 clears `finished` on every repair). A `sourceVersion` fallback to the `sha`. A new meaning for `sourceVersion`. The export fits too.
+
+Timings [VERIFIED — `test/align-bench.test.ts`, `TC4_ALIGN_BENCH=1`, 2026-10-19]. Edit: `finalizeEdit` alone 0.045 ms, with the fit and the stamp 0.071 ms. Open, longest Genesis verse: `sourceWordsOf` 0.138 ms, fit 0.024 ms. Aligned export of Genesis with 1,533 linked records against UHB v3.0.0: parse 71 ms, source words 114 ms, fit 27 ms, 0 cards dropped. The weave of the same book takes about 4.3 s. The source read over HTTP and `mapReference` are not in these figures. An `eng` project makes no mapper call.
+
+Amends D105 point 4. At open and in the aligned export, the source fit's flag is one more input to review. The rail row of an unopened verse and the tool picker's Align count do not see it until the first Align save writes it.
+
+Known limits, accepted.
+- The rail row of an unopened verse and the picker's Align count judge the stored record (owner ruling 1a). Take a `done` record with a link to a source word that the pin does not hold (a tC3 import made against another UGNT version). It shows green there. Its row turns red, with the banner, while it is open. It stays red after the first save writes `invalid`. The export has no such limit.
+- A verse whose slot holds imported `\zaln-s` markup, and whose record's links all drop, leaves the export notice. The fitted record has no link, and `weaveBook` names an `inline-alignment` verse only when it has one. The file keeps that verse's imported markup either way. So no unchecked tC4 link leaves. A fix needs a second `decompose` of the book in the producer.
+- A verse that the mapper cannot map (`ok: false`) gets no source words. So each export names it while it holds a link. This holds also for an `eng` project whose draft holds a verse number that the pin lacks. Align shows `no-counterpart` or `missing` for it and gives no fix. Today such a tC3-imported record weaves.
+- The banner text `align.stale` says that the draft changed. That is false for a source-side flag, as it is today for an upgrade flag.
+- tC3 span records were not measured. `unmerge` counts occurrences again across a span. In TIT 1:3-4, τοῦ is 1 of 1 and 1 of 1 alone, and 1 of 2 and 2 of 2 as a span. So an imported span record can drop links at the open. The tC3 fixtures hold no span key.
+- The banner stays on until Mark valid, as for every other review reason.
+
+Where it lands: `src/data/align/source.mjs` (the fit, `sourceVersionOf`, `stampSource`); `src/state.jsx` (`buildAlignmentSession`, `openedRecord`, `sourceWordsOf`, `alignSessionAfterEdit`, `markedValidRecord`, `alignIndexItems`, `loadAlignIndex`, `readPinnedSource`, `parseSourceBook`, `verseObjectsIn`, `exportFile`); `src/data/export/kernel.ts` and `usfm.ts`; `docs/BURRITO-SPEC.md` §5.1, §7 and the I-3 bullet (version 1.28); `docs/ARCHITECTURE.md` (the `usfm.ts` row); `conformance/validate.mjs` §4b (H6 and H7) and `conformance/fixtures/el-x-koine_ugnt/`; `test/align-source-cards.test.ts`, `test/export/usfm.test.ts`, `test/align-bench.test.ts`, `e2e/j05-align-verse.spec.ts`, `e2e/j07-publish.spec.ts`.
+
+## D108 (2026-10-19, project-owner ruling) **The sync result names each verse whose alignment a teammate's newer version replaced. It is a notice: nothing merges automatically. Adds to D98 point 8 and amends R-8.7.12 (BURRITO-SPEC 1.26).** [owner ruling on #791, 2026-10-19: "name it in the sync result"; issue #791]
+
+Context. One `align.verse.set` event holds the whole alignment record of one verse. Two
+teammates who align the same verse from the same base make a fork. The fold keeps the newest
+record (D98 point 8, R-8.7.12). The placements of the other record leave the project, and the
+journal keeps them. Before this decision, the sync result counted the fork once ("N conflicts
+kept the newest version"). It named no verse and no teammate. `src/data/journal/verseConflicts.ts`
+lists only verse-text forks, so no review row appeared. [VERIFIED — scratch test through the
+real sync core on the team-sync fixture, main 2b08ed3, 2026-10-17, issue #791]
+
+1. **The result names the verse and the teammate.** After a sync, the result shows one notice
+   row for each alignment fork where a teammate's record is the newest and this computer's
+   actor wrote one of the other records. The row names the book, the chapter and verse, and
+   the teammate. The teammate shows as in the conflict review (D98 point 5).
+2. **A notice only.** The row has no button and no review link. Only a verse-text fork goes
+   to a person (R-8.7.12). The count "N conflicts kept the newest version" stays, and it
+   counts this fork too.
+3. **Each fork shows once.** A fork that the fold of this computer's own journal already had
+   is not named again at the next sync.
+4. **Three cases name nothing.** This computer's actor wrote the newest record. This
+   computer's actor wrote none of the records. The two records are equal, so the fold merges
+   them and there is no fork.
+5. **Nothing merges.** The sync keeps the newest record and does not combine placements. The
+   other record stays in the journal (R-8.1.15). Merging word by word and a review link for
+   an alignment fork are out of scope.
+
+Where it lands: `docs/BURRITO-SPEC.md` §8.7 (version 1.26: R-8.7.12 and the Report line);
+`journal/sync.mjs` (the `alignReplaced` fact of the sync Report); `src/views/SyncResult.jsx` and
+the string `syncResult.alignReplaced` in the ten catalogs; the `align-two-ways` case of
+`conformance/fixtures/team-sync/` and its JC-35 check.
+
+## D109 (2026-10-19, project-owner ruling) **Alignment words are NFC. The client builds source words in NFC. The journal seal writes saved alignment words in NFC. Amends R-8.5.9 (BURRITO-SPEC 1.25).** [owner ruling on #793, 2026-10-19: "NFC everywhere"; issue #793]
+
+Context. The Hebrew of hbo_uhb is not NFC: 304 of 688 Jonah words (44%). A verse that
+was never saved took its source words from the resource as they are. A saved verse
+holds NFC words, because the journal seal makes every content string NFC (I-4). The
+suggestion engine keys its memory by exact text. It trained on the saved NFC words
+and was asked about the fresh words. On Genesis 1 with 20 training verses, it gave
+about 12% fewer correct suggestions. [VERIFIED — scratch tests on hbo_uhb v3.0.0, main
+2b08ed3, 2026-10-17, issue #793]
+
+1. **The rule.** The `word` and `lemma` of `topWords`, `bottomWords` and `wordBank`
+   entries are content. Writers normalize them to NFC. They are not identity. The
+   identity of an alignment record is `book`, `chapter`, `verse` and
+   `targetVerseMd5`. R-8.5.13 does not change.
+2. **The seal.** The seal already normalizes alignment words. It does not change.
+3. **The client.** `bootstrapVerse` builds the source words in NFC (`word`, `lemma`,
+   `text` and `content`). `strong`, `morph` and the occurrence numbers do not change. A
+   verse that was never saved then holds the same spelling of a word as a saved
+   verse, and the suggestion memory finds it. [VERIFIED — `test/align-source-nfc.test.ts`
+   fails on main 9ad4d5c and passes with this change]
+4. **The harness.** JC-14f has one more row: an `align.verse.set` action with NFD
+   words seals to NFC words, and its identity fields do not change. No rule id is new.
+   The check counts do not change (BURRITO-SPEC §9).
+5. **Not in this change.** Target words and the word bank of a verse that was never
+   saved are the work of issue #796.
+
+Where it lands: `src/data/align/edit.ts`, `test/align-source-nfc.test.ts`,
+`docs/BURRITO-SPEC.md` (R-8.5.9, version 1.25), `conformance/validate-journal.mjs`.
+
+## D110 (2026-10-20, project-owner ruling) **An import with no `vrs.json` gives its project the `eng` scheme, until issue #822 detects the scheme from the content. Amends BURRITO-SPEC §4.3 (BURRITO-SPEC 1.29).** [owner ruling on #817, 2026-10-20: "amend §4.3 in #817"; issues #813, #822]
+
+Context. Every import makes its project with the create call, and the create call
+sends `versification: 'eng'` (`src/data/import/shell.ts`). The USFM and tC3 imports
+keep the `vrs.json` that the create writes. Before #813, a Scripture Burrito with no
+`ingredients/vrs.json` lost it, and every checkpoint after the first open was refused
+(R-8.7.4). #813 keeps it, as the other imports do. §4.3 said that a project whose
+scheme is not known MUST NOT be treated as `eng`, so all three imports broke that
+sentence. The review of #817 found this (finding by Frank, round 1 on `3911621e3`).
+
+1. **The rule.** An import of a USFM file, a tC3 project or a Scripture Burrito that
+   has no `ingredients/vrs.json` makes a project with the `eng` scheme. The scheme is
+   the import's choice, not a conclusion from the content. A burrito that has its own
+   `vrs.json` keeps it byte for byte.
+2. **Interim.** Issue #822 replaces this rule: the import detects the scheme from the
+   content and the user can change it.
+3. **The §4.3 sentence stays** for a reader: a project whose scheme the source ladder
+   cannot establish is `unknown`, not `eng`. An imported project has a scheme, so the
+   sentence does not apply to it.
+4. **The harness.** No conformance check covers this rule, and the `vrs.json` bytes are
+   a valid `eng` scheme. The check counts do not change (BURRITO-SPEC §9).
+5. **Not in this change.** A project imported before #813 has a journal with a book and
+   no frame. Its recovery is issue #821.
+
+Where it lands: `docs/BURRITO-SPEC.md` (§4.3, version 1.29), `src/data/import/shell.ts`
+(#813).

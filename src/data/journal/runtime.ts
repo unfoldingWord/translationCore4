@@ -315,6 +315,8 @@ export interface SyncFacts extends Record<string, unknown> {
   received: Record<string, number>;
   textConflicts: SyncTextConflict[];
   newestWins: Array<{ key: string; kind: string; winner: string }>;
+  /** each alignment fork where a teammate's record replaced this actor's (D108); `ref` is `chapter:verse` */
+  alignReplaced: Array<{ book: string; ref: string; actor: string }>;
   names: Record<string, string>;
 }
 /** The one validator the core reads: journal/files.mjs (Node) or ./seal (the app). */

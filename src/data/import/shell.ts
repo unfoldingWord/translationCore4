@@ -70,9 +70,13 @@ const relabel = (names: unknown, value: string): Record<string, string> => {
  * folder. Only `identification.name` and `identification.abbreviation` of
  * `metadata.json` change: they take the review page's name and the folder name
  * (#499, D92). Every other file keeps its bytes, and so does `metadata.json`
- * when both already match. */
-const archiveZip = (archive: Uint8Array, folder: string, name: string): Uint8Array => {
+ * when both already match. A Bible burrito with no `ingredients/vrs.json` keeps
+ * the one the create wrote (`createdVrs`): the first open seeds its frame from
+ * it (R-8.8.2), and the checkpoint needs that frame (R-8.7.4, #813). The first
+ * rescan, at that open, registers it in `metadata.json`. */
+const archiveZip = (archive: Uint8Array, folder: string, name: string, createdVrs: string | null): Uint8Array => {
   const files = { ...unwrapExport(archive).files };
+  if (createdVrs !== null && !files['ingredients/vrs.json']) files['ingredients/vrs.json'] = encoder.encode(createdVrs);
   const meta = JSON.parse(decoder.decode(files['metadata.json'])) as { identification?: Record<string, unknown> };
   const identification = (meta.identification ??= {});
   const named = { name: relabel(identification.name, name), abbreviation: relabel(identification.abbreviation, folder) };
@@ -202,7 +206,9 @@ async function importRecorded(
       throw error;
     }
     created = true;
-    const zip = bundle.archive ? archiveZip(bundle.archive, abbr, name) : await bundleZip(api, repoPath, bundle, edited, abbr);
+    const zip = bundle.archive
+      ? archiveZip(bundle.archive, abbr, name, bundle.kind === 'bible' ? await api.readIngredient(repoPath, 'vrs.json') : null)
+      : await bundleZip(api, repoPath, bundle, edited, abbr);
     await api.remakeBurritoFromZip(await api.uploadTempBytes(zip), repoPath);
     // Register the new books and their scope. Never for an archive (its
     // metadata.json stays as exported but its name, D92) or an OBS project (a rescan empties

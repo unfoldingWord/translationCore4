@@ -7,6 +7,7 @@
 // A file leaves only as a browser download: the renderer has no file-system
 // access, and Electron routes a download to the operating-system save dialog
 // [VERIFIED — scripts/desktop-main.cjs, 2026-09-22].
+import type { AlignedWord } from '../align/zaln';
 import type { BurritoStore, ProjectSummary, Story } from '../burritoStore';
 import { checkpointMessage } from '../checkpoint';
 import { Refusal, failedReport, okReport, type Report } from '../journal/runtime';
@@ -22,18 +23,33 @@ export type ExportProducer = {
 /** `storyPictures` (OBS projects, #360) gives one story's frame pictures as
  * Community Checking resolves them: picture address by frame number ("1" is
  * the first frame); a frame with no picture has no key. It gets the story as
- * the export already read it (#460). */
+ * the export already read it (#460).
+ * `alignSource` (Bible projects, #790, D107) reads the pinned original-language book once and
+ * resolves to the words of one verse by project-frame ref (`chapter:verse`). The aligned USFM
+ * calls it, only when a record needs fitting, to fit each stored record's source cards to the
+ * pinned verse before it weaves. A temporary state rejects with a plain Error; a permanent one
+ * gives `[]` for every ref. */
 export type ExportInput = {
   store: BurritoStore;
   project: ProjectSummary;
   book?: string;
   pageSetup?: PageSetup;
   storyPictures?: (number: number, story: Story) => Promise<Record<string, string>>;
+  alignSource?: () => Promise<(ref: string) => Promise<AlignedWord[]>>;
 };
-export type ExportFile = { bytes: Uint8Array; filename: string; mime: string };
+/** `skipped` (#796): the verses the file leaves out although the project holds an alignment of
+ * the translator's for them, as `chapter:verse` refs in book order. Only the aligned USFM sets
+ * it, and only when it is not empty. The producer gives the whole list. */
+export type ExportFile = { bytes: Uint8Array; filename: string; mime: string; skipped?: string[] };
 
-/** The facts of an ok export Report: which producer, the file name, its size in bytes. */
-export type ExportFacts = { producer: ExportProducer['id']; filename: string; bytes: number };
+/** The most `skipped` refs the stored facts keep. The ops log holds every Report, so the facts keep
+ * what the export menu shows and no more. */
+const SKIPPED_KEPT = 20;
+
+/** The facts of an ok export Report: which producer, the file name, its size in bytes, and (#796)
+ * when the file leaves out verses: `skipped`, the first 20 of them in book order, and
+ * `skippedTotal`, how many there are. Both are present only when there are some. */
+export type ExportFacts = { producer: ExportProducer['id']; filename: string; bytes: number; skipped?: string[]; skippedTotal?: number };
 
 /** The one file-name form of every export: `<subject>-<YYYY-MM-DD>.<ext>`, on
  * the translator's local date. */
@@ -89,6 +105,11 @@ async function exportRecorded(producer: ExportProducer, input: ExportInput): Pro
     if (error instanceof Refusal) return failedReport('export', startedAt, new Date().toISOString(), error, { producer: producer.id });
     return fail('export.read-failed', error);
   }
-  const facts: ExportFacts = { producer: producer.id, filename: file.filename, bytes: file.bytes.byteLength };
+  const facts: ExportFacts = {
+    producer: producer.id,
+    filename: file.filename,
+    bytes: file.bytes.byteLength,
+    ...(file.skipped?.length ? { skipped: file.skipped.slice(0, SKIPPED_KEPT), skippedTotal: file.skipped.length } : {}),
+  };
   return okReport('export', startedAt, new Date().toISOString(), facts);
 }

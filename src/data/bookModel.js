@@ -5,6 +5,8 @@
 import usfm from 'usfm-js';
 import { gapMarkerOf } from './usfm/splice';
 import { indexBook } from './usfm/indexer';
+import { bodyToEditorText } from './usfm/poemLines';
+import { tokenizeVerse, tokensText } from './sourceHighlight';
 
 export const parseChapters = (raw) => {
   // Display parse (whole-book: chapters + headers — PLATFORM-NOTES #4).
@@ -12,11 +14,10 @@ export const parseChapters = (raw) => {
   return json.chapters || {};
 };
 
-export const verseText = (vObj) =>
-  (vObj?.verseObjects || [])
-    .map((vo) => vo.text || vo.children?.map((c) => c.text || '').join('') || '')
-    .join('')
-    .trim();
+// #782: the walk is tokenizeVerse, which reads words at any `\zaln` depth. The
+// whitespace stays as the file has it (src/views/verseText.js collapses it for
+// the source panes), so a stored Check selection still matches its verse.
+export const verseText = (vObj) => tokensText(tokenizeVerse(vObj)).trim();
 
 export function buildChapterVerses(bookRaw, chapters, entries) {
   const byChapter = /** @type {Record<string, object[]>} */ ({});
@@ -26,8 +27,15 @@ export function buildChapterVerses(bookRaw, chapters, entries) {
     const body = bookRaw.slice(e.start, e.end).trim();
     const drafted = body !== '' && body !== '___';
     const sameCh = prev && prev.chapter === e.chapter;
-    const gap = sameCh ? bookRaw.slice(prev.end, e.start) : '';
-    const para = !sameCh || PARA_IN_GAP.test(gap);
+    // The gap ends at this verse's own `\v` (the last one before its body), as
+    // spliceVerseGap's does: for `\q1 \v 15` (#784) its last line is `\q1 `,
+    // the marker the section Save writes back.
+    const gap = sameCh ? bookRaw.slice(prev.end, bookRaw.lastIndexOf('\\v', e.start - 1)) : '';
+    // #786, #812: the verse before may hold poem lines and breaks, which are
+    // its body now; a verse after them starts a paragraph, as when they were
+    // the gap. Read from that verse's own `\v`: its first poem marker or break
+    // may sit before the body (`\v 2` / `\q1 But I …`).
+    const para = !sameCh || PARA_IN_GAP.test(bookRaw.slice(bookRaw.lastIndexOf('\\v', prev.start - 1), bookRaw.lastIndexOf('\\v', e.start - 1)));
     const format = sameCh ? gapMarkerOf(gap) : null;
     (byChapter[e.chapter] ||= []).push({
       n: e.verseKey,
@@ -35,7 +43,8 @@ export function buildChapterVerses(bookRaw, chapters, entries) {
       para,
       format,
       text: drafted ? verseText(chapters[e.chapter]?.[e.verseKey]) : '',
-      body: drafted ? body : '',
+      // #786: the editors' text, inner poem lines as leading tabs.
+      body: drafted ? bodyToEditorText(body) : '',
     });
     prev = e;
   }

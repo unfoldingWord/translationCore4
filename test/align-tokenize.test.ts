@@ -1,6 +1,6 @@
 // #255 — one tokenizer for alignment editing and the suggestion engine.
 //
-// The editor's word split (src/data/align/tokenize.ts, used by edit.ts) and the
+// The word split of src/data/align/tokenize.ts (the editor's, before #796) and the
 // suggestion engine's `wordmap-lexer` must split a verse into the SAME words
 // with the SAME occurrence numbers, or a suggestion lands on the wrong word
 // with no error (invariant I-2, word identity = text + occurrence). Every verse
@@ -11,7 +11,6 @@ import { describe, expect, it } from 'vitest';
 import Lexer from 'wordmap-lexer';
 import { usfmjs } from '../src/data/vendor';
 import { wordTokens } from '../src/data/align/tokenize';
-import { tokenizeTargetVerse } from '../src/data/align/edit';
 
 // Real node builtins via the runtime, NOT `import 'node:fs'` — the app's
 // vite-plugin-node-polyfills aliases node builtins to browser mocks (fs → null)
@@ -80,16 +79,5 @@ describe('#255 — the editor split and wordmap-lexer agree on every fixture ver
     expect(ours).toEqual(lexerWords(text));
     // The joiner stays inside its word; the old regex cut the word in two here.
     expect(ours.some((w) => w.text.includes('\u2060'))).toBe(true);
-  });
-});
-
-describe('#255 — tokenizeTargetVerse is built on the same split', () => {
-  it('the \\w tokens it emits are exactly the shared tokenizer\u2019s words with their occurrence data', () => {
-    for (const [, text] of CORPUS.flatMap(versesOf)) {
-      const emitted = [...tokenizeTargetVerse(text).matchAll(/\\w ([^|]+)\|x-occurrence="(\d+)" x-occurrences="(\d+)"\\w\*/g)].map(
-        (m) => ({ text: m[1], occurrence: Number(m[2]), occurrences: Number(m[3]) }),
-      );
-      expect(emitted).toEqual(ourWords(text));
-    }
   });
 });
