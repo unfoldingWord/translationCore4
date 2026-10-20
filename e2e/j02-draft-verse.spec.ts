@@ -1390,6 +1390,11 @@ test.describe('J2 — a translator drafts a verse', () => {
 
       // #812: a break, a `\ts\*` or a heading inside a verse, and a `\q3` line.
       const saOnDisk = () => fs.readFileSync(path.join(repo, 'ingredients', '1SA.usfm'));
+      // 1 Samuel 2:2 from its `\v 2 ` to the next `\v` (its body, and the lines after it).
+      const sa2Region = (t: string) => {
+        const span = verseTextSpan(t, 2, 2);
+        return t.slice(span.start, span.end);
+      };
       const openChapter = async (book: RegExp, chapter: string, mode: 'Verse' | 'Section') => {
         await page.goto('/');
         await card.getByRole('button', { name: book }).click();
@@ -1455,17 +1460,52 @@ test.describe('J2 — a translator drafts a verse', () => {
         const cut = lines.slice(0, lastBlank + 1).join('\n').length + 1;
         await editor.evaluate((el: HTMLTextAreaElement, [from, to]: number[]) => el.setSelectionRange(from, to), [cut, value.length]);
         await editor.press('Backspace');
-        await editor.blur();
+        // The card saves as the text changes; it stays open for Cancel below.
         await expect.poll(() => saOnDisk().toString('utf8'), { timeout: 30_000 }).not.toBe(before);
         const s = saOnDisk().toString('utf8');
-        const region = (t: string) => {
-          const span = verseTextSpan(t, 2, 2);
-          return t.slice(span.start, span.end);
-        };
-        seen.sa2v2AfterCut = { tsInVerseRegion: region(s).split('\\ts\\*').length - 1, tsBefore: region(before).split('\\ts\\*').length - 1 };
+        seen.sa2v2AfterCut = { tsInVerseRegion: sa2Region(s).split('\\ts\\*').length - 1, tsBefore: sa2Region(before).split('\\ts\\*').length - 1 };
         expect(seen.sa2v2AfterCut).toEqual({ tsInVerseRegion: 1, tsBefore: 1 });
-        expect(region(s)).not.toContain(lines[lastBlank + 1]);
+        expect(sa2Region(s)).not.toContain(lines[lastBlank + 1]);
         expect(s.split('\\ts\\*').length).toBe(before.split('\\ts\\*').length);
+        // Cancel puts the verse back as it opened, and takes the `\ts\*` written after it away.
+        await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+        await expect(editor).toHaveCount(0);
+        await expect.poll(() => saOnDisk().toString('utf8'), { timeout: 30_000 }).toBe(before);
+      });
+
+      // Bench review of PR #810 (Codex round 3): the same cut in Section mode lost
+      // the `\ts\*`, because the save trimmed the blank lines after the verse's last words.
+      await test.step('Section: the words after 1 Samuel 2:2\'s `\\ts\\*` deleted and saved, the `\\ts\\*` stays in the file once (#812)', async () => {
+        await openChapter(/1 Samuel/, '2', 'Section');
+        const before = saOnDisk().toString('utf8');
+        const buttons = page.getByRole('button', { name: /^Draft section / });
+        const names = await buttons.evaluateAll((els) => els.map((el) => el.getAttribute('aria-label') ?? el.textContent ?? ''));
+        const holds2 = names.findIndex((n) => {
+          const m = /(\d+)(?:[–-](\d+))?\s*$/.exec(n);
+          return !!m && Number(m[1]) <= 2 && 2 <= Number(m[2] ?? m[1]);
+        });
+        await buttons.nth(holds2).click();
+        const box = page.getByRole('textbox', { name: /^Section / });
+        const text = await box.inputValue();
+        // 2:2 runs from its "2 " line to the next verse line, or to the end when it is the
+        // section's last verse (the source groups 2:1-2); cut it after its last blank line.
+        const lines = text.split('\n');
+        const start2 = lines.findIndex((l) => /^\t*2 /.test(l));
+        const found3 = lines.findIndex((l, i) => i > start2 && /^\t*3 /.test(l));
+        const start3 = found3 === -1 ? lines.length : found3;
+        seen.sa2SectionLastVerse = found3 === -1;
+        const own = lines.slice(start2, start3);
+        const lastBlank = start2 + own.lastIndexOf('');
+        const cutText = [...lines.slice(0, lastBlank + 1), ...lines.slice(start3)].join('\n');
+        expect(cutText).not.toBe(text);
+        await box.fill(cutText);
+        await page.getByRole('button', { name: 'Save section' }).click();
+        await expect(page.getByTestId('section-editor')).toHaveCount(0);
+        await expect.poll(() => saOnDisk().toString('utf8'), { timeout: 30_000 }).not.toBe(before);
+        const s = saOnDisk().toString('utf8');
+        seen.sa2v2SectionCut = { tsInVerseRegion: sa2Region(s).split('\\ts\\*').length - 1, tsInBook: s.split('\\ts\\*').length - 1, tsInBookBefore: before.split('\\ts\\*').length - 1 };
+        expect(seen.sa2v2SectionCut).toEqual({ tsInVerseRegion: 1, tsInBook: before.split('\\ts\\*').length - 1, tsInBookBefore: before.split('\\ts\\*').length - 1 });
+        expect(byteStrictViolation(Buffer.from(before), Buffer.from(s), 2, 2)).toBeNull();
       });
 
       await test.step('Verse: Psalm 9:15 shows its `\\q3` line with three tabs, and Cancel changes nothing (#812)', async () => {

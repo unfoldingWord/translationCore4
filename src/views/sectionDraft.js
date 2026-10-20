@@ -244,17 +244,31 @@ export const sectionVerses = (words, seps, markers, pins, keys = pins, blocks = 
     buf[cur] = before + tabs + w + (seps[i] ?? '');
   });
   const out = {};
-  for (const g of groups) {
-    let t = (buf[g.key] ?? '').trim();
+  groups.forEach((g, gi) => {
+    const next = groups.slice(gi + 1).find((x) => x.at !== undefined);
+    let t = ownText(buf[g.key] ?? '', next !== undefined, next !== undefined && blocks?.[next.at] === 'p');
     // #575 (D94): verses joined into a span are one paragraph. A blank line
     // inside it (the `\p` between the joined verses) becomes one space, so the
     // stored span has no bare blank line. A single line break stays as typed.
     // A span the book already has keeps its blank lines: they are its own
     // breaks (#812, en_ust 1SA 17:50-51 holds a `\p`), not a join made now.
-    if (g.members.length > 1 && !keys.includes(g.key)) t = t.replace(/[ \t]*\n(?:[ \t]*\n)+[ \t]*/g, ' ');
-    if (t) out[g.key] = t;
-  }
+    if (g.members.length > 1 && !keys.includes(g.key)) t = t.trim().replace(/[ \t]*\n(?:[ \t]*\n)+[ \t]*/g, ' ');
+    if (t.trim()) out[g.key] = t;
+  });
   return out;
+};
+
+/** A verse's own text from its words and separators: no space before it, and
+ * after its last words the blank lines that are its own (#812, review of PR
+ * #810). Its line end, when a verse line follows (`hasNext`), is not one of
+ * them, and neither is the blank line that gives that verse its `\p`
+ * (`nextIsP`). A verse's own blank lines left after its last words keep the
+ * breaks they stand for (a `\ts\*`): the save writes them right after the
+ * verse (poemLines.ts `editorTextToVerse`). */
+const ownText = (text, hasNext, nextIsP) => {
+  const end = /\s*$/.exec(text)[0];
+  const blanks = (end.match(/\n/g) ?? []).length - (hasNext ? 1 : 0) - (nextIsP ? 1 : 0);
+  return text.slice(0, text.length - end.length).replace(/^\s+/, '') + '\n'.repeat(Math.max(0, blanks));
 };
 
 /** Write the pinned word list back out as Type-mode text, one verse per line (#54). */

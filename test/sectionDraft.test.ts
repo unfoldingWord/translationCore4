@@ -440,11 +440,12 @@ describe('#812 — a verse opened in the section editor and saved with no change
     }
   });
 
+  // Each package skips on its own, so an en_ult-only rig (CI) still runs en_ult.
   const rig = path.resolve(process.cwd(), 'dev-env/state/work/repos/_local_/_sideloaded_');
-  it.skipIf(!fs.existsSync(path.join(rig, 'en_ust/ingredients/1SA.usfm')))('every verse of the rig\'s en_ult and en_ust (rig required)', async () => {
-    for (const pkg of ['en_ult', 'en_ust']) {
-      const dir = path.join(rig, pkg, 'ingredients');
+  for (const pkg of ['en_ult', 'en_ust']) {
+    const dir = path.join(rig, pkg, 'ingredients');
+    it.skipIf(!fs.existsSync(dir))(`every verse of the rig's ${pkg} (rig required)`, async () => {
       for (const f of fs.readdirSync(dir).filter((x: string) => x.endsWith('.usfm'))) await check(`${pkg}/${f}`, fs.readFileSync(path.join(dir, f), 'utf8'));
-    }
-  }, 600_000);
+    }, 600_000);
+  }
 });

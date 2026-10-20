@@ -20,7 +20,8 @@ export const bodyToEditorText = (body: string): string =>
     .map((line, i) => {
       if (i === 0) return line;
       const kind = lineKind(line);
-      if (kind === 'poem') return TABS[/^\\q(\d?)/.exec(line)![1]] + line.slice(line.indexOf(' ') + 1);
+      // lineKind reads the tag case-blind (`\Q2 …`): so does this, with one tab at worst.
+      if (kind === 'poem') return (TABS[/^\\q(\d?)/i.exec(line)?.[1] ?? ''] ?? '\t') + line.slice(line.indexOf(' ') + 1);
       return kind === 'break' || kind === 'blank' ? '' : line;
     })
     .join('\n');

@@ -70,6 +70,10 @@ describe('#786 poem lines: body <-> editor text', () => {
   it('a bare \\q shows as one tab, like \\q1', () => {
     expect(bodyToEditorText('a\n\\q b')).toBe('a\n\tb');
   });
+
+  it('an upper-case poem marker (`\\Q2 …`, which the index reads as poem) shows with its tabs, and opening it does not throw', () => {
+    expect(bodyToEditorText('a\n\\Q2 b')).toBe('a\n\t\tb');
+  });
 });
 
 describe('#812 breaks, headings and \\q3 inside a verse', () => {
