@@ -2843,6 +2843,10 @@ so the first release can still hold these features.
    The ruleset "release branches" applies unchanged: one approval, the `verify` check, no
    force push, no delete. This is one exception to "fixes only" (`docs/PACKAGING.md`,
    "Release branches"). After it, the cherry-pick rule applies again.
+   [amended 2026-10-20 — owner confirmation on pull request #819: rc.2 takes all of `main`
+   at `b1d1f37`, by pull requests #819 and #826. This is a second exception to "fixes only".
+   It brings in D105 to D110 and BURRITO-SPEC 1.25 to 1.29. After this cut, only
+   cherry-picked fixes enter again.]
 3. **The release path.** There is no rc.2 and no rc.3. After the re-cut, v4.0.0 tags on
    `release/4.0` from a signed manual build (#456, closed 2026-10-15). After the re-cut, only
    cherry-picked fixes enter. The date of 2026-10-16 moves to the day the gates are green
