@@ -1293,6 +1293,73 @@ test.describe('J5 — a translator aligns a verse', () => {
     },
   );
 
+  // #820 (D106 point 2): a replace of one copy of a repeated word. Save 1 makes 1:1 "Dios Dios":
+  // the two linked Dios keep their links (Θεοῦ/1 on the first, Θεοῦ/2 on the second), and nothing
+  // flags, because only one LCS keeps both. Save 2 makes it "Dios Pablo": either Dios can be the one
+  // that is left, so the text cannot show which link is right, and the verse is flagged. Align shows
+  // the banner and the red rail row until Mark valid.
+  test(
+    'a Translate replace of one copy of a repeated linked word flags the verse until Mark valid (#820)',
+    { tag: ['@inc9', '@J5'] },
+    async ({ page }, testInfo) => {
+      test.setTimeout(120_000);
+      writePinsWithOriginal();
+      const artifact: Record<string, unknown> = { start: state11() };
+
+      await page.goto('/');
+      await page
+        .getByTestId(`project-_local_/_local_/${SEEDED_PROJECT}`)
+        .getByRole('button', { name: /Titus/ })
+        .click();
+      await page.getByRole('tab', { name: 'Translate', exact: true }).click();
+      await page.getByRole('tab', { name: 'Verse', exact: true }).click();
+      const editor = page.getByRole('textbox', { name: 'Verse 1', exact: true });
+      const saved = page.getByTestId('save-indicator');
+
+      // Save 1: "Dios Dios". The other linked words go with their links; each Dios keeps its own.
+      await page.getByTitle('Edit this verse').filter({ hasText: 'Pablo, siervo de Dios' }).first().click();
+      await editor.fill('Dios Dios');
+      await editor.blur();
+      await expect(saved).toHaveAttribute('data-state', 'saved', { timeout: 15_000 });
+      await expect.poll(() => theta(record11(), 1), { timeout: 15_000 }).toEqual(['Dios/1/2']);
+      expect(theta(record11(), 2)).toEqual(['Dios/2/2']);
+      expect(record11().invalid).toBe(false);
+      artifact.afterDiosDios = state11();
+
+      // Save 2: "Dios Pablo". The first link stays on the one Dios, the second goes, and the verse is flagged.
+      await page.getByTitle('Edit this verse').filter({ hasText: 'Dios Dios' }).first().click();
+      await editor.fill('Dios Pablo');
+      await editor.blur();
+      await expect(saved).toHaveAttribute('data-state', 'saved', { timeout: 15_000 });
+      await expect.poll(() => theta(record11(), 2), { timeout: 15_000 }).toEqual([]);
+      expect(theta(record11(), 1)).toEqual(['Dios/1/1']);
+      expect(record11().invalid).toBe(true);
+      artifact.afterReplace = state11();
+
+      // In Align at 1:1: the banner and the red rail row, until Mark valid.
+      await page.getByRole('tab', { name: 'Check', exact: true }).click();
+      const tool = page.getByTestId('open-align');
+      const session = page.getByTestId('align-session');
+      await expect(tool.or(session)).toBeVisible();
+      if (await tool.isVisible()) await tool.click();
+      await expect(session).toBeVisible();
+      const row11 = page.getByTestId('align-verse-list').locator('button[data-ref="1:1"]');
+      await row11.click();
+      await expect(row11).toHaveAttribute('data-selected', 'true');
+      await expect(page.getByTestId('align-stale')).toBeVisible();
+      await expect(row11).toHaveAttribute('data-status', 'invalid');
+      await page.getByTestId('align-mark-valid').click();
+      await expect.poll(() => record11().invalid, { timeout: 10_000 }).toBe(false);
+      await expect(page.getByTestId('align-stale')).toHaveCount(0);
+      expect(theta(record11(), 1)).toEqual(['Dios/1/1']);
+      artifact.afterMarkValid = state11();
+
+      const artifactPath = testInfo.outputPath('j05-repeated-word-replace.json');
+      fs.writeFileSync(artifactPath, `${JSON.stringify(artifact, null, 2)}\n`);
+      await testInfo.attach('j05-repeated-word-replace.json', { path: artifactPath, contentType: 'application/json' });
+    },
+  );
+
   // #789 (D106, AC6): a Section save takes the same rule as a verse blur. The card that starts
   // at verse 1 is edited in Type mode (no verse number moves), so the keys do not change and
   // the save goes through the verse path of `saveSection`, one reflow for the changed verses.
