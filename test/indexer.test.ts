@@ -324,14 +324,15 @@ describe('#786/#812 — every verse body holds all the words of its verse', () =
   });
 
   // The same over every book of the rig's en_ult and en_ust (rig required:
-  // the books are the rig's sideloaded copies, not in this repository).
+  // the books are the rig's sideloaded copies, not in this repository). The CI
+  // rig sideloads en_ult only, so each package skips on its own.
   const rigBooks = path.resolve(process.cwd(), 'dev-env/state/work/repos/_local_/_sideloaded_');
-  it.skipIf(!fs.existsSync(path.join(rigBooks, 'en_ult/ingredients/GEN.usfm')))('every verse of the rig\'s en_ult and en_ust (rig required)', async () => {
-    for (const pkg of ['en_ult', 'en_ust']) {
-      const dir = path.join(rigBooks, pkg, 'ingredients');
+  for (const pkg of ['en_ult', 'en_ust']) {
+    const dir = path.join(rigBooks, pkg, 'ingredients');
+    it.skipIf(!fs.existsSync(dir))(`every verse of the rig's ${pkg} (rig required)`, async () => {
       for (const f of fs.readdirSync(dir).filter((x: string) => x.endsWith('.usfm'))) await check(`${pkg}/${f}`, fs.readFileSync(path.join(dir, f), 'utf8'));
-    }
-  }, 600_000);
+    }, 600_000);
+  }
 });
 
 describe('partial-book files are legal (property 5, D26)', () => {
