@@ -3125,3 +3125,30 @@ about 12% fewer correct suggestions. [VERIFIED — scratch tests on hbo_uhb v3.0
 
 Where it lands: `src/data/align/edit.ts`, `test/align-source-nfc.test.ts`,
 `docs/BURRITO-SPEC.md` (R-8.5.9, version 1.25), `conformance/validate-journal.mjs`.
+
+## D110 (2026-10-20, project-owner ruling) **An import with no `vrs.json` gives its project the `eng` scheme, until issue #822 detects the scheme from the content. Amends BURRITO-SPEC §4.3 (BURRITO-SPEC 1.29).** [owner ruling on #817, 2026-10-20: "amend §4.3 in #817"; issues #813, #822]
+
+Context. Every import makes its project with the create call, and the create call
+sends `versification: 'eng'` (`src/data/import/shell.ts`). The USFM and tC3 imports
+keep the `vrs.json` that the create writes. Before #813, a Scripture Burrito with no
+`ingredients/vrs.json` lost it, and every checkpoint after the first open was refused
+(R-8.7.4). #813 keeps it, as the other imports do. §4.3 said that a project whose
+scheme is not known MUST NOT be treated as `eng`, so all three imports broke that
+sentence. The review of #817 found this (finding by Frank, round 1 on `3911621e3`).
+
+1. **The rule.** An import of a USFM file, a tC3 project or a Scripture Burrito that
+   has no `ingredients/vrs.json` makes a project with the `eng` scheme. The scheme is
+   the import's choice, not a conclusion from the content. A burrito that has its own
+   `vrs.json` keeps it byte for byte.
+2. **Interim.** Issue #822 replaces this rule: the import detects the scheme from the
+   content and the user can change it.
+3. **The §4.3 sentence stays** for a reader: a project whose scheme the source ladder
+   cannot establish is `unknown`, not `eng`. An imported project has a scheme, so the
+   sentence does not apply to it.
+4. **The harness.** No conformance check covers this rule, and the `vrs.json` bytes are
+   a valid `eng` scheme. The check counts do not change (BURRITO-SPEC §9).
+5. **Not in this change.** A project imported before #813 has a journal with a book and
+   no frame. Its recovery is issue #821.
+
+Where it lands: `docs/BURRITO-SPEC.md` (§4.3, version 1.29), `src/data/import/shell.ts`
+(#813).

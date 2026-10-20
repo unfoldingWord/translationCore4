@@ -13,7 +13,8 @@ import { ServerApi } from '../src/data/serverApi';
 import { JournalingStore, forgetProjectQueues } from '../src/data/journal/journalingStore';
 import { forgetSharedClocks } from '../src/data/journal/journalStore';
 import { journalingRig, memKv, tickingNow } from './helpers/journalingRig';
-import { assertNoRepoCreated, readManifest, resolveTc3ForTests, runManifest, seedEventsOf } from './helpers/import';
+import { unzipSync } from 'fflate';
+import { assertNoRepoCreated, fixtureFile, readManifest, resolveTc3ForTests, runManifest, seedEventsOf } from './helpers/import';
 
 const usfm = (code: string, name: string) => ['\\id ' + code + ' fake', '\\usfm 3.0', `\\h ${name}`, '\\mt ' + name, '\\c 1', '\\p', '\\v 1 Uno.', '\\v 2 Dos.', ''].join('\n');
 const file = (name: string, text: string): ImportFile => ({ name, bytes: new TextEncoder().encode(text) });
@@ -81,6 +82,28 @@ describe('#361 runImport', () => {
     expect(report).toMatchObject({ ok: false, code: 'import.name-exists' });
     expect(rig.repos.get('_local_/_local_/fake_import')?.commits).toEqual(commits);
     expect(rig.log.some((r) => r.route.startsWith('/api/git/delete/'))).toBe(false);
+  });
+
+  it('#813 a burrito with no vrs.json keeps the created one: the first open seeds its frame and the checkpoint commits', async () => {
+    const { rig, deps, store } = setup();
+    const report = await runImport(BURRITO_PARSER, [fixtureFile('burrito/foreign', 'es-419_foreign')], { name: 'Jonás ajeno' }, deps);
+    expect(report.ok).toBe(true);
+    const repoPath = String(report.facts.repoPath);
+    const created = rig.repos.get(repoPath)!;
+    expect(created.files.has('vrs.json')).toBe(true);
+    await store.open(repoPath);
+    expect(seedEventsOf(created.files).map((e) => e.op)).toContain('project.vrs.set');
+    await store.commit('Checkpoint (test)');
+    expect(created.commits.at(-1)).toBe('Checkpoint (test)');
+  });
+
+  it('#813 a burrito that carries its own vrs.json keeps it byte for byte', async () => {
+    const { rig, deps } = setup();
+    const archive = fixtureFile('burrito/tc4-export.zip');
+    const own = Object.entries(unzipSync(archive.bytes)).find(([name]) => name.endsWith('ingredients/vrs.json'))![1];
+    const report = await runImport(BURRITO_PARSER, [archive], { name: 'Exportación tC4' }, deps);
+    expect(report.ok).toBe(true);
+    expect(rig.repos.get(String(report.facts.repoPath))!.files.get('vrs.json')).toBe(new TextDecoder().decode(own));
   });
 
   it('the fixture manifest: every entry has its outcome', async () => {
