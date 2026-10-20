@@ -17,6 +17,7 @@ import addFormats from 'ajv-formats';
 import { checkBurrito, compileSbValidator } from '../src/data/import/burritoCheck.mjs';
 import { captureDownload } from './helpers/export';
 import { importFixture } from './helpers/import';
+import { verifyAllJournaledProjects } from './helpers/journal';
 import { pickOption } from './helpers/dropdown';
 import { assertNoRepoCreated, MANIFEST_DIR, readManifest, seedEventsOf, TC3_DCS_TAGS } from '../test/helpers/import';
 import { SEEDED_PROJECT, lastCommitMessage, readDecisionFile, readProjectPins, rigRepo, sideloadedIngredient } from './helpers/rig';
@@ -817,6 +818,18 @@ test.describe('J9 — a facilitator imports existing work', () => {
       await expectCreationPins(page, abbr);
       await expect(page.getByTestId('home-open-error')).toHaveCount(0);
       await shot(page, testInfo, 'burrito-import-source-panes');
+      // #813: the import kept the created vrs.json, so the mode change commits a checkpoint
+      expect(fs.existsSync(path.join(rigRepo(abbr), 'ingredients', 'vrs.json'))).toBe(true);
+      await page.getByRole('tab', { name: 'Check', exact: true }).click();
+      await expect.poll(() => lastCommitMessage(abbr), { timeout: 30_000 }).toMatch(/^Checkpoint, leaving /);
+      await expect(page.getByTestId('save-indicator')).toHaveText('Saved');
+      await shot(page, testInfo, 'burrito-import-checkpoint-saved');
     });
   });
+});
+
+// Issue #62 teardown, as J12's: every journaled local project this journey made
+// is a verified materialization of its journal (#813).
+test.afterAll(async () => {
+  await verifyAllJournaledProjects();
 });
