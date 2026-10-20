@@ -328,3 +328,124 @@ describe('#54 — paragraph breaks and poetry lines from Type pane', () => {
   });
 });
 
+
+// #786: a verse body holds its inner poem lines as tab lines (one tab \q1, two
+// \q2, src/data/usfm/poemLines.ts). The ways this can fail, written before the fix:
+//   1. Type mode drops the tabs of an inner line: the save turns the poem line
+//      into a plain line break, and the \q marker is gone.
+//   2. An inner line that starts with a verse number of the section is read as
+//      that verse's start.
+//   3. Place mode, or a switch back to Type, loses the inner tabs.
+describe('#786 — the inner poem lines of a verse in the section editor', () => {
+  const verses = [
+    { n: '9', drafted: true, body: 'a\n\t\tbetween you\n\tand between' },
+    { n: '10', drafted: true, body: 'b', format: 'q1' },
+  ];
+
+  it('the card opens with the inner lines under the verse, tabs kept (way 1)', () => {
+    expect(initialDraftText(verses, KEYS)).toBe('9 a\n\t\tbetween you\n\tand between\n\t10 b');
+  });
+
+  it('the save gets each verse with its inner tab lines (way 1)', () => {
+    const d = parseDraft(initialDraftText(verses, KEYS), KEYS);
+    expect(sectionVerses(d.words, d.seps, d.markers, KEYS, KEYS, d.blocks)).toEqual({ 9: 'a\n\t\tbetween you\n\tand between', 10: 'b' });
+  });
+
+  it('an inner line that starts with a verse number stays in its verse (way 2)', () => {
+    const text = initialDraftText([{ n: '9', drafted: true, body: 'a\n\t\t10 talentos' }, { n: '10', drafted: true, body: 'b' }], KEYS);
+    const d = parseDraft(text, KEYS);
+    expect(sectionVerses(d.words, d.seps, d.markers, KEYS, KEYS, d.blocks)).toEqual({ 9: 'a\n\t\t10 talentos', 10: 'b' });
+  });
+
+  it('Type to Place and back keeps the inner tabs (way 3)', () => {
+    const text = initialDraftText(verses, KEYS);
+    const d = parseDraft(text, KEYS);
+    expect(serializeDraft(d.words, d.seps, d.markers, KEYS, KEYS, d.blocks)).toBe(text);
+  });
+
+  // Review of PR #810: a space typed after the tabs went into the separator
+  // before the line, so the tabs no longer started it and the save wrote them
+  // into the file as text, with no \q2.
+  it('a space typed after the tabs: the line still starts with its tabs', () => {
+    const d = parseDraft('9 a\n\t\t between you\n\t10 b', KEYS);
+    expect(sectionVerses(d.words, d.seps, d.markers, KEYS, KEYS, d.blocks)).toEqual({ 9: 'a\n\t\tbetween you', 10: 'b' });
+  });
+});
+
+// #812: a verse body can also hold blank lines (its breaks), raw heading lines
+// and \q3 lines (three tabs). The ways this can fail, written before the fix:
+//   1. A blank line inside a verse is lost, or read as the next verse's \p.
+//   2. A \q3 line comes back with two tabs.
+//   3. Tab cannot give a line three tabs, or gives a verse line three, which
+//      its format cannot hold (\p, \q1 and \q2 only).
+describe('#812 — breaks, headings and \\q3 lines of a verse in the section editor', () => {
+  const verses = [
+    { n: '9', drafted: true, body: 'a\n\nafter the break\n\\s1 A heading\n\t\t\tdeeper' },
+    { n: '10', drafted: true, body: 'b', format: 'p' },
+  ];
+
+  it('the card opens with them, and the save gets each verse back as it was (ways 1, 2)', () => {
+    const text = initialDraftText(verses, KEYS);
+    expect(text).toBe('9 a\n\nafter the break\n\\s1 A heading\n\t\t\tdeeper\n\n10 b');
+    const d = parseDraft(text, KEYS);
+    expect(sectionVerses(d.words, d.seps, d.markers, KEYS, KEYS, d.blocks)).toEqual({ 9: 'a\n\nafter the break\n\\s1 A heading\n\t\t\tdeeper', 10: 'b' });
+    expect(serializeDraft(d.words, d.seps, d.markers, KEYS, KEYS, d.blocks)).toBe(text);
+  });
+
+  it('Tab gives a line inside a verse up to three tabs, and a verse line up to two (way 3)', () => {
+    expect(indentLine('9 a\n\t\tb', 7, 1, KEYS).text).toBe('9 a\n\t\t\tb');
+    expect(indentLine('9 a\n\t\t10 b', 7, 1, KEYS).text).toBe('9 a\n\t\t10 b');
+  });
+
+  // Review of PR #810: the #575 rule (a blank line between verses joined into a
+  // span becomes a space) met a span the book already had, with a break inside
+  // it (en_ust 1SA 17:50-51): a save with no change deleted that break.
+  it('a span the book already has keeps its inner blank line; a span made now joins its verses', () => {
+    const span = initialDraftText([{ n: '9-10', drafted: true, body: 'a\n\nb' }], ['9', '10']);
+    const d = parseDraft(span, ['9', '10']);
+    expect(sectionVerses(d.words, d.seps, d.markers, ['9', '10'], ['9-10'], d.blocks)).toEqual({ '9-10': 'a\n\nb' });
+    const joined = parseDraft('9-10 a\n\nb', KEYS);
+    expect(sectionVerses(joined.words, joined.seps, joined.markers, KEYS, KEYS, joined.blocks)).toEqual({ '9-10': 'a b' });
+  });
+});
+
+// Review of PR #810: open each verse alone in the section editor and save it with
+// no change. The save must get back the editor text the verse opened with, or it
+// writes the verse (and, for a span, its breaks were lost). Over the fixtures in
+// CI, and over every verse of the rig's en_ult and en_ust where the rig is present.
+describe('#812 — a verse opened in the section editor and saved with no change is not written', () => {
+  const fs = process.getBuiltinModule('node:fs');
+  const path = process.getBuiltinModule('node:path');
+  const check = async (label: string, raw: string) => {
+    const { indexBook } = await import('../src/data/usfm/indexer');
+    const { bodyToEditorText } = await import('../src/data/usfm/poemLines');
+    const changed: string[] = [];
+    for (const e of indexBook(raw)) {
+      const body = raw.slice(e.start, e.end).trim();
+      if (body === '' || body === '___') continue;
+      const keys = [e.verseKey];
+      const pins = expandKeys(keys);
+      const text = bodyToEditorText(body);
+      const d = parseDraft(initialDraftText([{ n: e.verseKey, drafted: true, body: text }], pins), pins);
+      const saved = (sectionVerses(d.words, d.seps, d.markers, pins, keys, d.blocks) as Record<string, string>)[e.verseKey] ?? '';
+      if (saved !== text.trim()) changed.push(`${label} ${e.chapter}:${e.verseKey}`);
+    }
+    expect(changed).toEqual([]);
+  };
+  const read = (rel: string) => fs.readFileSync(path.resolve(process.cwd(), rel), 'utf8');
+
+  it('every verse of the fixtures', async () => {
+    for (const f of ['en_ult/GEN-773', 'en_ult/PSA-3', 'en_ult/1SA-2-812', 'en_ult/REV-7-812', 'en_ult/PSA-9-812', 'en_ult/MAT-27-812', 'en_ust/GEN-29-812', 'sample-burrito/JON']) {
+      await check(f, read(`test/fixtures/${f}.usfm`));
+    }
+  });
+
+  // Each package skips on its own, so an en_ult-only rig (CI) still runs en_ult.
+  const rig = path.resolve(process.cwd(), 'dev-env/state/work/repos/_local_/_sideloaded_');
+  for (const pkg of ['en_ult', 'en_ust']) {
+    const dir = path.join(rig, pkg, 'ingredients');
+    it.skipIf(!fs.existsSync(dir))(`every verse of the rig's ${pkg} (rig required)`, async () => {
+      for (const f of fs.readdirSync(dir).filter((x: string) => x.endsWith('.usfm'))) await check(`${pkg}/${f}`, fs.readFileSync(path.join(dir, f), 'utf8'));
+    }, 600_000);
+  }
+});
