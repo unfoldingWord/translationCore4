@@ -157,8 +157,10 @@ describe('#796 B3 (e) a word is written once', () => {
 
 // #796 review fix: "missing" is decided on the body the rail tests, not on the slot.
 // A slot runs to the next \v or \c, so it keeps a trailing \p, \s5, \q2 or \s line;
-// `indexBook` stops the body at those markers. Books that keep paragraph or chunk
-// markers between verses (imported books) have this shape.
+// `indexBook` leaves a break or a heading after the verse's last words outside the
+// body (since #812 a poem line or a break with verse text after it belongs to it).
+// Books that keep paragraph or chunk markers between verses (imported books) have
+// this shape.
 describe('#796 a stub or empty verse is "missing" when a paragraph marker follows it', () => {
   const followed = (marker: string) => `\\id TIT\n\\c 1\n\\p\n\\v 1 ___\n${marker}\n\\v 2 Hola\n`;
   it.each(['\\p', '\\s5', '\\q2', '\\s Encabezado'])('a "___" stub followed by %s', async (marker) => {
@@ -173,15 +175,24 @@ describe('#796 a stub or empty verse is "missing" when a paragraph marker follow
   });
 
   // A marker line that HOLDS words keeps the slot's word list non-empty, so the words
-  // check cannot decide these: only the drafted body (nothing, or a stub) does.
+  // check cannot decide these: only the drafted body (nothing, or a stub) does. A
+  // heading after the verse's last words is outside the body (#812): the verse is a stub.
+  it('a "___" stub followed by a \\qa line that holds a word', async () => {
+    const s = await open('\\id TIT\n\\c 1\n\\p\n\\v 1 ___\n\\qa Alef\n\\v 2 Hola\n');
+    expect(s.unavailable).toBe('missing');
+    expect(s.record).toBeUndefined();
+  });
+
+  // #786/#812: a \q2 line with a word, before the next \v, is the verse's own poem
+  // line. The body holds it, as the export's word list does: the verse opens with
+  // that word, and the "___" stub is no word of it.
   it.each([
     ['a "___" stub followed by a \\q2 line that holds a word', '\\v 1 ___\n\\q2 palabras\n\\v 2 Hola'],
     ['a blank verse followed by a \\q2 line that holds a word', '\\v 1 \n\\q2 palabras\n\\v 2 Hola'],
-    ['a "___" stub followed by a \\qa line that holds a word', '\\v 1 ___\n\\qa Alef\n\\v 2 Hola'],
-  ])('%s', async (_name, verses) => {
+  ])('%s opens with that word', async (_name, verses) => {
     const s = await open(`\\id TIT\n\\c 1\n\\p\n${verses}\n`);
-    expect(s.unavailable).toBe('missing');
-    expect(s.record).toBeUndefined();
+    expect(s.unavailable).toBeUndefined();
+    expect(bankOf(s)).toEqual(['palabras 1/1']);
   });
 
   it('a verse that holds only a footnote has no word to align', async () => {

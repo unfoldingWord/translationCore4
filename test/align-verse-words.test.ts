@@ -69,8 +69,9 @@ describe('#796 B1 verseWords equals the export word list', () => {
       expect(misses(list), `${rel} as stored`).toEqual([]);
       expect(misses(list.map(([ref, slot]) => [ref, plain(slot)])), `${rel} in plain form`).toEqual([]);
     }
-    expect(FIXTURES.length).toBe(14);
-    expect(slots).toBe(421);
+    // #812 added four en_ult extracts (1SA-2, MAT-27, PSA-9, REV-7).
+    expect(FIXTURES.length).toBe(18);
+    expect(slots).toBe(431);
   }, 60_000); // the library oracle is slow on purpose: about 1 s alone, more than 5 s when the whole suite runs in parallel
 
   /** One verse slot per marker shape, with the words the export counts in it. */
