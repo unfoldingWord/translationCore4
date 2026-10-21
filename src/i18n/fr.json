@@ -52,7 +52,7 @@
   "language.cancel": "Annuler",
   "language.saveFailed": "La langue de l’application n’a pas pu être enregistrée. Réessayez.",
   "about.version": "Version",
-  "about.licenseName": "Licence : GNU GPL v2 ou ultérieure",
+  "about.licenseName": "Licence : MIT",
   "about.readLicense": "Lire la licence",
   "about.license": "Licence",
   "about.licenseText": "Texte de la licence",

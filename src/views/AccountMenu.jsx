@@ -6,7 +6,7 @@
 // signed-in login, or that the keychain holds a token, D85).
 import React, { useEffect, useRef, useState } from 'react';
 import { useApp, door43 } from '../state.jsx';
-import { APP_COMMIT, APP_VERSION, COPYRIGHT_LINE, GPL_TEXT, LICENSE_TEXT } from '../data/about';
+import { APP_COMMIT, APP_VERSION, COPYRIGHT_LINE, LICENSE_TEXT } from '../data/about';
 import { readHelpPage } from '../data/helpPages';
 import { LOCALES, t } from '../i18n';
 import { Layer } from '../ds/components/primitives/Layer.jsx';
@@ -322,16 +322,15 @@ function AboutDialog({ focusRead, onRead, onClose }) {
   );
 }
 
-/** #520: the LICENSE notice, then the full GNU GPL version 2, in one region that
- * the keyboard can reach and scroll. Closing it returns to About. */
+/** #520: the LICENSE text (the MIT license), in one region that the keyboard can
+ * reach and scroll. Closing it returns to About. */
 function LicenseDialog({ onClose }) {
   return (
-    <Modal data-testid="license-dialog" width={640} title={t('about.license')} closeLabel={t('common.close')} onClose={onClose}
+    <Modal data-testid="license-dialog" width={720} title={t('about.license')} closeLabel={t('common.close')} onClose={onClose}
       footer={<Button onClick={onClose} data-testid="license-close">{t('common.close')}</Button>}>
       <div role="region" aria-label={t('about.licenseText')} tabIndex={0} data-testid="license-text"
         style={{ maxHeight: '52vh', overflow: 'auto', padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8 }}>
         <pre data-testid="license-notice" style={{ ...LICENSE_PRE, margin: 0 }}>{LICENSE_TEXT}</pre>
-        <pre data-testid="license-gpl" style={{ ...LICENSE_PRE, margin: '18px 0 0' }}>{GPL_TEXT}</pre>
       </div>
     </Modal>
   );

@@ -582,8 +582,6 @@ if [ "$OS" != macos ]; then chmod +x "$APPDIR/$LAUNCHER"; fi
 # Licenses. The startup files in electron/ are modified copies from the MIT
 # desktop-app-template; Electronite ships its own LICENSE files in the zip.
 cp "$REPO/LICENSE" "$APPDIR/LICENSE"
-# #554: LICENSE names GPL-2.0-or-later; COPYING is its full text.
-cp "$REPO/COPYING" "$APPDIR/licenses/COPYING"
 # #45: the post-install smoke test travels with the artifact, so a pilot on a clean
 # machine can run it (zsh smoke-installed.zsh) with nothing but the folder and a
 # shell. CI runs this shipped copy on a fresh runner (package-desktop.yml, smoke-*).
@@ -600,7 +598,7 @@ for f in "$REPO"/src/ds/assets/fonts/OFL-*.txt; do cp "$f" "$APPDIR/licenses/${f
 cat > "$APPDIR/THIRD-PARTY-NOTICES.md" <<NOTICES
 # Third-party notices
 
-translationCore4 is (C) unfoldingWord, GPL-2.0-or-later (see LICENSE).
+translationCore4 is (C) unfoldingWord, MIT (see LICENSE).
 This build bundles the components below. Full texts are in licenses/.
 
 | Component | Version / rev | License | Source |

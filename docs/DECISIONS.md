@@ -2109,6 +2109,8 @@ choice as `internet: true` and gave the Door43 adapter a barrier that read that 
    the `LICENSE` file, then the full GNU GPL version 2 (`COPYING`). The build reads these
    values, and the dialogs send no request. [decided 2026-10-04 — owner rulings on #520.]
    (Amends D86 points 1, 2 and 7.)
+   (Amended by D111: the license is MIT, so the **License** dialog shows only the `LICENSE`
+   file. `COPYING` is removed.)
 2. **One dialog for each internet task.** With the switch on, each explicit internet task opens
    one "Use the internet?" dialog before any external request. The dialog says what the task
    does, which service it contacts, and what leaves the computer. It has **Cancel**, an action
@@ -3156,3 +3158,44 @@ sentence. The review of #817 found this (finding by Frank, round 1 on `3911621e3
 
 Where it lands: `docs/BURRITO-SPEC.md` (§4.3, version 1.29), `src/data/import/shell.ts`
 (#813).
+
+## D111 (2026-10-21, project-owner ruling) **translationCore 4 is under the MIT license. The GPL-2.0-or-later notice and the Wycliffe Associates ISC note are removed. The app bundles no GPL-2.0 npm package.** [owner ruling, 2026-10-21: tC4 is a complete rebuild, so it does not need the old license information]
+
+Context. The `LICENSE` file said GPL-2.0-or-later and named an earlier work by Wycliffe
+Associates under the ISC license. `COPYING` held the full GNU GPL version 2. tC4 is a
+complete rebuild, so neither applies.
+
+1. **The license.** `LICENSE` is the MIT license, "Copyright (c) 2017-2026 unfoldingWord",
+   with the translationCore® trademark notice. `README.md`, `CONTRIBUTING.md`,
+   `conformance/package.json` and `conformance/LICENSE-CONTENT.md` say MIT.
+2. **`COPYING` is removed.** The **License** dialog shows only the `LICENSE` file. The
+   copyright line on **About translationCore** is the line of `LICENSE` that starts with
+   "Copyright". The license name is "MIT" in each interface language (amends D88 point 1).
+3. **No GPL-2.0 npm package in the app.** `string-punctuation-tokenizer` 2.0.0 was
+   GPL-2.0, and the client bundled it. The root pin moves to 2.2.0 (MIT), the version
+   that `word-aligner-lib` already used, and an npm `overrides` entry gives the same
+   version to the copies that `word-aligner` 1.0.3, `wordmap-lexer` 0.3.6 and the
+   `word-aligner` 1.0.2 inside `@gabrielaillet/word-aligner-rcl` pinned at 2.0.0. The
+   conformance harness has the same override. [VERIFIED — the 2.0.0 and 2.2.0 outputs
+   are equal on 248,773 verse lines of 491 USFM files (en ULT, en UST, es-419 GLT,
+   es-419 GST, UGNT, UHB), for each call form that tC4 and its packages use. The
+   control, `greedy: true`, which no caller uses, gave 92 different lines, so the
+   comparison finds a change. Script and method:
+   `docs/evidence/tokenizer-2.2.0-equivalence-2026-10-21.md`. 2026-10-21.]
+4. **The packaged app.** The build copies `LICENSE` and no `licenses/COPYING`.
+   `THIRD-PARTY-NOTICES.md` names MIT. The smoke tests check that `LICENSE` is the MIT
+   license.
+5. **Not in this change.** Third-party components keep their own licenses, in
+   `licenses/` and `THIRD-PARTY-NOTICES.md` (for example libgit2, GPL-2.0 with a linking
+   exception, in the server).
+
+Where it lands: `LICENSE`, `COPYING` (removed), `README.md`, `CONTRIBUTING.md`,
+`src/data/about.ts`, `src/views/AccountMenu.jsx`, `src/i18n/*.json`,
+`src/data/align/tokenize.ts`, `src/data/align/verseWords.mjs`,
+`e2e/internet-consent.spec.ts`, `package.json`, `package-lock.json`,
+`conformance/package.json`, `conformance/package-lock.json`,
+`conformance/LICENSE-CONTENT.md`,
+`scripts/license-overrides/string-punctuation-tokenizer@2.0.0.txt` (removed: 2.2.0 ships
+its own `LICENSE`), `scripts/package-desktop.zsh`, `scripts/smoke-installed.zsh`,
+`scripts/smoke-installed.ps1`, `docs/PACKAGING.md`, `docs/ARCHITECTURE.md`,
+`docs/evidence/tokenizer-2.2.0-equivalence-2026-10-21.md`.
