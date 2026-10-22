@@ -52,7 +52,7 @@
   "language.cancel": "Cancel",
   "language.saveFailed": "The app language could not be saved. Try again.",
   "about.version": "Version",
-  "about.licenseName": "License: GNU GPL v2 or later",
+  "about.licenseName": "License: MIT",
   "about.readLicense": "Read the license",
   "about.license": "License",
   "about.licenseText": "License text",

@@ -9,7 +9,7 @@
 // The walk mirrors what `merge` does to the slot, with the same pinned libraries: the
 // slot is made plain with word-aligner-lib's own `cleanAlignmentMarkersFromString`
 // (it leaves a slot with no `\zaln-s` and no `\w` as it is), usfm-js parses it, and
-// each text node is split by string-punctuation-tokenizer 2.0.0 into the tokens
+// each text node is split by string-punctuation-tokenizer 2.2.0 into the tokens
 // `word` or `number` accepts. Occurrences are numbered over the whole verse, in one
 // pass. The conformance of this module with the library's own `wordMap` is test/
 // align-verse-words.test.ts (B1, B2).

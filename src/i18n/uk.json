@@ -52,7 +52,7 @@
   "language.cancel": "Скасувати",
   "language.saveFailed": "Не вдалося зберегти мову інтерфейсу. Спробуйте знову.",
   "about.version": "Версія",
-  "about.licenseName": "Ліцензія: GNU GPL v2 або новіша",
+  "about.licenseName": "Ліцензія: MIT",
   "about.readLicense": "Читати ліцензію",
   "about.license": "Ліцензія",
   "about.licenseText": "Текст ліцензії",
