@@ -144,7 +144,7 @@ Two rules apply to code that speaks to the platform:
 
 ## License
 
-GPL-2.0-or-later. Read the `LICENSE` file.
+MIT. Read the `LICENSE` file.
 
-This work is based on an earlier work by Wycliffe Associates, released under the ISC
-license.
+translationCore® is a registered trademark of unfoldingWord. Use of the translationCore
+name or logo requires the written permission of unfoldingWord.

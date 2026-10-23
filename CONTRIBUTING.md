@@ -309,4 +309,4 @@ imports a node builtin directly]
 
 ## License
 
-GPL-2.0-or-later. A contribution is accepted under the same license.
+MIT. A contribution is accepted under the same license.

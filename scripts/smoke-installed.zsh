@@ -91,11 +91,11 @@ for helper in "$APPDIR/smoke-api.cjs" "$APPDIR/smoke-journal.cjs" "$APPDIR/smoke
   [ -f "$helper" ] || { echo "FAIL artifact: $helper is missing"; exit 1; }
 done
 ok "artifact: $APPDIR ($(basename "$LAUNCHER") and $(basename "$ELECTRON") are executable)"
-# #554: the notices list the client's npm packages, and licenses/ has the GPL text.
+# #554: the notices list the client's npm packages, and LICENSE is the MIT license.
 NPM_ENTRIES=$(grep -c '^### ' "$APPDIR/THIRD-PARTY-NOTICES.md" 2>/dev/null)
 grep -q '^### react ' "$APPDIR/THIRD-PARTY-NOTICES.md" 2>/dev/null || { echo "FAIL notices: THIRD-PARTY-NOTICES.md lists no client npm packages (no react entry)"; exit 1; }
-grep -q 'GNU GENERAL PUBLIC LICENSE' "$APPDIR/licenses/COPYING" 2>/dev/null || { echo "FAIL notices: licenses/COPYING (the GPL version 2 text) is missing"; exit 1; }
-ok "notices: THIRD-PARTY-NOTICES.md lists $NPM_ENTRIES client npm packages; licenses/COPYING has the GPL text"
+grep -q '^MIT License' "$APPDIR/LICENSE" 2>/dev/null || { echo "FAIL notices: LICENSE (the MIT license) is missing"; exit 1; }
+ok "notices: THIRD-PARTY-NOTICES.md lists $NPM_ENTRIES client npm packages; LICENSE is the MIT license"
 
 # Node mode of the shipped Electron: the JSON steps below run through it.
 node_run() { ELECTRON_RUN_AS_NODE=1 "$ELECTRON" "$@"; }

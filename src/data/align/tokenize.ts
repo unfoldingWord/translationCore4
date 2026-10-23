@@ -8,7 +8,7 @@
 // Two sides of the app split a target verse into words: the alignment editor
 // (bootstrap wordBank, I-2 occurrence numbering) and the bridge that feeds the
 // suggestion engine (#1). The engine's `wordmap-lexer` calls
-// `string-punctuation-tokenizer` 2.0.0 as `tokenize({ text, includePunctuation:
+// `string-punctuation-tokenizer` 2.2.0 as `tokenize({ text, includePunctuation:
 // false })` (Lexer.js:59) and numbers occurrences by exact token text. This
 // module calls the SAME package at the SAME pinned version, so the two sides
 // agree by construction rather than by two regexes happening to match. The

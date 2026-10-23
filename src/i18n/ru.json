@@ -52,7 +52,7 @@
   "language.cancel": "Отмена",
   "language.saveFailed": "Не удалось сохранить язык приложения. Попробуйте снова.",
   "about.version": "Версия",
-  "about.licenseName": "Лицензия: GNU GPL v2 или более поздняя",
+  "about.licenseName": "Лицензия: MIT",
   "about.readLicense": "Читать лицензию",
   "about.license": "Лицензия",
   "about.licenseText": "Текст лицензии",

@@ -14,7 +14,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "GPL-2.0-or-later",
+  "license": "MIT",
   "type": "commonjs",
   "dependencies": {
     "ajv": "^8.20.0",
@@ -28,5 +28,8 @@
   },
   "devDependencies": {
     "fast-check": "^4.8.0"
+  },
+  "overrides": {
+    "string-punctuation-tokenizer": "$string-punctuation-tokenizer"
   }
 }

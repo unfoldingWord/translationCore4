@@ -22,8 +22,8 @@
 //   g  sign out needs no network; a keychain that cannot forget is reported
 //   h  the keyboard opens, walks and closes the menu and returns focus to its trigger
 //   i  About translationCore (#520) shows the version, the commit, the copyright line and the
-//      license name; Read the license opens License (the LICENSE notice and the full GPL
-//      version 2) and returns; on Home and in a project, with no network connection and
+//      license name; Read the license opens License (the LICENSE text, the MIT license) and
+//      returns; on Home and in a project, with no network connection and
 //      with zero external requests
 //   j  Report a problem (#521) opens the Feedback dialog of #378 from the menu, on Home and in
 //      a project, by keyboard, with zero external requests; Send asks while the internet is off,
@@ -1330,15 +1330,15 @@ test.describe('D95 — the internet is one on/off state for the app session, and
   });
 
   // ---- i · About translationCore (#520) ----
-  // The build reads the version, the commit, the LICENSE notice and the GPL text. The expected
-  // values come from the repository itself: package.json, git, LICENSE and COPYING.
-  test('i. About translationCore and License: the keyboard opens, reads and closes them; the version, the commit, the copyright line and both license texts show, with no network and no external request', TAG, async ({ page, context }, testInfo) => {
+  // The build reads the version, the commit and the LICENSE text. The expected values come
+  // from the repository itself: package.json, git and LICENSE.
+  test('i. About translationCore and License: the keyboard opens, reads and closes them; the version, the commit, the copyright line and the license text show, with no network and no external request', TAG, async ({ page, context }, testInfo) => {
     const version = (JSON.parse(fs.readFileSync(path.join(TC4_ROOT, 'package.json'), 'utf8')) as { version: string }).version;
     const commit = execFileSync('git', ['rev-parse', '--short=7', 'HEAD'], { cwd: TC4_ROOT, encoding: 'utf8' }).trim();
     const notice = fs.readFileSync(path.join(TC4_ROOT, 'LICENSE'), 'utf8');
-    const gpl = fs.readFileSync(path.join(TC4_ROOT, 'COPYING'), 'utf8');
-    expect(gpl).toContain('GNU GENERAL PUBLIC LICENSE');
-    expect(gpl).toContain('Version 2, June 1991');
+    expect(notice.startsWith('MIT License\n')).toBe(true);
+    const copyright = notice.split('\n').find((line) => line.startsWith('Copyright'));
+    expect(copyright).toBe('Copyright (c) 2017-2026 unfoldingWord');
     const focused = () => page.evaluate(() => document.activeElement?.getAttribute('data-testid') ?? null);
     const aboutDialog = page.getByRole('dialog', { name: 'About translationCore' });
     const licenseDialog = page.getByRole('dialog', { name: 'License', exact: true });
@@ -1359,8 +1359,8 @@ test.describe('D95 — the internet is one on/off state for the app session, and
       await expect(panel(page)).toHaveCount(0);
       await notWhite(aboutDialog.getByText('About translationCore'));
       await expect(page.getByTestId('about-version')).toHaveText(`${version} (${commit})`);
-      await expect(page.getByTestId('about-copyright')).toHaveText(notice.split('\n')[0]);
-      await expect(page.getByTestId('about-license-name')).toContainText('GNU GPL v2 or later');
+      await expect(page.getByTestId('about-copyright')).toHaveText(copyright!);
+      await expect(page.getByTestId('about-license-name')).toContainText('MIT');
       await shot(page, testInfo, `about-${name}`);
 
       // Read the license closes About and opens License.
@@ -1369,7 +1369,6 @@ test.describe('D95 — the internet is one on/off state for the app session, and
       await expect(aboutDialog).toHaveCount(0);
       await notWhite(licenseDialog.getByText('License', { exact: true }).first());
       await expect(page.getByTestId('license-notice')).toHaveText(notice);
-      await expect(page.getByTestId('license-gpl')).toHaveText(gpl);
       // The keyboard reaches the text and scrolls it.
       await expect(region).toHaveAttribute('tabindex', '0');
       for (let i = 0; i < 4 && (await focused()) !== 'license-text'; i += 1) await page.keyboard.press('Tab');

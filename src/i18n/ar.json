@@ -52,7 +52,7 @@
   "language.cancel": "إلغاء",
   "language.saveFailed": "تعذّر حفظ لغة التطبيق. حاول مرة أخرى.",
   "about.version": "الإصدار",
-  "about.licenseName": "الترخيص: GNU GPL v2 أو أحدث",
+  "about.licenseName": "الترخيص: MIT",
   "about.readLicense": "قراءة الترخيص",
   "about.license": "الترخيص",
   "about.licenseText": "نص الترخيص",

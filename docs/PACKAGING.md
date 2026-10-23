@@ -296,7 +296,7 @@ Steps, in order:
 6. Stage the artifact: Electronite + app dir + license files +
    `THIRD-PARTY-NOTICES.md` + `BUILD-MANIFEST.json` (every input with its
    exact version, commit, and checksum — also echoed in the build log).
-   `licenses/COPYING` is the full GPL version 2 text. `THIRD-PARTY-NOTICES.md` ends
+   `LICENSE` is the MIT license. `THIRD-PARTY-NOTICES.md` ends
    with the npm packages in the client JavaScript, with each license text. The client
    build writes that list (`dist/third-party-npm.md`, #554). A package that ships no
    license file needs a text in `scripts/license-overrides/`, or the build fails.
