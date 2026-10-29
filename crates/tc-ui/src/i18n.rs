@@ -109,7 +109,7 @@ pub const LOCALES: [Locale; 10] = [
     },
 ];
 
-/// The language of a first start, and of a saved choice that is not installed.
+/// The language when none is saved and none of the computer's has a catalog (tC4 #525).
 pub const DEFAULT_LOCALE: &str = "en";
 
 /// The installed locale with this id. Ids are compared exactly: `EN` and `hi-IN` are not

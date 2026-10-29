@@ -110,7 +110,13 @@ async fn an_open_gives_the_session_and_the_projects_chip() {
     assert_eq!(opened.books, vec![BookId::Jonah, BookId::Titus]);
     assert_eq!(opened.draft_unit, DraftUnit::Section);
     assert_eq!(opened.place, None, "nothing is remembered yet");
-    let hello = ok(&t.app, &Hello {}).await;
+    let hello = ok(
+        &t.app,
+        &Hello {
+            languages: Vec::new(),
+        },
+    )
+    .await;
     assert_eq!(hello.sessions, vec![opened.session.clone()]);
     assert_eq!(
         t.app
@@ -130,7 +136,17 @@ async fn a_refused_open_fails_its_job_in_tc4s_words() {
         state,
         JobState::Failed(ApiError::Refused(Refusal::Open(OpenRefusal::NotAProject)))
     );
-    assert!(ok(&t.app, &Hello {}).await.sessions.is_empty());
+    assert!(
+        ok(
+            &t.app,
+            &Hello {
+                languages: Vec::new()
+            }
+        )
+        .await
+        .sessions
+        .is_empty()
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -489,7 +505,15 @@ async fn a_held_open_runs_until_it_is_released() {
     let held = t.app.jobs().view(job).unwrap().state;
     assert!(!tc_app::jobs::JobRegistry::is_ended(&held), "{held:?}");
     assert!(
-        ok(&t.app, &Hello {}).await.sessions.is_empty(),
+        ok(
+            &t.app,
+            &Hello {
+                languages: Vec::new()
+            }
+        )
+        .await
+        .sessions
+        .is_empty(),
         "nothing is open yet"
     );
     ok(

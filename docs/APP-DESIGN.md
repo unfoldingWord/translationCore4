@@ -2696,7 +2696,10 @@ Publish` with tC4's string values; `MainView` is a port of `tC4:src/App.jsx:192-
 - Rebuild-only keys live in `assets/i18n-rebuild/<id>.json`, merged after the vendored catalog
   without overriding it. The vendored files stay byte-identical (DELTA:532-536).
 - `<html lang dir>` comes from `LOCALES` (`crates/tc-ui/src/i18n.rs:41-92`) and is set before the
-  first paint from `hello.prefs.appLocale`. `lang` matters as well as `dir`:
+  first paint from `hello.prefs.appLocale`: the saved language, or while none is saved the first
+  of the page's `navigator.languages` (sent in `app/hello`) whose language has a catalog, else
+  English; the computer's is never saved (`LocaleId::for_system_languages`, tC4 #525). `lang`
+  matters as well as `dir`:
   `html:lang(ar) ::placeholder` switches the face (`crates/tc-ui/assets/ds/tokens/typography.css:166`).
 - Three direction axes, each carried by its view type: the interface from the app language;
   scripture from `ProjectFacts.dir`; each help card from its gateway package

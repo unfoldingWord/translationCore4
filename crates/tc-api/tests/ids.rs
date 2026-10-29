@@ -308,6 +308,48 @@ fn a_locale_is_one_of_the_ten_interface_languages() {
     }
 }
 
+fn for_computer(languages: &[&str]) -> Option<&'static str> {
+    let languages: Vec<String> = languages.iter().map(|l| (*l).to_owned()).collect();
+    LocaleId::for_system_languages(&languages).map(LocaleId::as_str)
+}
+
+/// tC4 #525: the computer's languages, in its order, pick the first installed catalog of the
+/// same language; the region and the script never stand in the way.
+#[test]
+fn the_computer_language_picks_the_installed_catalog_of_its_language() {
+    // A supported language, with or without a region, in any case.
+    assert_eq!(for_computer(&["fr-FR", "fr"]), Some("fr"));
+    assert_eq!(for_computer(&["fr-CA"]), Some("fr"));
+    assert_eq!(for_computer(&["AR-eg"]), Some("ar"));
+    assert_eq!(for_computer(&["en-US"]), Some("en"));
+    // Every Spanish and Portuguese finds the one catalog of its language.
+    assert_eq!(for_computer(&["es-ES"]), Some("es-419"));
+    assert_eq!(for_computer(&["es-MX"]), Some("es-419"));
+    assert_eq!(for_computer(&["es"]), Some("es-419"));
+    assert_eq!(for_computer(&["pt-PT"]), Some("pt-BR"));
+    assert_eq!(for_computer(&["pt-BR"]), Some("pt-BR"));
+    // A script subtag is read past.
+    assert_eq!(for_computer(&["hi-Deva-IN"]), Some("hi"));
+    assert_eq!(for_computer(&["ru-Cyrl"]), Some("ru"));
+    // The first language that has a catalog wins.
+    assert_eq!(for_computer(&["de-DE", "uk-UA", "ru-RU"]), Some("uk"));
+    // Nothing installed: the caller falls back to English.
+    assert_eq!(for_computer(&["de-DE", "zh-Hans-CN"]), None);
+    assert_eq!(for_computer(&[]), None);
+    assert_eq!(for_computer(&["", "-", "fr_FR"]), None);
+}
+
+proptest! {
+    #[test]
+    fn any_computer_languages_give_an_installed_catalog_or_none(
+        languages in proptest::collection::vec(".{0,12}", 0..5)
+    ) {
+        if let Some(found) = LocaleId::for_system_languages(&languages) {
+            prop_assert!(LOCALE_IDS.contains(&found.as_str()));
+        }
+    }
+}
+
 #[test]
 fn a_web_link_is_http_or_https_with_a_host() {
     for good in [

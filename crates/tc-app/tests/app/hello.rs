@@ -115,7 +115,9 @@ async fn hello_through_the_typed_call_matches_the_bytes() {
     let t = TestApp::start_in(dir.path(), |_, _| {}).await;
     let typed = t
         .app
-        .request(&Hello {})
+        .request(&Hello {
+            languages: Vec::new(),
+        })
         .await
         .unwrap()
         .into_result()

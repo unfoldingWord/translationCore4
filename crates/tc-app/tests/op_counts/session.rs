@@ -22,7 +22,12 @@ async fn open_lists_no_key() {
     let ((small, large), (store_small, store_large)) =
         costs_what_it_touches("an open", OnStore::AppCounts, nothing, async |s: &Scale| {
             s.open().await;
-            s.app.request(&Hello {}).await.unwrap();
+            s.app
+                .request(&Hello {
+                    languages: Vec::new(),
+                })
+                .await
+                .unwrap();
         })
         .await;
     for cost in [small, large] {

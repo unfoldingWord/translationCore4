@@ -354,12 +354,12 @@ async fn pending_writes_are_flushed_when_the_writer_is_dropped() {
 #[tokio::test(start_paused = true)]
 async fn the_app_language_is_saved_at_once_and_waited_for() {
     let env = prefs();
-    assert_eq!(env.prefs.app_locale(), LocaleId::ENGLISH);
+    assert_eq!(env.prefs.app_locale(), None);
     env.prefs
         .set_locale(LocaleId::parse("ar").unwrap())
         .await
         .unwrap();
-    assert_eq!(env.prefs.app_locale().as_str(), "ar");
+    assert_eq!(env.prefs.app_locale().unwrap().as_str(), "ar");
     assert_eq!(
         json_of(&env, &AppDataPath::app_prefs())["appLocale"],
         json!("ar")
@@ -408,13 +408,13 @@ async fn a_failed_locale_save_is_refused_and_changes_nothing() {
     let seeded = br#"{"schemaVersion":1,"appLocale":"es-419"}"#.to_vec();
     files.seed(AppDataPath::app_prefs(), seeded.clone());
     let env = prefs_over(files);
-    assert_eq!(env.prefs.app_locale().as_str(), "es-419");
+    assert_eq!(env.prefs.app_locale().unwrap().as_str(), "es-419");
 
     env.files.fail_writes(true);
     let fr = LocaleId::parse("fr").unwrap();
     assert!(env.prefs.set_locale(fr).await.is_err());
     assert_eq!(
-        env.prefs.app_locale().as_str(),
+        env.prefs.app_locale().unwrap().as_str(),
         "es-419",
         "the language did not change"
     );
@@ -439,7 +439,7 @@ async fn a_failed_locale_save_is_refused_and_changes_nothing() {
 
     // The retry succeeds.
     env.prefs.set_locale(fr).await.unwrap();
-    assert_eq!(env.prefs.app_locale().as_str(), "fr");
+    assert_eq!(env.prefs.app_locale().unwrap().as_str(), "fr");
     assert_eq!(
         json_of(&env, &AppDataPath::app_prefs())["appLocale"],
         json!("fr")
@@ -486,7 +486,7 @@ async fn unknown_and_malformed_members_are_kept_on_rewrite() {
         br#"{"appLocale": {"id": "fr"}, "future": [1, 2], "lastUsed": {"old": 9}}"#.to_vec(),
     );
     let env = prefs_over(files);
-    assert_eq!(env.prefs.app_locale(), LocaleId::ENGLISH);
+    assert_eq!(env.prefs.app_locale(), None);
     env.prefs.record_last_used(folder("titus"), WallMs(5));
     settle().await;
     let app = json_of(&env, &AppDataPath::app_prefs());
@@ -505,7 +505,7 @@ async fn each_bad_saved_locale_reads_as_english_and_stays() {
         let seeded = serde_json::to_vec(&json!({ "appLocale": bad })).unwrap();
         files.seed(AppDataPath::app_prefs(), seeded.clone());
         let env = prefs_over(files);
-        assert_eq!(env.prefs.app_locale(), LocaleId::ENGLISH, "{bad}");
+        assert_eq!(env.prefs.app_locale(), None, "{bad}");
         env.prefs.flush().await;
         assert_eq!(
             env.files.get(&AppDataPath::app_prefs()),
@@ -533,7 +533,7 @@ async fn an_unreadable_file_is_kept_aside_and_reported() {
         let files = Arc::new(MemoryFiles::new());
         files.seed(AppDataPath::app_prefs(), bytes.to_vec());
         let env = prefs_over(files);
-        assert_eq!(env.prefs.app_locale(), LocaleId::ENGLISH);
+        assert_eq!(env.prefs.app_locale(), None);
         assert_eq!(
             env.files
                 .get(&AppDataPath::app_prefs().unreadable_copy())
@@ -586,7 +586,7 @@ async fn reset_puts_the_defaults_back_and_writes_them() {
     env.prefs.record_last_edit(project(1), edit("x"));
     settle().await;
     env.prefs.reset().await;
-    assert_eq!(env.prefs.app_locale(), LocaleId::ENGLISH);
+    assert_eq!(env.prefs.app_locale(), None);
     assert!(env.prefs.place(&project(1), "TIT").is_none());
     assert!(env.prefs.last_edit().is_none());
     let before = env.files.writes().len();

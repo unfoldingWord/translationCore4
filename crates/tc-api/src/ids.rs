@@ -473,6 +473,21 @@ impl LocaleId {
     pub fn all() -> impl Iterator<Item = LocaleId> {
         LOCALE_IDS.iter().map(|id| LocaleId(id))
     }
+
+    /// The interface language for the computer's languages (`navigator.languages`, most
+    /// preferred first), when nothing is saved (tC4 #525): the first of them whose language has
+    /// a catalog. Only the language subtag counts, because each language has one catalog:
+    /// `es-ES` and `es-MX` read `es-419`, `pt-PT` reads `pt-BR`, `hi-Deva-IN` reads `hi`.
+    /// `None` when no language has one.
+    pub fn for_system_languages(languages: &[String]) -> Option<LocaleId> {
+        languages.iter().find_map(|tag| {
+            let language = tag.split('-').next().unwrap_or_default();
+            Self::all().find(|locale| {
+                let installed = locale.0.split('-').next().unwrap_or_default();
+                !language.is_empty() && language.eq_ignore_ascii_case(installed)
+            })
+        })
+    }
 }
 
 /// Milliseconds since the Unix epoch, as the server's clock read them. tc-api reads no

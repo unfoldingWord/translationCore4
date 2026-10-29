@@ -282,7 +282,9 @@ impl<T: Example> Example for Option<T> {
 
 impl Example for Hello {
     fn example() -> Self {
-        Hello {}
+        Hello {
+            languages: vec!["fr-FR".into(), "fr".into()],
+        }
     }
 }
 

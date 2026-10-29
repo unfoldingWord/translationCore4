@@ -19,7 +19,6 @@ use tc_api::align::{
     AlignEdit, AlignPlace, AlignSave, AlignerView, Blocked, Close, Edit, Flush, Index, IndexItem,
     KeepReflow, Open, OpenVerse, Opened, RailState, RailStatus,
 };
-use tc_api::app::Hello;
 use tc_api::prefs::SetAlignSuggestions;
 use tc_core::BookId;
 use wasm_bindgen::JsValue;
@@ -716,7 +715,7 @@ impl Actions {
         let this = self.clone();
         spawn_local(async move {
             if retry {
-                let hello = this.runtime().api().call(&Hello {}).await;
+                let hello = this.runtime().api().call(&js::hello()).await;
                 if !OPENS.with(|l| l.is_current(attempt)) {
                     return;
                 }

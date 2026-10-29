@@ -17,7 +17,7 @@ use std::rc::{Rc, Weak};
 use js_sys::{Function, Promise, Reflect};
 use leptos::prelude::*;
 use tc_api::align::AlignSave;
-use tc_api::app::{Hello, HelloView, OpenSession};
+use tc_api::app::{HelloView, OpenSession};
 use tc_api::buffer::{BufferEntry, BufferKey, DraftCall, FieldKind, SentSave};
 use tc_api::editor::{DiscardDraft, Draft};
 use tc_api::event::{CheckpointOutcome, SessionMode};
@@ -866,7 +866,7 @@ impl Saves {
         });
         if let Some((mut request, error)) = failed {
             if ambiguous(&error) {
-                let hello = self.0.api.call(&Hello {}).await.map_err(|error| {
+                let hello = self.0.api.call(&js::hello()).await.map_err(|error| {
                     let mut drafts = self.0.drafts.borrow_mut();
                     let lane = drafts.entry(key.clone()).or_default();
                     lane.running = false;
@@ -964,7 +964,7 @@ impl Saves {
                 };
                 let result = saves.0.api.call(&request).await;
                 if result.as_ref().is_err_and(ambiguous)
-                    && let Ok(hello) = saves.0.api.call(&Hello {}).await
+                    && let Ok(hello) = saves.0.api.call(&js::hello()).await
                     && hello.instance == request.instance
                 {
                     let _ = saves.0.api.call(&request).await;
@@ -1042,7 +1042,7 @@ impl Saves {
             let hello = self
                 .0
                 .api
-                .call(&Hello {})
+                .call(&js::hello())
                 .await
                 .map_err(DiscardError::Call)?;
             if hello.instance != request.instance {
@@ -1166,7 +1166,7 @@ impl Saves {
     ) {
         let saves = self.clone();
         spawn_local(async move {
-            match saves.0.api.call(&Hello {}).await {
+            match saves.0.api.call(&js::hello()).await {
                 Ok(hello) => match saves
                     .machine(|m| m.resend_check(&key, sent.request, sent_to, hello.instance))
                 {

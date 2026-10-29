@@ -71,12 +71,20 @@
     ]
   },
   "journeys": {
-    "J1": {
-      "file": "parity/app/journeys/create.test.mjs",
-      "tests": [
-        "J1: a Bible is created with its language and direction, then a blank book makes it a valid project"
-      ]
-    },
+    "J1": [
+      {
+        "file": "parity/app/journeys/create.test.mjs",
+        "tests": [
+          "J1: a Bible is created with its language and direction, then a blank book makes it a valid project"
+        ]
+      },
+      {
+        "file": "parity/app/journeys/app-language.test.mjs",
+        "tests": [
+          "first_launch_starts_in_the_computer_language_until_one_is_chosen"
+        ]
+      }
+    ],
     "J2": [
       {
         "file": "parity/app/journeys/translate.test.mjs",

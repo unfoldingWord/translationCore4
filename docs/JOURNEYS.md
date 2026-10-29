@@ -77,7 +77,8 @@ budget in `docs/PERFORMANCE.md`). Their tC4 tests stay mapped under `specs` in `
 ### J1 Create a Bible project
 
 - Actor: facilitator. Activity: Start. Serves V6.
-- Before: a fresh install. The first run and the interface language are steps here.
+- Before: a fresh install. The first run and the interface language are steps here. The app
+  starts in the computer's language when it has that catalog, else in English (#525).
 - Steps: start the app · choose the interface language · choose the target language and its
   direction · name the project · add one or more books.
 - End state: Home shows the new project. On disk, one new project folder that is a valid
