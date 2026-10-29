@@ -204,6 +204,11 @@ Under the same rule, tC4 4.0 bugs the rebuild fixes on purpose (FIX-R, 2026-10-2
   dismisses them (LINK-DROP, tC4 #825 and #820); tC4 changes the alignment after a save and says
   nothing. The Translate list lives in the page: a crash between a save's write and its reply
   loses the notice, while the old link stays in History.
+- A dialog's buttons that do not fit side by side stack, each inside the dialog; tC4 lets them
+  run past the dialog's start edge, where the first one is cut off. In the change of checking
+  language between two packages of one language (French from Xenizo and from MVHS), Keep and
+  Change also name each package's owner; tC4 reads "Keep Français" and "Change to Français"
+  (#855).
 
 These differences follow the owner's rule in AGENTS.md ("Matching tC4", 2026-10-17), and the
 owner is told of each:

@@ -401,6 +401,30 @@ pub fn gateway_headline(plan: &PlanView) -> (String, Option<String>) {
     )
 }
 
+/// The gateway change's Keep and Change labels: the checking language in use, and `package`,
+/// the one chosen. Two packages of one language share an autonym (fr from Xenizo and from
+/// MVHS), so then each also names its owner, as Get source texts does (#855).
+pub fn gateway_buttons(plan: &PlanView, package: &GatewayPackage) -> (String, String) {
+    use crate::i18n::{keys::gateway, t};
+    let from = match &plan.what {
+        PlanWhat::Gateway(change) => change.from.as_ref(),
+        _ => None,
+    };
+    let same_name = from.is_some_and(|from| from.autonym == package.autonym);
+    let name = |p: &GatewayPackage| {
+        if same_name {
+            format!("{} · {}", p.autonym, p.gateway.owner)
+        } else {
+            p.autonym.clone()
+        }
+    };
+    let keep = t(
+        gateway::KEEP,
+        &[("lang", &from.map_or_else(|| t(gateway::CURRENT, &[]), name))],
+    );
+    (keep, t(gateway::CHANGE, &[("lang", &name(package))]))
+}
+
 /// The moves a confirmation lists, as `upgrade.move` writes them.
 pub fn move_text(change: &RepoMove) -> String {
     crate::i18n::t(

@@ -210,6 +210,8 @@ budget in `docs/PERFORMANCE.md`). Their tC4 tests stay mapped under `specs` in `
 - Steps: open Project Settings · choose the other checking language · confirm.
 - End state: the primary pins name the new set; the English fallback stays; decisions re-attach
   or are marked invalid and kept. Keep leaves everything as it was.
+- Differs from tC4: Keep and Change stay inside the dialog, stacked when they do not fit side
+  by side; between two packages of one language they also name each package's owner (#855).
 
 ### J16 Read a passage with helps and write a user comment
 

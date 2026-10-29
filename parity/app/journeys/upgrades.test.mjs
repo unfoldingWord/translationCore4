@@ -9,7 +9,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { browserTest, catalog, sleep, until, withApp } from './kit.mjs';
+import { LOCALES, browserTest, catalog, sleep, until, withApp } from './kit.mjs';
 
 const en = catalog('en');
 const BIBLE = 'sample_burrito';
@@ -51,6 +51,66 @@ browserTest('Keep leaves the checking language as it was; Change moves the prima
     await keep.click();
     await dialog.waitFor({ state: 'detached' });
   });
+});
+
+/** Both buttons of the open gateway change lie inside the dialog's 24px padding. */
+async function assertButtonsInside(page, case_) {
+  const box = await page.getByTestId('gateway-change').locator('[aria-modal="true"]').boundingBox();
+  for (const testid of ['gateway-cancel', 'gateway-confirm']) {
+    const button = await page.getByTestId(testid).boundingBox();
+    assert.ok(
+      button.x >= box.x + 24 - 0.5 && button.x + button.width <= box.x + box.width - 24 + 0.5,
+      `${case_}: ${testid} at ${button.x}..${button.x + button.width} is not inside the dialog at ${box.x}..${box.x + box.width}`,
+    );
+  }
+}
+
+// #855: the dialog is 520px at the smallest window the shell allows (900px, shell/lib.cjs). In
+// every language of the app, left to right and right to left, both buttons stay inside it: for
+// the change the sample offers (Español (Latinoamérica) to English), and for the longest pair of
+// names the registry has, Español (Latinoamérica) and Bahasa Indonesia, which the fixtures do not
+// install, so its labels are put on the same buttons.
+for (const { id } of LOCALES) {
+  browserTest(`j13_both_buttons_fit_inside_the_dialog_in_${id}`, async () => {
+    await withApp(async ({ page }) => {
+      const words = catalog(id);
+      await page.setViewportSize({ width: 900, height: 600 });
+      await page.getByTestId(`project-${BIBLE}`).getByRole('button', { name: words['home.settings'], exact: true }).click();
+      await english(page).click();
+      const dialog = page.getByTestId('gateway-change').locator('[aria-modal="true"]');
+      await dialog.waitFor();
+      // The dialog scales in; measured mid-animation it is narrower than it stays.
+      await dialog.evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)));
+      await assertButtonsInside(page, 'Español (Latinoamérica) to English');
+      await page.evaluate(([keep, change]) => {
+        document.querySelector('[data-testid="gateway-cancel"]').textContent = keep;
+        document.querySelector('[data-testid="gateway-confirm"]').textContent = change;
+      }, [
+        words['gateway.keep'].replace('{lang}', 'Español (Latinoamérica)'),
+        words['gateway.change'].replace('{lang}', 'Bahasa Indonesia'),
+      ]);
+      await assertButtonsInside(page, 'Español (Latinoamérica) to Bahasa Indonesia');
+    }, { locale: id });
+  });
+}
+
+// #855: the checking language in use is marked Current and choosing it asks nothing. The sample
+// lists English alone as an option, so English is made the language in use first.
+browserTest('j13_the_language_in_use_is_never_asked', async () => {
+  await withApp(async ({ page }) => {
+    await settings(page).click();
+    await english(page).click();
+    await page.getByTestId('gateway-change').waitFor();
+    await page.getByTestId('gateway-confirm').click();
+    await page.getByTestId('gateway-change').waitFor({ state: 'detached' });
+    await page.getByTestId('project-switch').click();
+    await until('Home shows the project card', () => page.getByTestId(`project-${BIBLE}`).count());
+    await settings(page).click();
+    await until('English is the language in use', async () => (await english(page).getAttribute('data-current')) === '1');
+    await english(page).click();
+    await sleep(500);
+    assert.equal(await page.getByTestId('gateway-change').count(), 0, 'no change of checking language is asked');
+  }, { door43: true });
 });
 
 browserTest('j13_change_writes_the_primary_set_to_disk', async () => {

@@ -10,7 +10,7 @@ use leptos::prelude::*;
 use tc_api::resources::{GatewayPackage, ImageChange, PlanView, PlanWhat};
 
 use crate::app::upgrades::{
-    GatewayPreview, GatewayState, blocked_text, gateway_headline, row_text,
+    GatewayPreview, GatewayState, blocked_text, gateway_buttons, gateway_headline, row_text,
 };
 use crate::app::web::{Actions, AppCtx, use_app};
 use crate::ds::{Attrs, Button, ButtonVariant, Callout, CalloutTone, Css};
@@ -117,23 +117,11 @@ fn planned(
     let (headline, detail) = gateway_headline(plan);
     let rows: Vec<String> = plan.rows.iter().map(row_text).collect();
     let blocked_message = blocked.then(|| blocked_text(&plan.blocked));
-    let (current, images) = match &plan.what {
-        PlanWhat::Gateway(change) => (
-            change.from.as_ref().map(|from| from.autonym.clone()),
-            change.images.clone(),
-        ),
-        _ => (None, None),
+    let images = match &plan.what {
+        PlanWhat::Gateway(change) => change.images.clone(),
+        _ => None,
     };
-    let keep_label = t(
-        keys::gateway::KEEP,
-        &[(
-            "lang",
-            &current
-                .clone()
-                .unwrap_or_else(|| t(keys::gateway::CURRENT, &[])),
-        )],
-    );
-    let change_label = t(keys::gateway::CHANGE, &[("lang", &package.autonym)]);
+    let (keep_label, change_label) = gateway_buttons(plan, package);
     let change_style = if blocked {
         crate::css! { "background": "var(--uw-haze)", "box-shadow": "none" }
     } else if !harmless {

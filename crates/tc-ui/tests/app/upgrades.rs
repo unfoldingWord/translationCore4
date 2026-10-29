@@ -5,14 +5,14 @@
 use tc_api::check::{CheckCollection, Tool};
 use tc_api::ids::{PlanId, ProjectRef};
 use tc_api::resources::{
-    BlockReason, BlockedUnit, Carry, GatewayPackage, GatewayRef, PlanRow, PlanView, PlanWhat,
-    RepoMove, Seen, SetOffer, SetRung, TextKind, TextOffer, UpdatesView,
+    BlockReason, BlockedUnit, Carry, GatewayChange, GatewayPackage, GatewayRef, PlanRow, PlanView,
+    PlanWhat, RepoMove, Seen, SetOffer, SetRung, TextKind, TextOffer, UpdatesView,
 };
 use tc_api::shown::Direction;
 use tc_core::BookId;
 use tc_ui::app::upgrades::{
-    GatewayPreview, GatewayState, Installing, UpgradeState, blocked_text, gateway_headline,
-    row_text, text_headline,
+    GatewayPreview, GatewayState, Installing, UpgradeState, blocked_text, gateway_buttons,
+    gateway_headline, row_text, text_headline,
 };
 
 fn package() -> GatewayPackage {
@@ -344,6 +344,55 @@ fn the_gateway_headline_names_the_books_and_counts_as_tc4_does() {
         "Nothing you have already checked will be affected."
     );
     assert!(none.is_none());
+}
+
+fn french(owner: &str) -> GatewayPackage {
+    GatewayPackage {
+        gateway: GatewayRef {
+            language: "fr".into(),
+            owner: owner.into(),
+        },
+        name: "French".into(),
+        autonym: "Français".into(),
+        ..package()
+    }
+}
+
+fn gateway_plan(from: Option<GatewayPackage>, to: &GatewayPackage) -> PlanView {
+    plan(
+        1,
+        PlanWhat::Gateway(Box::new(GatewayChange {
+            from,
+            to: to.clone(),
+            images: None,
+        })),
+        Vec::new(),
+        Vec::new(),
+    )
+}
+
+/// #855: two packages of one language (fr from Xenizo and from MVHS) share an autonym, so
+/// Keep and Change name the owner too, or both would read "Français".
+#[test]
+fn keep_and_change_name_two_different_packages() {
+    let (xenizo, mvhs) = (french("Xenizo"), french("MVHS"));
+    assert_eq!(
+        gateway_buttons(&gateway_plan(Some(xenizo), &mvhs), &mvhs),
+        (
+            "Keep Français · Xenizo".to_owned(),
+            "Change to Français · MVHS".to_owned()
+        )
+    );
+    let english = package();
+    assert_eq!(
+        gateway_buttons(&gateway_plan(Some(french("MVHS")), &english), &english),
+        ("Keep Français".to_owned(), "Change to English".to_owned()),
+        "two languages are named by their autonyms alone"
+    );
+    assert_eq!(
+        gateway_buttons(&gateway_plan(None, &english), &english).1,
+        "Change to English"
+    );
 }
 
 #[test]

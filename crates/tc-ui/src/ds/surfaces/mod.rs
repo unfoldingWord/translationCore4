@@ -420,8 +420,10 @@ pub fn Modal(
                 </Stack>
                 {footer.map(|f| move || {
                     let f = f.clone();
+                    // Buttons never shrink or wrap their words, so a row too wide for the
+                    // dialog stacks rather than running past its start edge (#855).
                     footer_shown.is_none_or(|shown| shown.get()).then(move || view! {
-                        <Stack direction=Direction::Row gap=10 justify=Justify::End style=css! { "padding": "18px 24px 22px" }>
+                        <Stack direction=Direction::Row gap=10 justify=Justify::End wrap=true style=css! { "padding": "18px 24px 22px" }>
                             {f()}
                         </Stack>
                     })
