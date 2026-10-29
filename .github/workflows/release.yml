@@ -140,6 +140,12 @@ jobs:
       - if: matrix.platform == 'windows-x64'
         name: tc4.exe needs no Visual C++ runtime
         run: node scripts/release/pe-imports.mjs shipped/tc4.exe
+      - if: matrix.platform == 'macos-arm64'
+        name: tc4 needs only the libraries every Mac has
+        run: |
+          otool -L shipped/tc4
+          extra=$(otool -L shipped/tc4 | tail -n +2 | awk '{print $1}' | grep -v -E '^(/System/Library/|/usr/lib/)' || true)
+          [ -z "$extra" ] || { echo "tc4 links libraries a translator's Mac does not have: $extra"; exit 1; }
       - uses: actions/download-artifact@v4
         with:
           name: release-common
