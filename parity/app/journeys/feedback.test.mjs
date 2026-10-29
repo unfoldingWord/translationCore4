@@ -228,3 +228,32 @@ browserTest('feedback_report_is_never_written_to_disk: no storage item and no re
     assert.ok(requests.all.every((r) => !r.url.includes('378')));
   }, { init: (context) => shell.install(context) });
 });
+
+// #852: a press that starts in the dialog (selecting text in the message) and ends on the backdrop
+// leaves the dialog open with what was typed; so does a press that starts on the backdrop and ends
+// in the dialog. Only a press that starts and ends on the backdrop closes it.
+browserTest('a_press_that_starts_or_ends_inside_the_dialog_never_closes_it', async () => {
+  await withApp(async ({ page }) => {
+    await openReport(page);
+    await message(page).fill('Typed before the drag.');
+    const box = await message(page).boundingBox();
+    const inside = { x: box.x + 20, y: box.y + box.height / 2 };
+    const backdrop = { x: 5, y: 400 };
+    const drag = async (from, to) => {
+      await page.mouse.move(from.x, from.y);
+      await page.mouse.down();
+      await page.mouse.move(to.x, to.y, { steps: 6 });
+      await page.mouse.up();
+    };
+    await drag(inside, backdrop);
+    await sleep(400);
+    assert.equal(await dialog(page).count(), 1, 'pressed in the message, released on the backdrop: still open');
+    assert.equal(await message(page).inputValue(), 'Typed before the drag.');
+    await drag(backdrop, inside);
+    await sleep(400);
+    assert.equal(await dialog(page).count(), 1, 'pressed on the backdrop, released in the message: still open');
+    assert.equal(await message(page).inputValue(), 'Typed before the drag.');
+    await page.mouse.click(backdrop.x, backdrop.y);
+    await until('closed', async () => (await dialog(page).count()) === 0);
+  });
+});

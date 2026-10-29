@@ -124,6 +124,22 @@ browserTest('c. Cancel, Escape, the ✕ and the scrim each restore the applied S
   }, { locale: 'es-419' });
 });
 
+// #852: with the list open, a press on the scrim is the list's outside press: it closes the list
+// and leaves the dialog open; the next one closes the dialog.
+browserTest('a_press_on_the_scrim_with_the_list_open_closes_only_the_list', async () => {
+  await withApp(async ({ page }) => {
+    await openLanguage(page);
+    await select(page).click();
+    await page.getByRole('listbox').waitFor();
+    await page.mouse.click(5, 400);
+    await until('the list closes', async () => (await page.getByRole('listbox').count()) === 0);
+    await sleep(400);
+    assert.equal(await dialog(page).count(), 1, 'the dialog stays open');
+    await page.mouse.click(5, 400);
+    await closed(page);
+  });
+});
+
 /** The server's own refusal of a language it could not save (tc-api's golden refusal). */
 const REFUSED = '{"type":"err","value":{"type":"refused","value":{"type":"prefs","value":"localeNotSaved"}}}';
 
