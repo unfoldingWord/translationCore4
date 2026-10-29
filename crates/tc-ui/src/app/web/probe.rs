@@ -253,10 +253,12 @@ pub(super) fn Probe() -> impl IntoView {
     let language_dialog = move || {
         let ctx = ctx.clone()?;
         language.get().then(|| {
-            let applied = ctx.s.server.saved_locale.get_untracked();
+            let applied = ctx.s.server.app_locale.get_untracked();
+            let saved = ctx.s.server.saved_locale.get_untracked();
             view! {
                 <crate::views::account_menu::AppLanguageDialog
                     applied=applied
+                    saved=saved
                     actions=ctx.actions.clone()
                     on_close=Callback::new(move |()| language.set(false))
                 />

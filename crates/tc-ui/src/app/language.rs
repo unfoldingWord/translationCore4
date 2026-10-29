@@ -10,7 +10,11 @@ use tc_api::ids::LocaleId;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LanguageDialog {
+    /// The language the app shows: the saved one, else the computer's (tC4 #525).
     applied: LocaleId,
+    /// The language the person applied, if any. Apply saves any other, and the computer's
+    /// language too while nothing is saved.
+    saved: Option<LocaleId>,
     preview: LocaleId,
     saving: bool,
     error: bool,
@@ -18,10 +22,11 @@ pub struct LanguageDialog {
 
 impl LanguageDialog {
     /// Opening is the person's selection of the applied language: tC4 shows it at once.
-    pub fn open(applied: LocaleId) -> (Self, LocaleId) {
+    pub fn open(applied: LocaleId, saved: Option<LocaleId>) -> (Self, LocaleId) {
         (
             Self {
                 applied,
+                saved,
                 preview: applied,
                 saving: false,
                 error: false,
@@ -48,9 +53,9 @@ impl LanguageDialog {
     }
 
     /// Apply: the language to save, which the caller sends with a new request id. Nothing while
-    /// the save runs or at the applied language.
+    /// the save runs or at the saved language.
     pub fn start_apply(&mut self) -> Option<LocaleId> {
-        if self.saving || self.preview == self.applied {
+        if !self.apply_enabled() {
             return None;
         }
         self.saving = true;
@@ -70,7 +75,7 @@ impl LanguageDialog {
     }
 
     pub fn apply_enabled(&self) -> bool {
-        !self.saving && self.preview != self.applied
+        !self.saving && self.saved != Some(self.preview)
     }
 
     pub fn error(&self) -> bool {

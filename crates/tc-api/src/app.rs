@@ -108,6 +108,9 @@ pub struct AppPrefsView {
     /// that has a catalog, else English (tC4 #525). It sets `<html lang dir>` before the first
     /// paint.
     pub app_locale: LocaleId,
+    /// The language the person applied, if any. While it is `None`, the App language dialog
+    /// lets them apply the language the app shows.
+    pub saved_locale: Option<LocaleId>,
 }
 
 /// `app/quit`: saves aligner links, checkpoints every session and exits, as a closed

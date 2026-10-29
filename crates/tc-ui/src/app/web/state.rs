@@ -31,9 +31,12 @@ pub struct ServerState {
     pub account: ArcRwSignal<AccountView>,
     pub startup: ArcRwSignal<StartupState>,
     pub sessions: ArcRwSignal<Vec<OpenSession>>,
-    /// The app language the server has saved (`hello.prefs.appLocale`). The language dialog
-    /// rolls back to it; the shown language can differ while a choice is only previewed.
-    pub saved_locale: ArcRwSignal<LocaleId>,
+    /// The app language (`hello.prefs.appLocale`): the saved one, else the computer's. The
+    /// language dialog rolls back to it; the shown language can differ while a choice is only
+    /// previewed.
+    pub app_locale: ArcRwSignal<LocaleId>,
+    /// The language the person applied, if any (`hello.prefs.savedLocale`, tC4 #525).
+    pub saved_locale: ArcRwSignal<Option<LocaleId>>,
     pub jobs: ArcRwSignal<BTreeMap<JobId, JobView>>,
     pub checkpoints: ArcRwSignal<HashMap<Scope, CheckpointOutcome>>,
     /// INV-A-FAILED-CHECKPOINT-IS-SHOWN-UNTIL-RETRIED (D1): the projects whose last checkpoint
@@ -55,7 +58,8 @@ impl ServerState {
             account: ArcRwSignal::new(hello.account.clone()),
             startup: ArcRwSignal::new(hello.startup.clone()),
             sessions: ArcRwSignal::new(hello.sessions.clone()),
-            saved_locale: ArcRwSignal::new(hello.prefs.app_locale),
+            app_locale: ArcRwSignal::new(hello.prefs.app_locale),
+            saved_locale: ArcRwSignal::new(hello.prefs.saved_locale),
             jobs: ArcRwSignal::new(BTreeMap::new()),
             checkpoints: ArcRwSignal::new(failed_of_open(hello)),
             failed: ArcRwSignal::new(hello.checkpoints.clone()),
@@ -80,7 +84,8 @@ impl ServerState {
         });
         self.failed.set(hello.checkpoints.clone());
         self.blocked.update(|map| retain_open(map, &hello.sessions));
-        self.saved_locale.set(hello.prefs.app_locale);
+        self.app_locale.set(hello.prefs.app_locale);
+        self.saved_locale.set(hello.prefs.saved_locale);
     }
 
     /// The server started again: it is another run, which numbers its jobs, aligners and opens
@@ -95,6 +100,7 @@ impl ServerState {
             account: _,
             startup: _,
             sessions: _,
+            app_locale: _,
             saved_locale: _,
             jobs,
             checkpoints,

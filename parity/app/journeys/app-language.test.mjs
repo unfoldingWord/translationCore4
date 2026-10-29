@@ -34,7 +34,8 @@ browserTest('a. the row shows the applied language; each selection previews befo
     assert.match(await page.getByRole('listbox').getByRole('option', { selected: true }).textContent(), /English/);
     await page.keyboard.press('Escape');
     assert.equal(await dialog(page).count(), 1, 'Escape closes the list, not the dialog');
-    assert.equal(await apply(page).isDisabled(), true, 'Apply is off at the applied language');
+    // Nothing is saved yet, so Apply can make the shown English the choice (#525; tC4 has it off).
+    assert.equal(await apply(page).isEnabled(), true, 'Apply is on while nothing is saved');
     for (const { id } of LOCALES.filter((l) => l.id !== 'en')) {
       await choose(page, id);
       await expectLanguage(page, id);
@@ -42,7 +43,7 @@ browserTest('a. the row shows the applied language; each selection previews befo
       assert.equal(await stored(env), 'en', `${id}: a preview saves nothing`);
     }
     await choose(page, 'en');
-    assert.equal(await apply(page).isDisabled(), true);
+    assert.equal(await apply(page).isEnabled(), true, 'Apply stays on: English is not saved');
     await choose(page, 'hi');
     await cancel(page).click();
     await closed(page);
@@ -478,6 +479,12 @@ browserTest('first_launch_starts_in_the_computer_language_until_one_is_chosen', 
     const { other, page } = await onComputer('fr-FR');
     await env.load(page, { locale: 'en' });
     await expectLanguage(page, 'fr');
+    // The computer's language can be applied as it is shown: one step makes it the choice.
+    await openLanguage(page);
+    assert.equal(await apply(page).isEnabled(), true, 'Apply is on at the computer language');
+    await apply(page).click();
+    await closed(page);
+    assert.equal(savedLocale(), 'fr');
     await applyLanguage(page, 'en');
     assert.equal(savedLocale(), 'en');
     await page.reload();

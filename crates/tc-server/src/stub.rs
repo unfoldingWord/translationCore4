@@ -152,6 +152,7 @@ impl Stub {
             sessions: Vec::new(),
             prefs: AppPrefsView {
                 app_locale: LocaleId::ENGLISH,
+                saved_locale: None,
             },
             startup: StartupState::Ready,
             checkpoints: Vec::new(),

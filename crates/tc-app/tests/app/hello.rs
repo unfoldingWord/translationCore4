@@ -55,7 +55,8 @@ async fn hello_answers_real_state() {
     assert_eq!(
         hello.prefs,
         AppPrefsView {
-            app_locale: LocaleId::parse("en").unwrap()
+            app_locale: LocaleId::parse("en").unwrap(),
+            saved_locale: None,
         }
     );
     assert_eq!(hello.startup, StartupState::Ready);
@@ -77,7 +78,10 @@ async fn hello_answers_real_state() {
         })
     );
     assert_eq!(json["value"]["sessions"][0]["role"], "screen");
-    assert_eq!(json["value"]["prefs"], json!({"appLocale": "en"}));
+    assert_eq!(
+        json["value"]["prefs"],
+        json!({"appLocale": "en", "savedLocale": null})
+    );
     assert_eq!(json["value"]["startup"], json!({"type": "ready"}));
     assert!(
         !String::from_utf8_lossy(&body).contains("kept-secret"),

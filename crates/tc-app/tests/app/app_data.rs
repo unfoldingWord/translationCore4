@@ -384,7 +384,8 @@ async fn the_computer_language_shows_until_one_is_chosen() {
     assert_eq!(shown_for(&first.app, &["fr-FR", "fr"]).await, "fr");
     assert_eq!(shown_for(&first.app, &["es-MX"]).await, "es-419");
     assert_eq!(shown_for(&first.app, &["de-DE"]).await, "en");
-    assert_eq!(hello_value(&first.app).await["prefs"]["appLocale"], "en");
+    let prefs = hello_value(&first.app).await["prefs"].clone();
+    assert_eq!(prefs, json!({"appLocale": "en", "savedLocale": null}));
     first.app.prefs().flush().await;
     assert_eq!(
         std::fs::read(&prefs_file).ok(),
@@ -403,6 +404,7 @@ async fn the_computer_language_shows_until_one_is_chosen() {
         .into_result()
         .unwrap();
     assert_eq!(shown_for(&first.app, &["fr-FR"]).await, "ru");
+    assert_eq!(hello_value(&first.app).await["prefs"]["savedLocale"], "ru");
     first.app.quit().await;
     drop(first);
 

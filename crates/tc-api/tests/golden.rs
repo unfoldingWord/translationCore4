@@ -308,6 +308,7 @@ impl Example for HelloView {
             }],
             prefs: AppPrefsView {
                 app_locale: LocaleId::parse("ar").unwrap(),
+                saved_locale: Some(LocaleId::parse("ar").unwrap()),
             },
             startup: StartupState::Preparing(StartupProgress {
                 done: 1200,

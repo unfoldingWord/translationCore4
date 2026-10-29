@@ -66,6 +66,21 @@ if (process.platform === 'linux') {
       await h.finish(app);
     }
   });
+
+  // tC4 #525: Electronite takes the system's language, and with none saved the app starts in
+  // it. On Linux the system's language is the environment's, so a run can set it.
+  h.shellTest('linux_first_launch_starts_in_the_system_language', async () => {
+    const dir = h.appDataDir('system-language');
+    const app = await h.launch(dir, { env: { LANG: 'fr_FR.UTF-8', LANGUAGE: 'fr', LC_ALL: '' } });
+    try {
+      const page = await h.home(app);
+      const languages = await page.evaluate(() => navigator.languages);
+      assert.equal(languages[0].split('-')[0], 'fr', `navigator.languages: ${languages}`);
+      await h.until('the page in French', () => page.evaluate(() => document.documentElement.lang === 'fr'));
+    } finally {
+      await h.finish(app);
+    }
+  });
 }
 
 if (process.platform === 'win32') {

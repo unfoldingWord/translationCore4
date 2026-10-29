@@ -140,12 +140,14 @@ function hardKill(pid) {
   }
 }
 
-// A shell launched by Playwright; `app.window` is its page.
+// A shell launched by Playwright; `app.window` is its page. `opts.env` adds to the environment
+// (a system language, for one).
 async function launch(dir, opts = {}) {
   const app = await setup.electron.launch({
     executablePath: path.resolve(TC4_ELECTRON),
     args: shellArgs(dir, opts),
     cwd: REPO,
+    env: { ...process.env, ...opts.env },
   });
   app.dir = dir;
   // Kept: Playwright's app.process() throws once the app has gone. On Windows its pid is a

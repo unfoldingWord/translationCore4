@@ -216,7 +216,9 @@ owner is told of each:
 - With no app language saved, the app starts in the computer's language when a catalog has it
   (the first of `navigator.languages` whose language matches: any Spanish reads `es-419`, any
   Portuguese `pt-BR`), else in English, and saves nothing until the person applies a language.
-  tC4 4.0 always starts in English (#525).
+  While nothing is saved, Apply in the App language dialog is on at the shown language too, so
+  one step makes it the person's choice. tC4 4.0 always starts in English, with Apply off at it
+  (#525).
 - A story project's own pictures are found by their path below `ingredients/`, outside
   `checking/`, `tc/` and `content/` (#549). tC4 4.0 takes only an ingredient with the role
   `x-obsimages`, which the rebuild's `metadata.json` does not write for a carried file and

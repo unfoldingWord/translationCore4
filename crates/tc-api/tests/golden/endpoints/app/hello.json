@@ -77,7 +77,8 @@
         }
       ],
       "prefs": {
-        "appLocale": "ar"
+        "appLocale": "ar",
+        "savedLocale": "ar"
       },
       "startup": {
         "type": "preparing",
