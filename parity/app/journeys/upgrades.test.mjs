@@ -113,6 +113,37 @@ browserTest('j13_the_language_in_use_is_never_asked', async () => {
   }, { door43: true });
 });
 
+// #855: Get source texts, where the issue was seen, offers "Use for checking" for an installed
+// suite, and once that suite is the language in use it only says so. The sample's Spanish suite
+// is not whole on this computer, so English, whose suite is, is the one checked both ways.
+browserTest('j13_get_source_texts_never_offers_the_language_in_use', async () => {
+  await withApp(async ({ page }) => {
+    const getSourceTexts = async () => {
+      await settings(page).click();
+      await page.getByTestId('settings-manage-sources').click();
+      await page.getByTestId('sources-modal').waitFor();
+    };
+    await getSourceTexts();
+    // The card names English twice: its autonym and its English name.
+    await page.getByTestId('sources-modal').getByText('English', { exact: true }).first().click();
+    // Step 2 asks to turn the internet on to read the package list; Not now reads nothing.
+    await page.getByTestId('net-cancel').click();
+    await page.getByTestId('use-for-checking').click();
+    await page.getByTestId('gateway-change').waitFor();
+    await page.getByTestId('gateway-confirm').click();
+    await page.getByTestId('gateway-change').waitFor({ state: 'detached' });
+    // Get source texts stays open over the project after the change.
+    await page.getByTestId('sources-modal').getByRole('button', { name: en['common.close'], exact: true }).first().click();
+    await page.getByTestId('sources-modal').waitFor({ state: 'detached' });
+    await page.getByTestId('project-switch').click();
+    await until('Home shows the project card', () => page.getByTestId(`project-${BIBLE}`).count());
+    // Get source texts opens again on the English suite, now the language in use.
+    await getSourceTexts();
+    await page.getByTestId('already-checking-in').waitFor();
+    assert.equal(await page.getByTestId('use-for-checking').count(), 0, 'the language in use is not offered');
+  }, { door43: true });
+});
+
 browserTest('j13_change_writes_the_primary_set_to_disk', async () => {
   await withApp(async ({ page, env }) => {
     assert.deepEqual(pinFile(env).languageSets.primary.gatewayLanguage, { languageId: 'es-419', owner: 'es-419_gl' });
