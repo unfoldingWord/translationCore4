@@ -85,8 +85,9 @@ for (const { id } of LOCALES) {
       await english(page).click();
       const dialog = page.getByTestId('gateway-change').locator('[aria-modal="true"]');
       await dialog.waitFor();
-      // The dialog scales in; measured mid-animation it is narrower than it stays.
-      await dialog.evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)));
+      // The dialog scales in, from a transition that starts on the next frame, so there may be no
+      // animation to wait for yet. Measured before it ends, it is narrower than it stays.
+      await until('the dialog to finish opening', () => dialog.evaluate((el) => Math.abs(el.getBoundingClientRect().width - el.offsetWidth) < 0.01));
       await assertButtonsFit(page, 'Español (Latinoamérica) to English');
       for (const [testid, label] of [
         ['gateway-cancel', words['gateway.keep'].replace('{lang}', 'Español (Latinoamérica)')],
