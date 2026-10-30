@@ -83,6 +83,14 @@
         "tests": [
           "first_launch_starts_in_the_computer_language_until_one_is_chosen"
         ]
+      },
+      {
+        "file": "parity/app/journeys/dropdown.test.mjs",
+        "tests": [
+          "tC4 #552: a press on the label of the open book list keeps the list and its search",
+          "tC4 #552: two quick presses on the scrim with the book list open close the list, then the dialog",
+          "tC4 #552: a list that turns off while it is open closes and takes no choice"
+        ]
       }
     ],
     "J2": [
@@ -395,7 +403,8 @@
     "feedback.spec.ts": {
       "file": "parity/app/journeys/feedback.test.mjs",
       "tests": [
-        "c. opening the report and typing in it go to no other origin and ask nothing but the attachment"
+        "c. opening the report and typing in it go to no other origin and ask nothing but the attachment",
+        "feedback_says_in_the_app_language_that_the_attachment_is_english (#731)"
       ]
     },
     "guided-fix.spec.ts": {

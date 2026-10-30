@@ -11,6 +11,8 @@ STEPS=(
   "clippy|cargo clippy --locked --workspace --all-targets -- -D warnings"
   "clippy-release-bins|cargo clippy --locked -p tc-server -p tc4 --lib --bins -- -D warnings"
   "clippy-release-app|cargo clippy --locked -p tc-app --lib -- -D warnings"
+  # Also inside test; on its own so the pull request lints run it (it takes seconds).
+  "arch|cargo nextest run --locked -p tc-arch"
   "clippy-windows|cargo clippy --locked --workspace --all-targets --target x86_64-pc-windows-gnu -- -D warnings"
   # nextest names a test that runs past 60 s and stops it at its limit (.config/nextest.toml,
   # CHK-8). Each part is its own step, so one failure hides none of the others.
@@ -34,6 +36,11 @@ NIGHTLY=(
   # The scale tests at ten times Psalms (rulings/2026-10-26-test-scale.md); pushes and gates run 2.
   "scale-long|TC_SCALE_FACTOR=10 cargo test --locked --no-fail-fast -p tc-journal --test operation_counts -p tc-store --test store -p tc-app --test op_counts"
   "sync-model-long|cargo test --locked -p tc-sync --test sync model::random_syncs_lose_no_work_long -- --ignored --exact"
+  # tc-store's full crash sweeps and property counts; the gate runs a cheaper test that catches
+  # the same bug (each `_nightly` test's ignore reason names it).
+  "store-nightly|cargo test --locked -p tc-store --test store _nightly -- --ignored"
+  # tc-api's round-trip property tests at 128 values per type; pushes and gates run 16.
+  "roundtrip-long|TC_ROUNDTRIP_CASES=128 cargo test --locked -p tc-api --test roundtrip"
 )
 
 # A gate checks; it never blesses a snapshot or rewrites a file (INV-GATES-NEVER-BLESS).
@@ -104,7 +111,7 @@ journeys() {
 # on them, and skipped when none of its crates is among them; the fast checks; then those crates'
 # tests, tc-api's endpoint and golden lists, and the journeys that name a changed endpoint or test
 # id. The full gate list runs in the merge queue.
-PR_LINTS=(fmt clippy clippy-release-bins clippy-release-app clippy-windows
+PR_LINTS=(fmt clippy clippy-release-bins clippy-release-app arch clippy-windows
   wasm-ui wasm-ui-gallery wasm-ui-app wasm-ui-hooks wasm-api)
 
 # The lint step `$1` over the picked crates (the rest of the arguments): run, narrowed or skipped.
@@ -124,6 +131,8 @@ touched_lint() {
     clippy-release-app) [[ "$has" == *" tc-app "* ]] || return 0; run_step "$step" ;;
     wasm-ui*) [[ "$has" == *" tc-ui "* ]] || return 0; run_step "$step" ;;
     wasm-api) [[ "$has" == *" tc-api "* ]] || return 0; run_step "$step" ;;
+    # tc-arch reads the whole tree and no crate depends on it, so no change ever picks it.
+    arch) run_step arch ;;
     # A lint step this list does not know yet runs whole.
     *) run_step "$step" ;;
   esac
@@ -141,8 +150,6 @@ touched() {
     touched_lint "$step" "${crates[@]}" || { echo "gates: step $step failed" >&2; code=1; }
   done
   cargo nextest run --locked --no-fail-fast -p tc-api --test endpoints --test golden || code=1
-  # tc-arch reads the whole tree and no crate depends on it, so no change ever picks it.
-  cargo nextest run --locked --no-fail-fast -p tc-arch || code=1
   if (( ${#crates[@]} )); then
     cargo nextest run --locked --no-fail-fast "${crates[@]/#/--package=}" || code=1
     cargo test --locked --no-fail-fast --doc "${crates[@]/#/--package=}" || code=1
