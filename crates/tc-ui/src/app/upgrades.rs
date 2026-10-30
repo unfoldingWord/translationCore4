@@ -221,8 +221,21 @@ impl GatewayState {
         true
     }
 
+    /// The plan is ready. A plan for the package already in use asks nothing: Get source texts
+    /// can still offer it while its step is open, and Keep and Change would name one package
+    /// (#855).
     pub fn planned(&mut self, package: GatewayPackage, plan: PlanView) {
         self.busy = false;
+        let in_use = match &plan.what {
+            PlanWhat::Gateway(change) => change
+                .from
+                .as_ref()
+                .is_some_and(|from| from.gateway.is_same_package(&package.gateway)),
+            PlanWhat::Set { .. } | PlanWhat::Text { .. } | PlanWhat::Repin { .. } => false,
+        };
+        if in_use {
+            return;
+        }
         self.preview = Some(GatewayPreview::Plan {
             package: Box::new(package),
             plan: Box::new(plan),
@@ -401,16 +414,12 @@ pub fn gateway_headline(plan: &PlanView) -> (String, Option<String>) {
     )
 }
 
-/// The gateway change's Keep and Change labels: the checking language in use, and `package`,
+/// The gateway change's Keep and Change labels: `from`, the checking language in use, and `to`,
 /// the one chosen. Two packages of one language share an autonym (fr from Xenizo and from
 /// MVHS), so then each also names its owner, as Get source texts does (#855).
-pub fn gateway_buttons(plan: &PlanView, package: &GatewayPackage) -> (String, String) {
+pub fn gateway_buttons(from: Option<&GatewayPackage>, to: &GatewayPackage) -> (String, String) {
     use crate::i18n::{keys::gateway, t};
-    let from = match &plan.what {
-        PlanWhat::Gateway(change) => change.from.as_ref(),
-        _ => None,
-    };
-    let same_name = from.is_some_and(|from| from.autonym == package.autonym);
+    let same_name = from.is_some_and(|from| from.autonym == to.autonym);
     let name = |p: &GatewayPackage| {
         if same_name {
             format!("{} · {}", p.autonym, p.gateway.owner)
@@ -422,7 +431,7 @@ pub fn gateway_buttons(plan: &PlanView, package: &GatewayPackage) -> (String, St
         gateway::KEEP,
         &[("lang", &from.map_or_else(|| t(gateway::CURRENT, &[]), name))],
     );
-    (keep, t(gateway::CHANGE, &[("lang", &name(package))]))
+    (keep, t(gateway::CHANGE, &[("lang", &name(to))]))
 }
 
 /// The moves a confirmation lists, as `upgrade.move` writes them.

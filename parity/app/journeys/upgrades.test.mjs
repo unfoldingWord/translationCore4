@@ -53,23 +53,29 @@ browserTest('Keep leaves the checking language as it was; Change moves the prima
   });
 });
 
-/** Both buttons of the open gateway change lie inside the dialog's 24px padding. */
-async function assertButtonsInside(page, case_) {
+/** Both buttons of the open gateway change lie inside the dialog's 24px padding, on one row, at
+ * one width. */
+async function assertButtonsFit(page, case_) {
   const box = await page.getByTestId('gateway-change').locator('[aria-modal="true"]').boundingBox();
-  for (const testid of ['gateway-cancel', 'gateway-confirm']) {
-    const button = await page.getByTestId(testid).boundingBox();
+  const [keep, change] = await Promise.all(
+    ['gateway-cancel', 'gateway-confirm'].map((testid) => page.getByTestId(testid).boundingBox()),
+  );
+  for (const [testid, button] of [['gateway-cancel', keep], ['gateway-confirm', change]]) {
     assert.ok(
       button.x >= box.x + 24 - 0.5 && button.x + button.width <= box.x + box.width - 24 + 0.5,
       `${case_}: ${testid} at ${button.x}..${button.x + button.width} is not inside the dialog at ${box.x}..${box.x + box.width}`,
     );
   }
+  assert.ok(Math.abs(keep.width - change.width) < 0.5, `${case_}: Keep is ${keep.width}px wide, Change ${change.width}px`);
+  assert.ok(Math.abs(keep.y - change.y) < 0.5, `${case_}: the buttons are not on one row`);
 }
 
 // #855: the dialog is 520px at the smallest window the shell allows (900px, shell/lib.cjs). In
-// every language of the app, left to right and right to left, both buttons stay inside it: for
-// the change the sample offers (Español (Latinoamérica) to English), and for the longest pair of
-// names the registry has, Español (Latinoamérica) and Bahasa Indonesia, which the fixtures do not
-// install, so its labels are put on the same buttons.
+// every language of the app, left to right and right to left, both buttons stay inside it, side
+// by side at one width; a label that does not fit is cut, and its tooltip gives it whole. This
+// holds for the change the sample offers (Español (Latinoamérica) to English), and for the
+// longest pair of names the registry has, Español (Latinoamérica) and Bahasa Indonesia, which
+// the fixtures do not install, so its labels are put on the same buttons.
 for (const { id } of LOCALES) {
   browserTest(`j13_both_buttons_fit_inside_the_dialog_in_${id}`, async () => {
     await withApp(async ({ page }) => {
@@ -81,15 +87,26 @@ for (const { id } of LOCALES) {
       await dialog.waitFor();
       // The dialog scales in; measured mid-animation it is narrower than it stays.
       await dialog.evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)));
-      await assertButtonsInside(page, 'Español (Latinoamérica) to English');
+      await assertButtonsFit(page, 'Español (Latinoamérica) to English');
+      for (const [testid, label] of [
+        ['gateway-cancel', words['gateway.keep'].replace('{lang}', 'Español (Latinoamérica)')],
+        ['gateway-confirm', words['gateway.change'].replace('{lang}', 'English')],
+      ]) {
+        const button = page.getByTestId(testid);
+        assert.equal(await button.textContent(), label);
+        assert.equal(await button.getAttribute('title'), label, `${testid}'s tooltip gives its label whole`);
+      }
       await page.evaluate(([keep, change]) => {
-        document.querySelector('[data-testid="gateway-cancel"]').textContent = keep;
-        document.querySelector('[data-testid="gateway-confirm"]').textContent = change;
+        for (const [testid, label] of [['gateway-cancel', keep], ['gateway-confirm', change]]) {
+          const button = document.querySelector(`[data-testid="${testid}"]`);
+          button.firstElementChild.textContent = label;
+          button.title = label;
+        }
       }, [
         words['gateway.keep'].replace('{lang}', 'Español (Latinoamérica)'),
         words['gateway.change'].replace('{lang}', 'Bahasa Indonesia'),
       ]);
-      await assertButtonsInside(page, 'Español (Latinoamérica) to Bahasa Indonesia');
+      await assertButtonsFit(page, 'Español (Latinoamérica) to Bahasa Indonesia');
     }, { locale: id });
   });
 }
@@ -114,8 +131,9 @@ browserTest('j13_the_language_in_use_is_never_asked', async () => {
 });
 
 // #855: Get source texts, where the issue was seen, offers "Use for checking" for an installed
-// suite, and once that suite is the language in use it only says so. The sample's Spanish suite
-// is not whole on this computer, so English, whose suite is, is the one checked both ways.
+// suite, and once that suite is the language in use it only says so, both on the step left open
+// and when opened again. The sample's Spanish suite is not whole on this computer, so English,
+// whose suite is, is the one checked.
 browserTest('j13_get_source_texts_never_offers_the_language_in_use', async () => {
   await withApp(async ({ page }) => {
     const getSourceTexts = async () => {
@@ -132,7 +150,10 @@ browserTest('j13_get_source_texts_never_offers_the_language_in_use', async () =>
     await page.getByTestId('gateway-change').waitFor();
     await page.getByTestId('gateway-confirm').click();
     await page.getByTestId('gateway-change').waitFor({ state: 'detached' });
-    // Get source texts stays open over the project after the change.
+    // Get source texts stays open over the project after the change, on the same step, which
+    // now says English is in use and offers it no more.
+    await page.getByTestId('already-checking-in').waitFor();
+    assert.equal(await page.getByTestId('use-for-checking').count(), 0, 'the open step stops offering the language in use');
     await page.getByTestId('sources-modal').getByRole('button', { name: en['common.close'], exact: true }).first().click();
     await page.getByTestId('sources-modal').waitFor({ state: 'detached' });
     await page.getByTestId('project-switch').click();

@@ -288,16 +288,12 @@ impl SourcesForm {
         self.dl.is_none() && !self.rows.is_empty()
     }
 
-    /// Whether `gateway` is the project's checking language (tC4 `isCurrentGateway`: the
-    /// owner without letter case).
+    /// Whether `gateway` is the project's checking language.
     pub fn is_current(&self, gateway: &GatewayPackage) -> bool {
         self.packages
             .as_ref()
             .and_then(|p| p.current.as_ref())
-            .is_some_and(|current| {
-                current.language == gateway.gateway.language
-                    && current.owner.eq_ignore_ascii_case(&gateway.gateway.owner)
-            })
+            .is_some_and(|current| current.is_same_package(&gateway.gateway))
     }
 
     /// Whether this computer holds `gateway`'s whole suite (tC4 `isCheckableGateway`).

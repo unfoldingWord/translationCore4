@@ -377,7 +377,7 @@ fn gateway_plan(from: Option<GatewayPackage>, to: &GatewayPackage) -> PlanView {
 fn keep_and_change_name_two_different_packages() {
     let (xenizo, mvhs) = (french("Xenizo"), french("MVHS"));
     assert_eq!(
-        gateway_buttons(&gateway_plan(Some(xenizo), &mvhs), &mvhs),
+        gateway_buttons(Some(&xenizo), &mvhs),
         (
             "Keep Français · Xenizo".to_owned(),
             "Change to Français · MVHS".to_owned()
@@ -385,14 +385,39 @@ fn keep_and_change_name_two_different_packages() {
     );
     let english = package();
     assert_eq!(
-        gateway_buttons(&gateway_plan(Some(french("MVHS")), &english), &english),
+        gateway_buttons(Some(&mvhs), &english),
         ("Keep Français".to_owned(), "Change to English".to_owned()),
         "two languages are named by their autonyms alone"
     );
+    assert_eq!(gateway_buttons(None, &english).1, "Change to English");
+}
+
+/// #855: a plan for the package the project already checks against is never asked, from any
+/// entry point; the owner's letter case does not make it another package.
+#[test]
+fn the_language_in_use_is_never_asked() {
+    let english = package();
+    let in_use = GatewayPackage {
+        gateway: GatewayRef {
+            owner: "UNFOLDINGWORD".into(),
+            ..english.gateway.clone()
+        },
+        ..english.clone()
+    };
+    let mut gw = GatewayState::default();
+    assert!(gw.asking());
+    gw.planned(english.clone(), gateway_plan(Some(in_use), &english));
     assert_eq!(
-        gateway_buttons(&gateway_plan(None, &english), &english).1,
-        "Change to English"
+        gw,
+        GatewayState::default(),
+        "nothing is shown and nothing waits"
     );
+    assert!(gw.asking(), "another language can be chosen next");
+    gw.planned(
+        english.clone(),
+        gateway_plan(Some(french("MVHS")), &english),
+    );
+    assert!(matches!(gw.preview, Some(GatewayPreview::Plan { .. })));
 }
 
 #[test]
