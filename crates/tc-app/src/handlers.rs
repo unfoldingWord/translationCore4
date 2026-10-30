@@ -57,7 +57,7 @@ impl Handle<Hello> for App {
         let startup = inner.startup.get();
         // Read again at every hello and never saved, so a chosen language is only ever one
         // the person applied (tC4 #525).
-        let saved_locale = inner.prefs.app_locale();
+        let saved_locale = inner.prefs.saved_locale();
         let app_locale = saved_locale
             .or_else(|| LocaleId::for_system_languages(&req.languages))
             .unwrap_or(LocaleId::ENGLISH);

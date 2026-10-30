@@ -170,7 +170,7 @@ async fn a_crash_at_any_write_point_of_a_prefs_file_leaves_the_old_or_the_new_by
                 let reports = ReportLog::new();
                 let again =
                     PrefsWriter::start(disk(&next), reports.clone(), Arc::new(ManualClock::new(2)));
-                let locale = again.app_locale().unwrap();
+                let locale = again.saved_locale().unwrap();
                 assert!(
                     ["en", "ar"].contains(&locale.as_str()),
                     "point {n}, torn {torn}, power cut {power_cut}: {locale:?}"
@@ -311,7 +311,7 @@ fn a_held_disk_write_never_stalls_the_runtime() {
                 assert!(!saving.is_finished(), "the write is still held");
                 held.release();
                 saving.await.unwrap().unwrap();
-                assert_eq!(prefs.app_locale().unwrap().as_str(), "ar");
+                assert_eq!(prefs.saved_locale().unwrap().as_str(), "ar");
                 timer
             })
         })
@@ -448,7 +448,7 @@ async fn unknown_members_survive_a_rewrite_on_disk() {
         None,
     );
     let prefs = PrefsWriter::start(disk(&fs), ReportLog::new(), Arc::new(ManualClock::new(1)));
-    assert_eq!(prefs.app_locale(), None);
+    assert_eq!(prefs.saved_locale(), None);
     prefs
         .set_locale(LocaleId::parse("fr").unwrap())
         .await

@@ -125,7 +125,8 @@ h.shellTest(
     try {
       await h.until('the shell preparing', () => h.dispatched(dir, 'Preparing').length > 0);
       const page = await app.firstWindow();
-      await page.getByText('Preparing translationCore4').waitFor();
+      // Every language's title names the app; the page shows the runner's language (tC4 #525).
+      await page.locator('h1', { hasText: 'translationCore4' }).waitFor();
       const [pid] = h.tc4Pids(dir);
       assert.ok(pid, 'tc4 runs while preparing');
       await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());

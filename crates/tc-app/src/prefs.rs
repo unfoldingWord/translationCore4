@@ -983,7 +983,7 @@ impl PrefsWriter {
     }
 
     /// The app language the person chose, if they chose one.
-    pub fn app_locale(&self) -> Option<LocaleId> {
+    pub fn saved_locale(&self) -> Option<LocaleId> {
         lock(&self.shared.docs).app.locale()
     }
 

@@ -480,11 +480,13 @@ impl LocaleId {
     /// `es-ES` and `es-MX` read `es-419`, `pt-PT` reads `pt-BR`, `hi-Deva-IN` reads `hi`.
     /// `None` when no language has one.
     pub fn for_system_languages(languages: &[String]) -> Option<LocaleId> {
+        fn language(tag: &str) -> &str {
+            tag.split_once('-').map_or(tag, |(language, _)| language)
+        }
         languages.iter().find_map(|tag| {
-            let language = tag.split('-').next().unwrap_or_default();
+            let wanted = language(tag);
             Self::all().find(|locale| {
-                let installed = locale.0.split('-').next().unwrap_or_default();
-                !language.is_empty() && language.eq_ignore_ascii_case(installed)
+                !wanted.is_empty() && wanted.eq_ignore_ascii_case(language(locale.0))
             })
         })
     }
