@@ -221,7 +221,9 @@ browserTest('feedback_report_is_never_written_to_disk: no storage item and no re
     const bodies = [];
     page.on('request', (r) => { if (r.postData()) bodies.push(r.postData()); });
     await openReport(page);
-    const typed = ['A private message 378', 'Private Name 378', 'private378@example.invalid'];
+    // Letters only: every URL holds the server's random port, so digits could match it by chance.
+    const marker = 'typedmarker';
+    const typed = [`A private message ${marker}`, `Private Name ${marker}`, `private${marker}@example.invalid`];
     await message(page).fill(typed[0]);
     await page.getByLabel('Name (optional)', { exact: true }).fill(typed[1]);
     await page.getByLabel('Email (optional)', { exact: true }).fill(typed[2]);
@@ -236,7 +238,7 @@ browserTest('feedback_report_is_never_written_to_disk: no storage item and no re
       assert.ok(!stored.some((item) => item.includes(text)), `${text} is in no storage item`);
       assert.ok(!bodies.some((body) => body.includes(text)), `${text} is in no request`);
     }
-    assert.ok(requests.all.every((r) => !r.url.includes('378')));
+    assert.ok(requests.all.every((r) => !r.url.includes(marker)));
   }, { init: (context) => shell.install(context) });
 });
 
