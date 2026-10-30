@@ -5,10 +5,10 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tc_door43::{
-    Credentials, Door43Client, InternetSwitch, NewRepoOwner, Password, Session, TokenScope,
-    Visibility,
+    Credentials, Door43Client, InternetSwitch, Limits, NewRepoOwner, Password, ProxyAnswer,
+    ProxyFinder, Session, TokenScope, Visibility,
 };
-use tc_door43_fake::{FakeDoor43, seeded};
+use tc_door43_fake::{FakeDoor43, FakeProxy, seeded};
 use tc_journal::command::{Command, SeedSource};
 use tc_journal::fold::ProjectKind;
 use tc_journal::record::{Scope, VerseValue, VersificationValue};
@@ -18,6 +18,7 @@ use tc_store::{
 };
 use tc_sync::machine::{Ended, Received};
 use tc_sync::{Pause, SyncReport};
+use url::Url;
 
 /// Waits nothing between rounds and counts them.
 #[derive(Default)]
@@ -397,6 +398,57 @@ async fn no_write_access_is_refused_before_the_fetch_with_nothing_changed() {
             .any(|r| r.path.contains("git-upload-pack")),
         "no fetch"
     );
+    handle.close().unwrap();
+}
+
+/// Names one proxy for every origin.
+struct Through(Url);
+
+impl ProxyFinder for Through {
+    fn proxy_for(&self, _: &Url) -> Option<ProxyAnswer> {
+        Some(ProxyAnswer::Through(self.0.clone()))
+    }
+}
+
+/// A proxy that refuses Door43 stops a sync at its gate, as unreachable, before any git call.
+/// libgit2's WinHTTP transport would read the proxy's 403 as Door43 refusing the account,
+/// which signs the person out (tc-door43 test `a_git_fetch_goes_through_the_proxy_the_finder_names`);
+/// the gate's API request meets the proxy first and reads it right.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_proxy_that_refuses_door43_stops_sync_as_unreachable_before_any_git_call() {
+    let door43 = door43("unused").await;
+    let proxy = FakeProxy::start().await.unwrap();
+    let switch = InternetSwitch::new();
+    switch.turn_on();
+    // A loopback server never goes through a proxy, so the client names a Door43 that only
+    // the proxy could reach.
+    let proxied = Door43 {
+        client: Door43Client::with_proxy_finder(
+            "https://door43.test".parse().unwrap(),
+            switch,
+            Limits::default(),
+            Some(Arc::new(Through(proxy.url().parse().unwrap()))),
+        )
+        .unwrap(),
+        ..door43
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let ana = computer(dir.path(), "ana");
+    let folder = titus(&ana);
+    let handle = open(&ana, &folder);
+    connect(&handle, &proxied, "unused");
+    let before = head(&handle);
+    let report = sync(&handle, &proxied).await;
+    assert_eq!(
+        report.ended,
+        Ended::Failed(tc_api::refusal::SyncFailure::BeforeIntake(
+            tc_api::refusal::SyncRefusal::Unreachable
+        )),
+        "{report:?}"
+    );
+    assert_eq!(head(&handle), before);
+    // One tunnel, for the gate's API request: no git call followed it.
+    assert_eq!(proxy.requests(), ["CONNECT door43.test:443 HTTP/1.1"]);
     handle.close().unwrap();
 }
 

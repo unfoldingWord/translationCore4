@@ -332,11 +332,14 @@ async fn a_403_on_push_is_an_http_error_and_makes_no_branch() {
     )
     .await;
 
-    // libgit2 passes neither the status code nor the body, only this message.
+    // libgit2 passes neither the status code nor the body, only a message. Its wording
+    // depends on the transport ("unexpected http status code: 403" from its own HTTP client,
+    // "request failed with status code: 403" from WinHTTP on Windows); `git::failed` reads
+    // only the code after "status code: ".
     let error = pushed.result.unwrap_err();
     assert_eq!(error.class(), git2::ErrorClass::Http, "{error:?}");
     assert_eq!(error.code(), git2::ErrorCode::GenericError, "{error:?}");
-    assert_eq!(error.message(), "unexpected http status code: 403");
+    assert!(error.message().ends_with("status code: 403"), "{error:?}");
     assert!(pushed.statuses.is_empty(), "{:?}", pushed.statuses);
     assert!(
         fake.resolve(seeded::USER, "pushed-project", "main")

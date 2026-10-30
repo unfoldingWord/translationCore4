@@ -13,8 +13,8 @@ mod common;
 use common::repo;
 use std::sync::{Arc, Mutex, PoisonError};
 use tc_door43::{
-    Door43Client, Door43Error, GitRemote, InternetSwitch, Limits, ProxyAnswer, ProxyFinder,
-    UnreachableCause, git,
+    AuthStatus, Door43Client, Door43Error, GitRemote, InternetSwitch, Limits, ProxyAnswer,
+    ProxyFinder, UnreachableCause, git,
 };
 use tc_door43_fake::{FakeDoor43, FakeProxy};
 use url::Url;
@@ -115,11 +115,30 @@ async fn a_git_fetch_goes_through_the_proxy_the_finder_names() {
     })
     .await
     .unwrap();
-    // The proxy refused the tunnel, so the fetch could not connect.
-    assert!(
-        matches!(&error, Door43Error::Unreachable { .. }),
-        "{error:?}"
-    );
+    // The proxy refused the tunnel, so the fetch could not connect. libgit2's own HTTP client
+    // says so ("proxy returned unexpected status: 403"). WinHTTP, its transport on Windows,
+    // reports the proxy's refusal as the server's own 403 ("request failed with status code:
+    // 403"), so on Windows it reads as Door43 refusing the account. Sync never meets that
+    // reading: its gate asks the API for the repository first, through the same proxy, and
+    // a refused tunnel stops it there as unreachable (tc-sync test
+    // `a_proxy_that_refuses_door43_stops_sync_as_unreachable_before_any_git_call`).
+    if cfg!(windows) {
+        assert!(
+            matches!(
+                &error,
+                Door43Error::AuthFailed {
+                    status: AuthStatus::Forbidden,
+                    ..
+                }
+            ),
+            "{error:?}"
+        );
+    } else {
+        assert!(
+            matches!(&error, Door43Error::Unreachable { .. }),
+            "{error:?}"
+        );
+    }
     assert_eq!(proxy.requests(), ["CONNECT door43.test:443 HTTP/1.1"]);
     assert_eq!(finder.asked(), ["https://door43.test/"]);
 }
