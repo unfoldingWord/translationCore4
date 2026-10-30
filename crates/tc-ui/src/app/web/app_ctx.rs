@@ -925,7 +925,8 @@ impl Actions {
             locale: id,
         };
         self.0.runtime.api().call(&request).await?;
-        self.s().server.saved_locale.try_set(id);
+        self.s().server.app_locale.try_set(id);
+        self.s().server.saved_locale.try_set(Some(id));
         show_locale(id);
         Ok(())
     }

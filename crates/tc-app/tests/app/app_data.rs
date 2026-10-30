@@ -170,7 +170,7 @@ async fn a_crash_at_any_write_point_of_a_prefs_file_leaves_the_old_or_the_new_by
                 let reports = ReportLog::new();
                 let again =
                     PrefsWriter::start(disk(&next), reports.clone(), Arc::new(ManualClock::new(2)));
-                let locale = again.app_locale();
+                let locale = again.saved_locale().unwrap();
                 assert!(
                     ["en", "ar"].contains(&locale.as_str()),
                     "point {n}, torn {torn}, power cut {power_cut}: {locale:?}"
@@ -311,7 +311,7 @@ fn a_held_disk_write_never_stalls_the_runtime() {
                 assert!(!saving.is_finished(), "the write is still held");
                 held.release();
                 saving.await.unwrap().unwrap();
-                assert_eq!(prefs.app_locale().as_str(), "ar");
+                assert_eq!(prefs.saved_locale().unwrap().as_str(), "ar");
                 timer
             })
         })
@@ -358,6 +358,60 @@ async fn the_saved_app_language_survives_a_relaunch() {
     assert_eq!(hello_value(&second.app).await["prefs"]["appLocale"], "ar");
 }
 
+/// `hello`'s app language for a page whose computer prefers `languages`.
+async fn shown_for(app: &tc_app::App, languages: &[&str]) -> String {
+    let body = serde_json::to_vec(&json!({ "languages": languages })).unwrap();
+    let tc_app::Answer::Reply { body, .. } = app.call("app/hello", &body).await else {
+        panic!("hello did not answer")
+    };
+    let reply: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(reply["type"], "ok", "{reply}");
+    reply["value"]["prefs"]["appLocale"]
+        .as_str()
+        .unwrap()
+        .to_owned()
+}
+
+/// tC4 #525: with no language saved, the app shows the computer's when a catalog has it and
+/// English when none does, and saves nothing; a chosen language wins over the computer's, also
+/// after a relaunch.
+#[tokio::test]
+async fn the_computer_language_shows_until_one_is_chosen() {
+    let dir = tempfile::tempdir().unwrap();
+    let prefs_file = dir.path().join("app-data/prefs/app.json");
+    let first = TestApp::start_in(dir.path(), |_, deps| deps.files = FilesChoice::OnDisk).await;
+    let before = std::fs::read(&prefs_file).ok();
+    assert_eq!(shown_for(&first.app, &["fr-FR", "fr"]).await, "fr");
+    assert_eq!(shown_for(&first.app, &["es-MX"]).await, "es-419");
+    assert_eq!(shown_for(&first.app, &["de-DE"]).await, "en");
+    let prefs = hello_value(&first.app).await["prefs"].clone();
+    assert_eq!(prefs, json!({"appLocale": "en", "savedLocale": null}));
+    first.app.prefs().flush().await;
+    assert_eq!(
+        std::fs::read(&prefs_file).ok(),
+        before,
+        "the computer's language is never saved"
+    );
+
+    first
+        .app
+        .request(&SetLocale {
+            request: rid(1),
+            locale: LocaleId::parse("ru").unwrap(),
+        })
+        .await
+        .unwrap()
+        .into_result()
+        .unwrap();
+    assert_eq!(shown_for(&first.app, &["fr-FR"]).await, "ru");
+    assert_eq!(hello_value(&first.app).await["prefs"]["savedLocale"], "ru");
+    first.app.quit().await;
+    drop(first);
+
+    let second = TestApp::start_in(dir.path(), |_, deps| deps.files = FilesChoice::OnDisk).await;
+    assert_eq!(shown_for(&second.app, &["fr-FR"]).await, "ru");
+}
+
 #[tokio::test]
 async fn place_and_the_resume_record_survive_a_relaunch() {
     let dir = tempfile::tempdir().unwrap();
@@ -394,7 +448,7 @@ async fn unknown_members_survive_a_rewrite_on_disk() {
         None,
     );
     let prefs = PrefsWriter::start(disk(&fs), ReportLog::new(), Arc::new(ManualClock::new(1)));
-    assert_eq!(prefs.app_locale(), LocaleId::ENGLISH);
+    assert_eq!(prefs.saved_locale(), None);
     prefs
         .set_locale(LocaleId::parse("fr").unwrap())
         .await

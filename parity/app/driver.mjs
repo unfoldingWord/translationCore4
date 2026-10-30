@@ -10,8 +10,9 @@ import { BIBLE, OBS } from './screens.mjs';
  *
  * @typedef {object} AppEnv
  * @property {(page: import('playwright').Page, options: { locale: string }) => Promise<void>} load
- *   Load Home afresh with `locale` saved as the app language and nothing else remembered: no
- *   place, no Resume card, no last-used order. The driver then waits for `homeReady` and for
+ *   Load Home afresh with `locale` saved as the app language (for `en`, nothing is saved and
+ *   the context's `en-US` locale reads English) and nothing else remembered: no place, no
+ *   Resume card, no last-used order. The driver then waits for `homeReady` and for
  *   `<html lang>`.
  * @property {(page: import('playwright').Page, card: (repo: string) => import('playwright').Locator) => Promise<void>} homeReady
  *   Wait until Home is drawn as far as this app can draw it: tC4's two project cards; on the

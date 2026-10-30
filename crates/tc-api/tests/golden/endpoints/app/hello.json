@@ -2,7 +2,12 @@
   "path": "app/hello",
   "kind": "query",
   "net": null,
-  "request": {},
+  "request": {
+    "languages": [
+      "fr-FR",
+      "fr"
+    ]
+  },
   "reply": {
     "type": "ok",
     "value": {
@@ -72,7 +77,8 @@
         }
       ],
       "prefs": {
-        "appLocale": "ar"
+        "appLocale": "ar",
+        "savedLocale": "ar"
       },
       "startup": {
         "type": "preparing",

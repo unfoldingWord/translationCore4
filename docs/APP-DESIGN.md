@@ -1728,7 +1728,7 @@ drives the quit sequence in process): `closed_stdin_quits_within_5_s`,
 | `GET /` | static | `index.html`, `no-store`, with `boot.js` |
 | `GET /ui/<build>/*` | static | wasm, JS glue, `boot.js`, CSS (tC4's `styles.css`, tokens, `ui.css`), fonts, catalogs, in a folder named by a hash of its files (§3.10); immutable |
 | `GET /help/*` | static | vendored help pages as `text/html`, never a redirect (Q28, DELTA:928-944); the page's shim `crates/tc-ui/app/help-shim.js` swaps them in the frame, as tC4's help panel does (`tC4:src/views/AccountMenu.jsx:182-274`), and the server serves them unchanged, so `help-pages.txt` checks every byte *(A5, D3, D4: DELTA-10-16 Q28 recommended a shim injected into the frame; tC4 runs the swap from the parent page, and pages served as vendored stay checkable)* |
-| `GET /prepare.html` | static | first-launch window: tC4's `scripts/desktop-preparing.html` with its words in the saved app language (DELTA Q25; English until translated, Q-10). One file, `crates/tc-ui/app/prepare.html`, with its own CSP (the server sends none for this route); it reads `app/hello` and the event stream and goes to `/` at `Ready` *(A9)* |
+| `GET /prepare.html` | static | first-launch window: tC4's `scripts/desktop-preparing.html` with its words in the app language `hello` gives: the saved one, else the computer's (tC4 #525) (DELTA Q25; English until translated, Q-10). One file, `crates/tc-ui/app/prepare.html`, with its own CSP (the server sends none for this route); it reads `app/hello` and the event stream and goes to `/` at `Ready` *(A9)* |
 | `GET /api/v1/events` | stream | §5.4 |
 | `POST /api/v1/{service}/{name}` | typed | §3.9 |
 | `POST /api/v1/uploads` | upload | §5.5 |
@@ -2010,7 +2010,7 @@ show a 401 page.
      are in a `QueryCache`: projects, cards, the book model, helps, the check session, the aligner
      view. Values that arrive whole in `hello` and in events live in `ServerState` signals that
      exist for the life of the page. `hello` holds five of them: the internet switch, the
-     account, the startup state, the open sessions and the saved app language. Events update
+     account, the startup state, the open sessions and the app language (the shown one, and the saved one if any). Events update
      them, and a `Resync` reads `hello` again. Jobs are in no read of `hello`: events carry
      them, and a `Resync` reads each job held as active with `jobs/get` (§5.4). The last
      checkpoint outcome, the files a materialize cannot write and the aligner save states are
@@ -2696,7 +2696,10 @@ Publish` with tC4's string values; `MainView` is a port of `tC4:src/App.jsx:192-
 - Rebuild-only keys live in `assets/i18n-rebuild/<id>.json`, merged after the vendored catalog
   without overriding it. The vendored files stay byte-identical (DELTA:532-536).
 - `<html lang dir>` comes from `LOCALES` (`crates/tc-ui/src/i18n.rs:41-92`) and is set before the
-  first paint from `hello.prefs.appLocale`. `lang` matters as well as `dir`:
+  first paint from `hello.prefs.appLocale`: the saved language, or while none is saved the first
+  of the page's `navigator.languages` (sent in `app/hello`) whose language has a catalog, else
+  English; the computer's is never saved (`LocaleId::for_system_languages`, tC4 #525). `lang`
+  matters as well as `dir`:
   `html:lang(ar) ::placeholder` switches the face (`crates/tc-ui/assets/ds/tokens/typography.css:166`).
 - Three direction axes, each carried by its view type: the interface from the app language;
   scripture from `ProjectFacts.dir`; each help card from its gateway package

@@ -6,6 +6,7 @@ use serde_json::json;
 use tc_api::account::{HelpLink, LinkView};
 use tc_api::app::{AppPrefsView, ClientError, Hello, HelloView, Quit};
 use tc_api::feedback::{Compose, FeedbackDraft};
+use tc_api::ids::LocaleId;
 use tc_api::jobs::{Cancel, Get, JobView};
 use tc_api::net::{NetView, Set};
 use tc_api::prefs::{RecordPlace, SetAlignSuggestions, SetDraftUnit, SetLocale, SetRailFolded};
@@ -50,10 +51,16 @@ impl App {
 }
 
 impl Handle<Hello> for App {
-    async fn handle(&self, _req: Hello) -> Result<HelloView, ApiError> {
+    async fn handle(&self, req: Hello) -> Result<HelloView, ApiError> {
         let inner = &self.inner;
         let account = inner.account.view();
         let startup = inner.startup.get();
+        // Read again at every hello and never saved, so a chosen language is only ever one
+        // the person applied (tC4 #525).
+        let saved_locale = inner.prefs.saved_locale();
+        let app_locale = saved_locale
+            .or_else(|| LocaleId::for_system_languages(&req.languages))
+            .unwrap_or(LocaleId::ENGLISH);
         Ok(HelloView {
             api: API_VERSION,
             build: inner.config.build.clone(),
@@ -62,7 +69,8 @@ impl Handle<Hello> for App {
             account,
             sessions: inner.sessions.open_sessions(),
             prefs: AppPrefsView {
-                app_locale: inner.prefs.app_locale(),
+                app_locale,
+                saved_locale,
             },
             startup,
             checkpoints: inner.sessions.failed_checkpoints(),

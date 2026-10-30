@@ -5,6 +5,8 @@
 //
 //   TC4_BIN=target/debug/tc4 TC4_UI=target/tc-ui-app node --test parity/app/journeys/app-language.test.mjs
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import {
   LABEL, LOCALES, browserTest, catalog, choose, expectLanguage, focused, openLanguage, openMenu,
   recordRequests, sleep, trigger, until, withApp,
@@ -32,7 +34,8 @@ browserTest('a. the row shows the applied language; each selection previews befo
     assert.match(await page.getByRole('listbox').getByRole('option', { selected: true }).textContent(), /English/);
     await page.keyboard.press('Escape');
     assert.equal(await dialog(page).count(), 1, 'Escape closes the list, not the dialog');
-    assert.equal(await apply(page).isDisabled(), true, 'Apply is off at the applied language');
+    // Nothing is saved yet, so Apply can make the shown English the choice (#525; tC4 has it off).
+    assert.equal(await apply(page).isEnabled(), true, 'Apply is on while nothing is saved');
     for (const { id } of LOCALES.filter((l) => l.id !== 'en')) {
       await choose(page, id);
       await expectLanguage(page, id);
@@ -40,7 +43,7 @@ browserTest('a. the row shows the applied language; each selection previews befo
       assert.equal(await stored(env), 'en', `${id}: a preview saves nothing`);
     }
     await choose(page, 'en');
-    assert.equal(await apply(page).isDisabled(), true);
+    assert.equal(await apply(page).isEnabled(), true, 'Apply stays on: English is not saved');
     await choose(page, 'hi');
     await cancel(page).click();
     await closed(page);
@@ -463,6 +466,46 @@ browserTest('h. (Home half) Home in Arabic reads right to left: the card\'s head
     await cancel(page).click();
     await closed(page);
     assert.equal(await order(), 'share-first');
+  });
+});
+
+// tC4 #525: with no language saved, the app starts in the computer's (the browser's locale, as
+// Electronite's follows the system's), saves nothing, and asks nothing of another origin.
+browserTest('first_launch_starts_in_the_computer_language_until_one_is_chosen', async () => {
+  await withApp(async ({ context, env }) => {
+    const prefsFile = path.join(env.appData, 'prefs', 'app.json');
+    const savedLocale = () => (fs.existsSync(prefsFile) ? JSON.parse(fs.readFileSync(prefsFile, 'utf8')).appLocale : undefined);
+    const onComputer = async (computer) => {
+      const other = await context.browser().newContext({ ...env.contextOptions, locale: computer });
+      await env.prepare(other);
+      return { other, page: await other.newPage() };
+    };
+    // Supported, regional (Spain's Spanish has the Latin American catalog), unsupported.
+    for (const [computer, shown] of [['fr-FR', 'fr'], ['es-ES', 'es-419'], ['de-DE', 'en']]) {
+      const { other, page } = await onComputer(computer);
+      const requests = recordRequests(page);
+      await env.load(page, { locale: 'en' }); // test/reset: no language saved
+      await expectLanguage(page, shown);
+      assert.equal(savedLocale(), undefined, `${computer}: the computer's language is not saved`);
+      assert.deepEqual(requests.all.filter((r) => !r.url.startsWith(env.origin) && r.url !== 'about:blank'), [], `${computer}: no other origin`);
+      await other.close();
+    }
+    assert.deepEqual(env.refused(), []);
+    // A chosen language wins over the computer's, English too, and after a reload.
+    const { other, page } = await onComputer('fr-FR');
+    await env.load(page, { locale: 'en' });
+    await expectLanguage(page, 'fr');
+    // The computer's language can be applied as it is shown: one step makes it the choice.
+    await openLanguage(page);
+    assert.equal(await apply(page).isEnabled(), true, 'Apply is on at the computer language');
+    await apply(page).click();
+    await closed(page);
+    assert.equal(savedLocale(), 'fr');
+    await applyLanguage(page, 'en');
+    assert.equal(savedLocale(), 'en');
+    await page.reload();
+    await expectLanguage(page, 'en');
+    await other.close();
   });
 });
 

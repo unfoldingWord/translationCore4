@@ -43,7 +43,7 @@ use std::rc::Rc;
 use js_sys::Array;
 use leptos::prelude::*;
 use send_wrapper::SendWrapper;
-use tc_api::app::{Hello, HelloView};
+use tc_api::app::HelloView;
 use tc_api::event::EventFrame;
 use tc_api::ids::{LocaleId, Scope, ServerInstance};
 use tc_api::jobs::Get as JobsGet;
@@ -383,7 +383,7 @@ impl Runtime {
     async fn read_hello_once(&self) {
         for _ in 0..HELLO_ATTEMPTS {
             let before = self.0.state_frames.get();
-            match self.0.api.call(&Hello {}).await {
+            match self.0.api.call(&js::hello()).await {
                 // Not older than a frame already applied: take it.
                 Ok(hello) if self.0.state_frames.get() == before => {
                     // A `hello` of another run is a restart, which `reseed` alone would hide.
@@ -496,7 +496,7 @@ async fn boot(base: &str, busy: &Rc<api::Busy>, after: Option<CrashMarker>) -> R
         .await
         .map_err(|error| format!("the event stream: {error}"))?;
     let hello: HelloView = api
-        .call(&Hello {})
+        .call(&js::hello())
         .await
         .map_err(|error| format!("app/hello: {error}"))?;
     js::mark("tc4:hello");

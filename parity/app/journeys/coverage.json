@@ -79,6 +79,12 @@
         ]
       },
       {
+        "file": "parity/app/journeys/app-language.test.mjs",
+        "tests": [
+          "first_launch_starts_in_the_computer_language_until_one_is_chosen"
+        ]
+      },
+      {
         "file": "parity/app/journeys/dropdown.test.mjs",
         "tests": [
           "tC4 #552: a press on the label of the open book list keeps the list and its search",

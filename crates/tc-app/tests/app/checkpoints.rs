@@ -62,10 +62,15 @@ pub(super) async fn store_app(
 
 /// What `hello` says failed.
 async fn failed(t: &super::common::TestApp) -> Vec<tc_api::app::FailedCheckpoint> {
-    super::common::post(&t.app, &tc_api::app::Hello {})
-        .await
-        .unwrap()
-        .checkpoints
+    super::common::post(
+        &t.app,
+        &tc_api::app::Hello {
+            languages: Vec::new(),
+        },
+    )
+    .await
+    .unwrap()
+    .checkpoints
 }
 
 /// INV-A-FAILED-CHECKPOINT-IS-SHOWN-UNTIL-RETRIED (D1): a leave checkpoint that failed on a

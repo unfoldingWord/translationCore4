@@ -544,14 +544,19 @@ mod outside {
 
     /// What `hello` lists for the open project.
     async fn hello_outside(t: &TestApp, at: &Scope) -> OutsideEdits {
-        post(&t.app, &tc_api::app::Hello {})
-            .await
-            .unwrap()
-            .sessions
-            .into_iter()
-            .find(|s| s.at == *at)
-            .unwrap()
-            .outside
+        post(
+            &t.app,
+            &tc_api::app::Hello {
+                languages: Vec::new(),
+            },
+        )
+        .await
+        .unwrap()
+        .sessions
+        .into_iter()
+        .find(|s| s.at == *at)
+        .unwrap()
+        .outside
     }
 
     fn words(t: &TestApp, at: &Scope, v: u16) -> Option<String> {

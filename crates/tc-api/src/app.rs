@@ -23,7 +23,13 @@ pub const BUILD_COMMIT: &str = match option_env!("TC4_BUILD_COMMIT") {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "proptest", derive(proptest_derive::Arbitrary))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct Hello {}
+pub struct Hello {
+    /// The computer's languages, most preferred first (`navigator.languages`). They choose the
+    /// app language while none is saved (tC4 #525); the server never saves them. A caller with
+    /// no page (a test, a script) sends none and reads English.
+    #[serde(default)]
+    pub languages: Vec<String>,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "proptest", derive(proptest_derive::Arbitrary))]
@@ -98,9 +104,13 @@ pub enum SessionRole {
 #[cfg_attr(feature = "proptest", derive(proptest_derive::Arbitrary))]
 #[serde(rename_all = "camelCase")]
 pub struct AppPrefsView {
-    /// The saved app language, English until one is chosen; it sets `<html lang dir>`
-    /// before the first paint.
+    /// The app language: the saved one, or until one is chosen the first of `Hello::languages`
+    /// that has a catalog, else English (tC4 #525). It sets `<html lang dir>` before the first
+    /// paint.
     pub app_locale: LocaleId,
+    /// The language the person applied, if any. While it is `None`, the App language dialog
+    /// lets them apply the language the app shows.
+    pub saved_locale: Option<LocaleId>,
 }
 
 /// `app/quit`: saves aligner links, checkpoints every session and exits, as a closed

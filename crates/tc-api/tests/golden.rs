@@ -282,7 +282,9 @@ impl<T: Example> Example for Option<T> {
 
 impl Example for Hello {
     fn example() -> Self {
-        Hello {}
+        Hello {
+            languages: vec!["fr-FR".into(), "fr".into()],
+        }
     }
 }
 
@@ -306,6 +308,7 @@ impl Example for HelloView {
             }],
             prefs: AppPrefsView {
                 app_locale: LocaleId::parse("ar").unwrap(),
+                saved_locale: Some(LocaleId::parse("ar").unwrap()),
             },
             startup: StartupState::Preparing(StartupProgress {
                 done: 1200,

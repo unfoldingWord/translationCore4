@@ -364,7 +364,8 @@ pub fn AccountMenu() -> impl IntoView {
     };
     let dialogs = {
         let actions = actions.clone();
-        let applied = s.server.saved_locale.clone();
+        let applied = s.server.app_locale.clone();
+        let saved = s.server.saved_locale.clone();
         view! {
             {move || {
                 language.get().then(|| {
@@ -373,6 +374,7 @@ pub fn AccountMenu() -> impl IntoView {
                         <span data-on="light" style="display: contents;">
                             <AppLanguageDialog
                                 applied=applied.get_untracked()
+                                saved=saved.get_untracked()
                                 actions=actions
                                 on_close=Callback::new(move |()| close_language())
                             />
@@ -641,8 +643,8 @@ fn menu_rows_view(
         row.end = Some(Box::new(move || switch(online)));
         row.view()
     };
-    let saved_locale = s.server.saved_locale.clone();
-    let language_label = move || saved_locale.with(|id: &LocaleId| locale_of(*id).label.to_owned());
+    let app_locale = s.server.app_locale.clone();
+    let language_label = move || app_locale.with(|id: &LocaleId| locale_of(*id).label.to_owned());
     let sign_out = {
         let actions = actions.clone();
         move || {
@@ -837,10 +839,11 @@ fn LicenseDialog(on_close: Callback<()>) -> impl IntoView {
 #[component]
 pub fn AppLanguageDialog(
     applied: LocaleId,
+    saved: Option<LocaleId>,
     actions: Actions,
     on_close: Callback<()>,
 ) -> impl IntoView {
-    let (dialog, show) = LanguageDialog::open(applied);
+    let (dialog, show) = LanguageDialog::open(applied, saved);
     actions.preview_app_locale(show);
     let dialog = ArcRwSignal::new(dialog);
     // A memo, so a preview, which changes the dialog's state but not the lock, does not draw

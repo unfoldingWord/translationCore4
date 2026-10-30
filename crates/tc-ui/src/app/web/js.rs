@@ -43,6 +43,21 @@ pub(super) fn session_remove(key: &str) {
     }
 }
 
+/// `app/hello` with the computer's languages (`navigator.languages`), which choose the app
+/// language while none is saved (tC4 #525). Every hello is made here: one sent without them
+/// would read English and reset the language the dialog rolls back to.
+pub(super) fn hello() -> tc_api::app::Hello {
+    let languages = (|| -> Result<Vec<String>, JsValue> {
+        let navigator = js_sys::Reflect::get(&window()?.into(), &JsValue::from_str("navigator"))?;
+        let list: js_sys::Array =
+            js_sys::Reflect::get(&navigator, &JsValue::from_str("languages"))?.dyn_into()?;
+        Ok(list.iter().filter_map(|tag| tag.as_string()).collect())
+    })();
+    tc_api::app::Hello {
+        languages: languages.unwrap_or_default(),
+    }
+}
+
 /// `navigator.clipboard.writeText(text)`: true once the clipboard holds it.
 pub(super) async fn copy_text(text: &str) -> bool {
     let write = || -> Result<js_sys::Promise, JsValue> {

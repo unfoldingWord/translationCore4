@@ -669,15 +669,14 @@ impl Doc {
 
     // The app document.
 
-    /// English unless the saved value is one of the ten interface languages. A value that is
-    /// anything else (`"de"`, `"EN"`, `42`, `{"id":"fr"}`) reads as English and stays in the
+    /// The saved language when it is one of the ten interface languages. A value that is
+    /// anything else (`"de"`, `"EN"`, `42`, `{"id":"fr"}`) reads as none saved and stays in the
     /// file.
-    fn locale(&self) -> LocaleId {
+    fn locale(&self) -> Option<LocaleId> {
         self.members
             .get("appLocale")
             .and_then(Value::as_str)
             .and_then(|id| LocaleId::parse(id).ok())
-            .unwrap_or(LocaleId::ENGLISH)
     }
 
     fn set_locale(&mut self, locale: LocaleId) {
@@ -983,7 +982,8 @@ impl PrefsWriter {
         let _ = self.tx.send(msg);
     }
 
-    pub fn app_locale(&self) -> LocaleId {
+    /// The app language the person chose, if they chose one.
+    pub fn saved_locale(&self) -> Option<LocaleId> {
         lock(&self.shared.docs).app.locale()
     }
 
