@@ -21,6 +21,7 @@ use crate::ds::{
 };
 use crate::geometry::{Rect, place};
 use crate::roving::{Axis, Move, roving};
+use crate::scrim::{Press, Release, closes};
 
 /// How deep a layer is nested in other layers. A menu opened inside a drawer resolves its
 /// z-index as popover + 10, so it sits above that drawer without either knowing the other.
@@ -245,7 +246,9 @@ pub fn Layer(
     let rect = RwSignal::new(None::<Rect>);
     let panel_size = RwSignal::new(None::<(f64, f64)>);
     let rtl = RwSignal::new(false);
-    let scrim_press = StoredValue::new(true);
+    // Where the press began, taken by its release, which decides whether the click closes.
+    let scrim_press = StoredValue::new(None::<Press>);
+    let scrim_closes = StoredValue::new(false);
 
     // Two flags: a layer asked to close stops behaving like an open one at once (no Escape, no
     // focus trap) while its node stays mounted long enough to animate out.
@@ -704,27 +707,40 @@ pub fn Layer(
                     {..scrim_live.with_value(|l| live(l.clone()))}
                     data-layer-placement=placement.as_str()
                     on:mousedown=move |e: MouseEvent| {
-                        // A press inside the panel is not a press on the scrim.
                         if e.target() != e.current_target() {
+                            scrim_press.set_value(Some(Press::Panel));
                             return;
                         }
                         // A press that will not close this layer (an inner layer takes it)
                         // keeps the focus where it is.
                         let deeper = OUTSIDE.with(|s| s.borrow().iter().any(|(_, d)| *d > depth));
-                        scrim_press.set_value(!deeper);
+                        scrim_press.set_value(Some(if deeper {
+                            Press::ScrimUnderInnerLayer
+                        } else {
+                            Press::Scrim
+                        }));
                         if deeper {
                             e.prevent_default();
                         }
                     }
+                    on:mouseup=move |e: MouseEvent| {
+                        let release = if e.target() == e.current_target() {
+                            Release::Scrim
+                        } else {
+                            Release::Panel
+                        };
+                        let press = scrim_press.get_value();
+                        scrim_press.set_value(None);
+                        scrim_closes.set_value(closes(press, release));
+                    }
                     on:click=move |_| {
-                        if dismiss.scrim
+                        let close = scrim_closes.get_value();
+                        scrim_closes.set_value(false);
+                        if close
+                            && dismiss.scrim
                             && let Some(cb) = on_dismiss.get_untracked()
                         {
-                            let press = scrim_press.get_value();
-                            scrim_press.set_value(true);
-                            if press {
-                                cb.run(DismissReason::Scrim);
-                            }
+                            cb.run(DismissReason::Scrim);
                         }
                     }
                     style=scrim_style.clone()

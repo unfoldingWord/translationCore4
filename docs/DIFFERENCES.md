@@ -183,6 +183,10 @@ Under the same rule, tC4 4.0 bugs the rebuild fixes on purpose (FIX-R, 2026-10-2
   placed words read backwards (#830).
 - Each note, word and question text reads in its own direction under its pane's layout, so
   an English question in an Arabic set is not laid out right to left (#836).
+- A dialog or drawer closes on its backdrop only for a press that starts and ends there. A
+  press that starts inside it, such as selecting text in a field, and ends on the backdrop
+  leaves it open with what was typed, and so does a press from the backdrop that ends inside
+  it. tC4 closes it on either, because the browser sends the click to the backdrop (#852).
 - A save refused for a reason no retry in this open can fix (a bad token, a newer change)
   keeps its text, or the aligner's links, for the next open's offer and does not block going
   Home; tC4 keeps Home blocked (#801, #807). A text refused for its content still shows why
