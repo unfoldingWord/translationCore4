@@ -3951,7 +3951,9 @@ let res = origin.push(&[format!("refs/heads/{b}:refs/heads/{b}")], Some(&mut po)
   `docs/evidence/door43-live-2026-10-17.md` step 6).
 - `Door43Error::RefRejected` (a protected branch, another hook) → `sync.ref-rejected` with
   Door43's own text.
-- An `Err` of class `ErrorClass::Http` with the message `unexpected http status code: 403` →
+- An `Err` of class `ErrorClass::Http` whose message ends `status code: 403` (`unexpected http
+  status code: 403` from libgit2's own HTTP client, `request failed with status code: 403` from
+  WinHTTP, its transport on Windows) →
   `sync.no-write-access` (`NoWriteAccess` with that message), offering the exchange file. Gitea
   answers 403 to the receive-pack request itself, before any hook runs, for a token without
   `write:repository` (as `tc-door43-fake` does) and for a repository that takes no push, such
