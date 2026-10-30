@@ -120,8 +120,8 @@ async fn a_git_fetch_goes_through_the_proxy_the_finder_names() {
     // reports the proxy's refusal as the server's own 403 ("request failed with status code:
     // 403"), so on Windows it reads as Door43 refusing the account. Sync never meets that
     // reading: its gate asks the API for the repository first, through the same proxy, and
-    // a refused tunnel stops it there as unreachable
-    // (`a_request_goes_through_the_proxy_the_finder_names`).
+    // a refused tunnel stops it there as unreachable (tc-sync test
+    // `a_proxy_that_refuses_door43_stops_sync_as_unreachable_before_any_git_call`).
     if cfg!(windows) {
         assert!(
             matches!(
