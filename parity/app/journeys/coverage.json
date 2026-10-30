@@ -233,7 +233,11 @@
         "file": "parity/app/journeys/upgrades.test.mjs",
         "tests": [
           "Keep leaves the checking language as it was; Change moves the primary set to English",
-          "j13_change_writes_the_primary_set_to_disk"
+          "j13_change_writes_the_primary_set_to_disk",
+          "j13_both_buttons_fit_inside_the_dialog_in_en",
+          "j13_both_buttons_fit_inside_the_dialog_in_ar",
+          "j13_the_language_in_use_is_never_asked",
+          "j13_get_source_texts_never_offers_the_language_in_use"
         ]
       }
     ],

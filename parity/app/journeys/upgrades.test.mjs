@@ -9,7 +9,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { browserTest, catalog, sleep, until, withApp } from './kit.mjs';
+import { LOCALES, browserTest, catalog, sleep, until, withApp } from './kit.mjs';
 
 const en = catalog('en');
 const BIBLE = 'sample_burrito';
@@ -51,6 +51,119 @@ browserTest('Keep leaves the checking language as it was; Change moves the prima
     await keep.click();
     await dialog.waitFor({ state: 'detached' });
   });
+});
+
+/** Both buttons of the open gateway change lie inside the dialog's 24px padding, on one row, at
+ * one width. */
+async function assertButtonsFit(page, case_) {
+  const box = await page.getByTestId('gateway-change').locator('[aria-modal="true"]').boundingBox();
+  const [keep, change] = await Promise.all(
+    ['gateway-cancel', 'gateway-confirm'].map((testid) => page.getByTestId(testid).boundingBox()),
+  );
+  for (const [testid, button] of [['gateway-cancel', keep], ['gateway-confirm', change]]) {
+    assert.ok(
+      button.x >= box.x + 24 - 0.5 && button.x + button.width <= box.x + box.width - 24 + 0.5,
+      `${case_}: ${testid} at ${button.x}..${button.x + button.width} is not inside the dialog at ${box.x}..${box.x + box.width}`,
+    );
+  }
+  assert.ok(Math.abs(keep.width - change.width) < 0.5, `${case_}: Keep is ${keep.width}px wide, Change ${change.width}px`);
+  assert.ok(Math.abs(keep.y - change.y) < 0.5, `${case_}: the buttons are not on one row`);
+}
+
+// #855: the dialog is 520px at the smallest window the shell allows (900px, shell/lib.cjs). In
+// every language of the app, left to right and right to left, both buttons stay inside it, side
+// by side at one width; a label that does not fit is cut, and its tooltip gives it whole. This
+// holds for the change the sample offers (Español (Latinoamérica) to English), and for the
+// longest pair of names the registry has, Español (Latinoamérica) and Bahasa Indonesia, which
+// the fixtures do not install, so its labels are put on the same buttons.
+for (const { id } of LOCALES) {
+  browserTest(`j13_both_buttons_fit_inside_the_dialog_in_${id}`, async () => {
+    await withApp(async ({ page }) => {
+      const words = catalog(id);
+      await page.setViewportSize({ width: 900, height: 600 });
+      await page.getByTestId(`project-${BIBLE}`).getByRole('button', { name: words['home.settings'], exact: true }).click();
+      await english(page).click();
+      const dialog = page.getByTestId('gateway-change').locator('[aria-modal="true"]');
+      await dialog.waitFor();
+      // The dialog scales in, from a transition that starts on the next frame, so there may be no
+      // animation to wait for yet. Measured before it ends, it is narrower than it stays.
+      await until('the dialog to finish opening', () => dialog.evaluate((el) => Math.abs(el.getBoundingClientRect().width - el.offsetWidth) < 0.01));
+      await assertButtonsFit(page, 'Español (Latinoamérica) to English');
+      for (const [testid, label] of [
+        ['gateway-cancel', words['gateway.keep'].replace('{lang}', 'Español (Latinoamérica)')],
+        ['gateway-confirm', words['gateway.change'].replace('{lang}', 'English')],
+      ]) {
+        const button = page.getByTestId(testid);
+        assert.equal(await button.textContent(), label);
+        assert.equal(await button.getAttribute('title'), label, `${testid}'s tooltip gives its label whole`);
+      }
+      await page.evaluate(([keep, change]) => {
+        for (const [testid, label] of [['gateway-cancel', keep], ['gateway-confirm', change]]) {
+          const button = document.querySelector(`[data-testid="${testid}"]`);
+          button.firstElementChild.textContent = label;
+          button.title = label;
+        }
+      }, [
+        words['gateway.keep'].replace('{lang}', 'Español (Latinoamérica)'),
+        words['gateway.change'].replace('{lang}', 'Bahasa Indonesia'),
+      ]);
+      await assertButtonsFit(page, 'Español (Latinoamérica) to Bahasa Indonesia');
+    }, { locale: id });
+  });
+}
+
+// #855: the checking language in use is marked Current and choosing it asks nothing. The sample
+// lists English alone as an option, so English is made the language in use first.
+browserTest('j13_the_language_in_use_is_never_asked', async () => {
+  await withApp(async ({ page }) => {
+    await settings(page).click();
+    await english(page).click();
+    await page.getByTestId('gateway-change').waitFor();
+    await page.getByTestId('gateway-confirm').click();
+    await page.getByTestId('gateway-change').waitFor({ state: 'detached' });
+    await page.getByTestId('project-switch').click();
+    await until('Home shows the project card', () => page.getByTestId(`project-${BIBLE}`).count());
+    await settings(page).click();
+    await until('English is the language in use', async () => (await english(page).getAttribute('data-current')) === '1');
+    await english(page).click();
+    await sleep(500);
+    assert.equal(await page.getByTestId('gateway-change').count(), 0, 'no change of checking language is asked');
+  }, { door43: true });
+});
+
+// #855: Get source texts, where the issue was seen, offers "Use for checking" for an installed
+// suite, and once that suite is the language in use it only says so, both on the step left open
+// and when opened again. The sample's Spanish suite is not whole on this computer, so English,
+// whose suite is, is the one checked.
+browserTest('j13_get_source_texts_never_offers_the_language_in_use', async () => {
+  await withApp(async ({ page }) => {
+    const getSourceTexts = async () => {
+      await settings(page).click();
+      await page.getByTestId('settings-manage-sources').click();
+      await page.getByTestId('sources-modal').waitFor();
+    };
+    await getSourceTexts();
+    // The card names English twice: its autonym and its English name.
+    await page.getByTestId('sources-modal').getByText('English', { exact: true }).first().click();
+    // Step 2 asks to turn the internet on to read the package list; Not now reads nothing.
+    await page.getByTestId('net-cancel').click();
+    await page.getByTestId('use-for-checking').click();
+    await page.getByTestId('gateway-change').waitFor();
+    await page.getByTestId('gateway-confirm').click();
+    await page.getByTestId('gateway-change').waitFor({ state: 'detached' });
+    // Get source texts stays open over the project after the change, on the same step, which
+    // now says English is in use and offers it no more.
+    await page.getByTestId('already-checking-in').waitFor();
+    assert.equal(await page.getByTestId('use-for-checking').count(), 0, 'the open step stops offering the language in use');
+    await page.getByTestId('sources-modal').getByRole('button', { name: en['common.close'], exact: true }).first().click();
+    await page.getByTestId('sources-modal').waitFor({ state: 'detached' });
+    await page.getByTestId('project-switch').click();
+    await until('Home shows the project card', () => page.getByTestId(`project-${BIBLE}`).count());
+    // Get source texts opens again on the English suite, now the language in use.
+    await getSourceTexts();
+    await page.getByTestId('already-checking-in').waitFor();
+    assert.equal(await page.getByTestId('use-for-checking').count(), 0, 'the language in use is not offered');
+  }, { door43: true });
 });
 
 browserTest('j13_change_writes_the_primary_set_to_disk', async () => {

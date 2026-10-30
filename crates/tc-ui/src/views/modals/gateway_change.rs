@@ -10,7 +10,7 @@ use leptos::prelude::*;
 use tc_api::resources::{GatewayPackage, ImageChange, PlanView, PlanWhat};
 
 use crate::app::upgrades::{
-    GatewayPreview, GatewayState, blocked_text, gateway_headline, row_text,
+    GatewayPreview, GatewayState, blocked_text, gateway_buttons, gateway_headline, row_text,
 };
 use crate::app::web::{Actions, AppCtx, use_app};
 use crate::ds::{Attrs, Button, ButtonVariant, Callout, CalloutTone, Css};
@@ -105,6 +105,14 @@ fn image_change(change: &ImageChange) -> impl IntoView + use<> {
     }
 }
 
+/// A footer button that fills its column of the pair.
+fn fill() -> Css {
+    crate::css! { "width": "100%", "min-width": 0 }
+}
+
+/// A label that is cut with an ellipsis rather than overflow its button.
+const CUT: &str = "overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0px;";
+
 fn planned(
     actions: &Actions,
     package: &GatewayPackage,
@@ -117,23 +125,11 @@ fn planned(
     let (headline, detail) = gateway_headline(plan);
     let rows: Vec<String> = plan.rows.iter().map(row_text).collect();
     let blocked_message = blocked.then(|| blocked_text(&plan.blocked));
-    let (current, images) = match &plan.what {
-        PlanWhat::Gateway(change) => (
-            change.from.as_ref().map(|from| from.autonym.clone()),
-            change.images.clone(),
-        ),
+    let (from, images) = match &plan.what {
+        PlanWhat::Gateway(change) => (change.from.as_ref(), change.images.clone()),
         _ => (None, None),
     };
-    let keep_label = t(
-        keys::gateway::KEEP,
-        &[(
-            "lang",
-            &current
-                .clone()
-                .unwrap_or_else(|| t(keys::gateway::CURRENT, &[])),
-        )],
-    );
-    let change_label = t(keys::gateway::CHANGE, &[("lang", &package.autonym)]);
+    let (keep_label, change_label) = gateway_buttons(from, package);
     let change_style = if blocked {
         crate::css! { "background": "var(--uw-haze)", "box-shadow": "none" }
     } else if !harmless {
@@ -150,23 +146,30 @@ fn planned(
                 change_label.clone(),
                 change_style.clone(),
             );
+            // Two columns of one width that shrink together, so the pair never runs past the
+            // dialog; a label that does not fit is cut, and its tooltip gives it whole (#855).
             view! {
-                <Button
-                    variant=ButtonVariant::Secondary
-                    disabled=busy
-                    attrs=Attrs::from([("data-testid", "gateway-cancel")])
-                    on_click=Callback::new(move |_| keep.cancel_gateway_change())
-                >
-                    {keep_label}
-                </Button>
-                <Button
-                    disabled=blocked || busy
-                    style=style
-                    attrs=Attrs::from([("data-testid", "gateway-confirm")])
-                    on_click=Callback::new(move |_| change.confirm_gateway_change())
-                >
-                    {change_label}
-                </Button>
+                <div style="display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0px, 1fr); gap: 10px; min-width: 0px;">
+                    <Button
+                        variant=ButtonVariant::Secondary
+                        disabled=busy
+                        title=Some(keep_label.clone())
+                        style=fill()
+                        attrs=Attrs::from([("data-testid", "gateway-cancel")])
+                        on_click=Callback::new(move |_| keep.cancel_gateway_change())
+                    >
+                        <span style=CUT>{keep_label}</span>
+                    </Button>
+                    <Button
+                        disabled=blocked || busy
+                        title=Some(change_label.clone())
+                        style=fill().merge(&style)
+                        attrs=Attrs::from([("data-testid", "gateway-confirm")])
+                        on_click=Callback::new(move |_| change.confirm_gateway_change())
+                    >
+                        <span style=CUT>{change_label}</span>
+                    </Button>
+                </div>
             }
             .into_any()
         })

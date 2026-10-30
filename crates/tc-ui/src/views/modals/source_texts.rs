@@ -445,39 +445,54 @@ fn gateway_step(
     src: &ArcRwSignal<SourcesForm>,
     g: GatewayPackage,
 ) -> impl IntoView + use<> {
-    let (is_current, is_checkable) =
-        src.with_untracked(|src| (src.is_current(&g), src.is_checkable(&g)));
+    // Read as the packages change: after "Use for checking" this step stays open, and must
+    // stop offering the language that is now in use (#855).
+    let in_use = {
+        let (src, g) = (src.clone(), g.clone());
+        move || src.with(|src| (src.is_current(&g), src.is_checkable(&g)))
+    };
     let change = actions.clone();
-    let check_in = (is_checkable && !is_current).then(|| {
-        let (actions, package, autonym) = (actions.clone(), g.clone(), g.autonym.clone());
-        view! {
-            <Callout
-                tone=CalloutTone::Info
-                style=crate::css! {
-                    "display": "flex", "align-items": "center", "gap": 10,
-                    "background": "var(--surface-accent-soft)", "border-color": "rgba(49,173,227,.35)",
-                    "color": "var(--uw-ocean)",
+    let check_in = {
+        let (in_use, actions, g) = (in_use.clone(), actions.clone(), g.clone());
+        move || {
+            let (is_current, is_checkable) = in_use();
+            (is_checkable && !is_current).then(|| {
+                let (actions, package, autonym) = (actions.clone(), g.clone(), g.autonym.clone());
+                view! {
+                    <Callout
+                        tone=CalloutTone::Info
+                        style=crate::css! {
+                            "display": "flex", "align-items": "center", "gap": 10,
+                            "background": "var(--surface-accent-soft)", "border-color": "rgba(49,173,227,.35)",
+                            "color": "var(--uw-ocean)",
+                        }
+                    >
+                        <span style="flex: 1 1 0%;">{t(keys::sources::CHECK_IN_PROMPT, &[("lang", &autonym)])}</span>
+                        <Button
+                            size=Size::Sm
+                            attrs=Attrs::from([("data-testid", "use-for-checking")])
+                            style=crate::css! { "flex": "none" }
+                            on_click=Callback::new(move |_| actions.ask_gateway_change(package.clone()))
+                        >
+                            {t(keys::sources::CHECK_IN, &[])}
+                        </Button>
+                    </Callout>
                 }
-            >
-                <span style="flex: 1 1 0%;">{t(keys::sources::CHECK_IN_PROMPT, &[("lang", &autonym)])}</span>
-                <Button
-                    size=Size::Sm
-                    attrs=Attrs::from([("data-testid", "use-for-checking")])
-                    style=crate::css! { "flex": "none" }
-                    on_click=Callback::new(move |_| actions.ask_gateway_change(package.clone()))
-                >
-                    {t(keys::sources::CHECK_IN, &[])}
-                </Button>
-            </Callout>
+            })
         }
-    });
-    let already = is_current.then(|| {
-        view! {
-            <p data-testid="already-checking-in" style="font-size: var(--fs-caption); letter-spacing: var(--track-12); color: var(--tc-valid-strong); font-weight: var(--fw-bold); margin: 0px;">
-                {t(keys::sources::ALREADY_CHECKING_IN, &[("lang", &g.autonym)])}
-            </p>
+    };
+    let already = {
+        let autonym = g.autonym.clone();
+        move || {
+            in_use().0.then(|| {
+                view! {
+                    <p data-testid="already-checking-in" style="font-size: var(--fs-caption); letter-spacing: var(--track-12); color: var(--tc-valid-strong); font-weight: var(--fw-bold); margin: 0px;">
+                        {t(keys::sources::ALREADY_CHECKING_IN, &[("lang", &autonym)])}
+                    </p>
+                }
+            })
         }
-    });
+    };
     let book = {
         let src = src.clone();
         Signal::derive(move || Some(src.with(|src| src.book.code().to_owned())))

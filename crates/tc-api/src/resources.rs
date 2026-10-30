@@ -27,6 +27,13 @@ impl GatewayRef {
     pub fn key(&self) -> String {
         format!("{}::{}", self.language, self.owner)
     }
+
+    /// Whether `other` names the same package (tC4 `isCurrentGateway`): Door43 owners are
+    /// matched without letter case.
+    #[must_use]
+    pub fn is_same_package(&self, other: &GatewayRef) -> bool {
+        self.language == other.language && self.owner.eq_ignore_ascii_case(&other.owner)
+    }
 }
 
 /// One package of tC4's registry of gateway languages (`data/gateways.ts`).

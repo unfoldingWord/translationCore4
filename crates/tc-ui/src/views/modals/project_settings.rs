@@ -260,10 +260,7 @@ fn option(
     g: GatewayPackage,
     current: Option<&tc_api::settings::CurrentGateway>,
 ) -> AnyView {
-    let is_current = current.is_some_and(|c| {
-        c.gateway.language == g.gateway.language
-            && c.gateway.owner.eq_ignore_ascii_case(&g.gateway.owner)
-    });
+    let is_current = current.is_some_and(|c| c.gateway.is_same_package(&g.gateway));
     let key = g.gateway.key();
     let attrs = Attrs::new()
         .with("data-testid", format!("settings-gateway-{key}"))

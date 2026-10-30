@@ -208,6 +208,12 @@ Under the same rule, tC4 4.0 bugs the rebuild fixes on purpose (FIX-R, 2026-10-2
   dismisses them (LINK-DROP, tC4 #825 and #820); tC4 changes the alignment after a save and says
   nothing. The Translate list lives in the page: a crash between a save's write and its reply
   loses the notice, while the old link stays in History.
+- The change of checking language keeps Keep and Change side by side, at one width, inside the
+  dialog: a label that does not fit is cut with an ellipsis and its tooltip gives it whole; tC4
+  lets the pair run past the dialog's start edge, where the first button is cut off. Between two
+  packages of one language (French from Xenizo and from MVHS), the buttons also name each
+  package's owner; tC4 reads "Keep Français" and "Change to Français". The language in use is
+  never asked, also from a Get source texts step left open after the change (#855).
 
 Owner rulings in the issues, made before 4.1.0:
 
