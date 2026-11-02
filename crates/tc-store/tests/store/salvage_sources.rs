@@ -504,8 +504,13 @@ fn every_salvage_open_crash_keeps_exact_history_and_the_complete_damaged_image()
                 } else {
                     &[false, true]
                 };
-                for &power_cut in cuts {
-                    let after = fs.crash(power_cut);
+                for (i, &power_cut) in cuts.iter().enumerate() {
+                    // The last row takes over git's folder: `fs` is not used again.
+                    let after = if i + 1 == cuts.len() {
+                        fs.crash_retiring(power_cut)
+                    } else {
+                        fs.crash(power_cut)
+                    };
                     assert!(
                         after
                             .files_under(&folder.join(".tc"))

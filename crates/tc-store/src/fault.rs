@@ -623,6 +623,25 @@ impl FaultFs {
     /// The files the next process finds after the writer stopped: as they are (a killed
     /// process), or as a power cut leaves them. Locks are released.
     pub fn crash(&self, power_cut: bool) -> Self {
+        self.crashed(power_cut, Mirror::duplicated)
+    }
+
+    /// [`crash`](Self::crash) for the last use of this filesystem, whose store is dropped: the
+    /// next process takes over git's folder where `crash` copies it. A copy costs a file
+    /// operation for each of git's files, which is most of a crash row's time on Windows.
+    pub fn crash_retiring(&self, power_cut: bool) -> Self {
+        self.crashed(power_cut, Mirror::clone)
+    }
+
+    /// [`crash`](Self::crash) for a check that reads only the files: git's folder is not
+    /// copied, and a use of it is refused.
+    pub fn crash_files_only(&self, power_cut: bool) -> Self {
+        self.crashed(power_cut, |_| {
+            Mirror::Failed("this crash keeps only the files, not git's folder".into())
+        })
+    }
+
+    fn crashed(&self, power_cut: bool, mirror: impl FnOnce(&Mirror) -> Mirror) -> Self {
         let model = self.model();
         let mut next = if power_cut {
             model.after_power_loss()
@@ -630,7 +649,7 @@ impl FaultFs {
             model.clone()
         };
         drop(model);
-        next.mirror = next.mirror.duplicated();
+        next.mirror = mirror(&next.mirror);
         next.faults = Faults::default();
         next.watchers.clear();
         next.log.clear();

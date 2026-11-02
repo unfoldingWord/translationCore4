@@ -390,19 +390,41 @@ pub fn commit_problems(repo: &git2::Repository, commit: git2::Oid) -> Vec<String
         .collect()
 }
 
+/// Whether every tree and blob of a commit is in the repository's object database.
+fn objects_present(repo: &git2::Repository, commit: git2::Oid) -> bool {
+    let Ok(tree) = repo.find_commit(commit).and_then(|c| c.tree()) else {
+        return false;
+    };
+    let odb = repo.odb().unwrap();
+    let mut present = true;
+    let walked = tree.walk(git2::TreeWalkMode::PreOrder, |_, entry| {
+        present &= odb.exists(entry.id());
+        git2::TreeWalkResult::Ok
+    });
+    walked.is_ok() && present
+}
+
 /// Every commit of the project's history is a valid Scripture Burrito (§16.6). A project with
 /// no repository or no commit has nothing to check.
 pub fn assert_commits_valid(fs: &FaultFs, folder: &Path) {
     if !git_dir_of(fs, folder).exists() {
         return;
     }
+    // A commit's tree never changes, so a commit found valid once is valid in every later row
+    // that holds it: a crash row's repository is a copy of the base's plus a few new commits.
+    static VALID: std::sync::Mutex<BTreeSet<git2::Oid>> = std::sync::Mutex::new(BTreeSet::new());
     let repo = repo_of(fs, folder);
     for commit in commits_of(&repo) {
+        // The set vouches for a commit's bytes, not for this image: its objects must be here.
+        if VALID.lock().unwrap().contains(&commit) && objects_present(&repo, commit) {
+            continue;
+        }
         let problems = commit_problems(&repo, commit);
         assert!(
             problems.is_empty(),
             "commit {commit} is not a valid burrito: {problems:#?}"
         );
+        VALID.lock().unwrap().insert(commit);
     }
 }
 

@@ -674,7 +674,7 @@ fn bring_it_back_never_replaces_a_teammates_verse_received_after_the_save() {
         let dead = fs.is_dead();
         drop(handle);
         drop(rig);
-        let after = fs.crash(false);
+        let after = fs.crash_retiring(false);
         attack.delete_anas_pending(&after);
         let rig = rig_as(after, APP, "host-1");
         let handle = open(&rig, &attack.folder);
