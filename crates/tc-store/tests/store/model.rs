@@ -195,8 +195,8 @@ enum Target {
 enum Fate {
     /// Must be kept.
     Kept,
-    /// Damage took every copy on disk while the session that saved it runs: that session holds
-    /// it, and must write it again before it closes; a kill takes it.
+    /// Damage took every copy on disk while a session that saved it, or read it at its open,
+    /// runs: that session holds it, and must write it again before it closes; a kill takes it.
     InMemory,
     /// Damage took every copy.
     Destroyed,
@@ -1437,8 +1437,8 @@ impl Run {
 
     /// The saves whose copies another program took since `copies` (see
     /// [`Run::by_another_program`]). `readable`: the running session can still read the bytes
-    /// it read at its open (the program replaced or removed the file; a cut in place takes
-    /// them from the session too, so it holds only the saves it made itself).
+    /// it read at its open (the program replaced or removed the file). After a cut in place it
+    /// holds what its history still shows: the open keeps the bytes it verified (§5.11 K1).
     fn lost_copies(&mut self, [before, journal_before, held]: [Vec<bool>; 3], readable: bool) {
         let after: Vec<bool> = self.saves.iter().map(|s| self.on_disk(&s.text)).collect();
         let journal_after: Vec<bool> = self
@@ -1471,7 +1471,7 @@ impl Run {
             if save.fate != Fate::Kept {
                 continue;
             }
-            if open && (save.session == session || (readable && held[i])) {
+            if open && (save.session == session || (held[i] && (readable || held_after[i]))) {
                 // The running session holds it (it saved it, or read it at its open), and
                 // writes it again at its next seal (§5.11 K1); until then it may write over a
                 // file that shows it. A kill may take it only while it is at most 2 minutes
@@ -2423,15 +2423,16 @@ fn a_chunk() -> impl Strategy<Value = Vec<Step>> {
                 Step::Act { act: Act::Save(3), kill: None },
             ]
         }),
-        // A pending file the open read cut in place, so a value can no longer be read, and
-        // the book file deleted: the job must not rebuild it without the value (R15).
+        // The pack the open sealed cut in place, so a value can no longer be read, and the book
+        // file deleted: the job must not rebuild it without the value (R15). A cut pending file
+        // no longer does it: the open keeps the bytes it verified (§5.11 K1).
         1 => any::<bool>().prop_map(|told| {
             vec![
                 Step::Act { act: Act::Save(1), kill: None },
                 Step::Act { act: Act::Leave, kill: None },
                 crash(),
                 Step::Open,
-                Step::Cut { journal: Journal::Pending, which: 0, keep: 0, at_line: false },
+                Step::Cut { journal: Journal::Pack, which: 0, keep: 0, at_line: false },
                 if told {
                     Step::Delete { file: File::Usfm }
                 } else {
@@ -3347,6 +3348,22 @@ fn named_histories() -> Vec<(&'static str, Vec<Step>)> {
         (
             "a_retired_put_of_an_earlier_write_before_a_power_cut",
             a_retired_put_of_an_earlier_write_before_a_power_cut(),
+        ),
+        (
+            "a_verse_saved_before_a_held_book_whose_pending_file_is_cut",
+            a_verse_saved_before_a_held_book_whose_pending_file_is_cut(),
+        ),
+        (
+            "a_name_saved_before_a_cut_pack_and_a_cut_pending_file",
+            a_name_saved_before_a_cut_pack_and_a_cut_pending_file(),
+        ),
+        (
+            "a_verse_saved_again_after_its_inherited_pending_file_is_cut",
+            a_verse_saved_again_after_its_inherited_pending_file_is_cut(),
+        ),
+        (
+            "a_book_put_back_after_an_open_that_could_not_read_its_pending_file",
+            a_book_put_back_after_an_open_that_could_not_read_its_pending_file(),
         ),
     ]
 }
@@ -4623,4 +4640,167 @@ fn an_outside_revert_after_a_power_cut_while_leaving() -> Vec<Step> {
 #[test]
 fn an_outside_revert_after_a_power_cut_while_leaving_is_kept_and_shown() {
     assert_kept(&an_outside_revert_after_a_power_cut_while_leaving());
+}
+
+/// #847, nightly of 2026-10-27: the second open reads a verse saved by the first from its
+/// pending file, while another program holds the book file that also shows it. Another program
+/// cuts the pending file: the open's bytes still hold the save, a seal would write it again,
+/// and the crash before that seal takes it (ruling 2026-10-22-acceptable-loss).
+fn a_verse_saved_before_a_held_book_whose_pending_file_is_cut() -> Vec<Step> {
+    vec![
+        Step::KillAfterRename { file: File::Usfm },
+        act(Act::Save(2)),
+        act(Act::Leave),
+        lock(Holdable::File(File::Usfm), true),
+        Step::Open,
+        act(Act::Save(1)),
+        lock(Holdable::File(File::Usfm), false),
+        Step::DenyRead {
+            file: File::Usfm,
+            on: true,
+        },
+        act(Act::Save(1)),
+        act(Act::Leave),
+        crash(),
+        Step::Open,
+        Step::Cut {
+            journal: Journal::Pending,
+            which: 0,
+            keep: 0,
+            at_line: false,
+        },
+        Step::Focus,
+        Step::Delete { file: File::Usfm },
+        act(Act::Leave),
+        Step::Open,
+        Step::Edit {
+            verse: 1,
+            told: false,
+        },
+        Step::DenyRead {
+            file: File::Usfm,
+            on: true,
+        },
+        crash(),
+        Step::Open,
+        act(Act::Save(1)),
+        act(Act::Leave),
+        Step::DenyRead {
+            file: File::Usfm,
+            on: false,
+        },
+    ]
+}
+
+/// #847, a local run of 2026-10-29: the same, for a name the outside program then changes in
+/// `metadata.json`.
+fn a_name_saved_before_a_cut_pack_and_a_cut_pending_file() -> Vec<Step> {
+    vec![
+        lock(Holdable::File(File::Usfm), true),
+        killed(Act::Name, 5),
+        Step::Cut {
+            journal: Journal::Pack,
+            which: 0,
+            keep: 0,
+            at_line: false,
+        },
+        act(Act::Save(1)),
+        act(Act::Leave),
+        crash(),
+        Step::Open,
+        Step::Cut {
+            journal: Journal::Pending,
+            which: 0,
+            keep: 0,
+            at_line: false,
+        },
+        Step::Focus,
+        Step::Delete { file: File::Usfm },
+        act(Act::Leave),
+        Step::Open,
+        Step::EditName { told: false },
+        Step::DenyRead {
+            file: File::Meta,
+            on: true,
+        },
+        crash(),
+        Step::Open,
+        act(Act::Save(1)),
+        act(Act::Leave),
+        Step::DenyRead {
+            file: File::Meta,
+            on: false,
+        },
+    ]
+}
+
+#[test]
+fn a_verse_saved_before_a_held_book_whose_pending_file_is_cut_is_lost_only_to_the_crash() {
+    assert_kept(&a_verse_saved_before_a_held_book_whose_pending_file_is_cut());
+}
+
+#[test]
+fn a_name_saved_before_a_cut_pack_and_a_cut_pending_file_is_lost_only_to_the_crash() {
+    assert_kept(&a_name_saved_before_a_cut_pack_and_a_cut_pending_file());
+}
+
+/// #847, a local nightly-length run of 2026-11-02: the same cut, then the person saves the verse
+/// again and the app writes the book file without the older words; a kill before the seal.
+fn a_verse_saved_again_after_its_inherited_pending_file_is_cut() -> Vec<Step> {
+    vec![
+        Step::KillAfterRename { file: File::Usfm },
+        act(Act::Save(2)),
+        act(Act::Leave),
+        lock(Holdable::File(File::Usfm), true),
+        act(Act::Save(1)),
+        lock(Holdable::File(File::Usfm), false),
+        killed(Act::Save(1), 29),
+        Step::Cut {
+            journal: Journal::Pending,
+            which: 24,
+            keep: 0,
+            at_line: false,
+        },
+        act(Act::Save(2)),
+        lock(Holdable::File(File::Usfm), false),
+    ]
+}
+
+#[test]
+fn a_verse_saved_again_after_its_inherited_pending_file_is_cut_is_lost_only_to_the_kill() {
+    assert_kept(&a_verse_saved_again_after_its_inherited_pending_file_is_cut());
+}
+
+/// #847, nightly of 2026-10-24: the open after a kill cannot read the pending file of a save the
+/// book file shows, so it keeps the book file as lost work; then a backup tool puts back the
+/// first book file. The base of the kept copy must not stand for what the file showed, or the
+/// put reads as no change and is written over unseen.
+fn a_book_put_back_after_an_open_that_could_not_read_its_pending_file() -> Vec<Step> {
+    vec![
+        act(Act::Save(1)),
+        lock(Holdable::File(File::Usfm), false),
+        Step::DenyRead {
+            file: File::Meta,
+            on: true,
+        },
+        killed(Act::Save(2), 0),
+        lock(
+            Holdable::Pending {
+                which: 0,
+                readable: false,
+            },
+            true,
+        ),
+        crash(),
+        Step::Revert {
+            file: File::Usfm,
+            back: 0,
+            told: false,
+        },
+    ]
+}
+
+#[test]
+fn a_book_put_back_after_an_open_that_could_not_read_its_pending_file_is_kept() {
+    assert_kept(&a_book_put_back_after_an_open_that_could_not_read_its_pending_file());
 }

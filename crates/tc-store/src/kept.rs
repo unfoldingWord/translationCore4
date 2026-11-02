@@ -535,6 +535,12 @@ impl Writer {
     /// while the project still holds those heads, and a save made since makes it a conflict. Written after the entry: a crash before this leaves the lost heads,
     /// which compare as no base (a conflict, nothing lost), and the next open pins them.
     fn pin_lost_base(&mut self, rel: &str, md5: &str) -> Result<(), StoreError> {
+        // While a journal file cannot be read, a head that looks lost may only be unreadable:
+        // pinned, the placement would name a version the file never showed, and a later put of
+        // that version would read as no change (#847).
+        if !self.complete {
+            return Ok(());
+        }
         let Some(file) = self.heads_of(rel) else {
             return Ok(());
         };
