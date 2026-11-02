@@ -70,15 +70,19 @@ command_of() {
   done
 }
 
+# The arguments after the name go to the step's command, so CI runs a nextest step as one shard:
+#   scripts/gates.sh --step test --partition hash:1/2
+# `journeys` takes its journey files instead; JOURNEYS_SHARD=<i>/<n> runs one slice of them.
 run_step() {
   local name="$1" cmd
-  if [[ "$name" == journeys ]]; then journeys; return; fi
+  shift
+  if [[ "$name" == journeys ]]; then journeys "$@"; return; fi
   cmd="$(command_of "$name")"
   if [[ -z "$cmd" ]]; then echo "gates: no step named $name" >&2; return 1; fi
   if [[ "$name" == clippy-windows || "$cmd" == *x86_64-pc-windows-gnu* ]]; then
     run_step_windows_ready || return 1
   fi
-  bash -c "$cmd"
+  bash -c "$cmd \"\$@\"" gates "$@"
 }
 
 run_step_windows_ready() {
@@ -87,7 +91,8 @@ run_step_windows_ready() {
   return 1
 }
 
-# Every browser journey against real builds; app-e2e.yml runs this as `--step journeys`.
+# Every browser journey against real builds; app-e2e.yml runs this as `--step journeys`, each
+# shard with its own JOURNEYS_SHARD (node's --test-shard: every file runs in exactly one shard).
 # `|| return 1` on each build: under `journeys ... || code=1` bash turns set -e off, and the
 # journeys must never run against an older build.
 journeys() {
@@ -100,7 +105,7 @@ journeys() {
   (( $# )) || set -- parity/app/journeys/*.test.mjs
   TC4_BIN="$target/debug/tc4" TC4_UI="$target/tc-ui-app" TC4_UI_HOOKS="$target/tc-ui-app-hooks" \
     TC4_DOOR43_FAKE="$target/debug/tc-door43-fake" \
-    node --test --test-reporter=tap "$@" | tee "$tap" || code=$?
+    node --test ${JOURNEYS_SHARD:+--test-shard="$JOURNEYS_SHARD"} --test-reporter=tap "$@" | tee "$tap" || code=$?
   # Everything is built, so a skip is a missing build (INV-A-SKIP-IS-A-FAILURE).
   node parity/app/journeys/no-skips.mjs "$tap" || code=1
   return "$code"
@@ -184,7 +189,7 @@ case "${1:-}" in
   "" | --journeys) run_all yes ;;
   --no-journeys) run_all no ;;
   --list) list ;;
-  --step) run_step "${2:?gates: --step needs a name or number}" ;;
+  --step) run_step "${2:?gates: --step needs a name or number}" "${@:3}" ;;
   --touched) touched "${2:-}" ;;
   *) echo "usage: scripts/gates.sh [--list | --step <name or number> | --no-journeys | --touched [base]]" >&2; exit 2 ;;
 esac

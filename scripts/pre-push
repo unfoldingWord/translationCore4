@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# git's pre-push hook (CONTRIBUTING.md "Before you open a pull request"): the lint steps that fail
+# in seconds locally and cost a merge-queue round trip of about 23 minutes in CI. Enable it with
+#   git config core.hooksPath scripts
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+for step in fmt clippy arch; do
+  scripts/gates.sh --step "$step"
+done

@@ -1,0 +1,14 @@
+name: free-disk
+description: Frees the disk the Rust jobs need, without making the job wait for the deletes.
+runs:
+  using: composite
+  steps:
+    # A rename on one disk is instant; the deleting (67 to 99 s inline, #907) runs behind the steps
+    # that follow, which need the space only when the compile starts.
+    - shell: bash
+      run: |
+        sudo mkdir /trash
+        for tree in /usr/share/dotnet /usr/local/lib/android /opt/ghc; do
+          if [ -e "$tree" ]; then sudo mv "$tree" "/trash/$(basename "$tree")"; fi
+        done
+        sudo setsid rm -rf /trash > /dev/null 2>&1 < /dev/null &
