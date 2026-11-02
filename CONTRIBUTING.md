@@ -78,7 +78,9 @@ Every change goes through these steps. Skip none; most take minutes.
      this. A claim you did not see happen comes out of the pull request.
 6. **Prove it.** Run the tests of the crates and journeys you touched, then
    `scripts/gates.sh --touched` with `main` merged in. Every check names the invariant it guards
-   and has been seen to fail (`docs/FUNNEL.md` §2, step 4).
+   and has been seen to fail (`docs/FUNNEL.md` §2, step 4). `scripts/pre-push` runs the fmt,
+   clippy and arch steps before every `git push` and refuses the push when one fails; turn it on
+   once per clone with `git config core.hooksPath scripts`.
 7. **Open the pull request.** Its description says which issue it closes (`Closes #n`), the
    funnel section, each decision you made and why, what you ran and what it printed, and each
    review finding you did not fix with its reason. A new owner ruling becomes a file in

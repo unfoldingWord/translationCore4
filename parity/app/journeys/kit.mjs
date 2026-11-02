@@ -96,6 +96,9 @@ export async function until(what, read, ms = 60_000) {
   }
 }
 
+/** Resolves after the page has drawn two frames: whatever the last event set off has rendered. */
+export const settled = (page) => page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+
 /** A message catalog of the app, as it ships (tC4's, vendored). */
 export const catalog = (id) => JSON.parse(fs.readFileSync(path.join(REPO, 'crates', 'tc-ui', 'assets', 'i18n', `${id}.json`), 'utf8'));
 

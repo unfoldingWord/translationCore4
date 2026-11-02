@@ -108,9 +108,9 @@ debug = "line-tables-only"
 [profile.dev.package.sha2]
 opt-level = 3
 
-# Every `cargo test` generates the Psalms corpus and one ten times larger, and folds both,
-# for the operation-count tests of docs/PERFORMANCE.md rule 2: about half a million changes.
-# Unoptimized, that alone took minutes.
+# Every `cargo test` generates the Psalms corpus and one `TC_SCALE_FACTOR` times larger (2; the
+# nightly job sets 10, about half a million changes), and folds both, for the operation-count
+# tests of docs/PERFORMANCE.md rule 2. Unoptimized, that alone took minutes.
 [profile.dev.package.tc-journal]
 opt-level = 2
 

@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { REPO } from '../env-rust.mjs';
-import { browserTest, catalog, until, withApp } from './kit.mjs';
+import { browserTest, catalog, settled, until, withApp } from './kit.mjs';
 
 const en = catalog('en');
 const rebuilt = JSON.parse(fs.readFileSync(path.join(REPO, 'crates', 'tc-ui', 'assets', 'i18n-rebuild', 'en.json'), 'utf8'));
@@ -141,7 +141,7 @@ browserTest('language-tags: a regional or private-use code is kept whole with it
     await fill(page, { obs: true, name: 'Historias', language: 'Español', code: 'es_419!' });
     await createStories(page).click();
     await page.getByRole('alert').waitFor();
-    await page.waitForTimeout(500);
+    await settled(page);
     assert.deepEqual(listed(env), before);
     assert.equal(fs.readdirSync(env.projectsDir).filter((n) => n.startsWith('.staging')).length, 0);
     await page.keyboard.press('Escape');

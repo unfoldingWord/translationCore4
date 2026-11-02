@@ -67,7 +67,7 @@ jobs:
       - uses: actions/checkout@v4
       # The runner image leaves too little disk for this workspace ("No space left on device",
       # runs 39305042134 and 39317068070); these three trees are not needed here.
-      - run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+      - uses: ./.github/actions/free-disk
       # With no name, rustup installs the toolchain rust-toolchain.toml names: the one pin.
       - run: rustup toolchain install && rustc --version
       - uses: Swatinem/rust-cache@v2
@@ -96,7 +96,7 @@ jobs:
       - uses: actions/checkout@v4
       # The runner image leaves too little disk for this workspace ("No space left on device",
       # runs 39305042134 and 39317068070); these three trees are not needed here.
-      - run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+      - uses: ./.github/actions/free-disk
       # With no name, rustup installs the toolchain rust-toolchain.toml names: the one pin.
       - run: rustup toolchain install && rustc --version
       - uses: Swatinem/rust-cache@v2
@@ -120,7 +120,7 @@ jobs:
       - uses: actions/checkout@v4
       # The runner image leaves too little disk for this workspace ("No space left on device",
       # runs 39305042134 and 39317068070); these three trees are not needed here.
-      - run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+      - uses: ./.github/actions/free-disk
       # With no name, rustup installs the toolchain rust-toolchain.toml names: the one pin.
       - run: rustup toolchain install && rustc --version
       - uses: Swatinem/rust-cache@v2
@@ -133,7 +133,10 @@ jobs:
       # tc-api's types are the UI's too, so they must build for wasm32 as well.
       - run: scripts/gates.sh --step wasm-api
 
-  test:
+  # `test` is the required check; it passes only when every part below passes. The parts run on
+  # runners of their own, so the merge waits for the slowest of them, not for their sum (#901).
+  test-shard:
+    name: test ${{ matrix.shard }}
     runs-on: ubuntu-latest
     # The scale tests run at twice Psalms (CHK-7c); ten times runs at night.
     timeout-minutes: 75
@@ -145,6 +148,10 @@ jobs:
     permissions:
       contents: read
       actions: write
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ['1/2', '2/2']
     steps:
       - uses: actions/checkout@v4
       # The merge queue deletes a group's branch when it drops the group (a merge ahead of it
@@ -160,24 +167,23 @@ jobs:
           sleep 300
       # The runner image leaves too little disk for this workspace ("No space left on device",
       # runs 39305042134 and 39317068070); these three trees are not needed here.
-      - run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+      - uses: ./.github/actions/free-disk
       # With no name, rustup installs the toolchain rust-toolchain.toml names: the one pin.
       - run: rustup toolchain install && rustc --version
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: test
       # The test steps run through cargo-nextest (CHK-8), pinned as the Windows VM pins it.
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-nextest@0.9.149
-      - run: scripts/gates.sh --step test
-      # Each test step runs even when one before it failed, so one failure hides no other.
-      - if: ${{ !cancelled() }}
-        run: scripts/gates.sh --step test-doc
-      - if: ${{ !cancelled() }}
-        run: scripts/gates.sh --step ignored
+      # nextest's hash partition: every test runs in exactly one shard.
+      - run: scripts/gates.sh --step test --partition hash:${{ matrix.shard }}
 
-  test-app:
+  # nextest runs no doctests, and the ignored-test check lists every test binary: neither waits
+  # for the shards.
+  test-extra:
     runs-on: ubuntu-latest
-    # tc-app's tests, on their own runner: with the rest they ran past 75 min (batch 7).
     timeout-minutes: 75
     needs: plan
     # Full tests run where they gate a merge: main, gate/* and on request (rulings/2026-10-24-test-process.md).
@@ -202,15 +208,102 @@ jobs:
           sleep 300
       # The runner image leaves too little disk for this workspace ("No space left on device",
       # runs 39305042134 and 39317068070); these three trees are not needed here.
-      - run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+      - uses: ./.github/actions/free-disk
       # With no name, rustup installs the toolchain rust-toolchain.toml names: the one pin.
       - run: rustup toolchain install && rustc --version
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: test-extra
       # The test steps run through cargo-nextest (CHK-8), pinned as the Windows VM pins it.
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-nextest@0.9.149
-      - run: scripts/gates.sh --step test-app
+      - run: scripts/gates.sh --step test-doc
+      # Each step runs even when the one before it failed, so one failure hides no other.
+      - if: ${{ !cancelled() }}
+        run: scripts/gates.sh --step ignored
+
+  # The required check for the Rust tests outside tc-app.
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [plan, test-shard, test-extra]
+    # Full tests run where they gate a merge: main, gate/* and on request (rulings/2026-10-24-test-process.md).
+    # !cancelled(): a failed part must not skip this job, which would read as a pass.
+    if: ${{ !cancelled() && (github.event_name != 'schedule' && (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/heads/gate/') || github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch')) && needs.plan.outputs.tested != 'true' && needs.plan.outputs.code != 'false' }}
+    steps:
+      - run: '[[ "${{ needs.test-shard.result }}" = success && "${{ needs.test-extra.result }}" = success ]]'
+
+  # tc-app's tests, in shards of their own: with the rest they ran past 75 min (batch 7), and one
+  # test of the crash scenario alone runs over 6 minutes, so the others must not queue behind it.
+  # The filters split every test into exactly one shard (nextest -E, hash partition).
+  test-app-shard:
+    name: test-app ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    needs: plan
+    # Full tests run where they gate a merge: main, gate/* and on request (rulings/2026-10-24-test-process.md).
+    # !cancelled(): if plan fails, its outputs are empty and nothing is skipped.
+    if: ${{ !cancelled() && (github.event_name != 'schedule' && (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/heads/gate/') || github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch')) && needs.plan.outputs.tested != 'true' && needs.plan.outputs.code != 'false' }}
+    # actions: write, so a dropped merge group can cancel its own run (first step).
+    permissions:
+      contents: read
+      actions: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The crash scenario with the small test binaries: its threads were idle otherwise.
+          - name: crash
+            args: -E (test(=app::store_scenario::a_crash_while_a_scenario_project_is_written_leaves_no_half_project))|(!binary_id(tc-app::app)&!binary_id(tc-app::op_counts))
+          # The operation-count tests, each of which builds the corpora.
+          - name: op-counts
+            args: -E binary_id(tc-app::op_counts)
+          - name: app-1
+            args: -E binary_id(tc-app::app)&!(test(=app::store_scenario::a_crash_while_a_scenario_project_is_written_leaves_no_half_project)) --partition hash:1/2
+          - name: app-2
+            args: -E binary_id(tc-app::app)&!(test(=app::store_scenario::a_crash_while_a_scenario_project_is_written_leaves_no_half_project)) --partition hash:2/2
+    steps:
+      - uses: actions/checkout@v4
+      # The merge queue deletes a group's branch when it drops the group (a merge ahead of it
+      # failed, or main moved), but leaves the group's runs going. A job that only got a runner
+      # after that cancels its run instead of spending half an hour on a commit nothing will use.
+      - if: github.event_name == 'merge_group'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git ls-remote --exit-code origin "$GITHUB_REF" > /dev/null && exit 0
+          echo "::notice::The merge queue dropped this group; cancelling the run."
+          gh run cancel ${{ github.run_id }} -R ${{ github.repository }}
+          sleep 300
+      # The runner image leaves too little disk for this workspace ("No space left on device",
+      # runs 39305042134 and 39317068070); these three trees are not needed here.
+      - uses: ./.github/actions/free-disk
+      # With no name, rustup installs the toolchain rust-toolchain.toml names: the one pin.
+      - run: rustup toolchain install && rustc --version
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: test-app
+      # The test steps run through cargo-nextest (CHK-8), pinned as the Windows VM pins it.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest@0.9.149
+      # Through the environment: the filters hold shell syntax, and no space, so the unquoted
+      # expansion keeps each one whole.
+      - env:
+          ARGS: ${{ matrix.args }}
+        run: scripts/gates.sh --step test-app $ARGS
+
+  # The required check for tc-app tests.
+  test-app:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [plan, test-app-shard]
+    # Full tests run where they gate a merge: main, gate/* and on request (rulings/2026-10-24-test-process.md).
+    # !cancelled(): a failed part must not skip this job, which would read as a pass.
+    if: ${{ !cancelled() && (github.event_name != 'schedule' && (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/heads/gate/') || github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch')) && needs.plan.outputs.tested != 'true' && needs.plan.outputs.code != 'false' }}
+    steps:
+      - run: '[[ "${{ needs.test-app-shard.result }}" = success ]]'
 
   # The Windows tests, nightly or on request, until CHK-5 makes them a push gate.
   nightly-windows:
@@ -281,7 +374,7 @@ jobs:
       - uses: actions/checkout@v4
       # The runner image leaves too little disk for this workspace ("No space left on device",
       # runs 39305042134 and 39317068070); these three trees are not needed here.
-      - run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+      - uses: ./.github/actions/free-disk
       # With no name, rustup installs the toolchain rust-toolchain.toml names: the one pin.
       - run: rustup toolchain install && rustc --version
       - uses: Swatinem/rust-cache@v2

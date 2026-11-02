@@ -4,7 +4,7 @@
 //
 //   TC4_BIN=target/debug/tc4 TC4_UI=target/tc-ui-app node --test parity/app/journeys/dropdown.test.mjs
 import assert from 'node:assert/strict';
-import { browserTest, catalog, openMenu, until, withApp } from './kit.mjs';
+import { browserTest, catalog, openMenu, settled, until, withApp } from './kit.mjs';
 
 const en = catalog('en');
 
@@ -34,7 +34,7 @@ browserTest('tC4 #552: a press on the label of the open book list keeps the list
     await search(page).fill('jo');
     const shown = await page.getByRole('option').allTextContents();
     await bookLabel(page).click();
-    await page.waitForTimeout(300);
+    await settled(page);
     assert.equal(await isOpen(book(page)), true, 'the list stays open');
     assert.equal(await search(page).inputValue(), 'jo', 'the search keeps its text');
     assert.equal(await searchFocused(page), true, 'the focus stays in the search');

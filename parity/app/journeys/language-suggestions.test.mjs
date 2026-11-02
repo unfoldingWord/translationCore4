@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { REPO } from '../env-rust.mjs';
-import { browserTest, recordRequests, until, withApp } from './kit.mjs';
+import { browserTest, recordRequests, settled, until, withApp } from './kit.mjs';
 
 const LIST = JSON.parse(fs.readFileSync(path.join(REPO, 'crates', 'tc-app', 'assets', 'langnames.json'), 'utf8'));
 const language = (code) => LIST.find((l) => l.lc === code) ?? assert.fail(`${code} is not in the shipped list`);
@@ -45,7 +45,7 @@ browserTest('New Bible: suggestions from the shipped list, by keyboard and point
 
     // Text that matches no language shows no list.
     await nameField(page).fill('zzzzqqq');
-    await page.waitForTimeout(500);
+    await settled(page);
     assert.equal(await page.getByRole('listbox').count(), 0);
 
     // "Hausa" offers Hausa (ha) first, with its own name and its code.

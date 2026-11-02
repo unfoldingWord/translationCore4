@@ -89,7 +89,7 @@ test('INV-BUILDS-ON-WINDOWS: the gate list builds for Windows, and CI runs it', 
 
 test('INV-JOURNEYS-RUN: every browser journey runs in CI on every main and gate push', () => {
   const e2e = read('.github/workflows/app-e2e.yml');
-  assert.match(e2e.split(/^jobs:/m)[0], /^\s+push:\n\s+branches: \[main, claude\/focused-ride-5uzj7p, 'gate\/\*\*'\]/m, 'INV-JOURNEYS-RUN: app-e2e does not run on pushes to main and gate/**');
+  assert.match(e2e.split(/^jobs:/m)[0], /^\s+push:\n\s+branches: \[main, 'gate\/\*\*'\]/m, 'INV-JOURNEYS-RUN: app-e2e does not run on pushes to main and gate/**');
   assert.match(e2e, /scripts\/gates\.sh --step journeys/, 'INV-JOURNEYS-RUN: app-e2e does not run scripts/gates.sh --step journeys');
   assert.match(gates, /node --test[^\n]*parity\/app\/journeys\/\*\.test\.mjs/, 'INV-JOURNEYS-RUN: the journeys step does not run every parity/app/journeys/*.test.mjs');
 });
