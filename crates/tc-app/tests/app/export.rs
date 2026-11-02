@@ -274,6 +274,67 @@ async fn a_drafted_frame_prints_the_picture_its_pack_has() {
     );
 }
 
+/// A print of the stories with their pictures.
+fn stories_print(at: &tc_api::Scope, id: u8) -> export::RunExport {
+    export::RunExport {
+        utc_offset: tc_api::export::UtcOffset::UTC,
+        request: rid(id),
+        at: at.clone(),
+        producer: export::Producer::PrintHtml,
+        subject: export::Subject::Stories,
+        print: Some(export::PrintRequest {
+            setup: Default::default(),
+            title: "Historias".into(),
+            words: english_words(),
+        }),
+    }
+}
+
+/// INV-STORY-PDF-READS-EACH-PICTURE-ONCE: an export resolves a picture pack once and reads each
+/// picture once.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn story_pdf_reads_each_picture_once() {
+    let (_dir, t) = super::story::start_with_pictures("sample").await;
+    let at = super::story::open_obs(&t.app).await.session.at;
+    let before = t.app.counters();
+    let (job, state) = run(&t.app, &stories_print(&at, 81)).await;
+    exported(state);
+    let counts = t.app.counters().since(&before);
+    assert_eq!(
+        (counts.picture_packs_resolved, counts.pictures_read),
+        (1, 2)
+    );
+    let page = t.app.print_page(&job.get().to_string()).await.unwrap();
+    let page = String::from_utf8(page.bytes).unwrap();
+    assert_eq!(page.matches("data:image/jpeg;base64,").count(), 2);
+}
+
+/// tC4 fails the export on a picture it cannot read, and the failure names that picture.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn story_pdf_fails_on_an_unreadable_picture() {
+    let (dir, t) = super::story::start_with_pictures("sample").await;
+    let at = super::story::open_obs(&t.app).await.session.at;
+    fn find(dir: &Path, name: &str) -> Option<PathBuf> {
+        std::fs::read_dir(dir).unwrap().find_map(|entry| {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                find(&path, name)
+            } else {
+                path.ends_with(name).then_some(path)
+            }
+        })
+    }
+    std::fs::remove_file(find(dir.path(), "obs-en-01-02.jpg").unwrap()).unwrap();
+    let (_, state) = run(&t.app, &stories_print(&at, 82)).await;
+    let JobState::Failed(ApiError::Refused(tc_api::Refusal::Export(
+        tc_api::refusal::ExportRefusal::ReadFailed { error },
+    ))) = state
+    else {
+        panic!("{state:?}")
+    };
+    assert!(error.contains("360px/obs-en-01-02.jpg"), "{error}");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_bible_project_has_no_stories_to_print() {
     let (_dir, t) = start("sample").await;

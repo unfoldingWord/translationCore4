@@ -395,15 +395,52 @@ fn print_word(words: &PrintWords, text: PrintText) -> String {
 
 /// A picture under `/media/obs/` as a `data:` URL: the print document stands alone, so the
 /// window printing it needs no address of the app's (tC4 `inlinePicture`).
-async fn inline_picture(app: &App, uri: &str) -> Option<String> {
+fn inline_picture(
+    app: &App,
+    packs: &mut HashMap<String, Option<tc_resources::Installed>>,
+    uri: &str,
+) -> Option<String> {
     use base64::Engine as _;
     let (pack, path) = uri.strip_prefix("/media/obs/")?.split_once('/')?;
-    let file = app.obs_picture(pack, path).await?;
+    let installed = packs
+        .entry(pack.to_owned())
+        .or_insert_with(|| app.picture_pack(pack))
+        .as_ref()?;
+    let file = app.picture_in(installed, path)?;
     Some(format!(
         "data:{};base64,{}",
         file.content_type,
         base64::engine::general_purpose::STANDARD.encode(&file.bytes)
     ))
+}
+
+/// The pictures of a story print, read in one blocking task that looks up each pack once. `Err`
+/// is the first picture that cannot be read.
+async fn inline_pictures(
+    app: &App,
+    sources: BTreeMap<u8, BTreeMap<usize, String>>,
+) -> Result<BTreeMap<u8, BTreeMap<usize, String>>, String> {
+    let app = app.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut packs = HashMap::new();
+        sources
+            .into_iter()
+            .map(|(story, frames)| {
+                let inlined = frames
+                    .into_iter()
+                    .map(
+                        |(frame, uri)| match inline_picture(&app, &mut packs, &uri) {
+                            Some(data) => Ok((frame, data)),
+                            None => Err(uri),
+                        },
+                    )
+                    .collect::<Result<_, _>>()?;
+                Ok((story, inlined))
+            })
+            .collect()
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// What an export's job made, before it is handed over.
@@ -576,20 +613,10 @@ impl App {
                 } else {
                     BTreeMap::new()
                 };
-                let mut pictures = BTreeMap::new();
-                for (story, frames) in sources {
-                    let mut inlined = BTreeMap::new();
-                    for (frame, uri) in frames {
-                        // tC4 fails the export on a picture it cannot read.
-                        let Some(data) = inline_picture(self, &uri).await else {
-                            return Err(
-                                self.read_failed(format!("picture {uri} could not be read"))
-                            );
-                        };
-                        inlined.insert(frame, data);
-                    }
-                    pictures.insert(story, inlined);
-                }
+                // tC4 fails the export on a picture it cannot read.
+                let pictures = inline_pictures(self, sources)
+                    .await
+                    .map_err(|uri| self.read_failed(format!("picture {uri} could not be read")))?;
                 let printed = tc_obs::print::printed(&stories, None);
                 let words = |text| print_word(&print.words, text);
                 let input = PrintStoriesInput {
