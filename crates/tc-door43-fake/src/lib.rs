@@ -339,6 +339,9 @@ pub(crate) struct State {
     pub repos: Vec<RepoRec>,
     pub faults: Vec<FaultRule>,
     pub requests: Vec<RecordedRequest>,
+    /// Requests being answered now, and the most there were at once since the last clear.
+    pub in_flight: usize,
+    pub peak_in_flight: usize,
     pub max_page_size: usize,
     next_id: u64,
     clock: i64,
@@ -359,6 +362,8 @@ impl State {
             repos: Vec::new(),
             faults: Vec::new(),
             requests: Vec::new(),
+            in_flight: 0,
+            peak_in_flight: 0,
             max_page_size: 50,
             next_id: 1,
             clock: CLOCK_START,
@@ -768,8 +773,15 @@ impl FakeDoor43 {
         self.shared.state().requests.clone()
     }
 
+    /// The most requests that were being answered at once since the last clear.
+    pub fn peak_in_flight(&self) -> usize {
+        self.shared.state().peak_in_flight
+    }
+
     pub fn clear_requests(&self) {
-        self.shared.state().requests.clear();
+        let mut state = self.shared.state();
+        state.requests.clear();
+        state.peak_in_flight = state.in_flight;
     }
 
     /// The most items a listing returns per page, whatever `limit` asks (Gitea's

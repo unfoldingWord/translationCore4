@@ -2,6 +2,8 @@
 //! the fake Door43 on loopback with the parity account: ports of tC4's
 //! `test/share/recommend.test.ts` and of the server half of `test/openFromDoor43Dialog.test.tsx`.
 
+use std::time::Duration;
+
 use tc_api::account::{OrgChoice, Orgs, RepoLink, ShareTargets, SignIn, WebUrl};
 use tc_api::door43::{OpenDoor43, RepoName, RepoSource, ShareOnDoor43, ShareOwner, SharedRepo};
 use tc_api::endpoint::NetKind;
@@ -14,7 +16,7 @@ use tc_api::{ApiError, Refusal};
 use tc_app::App;
 use tc_app::share::recommend;
 use tc_door43_fake::seeded::{PARITY_PASSWORD, PARITY_USER};
-use tc_door43_fake::{FakeDoor43, Fault, FaultRule};
+use tc_door43_fake::{FakeDoor43, FakeOrg, Fault, FaultRule, OrgMember};
 
 use super::common::{Parts, TestApp, post, rid, until};
 
@@ -132,12 +134,15 @@ async fn the_share_targets_are_the_organizations_with_the_recommended_one() {
         .into_iter()
         .filter(|r| r.contains("/repos/search"))
         .collect();
+    // They run together, so they arrive in any order; `targets` above keeps Door43's.
+    let searches: std::collections::BTreeSet<&str> = searches.iter().map(String::as_str).collect();
     assert_eq!(
         searches,
         [
             "GET /api/v1/repos/search?owner=Equipo-Ejemplo&lang=es-419&limit=1",
             "GET /api/v1/repos/search?owner=es-419_gl&lang=es-419&limit=1",
         ]
+        .into()
     );
     // Every call took the account server and the token, in a header (the fake refuses one in
     // a URL).
@@ -148,6 +153,58 @@ async fn the_share_targets_are_the_organizations_with_the_recommended_one() {
         "{:?}",
         fake.requests()
     );
+}
+
+/// INV-SHARE-ORGS-BOUNDED: at most 4 count requests run at once.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn share_counts_are_bounded() {
+    let fake = fake().await;
+    for at in 0..6 {
+        fake.add_org(FakeOrg {
+            name: format!("team-{at}"),
+            full_name: format!("Team {at}"),
+            members: vec![OrgMember {
+                login: PARITY_USER.to_owned(),
+                can_create_repository: true,
+            }],
+        });
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let t = app_on(dir.path(), fake.url()).await;
+    internet(&t.app, true, 1).await;
+    sign_in(&t.app).await;
+    fake.inject(FaultRule::always(
+        "GET",
+        "/api/v1/repos/search",
+        Fault::Delay(Duration::from_millis(100)),
+    ));
+    fake.clear_requests();
+    let targets = post(&t.app, &orgs("es-419")).await.unwrap();
+    assert_eq!(targets.orgs.len(), 8);
+    assert_eq!(fake.peak_in_flight(), 4);
+}
+
+/// INV-SHARE-ORGS-KEEP-DOOR43-ORDER: the recommendation stays on its organization, whichever
+/// count answers first.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_recommendation_stays_on_its_organization_when_its_count_answers_last() {
+    let fake = fake().await;
+    let dir = tempfile::tempdir().unwrap();
+    let t = app_on(dir.path(), fake.url()).await;
+    internet(&t.app, true, 1).await;
+    sign_in(&t.app).await;
+    fake.inject(FaultRule::once(
+        "GET",
+        "/api/v1/repos/search",
+        Fault::Delay(Duration::from_millis(200)),
+    ));
+    let targets = post(&t.app, &orgs("es-419")).await.unwrap();
+    let shown: Vec<(&str, bool)> = targets
+        .orgs
+        .iter()
+        .map(|o| (o.name.as_str(), o.recommended))
+        .collect();
+    assert_eq!(shown, [("Equipo-Ejemplo", true), ("es-419_gl", false)]);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

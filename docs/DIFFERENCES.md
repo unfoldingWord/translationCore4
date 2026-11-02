@@ -29,6 +29,9 @@ The project owner ruled on these points on 2026-10-16 (`docs/TC4-DELTA-2026-10-1
 
 - OBS projects sync like Bible projects. The card reads "Sync with Door43", and the Share
   dialog shows the line about team access. tC4 4.0 syncs Bible projects only (Q2).
+- The Share dialog asks Door43 about a person's organizations at most 4 requests at a time, so
+  its wait no longer grows one request per organization. It shows them in Door43's order, as
+  tC4 4.0 does; tC4 4.0 asks one after another (#897).
 - A private repository opens and syncs through sign-in. The app fetches without
   credentials first. When Door43 answers 401 or 404 and nobody is signed in, the app
   shows the sign-in step and tries again with the token. tC4 4.0 opens public repositories

@@ -60,7 +60,7 @@ pub mod verify;
 mod winproxy;
 
 pub use catalog::{CatalogEntry, CatalogQuery, CatalogRef, Ingredient, Stage};
-pub use client::{Door43Client, Limits};
+pub use client::{Door43Client, Limits, in_door43_order};
 pub use download::{DownloadTo, DownloadWatch, DownloadedZip, Unwatched};
 pub use error::{AuthStatus, Door43Error, UnreachableCause, VerificationError};
 pub use git::{FastForwardRefspec, GitRemote};
