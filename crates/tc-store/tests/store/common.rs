@@ -396,13 +396,20 @@ pub fn assert_commits_valid(fs: &FaultFs, folder: &Path) {
     if !git_dir_of(fs, folder).exists() {
         return;
     }
+    // A commit's tree never changes, so a commit found valid once is valid in every later row
+    // that holds it: a crash row's repository is a copy of the base's plus a few new commits.
+    static VALID: std::sync::Mutex<BTreeSet<git2::Oid>> = std::sync::Mutex::new(BTreeSet::new());
     let repo = repo_of(fs, folder);
     for commit in commits_of(&repo) {
+        if VALID.lock().unwrap().contains(&commit) {
+            continue;
+        }
         let problems = commit_problems(&repo, commit);
         assert!(
             problems.is_empty(),
             "commit {commit} is not a valid burrito: {problems:#?}"
         );
+        VALID.lock().unwrap().insert(commit);
     }
 }
 

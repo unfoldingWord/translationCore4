@@ -148,8 +148,13 @@ pub(crate) fn kill_everywhere_between(
                     PowerLoss::KeepSyncedNames => &[false, true],
                     PowerLoss::Strict => &[true],
                 };
-                for &power_cut in cuts {
-                    let after = fs.crash(power_cut);
+                for (i, &power_cut) in cuts.iter().enumerate() {
+                    // The last row takes over git's folder: `fs` is not used again.
+                    let after = if i + 1 == cuts.len() {
+                        fs.crash_retiring(power_cut)
+                    } else {
+                        fs.crash(power_cut)
+                    };
                     between(&after);
                     let (rig2, reopened) = reopen_checked(after, folder);
                     check(&reopened, &rig2.fs, row_outcome(outcome, model, power_cut));
@@ -159,7 +164,7 @@ pub(crate) fn kill_everywhere_between(
                     // materializes): a power cut after that loses no change. A process killed
                     // between a folder's creation and the flush of its entry leaves a folder
                     // that only the page cache holds, which the restart must not trust.
-                    let cut = rig2.fs.crash(true);
+                    let cut = rig2.fs.crash_files_only(true);
                     let kept = ids_on_disk(&cut, folder);
                     let lost: Vec<_> = held.difference(&kept).collect();
                     assert!(
