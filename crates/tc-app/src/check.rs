@@ -245,11 +245,14 @@ impl ListEntry {
     }
 }
 
-/// The check lists a session has derived (`CheckListCache`, §4.4). The lock is held across a
-/// derivation, so two reads of one list at once derive it once.
+/// One list's place in the cache. Its lock is held across a derivation, so two reads of one
+/// list at once derive it once, and a read of another list does not wait.
+type ListSlot = Arc<tokio::sync::Mutex<Option<ListEntry>>>;
+
+/// The check lists a session has derived (`CheckListCache`, §4.4).
 #[derive(Default)]
 pub(crate) struct CheckCache {
-    lists: tokio::sync::Mutex<HashMap<CheckListRef, ListEntry>>,
+    lists: std::sync::Mutex<HashMap<CheckListRef, ListSlot>>,
     log: std::sync::Mutex<ChangeLog>,
     logged: tokio::sync::Notify,
 }
@@ -305,6 +308,11 @@ fn read_by_checks(key: &RecordKey) -> bool {
 }
 
 impl CheckCache {
+    fn slot(&self, list: CheckListRef) -> ListSlot {
+        let mut lists = self.lists.lock().unwrap_or_else(|e| e.into_inner());
+        lists.entry(list).or_default().clone()
+    }
+
     /// The pump starts at snapshot `seq`: every change after it reaches [`Self::note`].
     pub(crate) fn begin(&self, seq: u64) {
         let mut log = self.log.lock().unwrap_or_else(|e| e.into_inner());
@@ -379,6 +387,26 @@ impl CheckCache {
             }
             tokio::time::timeout_at(deadline, notified).await.ok()?;
         }
+    }
+}
+
+/// A list kept busy until this drops, as a slow derivation keeps it.
+#[cfg(feature = "test-hooks")]
+pub struct ListHold(
+    #[expect(dead_code, reason = "held for its drop")]
+    tokio::sync::OwnedMutexGuard<Option<ListEntry>>,
+);
+
+#[cfg(feature = "test-hooks")]
+impl App {
+    /// Takes `list`'s lock in `at`'s session, for tests of what waits on a busy list.
+    pub async fn hold_check_list(
+        &self,
+        at: &tc_api::Scope,
+        list: CheckListRef,
+    ) -> Result<ListHold, ApiError> {
+        let session = self.read(at)?;
+        Ok(ListHold(session.checks().slot(list).lock_owned().await))
     }
 }
 
@@ -1070,6 +1098,29 @@ struct Ready {
 }
 
 impl App {
+    /// [`rows`] on the blocking pool: on a task that also counts another list, as the picker's
+    /// does, it would keep that list waiting.
+    async fn assess(
+        &self,
+        read: &CountingSnapshot,
+        derived: &Arc<Derived>,
+        tool: Tool,
+        unit: CheckUnit,
+    ) -> Result<Assessed, ApiError> {
+        let (read, derived) = (read.clone(), derived.clone());
+        tokio::task::spawn_blocking(move || rows(&read, &derived, tool, unit))
+            .await
+            .map_err(|stopped| {
+                self.internal(
+                    "a check list could not be assessed",
+                    crate::reports::facts(serde_json::json!({
+                        "unit": unit_name(unit),
+                        "stopped": crate::jobs::stop_reason(stopped),
+                    })),
+                )
+            })
+    }
+
     /// The list of `tool` in `unit` as the session's newest snapshot shows it: derived when
     /// its key is new, its rows recomputed when the snapshot moved. `None` when the tool is
     /// not ready.
@@ -1106,9 +1157,11 @@ impl App {
             _ => return Ok(None),
         };
         let list = CheckListRef { tool, unit };
-        let mut lists = session.checks().lists.lock().await;
-        let fresh = lists.get(&list).is_none_or(|e| e.key != ready.key);
-        if fresh {
+        let slot = session.checks().slot(list);
+        let mut held = slot.lock().await;
+        let entry = if let Some(entry) = held.as_mut().filter(|e| e.key == ready.key) {
+            entry
+        } else {
             let key = ready.key.clone();
             let derived = match unit {
                 CheckUnit::Book(book) => {
@@ -1155,39 +1208,31 @@ impl App {
             self.inner
                 .counters
                 .add(AppCounter::ItemsDerived, derived.items.len() as u64);
-            let assessed = rows(&read, &derived, tool, unit);
+            let derived = Arc::new(derived);
+            let assessed = self.assess(&read, &derived, tool, unit).await?;
             self.inner
                 .counters
                 .add(AppCounter::ChecksAssessed, assessed.rows.len() as u64);
             let view = view_of(&read);
-            lists.insert(
-                list,
-                ListEntry {
-                    key: ready.key,
-                    session: next_session(),
-                    derived: Arc::new(derived),
-                    seq: read.seq(),
-                    stamps: vec![view; assessed.rows.len()],
-                    rows: assessed.rows,
-                    built: view,
-                    states: assessed.states,
-                    decisions: assessed.decisions,
-                    shown: assessed.shown,
-                    placing: assessed.placing,
-                },
-            );
-        }
-        let Some(entry) = lists.get_mut(&list) else {
-            return Err(self.internal(
-                "a check list was lost from its cache",
-                crate::reports::facts(serde_json::json!({ "unit": unit_name(unit) })),
-            ));
+            held.insert(ListEntry {
+                key: ready.key,
+                session: next_session(),
+                derived,
+                seq: read.seq(),
+                stamps: vec![view; assessed.rows.len()],
+                rows: assessed.rows,
+                built: view,
+                states: assessed.states,
+                decisions: assessed.decisions,
+                shown: assessed.shown,
+                placing: assessed.placing,
+            })
         };
         if entry.seq != read.seq() {
             let changed = session.checks().changes(entry.seq, read.seq()).await;
             let done = changed.is_some_and(|changes| reassess(self, &read, entry, list, &changes));
             if !done {
-                let now = rows(&read, &entry.derived, tool, unit);
+                let now = self.assess(&read, &entry.derived, tool, unit).await?;
                 self.inner
                     .counters
                     .add(AppCounter::ChecksAssessed, now.rows.len() as u64);
@@ -1273,22 +1318,24 @@ impl Handle<Picker> for App {
     async fn handle(&self, req: Picker) -> Result<PickerView, ApiError> {
         let session = self.read(&req.at)?;
         let installed = installed(self)?;
+        let count = |tool| {
+            self.with_list(&session, tool, req.unit, &installed, |entry, _| {
+                let progress = entry.progress();
+                CheckProgress {
+                    decided: progress.decided,
+                    total: progress.total,
+                    dropped: entry.derived.dropped.clone(),
+                    next: entry.first_undecided().map(|i| NextCheck {
+                        title: entry.derived.titles[i].clone(),
+                        place: entry.derived.places[i].clone(),
+                    }),
+                }
+            })
+        };
+        let [first, second] = TOOLS;
+        let counts = tokio::join!(count(first), count(second));
         let mut tools = Vec::new();
-        for tool in TOOLS {
-            let counted = self
-                .with_list(&session, tool, req.unit, &installed, |entry, _| {
-                    let progress = entry.progress();
-                    CheckProgress {
-                        decided: progress.decided,
-                        total: progress.total,
-                        dropped: entry.derived.dropped.clone(),
-                        next: entry.first_undecided().map(|i| NextCheck {
-                            title: entry.derived.titles[i].clone(),
-                            place: entry.derived.places[i].clone(),
-                        }),
-                    }
-                })
-                .await;
+        for (tool, counted) in [(first, counts.0), (second, counts.1)] {
             let read = session.read();
             let pins = pins_of(&read)?;
             let pre = preflight(pins.as_ref(), tool, req.unit, &installed);
