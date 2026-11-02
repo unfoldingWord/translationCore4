@@ -3,6 +3,7 @@
 //! offer, a tool's rail, the rows a teammate's edit changes, and that none of it writes.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use tc_api::check::{
     CardCount, CheckListRef, CheckProgress, CheckSessionView, CheckUnit, Open, Picker, PickerView,
@@ -372,4 +373,110 @@ async fn by_figure_headings_carry_ta_titles() {
     for (slug, title) in session.terms.iter().zip(&session.group_titles) {
         assert!(!title.is_empty() || slug.is_empty(), "{slug} has a heading");
     }
+}
+
+/// INV-CHECK-LIST-WAITS-ONLY-FOR-ITSELF: a tool opens while the other tool's list is busy.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn check_list_waits_only_for_itself() {
+    let (_dir, t) = start("en-pins").await;
+    let at = opened(&t.app).await.session.at;
+    let words = t
+        .app
+        .hold_check_list(&at, list(Tool::TranslationWords))
+        .await
+        .unwrap();
+    let notes = tokio::time::timeout(
+        Duration::from_secs(60),
+        open_tool(&t.app, &at, Tool::TranslationNotes, None),
+    )
+    .await
+    .expect("the notes wait for the words");
+    assert_eq!(notes.progress.total, 157);
+    drop(words);
+}
+
+/// The picker builds both lists at once: one list comes while the other is busy.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_picker_derives_both_lists_at_once() {
+    let (_dir, t) = start("en-pins").await;
+    let at = opened(&t.app).await.session.at;
+    let before = t.app.counters();
+    // The first card's list: counting in `TOOLS` order would never reach the second.
+    let words = t
+        .app
+        .hold_check_list(&at, list(Tool::TranslationWords))
+        .await
+        .unwrap();
+    let cards = tokio::spawn({
+        let (app, at) = (t.app.clone(), at.clone());
+        async move { picker(&app, &at).await }
+    });
+    tokio::time::timeout(Duration::from_secs(60), async {
+        while t.app.counters().since(&before).items_derived == 0 {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("the second list waits for the first");
+    assert!(!cards.is_finished(), "the first list is still busy");
+    drop(words);
+    let view = cards.await.unwrap();
+    assert_eq!(counted(&view.tools[0]).total, 182);
+    assert_eq!(counted(&view.tools[1]).total, 157);
+    assert_eq!(t.app.counters().since(&before).book_resource_loads, 1);
+}
+
+/// INV-CHECK-LIST-DERIVED-ONCE: two reads of one list at once derive it once.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn check_list_is_derived_once() {
+    let (_dir, t) = start("sample").await;
+    let at = opened(&t.app).await.session.at;
+    let before = t.app.counters();
+    let notes = t
+        .app
+        .hold_check_list(&at, list(Tool::TranslationNotes))
+        .await
+        .unwrap();
+    let open = || {
+        let (app, at) = (t.app.clone(), at.clone());
+        tokio::spawn(async move { open_tool(&app, &at, Tool::TranslationNotes, None).await })
+    };
+    let (first, second) = (open(), open());
+    // Time for a read to pass the list's lock if the lock did not stop it.
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(!first.is_finished() && !second.is_finished());
+    drop(notes);
+    first.await.unwrap();
+    second.await.unwrap();
+    assert_eq!(t.app.counters().since(&before).items_derived, 112);
+}
+
+/// The word links table of the book named `name`, under `dir`.
+fn find_file(dir: &std::path::Path, name: &str) -> Option<std::path::PathBuf> {
+    std::fs::read_dir(dir).unwrap().find_map(|entry| {
+        let path = entry.unwrap().path();
+        if path.is_dir() {
+            find_file(&path, name)
+        } else {
+            let shown = path.to_string_lossy();
+            (shown.contains("_twl") && shown.contains(name) && shown.ends_with(".tsv"))
+                .then_some(path.clone())
+        }
+    })
+}
+
+/// A count that failed is stated on its own card, and the other tool's is still counted (D30).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_failed_count_stays_on_its_card() {
+    let (dir, t) = start("en-pins").await;
+    let links = find_file(&dir.path().join("app-data"), "TIT").unwrap();
+    std::fs::write(links, [0xff, 0xfe]).unwrap();
+    let at = opened(&t.app).await.session.at;
+    let view = picker(&t.app, &at).await;
+    assert!(
+        matches!(view.tools[0].progress, Some(CardCount::Failed { .. })),
+        "{:?}",
+        view.tools[0]
+    );
+    assert_eq!(counted(&view.tools[1]).total, 157);
 }
