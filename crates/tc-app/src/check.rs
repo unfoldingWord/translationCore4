@@ -1098,6 +1098,29 @@ struct Ready {
 }
 
 impl App {
+    /// [`rows`] on the blocking pool: on a task that also counts another list, as the picker's
+    /// does, it would keep that list waiting.
+    async fn assess(
+        &self,
+        read: &CountingSnapshot,
+        derived: &Arc<Derived>,
+        tool: Tool,
+        unit: CheckUnit,
+    ) -> Result<Assessed, ApiError> {
+        let (read, derived) = (read.clone(), derived.clone());
+        tokio::task::spawn_blocking(move || rows(&read, &derived, tool, unit))
+            .await
+            .map_err(|stopped| {
+                self.internal(
+                    "a check list could not be assessed",
+                    crate::reports::facts(serde_json::json!({
+                        "unit": unit_name(unit),
+                        "stopped": crate::jobs::stop_reason(stopped),
+                    })),
+                )
+            })
+    }
+
     /// The list of `tool` in `unit` as the session's newest snapshot shows it: derived when
     /// its key is new, its rows recomputed when the snapshot moved. `None` when the tool is
     /// not ready.
@@ -1185,7 +1208,8 @@ impl App {
             self.inner
                 .counters
                 .add(AppCounter::ItemsDerived, derived.items.len() as u64);
-            let assessed = rows(&read, &derived, tool, unit);
+            let derived = Arc::new(derived);
+            let assessed = self.assess(&read, &derived, tool, unit).await?;
             self.inner
                 .counters
                 .add(AppCounter::ChecksAssessed, assessed.rows.len() as u64);
@@ -1193,7 +1217,7 @@ impl App {
             held.insert(ListEntry {
                 key: ready.key,
                 session: next_session(),
-                derived: Arc::new(derived),
+                derived,
                 seq: read.seq(),
                 stamps: vec![view; assessed.rows.len()],
                 rows: assessed.rows,
@@ -1208,7 +1232,7 @@ impl App {
             let changed = session.checks().changes(entry.seq, read.seq()).await;
             let done = changed.is_some_and(|changes| reassess(self, &read, entry, list, &changes));
             if !done {
-                let now = rows(&read, &entry.derived, tool, unit);
+                let now = self.assess(&read, &entry.derived, tool, unit).await?;
                 self.inner
                     .counters
                     .add(AppCounter::ChecksAssessed, now.rows.len() as u64);
