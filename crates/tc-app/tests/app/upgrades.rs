@@ -1676,6 +1676,78 @@ fn alignment_heads(w: &World) -> Vec<Vec<tc_journal::ChangeId>> {
         .collect()
 }
 
+const CATALOG_SEARCH: &str = "/api/v1/catalog/search";
+
+/// Neither search needs the other's answer, so holding one lets the other reach Door43.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn check_updates_searches_sets_and_texts_together() {
+    use tc_door43_fake::{Fault, FaultRule};
+    let w = world_with_texts(1).await;
+    w.fake.clear_requests();
+    w.fake
+        .inject(FaultRule::once("GET", CATALOG_SEARCH, Fault::Hold));
+    let (app, at) = (w.t.app.clone(), w.at.clone());
+    let asked = tokio::spawn(async move { ok(&app, &CheckUpdates { at }).await });
+    let searches = || {
+        w.fake
+            .requests()
+            .iter()
+            .filter(|r| r.path == CATALOG_SEARCH)
+            .count()
+    };
+    tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        super::common::until("both searches reach Door43", || searches() == 2),
+    )
+    .await
+    .expect("the second search waits for the first");
+    w.fake.release_held();
+    let found = asked.await.unwrap();
+    assert!(!found.sets.is_empty() && !found.texts.is_empty());
+}
+
+/// #258: a text Door43 cannot answer for is said, and the set offers stay.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_failed_text_search_keeps_the_set_offers() {
+    use tc_door43_fake::{Fault, FaultRule};
+    let w = world_with_texts(1).await;
+    let refused = Fault::Status {
+        status: 500,
+        message: "no".to_owned(),
+    };
+    w.fake
+        .inject(FaultRule::once("GET", CATALOG_SEARCH, refused).with_query("en_ult"));
+    let found = ok(&w.t.app, &CheckUpdates { at: w.at.clone() }).await;
+    assert!(found.texts_error.is_some() && found.texts.is_empty());
+    assert!(found.sets.iter().any(|s| !s.moves.is_empty()));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_failed_set_search_fails_the_check() {
+    use tc_api::Refusal;
+    use tc_api::refusal::ResourceRefusal;
+    use tc_door43_fake::{Fault, FaultRule};
+    let w = world_with_texts(1).await;
+    let refused = Fault::Status {
+        status: 500,
+        message: "no".to_owned(),
+    };
+    w.fake
+        .inject(FaultRule::once("GET", CATALOG_SEARCH, refused).with_query("en_tn"));
+    let error = super::common::post(&w.t.app, &CheckUpdates { at: w.at.clone() })
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(
+            error,
+            ApiError::Refused(Refusal::Resources(
+                ResourceRefusal::UpdateCheckFailed { .. }
+            ))
+        ),
+        "{error:?}"
+    );
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn updates_offer_each_scripture_text_with_a_newer_release() {
     let w = world_with_texts(3).await;

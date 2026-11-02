@@ -208,6 +208,7 @@ async fn add_fault(State(fake): Fake, body: axum::body::Bytes) -> Response {
     fake.inject(FaultRule {
         method: body.method,
         path_prefix: body.path,
+        query_holds: None,
         times: body.times,
         skip: 0,
         fault,
