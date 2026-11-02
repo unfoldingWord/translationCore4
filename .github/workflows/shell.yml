@@ -86,8 +86,9 @@ jobs:
             target/shell-bundle
           retention-days: 3
 
-  # The test build of tc4 for each system, compiled while `builds` runs: the end-to-end jobs
-  # download it instead of compiling it after the wait.
+  # The test build of tc4 for Windows and macOS, compiled while `builds` runs: their end-to-end
+  # jobs download it instead of compiling it after the wait. Linux compiles in its own job, which
+  # is not on the critical path, so it holds no runner for a job of its own.
   tc4:
     name: tc4 ${{ matrix.name }}
     needs: changes
@@ -97,7 +98,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: linux, os: ubuntu-24.04 }
           - { name: windows, os: windows-2025 }
           - { name: macos, os: macos-15 }
     runs-on: ${{ matrix.os }}
@@ -107,8 +107,6 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v4
-      - if: runner.os == 'Linux'
-        uses: ./.github/actions/free-disk
       - run: rustup toolchain install && rustc --version
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --locked -p tc4 --features test-hooks,fixture-backend
@@ -120,7 +118,7 @@ jobs:
           retention-days: 3
 
   e2e-linux:
-    needs: [changes, builds, tc4]
+    needs: [changes, builds]
     # !cancelled(): a failed build must fail this required check with its missing download, not
     # skip it, which would read as a pass.
     if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.changes.outputs.code != 'false' }}
@@ -128,15 +126,14 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/free-disk
+      - run: rustup toolchain install && rustc --version
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --locked -p tc4 --features test-hooks,fixture-backend
       - uses: actions/download-artifact@v4
         with:
           name: shell-builds
           path: target
-      - uses: actions/download-artifact@v4
-        with:
-          name: tc4-linux
-          path: target/debug
-      - run: chmod +x target/debug/tc4
       - name: Electronite
         run: |
           zip="electronite-$ELECTRONITE-linux-x64.zip"
