@@ -133,7 +133,8 @@
     "J5": {
       "file": "parity/app/journeys/align.test.mjs",
       "tests": [
-        "j5_align_steps_that_do_not_save"
+        "j5_align_steps_that_do_not_save",
+        "j5_clear_alignments_asks_then_starts_the_verse_over"
       ]
     },
     "J6": {

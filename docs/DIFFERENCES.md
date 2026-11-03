@@ -108,6 +108,11 @@ Under AGENTS.md "Matching tC4" (2026-10-19):
 - Align's cards are a Tab stop while words are chosen, and Enter or Space places them, so a
   person who cannot drag or point can align (#568); tC4 4.0 has no key for it. Every card also
   shows the pinned verse's words (#790, above).
+- Align has Clear alignments next to Mark valid (#758). After a confirmation that names the
+  verse and its placed words, every placed word goes back to the bank in verse order, phrases
+  split into one card per original word, standing suggestions go, and the verse is no longer
+  done; a "needs review" mark stays until Mark valid. tC4 4.0 has no way to start a verse over;
+  tC3 had Clear, with no confirmation.
 - A verse that still holds the alignment markup of the file it was added from does not
   open in Align, and no verse save writes an alignment over it (#794). This is tC4 PR #799
   (merged, in rc.2); the rebuild still shows its own words for it until REF1 takes tC4's.

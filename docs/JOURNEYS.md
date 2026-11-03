@@ -128,12 +128,14 @@ budget in `docs/PERFORMANCE.md`). Their tC4 tests stay mapped under `specs` in `
 
 - Actor: translator. Activity: Check. Serves V7.
 - Steps: link and unlink word pairs · turn suggestions on · accept or reject each suggestion, or
-  all of them.
+  all of them · clear every link of the verse, after a confirmation.
 - End state: the verse's alignment is saved; the text is unchanged. An accepted suggestion is the
   same as a link made by hand. A suggestion shown and not accepted leaves no trace.
 - Must not: save an unconfirmed suggestion; count a verse as aligned while a suggestion stands;
-  make the translator wait for training after a save.
-- Differs from tC4: across a verse edit, each link moves with its own word.
+  make the translator wait for training after a save; clear a verse without the translator's
+  confirmation.
+- Differs from tC4: across a verse edit, each link moves with its own word. Clear alignments
+  is new (#758).
 
 ### J6 Edit a checked verse
 
