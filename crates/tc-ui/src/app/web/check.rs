@@ -361,28 +361,31 @@ impl Actions {
         c.session.try_set(Some(Session::Loading(tool)));
         self.stop_rail_listener();
         DETAIL.with(|d| *d.borrow_mut() = Some(c.detail.clone()));
+        let place = RecordPlace {
+            at: at.clone(),
+            request: js::random_request_id(),
+            place: match list.unit {
+                CheckUnit::Book(book) => PlaceUpdate::Book {
+                    book,
+                    mode: Some(PlaceMode::Check),
+                    chapter: None,
+                    verse: PlaceChange::Keep,
+                    tool: Some(tool),
+                },
+                CheckUnit::Story(story) => PlaceUpdate::Story {
+                    story,
+                    mode: Some(PlaceMode::Check),
+                    frame: PlaceChange::Keep,
+                    tool: Some(tool),
+                },
+            },
+        };
+        let recorder = self.clone();
+        spawn_local(async move {
+            let _ = recorder.runtime().api().call(&place).await;
+        });
         let this = self.clone();
         spawn_local(async move {
-            let place = RecordPlace {
-                at: at.clone(),
-                request: js::random_request_id(),
-                place: match list.unit {
-                    CheckUnit::Book(book) => PlaceUpdate::Book {
-                        book,
-                        mode: Some(PlaceMode::Check),
-                        chapter: None,
-                        verse: PlaceChange::Keep,
-                        tool: Some(tool),
-                    },
-                    CheckUnit::Story(story) => PlaceUpdate::Story {
-                        story,
-                        mode: Some(PlaceMode::Check),
-                        frame: PlaceChange::Keep,
-                        tool: Some(tool),
-                    },
-                },
-            };
-            let _ = this.runtime().api().call(&place).await;
             let open = Open {
                 at,
                 list,

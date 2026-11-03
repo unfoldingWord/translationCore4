@@ -48,6 +48,29 @@ browserTest('picker_get_source_texts_and_download_open_the_source_texts_dialog',
   });
 });
 
+// INV-CHECK-OPEN-DOES-NOT-WAIT-FOR-PLACE: the list opens while the place's answer is held, and
+// the place is still recorded, so the book reopens at the same tool.
+browserTest('opening_a_check_list_does_not_wait_for_the_place_and_the_place_is_kept', async () => {
+  await withApp(async ({ page }) => {
+    await openProject(page);
+    await page.getByRole('tab', { name: 'Check' }).click();
+    let release;
+    const answer = new Promise((resolve) => { release = resolve; });
+    await page.route('**/api/v1/prefs/recordPlace', async (route) => {
+      await answer;
+      await route.fallback();
+    });
+    await page.getByTestId('open-translationNotes').click();
+    await page.getByTestId('check-progress').waitFor({ timeout: 10_000 });
+    release();
+    await page.unroute('**/api/v1/prefs/recordPlace');
+    await page.getByTestId('project-switch').click();
+    await page.getByTestId(`project-${BIBLE}`).getByRole('button', { name: /Titus/ }).click();
+    await page.getByTestId('check-progress').waitFor();
+    assert.equal(await page.getByTestId('open-translationNotes').count(), 0, 'the same tool, no picker');
+  });
+});
+
 browserTest('resume_into_a_tool_that_is_not_ready_shows_the_picker_and_its_fix', async () => {
   await withApp(async ({ page }) => {
     await openProject(page);
