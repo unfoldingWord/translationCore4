@@ -32,7 +32,7 @@ jobs:
     outputs:
       code: ${{ steps.changes.outputs.code }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           sparse-checkout: scripts/ci-changes.sh
           sparse-checkout-cone-mode: false
@@ -59,7 +59,7 @@ jobs:
     env:
       CARGO_JOBS: 4
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # The runner image leaves too little disk for this workspace ("No space left on device",
       # runs 39305042134 and 39317068070); these three trees are not needed here.
       - uses: ./.github/actions/free-disk
@@ -67,18 +67,18 @@ jobs:
       - run: rustup toolchain install && rustc --version
       - uses: Swatinem/rust-cache@v2
       - id: bindgen
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cargo/bin/wasm-bindgen
           key: wasm-bindgen-cli-0.2.129-${{ runner.os }}
       - if: steps.bindgen.outputs.cache-hit != 'true'
         run: cargo install wasm-bindgen-cli --version 0.2.129 --locked
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - run: npm ci
         working-directory: parity/tc4-baseline
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-1.56.1-${{ runner.os }}
@@ -94,7 +94,7 @@ jobs:
           JOURNEYS_SHARD: ${{ matrix.shard }}
         run: scripts/gates.sh --step journeys
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: app-e2e-tap-${{ strategy.job-index }}
           path: target/app-e2e.tap

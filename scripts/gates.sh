@@ -32,6 +32,8 @@ STEPS=(
   "node|node --test --test-timeout=120000 parity/tc4-baseline/mock-server/server.test.mjs parity/app/state.test.mjs parity/app/observe.test.mjs parity/app/env-rust.test.mjs crates/tc-ui/app/recovery.test.mjs scripts/release/fetch-pinned.test.mjs parity/app/journeys/*.test.mjs scripts/tools/*.test.mjs"
 )
 NIGHTLY=(
+  # Builds, runs nothing: the nightly job that refreshes the cache the test jobs restore (#909).
+  "cache-warm|cargo test --locked --workspace --exclude tc-app --no-run && cargo test --locked -p tc-app --no-run"
   "model-long|TC_MODEL_ROWS=1 cargo test --locked -p tc-store --test store model::random_histories_lose_no_work_long -- --ignored --exact --nocapture"
   # The scale tests at ten times Psalms (rulings/2026-10-26-test-scale.md); pushes and gates run 2.
   "scale-long|TC_SCALE_FACTOR=10 cargo test --locked --no-fail-fast -p tc-journal --test operation_counts -p tc-store --test store -p tc-app --test op_counts"

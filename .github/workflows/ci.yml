@@ -38,7 +38,7 @@ jobs:
       code: ${{ steps.changes.outputs.code }}
       tested: ${{ steps.tested.outputs.tested }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           sparse-checkout: scripts/ci-changes.sh
           sparse-checkout-cone-mode: false
@@ -65,7 +65,7 @@ jobs:
     # !cancelled(): if plan fails, its outputs are empty and nothing is skipped.
     if: ${{ !cancelled() && (github.event_name != 'schedule') && needs.plan.outputs.tested != 'true' && needs.plan.outputs.code != 'false' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # The runner image leaves too little disk for this workspace ("No space left on device",
       # runs 39305042134 and 39317068070); these three trees are not needed here.
       - uses: ./.github/actions/free-disk
@@ -94,7 +94,7 @@ jobs:
     # !cancelled(): if plan fails, its outputs are empty and nothing is skipped.
     if: ${{ !cancelled() && (github.event_name != 'schedule') && needs.plan.outputs.tested != 'true' && needs.plan.outputs.code != 'false' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # The runner image leaves too little disk for this workspace ("No space left on device",
       # runs 39305042134 and 39317068070); these three trees are not needed here.
       - uses: ./.github/actions/free-disk
@@ -118,7 +118,7 @@ jobs:
     # !cancelled(): if plan fails, its outputs are empty and nothing is skipped.
     if: ${{ !cancelled() && (github.event_name != 'schedule') && needs.plan.outputs.tested != 'true' && needs.plan.outputs.code != 'false' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # The runner image leaves too little disk for this workspace ("No space left on device",
       # runs 39305042134 and 39317068070); these three trees are not needed here.
       - uses: ./.github/actions/free-disk
@@ -154,7 +154,7 @@ jobs:
       matrix:
         shard: ['1/2', '2/2']
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # The merge queue deletes a group's branch when it drops the group (a merge ahead of it
       # failed, or main moved), but leaves the group's runs going. A job that only got a runner
       # after that cancels its run instead of spending half an hour on a commit nothing will use.
@@ -173,7 +173,8 @@ jobs:
       - run: rustup toolchain install && rustc --version
       - uses: Swatinem/rust-cache@v2
         with:
-          key: test
+          shared-key: tests
+          save-if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
       # The test steps run through cargo-nextest (CHK-8), pinned as the Windows VM pins it.
       - uses: taiki-e/install-action@v2
         with:
@@ -195,7 +196,7 @@ jobs:
       contents: read
       actions: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # The merge queue deletes a group's branch when it drops the group (a merge ahead of it
       # failed, or main moved), but leaves the group's runs going. A job that only got a runner
       # after that cancels its run instead of spending half an hour on a commit nothing will use.
@@ -214,7 +215,8 @@ jobs:
       - run: rustup toolchain install && rustc --version
       - uses: Swatinem/rust-cache@v2
         with:
-          key: test-extra
+          shared-key: tests
+          save-if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
       # The test steps run through cargo-nextest (CHK-8), pinned as the Windows VM pins it.
       - uses: taiki-e/install-action@v2
         with:
@@ -265,7 +267,7 @@ jobs:
           - name: app-2
             args: -E binary_id(tc-app::app)&!(test(=app::store_scenario::a_crash_while_a_scenario_project_is_written_leaves_no_half_project)) --partition hash:2/2
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # The merge queue deletes a group's branch when it drops the group (a merge ahead of it
       # failed, or main moved), but leaves the group's runs going. A job that only got a runner
       # after that cancels its run instead of spending half an hour on a commit nothing will use.
@@ -284,7 +286,8 @@ jobs:
       - run: rustup toolchain install && rustc --version
       - uses: Swatinem/rust-cache@v2
         with:
-          key: test-app
+          shared-key: tests
+          save-if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
       # The test steps run through cargo-nextest (CHK-8), pinned as the Windows VM pins it.
       - uses: taiki-e/install-action@v2
         with:
@@ -307,6 +310,24 @@ jobs:
       - run: '[[ "${{ needs.test-app-shard.result }}" = success ]]'
 
   # The Windows tests, nightly or on request, until CHK-5 makes them a push gate.
+  # The test jobs restore the cache of the default branch (a merge-queue branch cannot hand its
+  # cache to the next run, so they save nowhere else), but a merge to main skips the tests the queue
+  # already ran, so nothing else refreshes it. This builds the test profile of both test steps once
+  # a night; vendored OpenSSL alone is about 140 s of a cold build (#909).
+  cache-warm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/free-disk
+      - run: rustup toolchain install && rustc --version
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: tests
+          save-if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+      - run: scripts/gates.sh --step cache-warm
+
   nightly-windows:
     runs-on: windows-latest
     timeout-minutes: 120
@@ -320,7 +341,7 @@ jobs:
         shell: bash
     steps:
       - run: git config --global core.longpaths true
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: rustup toolchain install && rustc --version
       - uses: Swatinem/rust-cache@v2
       # The test steps run through cargo-nextest (CHK-8), pinned as the Windows VM pins it.
@@ -351,7 +372,7 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: rustup toolchain install && rustc --version
       - uses: Swatinem/rust-cache@v2
       - run: scripts/gates.sh --step model-long 2>&1 | tee nightly.log
@@ -372,7 +393,7 @@ jobs:
     # !cancelled(): if plan fails, its outputs are empty and nothing is skipped.
     if: ${{ !cancelled() && (github.event_name != 'schedule' && (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/heads/gate/') || github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch')) && needs.plan.outputs.tested != 'true' && needs.plan.outputs.code != 'false' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # The runner image leaves too little disk for this workspace ("No space left on device",
       # runs 39305042134 and 39317068070); these three trees are not needed here.
       - uses: ./.github/actions/free-disk
@@ -401,8 +422,8 @@ jobs:
     # !cancelled(): if plan fails, its outputs are empty and nothing is skipped.
     if: ${{ !cancelled() && (github.event_name != 'schedule' && (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/heads/gate/') || github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch')) && needs.plan.outputs.tested != 'true' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - run: scripts/gates.sh --step node
