@@ -338,20 +338,22 @@ fn a_decision_costs_what_it_touches() {
 /// first open of the Check screen asks for each tool's in turn.
 #[test]
 fn a_tools_decisions_never_read_the_other_tools() {
-    let state = fork(psalms());
-    let counted = |tool| {
-        let before = state.counters();
-        let decisions = state.decisions(tool, Collection::Book(PSALMS));
-        (
-            decisions.len() as u64,
-            state.counters().since(&before).records_projected,
-        )
-    };
-    let (notes, read_for_notes) = counted(ToolId::TranslationNotes);
-    let (words, read_for_words) = counted(ToolId::TranslationWords);
-    assert!(notes > 0 && words > 0, "{notes} and {words}");
-    assert!(read_for_notes < notes + words, "{read_for_notes}");
-    assert!(read_for_words < notes + words, "{read_for_words}");
+    for corpus in [psalms(), larger()] {
+        let state = fork(corpus);
+        let counted = |tool| {
+            let before = state.counters();
+            let decisions = state.decisions(tool, Collection::Book(PSALMS));
+            (
+                decisions.len() as u64,
+                state.counters().since(&before).records_projected,
+            )
+        };
+        let (notes, read_for_notes) = counted(ToolId::TranslationNotes);
+        let (words, read_for_words) = counted(ToolId::TranslationWords);
+        assert!(notes > 0 && words > 0, "{notes} and {words}");
+        assert!(read_for_notes < notes + words, "{read_for_notes}");
+        assert!(read_for_words < notes + words, "{read_for_words}");
+    }
 }
 
 #[test]

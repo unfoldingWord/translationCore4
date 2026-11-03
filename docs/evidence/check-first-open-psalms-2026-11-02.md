@@ -8,13 +8,16 @@ so it neither confirms nor clears the row (ruling H17, #868).
 
 `check/picker`, the first time, on the Psalms corpus through `book_costs_what_it_touches` with
 `OnStore::AppCounts` (`crates/tc-app/tests/op_counts/check.rs`): release build, 4 worker threads,
-Windows 11. The project holds saved decisions: about 7,660 for tW and 8,212 for tN, on 7,683 and
+Windows 11, 12th Gen Intel(R) Core(TM) i5-12600KF, 16 logical processors, 32 GiB RAM. The project holds saved decisions: about 7,660 for tW and 8,212 for tN, on 7,683 and
 7,969 checks.
 
 ## Where the time went, before this change
 
-Temporary timers in one run, each figure for one list. The two lists overlap, so these do not add
-up to the total.
+Temporary `Instant` timers printed from `with_list` (around `loaded_book_for_checks`, the
+derivation and `assess`), from `rows` (around `check_decisions`, `session::open` and the rows), from
+`FoldState::decisions` (around `book_text` and `decisions_in`) and from `Handle<Picker>` (around
+`align_card`). They are not committed. Figures from a few runs, each for one list. The two lists
+overlap, so these do not add up to the total.
 
 | Step | tW | tN |
 |---|---|---|
@@ -35,6 +38,9 @@ Two costs were structural:
    (`crates/tc-journal/tests/operation_counts.rs`) proves it: reading the notes' decisions projected
    23,954 records before.
 2. The Align card was counted after the two lists. It now runs beside them on the blocking pool.
+
+With the first fix in place and the same timers, reading the decisions took about 80 ms for tW and
+about 105 ms for tN. The other steps were not retimed one by one.
 
 ## Before and after
 
