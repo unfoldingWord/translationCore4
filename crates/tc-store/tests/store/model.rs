@@ -4804,3 +4804,41 @@ fn a_book_put_back_after_an_open_that_could_not_read_its_pending_file() -> Vec<S
 fn a_book_put_back_after_an_open_that_could_not_read_its_pending_file_is_kept() {
     assert_kept(&a_book_put_back_after_an_open_that_could_not_read_its_pending_file());
 }
+
+/// #924, a dispatched nightly of 2026-11-03, a harness bug: another program cuts a pack, the
+/// next open puts it back from its blob by a rename, and `FaultFs` still failed every read of
+/// the new file past the cut, so the checkpoint was refused as an invalid tree.
+fn a_checkpoint_after_a_pack_is_cut() -> Vec<Step> {
+    vec![
+        Step::KillAfterRename { file: File::Usfm },
+        act(Act::Name),
+        act(Act::Leave),
+        lock(Holdable::File(File::Usfm), true),
+        Step::Open,
+        act(Act::Save(1)),
+        lock(Holdable::File(File::Usfm), false),
+        Step::DenyRead {
+            file: File::Meta,
+            on: true,
+        },
+        killed(Act::Save(1), 5),
+        Step::Cut {
+            journal: Journal::Pack,
+            which: 103,
+            keep: 0,
+            at_line: false,
+        },
+        killed(Act::Checkpoint, 24),
+        Step::Cut {
+            journal: Journal::Pending,
+            which: 0,
+            keep: 0,
+            at_line: false,
+        },
+    ]
+}
+
+#[test]
+fn a_checkpoint_after_a_pack_is_cut_is_not_refused() {
+    assert_kept(&a_checkpoint_after_a_pack_is_cut());
+}
