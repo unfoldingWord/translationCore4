@@ -31,7 +31,7 @@ jobs:
     outputs:
       code: ${{ steps.changes.outputs.code }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           sparse-checkout: scripts/ci-changes.sh
           sparse-checkout-cone-mode: false
@@ -46,8 +46,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - run: node --test 'shell/test/*.test.cjs'
@@ -62,22 +62,26 @@ jobs:
     env:
       CARGO_JOBS: 4
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/free-disk
       - run: rustup toolchain install && rustc --version
       - uses: Swatinem/rust-cache@v2
       - id: bindgen
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cargo/bin/wasm-bindgen
           key: wasm-bindgen-cli-0.2.129-${{ runner.os }}
       - if: steps.bindgen.outputs.cache-hit != 'true'
         run: cargo install wasm-bindgen-cli --version 0.2.129 --locked
-      - run: crates/tc-ui/build-app.sh --out target/tc-ui-app
-      - run: crates/tc-ui/build-app.sh --test-hooks --out target/tc-ui-app-hooks
+      # The two UI builds share the wasm target folder, so they run one after the other; the
+      # bundle builds for the host and runs beside them. `wait` fails the step if they failed.
       # rust-cache keeps target/, and bundle_store refuses an install that is already there.
-      - run: rm -rf target/shell-bundle && cargo run --locked -p tc-app --example bundle_store -- --from bundle/en --only en_obs-tn --out target/shell-bundle
-      - uses: actions/upload-artifact@v4
+      - run: |
+          (crates/tc-ui/build-app.sh --out target/tc-ui-app && crates/tc-ui/build-app.sh --test-hooks --out target/tc-ui-app-hooks) &
+          ui=$!
+          rm -rf target/shell-bundle && cargo run --locked -p tc-app --example bundle_store -- --from bundle/en --only en_obs-tn --out target/shell-bundle
+          wait "$ui"
+      - uses: actions/upload-artifact@v7
         with:
           name: shell-builds
           path: |
@@ -106,12 +110,12 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: rustup toolchain install && rustc --version
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --locked -p tc4 --features test-hooks,fixture-backend
       # Uploads keep no file mode: the end-to-end job sets the executable bit again.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: tc4-${{ matrix.name }}
           path: target/debug/tc4${{ runner.os == 'Windows' && '.exe' || '' }}
@@ -125,12 +129,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/free-disk
       - run: rustup toolchain install && rustc --version
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --locked -p tc4 --features test-hooks,fixture-backend
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: shell-builds
           path: target
@@ -144,7 +148,7 @@ jobs:
           sudo chown root:root "$RUNNER_TEMP/electronite/chrome-sandbox"
           sudo chmod 4755 "$RUNNER_TEMP/electronite/chrome-sandbox"
           sudo apt-get install -y --no-install-recommends xvfb libgtk-3-0 libnss3 libasound2t64 libgbm1
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - run: npm ci
@@ -161,7 +165,7 @@ jobs:
             xvfb-run -a node --test --test-concurrency=1 --test-reporter=tap 'shell/e2e/*.test.cjs' | tee shell.tap
           node parity/app/journeys/no-skips.mjs shell.tap
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: shell-e2e-linux
           path: |
@@ -179,12 +183,12 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: shell-builds
           path: target
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: tc4-windows
           path: target/debug
@@ -197,7 +201,7 @@ jobs:
           $sum = (Get-FileHash -Algorithm SHA256 $file).Hash.ToLower()
           if ($sum -ne '8146ca21fa090e12bca01a8af73d234d9a31d90f51da0da86bb0e1731c371b52') { throw "electronite sha256 $sum" }
           Expand-Archive -Path $file -DestinationPath (Join-Path $env:RUNNER_TEMP 'electronite')
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - run: npm ci
@@ -211,7 +215,7 @@ jobs:
             node --test --test-concurrency=1 --test-reporter=tap 'shell/e2e/*.test.cjs' | tee shell.tap
           node parity/app/journeys/no-skips.mjs shell.tap
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: shell-e2e-windows
           path: |
@@ -226,12 +230,12 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: shell-builds
           path: target
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: tc4-macos
           path: target/debug
@@ -244,7 +248,7 @@ jobs:
           # ditto keeps the app bundle's symbolic links, which unzip may not.
           ditto -x -k "$RUNNER_TEMP/$zip" "$RUNNER_TEMP/electronite"
           ls "$RUNNER_TEMP/electronite"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - run: npm ci
@@ -258,7 +262,7 @@ jobs:
             node --test --test-concurrency=1 --test-reporter=tap 'shell/e2e/*.test.cjs' | tee shell.tap
           node parity/app/journeys/no-skips.mjs shell.tap
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: shell-e2e-macos
           path: |
