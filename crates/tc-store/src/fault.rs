@@ -93,6 +93,9 @@ struct Node {
 /// A file another program changed in place: the bytes before, the bytes after.
 type InPlace = (Arc<Vec<u8>>, Arc<Vec<u8>>);
 
+/// A file another program cut short in place: the bytes before, the bytes after, the length.
+type Cut = (Arc<Vec<u8>>, Arc<Vec<u8>>, u64);
+
 #[derive(Debug, Clone, Default)]
 struct Faults {
     kill_before: Option<u64>,
@@ -114,7 +117,7 @@ struct Faults {
     /// Files another program cut short in place, each as (the bytes before, the bytes after,
     /// the length): a handle opened on the bytes before reads nothing past it, nor past a
     /// later cut of the bytes after. A file renamed over the path later reads whole.
-    cut: Vec<(Arc<Vec<u8>>, Arc<Vec<u8>>, u64)>,
+    cut: Vec<Cut>,
     /// Files another program changed in place, each as (the bytes before, the bytes after):
     /// a handle opened on the bytes before reads the bytes after, as one file it names.
     changed: Vec<InPlace>,
