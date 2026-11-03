@@ -198,7 +198,7 @@ async fn observe(State(shared): AppState, request: Request, next: Next) -> Respo
         query,
         authorization,
     });
-    for fault in shared.take_faults(&method, &path, true) {
+    for fault in shared.take_faults(&method, &path, request.uri().query(), true) {
         match fault {
             Fault::Delay(duration) => tokio::time::sleep(duration).await,
             Fault::Status { status, message } => {
@@ -1146,7 +1146,7 @@ async fn archive(
         .await
         .map_err(|_| ApiError::not_found())?;
     let mut bytes = shared.git.archive(&dir, &commit, format, &rec.name).await?;
-    let faults = shared.take_faults(method.as_str(), uri.path(), false);
+    let faults = shared.take_faults(method.as_str(), uri.path(), uri.query(), false);
     for fault in &faults {
         match fault {
             Fault::ArchiveComment(comment) => bytes = zipping::with_comment(bytes, comment)?,
@@ -1225,7 +1225,7 @@ async fn sb_export(
     let archive = shared.git.archive(&dir, &commit, "zip", &rec.name).await?;
     let mut revision = commit.clone();
     let mut corrupt = Vec::new();
-    let faults = shared.take_faults(method.as_str(), uri.path(), false);
+    let faults = shared.take_faults(method.as_str(), uri.path(), uri.query(), false);
     for fault in &faults {
         match fault {
             Fault::SbRevision(r) => revision = r.clone(),
@@ -1595,7 +1595,7 @@ async fn smart_http_route(
         rec.name.to_lowercase()
     );
     let cut = shared
-        .take_faults(method.as_str(), uri.path(), false)
+        .take_faults(method.as_str(), uri.path(), uri.query(), false)
         .into_iter()
         .find_map(|fault| match fault {
             Fault::BreakOff { after } => Some(after),

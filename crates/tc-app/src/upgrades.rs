@@ -721,9 +721,15 @@ impl Handle<CheckUpdates> for App {
                 );
             }
         }
-        let latest = updates::latest_releases(&client, &set_repos)
-            .await
-            .map_err(|e| net_error(&e))?;
+        let text_repos: Vec<RepoRef> = updates::text_repos_of(&pins)
+            .iter()
+            .filter_map(|r| r.slots.first().map(|(_, p)| p.repo.repo().clone()))
+            .collect();
+        let (latest, latest_texts) = tokio::join!(
+            updates::latest_releases(&client, &set_repos),
+            updates::latest_releases(&client, &text_repos),
+        );
+        let latest = latest.map_err(|e| net_error(&e))?;
         let sets = Rung::LADDER
             .into_iter()
             .filter_map(|rung| {
@@ -748,11 +754,7 @@ impl Handle<CheckUpdates> for App {
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect();
-        let text_repos: Vec<RepoRef> = updates::text_repos_of(&pins)
-            .iter()
-            .filter_map(|r| r.slots.first().map(|(_, p)| p.repo.repo().clone()))
-            .collect();
-        let (texts, texts_error) = match updates::latest_releases(&client, &text_repos).await {
+        let (texts, texts_error) = match latest_texts {
             Ok(latest) => (updates::text_offers(&pins, &testaments, &latest).0, None),
             Err(error) => (Vec::new(), Some(check_failure(&error))),
         };

@@ -160,6 +160,8 @@ pub struct FaultRule {
     /// `None` matches every method.
     pub method: Option<String>,
     pub path_prefix: String,
+    /// `Some`: only requests whose query holds this text.
+    pub query_holds: Option<String>,
     /// How many matching requests get the fault; `None` is every one.
     pub times: Option<usize>,
     /// How many matching requests pass untouched before the fault applies.
@@ -172,9 +174,19 @@ impl FaultRule {
         Self {
             method: Some(method.to_owned()),
             path_prefix: path_prefix.to_owned(),
+            query_holds: None,
             times: Some(1),
             skip: 0,
             fault,
+        }
+    }
+
+    /// Only for requests whose query holds `text`, for requests a path cannot tell apart.
+    #[must_use]
+    pub fn with_query(self, text: &str) -> Self {
+        Self {
+            query_holds: Some(text.to_owned()),
+            ..self
         }
     }
 
@@ -190,6 +202,7 @@ impl FaultRule {
         Self {
             method: Some(method.to_owned()),
             path_prefix: path_prefix.to_owned(),
+            query_holds: None,
             times: None,
             skip: 0,
             fault,
@@ -501,7 +514,13 @@ impl Shared {
     }
 
     /// The faults that apply to this request, consuming one use of each.
-    pub fn take_faults(&self, method: &str, path: &str, answers_instead: bool) -> Vec<Fault> {
+    pub fn take_faults(
+        &self,
+        method: &str,
+        path: &str,
+        query: Option<&str>,
+        answers_instead: bool,
+    ) -> Vec<Fault> {
         let mut state = self.state();
         let mut taken = Vec::new();
         state.faults.retain_mut(|rule| {
@@ -510,6 +529,10 @@ impl Shared {
                 .as_deref()
                 .is_none_or(|m| m.eq_ignore_ascii_case(method))
                 && path.starts_with(&rule.path_prefix)
+                && rule
+                    .query_holds
+                    .as_deref()
+                    .is_none_or(|text| query.is_some_and(|q| q.contains(text)))
                 && rule.fault.answers_instead() == answers_instead;
             if !matches {
                 return true;
