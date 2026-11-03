@@ -29,7 +29,9 @@ use tc_journal::record::CommentTarget;
 use tc_journal::{ChangeId, Record, RecordKey};
 use tc_obs::images::{ImagePack, ImagePins, PackPin};
 use tc_obs::presentation::{self, SourceInput};
-use tc_resources::{Missing, ObsResources, PartStatus, ProjectPins, ResourcePin, Rung, SetSlot};
+use tc_resources::{
+    Installed, Missing, ObsResources, PartStatus, ProjectPins, ResourcePin, Rung, SetSlot,
+};
 
 use crate::app::App;
 use crate::counters::AppCounter;
@@ -637,22 +639,38 @@ impl App {
     /// `GET /media/obs/{pack}/{path}`: a picture of an installed pack. Only a file the pack's
     /// receipt lists, and only a picture, is served.
     pub async fn obs_picture(&self, pack: &str, path: &str) -> Option<MediaFile> {
-        let content_type = picture_type(path)?;
-        let file = picture_path(path)?;
-        let pin = pin_of_pack_id(pack)?;
+        picture_path(path)?;
+        let pack = pack.to_owned();
+        let path = path.to_owned();
         let app = self.clone();
         tokio::task::spawn_blocking(move || {
-            let installed = app.inner.resources.dcs(&pin).ok()??;
-            installed
-                .has_file(&file)
-                .then(|| installed.read(&file).ok())?
-                .map(|bytes| MediaFile {
-                    bytes,
-                    content_type,
-                })
+            let installed = app.picture_pack(&pack)?;
+            app.picture_in(&installed, &path)
         })
         .await
         .ok()?
+    }
+
+    /// The installed pack an address names. Blocking.
+    pub(crate) fn picture_pack(&self, pack: &str) -> Option<Installed> {
+        let pin = pin_of_pack_id(pack)?;
+        self.inner.counters.add(AppCounter::PicturePacksResolved, 1);
+        self.inner.resources.dcs(&pin).ok()?
+    }
+
+    /// A picture of an installed pack: only a file its receipt lists, and only a picture.
+    /// Blocking.
+    pub(crate) fn picture_in(&self, installed: &Installed, path: &str) -> Option<MediaFile> {
+        let content_type = picture_type(path)?;
+        let file = picture_path(path)?;
+        self.inner.counters.add(AppCounter::PicturesRead, 1);
+        installed
+            .has_file(&file)
+            .then(|| installed.read(&file).ok())?
+            .map(|bytes| MediaFile {
+                bytes,
+                content_type,
+            })
     }
 }
 

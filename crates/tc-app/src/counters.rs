@@ -95,6 +95,10 @@ counters! {
     /// Derived files rendered one at a time, other than a book's text and the conflict list,
     /// which count as `book_usfm` and `conflict_walks`.
     FilesRendered => files_rendered,
+    /// Picture packs looked up in the resource store.
+    PicturePacksResolved => picture_packs_resolved,
+    /// Pictures read from an installed pack.
+    PicturesRead => pictures_read,
 }
 
 /// The app's counters, shared by every reader. Clones of the `Arc` count into one set.
