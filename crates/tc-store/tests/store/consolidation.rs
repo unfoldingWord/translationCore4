@@ -263,7 +263,16 @@ fn run(steps: &[Step], model: PowerLoss, census: &Census) {
                 drop(store);
                 fs = next;
                 let after = ids_on_disk(&fs, &folder);
-                let lost: Vec<&ChangeId> = before.difference(&after).collect();
+                let mut lost: Vec<&ChangeId> = before.difference(&after).collect();
+                if !lost.is_empty() {
+                    // A pack damaged or removed outside the app is put back from its blob by
+                    // the next open: what that open reads is held too, though no file shows it.
+                    let looked = fs.copy();
+                    let store = store_on(&looked, &clock);
+                    let handle = store.open(&folder, &OpenOptions::default()).unwrap();
+                    lost.retain(|id| handle.snapshot().fold().change(id).is_none());
+                    handle.wait_idle();
+                }
                 assert!(lost.is_empty(), "a checkpoint lost {lost:?}");
                 count(census, &fs, &folder, &packs_before, killed);
             }
@@ -381,4 +390,26 @@ fn a_month_of_packs_is_consolidated_and_loses_nothing() {
     ];
     run(&steps, PowerLoss::Strict, &census);
     assert!(census.consolidations.load(Ordering::Relaxed) > 0);
+}
+
+/// Found by `consolidation_loses_nothing` in a full `tc-store` run on 2026-11-03, an oracle
+/// bug: a pack damaged outside the app, then a checkpoint killed after its open wrote the
+/// pack's restored bytes to a temporary file, then one killed by a power cut that left the
+/// damaged pack alone again. Its change is in the pack's blob, and the next open reads it.
+#[test]
+fn a_damaged_pack_and_two_killed_checkpoints_lose_nothing() {
+    let steps = [
+        Step::Damage(0, 213),
+        Step::Checkpoint(Some((Window::Anywhere, 33974, false))),
+        Step::Checkpoint(Some((Window::Anywhere, 29463, true))),
+        Step::Save(1),
+        Step::Save(1),
+        Step::Checkpoint(None),
+        Step::Save(2),
+        Step::Checkpoint(None),
+        Step::NextMonth,
+        Step::Checkpoint(None),
+        Step::Checkpoint(None),
+    ];
+    run(&steps, PowerLoss::KeepSyncedNames, &Census::default());
 }
