@@ -1219,6 +1219,14 @@ impl FoldState {
             .and_then(Answer::resource);
         let mut out = Vec::new();
         for k in keys {
+            // The key says whether the record is wanted: a book's keys are also its verses and
+            // the other tool's decisions, and decoding those is most of this read.
+            let RecordKey::Check(wanted) = &self.entry(k).key else {
+                continue;
+            };
+            if wanted.tool != tool || wanted.target.collection() != collection {
+                continue;
+            }
             let Some(record) = self.projected_arc(k) else {
                 continue;
             };
@@ -1229,9 +1237,6 @@ impl FoldState {
             else {
                 continue;
             };
-            if key.tool != tool || key.target.collection() != collection {
-                continue;
-            }
             let target = match (&key.target, &text) {
                 (CheckTarget::Frame { story, frame }, _) => self
                     .frame_text(*story, *frame)
