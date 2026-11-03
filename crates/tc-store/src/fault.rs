@@ -111,10 +111,10 @@ struct Faults {
     read_delay: Option<Duration>,
     reads_fail_from: Option<Instant>,
     unreadable: BTreeSet<PathBuf>,
-    /// Files another program cut short in place, each as (the bytes before, the length): a
-    /// handle opened on the bytes before reads nothing past it either. A file renamed over
-    /// the path later is another file, and reads whole.
-    cut: Vec<(Arc<Vec<u8>>, u64)>,
+    /// Files another program cut short in place, each as (the bytes before, the bytes after,
+    /// the length): a handle opened on the bytes before reads nothing past it, nor past a
+    /// later cut of the bytes after. A file renamed over the path later reads whole.
+    cut: Vec<(Arc<Vec<u8>>, Arc<Vec<u8>>, u64)>,
     /// Files another program changed in place, each as (the bytes before, the bytes after):
     /// a handle opened on the bytes before reads the bytes after, as one file it names.
     changed: Vec<InPlace>,
@@ -782,7 +782,15 @@ impl FaultFs {
             return;
         };
         self.put_unseen(path, &old[..len.min(old.len())], None);
-        self.model().faults.cut.push((old, len as u64));
+        let new = self.peek_data(path).unwrap_or_default();
+        let mut model = self.model();
+        for (_, after, kept) in &mut model.faults.cut {
+            if Arc::ptr_eq(after, &old) {
+                *after = new.clone();
+                *kept = (*kept).min(len as u64);
+            }
+        }
+        model.faults.cut.push((old, new, len as u64));
     }
 
     /// Another program writes `bytes` over the file at `path` in place, the same length or
@@ -1015,7 +1023,7 @@ impl ReadHandle for FaultRead {
         let delay = {
             let mut model = self.fs.model();
             model.check_read(&self.path)?;
-            if model.faults.cut.iter().any(|(before, len)| {
+            if model.faults.cut.iter().any(|(before, _, len)| {
                 Arc::ptr_eq(before, &self.data) && offset + buf.len() as u64 > *len
             }) {
                 return Err(io::ErrorKind::UnexpectedEof.into());
@@ -1538,9 +1546,11 @@ mod tests {
         let fs = FaultFs::new();
         write(&fs, "/x", b"0123456789", true);
         let before = fs.open(&p("/x")).unwrap();
+        // A second cut reaches the handle too: on a real disk it is still the one file.
+        fs.cut_in_place(&p("/x"), 8);
         fs.cut_in_place(&p("/x"), 4);
-        let mut buf = [0; 10];
-        assert!(before.read_at(&mut buf, 0).is_err());
+        let mut buf = [0; 2];
+        assert!(before.read_at(&mut buf, 4).is_err());
         assert_eq!(fs.read(&p("/x")).unwrap(), b"0123");
         // #924: the app puts the whole file back by a rename, as a restored pack.
         write(&fs, "/.~x.tmp", b"0123456789", true);
