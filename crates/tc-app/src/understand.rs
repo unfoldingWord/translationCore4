@@ -817,10 +817,22 @@ fn in_chapter(chapter: &RefPart, wanted: u16) -> bool {
 pub(crate) fn api_spans(spans: Vec<tc_helps::blocks::Span>) -> Vec<ArticleSpan> {
     spans
         .into_iter()
-        .map(|s| ArticleSpan {
-            text: s.text,
-            bold: s.bold,
-            italic: s.italic,
+        // Every field named, so a mark tc-helps adds fails to compile here until it is sent.
+        .map(|s| {
+            let tc_helps::blocks::Span {
+                text,
+                bold,
+                italic,
+                sup,
+                underline,
+            } = s;
+            ArticleSpan {
+                text,
+                bold,
+                italic,
+                sup,
+                underline,
+            }
         })
         .collect()
 }

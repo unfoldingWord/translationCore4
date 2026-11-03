@@ -250,6 +250,44 @@ browserTest('an_article_draws_its_table_numbers_and_nesting', async () => {
   }, { scenario: 'en-pins' });
 });
 
+// tC4 #910: an article's and a note's `<br>`, `<sup>` and `<u>` are a line break, superscript
+// and underlined. The sample's helps hold none, so the replies are the server's for text that
+// does (tc-helps' `html_marks_are_a_break_a_superscript_and_an_underline`); the article pane
+// and the note cards draw spans with one function, which the Check panel draws with too.
+browserTest('helps_draw_a_break_a_superscript_and_an_underline', async () => {
+  await withApp(async ({ page }) => {
+    const blocks = [
+      { kind: 'p', quote: 0, spans: [{ text: 'Use the verb.\nOr a noun.' }], depth: 0, number: null, cells: [], header: false },
+      { kind: 'p', quote: 1, spans: [{ text: ' 1', sup: true }, { text: ' It came about for the ' }, { text: 'church', underline: true }], depth: 0, number: null, cells: [], header: false },
+    ];
+    await page.route('**/api/v1/helps/article', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify({ type: 'ok', value: { type: 'found', value: { title: 'God', blocks, dir: 'ltr' } } }) }));
+    await page.route('**/api/v1/helps/passage', async (route) => {
+      const reply = await (await route.fetch()).json();
+      reply.value.notes.value.items[0].note = blocks;
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(reply) });
+    });
+    await openTitus(page);
+    const drawn = async (root) => ({
+      text: (await root.textContent()).includes('<'),
+      br: await root.locator('br').count(),
+      sup: await root.locator('sup').allTextContents(),
+      u: await root.locator('u').allTextContents(),
+    });
+    const want = { text: false, br: 1, sup: [' 1'], u: ['church'] };
+    const note = page.getByTestId('helps-note').first();
+    await note.waitFor();
+    assert.deepEqual(await drawn(note), want, 'the note card');
+    await page.getByRole('tab', { name: 'Words', exact: true }).click();
+    await page.getByTestId('helps-word').first().getByText('Read the article').click();
+    const article = page.getByTestId('understand-article');
+    await article.waitFor();
+    assert.deepEqual(await drawn(article), want, 'the article pane');
+    assert.equal(await article.locator('sup').evaluate((el) => getComputedStyle(el).verticalAlign), 'super');
+    assert.equal(await article.locator('u').evaluate((el) => getComputedStyle(el).textDecorationLine), 'underline');
+  }, { scenario: 'en-pins' });
+});
+
 // tC4 #621: the simplified text's verse numbers are superscript, as in the passage.
 browserTest('simplified_tab_verse_numbers_are_superscript', async () => {
   await withApp(async ({ page }) => {

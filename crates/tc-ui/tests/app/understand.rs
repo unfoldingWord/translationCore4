@@ -301,8 +301,7 @@ fn block(text: &str) -> ArticleBlock {
         0,
         vec![ArticleSpan {
             text: text.into(),
-            bold: false,
-            italic: false,
+            ..ArticleSpan::default()
         }],
     )
 }

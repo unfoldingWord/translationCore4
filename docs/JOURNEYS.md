@@ -227,6 +227,8 @@ budget in `docs/PERFORMANCE.md`). Their tC4 tests stay mapped under `specs` in `
   article · write a user comment.
 - End state: one comment bound to the passage; the book text is unchanged. Reading without a
   comment is not this journey.
+- Differs from tC4: a note's or an article's `<br>`, `<sup>` and `<u>` are drawn as a line
+  break, superscript and underlined, where tC4 shows the tags as text (#910).
 
 ### J17 Open a shared project on another computer
 

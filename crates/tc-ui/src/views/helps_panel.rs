@@ -831,19 +831,40 @@ fn simplified_tab(
     .into_any()
 }
 
-/// A block's spans, bold and italic as elements (tC4's `BlockText`, #619).
+/// A block's spans, their marks as elements (tC4's `BlockText`, #619), a `\n` as a `br`
+/// (#910).
 pub(crate) fn block_text(block: &ArticleBlock) -> AnyView {
     block
         .spans
         .iter()
         .map(|span| {
-            let text = span.text.clone();
-            match (span.bold, span.italic) {
-                (true, true) => view! { <strong><em>{text}</em></strong> }.into_any(),
-                (true, false) => view! { <strong>{text}</strong> }.into_any(),
-                (false, true) => view! { <em>{text}</em> }.into_any(),
-                (false, false) => text.into_any(),
+            let mut view = span
+                .text
+                .split('\n')
+                .enumerate()
+                .map(|(at, line)| {
+                    let line = line.to_owned();
+                    if at == 0 {
+                        line.into_any()
+                    } else {
+                        view! { <br/>{line} }.into_any()
+                    }
+                })
+                .collect_view()
+                .into_any();
+            if span.sup {
+                view = view! { <sup>{view}</sup> }.into_any();
             }
+            if span.underline {
+                view = view! { <u>{view}</u> }.into_any();
+            }
+            if span.italic {
+                view = view! { <em>{view}</em> }.into_any();
+            }
+            if span.bold {
+                view = view! { <strong>{view}</strong> }.into_any();
+            }
+            view
         })
         .collect_view()
         .into_any()

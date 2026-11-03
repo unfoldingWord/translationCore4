@@ -191,6 +191,9 @@ Under the same rule, tC4 4.0 bugs the rebuild fixes on purpose (FIX-R, 2026-10-2
   placed words read backwards (#830).
 - Each note, word and question text reads in its own direction under its pane's layout, so
   an English question in an Arabic set is not laid out right to left (#836).
+- A helps article or note draws its `<br>` as a line break, its `<sup>` as superscript and its
+  `<u>` as underlined, in Understand, in the note cards and in Check. tC4 shows the tags as
+  text. A tag with no end tag still shows as written (#910).
 - A dialog or drawer closes on its backdrop only for a press that starts and ends there. A
   press that starts inside it, such as selecting text in a field, and ends on the backdrop
   leaves it open with what was typed, and so does a press from the backdrop that ends inside

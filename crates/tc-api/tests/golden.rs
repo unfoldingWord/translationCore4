@@ -2210,12 +2210,11 @@ fn spans(text: &str, bold: &str) -> Vec<ArticleSpan> {
         ArticleSpan {
             text: bold.into(),
             bold: true,
-            italic: false,
+            ..ArticleSpan::default()
         },
         ArticleSpan {
             text: text.into(),
-            bold: false,
-            italic: false,
+            ..ArticleSpan::default()
         },
     ]
 }

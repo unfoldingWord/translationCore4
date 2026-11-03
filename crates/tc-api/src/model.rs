@@ -50,16 +50,26 @@ pub enum BlockKind {
     Tr,
 }
 
-/// One run of text with its style.
+/// One run of text with its style. A `\n` in it is a line break (`<br>`, #910).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "proptest", derive(proptest_derive::Arbitrary))]
 #[serde(rename_all = "camelCase")]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "independent marks one run can carry together; together they are not one state"
+)]
 pub struct ArticleSpan {
     pub text: String,
     #[serde(default, skip_serializing_if = "is_false")]
     pub bold: bool,
     #[serde(default, skip_serializing_if = "is_false")]
     pub italic: bool,
+    /// `<sup>` (#910).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub sup: bool,
+    /// `<u>` (#910).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub underline: bool,
 }
 
 fn is_false(value: &bool) -> bool {
