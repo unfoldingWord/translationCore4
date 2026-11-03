@@ -408,6 +408,9 @@ pub enum AlignEdit {
     AcceptAll,
     /// Reject all, and Reset.
     RejectAll,
+    /// Clear alignments, once the person confirmed: every placed word goes back to the bank
+    /// and the standing suggestions go (#758).
+    Clear,
 }
 
 /// What a click on a bank chip does, from the keys held with it (tc-align `Click`).

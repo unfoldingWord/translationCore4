@@ -84,5 +84,8 @@
   },
   {
     "type": "rejectAll"
+  },
+  {
+    "type": "clear"
   }
 ]

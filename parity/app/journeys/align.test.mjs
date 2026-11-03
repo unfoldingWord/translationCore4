@@ -812,3 +812,61 @@ browserTest('a_link_sent_back_to_the_bank_is_listed', async () => {
     assert.match(await listed.textContent(), /word bank.*Pablo/);
   });
 });
+
+/** Leave through Home so the store checkpoints, and read Titus 1:1's stored alignment. */
+async function storedTitus11(page, env) {
+  const closed = page.waitForResponse((response) => response.url().endsWith('/api/v1/session/close'));
+  await page.getByTestId('project-switch').click();
+  await page.getByTestId(`project-${BIBLE}`).waitFor();
+  await closed;
+  await env.call('settings/viewFromHome', { project: BIBLE });
+  const file = path.join(env.projectsDir, BIBLE, 'ingredients/checking/alignments/TIT.json');
+  const bytes = fs.readFileSync(file);
+  return { md5: crypto.createHash('md5').update(bytes).digest('hex'), verse: JSON.parse(bytes).chapters['1']['1'] };
+}
+
+/** #758: Clear alignments asks first, naming the verse and the placed words; Escape and Cancel
+ * change nothing; Confirm sends every placed word back to the bank in one saved edit. */
+browserTest('j5_clear_alignments_asks_then_starts_the_verse_over', async () => {
+  await withApp(async ({ page, env }) => {
+    const before = fs.readFileSync(path.join(env.projectsDir, BIBLE, 'ingredients/checking/alignments/TIT.json'));
+    const requests = recordRequests(page);
+    await openAlign(page);
+    const clear = page.getByTestId('align-clear');
+    const edits = (mark) => requests.api(mark).filter((p) => p === '/api/v1/align/edit').length;
+    const mark = requests.mark();
+
+    await clear.click();
+    await question(page).waitFor();
+    assert.match(await question(page).textContent(), /Titus 1:1/);
+    assert.match(await question(page).textContent(), /6 placed words/);
+    await until('focus moves into the question', () => page.evaluate(() => document.activeElement?.closest('[role="alertdialog"]') != null));
+    for (let i = 0; i < 4; i += 1) {
+      await page.keyboard.press('Tab');
+      assert.ok(await page.evaluate(() => document.activeElement?.closest('[role="alertdialog"]') != null), 'Tab stays in the question');
+    }
+    await page.keyboard.press('Escape');
+    await question(page).waitFor({ state: 'detached' });
+    await clear.click();
+    await question(page).getByRole('button', { name: 'Cancel' }).click();
+    await question(page).waitFor({ state: 'detached' });
+    assert.equal(await placed(page), '6 of 27 words placed');
+    assert.equal(edits(mark), 0, 'Escape and Cancel send nothing');
+    const kept = await storedTitus11(page, env);
+    assert.equal(kept.md5, crypto.createHash('md5').update(before).digest('hex'), 'the stored alignment is unchanged');
+
+    await openAlign(page);
+    const confirm = requests.mark();
+    await clear.click();
+    await question(page).getByRole('button', { name: 'Clear alignments' }).click();
+    await question(page).waitFor({ state: 'detached' });
+    await until('every word is back in the bank', async () => (await placed(page)) === '0 of 27 words placed');
+    assert.equal(await bank(page).count(), 27);
+    assert.equal(edits(confirm), 1, 'one edit');
+    assert.ok(await clear.isDisabled(), 'nothing left to clear');
+    await until('saved', async () => (await saveState(page)) === 'saved');
+    const { verse } = await storedTitus11(page, env);
+    assert.ok(verse.alignments.length > 0 && verse.alignments.every((g) => g.topWords.length > 0 && g.bottomWords.length === 0), 'every card keeps its original words and no target word');
+    assert.equal(verse.wordBank.length, 27);
+  });
+});

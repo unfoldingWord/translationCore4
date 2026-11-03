@@ -656,6 +656,108 @@ async fn mark_valid_lights_the_button_and_an_edit_takes_it_back() {
     assert!(!edited.done);
 }
 
+/// What Titus 1:1 shows once each placed word was sent back by hand, one click at a time.
+async fn titus_1_1_unplaced_by_hand() -> AlignerView {
+    let (_dir, t, _) = start("sample").await;
+    let at = opened(&t.app).await.session.at;
+    let mut view = ready(&t.app, &at, 1, 1).await;
+    let mut n = 70;
+    while let Some((card, word)) = view
+        .cards
+        .iter()
+        .find_map(|c| c.placed.first().map(|w| (c.index, w.clone())))
+    {
+        view = edit(&t.app, &at, &view, n, AlignEdit::Unplace { card, word })
+            .await
+            .unwrap();
+        n += 1;
+    }
+    view
+}
+
+/// Clear alignments (#758) starts the verse over in one edit: every placed word is back in the
+/// bank in verse order, as sending each back by hand leaves it, every original word keeps a
+/// card, the verse is no longer done, and one save stores it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn clear_sends_every_placed_word_back_in_one_saved_edit() {
+    let by_hand = titus_1_1_unplaced_by_hand().await;
+    let (_dir, t, backend) = start("sample").await;
+    let at = opened(&t.app).await.session.at;
+    let view = ready(&t.app, &at, 1, 1).await;
+    let marked = edit(&t.app, &at, &view, 61, AlignEdit::MarkValid)
+        .await
+        .unwrap();
+    assert!(marked.done && marked.placed > 0);
+    backend.script(&folder(SAMPLE), Scripted::Written).unwrap();
+    let cleared = edit(&t.app, &at, &marked, 62, AlignEdit::Clear)
+        .await
+        .unwrap();
+    assert_eq!(cleared.placed, 0);
+    assert_eq!(cleared.bank, by_hand.bank, "the bank in verse order");
+    assert!(cleared.cards.iter().all(|c| c.placed.is_empty()));
+    let tops =
+        |v: &AlignerView| -> Vec<Word> { v.cards.iter().flat_map(|c| c.top.clone()).collect() };
+    assert_eq!(
+        tops(&cleared),
+        tops(&view),
+        "every original word keeps a card"
+    );
+    assert!(!cleared.done);
+    assert_eq!(cleared.save, AlignSave::Unsaved);
+    assert_eq!(flush(&t.app, &at, 63).await, AlignSave::Saved);
+    let sent = saved_links(&backend);
+    assert_eq!(sent.len(), 1, "one save");
+    assert!(sent[0].alignments.iter().all(|g| g.bottom_words.is_empty()));
+    assert_eq!(
+        sent[0].word_bank.len(),
+        usize::try_from(cleared.total).unwrap()
+    );
+}
+
+/// Clear alignments discards the standing suggestions, and the row no longer says what the
+/// last Suggest found (#758).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn clear_discards_the_standing_suggestions() {
+    use tc_api::prefs::SetAlignSuggestions;
+    let (_dir, t, _) = start("sample").await;
+    let at = opened(&t.app).await.session.at;
+    ready(&t.app, &at, 1, 2).await;
+    ok(
+        &t.app,
+        &SetAlignSuggestions {
+            at: at.clone(),
+            request: request(80),
+            on: true,
+        },
+    )
+    .await;
+    let learned = tc_app_test_wait(&t.app, &at).await;
+    let asked = match t
+        .app
+        .request(&tc_api::align::Suggest {
+            at: at.clone(),
+            request: request(81),
+            aligner: learned.aligner,
+        })
+        .await
+        .unwrap()
+    {
+        Reply::Ok(view) => view,
+        Reply::Err(error) => panic!("{error:?}"),
+    };
+    assert!(
+        asked.suggest.asked && asked.suggest.standing > 0,
+        "{:?}",
+        asked.suggest
+    );
+    let cleared = edit(&t.app, &at, &asked, 82, AlignEdit::Clear)
+        .await
+        .unwrap();
+    assert_eq!(cleared.suggest.standing, 0);
+    assert!(cleared.cards.iter().all(|c| c.suggested.is_empty()));
+    assert!(!cleared.suggest.asked);
+}
+
 fn suggest_events(app: &App) -> Vec<tc_api::align::SuggestStatus> {
     let mut reader = app.events().subscribe(0);
     let mut out = Vec::new();

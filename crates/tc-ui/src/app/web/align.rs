@@ -143,6 +143,9 @@ pub struct AlignState {
     pub restore_failed: ArcRwSignal<bool>,
     /// Home asks whether to leave without the clicks that cannot be saved.
     pub leave_ask: ArcRwSignal<bool>,
+    /// Clear alignments asks first, about the verse of this aligner only: another verse or
+    /// another open is another aligner, so the question goes with the verse it was asked on.
+    pub clear_ask: ArcRwSignal<Option<tc_api::ids::AlignerId>>,
 }
 
 impl AlignState {
@@ -163,6 +166,7 @@ impl AlignState {
             restoring: ArcRwSignal::new(false),
             restore_failed: ArcRwSignal::new(false),
             leave_ask: ArcRwSignal::new(false),
+            clear_ask: ArcRwSignal::new(None),
         }
     }
 }

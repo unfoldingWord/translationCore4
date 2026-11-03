@@ -463,6 +463,11 @@ impl Actor {
                 self.asked = false;
                 Applied::View
             }
+            AlignEdit::Clear => {
+                self.aligner.clear();
+                self.asked = false;
+                Applied::Links
+            }
         }
     }
 

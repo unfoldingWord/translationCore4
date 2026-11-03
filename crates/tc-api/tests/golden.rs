@@ -2565,6 +2565,7 @@ fn align_edits() -> Vec<AlignEdit> {
         },
         AlignEdit::AcceptAll,
         AlignEdit::RejectAll,
+        AlignEdit::Clear,
     ]
 }
 

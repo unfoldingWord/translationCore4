@@ -27,6 +27,7 @@ use crate::views::item_nav::{Which, item_nav_button};
 /// nothing to align, or the verse (tC4's `Align` and `AlignBlocked`).
 pub fn align_session(s: &AppState, actions: &Actions, book: BookId) -> impl IntoView + use<> {
     let question = leave_question(s, actions);
+    let clear = clear_question(s, actions, book);
     let (s, actions) = (s.clone(), actions.clone());
     // Through a Memo, so that the verse redraws when the cap changes, not on every read of the
     // open sessions (a drag in progress or the focus would go with it).
@@ -68,7 +69,7 @@ pub fn align_session(s: &AppState, actions: &Actions, book: BookId) -> impl Into
             Screen::Ready(view) => ready(&s, &actions, cap.get(), book, *view),
         }
     };
-    (read_only, notice, screen, question).into_any()
+    (read_only, notice, screen, question, clear).into_any()
 }
 
 /// Home's question when a click cannot be saved (owner ruling ALIGN-LEAVE). Escape stays.
@@ -86,6 +87,51 @@ fn leave_question(s: &AppState, actions: &Actions) -> impl IntoView + use<> {
         on_confirm: Some(Callback::new(move |()| go.answer_align_leave(true))),
         on_cancel: Some(Callback::new(move |()| stay.answer_align_leave(false))),
     })
+}
+
+/// Clear alignments' question (#758): it names the verse and how many words go back to the
+/// bank. Only its Clear alignments changes the verse; Escape and Cancel close it.
+fn clear_question(s: &AppState, actions: &Actions, book: BookId) -> impl IntoView + use<> {
+    let (asked, screen) = (s.a.clear_ask.clone(), s.a.screen.clone());
+    // Through a Memo, so that a save of the verse does not draw the question again.
+    let shown = Memo::new(move |_| {
+        let aligner = asked.get()?;
+        screen.with(|screen| match screen {
+            Screen::Ready(view) if view.aligner == aligner => {
+                Some((view.place.label(), view.placed))
+            }
+            _ => None,
+        })
+    });
+    let (asked, actions) = (s.a.clear_ask.clone(), actions.clone());
+    move || {
+        let (place, placed) = shown.get()?;
+        let verse = t(
+            keys::align::REF,
+            &[("book", &book.english_name()), ("ref", &place)],
+        );
+        let body = match placed {
+            1 => t(keys::align::clear::BODY_ONE, &[]),
+            n => t(keys::align::clear::BODY, &[("n", &n.to_string())]),
+        };
+        let (cancel, confirm, actions) = (asked.clone(), asked.clone(), actions.clone());
+        Some(crate::ds::ConfirmDialog(crate::ds::ConfirmDialogProps {
+            open: Signal::derive(|| true),
+            title: t(keys::align::clear::TITLE, &[("verse", &verse)]),
+            description: Some(body),
+            consequence: None,
+            confirm_label: Some(t(keys::align::clear::BUTTON, &[])),
+            cancel_label: Some(t(keys::align::clear::CANCEL, &[])),
+            destructive: true,
+            on_confirm: Some(Callback::new(move |()| {
+                confirm.set(None);
+                if let Some(cap) = actions.write_cap() {
+                    actions.align_edit(cap, AlignEdit::Clear);
+                }
+            })),
+            on_cancel: Some(Callback::new(move |()| cancel.set(None))),
+        }))
+    }
 }
 
 fn notice_box() -> Css {
@@ -1019,6 +1065,13 @@ fn mark_valid_bar(
         })
     };
     let mark = actions.clone();
+    let (ask, aligner) = (s.a.clear_ask.clone(), view.aligner);
+    let clear = view! {
+        <Button variant=ButtonVariant::Outline attrs=Attrs::from([("data-testid", "align-clear")]) disabled=cap.is_none() || view.placed == 0
+            on_click=Callback::new(move |_| ask.set(Some(aligner)))>
+            {t(keys::align::clear::BUTTON, &[])}
+        </Button>
+    };
     view! {
         <div style=row.to_style()>
             {refused}
@@ -1035,6 +1088,7 @@ fn mark_valid_bar(
                 {t(keys::align::MARK_VALID, &[])}
             </button>
             {item_nav_button(Which::Next, neighbours.next.is_some(), "align-next", go(neighbours.next))}
+            {clear}
         </div>
     }
 }
