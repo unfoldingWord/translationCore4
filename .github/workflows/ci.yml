@@ -309,7 +309,6 @@ jobs:
     steps:
       - run: '[[ "${{ needs.test-app-shard.result }}" = success ]]'
 
-  # The Windows tests, nightly or on request, until CHK-5 makes them a push gate.
   # The test jobs restore the cache of the default branch (a merge-queue branch cannot hand its
   # cache to the next run, so they save nowhere else), but a merge to main skips the tests the queue
   # already ran, so nothing else refreshes it. This builds the test profile of both test steps once
@@ -328,6 +327,7 @@ jobs:
           save-if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
       - run: scripts/gates.sh --step cache-warm
 
+  # The Windows tests, nightly or on request, until CHK-5 makes them a push gate.
   nightly-windows:
     runs-on: windows-latest
     timeout-minutes: 120

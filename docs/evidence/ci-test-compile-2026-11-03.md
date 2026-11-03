@@ -3,16 +3,17 @@
 Measured 2026-11-03 on `84a06818` (main), Linux, rustc 1.99.1, `CARGO_BUILD_JOBS=4` to match a
 4-vCPU runner, on a 20-core machine, so the absolute seconds are lower than CI's. The command is
 the `test` step's build: `cargo test --locked --workspace --exclude tc-app --no-run --timings`.
-Reports: `ci-test-compile-2026-11-03/cargo-timing-cold.html` (empty `target/`) and
-`cargo-timing-warm.html` (the same, after `cargo clean` of every workspace crate: the state a
-restored Rust cache leaves, since the cache keeps dependencies and not workspace crates).
+The two `cargo --timings` reports (cold: empty `target/`, 487 KB; warm: after `cargo clean` of every
+workspace crate, the state a restored Rust cache leaves, since the cache keeps dependencies and not
+workspace crates, 194 KB) are not in the repository: at 680 KB they made the diff too large for the
+review bench to read in full. The tables below are read from them.
 
 | Build | Wall time | Units | Workspace CPU |
 |---|---|---|---|
 | Cold | 4 min 16 s | 607 | 681 s |
 | Warm (dependencies cached) | 2 min 59 s | 224 | 713 s |
 
-The cold build is 77 s (30%) longer. The five crates with the most compile time, summed over their
+The warm build is 77 s faster, 30% off the cold time. The five crates with the most compile time, summed over their
 units in the cold build: `tc-journal` 246 s, `openssl-sys` 139 s (its build script compiles OpenSSL
 from source, because `tc-door43` asks git2 for `vendored-openssl` on Linux and macOS), `tc-api` 93 s
 (41 s of it the `roundtrip` test binary), `tc-usfm` 49 s, `tc-server` 38 s.
