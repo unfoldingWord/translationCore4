@@ -410,6 +410,49 @@ async fn an_article_comes_from_the_books_helps() {
     assert_eq!(missing, ArticleView::Missing);
 }
 
+/// tC4 #910: the server sends an article's `<sup>` and `<br>` as a mark and a break, so the
+/// pane can draw them. Titus's notes name no article that holds `<u>`; `api_spans` names every
+/// field of a span, so no mark can be left out of the reply.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_article_sends_its_html_marks_as_marks() {
+    let (_dir, t) = start("en-pins").await;
+    let at = at(&t).await;
+    let spans = |slug: &'static str| {
+        let (app, at) = (&t.app, at.clone());
+        async move {
+            let article = ok(
+                app,
+                &Article {
+                    at,
+                    book: BookId::Titus,
+                    link: ArticleLink::Academy { slug: slug.into() },
+                },
+            )
+            .await;
+            let ArticleView::Found { blocks, .. } = article else {
+                panic!("{slug}: {article:?}")
+            };
+            blocks
+                .into_iter()
+                .flat_map(|b| b.spans)
+                .collect::<Vec<tc_api::model::ArticleSpan>>()
+        }
+    };
+    let names = spans("translate-names").await;
+    assert!(
+        names.iter().any(|s| s.sup && s.text.contains("[1]")),
+        "{names:?}"
+    );
+    let proverbs = spans("writing-proverbs").await;
+    assert!(
+        proverbs.iter().any(|s| s.text.contains('\n')),
+        "{proverbs:?}"
+    );
+    for span in names.iter().chain(&proverbs) {
+        assert!(!span.text.contains('<'), "{span:?}");
+    }
+}
+
 // ---- take_spans: the UI's copy against tc-helps' (§3.8) -----------------------------------
 
 fn api_spans(spans: &[tc_helps::blocks::Span]) -> Vec<tc_api::model::ArticleSpan> {
