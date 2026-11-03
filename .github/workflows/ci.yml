@@ -10,8 +10,9 @@ on:
   # the merge queue).
   pull_request:
   # The Windows test run, once a night; workflow_dispatch lets anyone run it on a branch.
+  # Cron is UTC: 07:30 is 2:30 AM US Eastern in winter, 3:30 AM in summer.
   schedule:
-    - cron: '0 6 * * *'
+    - cron: '30 7 * * *'
   workflow_dispatch:
   merge_group:
 concurrency:
