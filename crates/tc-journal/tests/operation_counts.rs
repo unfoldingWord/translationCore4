@@ -25,8 +25,9 @@ use support::{Dev, fold, on, seed_book, text, verse, verse_key};
 use tc_corpus::{Corpus, Spec};
 use tc_journal::command::Choice;
 use tc_journal::fold::{Counters, FoldInput, FoldState, Placement, ProjectKind, Resolved};
+use tc_journal::pins::Collection;
 use tc_journal::record::{CheckValue, VerseValue};
-use tc_journal::{BookId, Cause, ChangeId, Record, RecordKey};
+use tc_journal::{BookId, Cause, ChangeId, Record, RecordKey, ToolId};
 
 const PSALMS: BookId = BookId::Psalms;
 
@@ -331,6 +332,28 @@ fn a_decision_costs_what_it_touches() {
         counts
     };
     assert_no_growth("decision", measure(psalms()), measure(larger()));
+}
+
+/// A tool's decisions read that tool's records: a book's keys also hold the other tool's, and a
+/// first open of the Check screen asks for each tool's in turn.
+#[test]
+fn a_tools_decisions_never_read_the_other_tools() {
+    for corpus in [psalms(), larger()] {
+        let state = fork(corpus);
+        let counted = |tool| {
+            let before = state.counters();
+            let decisions = state.decisions(tool, Collection::Book(PSALMS));
+            (
+                decisions.len() as u64,
+                state.counters().since(&before).records_projected,
+            )
+        };
+        let (notes, read_for_notes) = counted(ToolId::TranslationNotes);
+        let (words, read_for_words) = counted(ToolId::TranslationWords);
+        assert!(notes > 0 && words > 0, "{notes} and {words}");
+        assert!(read_for_notes < notes + words, "{read_for_notes}");
+        assert!(read_for_words < notes + words, "{read_for_words}");
+    }
 }
 
 #[test]

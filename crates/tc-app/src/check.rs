@@ -1333,7 +1333,15 @@ impl Handle<Picker> for App {
             })
         };
         let [first, second] = TOOLS;
-        let counts = tokio::join!(count(first), count(second));
+        // A story has no Align tool: the entry is absent, not disabled (tC4 D74 §8).
+        let align = async {
+            match req.unit {
+                CheckUnit::Book(book) => Some(align_card(session.read(), book).await),
+                CheckUnit::Story(_) => None,
+            }
+        };
+        let (first_count, second_count, align) = tokio::join!(count(first), count(second), align);
+        let counts = (first_count, second_count);
         let mut tools = Vec::new();
         for (tool, counted) in [(first, counts.0), (second, counts.1)] {
             let read = session.read();
@@ -1371,19 +1379,23 @@ impl Handle<Picker> for App {
             pins_of(&read)?.and_then(|pins| pins.old_twl_pin().map(|pin| pin.repo.to_string()));
         Ok(PickerView {
             tools,
-            // A story has no Align tool: the entry is absent, not disabled (tC4 D74 §8).
-            align: match req.unit {
-                CheckUnit::Book(book) => Some(align_card(&read, book)),
-                CheckUnit::Story(_) => None,
-            },
+            align,
             old_twl,
         })
     }
 }
 
 /// The Align card's count, from the rail's own rule (`crate::align::index`).
-fn align_card(read: &CountingSnapshot, book: BookId) -> CardCount<AlignProgress> {
-    CardCount::Counted(crate::align::index::progress(read, book))
+async fn align_card(read: CountingSnapshot, book: BookId) -> CardCount<AlignProgress> {
+    // A count that failed is stated on its card and never blocks the tool (D30).
+    tokio::task::spawn_blocking(move || crate::align::index::progress(&read, book))
+        .await
+        .map_or_else(
+            |stopped| CardCount::Failed {
+                reason: stopped.to_string(),
+            },
+            CardCount::Counted,
+        )
 }
 
 // ---------------------------------------------------------------------------------------
