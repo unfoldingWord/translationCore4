@@ -12,6 +12,10 @@
 //! (a `|` row above a `|---|` line) is a table, where tC4 shows each as plain lines, pipes and
 //! dashes included. Links stay their label until tC4 decides (TC4-ISSUES §4).
 //!
+//! A fourth, for tC4 #910: the HTML marks en_ta holds are drawn, where tC4 shows them as text.
+//! `<br>` is a line break, `<sup>` superscript and `<u>` underlined. A tag that is not closed
+//! stays literal.
+//!
 //! Lengths are counted as JavaScript counts them, in UTF-16 code units, because tC4 cuts a
 //! long note at 400 of them (`previewBlocks`); [`take_spans`] cuts the same text tC4 cuts,
 //! except that it never splits a character outside the Basic Multilingual Plane in two, as
@@ -36,12 +40,21 @@ pub enum BlockKind {
     Row,
 }
 
-/// One run of inline text, with no markdown marks left in it.
+/// One run of inline text, with no markdown marks left in it. A `\n` in it is a line break
+/// (`<br>`, #910).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "independent marks one run can carry together; together they are not one state"
+)]
 pub struct Span {
     pub text: String,
     pub bold: bool,
     pub italic: bool,
+    /// `<sup>` (#910).
+    pub sup: bool,
+    /// `<u>` (#910).
+    pub underline: bool,
 }
 
 impl Span {
@@ -123,6 +136,10 @@ static ITALIC: LazyLock<Regex> = LazyLock::new(|| {
         s = JS_SPACE
     ))
 });
+// The spaces around a break would start or end a line; one space is all `SPACES` leaves.
+static BREAK: LazyLock<Regex> = LazyLock::new(|| pattern(r"(?i) ?<br ?/?> ?"));
+static SUP: LazyLock<Regex> = LazyLock::new(|| pattern(r"(?i)<sup>(.+?)</sup>"));
+static UNDERLINE: LazyLock<Regex> = LazyLock::new(|| pattern(r"(?i)<u>(.+?)</u>"));
 
 /// The length of `text` as JavaScript counts it: UTF-16 code units.
 pub fn js_len(text: &str) -> usize {
@@ -166,9 +183,9 @@ fn marked<'t>(caps: &Captures<'t, str>) -> &'t str {
         .map_or("", |g| g.as_str())
 }
 
-/// Splits `span` at each match of `mark`; the matched part gets the style `bold` and
-/// `italic` adds (tC4's `splitSpans`).
-fn split_spans(span: Span, mark: &Regex, bold: bool, italic: bool) -> Vec<Span> {
+/// Splits `span` at each match of `mark`; the matched part gets the style `style` adds
+/// (tC4's `splitSpans`).
+fn split_spans(span: Span, mark: &Regex, style: fn(&mut Span)) -> Vec<Span> {
     let mut out = Vec::new();
     let mut at = 0;
     for caps in mark.captures_iter(span.text.as_str()) {
@@ -184,11 +201,12 @@ fn split_spans(span: Span, mark: &Regex, bold: bool, italic: bool) -> Vec<Span> 
                 ..span.clone()
             });
         }
-        out.push(Span {
+        let mut inner = Span {
             text: marked(&caps).to_owned(),
-            bold: span.bold || bold,
-            italic: span.italic || italic,
-        });
+            ..span.clone()
+        };
+        style(&mut inner);
+        out.push(inner);
         at = whole.end();
     }
     if at < span.text.len() {
@@ -201,18 +219,28 @@ fn split_spans(span: Span, mark: &Regex, bold: bool, italic: bool) -> Vec<Span> 
 }
 
 /// tC4's `inline`: links to their text, escaped and real line breaks to one space, the marks
-/// to styled spans.
+/// to styled spans; then #910's HTML marks, a `<br>` last so that no mark's run, which never
+/// crosses a line, is cut by it.
 fn inline(text: &str) -> Vec<Span> {
     let plain = replace_with_group(&WIKI_LINK, text);
     let plain = replace_with_group(&LINK, &plain);
     let plain = plain.replace("\\n", " ");
     let plain = SPACES.replace_all(&plain, " ");
     let plain = js_trim(&plain).to_owned();
-    split_spans(Span::plain(plain), &BOLD_ITALIC, true, true)
-        .into_iter()
-        .flat_map(|span| split_spans(span, &BOLD, true, false))
-        .flat_map(|span| split_spans(span, &ITALIC, false, true))
-        .collect()
+    split_spans(Span::plain(plain), &BOLD_ITALIC, |s| {
+        s.bold = true;
+        s.italic = true;
+    })
+    .into_iter()
+    .flat_map(|span| split_spans(span, &BOLD, |s| s.bold = true))
+    .flat_map(|span| split_spans(span, &ITALIC, |s| s.italic = true))
+    .flat_map(|span| split_spans(span, &SUP, |s| s.sup = true))
+    .flat_map(|span| split_spans(span, &UNDERLINE, |s| s.underline = true))
+    .map(|span| Span {
+        text: BREAK.replace_all(&span.text, "\n").into_owned(),
+        ..span
+    })
+    .collect()
 }
 
 impl Block {

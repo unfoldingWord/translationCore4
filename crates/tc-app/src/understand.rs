@@ -821,6 +821,8 @@ pub(crate) fn api_spans(spans: Vec<tc_helps::blocks::Span>) -> Vec<ArticleSpan> 
             text: s.text,
             bold: s.bold,
             italic: s.italic,
+            sup: s.sup,
+            underline: s.underline,
         })
         .collect()
 }

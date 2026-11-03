@@ -492,8 +492,7 @@ fn js_slice(text: &str, units: usize) -> &str {
 fn ellipsis() -> ArticleSpan {
     ArticleSpan {
         text: "…".to_owned(),
-        bold: false,
-        italic: false,
+        ..ArticleSpan::default()
     }
 }
 

@@ -28,6 +28,7 @@ fn spans_of(value: &Value) -> Vec<Span> {
             text: s["text"].as_str().unwrap().to_owned(),
             bold: s.get("bold").is_some(),
             italic: s.get("italic").is_some(),
+            ..Span::default()
         })
         .collect()
 }
@@ -175,6 +176,77 @@ fn ta_article_with_a_table_renders_a_table() {
     let lone = render_article_blocks("| not a table |");
     assert_eq!(lone[0].kind, Paragraph);
     assert_eq!(lone[0].text(), "| not a table |");
+}
+
+#[test]
+fn html_marks_are_a_break_a_superscript_and_an_underline() {
+    // tC4 #910: the `<br>`, `<sup>` and `<u>` of en_ta are drawn, never shown as text.
+    let blocks = render_article_blocks(
+        "(1) Use the verb.<br>\n\n> <sup> 1</sup> It came about\n\nFor the * <u>name of church</u> *",
+    );
+    assert_eq!(blocks[0].spans, [Span::plain("(1) Use the verb.\n")]);
+    assert_eq!(
+        blocks[1].spans,
+        [
+            Span {
+                sup: true,
+                ..Span::plain(" 1")
+            },
+            Span::plain(" It came about"),
+        ]
+    );
+    assert_eq!(
+        blocks[2].spans,
+        [
+            Span::plain("For the * "),
+            Span {
+                underline: true,
+                ..Span::plain("name of church")
+            },
+            Span::plain(" *"),
+        ]
+    );
+    // A line of its own breaks the line; each way of writing the tag is one break.
+    for (markdown, shown) in [
+        ("<br>", "\n"),
+        ("a<br/>b", "a\nb"),
+        ("a <br /> b", "a\nb"),
+        ("a<BR>b", "a\nb"),
+    ] {
+        assert_eq!(
+            render_article_blocks(markdown)[0].text(),
+            shown,
+            "{markdown}"
+        );
+    }
+}
+
+#[test]
+fn html_marks_keep_the_markdown_marks_around_them() {
+    // en_ta's footnote marks (`<sup> [1]</sup>`) keep their brackets: they are not links.
+    let blocks = render_article_blocks("**bold <u>both</u>** and<sup> [1]</sup>");
+    let shown: Vec<(&str, bool, bool, bool)> = blocks[0]
+        .spans
+        .iter()
+        .map(|s| (s.text.as_str(), s.bold, s.underline, s.sup))
+        .collect();
+    assert_eq!(
+        shown,
+        [
+            ("bold ", true, false, false),
+            ("both", true, true, false),
+            (" and", false, false, false),
+            (" [1]", false, false, true),
+        ]
+    );
+}
+
+#[test]
+fn an_html_mark_without_its_end_stays_as_written() {
+    // A line never loses a word: a tag that is not closed is text.
+    for markdown in ["a <sup>1 b", "a <u>b", "a </u> b"] {
+        assert_eq!(render_article_blocks(markdown)[0].text(), markdown);
+    }
 }
 
 /// Owner ruling Q38 (tC4 #628): a bare `rc://…` link and a `[[rc://…]]` link in a note or an

@@ -419,6 +419,8 @@ fn api_spans(spans: &[tc_helps::blocks::Span]) -> Vec<tc_api::model::ArticleSpan
             text: s.text.clone(),
             bold: s.bold,
             italic: s.italic,
+            sup: s.sup,
+            underline: s.underline,
         })
         .collect()
 }
@@ -458,12 +460,12 @@ fn take_spans_cuts_every_block_as_tc_helps_does() {
 proptest::proptest! {
     #[test]
     fn take_spans_agrees_on_any_spans(
-        spans in proptest::collection::vec(("[a-zé𝔸 ]{0,6}", proptest::bool::ANY, proptest::bool::ANY), 0..6),
+        spans in proptest::collection::vec(("[a-zé𝔸 \n]{0,6}", proptest::array::uniform4(proptest::bool::ANY)), 0..6),
         n in 0usize..40,
     ) {
         let helps: Vec<tc_helps::blocks::Span> = spans
             .into_iter()
-            .map(|(text, bold, italic)| tc_helps::blocks::Span { text, bold, italic })
+            .map(|(text, [bold, italic, sup, underline])| tc_helps::blocks::Span { text, bold, italic, sup, underline })
             .collect();
         proptest::prop_assert_eq!(
             tc_api::model::take_spans(&api_spans(&helps), n),
