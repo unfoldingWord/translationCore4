@@ -3739,6 +3739,7 @@ name = "tc-door43"
 version = "4.1.0-preview"
 dependencies = [
  "base64 0.22.1",
+ "futures-util",
  "git2",
  "httpdate",
  "hyper-util",

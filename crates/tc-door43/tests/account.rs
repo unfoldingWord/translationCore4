@@ -2,12 +2,14 @@
 
 mod common;
 
+use std::time::Duration;
+
 use common::{client, credentials, git, repo, run, token_name};
 use tc_door43::{
     AuthStatus, Credentials, Door43Error, NewRepoOwner, OneTimeCode, Password, TokenScope,
     Visibility,
 };
-use tc_door43_fake::{FakeDoor43, seeded};
+use tc_door43_fake::{FakeDoor43, FakeOrg, Fault, FaultRule, OrgMember, seeded};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn minting_replaces_the_token_of_the_same_name() {
@@ -103,6 +105,98 @@ async fn a_two_factor_account_needs_its_code() {
         .await
         .unwrap();
     assert_eq!(session.username.as_str(), seeded::OTP_USER);
+}
+
+/// INV-SHARE-ORGS-BOUNDED: at most 4 permission requests run at once.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn share_orgs_are_bounded() {
+    let fake = FakeDoor43::start_seeded().await.unwrap();
+    for at in 0..6 {
+        fake.add_org(FakeOrg {
+            name: format!("team-{at}"),
+            full_name: format!("Team {at}"),
+            members: vec![OrgMember {
+                login: seeded::USER.to_owned(),
+                can_create_repository: true,
+            }],
+        });
+    }
+    let client = client(&fake);
+    let session = client
+        .mint_token(&credentials(), &token_name(), &TokenScope::FOR_SHARING)
+        .await
+        .unwrap();
+    fake.inject(FaultRule::always(
+        "GET",
+        "/api/v1/users/",
+        Fault::Delay(Duration::from_millis(100)),
+    ));
+    fake.clear_requests();
+    let orgs = client.list_orgs(&session).await.unwrap();
+    assert_eq!(orgs.len(), 8);
+    assert_eq!(fake.peak_in_flight(), 4);
+}
+
+/// INV-SHARE-ORGS-KEEP-DOOR43-ORDER: the first organization answers last and stays first.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn share_orgs_keep_door43_order() {
+    let fake = FakeDoor43::start_seeded().await.unwrap();
+    let client = client(&fake);
+    let session = client
+        .mint_token(&credentials(), &token_name(), &TokenScope::FOR_SHARING)
+        .await
+        .unwrap();
+    fake.inject(FaultRule::once(
+        "GET",
+        &format!("/api/v1/users/{}/orgs/{}", seeded::USER, seeded::TEAM_ORG),
+        Fault::Delay(Duration::from_millis(200)),
+    ));
+    let names: Vec<String> = client
+        .list_orgs(&session)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|o| o.name.to_string())
+        .collect();
+    assert_eq!(names, [seeded::TEAM_ORG, seeded::READ_ONLY_ORG]);
+}
+
+/// The first failure in Door43's order decides, though a later organization failed sooner.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_first_failure_in_door43_order_decides_the_refusal() {
+    let fake = FakeDoor43::start_seeded().await.unwrap();
+    let client = client(&fake);
+    let session = client
+        .mint_token(&credentials(), &token_name(), &TokenScope::FOR_SHARING)
+        .await
+        .unwrap();
+    let permissions = |org: &str| format!("/api/v1/users/{}/orgs/{org}/permissions", seeded::USER);
+    let first = permissions(seeded::TEAM_ORG);
+    fake.inject(FaultRule::once(
+        "GET",
+        &first,
+        Fault::Delay(Duration::from_millis(200)),
+    ));
+    fake.inject(FaultRule::once(
+        "GET",
+        &first,
+        Fault::Status {
+            status: 500,
+            message: "first".to_owned(),
+        },
+    ));
+    fake.inject(FaultRule::once(
+        "GET",
+        &permissions(seeded::READ_ONLY_ORG),
+        Fault::RateLimited {
+            retry_after_secs: 1,
+        },
+    ));
+    let error = client.list_orgs(&session).await.unwrap_err();
+    assert!(
+        !matches!(error, Door43Error::RateLimited { .. }),
+        "{error:?}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

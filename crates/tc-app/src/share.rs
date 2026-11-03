@@ -17,7 +17,7 @@ use tc_api::ids::ProjectRef;
 use tc_api::jobs::{JobKind, Phase, SharePhase, SyncPhase};
 use tc_api::refusal::{OpenDoor43Refusal, ShareRefusal, SyncFailure, SyncRefusal};
 use tc_api::{ApiError, Refusal};
-use tc_door43::{Door43Error, NewRepoOwner, Session};
+use tc_door43::{Door43Error, NewRepoOwner, Session, in_door43_order};
 
 use crate::app::App;
 use crate::dispatch::Handle;
@@ -80,7 +80,7 @@ impl App {
 
 impl Handle<Orgs> for App {
     /// tC4's `organizationChoices`: the organizations, each one's permission and its count of
-    /// repositories in the language, one Door43 call after another, in Door43's order.
+    /// repositories in the language, a few Door43 calls at a time, in Door43's order.
     async fn handle(&self, req: Orgs) -> Result<ShareTargets, ApiError> {
         let session = self.door43_session().await?;
         let client = self.door43()?;
@@ -88,21 +88,28 @@ impl Handle<Orgs> for App {
             Ok(orgs) => orgs,
             Err(error) => return Err(self.share_failure(&session, error, "orgs").await),
         };
-        let mut counts = Vec::with_capacity(orgs.len());
-        for org in &orgs {
-            let count = if countable(&req.language) {
-                match client
-                    .count_repositories(Some(&session), &org.name, &req.language)
-                    .await
-                {
-                    Ok(count) => count,
-                    Err(error) => return Err(self.share_failure(&session, error, "count").await),
-                }
+        let (asking, signed_in, language) = (&client, &session, &req.language);
+        // Owned items: this future must be `Send`, and the compiler cannot prove it for a closure
+        // over `&Organization`.
+        let asked: Vec<_> = orgs
+            .iter()
+            .map(|org| (org.name.clone(), org.can_create_repository))
+            .collect();
+        let counted = in_door43_order(asked, |(name, can_create)| async move {
+            let count = if countable(language) {
+                asking
+                    .count_repositories(Some(signed_in), &name, language)
+                    .await?
             } else {
                 0
             };
-            counts.push((org.can_create_repository, count));
-        }
+            Ok((can_create, count))
+        })
+        .await;
+        let counts = match counted {
+            Ok(counts) => counts,
+            Err(error) => return Err(self.share_failure(&session, error, "count").await),
+        };
         let recommended = recommend(&counts);
         Ok(ShareTargets {
             user: session.username.to_string(),

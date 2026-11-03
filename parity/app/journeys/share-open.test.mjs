@@ -90,7 +90,8 @@ browserTest('internet-consent d, J11 2. Share: the sign-in, then where it goes w
     assert.ok(await gateway.isDisabled());
     assert.ok((await gateway.textContent()).includes(en['shareDialog.orgCannot']));
     const searches = (await apiRequests(env.door43)).filter((r) => r.path === '/api/v1/repos/search');
-    assert.deepEqual(searches.map((r) => r.query), [
+    // They run together, so they arrive in any order; the cards above keep Door43's.
+    assert.deepEqual(searches.map((r) => r.query).sort(), [
       'owner=Equipo-Ejemplo&lang=es-419&limit=1',
       'owner=es-419_gl&lang=es-419&limit=1',
     ]);

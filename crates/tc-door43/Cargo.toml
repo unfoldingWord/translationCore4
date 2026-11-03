@@ -9,6 +9,7 @@ rust-version.workspace = true
 [dependencies]
 tc-core = { path = "../tc-core" }
 base64.workspace = true
+futures-util = { workspace = true, features = ["std"] }
 # Sync's fetch, push and ls-remote (src/git.rs), the only crate that turns on libgit2's TLS.
 git2 = { workspace = true, features = ["https"] }
 httpdate = "1.0.3"

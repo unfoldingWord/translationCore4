@@ -21,6 +21,7 @@ use crate::secret::{Credentials, Session, Token};
 use crate::verify::{
     VerifiedArchive, VerifiedSbExport, verify_archive_from, verify_sb_export_from,
 };
+use futures_util::{StreamExt, TryStreamExt, stream};
 use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, HeaderValue, RETRY_AFTER};
 use reqwest::{Method, StatusCode};
 use serde::Deserialize;
@@ -164,6 +165,26 @@ fn forms_of(secrets: &[&str]) -> Vec<String> {
     // Longest first, so a secret that contains another is replaced whole.
     forms.sort_by_key(|f| std::cmp::Reverse(f.len()));
     forms
+}
+
+/// How many requests of one kind run at once. A starting value: Door43's real limit is not
+/// known, and it can answer a burst with [`Door43Error::RateLimited`].
+const AT_ONCE: usize = 4;
+
+/// Asks about each item, a few at a time. The answers come back in the items' order, and the
+/// first failure in that order is the one returned, whichever request failed sooner.
+pub async fn in_door43_order<Item, Answer, Asked>(
+    items: impl IntoIterator<Item = Item>,
+    ask: impl FnMut(Item) -> Asked,
+) -> Result<Vec<Answer>, Door43Error>
+where
+    Asked: Future<Output = Result<Answer, Door43Error>>,
+{
+    stream::iter(items)
+        .map(ask)
+        .buffered(AT_ONCE)
+        .try_collect()
+        .await
 }
 
 impl Door43Client {
@@ -455,12 +476,12 @@ impl Door43Client {
         let url = self.api(&["user", "orgs"]);
         let route = route_of(&Method::GET, &url);
         let raw: Vec<RawOrganization> = self.pages(url, auth).await?;
-        let mut orgs = Vec::with_capacity(raw.len());
-        for org in raw {
+        let route = &route;
+        in_door43_order(raw, |org: RawOrganization| async move {
             let name: AccountName = org
                 .username
                 .parse()
-                .map_err(|e| unexpected(&route, format!("{e}")))?;
+                .map_err(|e| unexpected(route, format!("{e}")))?;
             let url = self.api(&[
                 "users",
                 session.username.as_str(),
@@ -474,13 +495,13 @@ impl Door43Client {
             } else {
                 org.full_name
             };
-            orgs.push(Organization {
+            Ok(Organization {
                 name,
                 full_name,
                 can_create_repository: permissions.can_create_repository,
-            });
-        }
-        Ok(orgs)
+            })
+        })
+        .await
     }
 
     /// How many repositories `owner` has in the language `language` (APP-DESIGN R12, tC4

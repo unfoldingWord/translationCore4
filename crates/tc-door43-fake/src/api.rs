@@ -167,7 +167,27 @@ fn page<T: Clone>(items: &[T], params: &Params, max: usize) -> Vec<T> {
 
 // ---------------------------------------------------------------- observe and faults
 
+/// Counts a request as being answered until it drops, on every way out of [`observe`].
+struct InFlight(Arc<Shared>);
+
+impl InFlight {
+    fn start(shared: &Arc<Shared>) -> Self {
+        let mut state = shared.state();
+        state.in_flight += 1;
+        state.peak_in_flight = state.peak_in_flight.max(state.in_flight);
+        drop(state);
+        Self(Arc::clone(shared))
+    }
+}
+
+impl Drop for InFlight {
+    fn drop(&mut self) {
+        self.0.state().in_flight -= 1;
+    }
+}
+
 async fn observe(State(shared): AppState, request: Request, next: Next) -> Response {
+    let _in_flight = InFlight::start(&shared);
     let method = request.method().to_string();
     let path = request.uri().path().to_owned();
     let query = request.uri().query().map(str::to_owned);
