@@ -405,7 +405,8 @@ And these (unit D2):
 - An export of a book or the stories with verses in conflict first asks, under the menu,
   whether to review them, with Review and Export anyway (STORAGE §8.5). tC4 exports the
   version shown without a word, so the person cannot know the file holds only one of two
-  versions. The question is inline, never modal.
+  versions. The question is inline, never modal. For the stories it counts frames, titles
+  included, as the sync result does: "1 frame has two versions" (#935).
 - A verse whose cards stand on a source word the pinned verse lacks keeps its stored text,
   and the export names it. tC4 #816 (D107, newer than d310bf3) fits the cards to the pin and
   weaves the rest, so a link leaves the file without a word to the person; the rebuild weaves

@@ -3524,7 +3524,7 @@ impl Example for export::PreflightView {
     fn example() -> Self {
         export::PreflightView {
             conflicts: 4,
-            verses: 3,
+            two_versions: export::TwoVersions::Verses(3),
         }
     }
 }

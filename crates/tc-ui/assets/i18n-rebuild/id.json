@@ -79,6 +79,8 @@
   "export.anyway": "Tetap ekspor",
   "export.conflictsMany": "{n} ayat memiliki dua versi. Ekspor menggunakan versi yang ditampilkan. Tinjau terlebih dahulu?",
   "export.conflictsOne": "1 ayat memiliki dua versi. Ekspor menggunakan versi yang ditampilkan. Tinjau terlebih dahulu?",
+  "export.frameConflictsMany": "{n} bingkai memiliki dua versi. Ekspor menggunakan versi yang ditampilkan. Tinjau terlebih dahulu?",
+  "export.frameConflictsOne": "1 bingkai memiliki dua versi. Ekspor menggunakan versi yang ditampilkan. Tinjau terlebih dahulu?",
   "export.markupKept": "Ayat-ayat ini ada di berkas seperti yang disimpan, dengan markup penyelarasan, karena aplikasi tidak dapat menghapusnya: {refs}",
   "export.review": "Tinjau",
   "export.skipped": "Penyelarasan Anda untuk ayat-ayat ini tidak ada di berkas. Periksa di Selaraskan: {refs}",

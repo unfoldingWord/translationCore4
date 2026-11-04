@@ -79,6 +79,8 @@
   "export.anyway": "Exportar de todos modos",
   "export.conflictsMany": "{n} versículos tienen dos versiones. La exportación utiliza la versión mostrada. ¿Revisar primero?",
   "export.conflictsOne": "1 versículo tiene dos versiones. La exportación utiliza la versión mostrada. ¿Revisar primero?",
+  "export.frameConflictsMany": "{n} cuadros tienen dos versiones. La exportación utiliza la versión mostrada. ¿Revisar primero?",
+  "export.frameConflictsOne": "1 cuadro tiene dos versiones. La exportación utiliza la versión mostrada. ¿Revisar primero?",
   "export.markupKept": "Estos versículos están en el archivo como se guardaron, con su marcado de alineación, porque la aplicación no pudo quitarlo: {refs}",
   "export.review": "Revisar",
   "export.skipped": "Tu alineación de estos versículos no está en el archivo. Revísalos en Alinear: {refs}",

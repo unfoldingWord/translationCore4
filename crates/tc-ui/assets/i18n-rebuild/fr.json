@@ -79,6 +79,8 @@
   "export.anyway": "Exporter quand même",
   "export.conflictsMany": "{n} versets ont deux versions. L’exportation utilise la version affichée. Examiner d’abord ?",
   "export.conflictsOne": "1 verset a deux versions. L’exportation utilise la version affichée. Examiner d’abord ?",
+  "export.frameConflictsMany": "{n} cadres ont deux versions. L’exportation utilise la version affichée. Examiner d’abord ?",
+  "export.frameConflictsOne": "1 cadre a deux versions. L’exportation utilise la version affichée. Examiner d’abord ?",
   "export.markupKept": "Ces versets figurent dans le fichier tels qu’enregistrés, avec leur balisage d’alignement, car l’application n’a pas pu le retirer : {refs}",
   "export.review": "Examiner",
   "export.skipped": "Votre alignement pour ces versets ne figure pas dans le fichier. Vérifiez-les dans Aligner : {refs}",
