@@ -692,6 +692,7 @@ fn the_verse_conflicts_are_the_four_verse_kinds() {
     ];
     for kind in verse {
         assert!(kind.is_verse(), "{kind:?}");
+        assert!(ConflictKind::is_verse_order(kind.order()), "{kind:?}");
     }
     for kind in [
         ConflictKind::Alignment,
@@ -699,8 +700,10 @@ fn the_verse_conflicts_are_the_four_verse_kinds() {
         ConflictKind::Pins,
         ConflictKind::BookPresence,
         ConflictKind::ChapterFront,
+        ConflictKind::Frame,
     ] {
         assert!(!kind.is_verse(), "{kind:?}");
+        assert!(!ConflictKind::is_verse_order(kind.order()), "{kind:?}");
     }
 }
 

@@ -19,7 +19,7 @@ use tc_api::event::CheckpointOutcome;
 use tc_api::export::{
     Book, BookPrint, DraftedFrame, ExportFacts, Exported, ExportedFile, Preflight, PreflightView,
     PrintFrame, PrintItem, PrintRequest, PrintStory, PrintStoryItem, PrintWords, Producer, Run,
-    RunExport, SkipReason, SkippedVerse, Stories, StoriesPrint, StoryRun, Subject,
+    RunExport, SkipReason, SkippedVerse, Stories, StoriesPrint, StoryRun, Subject, TwoVersions,
 };
 use tc_api::ids::{DownloadId, JobId, RefPart, StoryNo};
 use tc_api::jobs::{JobKind, JobOutcome, JobState, Phase};
@@ -231,6 +231,10 @@ impl Handle<Preflight> for App {
             Subject::Book { book } => Some(book),
             Subject::Stories => None,
         };
+        let two_versions = |n| match req.subject {
+            Subject::Book { .. } => TwoVersions::Verses(n),
+            Subject::Stories => TwoVersions::Frames(n),
+        };
         if !read
             .conflict_counts()
             .iter()
@@ -238,11 +242,11 @@ impl Handle<Preflight> for App {
         {
             return Ok(PreflightView {
                 conflicts: 0,
-                verses: 0,
+                two_versions: two_versions(0),
             });
         }
         let mut conflicts = 0;
-        let mut verses = BTreeSet::new();
+        let mut shown = BTreeSet::new();
         for conflict in read.conflicts() {
             let mut ours = std::iter::once(&conflict.key)
                 .chain(&conflict.also_keys)
@@ -252,19 +256,13 @@ impl Handle<Preflight> for App {
                 continue;
             }
             conflicts += 1;
-            verses.extend(ours.filter(|key| {
-                matches!(
-                    key,
-                    RecordKey::Verse(..)
-                        | RecordKey::StoryBase(_)
-                        | RecordKey::Frame(..)
-                        | RecordKey::StoryRef(_)
-                )
-            }));
+            shown.extend(
+                ours.filter(|key| matches!(key, RecordKey::Verse(..) | RecordKey::Frame(..))),
+            );
         }
         Ok(PreflightView {
             conflicts,
-            verses: count(verses.len()),
+            two_versions: two_versions(count(shown.len())),
         })
     }
 }

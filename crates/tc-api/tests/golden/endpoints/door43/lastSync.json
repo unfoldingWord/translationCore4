@@ -21,6 +21,7 @@
         ],
         "keptNewest": 3,
         "verseConflicts": 0,
+        "frameConflicts": null,
         "alignments": 0,
         "restored": 0,
         "missingPins": 0,

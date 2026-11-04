@@ -32,7 +32,9 @@ pub use decode::{
 };
 pub use meta::ChangeIdx;
 pub use people::PersonLabel;
-pub use project::{CarriedPlacement, CheckTexts, DerivedFile, ProjectedDecision, RenderedFile};
+pub use project::{
+    CarriedPlacement, CheckTexts, DerivedFile, ProjectedDecision, RenderedFile, kind_name,
+};
 pub use ranges::{ChapterKeys, DeviceStat};
 pub use reads::{BookView, ChangeView, Placement};
 pub use resolve::ResolveError;
@@ -266,14 +268,24 @@ pub enum ConflictKind {
 }
 
 impl ConflictKind {
-    /// A verse conflict: verse text, verse structure, a passage or a structure issue. The
-    /// sync result counts these apart from the others, and its review link opens them
-    /// (tC4's toast, `docs/TC4-DELTA-2026-10-16.md` §3.9, §8.5).
+    /// The verse conflicts: verse text, verse structure, a passage and a structure issue. The
+    /// sync result, Home and Translate count these apart from the others, and the review link
+    /// opens them (tC4's toast, `docs/TC4-DELTA-2026-10-16.md` §3.9, §8.5). A story project's
+    /// counterpart is [`Self::Frame`] (J18, #761).
+    pub const VERSE: [Self; 4] = [
+        Self::VerseText,
+        Self::VerseStructure,
+        Self::Passage,
+        Self::StructureIssue,
+    ];
+
     pub fn is_verse(&self) -> bool {
-        matches!(
-            self,
-            Self::VerseText | Self::VerseStructure | Self::Passage | Self::StructureIssue
-        )
+        Self::VERSE.contains(self)
+    }
+
+    /// Whether `order` (a key of [`ConflictCounts`]) is a verse kind's.
+    pub fn is_verse_order(order: u8) -> bool {
+        Self::VERSE.iter().any(|kind| kind.order() == order)
     }
 
     /// The order of kinds within one key in the conflict list.

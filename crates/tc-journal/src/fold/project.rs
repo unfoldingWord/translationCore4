@@ -2170,7 +2170,8 @@ pub(crate) fn derive_key(
     })
 }
 
-fn kind_name(kind: &ConflictKind) -> &'static str {
+/// A kind's name in `conflicts.json`.
+pub fn kind_name(kind: &ConflictKind) -> &'static str {
     match kind {
         ConflictKind::VerseText => "verseText",
         ConflictKind::VerseStructure => "verseStructure",

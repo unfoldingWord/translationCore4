@@ -52,6 +52,7 @@ fn view() -> StoryView {
         source_version: Some("v9".into()),
         image_note: None,
         comments: Vec::new(),
+        conflicts: 0,
     }
 }
 

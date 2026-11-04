@@ -190,9 +190,26 @@ pub struct Preflight {
 pub struct PreflightView {
     /// The open conflicts of the subject's records, of every kind.
     pub conflicts: u32,
-    /// The verses (for stories, the frames, titles and reference lines) with two versions:
-    /// the export uses the version shown.
-    pub verses: u32,
+    pub two_versions: TwoVersions,
+}
+
+/// What the export reads that has two versions: the export uses the version shown. A book
+/// counts verses and the stories count frames, so a story is never worded as verses (#935).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "proptest", derive(proptest_derive::Arbitrary))]
+#[serde(tag = "type", content = "value", rename_all = "camelCase")]
+pub enum TwoVersions {
+    Verses(u32),
+    /// Frames, titles included, as the sync result counts them; a reference line is not one.
+    Frames(u32),
+}
+
+impl TwoVersions {
+    pub fn count(self) -> u32 {
+        match self {
+            Self::Verses(n) | Self::Frames(n) => n,
+        }
+    }
 }
 
 /// What an export makes (tC4 `src/data/export/producers.ts`).

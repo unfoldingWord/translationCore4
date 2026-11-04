@@ -608,11 +608,13 @@ fn last_sync_link(actions: &Actions, project: &ProjectRef) -> impl IntoView + us
     }
 }
 
-/// The card's conflict count (#679): nothing while unknown or none.
+/// The card's conflict count (#679), a story project's frame conflicts (J18, #761): nothing
+/// while unknown or none.
 fn conflicts_chip(
     actions: &Actions,
     card: Signal<Option<HomeCard>>,
     project: &ProjectRef,
+    stories: bool,
 ) -> impl IntoView + use<> {
     let total = Memo::new(move |_| {
         card.with(|c| match c.as_ref().map(|c| &c.conflicts) {
@@ -624,6 +626,11 @@ fn conflicts_chip(
     move || {
         total.get().map(|n| {
             let (actions, project_open) = (actions.clone(), project.clone());
+            let label = if stories {
+                keys::home::FRAME_CONFLICTS_LABEL
+            } else {
+                keys::home::CONFLICTS_LABEL
+            };
             let style = format!(
                 "{CONFLICT_WARN} box-sizing: border-box; display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px 0 8px; border-radius: var(--radius-pill); border: var(--stroke-hair) solid var(--uw-kindle); background: #FDF1DE; font-size: var(--fs-meta); line-height: 1; cursor: pointer;"
             );
@@ -633,7 +640,7 @@ fn conflicts_chip(
                     type="button"
                     data-testid=format!("conflicts-{project}")
                     data-count=count.clone()
-                    aria-label=move || t(keys::home::CONFLICTS_LABEL, &[("n", &n.to_string())])
+                    aria-label=move || t(label, &[("n", &n.to_string())])
                     on:click=move |_| actions.open_project_conflicts(project_open.clone(), first_book(card), tc_api::conflicts::ReviewTab::Text)
                     style=style
                 >
@@ -751,7 +758,7 @@ fn header(
             </Badge>
         }
     });
-    let chip = (!stories).then(|| conflicts_chip(actions, card, project));
+    let chip = conflicts_chip(actions, card, project, stories);
     let shared = use_context::<SharedNames>();
     let where_id = format!("card-where-{project}");
     let where_line = move || {

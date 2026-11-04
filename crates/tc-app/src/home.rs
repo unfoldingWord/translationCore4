@@ -55,6 +55,21 @@ pub struct Summary {
     pub stories: Option<StoriesSummary>,
     /// Verse conflicts by book; `None` when `conflicts.json` could not be read.
     pub verse_conflicts: Option<BTreeMap<BookId, u32>>,
+    /// Frame conflicts, a story project's counterpart (J18, #761); `None` when
+    /// `conflicts.json` could not be read, or by a summary kept from before they were counted.
+    #[serde(default)]
+    pub frame_conflicts: Option<u32>,
+}
+
+impl Summary {
+    /// Whether this summary holds every count a card of `kind` shows. A story's summary kept
+    /// from before frame conflicts were counted (#761) read `conflicts.json` but holds no frame
+    /// count, so it is counted again and an open frame conflict shows its chip.
+    pub fn holds_counts_of(&self, kind: tc_journal::fold::ProjectKind) -> bool {
+        kind != tc_journal::fold::ProjectKind::Stories
+            || self.verse_conflicts.is_none()
+            || self.frame_conflicts.is_some()
+    }
 }
 
 /// A story project's progress (`obsStoryProgress`).
@@ -76,11 +91,10 @@ pub struct StorySummary {
     pub percent: Option<u8>,
 }
 
-/// The verse conflict kinds (tC4 #679 counts verse conflicts; `ConflictKind::is_verse`).
-const VERSE_KINDS: [&str; 4] = ["verseText", "verseStructure", "passage", "structureIssue"];
-
-/// Verse conflicts by book, from `conflicts.json`.
-fn verse_conflicts(bytes: &[u8]) -> Option<BTreeMap<BookId, u32>> {
+/// Verse conflicts by book (tC4 #679; `ConflictKind::is_verse`) and frame conflicts, from
+/// `conflicts.json`.
+fn text_conflicts(bytes: &[u8]) -> Option<(BTreeMap<BookId, u32>, u32)> {
+    use tc_journal::fold::{ConflictKind, kind_name};
     #[derive(Deserialize)]
     struct File {
         conflicts: Vec<Entry>,
@@ -92,8 +106,16 @@ fn verse_conflicts(bytes: &[u8]) -> Option<BTreeMap<BookId, u32>> {
     }
     let file: File = serde_json::from_slice(bytes).ok()?;
     let mut counts = BTreeMap::new();
+    let mut frames = 0u32;
     for entry in file.conflicts {
-        if !VERSE_KINDS.contains(&entry.kind.as_str()) {
+        if entry.kind == kind_name(&ConflictKind::Frame) {
+            frames = frames.saturating_add(1);
+            continue;
+        }
+        if !ConflictKind::VERSE
+            .iter()
+            .any(|kind| kind_name(kind) == entry.kind)
+        {
             continue;
         }
         let key = serde_json::to_vec(&entry.key).ok()?;
@@ -101,7 +123,7 @@ fn verse_conflicts(bytes: &[u8]) -> Option<BTreeMap<BookId, u32>> {
         let book = tc_journal::canon::decode_key(&key).ok()?.book()?;
         *counts.entry(book).or_insert(0) += 1;
     }
-    Some(counts)
+    Some((counts, frames))
 }
 
 /// A summary of `files`. `gateway_title` gives the gateway's title of a story with no
@@ -152,15 +174,16 @@ pub fn summary_of(
             }
         }
     });
-    let verse_conflicts = match &files.conflicts {
-        Ok(None) => Some(BTreeMap::new()),
-        Ok(Some(bytes)) => verse_conflicts(bytes),
-        Err(_) => None,
+    let (verse_conflicts, frame_conflicts) = match &files.conflicts {
+        Ok(None) => (Some(BTreeMap::new()), Some(0)),
+        Ok(Some(bytes)) => text_conflicts(bytes).unzip(),
+        Err(_) => (None, None),
     };
     Summary {
         books,
         stories,
         verse_conflicts,
+        frame_conflicts,
     }
 }
 
@@ -333,10 +356,11 @@ pub fn card(
         door43: door43_card(peek, door43),
         books: known(books),
         stories,
-        // tC4 draws no conflict chip on a story project (`performLoadConflicts`).
+        // tC4 draws no conflict chip on a story project (`performLoadConflicts`); the rebuild
+        // counts its frame conflicts (J18, #761; DIFFERENCES.md).
         conflicts: match kind {
             ProjectKind::Bible => known(conflicts.map(|c| c.values().sum())),
-            ProjectKind::Stories => Known::Unknown,
+            ProjectKind::Stories => known(summary.and_then(|s| s.frame_conflicts)),
         },
     }
 }
@@ -697,6 +721,9 @@ impl App {
             return None;
         }
         let summary: Summary = serde_json::from_value(stored.summary).ok()?;
+        if !summary.holds_counts_of(entry.kind) {
+            return None;
+        }
         let summary = Arc::new(summary);
         self.inner.home.keep(entry, stamp, summary.clone());
         Some(summary)

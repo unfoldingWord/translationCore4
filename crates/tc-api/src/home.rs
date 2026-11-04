@@ -114,7 +114,8 @@ pub struct HomeCard {
     pub books: Known<Vec<BookTileView>>,
     /// The fifty stories of a story project.
     pub stories: Option<StoriesView>,
-    /// The verse conflicts of a Bible project (tC4 #679). Unknown or 0: no chip.
+    /// The verse conflicts of a Bible project (tC4 #679), the frame conflicts of a story
+    /// project (J18, #761). Unknown or 0: no chip.
     pub conflicts: Known<u32>,
 }
 
