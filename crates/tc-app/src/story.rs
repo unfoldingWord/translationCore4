@@ -479,6 +479,12 @@ impl Handle<Open> for App {
                 packs: note.packs.into_iter().map(pack_report).collect(),
             }),
             comments: comments_of(self, &read, req.story)?,
+            conflicts: read
+                .conflict_counts()
+                .iter()
+                .filter(|((_, kind), _)| *kind == tc_journal::fold::ConflictKind::Frame.order())
+                .map(|(_, n)| *n)
+                .sum(),
         })
     }
 }

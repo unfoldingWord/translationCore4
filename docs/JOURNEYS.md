@@ -250,11 +250,13 @@ budget in `docs/PERFORMANCE.md`). Their tC4 tests stay mapped under `specs` in `
 - Actor: translator. Activity: Translate. Serves V3, V1.
 - Before: two people changed the same verse (or story frame) from the same version, and a sync
   or a file brought both versions together.
-- Steps: on Home, click "N conflicts · Review" (or the marker on a verse in Translate) · see
+- Steps: on Home, click "N conflicts · Review" (or the marker on a verse in Translate, or Review
+  on a story screen) · see
   "Conflict n of m" with each version, newest first, its owner and its date · click one version ·
   "Keep this version" · Previous and Next · "Back to …" at any time.
-- End state: the kept text is the verse; the other versions stay in History; Home and Translate
-  count only the conflicts still open; the next sync sends the choice to the team.
+- End state: the kept text is the verse; the other versions stay in History; Home, Translate and
+  the story screen count only the conflicts still open; the next sync sends the choice to the
+  team.
 - Must not: start a sync; write anything when the translator only leaves the review.
 - Differs from tC4: only verse and frame text conflict (H5). Check, alignment, comment and
   setting differences never ask; see J28. A passage conflict (verses joined, renumbered or moved
@@ -301,7 +303,8 @@ budget in `docs/PERFORMANCE.md`). Their tC4 tests stay mapped under `specs` in `
 
 - Actor: facilitator. Activity: Exchange. Serves V3. The same as J11, with an OBS project.
 - Differs from tC4: an OBS project also syncs, like a Bible; its card reads "Sync with Door43"
-  (Q2).
+  (Q2). A frame two teammates changed is counted on the sync result, the card and the story
+  screen, as a verse conflict is (J18, #761).
 
 ### J25 Read a story with helps and write a user comment
 

@@ -26,10 +26,6 @@ use crate::dispatch::Handle;
 use crate::sources::{is_para_mark, level};
 use crate::wire;
 
-/// The highest order of a verse conflict kind (`ConflictKind::is_verse`: verse text, verse
-/// structure, a passage, a structure issue).
-const LAST_VERSE_KIND: u8 = 3;
-
 /// One verse of a chapter as the store holds it.
 pub(crate) struct Text {
     key: RecordKey,
@@ -228,7 +224,7 @@ impl Handle<Chapters> for App {
         let conflicts = read
             .conflict_counts()
             .iter()
-            .filter(|((_, kind), _)| *kind <= LAST_VERSE_KIND)
+            .filter(|((_, kind), _)| tc_journal::fold::ConflictKind::is_verse_order(*kind))
             .map(|(_, n)| *n)
             .sum();
         Ok(ChaptersView {

@@ -229,11 +229,12 @@ fn loaded_screen(
         }))
     });
     // A story's kept copies of outside edits reach the review's notices from here
-    // (INV-A-KEPT-COPY-STAYS-ON-A-SCREEN); this screen counts no frame conflicts.
+    // (INV-A-KEPT-COPY-STAYS-ON-A-SCREEN), and its frame conflicts the Text tab (J18, #761).
     let review_button = {
         let editing = s.editing.clone();
         let off = Signal::derive(move || editing.with(Editing::is_open));
-        super::translate::review_entry_button(s, actions, shown.at.clone(), Signal::stored(0), off)
+        let conflicts = Memo::new(move |_| view.with(|v| v.as_ref().map_or(0, |v| v.conflicts)));
+        super::translate::review_entry_button(s, actions, shown.at.clone(), conflicts.into(), off)
     };
     let panel = StoryPanel {
         focus_frame,

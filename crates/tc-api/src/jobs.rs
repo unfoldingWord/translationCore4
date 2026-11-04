@@ -224,6 +224,10 @@ pub struct SyncResultView {
     pub kept_newest: u32,
     /// Open verse conflicts.
     pub verse_conflicts: u32,
+    /// Open frame conflicts of a story project, which the toast counts in place of verse
+    /// conflicts (J18, #761); `None` for a Bible.
+    #[serde(default)]
+    pub frame_conflicts: Option<u32>,
     /// Verses with two alignments to review (#791).
     pub alignments: u32,
     /// Changes that Door43 had lost and this sync sent again.

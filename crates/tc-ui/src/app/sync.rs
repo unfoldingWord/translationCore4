@@ -55,6 +55,11 @@ pub struct Counted {
     pub text: String,
 }
 
+/// The conflicts a sync left on the Text tab: a story's frames, a Bible's verses.
+fn text_conflicts(view: &SyncResultView) -> u32 {
+    view.frame_conflicts.unwrap_or(view.verse_conflicts)
+}
+
 fn counted(test_id: &'static str, n: u32, one: Key, many: Key) -> Counted {
     let key = if n == 1 { one } else { many };
     Counted {
@@ -97,12 +102,20 @@ impl SyncToast {
                 k::NEWEST_ONE,
                 k::NEWEST_MANY,
             ),
-            counted(
-                "sync-count-conflicts",
-                view.verse_conflicts,
-                k::CONFLICTS_ONE,
-                k::CONFLICTS_MANY,
-            ),
+            match view.frame_conflicts {
+                Some(n) => counted(
+                    "sync-count-conflicts",
+                    n,
+                    k::FRAME_CONFLICTS_ONE,
+                    k::FRAME_CONFLICTS_MANY,
+                ),
+                None => counted(
+                    "sync-count-conflicts",
+                    view.verse_conflicts,
+                    k::CONFLICTS_ONE,
+                    k::CONFLICTS_MANY,
+                ),
+            },
         ])
     }
 
@@ -172,18 +185,18 @@ impl SyncToast {
         .collect()
     }
 
-    /// Review: a verse conflict, or a verse with two alignments, waits for the person.
+    /// Review: a verse or frame conflict, or a verse with two alignments, waits for the person.
     pub fn review(&self) -> bool {
         self.synced()
-            .is_some_and(|v| v.verse_conflicts > 0 || v.alignments > 0)
+            .is_some_and(|v| text_conflicts(v) > 0 || v.alignments > 0)
     }
 
-    /// The review tab Review opens at: the verses, else the alignments, so the review never
-    /// opens on an empty tab (tC4 opens nothing without a verse conflict).
+    /// The review tab Review opens at: the verses or frames, else the alignments, so the
+    /// review never opens on an empty tab (tC4 opens nothing without a verse conflict).
     pub fn review_tab(&self) -> tc_api::conflicts::ReviewTab {
         use tc_api::conflicts::ReviewTab;
         match self.synced() {
-            Some(v) if v.verse_conflicts == 0 && v.alignments > 0 => ReviewTab::Alignments,
+            Some(v) if text_conflicts(v) == 0 && v.alignments > 0 => ReviewTab::Alignments,
             _ => ReviewTab::Text,
         }
     }

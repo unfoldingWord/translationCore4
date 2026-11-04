@@ -464,6 +464,7 @@ fn the_toasts_review_opens_where_something_waits() {
             from: Vec::new(),
             kept_newest: 0,
             verse_conflicts,
+            frame_conflicts: None,
             alignments,
             restored: 0,
             missing_pins: 0,

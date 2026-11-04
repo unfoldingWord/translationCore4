@@ -83,6 +83,9 @@ pub struct StoryView {
     /// The user comments on the story's frames, oldest first.
     #[cfg_attr(feature = "proptest", proptest(strategy = "crate::arb::few()"))]
     pub comments: Vec<FrameComment>,
+    /// The project's frame conflicts that are open, all stories: the toolbar's "N conflicts ·
+    /// Review", as Translate counts verse conflicts (J18, #761).
+    pub conflicts: u32,
 }
 
 /// One frame of the project's story.

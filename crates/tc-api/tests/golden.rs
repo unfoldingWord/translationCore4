@@ -618,6 +618,7 @@ impl Example for tc_api::door43::LastSyncView {
                 from: vec![juan.clone()],
                 kept_newest: 3,
                 verse_conflicts: 0,
+                frame_conflicts: None,
                 alignments: 0,
                 restored: 0,
                 missing_pins: 0,
@@ -2776,6 +2777,7 @@ impl Example for story::StoryView {
                 text: "Check the title with the team.".into(),
                 at: WallMs(1_790_000_000_000),
             }],
+            conflicts: 1,
         }
     }
 }
@@ -3944,6 +3946,7 @@ fn events() -> Vec<Event> {
                 ],
                 kept_newest: 0,
                 verse_conflicts: 1,
+                frame_conflicts: None,
                 alignments: 0,
                 restored: 0,
                 missing_pins: 5,
@@ -3987,6 +3990,7 @@ fn events() -> Vec<Event> {
                 }],
                 kept_newest: 1,
                 verse_conflicts: 1,
+                frame_conflicts: None,
                 alignments: 0,
                 restored: 0,
                 missing_pins: 0,

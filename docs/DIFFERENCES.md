@@ -29,6 +29,10 @@ The project owner ruled on these points on 2026-10-16 (`docs/TC4-DELTA-2026-10-1
 
 - OBS projects sync like Bible projects. The card reads "Sync with Door43", and the Share
   dialog shows the line about team access. tC4 4.0 syncs Bible projects only (Q2).
+- A story frame that two teammates changed is counted where a verse conflict is: the sync
+  result reads "1 frame conflict to review" and offers Review, a received file says "1 frame
+  now has two versions", the story card on Home shows "1 conflict · Review", and the story
+  screen's Review button counts it. tC4 4.0 draws no conflict chip on a story project (#761).
 - The Share dialog asks Door43 about a person's organizations at most 4 requests at a time, so
   its wait no longer grows one request per organization. It shows them in Door43's order, as
   tC4 4.0 does; tC4 4.0 asks one after another (#897).

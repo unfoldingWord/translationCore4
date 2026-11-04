@@ -34,6 +34,7 @@ fn ok_sync() -> SyncResultView {
         ],
         kept_newest: 1,
         verse_conflicts: 2,
+        frame_conflicts: None,
         alignments: 0,
         restored: 1,
         missing_pins: 0,
@@ -95,6 +96,31 @@ fn three_counts() {
     );
 }
 
+/// J18, #761: a story project's toast counts its frame conflicts where a Bible's counts verse
+/// conflicts, even when 0, and offers Review on the Text tab when one waits.
+#[test]
+fn a_story_toast_counts_frame_conflicts_and_offers_their_review() {
+    let story = |frames| {
+        synced(SyncResultView {
+            verse_conflicts: 0,
+            frame_conflicts: Some(frames),
+            ..ok_sync()
+        })
+    };
+    let one = story(1);
+    assert_eq!(one.counts().unwrap()[2].text, "1 frame conflict to review");
+    assert_eq!(one.counts().unwrap()[2].n, 1);
+    assert!(one.review());
+    assert_eq!(one.review_tab(), tc_api::conflicts::ReviewTab::Text);
+    assert_eq!(one.dot(), Dot::Kindle);
+    let none = story(0);
+    assert_eq!(
+        none.counts().unwrap()[2].text,
+        "0 frame conflicts to review"
+    );
+    assert!(!none.review());
+}
+
 #[test]
 fn a_sync_with_no_teammate_change_still_gives_all_three_as_0_and_no_restored_line() {
     let toast = synced(SyncResultView {
@@ -102,6 +128,7 @@ fn a_sync_with_no_teammate_change_still_gives_all_three_as_0_and_no_restored_lin
         from: Vec::new(),
         kept_newest: 0,
         verse_conflicts: 0,
+        frame_conflicts: None,
         alignments: 0,
         restored: 0,
         missing_pins: 0,
@@ -128,6 +155,7 @@ fn link_to_review() {
     assert!(synced(ok_sync()).review());
     let none = synced(SyncResultView {
         verse_conflicts: 0,
+        frame_conflicts: None,
         ..ok_sync()
     });
     assert!(!none.review());
@@ -138,6 +166,7 @@ fn link_to_review() {
 fn a_verse_with_two_alignments_is_named_and_offers_review() {
     let toast = synced(SyncResultView {
         verse_conflicts: 0,
+        frame_conflicts: None,
         restored: 0,
         alignments: 1,
         ..ok_sync()
@@ -172,6 +201,7 @@ fn a_version_this_computer_lacks_offers_download() {
         from: Vec::new(),
         kept_newest: 0,
         verse_conflicts: 0,
+        frame_conflicts: None,
         alignments: 0,
         restored: 0,
         missing_pins: 5,
@@ -195,6 +225,7 @@ fn a_project_put_back_on_door43_says_so_with_a_kindle_dot_and_no_button() {
         from: Vec::new(),
         kept_newest: 0,
         verse_conflicts: 0,
+        frame_conflicts: None,
         alignments: 0,
         restored: 0,
         missing_pins: 0,
