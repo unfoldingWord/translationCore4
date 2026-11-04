@@ -2692,7 +2692,8 @@ Publish` with tC4's string values; `MainView` is a port of `tC4:src/App.jsx:192-
   app's own requests (`fetch`, XHR, document, script, style sheet) and fails on any after boot;
   it lists font loads apart, because the browser itself loads the Arabic faces of tC4's fonts the
   first time Arabic is shown, as it does in tC4 (its app-language case j paints with the bundled
-  Noto Sans Arabic). *(A4a)*
+  Noto Sans Arabic). *(A4a)* Hindi loads the rebuild's own Noto Sans Devanagari the same way
+  (`assets/ds-rebuild/`, app-language case l, #613).
 - Rebuild-only keys live in `assets/i18n-rebuild/<id>.json`, merged after the vendored catalog
   without overriding it. The vendored files stay byte-identical (DELTA:532-536).
 - `<html lang dir>` comes from `LOCALES` (`crates/tc-ui/src/i18n.rs:41-92`) and is set before the

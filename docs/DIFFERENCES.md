@@ -417,6 +417,14 @@ And these (unit D2):
   frame and menu row on Linux; the owner ruled on 2026-10-29 that this is fixed before 4.1.0
   (`linux_window_has_no_native_bar_and_keeps_zoom_and_reload`) (#642).
 
+And this (#613):
+
+- The app ships a Devanagari interface face, Noto Sans Devanagari, after Mulish and Noto Sans
+  Arabic in `--font-ui`, so Hindi shows its letters on a computer with no Devanagari font. tC4
+  4.0 ships none, and Hindi falls back to the computer's fonts. The face and its `--font-ui`
+  live in `crates/tc-ui/assets/ds-rebuild/`, beside tC4's design system, which stays byte for
+  byte (app-language case l).
+
 The rebuild does not port tC4's sync mechanism: the scratch copy, the apply marker, the
 ops log, `recoverySettled`, `unreadableSettings` and the sync generation. STORAGE §6 and §9
 give the same outcomes, and STORAGE §9.9 keeps saves flowing while a sync runs. tC4 can
