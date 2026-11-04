@@ -325,7 +325,7 @@ pub fn HelpCard(
             let badge = css! { "display": "inline-flex", "padding": "2px 7px" };
             let title = title.filter(|t| !t.is_empty()).map(|t| {
                 let text = if word { t } else { format!("\u{201C}{t}\u{201D}") };
-                view! { <Text role=TextRole::Quote tag="p" style=css! { "margin-bottom": 5 }>{text}</Text> }
+                view! { <Text role=TextRole::Quote tag="p" dir="auto" style=css! { "margin-bottom": 5 }>{text}</Text> }
             });
             let action = on_action.map(|cb| {
                 crate::ds::Action(crate::ds::ActionProps {
