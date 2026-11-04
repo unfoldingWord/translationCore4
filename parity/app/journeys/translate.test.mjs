@@ -446,6 +446,50 @@ browserTest('app_language_i_scripture_follows_the_project_under_an_arabic_interf
   }, { locale: 'ar' });
 });
 
+/** The faces Chromium painted the placeholder of `locator`'s field with: the text of the
+ * browser's own `::placeholder` box inside the field (CSS.getPlatformFontsForNode). */
+async function placeholderFaces(page, locator) {
+  await locator.evaluate((el) => el.setAttribute('data-face-probe', ''));
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    await cdp.send('DOM.enable');
+    await cdp.send('CSS.enable');
+    const { root } = await cdp.send('DOM.getDocument', { depth: -1, pierce: true });
+    const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector: '[data-face-probe]' });
+    const { node } = await cdp.send('DOM.describeNode', { nodeId, depth: -1, pierce: true });
+    const find = (n) => (n.nodeName === 'DIV' && n.attributes?.includes('placeholder') ? n
+      : [...(n.shadowRoots ?? []), ...(n.children ?? [])].map(find).find(Boolean));
+    const box = find(node);
+    assert.ok(box, 'the field draws its placeholder');
+    const { nodeIds } = await cdp.send('DOM.pushNodesByBackendIdsToFrontend', { backendNodeIds: [box.backendNodeId] });
+    const { fonts } = await cdp.send('CSS.getPlatformFontsForNode', { nodeId: nodeIds[0] });
+    return fonts.map((f) => ({ family: f.familyName, bundled: f.isCustomFont }));
+  } finally {
+    await cdp.detach();
+    await locator.evaluate((el) => el.removeAttribute('data-face-probe'));
+  }
+}
+
+// #613 (and #686 for Arabic): a placeholder is interface text. A comment box asks for the
+// scripture face, which has no Devanagari or Arabic, so under those interfaces its placeholder
+// is painted in the bundled interface face, never in the computer's fonts.
+for (const [id, face] of [['hi', 'Noto Sans Devanagari'], ['ar', 'Noto Sans Arabic']]) {
+  browserTest(`a_scripture_field_placeholder_is_painted_in_the_bundled_interface_face_${id}`, async () => {
+    await withApp(async ({ page }) => {
+      const words = catalog(id);
+      await titus(page).click();
+      await page.getByTestId('understand-unit-s1').waitFor();
+      await page.getByRole('tab', { name: words['understand.byVerse'], exact: true }).click();
+      const note = page.getByPlaceholder(words['understand.commentsPlaceholderVerse']).first();
+      await note.waitFor();
+      await page.evaluate(() => document.fonts.ready);
+      const painted = await placeholderFaces(page, note);
+      const script = painted.filter((f) => !f.family.startsWith('Mulish'));
+      assert.deepEqual(script.map((f) => [f.family.startsWith(face), f.bundled]), [[true, true]], JSON.stringify(painted));
+    }, { locale: id });
+  });
+}
+
 // tC4 #825, LINK-DROP: Titus 1:1 reads "Dios y Dios y y Dios" with only the first Dios linked
 // (to Θεοῦ). Saved in Translate as "y y Dios y", the text cannot say where that Dios went, so
 // the store sends the link back to the word bank; Translate names it in Align's words until
