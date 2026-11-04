@@ -345,23 +345,28 @@ browserTest('an_english_question_under_an_arabic_set_reads_left_to_right', async
 
 // tC4 #836: a note or word title reads by its own first strong character under a
 // right-to-left set, while the card keeps the set's direction.
-browserTest('an_english_note_and_word_title_under_an_arabic_set_read_left_to_right', async () => {
+browserTest('note_and_word_titles_under_an_arabic_set_read_in_their_own_direction', async () => {
   await withApp(async ({ page }) => {
     await page.route('**/api/v1/helps/passage', async (route) => {
       const reply = await (await route.fetch()).json();
       for (const slot of ['notes', 'words']) if (reply.value[slot].type === 'ready') reply.value[slot].value.dir = 'rtl';
+      // One note titled in Arabic: with no pane focus the card is titled by its quote.
+      const arabic = reply.value.notes.value.items.find((n) => n.quote);
+      Object.assign(arabic, { panes: [], quote: 'بولس' });
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(reply) });
     });
     await openTitus(page);
+    // The title is the card's own paragraph; the book intro's note has none.
+    const title = (card) => card.locator(':scope > p');
     const directionOf = (el) => el.evaluate((node) => getComputedStyle(node).direction);
-    const note = page.getByTestId('helps-note').first();
-    await note.waitFor();
+    const note = page.getByTestId('helps-note').filter({ hasText: 'of the chosen people' });
     assert.equal(await note.getAttribute('dir'), 'rtl', 'the note card is laid out in the set\'s direction');
-    assert.equal(await directionOf(note.locator('p[dir="auto"]').first()), 'ltr', 'the English note title reads left to right');
+    assert.equal(await directionOf(title(note)), 'ltr', 'the English note title reads left to right');
+    const arabic = page.getByTestId('helps-note').filter({ hasText: 'بولس' });
+    assert.equal(await directionOf(title(arabic)), 'rtl', 'the Arabic note title reads right to left');
     await page.getByRole('tab', { name: 'Words', exact: true }).click();
     const word = page.getByTestId('helps-word').first();
-    await word.waitFor();
     assert.equal(await word.getAttribute('dir'), 'rtl', 'the word card is laid out in the set\'s direction');
-    assert.equal(await directionOf(word.locator('p[dir="auto"]').first()), 'ltr', 'the English word title reads left to right');
+    assert.equal(await directionOf(title(word)), 'ltr', 'the English word title reads left to right');
   }, { scenario: 'en-pins' });
 });
