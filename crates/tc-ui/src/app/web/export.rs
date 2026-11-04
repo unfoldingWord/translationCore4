@@ -63,7 +63,7 @@ impl Actions {
                 subject: run.subject,
             };
             match this.runtime().api().call(&asked).await.map_err(api_error) {
-                Ok(view) => match conflict_question(view.verses) {
+                Ok(view) => match conflict_question(view.two_versions) {
                     Some(question) => {
                         panel.try_set(ExportPanel::Ask {
                             question,

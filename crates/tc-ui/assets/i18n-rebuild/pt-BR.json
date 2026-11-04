@@ -81,6 +81,8 @@
   "export.anyway": "Exportar mesmo assim",
   "export.conflictsMany": "{n} versículos têm duas versões. A exportação usa a versão exibida. Deseja revisar primeiro?",
   "export.conflictsOne": "1 versículo tem duas versões. A exportação usa a versão exibida. Deseja revisar primeiro?",
+  "export.frameConflictsMany": "{n} quadros têm duas versões. A exportação usa a versão exibida. Deseja revisar primeiro?",
+  "export.frameConflictsOne": "1 quadro tem duas versões. A exportação usa a versão exibida. Deseja revisar primeiro?",
   "export.markupKept": "Estes versículos estão no arquivo como foram gravados, com a marcação de alinhamento, porque o aplicativo não pôde removê-la: {refs}",
   "export.review": "Revisar",
   "export.skipped": "Seu alinhamento destes versículos não está no arquivo. Verifique-os em Alinhar: {refs}",

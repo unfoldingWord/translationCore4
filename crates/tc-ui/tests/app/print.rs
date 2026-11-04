@@ -8,7 +8,7 @@ use serde_json::Value;
 use tc_api::export::{
     ExportFacts, Exported, ExportedFile, PrintWords, Producer, SkipReason, SkippedVerse, Subject,
 };
-use tc_api::export::{PrintVerse, Run, UtcOffset};
+use tc_api::export::{PrintVerse, Run, TwoVersions, UtcOffset};
 use tc_api::home::ProjectKind;
 use tc_api::ids::RefPart;
 use tc_api::ids::{DownloadId, Epoch, ProjectRef, RequestId, Scope};
@@ -273,14 +273,28 @@ fn every_export_item_runs_its_producer() {
 
 #[test]
 fn a_press_with_verses_in_conflict_asks_first() {
-    assert_eq!(conflict_question(0), None);
+    assert_eq!(conflict_question(TwoVersions::Verses(0)), None);
     assert_eq!(
-        conflict_question(1).as_deref(),
+        conflict_question(TwoVersions::Verses(1)).as_deref(),
         Some("1 verse has two versions. The export uses the version shown. Review first?")
     );
     assert_eq!(
-        conflict_question(3).as_deref(),
+        conflict_question(TwoVersions::Verses(3)).as_deref(),
         Some("3 verses have two versions. The export uses the version shown. Review first?")
+    );
+}
+
+/// A story export counts frames, never verses (#935).
+#[test]
+fn a_story_press_with_frames_in_conflict_asks_about_frames() {
+    assert_eq!(conflict_question(TwoVersions::Frames(0)), None);
+    assert_eq!(
+        conflict_question(TwoVersions::Frames(1)).as_deref(),
+        Some("1 frame has two versions. The export uses the version shown. Review first?")
+    );
+    assert_eq!(
+        conflict_question(TwoVersions::Frames(2)).as_deref(),
+        Some("2 frames have two versions. The export uses the version shown. Review first?")
     );
 }
 

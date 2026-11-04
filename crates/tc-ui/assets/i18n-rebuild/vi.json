@@ -81,6 +81,8 @@
   "export.anyway": "Vẫn xuất",
   "export.conflictsMany": "{n} câu có hai phiên bản. Việc xuất sẽ sử dụng phiên bản được hiển thị. Xem lại trước?",
   "export.conflictsOne": "1 câu có hai phiên bản. Việc xuất sẽ sử dụng phiên bản được hiển thị. Xem lại trước?",
+  "export.frameConflictsMany": "{n} khung hình có hai phiên bản. Việc xuất sẽ sử dụng phiên bản được hiển thị. Xem lại trước?",
+  "export.frameConflictsOne": "1 khung hình có hai phiên bản. Việc xuất sẽ sử dụng phiên bản được hiển thị. Xem lại trước?",
   "export.markupKept": "Các câu này nằm trong tập tin như đã lưu, cùng với đánh dấu căn chỉnh của chúng, vì ứng dụng không thể tách ra: {refs}",
   "export.review": "Xem lại",
   "export.skipped": "Căn chỉnh của bạn cho các câu này không có trong tập tin. Hãy kiểm tra chúng trong Căn chỉnh: {refs}",
