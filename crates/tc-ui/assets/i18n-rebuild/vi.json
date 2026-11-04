@@ -1,4 +1,8 @@
 {
+  "about.thirdParty": "Giấy phép bên thứ ba",
+  "about.thirdPartyLoading": "Đang đọc giấy phép…",
+  "about.thirdPartyMissing": "Giấy phép bên thứ ba không có trong lần chạy này. Ứng dụng đã cài đặt hiển thị THIRD-PARTY-NOTICES.txt tại đây.",
+  "about.thirdPartyText": "Văn bản giấy phép bên thứ ba",
   "account.updateBook": "Cập nhật một sách từ USFM",
   "account.updateBookHint": "Đưa vào một sách đã được chỉnh sửa trong chương trình khác",
   "addBook.notAdded": "{file} không được thêm: {reason}",

@@ -32,6 +32,7 @@ fn request_without_token_is_401() {
         "/prepare.html",
         "/ui/app.js",
         "/help/index.html",
+        tc_api::endpoint::NOTICES_PATH,
         "/nope",
         "/api/v1/events",
         tc_api::upload::UPLOADS_PATH,

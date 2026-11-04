@@ -12,6 +12,11 @@ const exe = path.join(home, process.platform === 'win32' ? 'tc4.exe' : 'tc4');
 // tc4's own folder beside Chromium's, never inside the install folder: an uninstall or an
 // update replaces the install folder and must leave resources, settings and drafts alone.
 const appData = path.join(app.getPath('userData'), 'app-data');
+// Where stage.sh writes THIRD-PARTY-NOTICES.txt, beside the app's LICENSE: the install folder,
+// or Contents/Resources on macOS. About shows it (#606).
+const notices = process.platform === 'darwin'
+  ? path.join(process.resourcesPath, 'THIRD-PARTY-NOTICES.txt')
+  : path.join(process.resourcesPath, '..', 'THIRD-PARTY-NOTICES.txt');
 
 process.argv = [
   process.argv[0],
@@ -19,5 +24,6 @@ process.argv = [
   '--ui', path.join(home, 'ui'),
   '--app-data', appData,
   '--bundle', path.join(home, 'bundle'),
+  '--', '--notices', notices,
 ];
 require('./shell/main.cjs');

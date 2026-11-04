@@ -35,7 +35,7 @@ macro_rules! fixture_flags {
 /// The usage line, after "tc4: <what was wrong>". It names only the flags this build has.
 pub(crate) const USAGE: &str = concat!(
     "usage: tc4 serve --app-data <dir> --ui <dir> [--projects <dir>] [--door43 <url>] ",
-    "[--bundle <dir>]",
+    "[--bundle <dir>] [--notices <file>]",
     hook_flags!(),
     fixture_flags!()
 );
@@ -54,6 +54,9 @@ pub(crate) struct Args {
     /// The bundled resource store the installer ships, read only; `None`: nothing is seeded
     /// (development, tests, the parity captures).
     pub bundle: Option<PathBuf>,
+    /// The THIRD-PARTY-NOTICES.txt About shows (#606); `None`: a development run, which has
+    /// none.
+    pub notices: Option<PathBuf>,
     /// Route the `test` service (AD35). The flag exists only with the cargo feature.
     #[cfg(feature = "test-hooks")]
     pub test_hooks: bool,
@@ -121,6 +124,7 @@ pub(crate) fn parse(mut args: impl Iterator<Item = OsString>) -> Result<Args, Ar
     let mut projects = None;
     let mut door43 = None;
     let mut bundle = None;
+    let mut notices = None;
     #[cfg(feature = "test-hooks")]
     let mut test_hooks = false;
     #[cfg(feature = "test-hooks")]
@@ -147,6 +151,7 @@ pub(crate) fn parse(mut args: impl Iterator<Item = OsString>) -> Result<Args, Ar
                 once("--door43", &mut door43, url)?;
             }
             "--bundle" => once("--bundle", &mut bundle, value("--bundle", &mut args)?)?,
+            "--notices" => once("--notices", &mut notices, value("--notices", &mut args)?)?,
             #[cfg(feature = "test-hooks")]
             "--test-hooks" => {
                 if test_hooks {
@@ -208,6 +213,7 @@ pub(crate) fn parse(mut args: impl Iterator<Item = OsString>) -> Result<Args, Ar
         projects: projects.map(PathBuf::from),
         door43: door43.unwrap_or_else(default_door43),
         bundle: bundle.map(PathBuf::from),
+        notices: notices.map(PathBuf::from),
         #[cfg(feature = "test-hooks")]
         test_hooks,
         #[cfg(feature = "test-hooks")]
@@ -317,6 +323,28 @@ mod tests {
         assert_eq!(
             with(&["--bundle", "/b", "--bundle", "/c"]),
             Err(ArgsError::Repeated("--bundle"))
+        );
+    }
+
+    #[test]
+    fn the_notices_file_is_optional_and_given_once() {
+        let with = |extra: &[&str]| {
+            let mut all = vec!["serve", "--app-data", "/a", "--ui", "/u"];
+            all.extend_from_slice(extra);
+            parse_all(&all).map(|args| args.notices)
+        };
+        assert_eq!(with(&[]), Ok(None), "a development run has no notices");
+        assert_eq!(
+            with(&["--notices", "/n.txt"]),
+            Ok(Some(PathBuf::from("/n.txt")))
+        );
+        assert_eq!(
+            with(&["--notices"]),
+            Err(ArgsError::MissingValue("--notices"))
+        );
+        assert_eq!(
+            with(&["--notices", "/n.txt", "--notices", "/m.txt"]),
+            Err(ArgsError::Repeated("--notices"))
         );
     }
 

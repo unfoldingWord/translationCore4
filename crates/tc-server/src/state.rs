@@ -21,6 +21,7 @@ pub(crate) struct Shared {
     pub origin: String,
     pub limits: Limits,
     pub ui_dir: PathBuf,
+    pub notices: Option<PathBuf>,
     pub routes: RouteTable,
     pub uploads: Arc<Uploads>,
     pub downloads: Arc<Downloads>,

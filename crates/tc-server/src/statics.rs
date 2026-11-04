@@ -54,6 +54,14 @@ pub(crate) async fn help(State(shared): State<Arc<Shared>>, Path(path): Path<Str
     }
 }
 
+/// The one file `--notices` names (#606): no path from the request reaches the disk.
+pub(crate) async fn notices(State(shared): State<Arc<Shared>>) -> Response {
+    match &shared.notices {
+        Some(file) => serve(file, "no-cache").await,
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
 /// Where a help page describes tC4 4.0 and not this app (H16 parts 2 and 3): `(page, tC4's
 /// words, this app's)`. The vendored pages stay tc-website's bytes (`help-pages.txt`), so the
 /// change is made as they are served.

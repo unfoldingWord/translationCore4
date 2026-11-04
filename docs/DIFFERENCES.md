@@ -416,6 +416,11 @@ And these (unit D2):
   draw over its right end. The menu's keys (zoom, reload) still work. tC4 4.0 kept the native
   frame and menu row on Linux; the owner ruled on 2026-10-29 that this is fixed before 4.1.0
   (`linux_window_has_no_native_bar_and_keeps_zoom_and_reload`) (#642).
+- About translationCore has a Third-party licenses button below Read the license. It opens the
+  installed app's THIRD-PARTY-NOTICES.txt (every crate, font and bundled resource) in a
+  scrollable region, offline, and closing it returns to About with the focus on the button. tC4
+  4.0's About has no such button; translationCore 3's About listed its third-party software
+  (`third_party_licenses_show_every_notice_by_keyboard_and_ask_only_the_app`) (#606).
 
 The rebuild does not port tC4's sync mechanism: the scratch copy, the apply marker, the
 ops log, `recoverySettled`, `unreadableSettings` and the sync generation. STORAGE §6 and §9

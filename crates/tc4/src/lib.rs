@@ -199,6 +199,7 @@ fn serve(args: &Args) -> ExitCode {
         Err(error) => return start_failed(error),
     };
     let mut config = ServerConfig::new(args.app_data.clone(), args.ui.clone());
+    config.notices = args.notices.clone();
     config.handle_signals = true;
     // Inside the runtime, so the signals are taken over before the address line goes out.
     let bound = {

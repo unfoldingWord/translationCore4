@@ -119,14 +119,14 @@ export const LABEL = Object.fromEntries(LOCALES.map((l) => [l.id, l.label]));
  * After `body`, every project folder must be a valid Scripture Burrito (P5);
  * `invalidOnPurpose: { folder, why }` excuses the one folder a journey leaves invalid on purpose.
  */
-export async function withApp(body, { locale = 'en', probe = false, hooks = false, init, seed, door43: fake = false, realSync = false, scenario: named = 'sample', invalidOnPurpose } = {}) {
+export async function withApp(body, { locale = 'en', probe = false, hooks = false, init, seed, door43: fake = false, realSync = false, scenario: named = 'sample', invalidOnPurpose, notices } = {}) {
   const browser = await setup.chromium.launch({ args: CHROMIUM_ARGS });
   const door43 = fake ? await startDoor43Fake(setup.door43) : undefined;
   const scenario = seed ? 'store' : named;
   const teammates = [];
   let env;
   try {
-    env = await startRustEnv({ scenario, seed, tc4: setup.tc4, ui: probe || hooks ? setup.hooks : setup.ui, door43, realSync });
+    env = await startRustEnv({ scenario, seed, tc4: setup.tc4, ui: probe || hooks ? setup.hooks : setup.ui, door43, realSync, notices });
   } catch (error) {
     await door43?.close();
     await browser.close();

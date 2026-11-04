@@ -1,4 +1,8 @@
 {
+  "about.thirdParty": "Ліцензії третіх сторін",
+  "about.thirdPartyLoading": "Читання ліцензій…",
+  "about.thirdPartyMissing": "Ліцензії третіх сторін недоступні в цьому запуску. Встановлений застосунок показує тут THIRD-PARTY-NOTICES.txt.",
+  "about.thirdPartyText": "Текст ліцензій третіх сторін",
   "account.updateBook": "Оновити книгу з USFM",
   "account.updateBookHint": "Внести книгу, відредаговану в іншій програмі",
   "addBook.notAdded": "{file} не додано: {reason}",
