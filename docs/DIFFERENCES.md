@@ -416,6 +416,12 @@ And these (unit D2):
   weaves the rest, so a link leaves the file without a word to the person; the rebuild weaves
   none of that verse until it is aligned again
   (`the_export_weaves_no_link_to_a_source_word_the_pin_lacks`).
+- In a verse span such as `\v 1-3`, aligned USFM counts each original-language word within
+  its own verse and names that verse in `x-ref="C:V"`, right after `x-content`, as
+  word-aligner-rcl and uw-content-validation expect. tC4 counts across the whole span and
+  writes no `x-ref`, so a lookup for one verse of the span cannot find its English words. A
+  span exported without its pinned original-language text keeps tC4's counts
+  (`a_span_names_each_source_words_verse_and_counts_it_there`) (#409).
 - On Linux the window has no native title bar and no menu row, as on Windows and macOS: the
   app's header is the top, it moves the window, and the minimize, maximize and close buttons
   draw over its right end. The menu's keys (zoom, reload) still work. tC4 4.0 kept the native

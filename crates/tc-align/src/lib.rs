@@ -51,7 +51,8 @@ pub use tc_core::{GitOid, Md5};
 pub use tc_journal::alignment::{AlignedRun, Stale};
 pub use tc_journal::record::{AlignmentGroup, AlignmentValue, ResourceRef, SourceWord, TargetWord};
 pub use value::{
-    Basis, Malformed, VerseState, VerseStatus, holds_the_words_of, needs_review, verse_status,
+    Basis, Malformed, VerseState, VerseStatus, counted_by_verse, holds_the_words_of, needs_review,
+    verse_status,
 };
 pub use words::{Occurrence, SourceBook, SourceVerse, TargetVerse, WordId};
 
