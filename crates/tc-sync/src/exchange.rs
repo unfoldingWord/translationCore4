@@ -14,7 +14,6 @@ use tc_store::{CheckpointReason, IntakeReport, ProjectHandle, ReceivedPack};
 
 const PACKS: &str = "ingredients/tc/changes/";
 const PROJECT_JSON: &str = "ingredients/tc/project.json";
-const FORMAT_JSON: &str = "ingredients/tc/format.json";
 const METADATA: &str = "metadata.json";
 /// Carried files at the root and foreign entries travel under this dot path (§10.1 E2).
 const ROOT: &str = ".tc-root/";
@@ -29,8 +28,8 @@ pub enum ExchangeError {
     /// "This file is for <name>, not <name>."
     #[error("this file holds another project")]
     OtherProject,
-    #[error("this file needs a newer translationCore (project format {major})")]
-    NeedsNewerApp { major: String },
+    #[error("this file needs a newer translationCore (project format {0})")]
+    NeedsNewerApp(tc_api::refusal::NewerFormat),
     /// The exported file did not read back as written; it was deleted.
     #[error("the file did not read back as written: {0}")]
     NotVerified(String),
@@ -282,6 +281,20 @@ fn project_path(entry: &str) -> &str {
     entry.strip_prefix(ROOT).unwrap_or(entry)
 }
 
+/// R3 (§10.2, §12.2): a file of a newer major, or whose `minReaderMinor` is above this app's
+/// minor, is refused before anything is written, as sync's N1 stops (owner, #46). A file with
+/// no readable header passes to R4, which judges its entries.
+fn gate_file(zip: &ReadZip) -> Result<(), ExchangeError> {
+    let header = zip
+        .files
+        .get(tc_journal::format::FORMAT_PATH)
+        .and_then(|bytes| tc_journal::format::FormatHeader::parse(bytes).ok());
+    match header.as_ref().and_then(crate::newer_format) {
+        Some(format) => Err(ExchangeError::NeedsNewerApp(format)),
+        None => Ok(()),
+    }
+}
+
 fn read_zip(path: &Path) -> Result<ReadZip, ExchangeError> {
     let file = std::fs::File::open(path).map_err(io(path))?;
     let entries = tc_burrito::read_zip(std::io::BufReader::new(file), tc_burrito::ZIP_LIMITS)
@@ -486,14 +499,7 @@ fn read_received(
         return Err(ExchangeError::OtherProject);
     }
     // R3.
-    if let Some(bytes) = zip.files.get(FORMAT_JSON)
-        && let Ok(doc) = tc_journal::format::FormatDoc::parse(bytes)
-        && let tc_journal::format::FormatGate::Refused { major } = doc.gate()
-    {
-        return Err(ExchangeError::NeedsNewerApp {
-            major: major.to_string(),
-        });
-    }
+    gate_file(&zip)?;
     let repo = git2::Repository::open(git_dir)?;
     let blob = |bytes: &[u8]| -> Result<tc_journal::GitOid, ExchangeError> {
         let oid = repo.blob(bytes)?;
@@ -641,14 +647,7 @@ pub fn receive_new(
     if !zip.files.contains_key(PROJECT_JSON) {
         return Err(ExchangeError::OtherProject);
     }
-    if let Some(bytes) = zip.files.get(FORMAT_JSON)
-        && let Ok(doc) = tc_journal::format::FormatDoc::parse(bytes)
-        && let tc_journal::format::FormatGate::Refused { major } = doc.gate()
-    {
-        return Err(ExchangeError::NeedsNewerApp {
-            major: major.to_string(),
-        });
-    }
+    gate_file(&zip)?;
     let staging = store.staging(tc_store::StagingKind::Import);
     let vfs = store.vfs().clone();
     let mut not_written = Vec::new();

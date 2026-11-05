@@ -76,7 +76,9 @@ const STEPS = [
 ];
 const BLOCKS = [
   { type: 'notShared' }, { type: 'projectMismatch' },
-  { type: 'needsNewerApp', value: { major: 3, minReaderMinor: 0 } }, { type: 'tc4TeamRepository' },
+  { type: 'needsNewerApp', value: { type: 'major', value: { major: 3 } } },
+  { type: 'needsNewerApp', value: { type: 'readerMinor', value: { major: 1, minReaderMinor: 4 } } },
+  { type: 'tc4TeamRepository' },
 ];
 const FAILURES = [
   ...BLOCKS.map((value) => ({ type: 'blocked', value })),

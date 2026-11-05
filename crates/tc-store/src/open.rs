@@ -270,10 +270,19 @@ fn restore_project_json(
 
 /// What O1 to O6 decided.
 struct Gates {
-    read_only: Option<ReadOnlyReason>,
+    mode: Mode,
     lock: Option<Box<dyn LockHandle>>,
     network: bool,
-    format: Option<FormatDoc>,
+    format: FormatFile,
+}
+
+/// What O4 found of `format.json`, once the gate let the open go on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FormatFile {
+    /// Its header reads (INV-FORMAT-HEADER-FROZEN): it is never rewritten here.
+    Readable,
+    /// Missing, or its header does not read: O4's repair writes this app's.
+    Repair,
 }
 
 fn open_inner(
@@ -312,11 +321,15 @@ fn open_inner(
         }
     };
     let (id, kind) = ProjectJson::parse(&project_json).ok_or(OpenError::NotAProject)?;
-    let mut gates = gates(env, &*vfs, &folder, options)?;
+    let Gates {
+        mut mode,
+        mut lock,
+        network,
+        format,
+    } = gates(env, &*vfs, &folder, options)?;
     tracker.add(1, 0);
     // A write at open that fails (a full disk, a folder that went read-only) ends the
     // writes: the project opens read-only with `WriteFailed` and never refuses (§6.1).
-    let mut write_failed: Option<String> = None;
     // O6: device identity.
     let machine = env.platform.machine_id();
     let canonical = match identity {
@@ -324,20 +337,20 @@ fn open_inner(
         None => vfs.canonicalize(path).unwrap_or_else(|_| path.to_owned()),
     };
     let print = device::fingerprint(env.app.secret(), &machine, &canonical.to_string_lossy());
-    let read_only = gates.read_only.is_some();
-    let mut identity = match device::identify(&*vfs, &folder, print, &*env.clock, read_only) {
-        Ok(identity) => identity,
-        Err(e) if !read_only => {
-            write_failed = Some(e.to_string());
-            device::identify(&*vfs, &folder, print, &*env.clock, true)?
-        }
-        Err(e) => return Err(e.into()),
-    };
+    let mut identity =
+        match device::identify(&*vfs, &folder, print, &*env.clock, !mode.is_writable()) {
+            Ok(identity) => identity,
+            Err(e) if mode.is_writable() => {
+                mode.narrow(ReadOnlyReason::WriteFailed(e.to_string()));
+                device::identify(&*vfs, &folder, print, &*env.clock, true)?
+            }
+            Err(e) => return Err(e.into()),
+        };
     tracker.add(1, 0);
     // O1's content, now that the device is known.
     let mut stamp_ns = 0;
-    if let Some(lock) = gates.lock.as_mut()
-        && write_failed.is_none()
+    if let Some(lock) = lock.as_mut()
+        && mode.is_writable()
     {
         let content = LockContent {
             host: env.platform.host(),
@@ -353,13 +366,15 @@ fn open_inner(
                 }
             }
             Err(e) => {
-                write_failed = Some(StoreError::io("write", &folder.path(LOCK), e).to_string());
+                mode.narrow(ReadOnlyReason::WriteFailed(
+                    StoreError::io("write", &folder.path(LOCK), e).to_string(),
+                ));
             }
         }
     }
     // O2.
     let mut temps = Temps::default();
-    if !read_only && write_failed.is_none() {
+    if mode.is_writable() {
         // O4's repair: unit S1 has no HEAD to restore `format.json` from, so a missing or
         // damaged one is written as this app's; a newer one was never damaged here.
         let repaired = finish_temps(&*vfs, &folder, id).and_then(|found| {
@@ -367,7 +382,7 @@ fn open_inner(
             // The folder every save goes into is made durable now (once, §5.0), not by the
             // first save.
             atomic_create_dirs(&*vfs, &folder.path(PENDING))?;
-            if gates.format.is_some() {
+            if format == FormatFile::Readable {
                 return Ok(());
             }
             let (dir, name) = folder.dir_and_name(FORMAT_JSON);
@@ -382,33 +397,31 @@ fn open_inner(
             .map_err(|e| e.into_inner())
         });
         if let Err(e) = repaired {
-            write_failed = Some(e.to_string());
+            mode.narrow(ReadOnlyReason::WriteFailed(e.to_string()));
         }
     }
     let mut restored_project: Option<Option<String>> = None;
     if let Some((good, damaged)) = &restored
-        && !read_only
-        && write_failed.is_none()
+        && mode.is_writable()
     {
         match restore_project_json(&*vfs, &folder, &*env.clock, good, damaged.as_deref()) {
             Ok(copy) => restored_project = Some(copy),
-            Err(e) => write_failed = Some(e.to_string()),
+            Err(e) => mode.narrow(ReadOnlyReason::WriteFailed(e.to_string())),
         }
     }
     tracker.add(1, 0);
     // O3: the project's repository (§6.1).
     let mut notices: Vec<(Notice, Option<String>)> = Vec::new();
-    let writable = !read_only && write_failed.is_none();
     let (git, git_failed, broken_git) =
-        match crate::history::open(env, &*vfs, path, writable, &counters) {
+        match crate::history::open(env, &*vfs, path, mode.is_writable(), &counters) {
             Ok(opened) => {
                 notices.extend(opened.notices);
                 (opened.git, None, opened.broken)
             }
             Err(e) => (None, Some(e.to_string()), None),
         };
-    if writable && let Some(reason) = git_failed {
-        write_failed = Some(reason);
+    if let Some(reason) = git_failed {
+        mode.narrow(ReadOnlyReason::WriteFailed(reason));
     }
     if let Some(copy) = restored_project.take()
         && let Ok(path) = RepoPath::parse(PROJECT_JSON)
@@ -502,7 +515,7 @@ fn open_inner(
     }
     // O2, second half: the pending temps wait for the fold (§6.1).
     let mut settled = Settled::default();
-    if !read_only && write_failed.is_none() {
+    if mode.is_writable() {
         settled = settle_temps(
             &*vfs,
             &folder,
@@ -529,7 +542,7 @@ fn open_inner(
             ));
         }
     }
-    if !read_only && write_failed.is_none() {
+    if mode.is_writable() {
         let pending_unreadable = settled.pending_unreadable
             || journal
                 .unreadable
@@ -550,7 +563,7 @@ fn open_inner(
                 identity = checked;
                 notices.extend(notice.map(|n| (n, None)));
             }
-            Err(e) => write_failed = Some(e.to_string()),
+            Err(e) => mode.narrow(ReadOnlyReason::WriteFailed(e.to_string())),
         }
     }
     if let Identity::Minted {
@@ -577,11 +590,7 @@ fn open_inner(
         kind,
         device,
         folder: path.to_owned(),
-        mode: match (&gates.read_only, &write_failed) {
-            (Some(reason), _) => Mode::ReadOnly(reason.clone()),
-            (None, Some(reason)) => Mode::ReadOnly(ReadOnlyReason::WriteFailed(reason.clone())),
-            (None, None) => Mode::Writable,
-        },
+        mode: mode.clone(),
         git_dir: git.as_ref().map(|g| g.git_dir().to_path_buf()),
     };
     let shared = Arc::new(Shared::new(
@@ -625,7 +634,7 @@ fn open_inner(
         kind,
         shared: shared.clone(),
         clock: env.clock.clone(),
-        network: gates.network,
+        network,
         manifest,
         manifest_changed: false,
         stamp_ns,
@@ -669,7 +678,7 @@ fn open_inner(
     }
     project.renew_quarantine_notices();
     let mut unchecked: Vec<String> = Vec::new();
-    if !read_only && write_failed.is_none() {
+    if mode.is_writable() {
         match repair_and_classify(
             &mut project,
             &mut writer,
@@ -680,11 +689,8 @@ fn open_inner(
         ) {
             Ok(paths) => unchecked = paths,
             Err(e) => {
-                let reason = e.to_string();
-                project
-                    .shared
-                    .set_mode(Mode::ReadOnly(ReadOnlyReason::WriteFailed(reason.clone())));
-                write_failed = Some(reason);
+                mode.narrow(ReadOnlyReason::WriteFailed(e.to_string()));
+                project.shared.set_mode(mode.clone());
                 // No O10 job runs to end the seal's write group.
                 if std::mem::take(&mut writer.sealed_at_open) {
                     project.shared.close_group();
@@ -700,9 +706,8 @@ fn open_inner(
     writer.publish_kept();
     // A project that cannot be written holds no lock: it writes nothing, so there is
     // nothing to guard, and the person can open it again once the disk works.
-    let read_only = read_only || write_failed.is_some();
-    if write_failed.is_some() {
-        gates.lock = None;
+    if !mode.is_writable() {
+        lock = None;
     }
     // O12.
     let (drafts, drafts_notices) = DraftWriter::start(
@@ -713,7 +718,7 @@ fn open_inner(
         options.run.clone(),
         hooks.clone(),
         counters.clone(),
-        read_only,
+        !mode.is_writable(),
     );
     // No copy: dismissing hides a notice for this session and never removes a drafts file
     // (§5.14).
@@ -725,7 +730,7 @@ fn open_inner(
     // What O9 projected stands for the fold of this snapshot only.
     writer.prerendered_seq = seq;
     // O14 and the fold cache, in the background.
-    let background = (!read_only).then(|| {
+    let background = mode.is_writable().then(|| {
         let mut paths = unchecked;
         paths.extend(unsettled(&writer.manifest));
         paths.sort();
@@ -751,14 +756,14 @@ fn open_inner(
     let watch_actor = actor_tx.clone();
     let handle = crate::actor::spawn(
         project,
-        gates.lock.take(),
+        lock,
         drafts,
         writer_tx,
         writer_thread,
         actor_tx,
         actor_rx,
     );
-    if !read_only {
+    if mode.is_writable() {
         // §11.1: what another program saves into the folder is told while the project is
         // open; the window focus covers a filesystem that does not watch.
         let watching = crate::watch::Watching::start(
@@ -877,10 +882,10 @@ fn gates(
     folder: &Folder,
     options: &OpenOptions,
 ) -> Result<Gates, OpenError> {
-    let mut read_only: Option<ReadOnlyReason> = None;
+    let mut mode = Mode::Writable;
     // O4.
-    let format = match vfs.read(&folder.path(FORMAT_JSON)) {
-        Ok(bytes) => FormatDoc::parse(&bytes).ok(),
+    let gate = match vfs.read(&folder.path(FORMAT_JSON)) {
+        Ok(bytes) => tc_journal::format::gate(&bytes).ok(),
         Err(e) if is_not_found(&e) => None,
         Err(e) => {
             return Err(OpenError::Unreadable(StoreError::io(
@@ -890,36 +895,34 @@ fn gates(
             )));
         }
     };
-    if let Some(doc) = &format {
-        match doc.gate() {
-            FormatGate::Writable => {}
-            FormatGate::ReadOnly { min_reader_minor } => {
-                read_only = Some(ReadOnlyReason::NewerMinor {
-                    min_reader_minor: min_reader_minor.as_str().to_owned(),
-                });
-            }
-            FormatGate::Refused { major } => {
-                return Err(OpenError::NewerMajor {
-                    major: major.as_str().to_owned(),
-                });
-            }
-            FormatGate::NeedsMigration { major } => {
-                return Err(OpenError::NeedsMigration {
-                    major: major.as_str().to_owned(),
-                });
-            }
+    let format = match gate {
+        None => FormatFile::Repair,
+        Some(FormatGate::Writable) => FormatFile::Readable,
+        Some(FormatGate::ReadOnly { min_reader_minor }) => {
+            mode.narrow(ReadOnlyReason::NewerMinor {
+                min_reader_minor: min_reader_minor.as_str().to_owned(),
+            });
+            FormatFile::Readable
         }
-    }
+        Some(FormatGate::Refused { major }) => {
+            return Err(OpenError::NewerMajor {
+                major: major.as_str().to_owned(),
+            });
+        }
+        Some(FormatGate::NeedsMigration { major }) => {
+            return Err(OpenError::NeedsMigration {
+                major: major.as_str().to_owned(),
+            });
+        }
+    };
     // O5.
     let facts = env.platform.folder(folder.root());
-    if read_only.is_none()
-        && let Some(unsafe_folder) = facts.unsafe_folder.clone()
-    {
-        read_only = Some(ReadOnlyReason::UnsafeFolder(unsafe_folder));
+    if let Some(unsafe_folder) = facts.unsafe_folder.clone() {
+        mode.narrow(ReadOnlyReason::UnsafeFolder(unsafe_folder));
     }
     // O1.
     let mut lock = None;
-    if read_only.is_none() {
+    if mode.is_writable() {
         let before = vfs
             .read(&folder.path(LOCK))
             .ok()
@@ -942,8 +945,7 @@ fn gates(
                     .filter(|_| !options.other_computer_closed);
                 match elsewhere {
                     Some(content) => {
-                        read_only =
-                            Some(ReadOnlyReason::OpenOnAnotherComputer { host: content.host });
+                        mode.narrow(ReadOnlyReason::OpenOnAnotherComputer { host: content.host });
                     }
                     None => lock = Some(handle),
                 }
@@ -962,11 +964,11 @@ fn gates(
                     });
                 return Err(OpenError::LockHeld { holder });
             }
-            Err(reason) => read_only = Some(ReadOnlyReason::WriteFailed(reason)),
+            Err(reason) => mode.narrow(ReadOnlyReason::WriteFailed(reason)),
         }
     }
     Ok(Gates {
-        read_only,
+        mode,
         lock,
         network: facts.network,
         format,

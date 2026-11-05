@@ -19,7 +19,6 @@ use tc_store::{
 
 /// The folder Door43's teammates' packs are in, in every tree.
 const PACKS: &str = "ingredients/tc/changes/";
-const FORMAT_JSON: &str = "ingredients/tc/format.json";
 const PROJECT_JSON: &str = "ingredients/tc/project.json";
 const TC4_JOURNAL: &str = "ingredients/checking/journal/";
 
@@ -999,19 +998,12 @@ pub(crate) fn gate_of(repo: &git2::Repository, tree: &git2::Tree<'_>) -> Option<
         let entry = tree.get_path(std::path::Path::new(path)).ok()?;
         Some(repo.find_blob(entry.id()).ok()?.content().to_vec())
     };
-    match blob_at(FORMAT_JSON) {
-        Some(bytes) => match tc_journal::format::FormatDoc::parse(&bytes).map(|d| (d.gate(), d)) {
-            Ok((tc_journal::format::FormatGate::Refused { major }, doc)) => {
-                let number = |n: &tc_journal::format::FormatNumber| {
-                    n.to_string().parse::<u16>().unwrap_or(u16::MAX)
-                };
-                Some(SyncBlock::NeedsNewerApp {
-                    major: number(&major),
-                    min_reader_minor: number(&doc.min_reader_minor),
-                })
-            }
-            _ => None,
-        },
+    match blob_at(tc_journal::format::FORMAT_PATH) {
+        // A header that does not read is damaged on Door43: N1 uses the local one.
+        Some(bytes) => tc_journal::format::FormatHeader::parse(&bytes)
+            .ok()
+            .and_then(|header| crate::newer_format(&header))
+            .map(SyncBlock::NeedsNewerApp),
         None if tree
             .get_path(std::path::Path::new(TC4_JOURNAL.trim_end_matches('/')))
             .is_ok() =>

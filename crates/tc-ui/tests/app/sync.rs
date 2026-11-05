@@ -266,7 +266,7 @@ fn every_failure() -> Vec<SyncFailure> {
     let blocks = |b: &SyncBlock| match b {
         SyncBlock::NotShared
         | SyncBlock::ProjectMismatch
-        | SyncBlock::NeedsNewerApp { .. }
+        | SyncBlock::NeedsNewerApp(_)
         | SyncBlock::Tc4TeamRepository => (),
     };
     let door43 = "protected branch hook declined";
@@ -292,10 +292,11 @@ fn every_failure() -> Vec<SyncFailure> {
     let stops = [
         SyncBlock::NotShared,
         SyncBlock::ProjectMismatch,
-        SyncBlock::NeedsNewerApp {
-            major: 3,
-            min_reader_minor: 0,
-        },
+        SyncBlock::NeedsNewerApp(tc_api::refusal::NewerFormat::Major { major: 3 }),
+        SyncBlock::NeedsNewerApp(tc_api::refusal::NewerFormat::ReaderMinor {
+            major: 1,
+            min_reader_minor: 4,
+        }),
         SyncBlock::Tc4TeamRepository,
     ];
     steps.iter().for_each(refusals);

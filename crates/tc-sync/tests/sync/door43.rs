@@ -2258,3 +2258,90 @@ async fn a_branch_put_back_by_a_broken_chain_is_said_by_the_next_sync() {
     assert!(!sync(&a, &door43).await.recreated, "said once");
     a.close().unwrap();
 }
+
+/// Ana syncs once, a teammate's newer app then commits `format` as the project's format on
+/// Door43, and Ana saves and syncs again. Returns the report, whether Door43's tip moved,
+/// and whether Ana's own `format.json` changed.
+async fn sync_after_a_teammate_writes_format(
+    repo: &str,
+    format: &[u8],
+) -> (SyncReport, bool, bool) {
+    let door43 = door43(repo).await;
+    let dir = tempfile::tempdir().unwrap();
+    let ana = computer(dir.path(), "ana");
+    let folder = titus(&ana);
+    let a = open(&ana, &folder);
+    connect(&a, &door43, repo);
+    synced(&sync(&a, &door43).await);
+    door43_commit(&door43, repo, "ingredients/tc/format.json", Some(format));
+    let tip = on_door43_tip(&door43, repo);
+    let before = std::fs::read(folder.join("ingredients/tc/format.json")).unwrap();
+    save(&a, 1, 1, "Paul");
+    let report = sync(&a, &door43).await;
+    let sent = on_door43_tip(&door43, repo) != tip;
+    a.close().unwrap();
+    let changed = std::fs::read(folder.join("ingredients/tc/format.json")).unwrap() != before;
+    (report, sent, changed)
+}
+
+fn blocked_by(report: &SyncReport, format: tc_api::refusal::NewerFormat) -> bool {
+    report.ended
+        == Ended::Failed(tc_api::refusal::SyncFailure::Blocked(
+            tc_api::refusal::SyncBlock::NeedsNewerApp(format),
+        ))
+}
+
+const MAJOR_2: tc_api::refusal::NewerFormat = tc_api::refusal::NewerFormat::Major { major: 2 };
+
+/// INV-NEWER-MAJOR-REFUSED (§9.2 N1): a teammate on a newer major blocks the sync, and
+/// nothing is taken or sent.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_teammate_on_a_newer_major_blocks_the_sync_and_nothing_changes() {
+    let format_2 = std::fs::read(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/journal/format-2.0.json"),
+    )
+    .unwrap();
+    let (report, sent, changed) =
+        sync_after_a_teammate_writes_format("titus-major", &format_2).await;
+    assert!(blocked_by(&report, MAJOR_2), "{:?}", report.ended);
+    assert!(!sent, "nothing sent");
+    assert!(!changed, "nothing taken");
+}
+
+/// INV-FORMAT-HEADER-FROZEN: the same when a field this app reads has a shape it cannot
+/// parse (§9.2 N1 would otherwise call it damaged and restore this app's format.json over it).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_teammate_on_a_newer_major_with_fields_this_app_cannot_parse_blocks_the_sync() {
+    let reshaped = br#"{"format":"tc-project","major":2,"minor":0,"minReaderMinor":0,"derivations":"moved","derivedPaths":{}}"#;
+    let (report, sent, changed) =
+        sync_after_a_teammate_writes_format("titus-reshaped", reshaped).await;
+    assert!(
+        blocked_by(&report, MAJOR_2),
+        "{:?}; sent {sent}; local format.json changed {changed}",
+        report.ended
+    );
+    assert!(!sent, "nothing sent");
+    assert!(!changed, "nothing taken");
+}
+
+/// §9.2 N1: a teammate whose `minReaderMinor` is above this app's minor blocks the sync too.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_teammate_on_a_newer_minor_this_app_cannot_write_blocks_the_sync() {
+    let format_1_4 = std::fs::read(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/journal/format-1.4-read-only.json"),
+    )
+    .unwrap();
+    let (report, sent, changed) =
+        sync_after_a_teammate_writes_format("titus-minor", &format_1_4).await;
+    let format_1_4 = tc_api::refusal::NewerFormat::ReaderMinor {
+        major: 1,
+        min_reader_minor: 4,
+    };
+    assert!(
+        blocked_by(&report, format_1_4),
+        "{:?}; sent {sent}; local format.json changed {changed}",
+        report.ended
+    );
+    assert!(!sent, "nothing sent");
+}
