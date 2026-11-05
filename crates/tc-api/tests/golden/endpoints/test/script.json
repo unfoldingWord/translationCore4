@@ -30,7 +30,8 @@
               "check",
               "carriedFile"
             ],
-            "restored": 0
+            "restored": 0,
+            "formatRestored": false
           }
         }
       }

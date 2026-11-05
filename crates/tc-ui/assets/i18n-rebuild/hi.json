@@ -282,6 +282,7 @@
   "syncResult.error.stopped": "सिंक रुक गया। कुछ नहीं बदला। सहायता माँगें।",
   "syncResult.error.tc4TeamRepository": "यह परियोजना translationCore 4 द्वारा साझा की गई है, इसलिए सिंक रुक गया। कुछ नहीं बदला। पहले टीम को नए translationCore पर ले जाएँ।",
   "syncResult.error.unexpected": "सिंक ऐसे कारण से रुक गया जिसकी translationCore को उम्मीद नहीं थी। सहायता माँगें।",
+  "syncResult.formatRestored": "Door43 पर परियोजना की एक फ़ाइल हटा दी गई थी या ख़राब हो गई थी, इसलिए tC4 ने आपकी प्रति वापस रख दी।",
   "syncResult.frameConflictsMany": "देखने के लिए {n} फ़्रेम टकराव",
   "syncResult.frameConflictsOne": "देखने के लिए 1 फ़्रेम टकराव",
   "syncResult.receivedKept": "आपके साथियों के बदलाव प्राप्त हुए और रखे गए।",

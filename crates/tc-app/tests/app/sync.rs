@@ -233,6 +233,7 @@ pub(super) const TWO_TEAMMATES: fn() -> ScriptedSync = || ScriptedSync::Synced {
     joined: None,
     kinds: Vec::new(),
     restored: 0,
+    format_restored: false,
 };
 
 /// tC4 #678: only the press syncs, and it asks the internet question, then the sign-in, before
@@ -280,6 +281,7 @@ async fn teammates_a_sync_receives_stand_as_one_verse_conflict_on_the_toast_the_
             joined: None,
             kinds: Vec::new(),
             restored: 0,
+            format_restored: false,
         },
     )
     .await;
@@ -296,6 +298,7 @@ async fn teammates_a_sync_receives_stand_as_one_verse_conflict_on_the_toast_the_
             restored: 0,
             missing_pins: 5,
             recreated: false,
+            format_restored: false,
             hand_edited: Vec::new(),
             replaced: Vec::new(),
         }
@@ -315,6 +318,7 @@ async fn teammates_a_sync_receives_stand_as_one_verse_conflict_on_the_toast_the_
             restored: 0,
             missing_pins: 5,
             recreated: false,
+            format_restored: false,
             hand_edited: Vec::new(),
             replaced: Vec::new(),
         }
@@ -342,6 +346,7 @@ async fn a_second_sync_sends_again_what_door43_lost_and_still_names_the_conflict
             joined: None,
             kinds: Vec::new(),
             restored: 1,
+            format_restored: false,
         },
     )
     .await;

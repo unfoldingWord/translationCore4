@@ -87,6 +87,7 @@ async fn script_synced(w: &World, n: u8, project: &ProjectRef) {
                     teammates: None,
                     joined: None,
                     restored: 0,
+                    format_restored: false,
                     kinds: Vec::new(),
                 },
             },

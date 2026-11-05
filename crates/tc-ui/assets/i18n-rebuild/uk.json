@@ -282,6 +282,7 @@
   "syncResult.error.stopped": "Синхронізація зупинилася через помилку. Нічого не змінилося.",
   "syncResult.error.tc4TeamRepository": "Цей репозиторій належить до команди translationCore 4.0 і не може синхронізуватися тут.",
   "syncResult.error.unexpected": "Під час синхронізації сталася неочікувана помилка.",
+  "syncResult.formatRestored": "Файл проєкту на Door43 було видалено або пошкоджено, тому tC4 повернув вашу копію.",
   "syncResult.frameConflictsMany": "Конфлікти кадрів для перегляду: {n}",
   "syncResult.frameConflictsOne": "Конфлікти кадрів для перегляду: 1",
   "syncResult.receivedKept": "Отриману роботу надійно збережено.",

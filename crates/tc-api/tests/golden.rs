@@ -623,6 +623,7 @@ impl Example for tc_api::door43::LastSyncView {
                 restored: 0,
                 missing_pins: 0,
                 recreated: false,
+                format_restored: false,
                 hand_edited: Vec::new(),
                 replaced: vec![
                     setting(
@@ -3292,6 +3293,7 @@ impl Example for Script {
                     }),
                     kinds: vec![TeammatesKind::Check, TeammatesKind::CarriedFile],
                     restored: 0,
+                    format_restored: false,
                 },
             },
         }
@@ -3957,6 +3959,7 @@ fn events() -> Vec<Event> {
                 restored: 0,
                 missing_pins: 5,
                 recreated: false,
+                format_restored: false,
                 hand_edited: Vec::new(),
                 replaced: vec![tc_api::jobs::ReplacedView {
                     by: PersonLabel {
@@ -4002,6 +4005,7 @@ fn events() -> Vec<Event> {
                 missing_pins: 0,
                 replaced: Vec::new(),
                 recreated: false,
+                format_restored: false,
                 hand_edited: vec![HandEdited {
                     path: "ingredients/TIT.usfm".into(),
                     outcome: HandEditOutcome::NotTakenIn,

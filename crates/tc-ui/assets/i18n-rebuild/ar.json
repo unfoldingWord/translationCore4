@@ -282,6 +282,7 @@
   "syncResult.error.stopped": "توقفت المزامنة. لم يتغير شيء. اطلب المساعدة.",
   "syncResult.error.tc4TeamRepository": "تمت مشاركة هذا المشروع بواسطة translationCore 4، لذا توقفت المزامنة. لم يتغير شيء. انقل الفريق إلى translationCore الجديد أولاً.",
   "syncResult.error.unexpected": "توقفت المزامنة لسبب لم يتوقعه translationCore. اطلب المساعدة.",
+  "syncResult.formatRestored": "حُذف أحد ملفات المشروع على Door43 أو تلف، لذا أعاد tC4 نسختك إليه.",
   "syncResult.frameConflictsMany": "تعارضات الإطارات للمراجعة: {n}",
   "syncResult.frameConflictsOne": "تعارض واحد في إطار للمراجعة",
   "syncResult.receivedKept": "تم استلام تغييرات زملائك في الفريق والاحتفاظ بها.",

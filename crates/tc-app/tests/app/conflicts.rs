@@ -435,6 +435,7 @@ async fn versions_that_differ_only_in_a_footnote_look_different() {
         joined: None,
         kinds: Vec::new(),
         restored: 0,
+        format_restored: false,
     })
     .await;
     let app = &w.t.app;
@@ -715,6 +716,7 @@ async fn joined_while_i_changed_five() -> (super::sync::World, Scope, ConflictEn
             }),
             kinds: Vec::new(),
             restored: 0,
+            format_restored: false,
         },
     )
     .await;
@@ -1000,6 +1002,7 @@ async fn synced_kinds(kinds: Vec<TeammatesKind>) -> (super::sync::World, Scope) 
         joined: None,
         kinds,
         restored: 0,
+        format_restored: false,
     })
     .await
 }
@@ -1064,6 +1067,7 @@ async fn received_says_what_was_replaced() {
             joined: None,
             kinds: vec![TeammatesKind::Check, TeammatesKind::Alignment],
             restored: 0,
+            format_restored: false,
         },
     )
     .await;
@@ -1193,6 +1197,7 @@ async fn received_says_a_teammate_removed_a_book() {
             joined: None,
             kinds: vec![TeammatesKind::BookRemoved],
             restored: 0,
+            format_restored: false,
         },
     )
     .await;

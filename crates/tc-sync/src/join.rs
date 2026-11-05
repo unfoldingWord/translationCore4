@@ -131,8 +131,9 @@ fn fetch(
         .refname_to_id(&tracking)
         .map_err(|_| JoinError::Refused(SyncRefusal::RemoteMissing))?;
     let tree = repo.find_commit(commit).and_then(|c| c.tree())?;
-    if let Some(block) = crate::sync::gate_of(&repo, &tree) {
-        return Err(JoinError::Blocked(block));
+    match crate::sync::gate_of(&repo, &tree) {
+        crate::sync::Gate::Block(block) => return Err(JoinError::Blocked(block)),
+        crate::sync::Gate::Go | crate::sync::Gate::GoAndRestoreFormat => {}
     }
     let files = tree_files(&repo, &tree)?;
     repo.reference(

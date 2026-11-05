@@ -219,6 +219,7 @@ fn a_receive_confirms_the_files_project_then_shows_what_it_brought() {
             missing_pins: 0,
             replaced: Vec::new(),
             recreated: false,
+            format_restored: false,
             hand_edited: vec![HandEdited {
                 path: "ingredients/TIT.usfm".into(),
                 outcome: HandEditOutcome::NotTakenIn,
@@ -264,6 +265,7 @@ fn a_received_story_names_its_frame_conflicts() {
             missing_pins: 0,
             replaced: Vec::new(),
             recreated: false,
+            format_restored: false,
             hand_edited: Vec::new(),
         }),
         rid(3),

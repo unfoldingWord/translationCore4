@@ -116,6 +116,21 @@ browserTest('#678, #724 item 6. Every refusal a sync can end with shows its own 
   }, opts);
 });
 
+// #941, INV-FORMAT-RESTORED-AND-SAID: a sync that put Door43's deleted or damaged format.json
+// back says so in one sentence under the line, with nothing to press. The tc-sync tests prove
+// the file is put back on Door43.
+browserTest('#941. A sync that put format.json back on Door43 says so on the toast', async () => {
+  await withApp(async ({ page, env }) => {
+    await env.call('test/script', { request: newRequestId(), next: { type: 'sync', value: { project: FOLDER, outcome: { type: 'synced', value: { teammates: null, restored: 0, formatRestored: true } } } } });
+    await syncSignedIn(page);
+    await toast(page).waitFor();
+    assert.equal(await toast(page).getAttribute('data-ok'), '1');
+    const note = page.getByTestId('sync-format-restored');
+    assert.equal(await note.textContent(), en['syncResult.formatRestored']);
+    assert.equal(await page.getByTestId('sync-review').count(), 0, 'nothing to press');
+  }, opts);
+});
+
 // E1a: the sync for real, on the fake Door43. The shared project is connected to an empty
 // repository of the fake's user; a press pushes it and the toast says synced; a second press
 // syncs again with nothing new; a connection cut during the fetch fails before anything came in.

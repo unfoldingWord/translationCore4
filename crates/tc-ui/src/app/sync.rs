@@ -147,7 +147,7 @@ impl SyncToast {
     }
 
     /// The sentences under the line, each only when its count is not 0: the project put back
-    /// on Door43, changes sent again, verses with two alignments (#791), and resource versions
+    /// on Door43, its format file put back (§9.2 N1), changes sent again, verses with two alignments (#791), and resource versions
     /// this computer lacks.
     pub fn notes(&self) -> Vec<Counted> {
         let Some(view) = self.synced() else {
@@ -160,6 +160,12 @@ impl SyncToast {
                 u32::from(view.recreated),
                 k::RECREATED,
                 k::RECREATED,
+            ),
+            counted(
+                "sync-format-restored",
+                u32::from(view.format_restored),
+                k::FORMAT_RESTORED,
+                k::FORMAT_RESTORED,
             ),
             counted(
                 "sync-restored",

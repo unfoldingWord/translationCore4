@@ -282,6 +282,7 @@
   "syncResult.error.stopped": "Việc đồng bộ đã dừng lại. Không có gì thay đổi. Hãy yêu cầu trợ giúp.",
   "syncResult.error.tc4TeamRepository": "Dự án này được chia sẻ bởi translationCore 4, vì vậy việc đồng bộ đã dừng lại. Không có gì thay đổi. Hãy chuyển nhóm sang translationCore mới trước.",
   "syncResult.error.unexpected": "Việc đồng bộ đã dừng lại vì một lý do mà translationCore không mong đợi. Hãy yêu cầu trợ giúp.",
+  "syncResult.formatRestored": "Một tệp của dự án đã bị xóa hoặc bị hỏng trên Door43, vì vậy tC4 đã đưa bản sao của bạn trở lại.",
   "syncResult.frameConflictsMany": "{n} xung đột khung hình cần xem xét",
   "syncResult.frameConflictsOne": "1 xung đột khung hình cần xem xét",
   "syncResult.receivedKept": "Các thay đổi của đồng đội đã được nhận và giữ lại.",

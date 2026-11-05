@@ -39,6 +39,7 @@ fn ok_sync() -> SyncResultView {
         restored: 1,
         missing_pins: 0,
         recreated: false,
+        format_restored: false,
         hand_edited: Vec::new(),
         replaced: Vec::new(),
     }
@@ -133,6 +134,7 @@ fn a_sync_with_no_teammate_change_still_gives_all_three_as_0_and_no_restored_lin
         restored: 0,
         missing_pins: 0,
         recreated: false,
+        format_restored: false,
         hand_edited: Vec::new(),
         replaced: Vec::new(),
     });
@@ -206,6 +208,7 @@ fn a_version_this_computer_lacks_offers_download() {
         restored: 0,
         missing_pins: 5,
         recreated: false,
+        format_restored: false,
         hand_edited: Vec::new(),
         replaced: Vec::new(),
     });
@@ -230,6 +233,7 @@ fn a_project_put_back_on_door43_says_so_with_a_kindle_dot_and_no_button() {
         restored: 0,
         missing_pins: 0,
         recreated: true,
+        format_restored: false,
         hand_edited: Vec::new(),
         replaced: Vec::new(),
     });
@@ -242,10 +246,38 @@ fn a_project_put_back_on_door43_says_so_with_a_kindle_dot_and_no_button() {
     assert!(!toast.review() && !toast.download(), "nothing to press");
     let plain = synced(SyncResultView {
         recreated: false,
+        format_restored: false,
         ..toast.synced().unwrap().clone()
     });
     assert!(notes(&plain).is_empty());
     assert_eq!(plain.dot(), Dot::Valid);
+}
+
+/// INV-FORMAT-RESTORED-AND-SAID (§9.2 N1): a `format.json` put back on Door43 is one sentence
+/// under the line; nobody has anything to do, so the dot stays green.
+#[test]
+fn a_format_file_put_back_on_door43_says_so() {
+    let toast = synced(SyncResultView {
+        received: 0,
+        from: Vec::new(),
+        kept_newest: 0,
+        verse_conflicts: 0,
+        frame_conflicts: None,
+        alignments: 0,
+        restored: 0,
+        missing_pins: 0,
+        recreated: false,
+        format_restored: true,
+        hand_edited: Vec::new(),
+        replaced: Vec::new(),
+    });
+    assert_eq!(notes(&toast), [("sync-format-restored", 1)]);
+    assert_eq!(
+        toast.notes()[0].text,
+        "A project file was deleted or damaged on Door43, so tC4 put your copy back."
+    );
+    assert_eq!(toast.dot(), Dot::Valid);
+    assert!(!toast.review() && !toast.download(), "nothing to press");
 }
 
 /// The closed set of what a sync can end with: a match with no catch-all, so a new variant
