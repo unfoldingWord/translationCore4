@@ -547,7 +547,7 @@ fn notes_tab(
     let cards = if notes.is_empty() {
         empty_tab(focus)
     } else {
-        notes
+        let cards = notes
             .into_iter()
             .map(|n| {
                 let verse = n.verse.as_str().to_owned();
@@ -566,7 +566,11 @@ fn notes_tab(
                 let note = n.note.clone();
                 let body: crate::ds::Slot =
                     Box::new(move || expandable_note(note.clone()).into_any());
-                match n.academy.clone() {
+                let action_label = match &n.academy_title {
+                    Some(title) => t(keys::understand::ACADEMY_ARTICLE, &[("title", title)]),
+                    None => t(keys::understand::ACADEMY_LINK, &[]),
+                };
+                let card = match n.academy.clone() {
                     Some(slug) => {
                         let actions = actions.clone();
                         let academy = Callback::new(move |()| {
@@ -576,14 +580,13 @@ fn notes_tab(
                             <HelpCard
                                 kind=HelpKind::Note
                                 attrs=attrs
-                                verse=verse
                                 active=lit
                                 on_click=click
                                 on_mouse_enter=enter
                                 on_mouse_leave=leave
                                 title=title
                                 body=body
-                                action_label=t(keys::understand::ACADEMY_LINK, &[])
+                                action_label=action_label
                                 on_action=academy
                                 attr:data-focused=move || lit.get().then_some("true")
                             />
@@ -594,24 +597,66 @@ fn notes_tab(
                         <HelpCard
                             kind=HelpKind::Note
                             attrs=attrs
-                            verse=verse
                             active=lit
                             on_click=click
                             on_mouse_enter=enter
                             on_mouse_leave=leave
                             title=title
                             body=body
-                            action_label=t(keys::understand::ACADEMY_LINK, &[])
+                            action_label=action_label
                             attr:data-focused=move || lit.get().then_some("true")
                         />
                     }
                     .into_any(),
-                }
+                };
+                (verse, card)
             })
-            .collect_view()
-            .into_any()
+            .collect();
+        verse_groups(cards, frame.is_some())
     };
     view! { {banners(ready)} {cards} }.into_any()
+}
+
+/// A tab's cards under one heading for each verse, in the resource's order: a run of one
+/// verse's cards shares its heading.
+fn verse_groups(cards: Vec<(String, AnyView)>, story: bool) -> AnyView {
+    let mut groups: Vec<(String, Vec<AnyView>)> = Vec::new();
+    for (verse, card) in cards {
+        match groups.last_mut() {
+            Some((v, run)) if *v == verse => run.push(card),
+            _ => groups.push((verse, vec![card])),
+        }
+    }
+    let stack = crate::css! { "display": "flex", "flex-direction": "column", "gap": 6 }.to_style();
+    groups
+        .into_iter()
+        .map(|(verse, cards)| {
+            view! {
+                <section data-testid="helps-verse" style=stack.clone()>
+                    <Overline>{verse_label(&verse, story)}</Overline>
+                    {cards}
+                </section>
+            }
+        })
+        .collect_view()
+        .into_any()
+}
+
+/// A verse group's heading: the introduction, the story frame, or the verse or verses.
+fn verse_label(verse: &str, story: bool) -> String {
+    if verse == "intro" {
+        return t(keys::understand::INTRODUCTION, &[]);
+    }
+    if story {
+        return t(keys::story_draft::FRAME_LABEL, &[("n", &verse)]);
+    }
+    match verse.split_once('-') {
+        Some((from, to)) => t(
+            keys::understand::VERSES_RANGE,
+            &[("from", &from), ("to", &to)],
+        ),
+        None => t(keys::understand::VERSE_ONE, &[("n", &verse)]),
+    }
 }
 
 fn words_tab(
@@ -649,7 +694,14 @@ fn words_tab(
                     attrs.set("dir", dir);
                 }
                 attrs.set("data-frame", verse.as_str());
-                let slug = w.slug.clone();
+                let (slug, intro) = (w.slug.clone(), w.intro.clone());
+                let body: crate::ds::Slot = Box::new(move || {
+                    if intro.is_empty() {
+                        view! { <span dir="auto">{slug.clone()}</span> }.into_any()
+                    } else {
+                        expandable_note(intro.clone()).into_any()
+                    }
+                });
                 let link = ArticleLink::Words {
                     category: w.category.clone(),
                     slug: w.slug.clone(),
@@ -659,13 +711,12 @@ fn words_tab(
                         <HelpCard
                             kind=HelpKind::Word
                             attrs=attrs
-                            verse=verse
                             active=lit
                             on_click=click
                             on_mouse_enter=enter
                             on_mouse_leave=leave
                             title=title
-                            body=Box::new(move || view! { <span dir="auto">{slug.clone()}</span> }.into_any())
+                            body=body
                             action_label=t(keys::understand::WORD_LINK, &[])
                             on_action=Callback::new(move |()| actions.load_help_article(link.clone()))
                             attr:data-focused=move || lit.get().then_some("true")

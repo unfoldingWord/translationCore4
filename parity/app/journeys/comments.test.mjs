@@ -33,7 +33,7 @@ browserTest('j16_three_help_steps_then_three_pauses_and_a_blur_add_one_comment',
     const before = (await book(env)).comments.length;
     await page.getByTestId('source-tab-ust').click();
     await page.getByTestId('helps-note').first().click();
-    await page.getByRole('button', { name: 'Translation Academy →', exact: true }).first().click();
+    await page.getByTestId('helps-note').getByRole('button', { name: /→$/ }).first().click();
     await page.getByTestId('understand-article').waitFor();
     await page.getByTestId('helps-article-close').click();
     const box = await emptyBox(page);

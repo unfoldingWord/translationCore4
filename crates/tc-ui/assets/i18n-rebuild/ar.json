@@ -308,6 +308,8 @@
   "syncResult.replaced.yours": "خاصتك",
   "translate.changedWhileTyping": "غيّر {name} هذه الآية أثناء كتابتك. سيتم الاحتفاظ بنصك كنسخة ثانية.",
   "translate.changedWhileTypingUnnamed": "تغيرت هذه الآية أثناء كتابتك. سيتم الاحتفاظ بنصك كنسخة ثانية.",
+  "understand.academyArticle": "{title} →",
+  "understand.introduction": "مقدمة",
   "updateBook.added": "لم يكن {book} موجودًا في هذا المشروع، لذا أضافه الملف.",
   "updateBook.again": "اختر ملفًا مرة أخرى",
   "updateBook.back": "← اختر ملفًا آخر",

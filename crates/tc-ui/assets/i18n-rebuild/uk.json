@@ -308,6 +308,8 @@
   "syncResult.replaced.yours": "Вашу найновішу версію збережено.",
   "translate.changedWhileTyping": "Користувач {name} змінив цей вірш під час введення тексту. Ваш текст буде збережено як другу версію.",
   "translate.changedWhileTypingUnnamed": "Цей вірш було змінено під час введення тексту. Ваш текст буде збережено як другу версію.",
+  "understand.academyArticle": "{title} →",
+  "understand.introduction": "Вступ",
   "updateBook.added": "Книга {book} була відсутня в цьому проєкті, тому файл додав її.",
   "updateBook.again": "Вибрати файл знову",
   "updateBook.back": "← Вибрати інший файл",

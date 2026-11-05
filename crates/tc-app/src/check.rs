@@ -600,19 +600,7 @@ fn derive(
 /// A figure's heading: its Translation Academy article's title, else its slug (tC4
 /// `readTaTitle`).
 fn academy_title(helps: &tc_helps::Helps, slug: &str) -> String {
-    tc_helps::Slug::parse(slug)
-        .ok()
-        .and_then(|slug| {
-            crate::understand::MANUALS.iter().find_map(|manual| {
-                helps
-                    .academy_article(&tc_helps::AcademyArticleId::Dcs {
-                        manual: *manual,
-                        slug: slug.clone(),
-                    })
-                    .map(|found| found.item.title.clone())
-            })
-        })
-        .unwrap_or_else(|| slug.to_owned())
+    crate::understand::academy_title(helps, slug).unwrap_or_else(|| slug.to_owned())
 }
 
 /// Derives `tool`'s list of one story from the loaded story resources: the open story's
