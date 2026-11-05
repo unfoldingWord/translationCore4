@@ -18,6 +18,18 @@ use tc_usfm::Book;
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SourceVerse {
     words: Vec<SourceWord>,
+    /// Each word's own verse and its count there, when the words are a span of two or more
+    /// verses: what aligned USFM writes for a span (#409).
+    by_verse: Vec<VerseCount>,
+}
+
+/// A word of a span as its own verse counts it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct VerseCount {
+    pub(crate) chapter: u16,
+    pub(crate) verse: u16,
+    pub(crate) occurrence: u32,
+    pub(crate) occurrences: u32,
 }
 
 impl SourceVerse {
@@ -50,9 +62,9 @@ impl SourceVerse {
             if let Some(next) = segments.get(at + 1) {
                 tc_usfm::source::push_leading(next, &mut text);
             }
-            parts.push(Self::from_usfm(&text)?);
+            parts.push((verse, Self::from_usfm(&text)?));
         }
-        Ok(Self::span(parts))
+        Ok(Self::span(chapter, parts))
     }
 
     /// The words of an original-language verse text such as UGNT or UHB writes it:
@@ -83,13 +95,41 @@ impl SourceVerse {
             word.occurrence = occurrence;
             word.occurrences = occurrences;
         }
-        Self { words }
+        Self {
+            words,
+            by_verse: Vec::new(),
+        }
     }
 
     /// The source of a verse span such as JON 2:9-10: its member verses' words in order,
-    /// numbered by occurrence across the whole span, as tC4 aligns a span as one text.
-    pub fn span(parts: impl IntoIterator<Item = SourceVerse>) -> Self {
-        Self::new(parts.into_iter().flat_map(|p| p.words).collect())
+    /// numbered by occurrence across the whole span, as tC4 aligns a span as one text. Each
+    /// part is a verse of `chapter` with its number.
+    pub fn span(chapter: u16, parts: impl IntoIterator<Item = (u16, SourceVerse)>) -> Self {
+        let parts: Vec<_> = parts.into_iter().collect();
+        let by_verse = if parts.len() > 1 {
+            parts
+                .iter()
+                .flat_map(|(verse, part)| {
+                    part.words.iter().map(|w| VerseCount {
+                        chapter,
+                        verse: *verse,
+                        occurrence: w.occurrence,
+                        occurrences: w.occurrences,
+                    })
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        Self {
+            by_verse,
+            ..Self::new(parts.into_iter().flat_map(|(_, p)| p.words).collect())
+        }
+    }
+
+    /// The `at`th word's own verse and count, when the words are a span of two or more verses.
+    pub(crate) fn by_verse(&self, at: usize) -> Option<&VerseCount> {
+        self.by_verse.get(at)
     }
 
     pub fn words(&self) -> &[SourceWord] {
@@ -152,10 +192,10 @@ impl SourceBook {
         let mut parts = Vec::new();
         for verse in verses.verses() {
             if let Some(&at) = self.at.get(&(chapter, verse)) {
-                parts.push(SourceVerse::from_usfm(&self.units[at].text)?);
+                parts.push((verse, SourceVerse::from_usfm(&self.units[at].text)?));
             }
         }
-        Ok(SourceVerse::span(parts))
+        Ok(SourceVerse::span(chapter, parts))
     }
 
     /// The readable text of a verse or span, member verses joined by a space (tC4's

@@ -23,6 +23,7 @@
 use std::collections::HashMap;
 use tc_journal::alignment::AlignedRun;
 use tc_journal::ids::VerseNo;
+use tc_journal::json::Json;
 use tc_journal::record::{AlignmentGroup, AlignmentValue, ResourceRef, SourceWord, TargetWord};
 use unicode_normalization::UnicodeNormalization;
 
@@ -178,6 +179,30 @@ pub(crate) fn counts_by_verse(value: &AlignmentValue) -> bool {
         .iter()
         .flat_map(|g| &g.top_words)
         .any(|w| w.extra.contains_key("x-ref"))
+}
+
+/// `value` as aligned USFM writes a verse span (#409): each source word counted in its own
+/// verse of `pin`, which it names in `x-ref` (`C:V`). `None` when `pin` is not a span of two
+/// or more verses, `value` already counts by verse, or a card does not stand on `pin`.
+pub fn counted_by_verse(value: &AlignmentValue, pin: &SourceVerse) -> Option<AlignmentValue> {
+    if counts_by_verse(value) {
+        return None;
+    }
+    let found = Pin::new(pin);
+    let mut out = value.clone();
+    for card in &mut out.alignments {
+        let places = found.card(card)?;
+        for (word, at) in card.top_words.iter_mut().zip(places) {
+            let own = pin.by_verse(at)?;
+            word.occurrence = own.occurrence;
+            word.occurrences = own.occurrences;
+            word.extra.insert(
+                "x-ref".to_owned(),
+                Json::from(format!("{}:{}", own.chapter, own.verse)),
+            );
+        }
+    }
+    Some(out)
 }
 
 fn nfc(text: &str) -> String {

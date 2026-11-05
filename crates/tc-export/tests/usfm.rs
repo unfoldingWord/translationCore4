@@ -318,3 +318,63 @@ fn a_verse_whose_markup_will_not_strip_keeps_its_bytes_in_plain_usfm() {
         }
     );
 }
+
+/// #409: in a verse span each `\zaln-s` names its source word's verse in `x-ref`, right after
+/// `x-content`, and counts the word within that verse. δὲ occurs once in TIT 1:1 and once in
+/// 1:3 (span-wide 1/2 and 2/2); Θεοῦ twice in 1:1 and once in 1:3 (span-wide 3/3 is 1/1).
+#[test]
+fn a_span_names_each_source_words_verse_and_counts_it_there() {
+    let text = "Paul, a servant of God, revealed his word at the right time by the command of God";
+    let parts = decompose(&format!("\\id TIT\n\\c 1\n\\p\n\\v 1-3 {text}\n")).unwrap();
+    let pin = SourceBook::parse(&fixture("align/el-x-koine_ugnt-TIT.usfm"))
+        .verse(1, VerseSpan::range(1, 3).unwrap())
+        .unwrap();
+    let (one, three) = (VerseNo::new(1).unwrap(), VerseNo::new(3).unwrap());
+    let basis = tc_align::Basis::run(one, three, String::new(), None);
+    let mut aligner =
+        tc_align::Aligner::open(None, None, tc_align::TargetVerse::new(text), &pin, basis).unwrap();
+    for (on, at, said, n) in [
+        ("Παῦλος", 1, "Paul", 1),
+        ("δὲ", 1, "a", 1),
+        ("δὲ", 2, "revealed", 1),
+        ("Θεοῦ", 3, "God", 2),
+    ] {
+        let value = aligner.value();
+        let card = value
+            .alignments
+            .iter()
+            .position(|g| {
+                g.top_words
+                    .iter()
+                    .any(|w| w.word == on && w.occurrence == at)
+            })
+            .unwrap();
+        let word = value
+            .word_bank
+            .iter()
+            .find(|w| w.word == said && w.occurrence == n)
+            .cloned()
+            .unwrap();
+        aligner.place(card, &word).unwrap();
+    }
+    let value = aligner.value().clone();
+
+    let (out, facts) = export(&input(parts, vec![((1, 1), aligned(value, 1, Some(pin)))]));
+    assert!(facts.skipped.is_empty(), "{facts:?}");
+    let milestones: Vec<&str> = out
+        .split("\\zaln-s |")
+        .skip(1)
+        .map(|m| m.split("\\*").next().unwrap())
+        .collect();
+    let tail = |m: &str| m[m.find("x-occurrence=").unwrap()..].to_owned();
+    assert_eq!(
+        milestones.iter().map(|m| tail(m)).collect::<Vec<_>>(),
+        [
+            r#"x-occurrence="1" x-occurrences="1" x-content="Παῦλος" x-ref="1:1""#,
+            r#"x-occurrence="1" x-occurrences="1" x-content="δὲ" x-ref="1:1""#,
+            r#"x-occurrence="1" x-occurrences="1" x-content="δὲ" x-ref="1:3""#,
+            r#"x-occurrence="1" x-occurrences="1" x-content="Θεοῦ" x-ref="1:3""#,
+        ],
+        "{out}"
+    );
+}
