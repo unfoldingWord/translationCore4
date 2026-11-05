@@ -2284,14 +2284,14 @@ async fn sync_after_a_teammate_writes_format(
     (report, sent, changed)
 }
 
-fn blocked_by_newer_app(report: &SyncReport) -> bool {
-    matches!(
-        report.ended,
-        Ended::Failed(tc_api::refusal::SyncFailure::Blocked(
-            tc_api::refusal::SyncBlock::NeedsNewerApp { .. }
+fn blocked_by(report: &SyncReport, format: tc_api::refusal::NewerFormat) -> bool {
+    report.ended
+        == Ended::Failed(tc_api::refusal::SyncFailure::Blocked(
+            tc_api::refusal::SyncBlock::NeedsNewerApp(format),
         ))
-    )
 }
+
+const MAJOR_2: tc_api::refusal::NewerFormat = tc_api::refusal::NewerFormat::Major { major: 2 };
 
 /// INV-NEWER-MAJOR-REFUSED (§9.2 N1): a teammate on a newer major blocks the sync, and
 /// nothing is taken or sent.
@@ -2303,7 +2303,7 @@ async fn a_teammate_on_a_newer_major_blocks_the_sync_and_nothing_changes() {
     .unwrap();
     let (report, sent, changed) =
         sync_after_a_teammate_writes_format("titus-major", &format_2).await;
-    assert!(blocked_by_newer_app(&report), "{:?}", report.ended);
+    assert!(blocked_by(&report, MAJOR_2), "{:?}", report.ended);
     assert!(!sent, "nothing sent");
     assert!(!changed, "nothing taken");
 }
@@ -2316,7 +2316,7 @@ async fn a_teammate_on_a_newer_major_with_fields_this_app_cannot_parse_blocks_th
     let (report, sent, changed) =
         sync_after_a_teammate_writes_format("titus-reshaped", reshaped).await;
     assert!(
-        blocked_by_newer_app(&report),
+        blocked_by(&report, MAJOR_2),
         "{:?}; sent {sent}; local format.json changed {changed}",
         report.ended
     );
@@ -2334,8 +2334,12 @@ async fn a_teammate_on_a_newer_minor_this_app_cannot_write_blocks_the_sync() {
     .unwrap();
     let (report, sent, changed) =
         sync_after_a_teammate_writes_format("titus-minor", &format_1_4).await;
+    let format_1_4 = tc_api::refusal::NewerFormat::ReaderMinor {
+        major: 1,
+        min_reader_minor: 4,
+    };
     assert!(
-        blocked_by_newer_app(&report),
+        blocked_by(&report, format_1_4),
         "{:?}; sent {sent}; local format.json changed {changed}",
         report.ended
     );

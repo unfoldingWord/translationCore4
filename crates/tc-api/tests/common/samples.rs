@@ -3,8 +3,9 @@
 
 use tc_api::refusal::{
     CreateRefusal, ExchangeRefusal, ExportRefusal, FeedbackRefusal, ImportRefusal, LockHolder,
-    OpenDoor43Refusal, OpenRefusal, PrefsRefusal, Refusal, ResourceRefusal, SettingsRefusal,
-    ShareRefusal, SignInRefusal, SyncBlock, SyncFailure, SyncRefusal, UploadRefusal,
+    NewerFormat, OpenDoor43Refusal, OpenRefusal, PrefsRefusal, Refusal, ResourceRefusal,
+    SettingsRefusal, ShareRefusal, SignInRefusal, SyncBlock, SyncFailure, SyncRefusal,
+    UploadRefusal,
 };
 
 fn s(text: &str) -> String {
@@ -127,14 +128,11 @@ pub fn sync_blocks() -> Vec<SyncBlock> {
     vec![
         SyncBlock::NotShared,
         SyncBlock::ProjectMismatch,
-        SyncBlock::NeedsNewerApp {
-            major: 2,
-            min_reader_minor: 0,
-        },
-        SyncBlock::NeedsNewerApp {
+        SyncBlock::NeedsNewerApp(NewerFormat::Major { major: 2 }),
+        SyncBlock::NeedsNewerApp(NewerFormat::ReaderMinor {
             major: 1,
             min_reader_minor: 4,
-        },
+        }),
         SyncBlock::Tc4TeamRepository,
     ]
 }
@@ -241,14 +239,11 @@ pub fn resources() -> Vec<ResourceRefusal> {
 pub fn exchange() -> Vec<ExchangeRefusal> {
     vec![
         ExchangeRefusal::Damaged,
-        ExchangeRefusal::NewerFormat {
-            format: 2,
-            min_reader_minor: 0,
-        },
-        ExchangeRefusal::NewerFormat {
-            format: 1,
+        ExchangeRefusal::NewerFormat(NewerFormat::Major { major: 2 }),
+        ExchangeRefusal::NewerFormat(NewerFormat::ReaderMinor {
+            major: 1,
             min_reader_minor: 4,
-        },
+        }),
         ExchangeRefusal::VerifyFailed,
         ExchangeRefusal::OtherProject {
             name: "Tito".into(),

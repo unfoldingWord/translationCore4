@@ -598,8 +598,10 @@
         "value": {
           "type": "needsNewerApp",
           "value": {
-            "major": 2,
-            "minReaderMinor": 0
+            "type": "major",
+            "value": {
+              "major": 2
+            }
           }
         }
       }
@@ -619,8 +621,11 @@
         "value": {
           "type": "needsNewerApp",
           "value": {
-            "major": 1,
-            "minReaderMinor": 4
+            "type": "readerMinor",
+            "value": {
+              "major": 1,
+              "minReaderMinor": 4
+            }
           }
         }
       }
@@ -1305,8 +1310,10 @@
       "value": {
         "type": "newerFormat",
         "value": {
-          "format": 2,
-          "minReaderMinor": 0
+          "type": "major",
+          "value": {
+            "major": 2
+          }
         }
       }
     },
@@ -1323,8 +1330,11 @@
       "value": {
         "type": "newerFormat",
         "value": {
-          "format": 1,
-          "minReaderMinor": 4
+          "type": "readerMinor",
+          "value": {
+            "major": 1,
+            "minReaderMinor": 4
+          }
         }
       }
     },

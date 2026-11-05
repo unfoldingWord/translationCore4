@@ -28,13 +28,8 @@ pub enum ExchangeError {
     /// "This file is for <name>, not <name>."
     #[error("this file holds another project")]
     OtherProject,
-    #[error(
-        "this file needs a newer translationCore (project format {major}, readers from minor {min_reader_minor})"
-    )]
-    NeedsNewerApp {
-        major: String,
-        min_reader_minor: String,
-    },
+    #[error("this file needs a newer translationCore (project format {0})")]
+    NeedsNewerApp(tc_api::refusal::NewerFormat),
     /// The exported file did not read back as written; it was deleted.
     #[error("the file did not read back as written: {0}")]
     NotVerified(String),
@@ -290,24 +285,13 @@ fn project_path(entry: &str) -> &str {
 /// minor, is refused before anything is written, as sync's N1 stops (owner, #46). A file with
 /// no readable header passes to R4, which judges its entries.
 fn gate_file(zip: &ReadZip) -> Result<(), ExchangeError> {
-    use tc_journal::format::{FORMAT_PATH, FormatGate, FormatHeader};
-    let Some(header) = zip
+    let header = zip
         .files
-        .get(FORMAT_PATH)
-        .and_then(|bytes| FormatHeader::parse(bytes).ok())
-    else {
-        return Ok(());
-    };
-    match header.gate() {
-        FormatGate::Writable => Ok(()),
-        FormatGate::ReadOnly { .. } | FormatGate::Refused { .. } => {
-            Err(ExchangeError::NeedsNewerApp {
-                major: header.major.to_string(),
-                min_reader_minor: header.min_reader_minor.to_string(),
-            })
-        }
-        // Format 1 is the first major: what a file of an older one gets waits on #938.
-        FormatGate::NeedsMigration { .. } => Ok(()),
+        .get(tc_journal::format::FORMAT_PATH)
+        .and_then(|bytes| tc_journal::format::FormatHeader::parse(bytes).ok());
+    match header.as_ref().and_then(crate::newer_format) {
+        Some(format) => Err(ExchangeError::NeedsNewerApp(format)),
+        None => Ok(()),
     }
 }
 
