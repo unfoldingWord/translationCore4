@@ -308,6 +308,8 @@
   "syncResult.replaced.yours": "आपका",
   "translate.changedWhileTyping": "जब आप टाइप कर रहे थे तब {name} ने इस पद को बदल दिया। आपका पाठ दूसरे संस्करण के रूप में रखा जाएगा।",
   "translate.changedWhileTypingUnnamed": "जब आप टाइप कर रहे थे तब यह पद बदल गया। आपका पाठ दूसरे संस्करण के रूप में रखा जाएगा।",
+  "understand.academyArticle": "{title} →",
+  "understand.introduction": "परिचय",
   "updateBook.added": "{book} इस परियोजना में नहीं था, इसलिए फ़ाइल ने इसे जोड़ दिया।",
   "updateBook.again": "फिर से फ़ाइल चुनें",
   "updateBook.back": "← दूसरी फ़ाइल चुनें",

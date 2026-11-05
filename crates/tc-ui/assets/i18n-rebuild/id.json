@@ -308,6 +308,8 @@
   "syncResult.replaced.yours": "Versi terbaru Anda dipertahankan.",
   "translate.changedWhileTyping": "{name} mengubah ayat ini saat Anda mengetik. Teks Anda akan disimpan sebagai versi kedua.",
   "translate.changedWhileTypingUnnamed": "Ayat ini diubah saat Anda mengetik. Teks Anda akan disimpan sebagai versi kedua.",
+  "understand.academyArticle": "{title} →",
+  "understand.introduction": "Pendahuluan",
   "updateBook.added": "{book} tidak ada dalam proyek ini, jadi berkas menambahkannya.",
   "updateBook.again": "Pilih berkas lagi",
   "updateBook.back": "← Pilih berkas lain",

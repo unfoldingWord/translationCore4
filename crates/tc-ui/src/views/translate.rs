@@ -447,7 +447,7 @@ fn chapter_view(
                 })
             })
             .unwrap_or_default();
-        view! { <HelpsPanel chapter=chapter focus_verses=focus_verses helps=helps pane=pane comments=comments /> }
+        view! { <HelpsPanel chapter=chapter focus_verses=focus_verses helps=helps pane=pane sections=all comments=comments /> }
     };
     let dropped = dropped_links(runtime.saves().dropped(), open.at.clone());
     view! {

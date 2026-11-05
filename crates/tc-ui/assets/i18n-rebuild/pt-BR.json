@@ -308,6 +308,8 @@
   "syncResult.replaced.yours": "Sua versão mais recente foi mantida.",
   "translate.changedWhileTyping": "{name} alterou este versículo enquanto você digitava. Seu texto será mantido como uma segunda versão.",
   "translate.changedWhileTypingUnnamed": "Este versículo foi alterado enquanto você digitava. Seu texto será mantido como uma segunda versão.",
+  "understand.academyArticle": "{title} →",
+  "understand.introduction": "Introdução",
   "updateBook.added": "{book} não estava neste projeto, por isso o arquivo o adicionou.",
   "updateBook.again": "Escolher um arquivo novamente",
   "updateBook.back": "← Escolher outro arquivo",

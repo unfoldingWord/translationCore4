@@ -308,6 +308,8 @@
   "syncResult.replaced.yours": "của bạn",
   "translate.changedWhileTyping": "{name} đã thay đổi câu này khi bạn đang gõ. Văn bản của bạn sẽ được giữ lại dưới dạng phiên bản thứ hai.",
   "translate.changedWhileTypingUnnamed": "Câu này đã thay đổi khi bạn đang gõ. Văn bản của bạn sẽ được giữ lại dưới dạng phiên bản thứ hai.",
+  "understand.academyArticle": "{title} →",
+  "understand.introduction": "Giới thiệu",
   "updateBook.added": "{book} chưa có trong dự án này, vì vậy tập tin đã thêm nó.",
   "updateBook.again": "Chọn lại một tập tin",
   "updateBook.back": "← Chọn một tập tin khác",

@@ -1127,7 +1127,6 @@ fn drawer(p: Props) -> AnyView {
 fn help_card(p: Props) -> AnyView {
     HelpCard(HelpCardProps {
         kind: p.keyword("kind").unwrap_or_default(),
-        verse: p.str("verse"),
         title: p.str("title"),
         body: p.children("body"),
         active: p.flag_signal("active"),

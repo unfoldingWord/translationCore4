@@ -288,13 +288,13 @@ pub fn Drawer(
     })
 }
 
-/// HelpCard.jsx: a helps-panel card carrying one translation note or key word. A key word is
-/// named by its title and carries no verse label; a note with no quoted phrase prints no bare
-/// quotes; the body is a div because it carries rendered markdown blocks.
+/// HelpCard.jsx: a helps-panel card carrying one translation note or key word. It carries no
+/// kind badge or verse label: its tab names the kind, and the panel heads each verse's cards
+/// with the verse. A note with no quoted phrase prints no bare quotes; the body is a div because
+/// it carries rendered markdown blocks.
 #[component]
 pub fn HelpCard(
     #[prop(optional)] kind: HelpKind,
-    #[prop(optional, into)] verse: Option<String>,
     #[prop(optional, into)] title: Option<String>,
     #[prop(optional)] body: Option<Slot>,
     #[prop(optional, into)] active: Signal<bool>,
@@ -313,7 +313,7 @@ pub fn HelpCard(
         fill: Signal::from(Fill::Card),
         border: Some(Edge::Line.into()),
         radius: Some(Corner::Lg.into()),
-        pad: Some(Inset::Md.into()),
+        pad: Some(Pad::Css("10px 12px".into())),
         interactive: Some(Interactive::Choice),
         selected: active,
         on_click,
@@ -322,10 +322,9 @@ pub fn HelpCard(
         style: style.into(),
         attrs,
         children: Some(Box::new(move || {
-            let badge = css! { "display": "inline-flex", "padding": "2px 7px" };
             let title = title.filter(|t| !t.is_empty()).map(|t| {
                 let text = if word { t } else { format!("\u{201C}{t}\u{201D}") };
-                view! { <Text role=TextRole::Quote tag="p" dir="auto" style=css! { "margin-bottom": 5 }>{text}</Text> }
+                view! { <Text role=TextRole::Quote tag="p" dir="auto" style=css! { "margin-bottom": 2 }>{text}</Text> }
             });
             let action = on_action.map(|cb| {
                 crate::ds::Action(crate::ds::ActionProps {
@@ -335,18 +334,12 @@ pub fn HelpCard(
                         e.stop_propagation();
                         cb.run(());
                     })),
-                    style: Signal::from(css! { "margin-top": 9 }),
+                    style: Signal::from(css! { "margin-top": 4 }),
                     children: Some(Box::new(move || action_label.into_any())),
                     ..Default::default()
                 })
             });
             view! {
-                <Stack direction=Direction::Row gap=7 align=Align::Center style=css! { "margin-bottom": 6 }>
-                    <Surface fill=Fill::Solid radius=Corner::Pill style=badge>
-                        <Text role=TextRole::Label style=css! { "color": "var(--tone-on-fill)" }>{if word { "Key word" } else { "Note" }}</Text>
-                    </Surface>
-                    {verse.filter(|_| !word).map(|v| view! { <Text role=TextRole::LabelNum>"v"{v}</Text> })}
-                </Stack>
                 {title}
                 <Text role=TextRole::Body tag="div" tone=TextTone::Muted style=css! { "font-size": "var(--fs-ui-sm)" }>
                     {body.map(|b| b())}

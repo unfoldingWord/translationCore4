@@ -421,6 +421,13 @@ And these (unit D2):
   draw over its right end. The menu's keys (zoom, reload) still work. tC4 4.0 kept the native
   frame and menu row on Linux; the owner ruled on 2026-10-29 that this is fixed before 4.1.0
   (`linux_window_has_no_native_bar_and_keeps_zoom_and_reload`) (#642).
+- The helps panel's Notes tab heads each verse's notes with the verse ("Verse 1", "Frame 3",
+  "Introduction"), and a card carries no "Note" or "Key word" badge and no verse label: the tab
+  names the kind. A note's link names its Translation Academy article ("Abstract Nouns →"),
+  where tC4's reads "Translation Academy →" on every note. A key word's card shows the first
+  paragraph of its article, where tC4 shows the article's slug. A key word's card lights every
+  instance of its article in its section of the source text, where tC4 lights only the card's
+  own occurrence (owner, 2026-11-05).
 
 The rebuild does not port tC4's sync mechanism: the scratch copy, the apply marker, the
 ops log, `recoverySettled`, `unreadableSettings` and the sync generation. STORAGE §6 and §9
