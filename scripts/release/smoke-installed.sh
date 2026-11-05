@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 # On a fresh runner (card G3): install the platform's installer as a translator would, start
 # the installed app, run the server smoke test on the installed files, uninstall, and check the
-# app data and projects are still there (tC4 #43, #44, #45).
+# app data and projects are still there (tC4 #43, #44, #45). Then install again over the kept
+# folders, as a translator going back to an earlier version would, and meet the smoke project as
+# it was and as an older version meets a newer one's (#46).
 #
-#   scripts/release/smoke-installed.sh <platform> <dist dir>
+#   scripts/release/smoke-installed.sh <platform> <dist dir> [<previous release's dist dir>]
+#
+# Until a release before this one exists, the reinstall uses this build's installer.
 set -euo pipefail
-platform=$1 dist=$2
+platform=$1 dist=$2 previous=${3:-$2}
 here=$(cd "$(dirname "$0")" && pwd)
 np() { if command -v cygpath > /dev/null; then cygpath -w "$1"; else printf '%s' "$1"; fi; }
 mkdir -p smoke-logs
@@ -14,8 +18,7 @@ manifest="$dist/BUILD-MANIFEST-$platform.json"
 case "$platform" in
   linux-x64)
     install="$HOME/apps"
-    mkdir -p "$install"
-    unzip -q "$dist"/translationCore4-*-linux-x64.zip -d "$install"
+    install() { mkdir -p "$install"; unzip -q "$1"/translationCore4-*-linux-x64.zip -d "$install"; }
     root="$install/translationCore 4"
     resources="$root/resources"
     start=(xvfb-run -a node "$here/app-starts.mjs" --exe "$root/translationCore4")
@@ -23,9 +26,8 @@ case "$platform" in
     uninstall() { rm -rf "$root"; }
     ;;
   windows-x64)
-    installer=$(ls "$dist"/translationCore4-*-windows-x64*.exe)
     # Git Bash would turn /VERYSILENT into a path, and the installer would wait on its wizard.
-    MSYS2_ARG_CONV_EXCL='*' "$installer" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER "/LOG=$(np "$PWD/smoke-logs/install.log")"
+    install() { MSYS2_ARG_CONV_EXCL='*' "$(ls "$1"/translationCore4-*-windows-x64*.exe)" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER "/LOG=$(np "$PWD/smoke-logs/install-$2.log")"; }
     root="$(cygpath -u "$LOCALAPPDATA")/Programs/translationCore 4"
     resources="$root/resources"
     start=(node "$(np "$here/app-starts.mjs")" --exe "$(np "$root/electron.exe")")
@@ -34,7 +36,7 @@ case "$platform" in
       for _ in $(seq 60); do [ -e "$root" ] || break; sleep 1; done; }
     ;;
   macos-arm64)
-    sudo installer -pkg "$(ls "$dist"/translationCore4-*-macos-arm64*.pkg)" -target /
+    install() { sudo installer -pkg "$(ls "$1"/translationCore4-*-macos-arm64*.pkg)" -target /; }
     root="/Applications/translationCore 4.app"
     resources="$root/Contents/Resources"
     start=(node "$here/app-starts.mjs" --exe "$root/Contents/MacOS/Electron")
@@ -43,6 +45,7 @@ case "$platform" in
     ;;
   *) echo "smoke-installed.sh: no platform $platform" >&2; exit 2 ;;
 esac
+install "$dist" first
 
 # #871: the translationCore mark, not Electron's, wherever the system shows the app's icon.
 repo=$(cd "$here/../.." && pwd)
@@ -92,3 +95,9 @@ echo "ok uninstall_keeps_the_projects_folder"
 made=$(sed -n 's/^projects folder: //p' smoke-logs/smoke.txt | tr -d '\r')
 [ -n "$made" ] && [ -n "$(ls -A "$(cygpath -u "$made" 2> /dev/null || printf '%s' "$made")")" ] || { echo "FAIL uninstall_keeps_the_smoke_project: $made"; exit 1; }
 echo "ok uninstall_keeps_the_smoke_project"
+
+# #46: back to an earlier version over the kept folders.
+install "$previous" again
+echo "ok a_reinstall_over_the_kept_folders_installs"
+node "$(np "$here/smoke.mjs")" --tc4 "$(np "$resources/tc4/$exe")" --ui "$(np "$resources/tc4/ui")" \
+  --bundle "$(np "$resources/tc4/bundle")" --reopen "$made" 2>&1 | tee smoke-logs/reopen.txt

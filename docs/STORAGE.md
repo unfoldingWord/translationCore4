@@ -4194,7 +4194,9 @@ R2  Identify by ingredients/tc/project.json:
       - another local project → "This file is for <name>, not <name>. Open that project?";
       - no tc/project.json → the importers (§13): a tC4 project if it has
         ingredients/checking/journal/, otherwise a foreign burrito.
-R3  Format gate from the file's tc/format.json (§12).
+R3  Format gate from the file's tc/format.json (§12): a larger major, or a minReaderMinor above
+    this app's minor, refuses the file before anything is written, as N1 stops a sync (owner,
+    #46).
 R4  Every entry R4 to R6 read is checked first: its size against the central directory and
     the CRC-32 of its inflated bytes. An entry that fails is damaged: it is never compared,
     never reported as an edit and never written (a damaged carried file is reported, and the
@@ -4490,6 +4492,12 @@ writes, makes the document unreadable. A
 inside one segment and a `**` segment matches one or more whole segments; the file comes from
 any app or person, so matching must take polynomial time.
 
+**The header (INV-FORMAT-HEADER-FROZEN).** `format`, `major` and `minReaderMinor` keep their
+names and shape in every later version, major or minor. The gate (open O4, sync N1, file receive
+R3) reads only them (`tc_journal::format::gate`), so a later version that reshapes any other
+member is still gated by its numbers. Only a `format.json` whose header does not read is damaged:
+open repairs it (O4) and sync uses the local one (N1).
+
 ### 12.2 Rules
 
 1. **Major.** A larger `major` than the app knows is refused before anything is written, at open,
@@ -4514,7 +4522,8 @@ any app or person, so matching must take polynomial time.
 3. **Derived bytes.** `plainText`, `verseSplit`, `tokenizer` and `selections` decide derived
    bytes and computed validity. A new version of one changes derived bytes, so it raises
    `minReaderMinor`, and an older app opens the project read-only: "This project needs
-   translationCore 5.2 or newer to save changes. You can read and export it." Two app versions
+   translationCore 5.2 or newer to save changes. You can read and export it." Its sync stops
+   (§9.2 N1) and a file from such a project is refused (§10.2 R3), so nothing changes. Two app versions
    therefore never flip `invalid` flags back and forth on Door43.
 4. **Paths.** Each format version derives the paths in its `derivedPaths`. A path that the
    project's `format.json` lists but this app does not derive is kept verbatim: never rewritten,

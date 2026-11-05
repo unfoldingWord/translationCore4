@@ -48,7 +48,9 @@ test checks it.
    Only when every job passed does `publish` make a **draft** GitHub release with the installers
    and manifests.
 4. The owner reads the draft, adds the release notes (what the translator gets, from the merge
-   subjects since the last tag), and publishes it.
+   subjects since the last tag), and publishes it. The notes name the previous version and the
+   project format (`FORMAT_MAJOR`.`FORMAT_MINOR` in `crates/tc-journal/src/format.rs`), so a
+   translator who has to go back knows which version to take and what it can open.
 
 A tag run signs the Windows build inside the `windows-signing` environment (below). Until signing
 is set up, the tag's Windows build fails at signing and nothing is published; `publish` also
@@ -115,6 +117,62 @@ branch, it can also be run by hand from the Actions tab on any branch.
 | `app_starts_and_starts_tc4` | smoke | the installed app starts with no arguments and brings up tc4 |
 | `smoke.mjs` steps | smoke | address line, About's commit, resources offline, a project made, a verse saved and read back after a restart, one server per app-data folder |
 | `uninstall_keeps_app_data`, `uninstall_keeps_the_projects_folder` | smoke | removing the app keeps the translator's work (tC4 #44) |
+| `smoke.mjs --reopen` steps | smoke | after an uninstall and a reinstall over the kept folders (the previous release's installer once there is one), the project and its verse are there; a project a newer version wrote opens read-only or is refused, and is never written (#46) |
+
+## Rolling back a bad release
+
+When a release breaks something, translators go back to the version before it, and the owner
+stops anyone else from taking the bad one. Going back never costs a translator their work.
+
+### The translator: go back to the previous version
+
+The previous release stays on the [GitHub Releases page](https://github.com/unfoldingWord/translationCore4/releases)
+as `translationCore4-<version>-<platform>` files. Only release managers can change or delete a
+release tag (the `v*` tag ruleset above), so it stays there.
+
+1. Close translationCore.
+2. Remove the app. Windows: Settings, Apps, **translationCore 4**, Uninstall. macOS: move
+   **translationCore 4** from Applications to the Trash. Linux: delete the `translationCore 4`
+   folder.
+3. Install the previous version as a new one: Windows, run its `.exe`; macOS, open its `.pkg`
+   (its README says how to open an unsigned one); Linux, unzip its `.zip` where the old folder
+   was.
+
+Removing the app removes only the app. Projects (`translationCore4/projects`) and app data stay
+(table above). The smoke test does these three steps on each system and opens the project again.
+
+### The owner: stop a bad release
+
+- **Before publishing** (the release is still a draft): delete the draft, fix the problem on the
+  default branch, and tag a patch version.
+- **After publishing:** mark the release as a pre-release and start its notes with "Do not
+  install this version", naming the version to use instead. Point the download page,
+  https://translationcore.com/tc4, back to the previous version's files. Publish a patch that
+  fixes the problem as soon as it is ready.
+- **Translators who installed it already** follow the steps above, or wait for the patch.
+
+The app does not check for new versions (below). The download page and the release notes are the
+only ways to reach translators, so say there what happened and what to do.
+
+### What the previous version does with work the newer one saved
+
+A project records its format in `ingredients/tc/format.json`: a `major`, a `minor` and
+`minReaderMinor`, the oldest minor that can still save to it (`docs/STORAGE.md` §12). Every
+version reads these three numbers the same way, whatever else a later version changes in the
+file. What the older version does:
+
+| The newer version saved | Open | Sync with a teammate | Receive a file |
+|---|---|---|---|
+| A newer major | Refused: "This project was saved by a newer translationCore (project format N). Update translationCore, then open the project again. Nothing was changed." | Stops: "A teammate uses a newer translationCore (project format N). Update translationCore, then sync again. Nothing changed." | Refused: "This file was saved by a newer translationCore (project format N). Update translationCore, then receive the file again. Nothing was changed." |
+| A newer minor the older version cannot save to (`minReaderMinor` above its minor) | Read-only: "This project needs a newer version of translationCore to save changes. You can read and export it." | Stops, with the sync words above | Refused, with the receive words above |
+| A newer minor it can save to | Opens and saves. Changes of a kind it does not know are kept and counted, never dropped | Syncs | Received |
+
+Changes and pending saves a newer version wrote are carried unread and listed as "Made by a newer
+translationCore", never as damaged. In every case nothing is lost: the older version writes
+nothing it cannot read, and updating again opens the project as it was.
+
+This holds from 4.1 on. Projects from the 4.0 preview (`4.1.0-preview` and earlier builds) were
+for testing only, and going back across them promises nothing.
 
 ## What the app does not do
 
