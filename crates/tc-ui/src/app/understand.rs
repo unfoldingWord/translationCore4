@@ -2,8 +2,10 @@
 //! `OpenProgress.jsx`, `Understand.jsx`, `sections.js`, `SourceVerse.jsx`, `helpsFocus.js` and
 //! `HelpsPanel.jsx` that are not drawing. Pure, so they are tested on the host.
 
+use std::collections::BTreeMap;
+
 use tc_api::editor::{CommentView, FrameRow, PaneChapter, PaneVerse, RowSource};
-use tc_api::helps::{PaneFocus, Slot};
+use tc_api::helps::{LitVerse, PaneFocus, Slot, WordCard};
 use tc_api::jobs::{OpenPhase, Phase, Progress};
 use tc_api::model::{ArticleBlock, ArticleSpan, js_len, take_spans};
 use tc_api::token::ShownToken;
@@ -179,21 +181,16 @@ pub fn in_focus(verse: &str, focus: Option<&[String]>) -> bool {
     focus.iter().any(|k| key_carries(k, verse))
 }
 
-/// The card in focus: its id, its verse, and where its quote is in each pane.
+/// The card in focus: its id, and where it lights each pane.
 #[derive(Debug, Clone, PartialEq)]
 pub struct HelpFocus {
     pub id: String,
-    pub verse: String,
     pub panes: Vec<PaneFocus>,
 }
 
 impl HelpFocus {
-    /// The tokens of `pane`'s verse `key` that render the quote; empty when the verse does not
-    /// carry the help.
+    /// The tokens of `pane`'s verse `key` the help lights; empty when it lights none there.
     pub fn lit(&self, pane: &str, key: &str) -> Vec<usize> {
-        if !key_carries(key, &self.verse) {
-            return Vec::new();
-        }
         self.panes
             .iter()
             .find(|p| p.pane == pane)
@@ -211,6 +208,66 @@ impl HelpFocus {
     pub fn title(panes: &[PaneFocus], pane: &str) -> Option<String> {
         panes.iter().find(|p| p.pane == pane)?.title.clone()
     }
+}
+
+/// Where each word card lights the panes, in the order of `cards`: every instance of its
+/// article in its section, each at its own occurrence, so a word reads as one across the verses
+/// of the section (owner, 2026-11-05). A card outside every section lights only its own.
+pub fn word_panes(cards: &[WordCard], sections: &[Vec<String>]) -> Vec<Vec<PaneFocus>> {
+    let section_of = |w: &WordCard| {
+        sections
+            .iter()
+            .position(|s| s.iter().any(|k| key_carries(k, w.verse.as_str())))
+    };
+    let mut groups: BTreeMap<(Option<&str>, &str, usize), Vec<&WordCard>> = BTreeMap::new();
+    let keys: Vec<_> = cards
+        .iter()
+        .map(|w| {
+            let key = section_of(w).map(|at| (w.category.as_deref(), w.slug.as_str(), at));
+            if let Some(key) = key {
+                groups.entry(key).or_default().push(w);
+            }
+            key
+        })
+        .collect();
+    cards
+        .iter()
+        .zip(keys)
+        .map(|(card, key)| {
+            let Some(same) = key.and_then(|k| groups.get(&k)) else {
+                return card.panes.clone();
+            };
+            card.panes
+                .iter()
+                .map(|pane| PaneFocus {
+                    lit: merged_lit(same, &pane.pane),
+                    ..pane.clone()
+                })
+                .collect()
+        })
+        .collect()
+}
+
+/// The lit tokens of `pane` across `cards`, one entry for each verse.
+fn merged_lit(cards: &[&WordCard], pane: &str) -> Vec<LitVerse> {
+    let mut lit: Vec<LitVerse> = Vec::new();
+    for l in cards
+        .iter()
+        .flat_map(|w| w.panes.iter().filter(|p| p.pane == pane))
+        .flat_map(|p| &p.lit)
+    {
+        match lit.iter_mut().find(|m| m.verse == l.verse) {
+            Some(m) => {
+                for t in &l.tokens {
+                    if !m.tokens.contains(t) {
+                        m.tokens.push(*t);
+                    }
+                }
+            }
+            None => lit.push(l.clone()),
+        }
+    }
+    lit
 }
 
 // ---------------------------------------------------------------------------------------

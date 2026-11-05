@@ -3,7 +3,7 @@
 //! box's selection rule, and the note preview.
 
 use tc_api::editor::{CommentView, FrameRow, PaneChapter, PaneVerse, RowSource};
-use tc_api::helps::{LitVerse, PaneFocus, Slot};
+use tc_api::helps::{LitVerse, PaneFocus, Slot, WordCard};
 use tc_api::ids::{RefPart, WallMs};
 use tc_api::jobs::{OpenPhase, Phase, Progress};
 use tc_api::model::{ArticleBlock, ArticleSpan, BlockKind};
@@ -11,7 +11,7 @@ use tc_core::BookId;
 use tc_ui::app::understand::{
     HelpFocus, OpenStage, Opening, SHOW_THRESHOLD_MS, UnitMode, UnitNotice, clamp_helps,
     drag_width, frame_units, in_focus, key_carries, paragraphs, preview_blocks, ref_label,
-    shown_comment, simplified_label, slot_state, units,
+    shown_comment, simplified_label, slot_state, units, word_panes,
 };
 
 fn progress(phase: OpenPhase, done: u64, total: Option<u64>) -> Progress {
@@ -327,7 +327,6 @@ fn a_long_note_is_cut_between_words_with_an_ellipsis() {
 fn the_focus_lights_only_a_verse_that_carries_the_help() {
     let focus = HelpFocus {
         id: "abcd".into(),
-        verse: "1".into(),
         panes: vec![PaneFocus {
             pane: "ult".into(),
             title: Some("of God".into()),
@@ -344,6 +343,70 @@ fn the_focus_lights_only_a_verse_that_carries_the_help() {
         HelpFocus::title(&focus.panes, "ult").as_deref(),
         Some("of God")
     );
+}
+
+fn word(id: &str, verse: &str, slug: &str, lit: &[(&str, &[u32])]) -> WordCard {
+    WordCard {
+        id: id.into(),
+        chapter: RefPart::parse("1").unwrap(),
+        verse: RefPart::parse(verse).unwrap(),
+        quote: String::new(),
+        occurrence: 1,
+        category: Some("kt".into()),
+        slug: slug.into(),
+        intro: Vec::new(),
+        panes: vec![PaneFocus {
+            pane: "ult".into(),
+            title: Some(slug.into()),
+            lit: lit
+                .iter()
+                .map(|(verse, tokens)| LitVerse {
+                    verse: RefPart::parse(verse).unwrap(),
+                    tokens: tokens.to_vec(),
+                })
+                .collect(),
+        }],
+    }
+}
+
+/// Owner, 2026-11-05: a word card lights every instance of its article in its section.
+#[test]
+fn a_word_card_lights_every_instance_of_its_article_in_its_section() {
+    let cards = [
+        word("a", "1", "god", &[("1", &[4])]),
+        word("b", "1", "god", &[("1", &[16])]),
+        word("c", "2", "faith", &[("2", &[3])]),
+        word("d", "3", "god", &[("3", &[9])]),
+        word("e", "4", "god", &[("4", &[2])]),
+        word("f", "9", "god", &[("9", &[1])]),
+    ];
+    let sections = [
+        vec!["1".to_owned(), "2".to_owned(), "3".to_owned()],
+        vec!["4".to_owned()],
+    ];
+    let panes = word_panes(&cards, &sections);
+    let focus = |at: usize| HelpFocus {
+        id: cards[at].id.clone(),
+        panes: panes[at].clone(),
+    };
+    // Both occurrences in verse 1 and the one in verse 3, from any of the three cards.
+    for at in [0, 1, 3] {
+        assert_eq!(focus(at).lit("ult", "1"), vec![4, 16]);
+        assert_eq!(focus(at).lit("ult", "3"), vec![9]);
+        assert!(
+            focus(at).lit("ult", "4").is_empty(),
+            "not the next section's"
+        );
+    }
+    assert!(focus(0).lit("ult", "2").is_empty(), "not another article");
+    assert_eq!(focus(2).lit("ult", "2"), vec![3]);
+    assert!(focus(2).lit("ult", "1").is_empty());
+    assert_eq!(focus(4).lit("ult", "4"), vec![2]);
+    assert!(focus(4).lit("ult", "1").is_empty());
+    // A card outside every section lights only its own.
+    assert_eq!(panes[5], cards[5].panes);
+    // Each card keeps its own title.
+    assert_eq!(HelpFocus::title(&panes[2], "ult").as_deref(), Some("faith"));
 }
 
 #[test]

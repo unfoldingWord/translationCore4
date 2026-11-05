@@ -11,8 +11,8 @@ use std::sync::Arc;
 
 use leptos::prelude::*;
 use tc_api::editor::{
-    Book as BookRead, BookView, CommentTarget, PaneChapter, PaneText, SourceFrame, Sources,
-    SourcesView,
+    Book as BookRead, BookView, Chapters, ChaptersView, CommentTarget, PaneChapter, PaneText,
+    SourceFrame, Sources, SourcesView,
 };
 use tc_api::helps::{Passage, PassageView, Slot};
 use tc_api::ids::Scope;
@@ -99,12 +99,19 @@ fn understand_book(s: &AppState, actions: &Actions, open: Open) -> AnyView {
         });
     }
     let book = Memo::new(move |_| book_read.with(|b| b.value().cloned()));
+    // The translation's own section marks, which Translate's sections fall back to; read once
+    // for the book, as Translate reads it.
+    let text_read = runtime.cache().read(Chapters {
+        at: open.at.clone(),
+        book: open.book,
+    });
+    let text = Memo::new(move |_| text_read.with(|t| t.value().cloned()));
     let ready = Memo::new(move |_| book.with(Option::is_some));
     let failed = Memo::new(move |_| book_read.with(|b| b.error().map(ToString::to_string)));
     let s = s.clone();
     let actions = actions.clone();
     (move || match (ready.get(), failed.get()) {
-        (true, _) => screen(&s, &actions, &open, book).into_any(),
+        (true, _) => screen(&s, &actions, &open, book, text).into_any(),
         (false, Some(error)) => {
             let style = crate::css! {
                 "flex": 1,
@@ -127,6 +134,7 @@ fn screen(
     actions: &Actions,
     open: &Open,
     book: Memo<Option<Arc<BookView>>>,
+    text: Memo<Option<Arc<ChaptersView>>>,
 ) -> AnyView {
     let root = crate::css! { "flex": 1, "display": "flex", "min-height": 0 };
     let rail = {
@@ -142,7 +150,7 @@ fn screen(
         let (s, actions, open) = (s.clone(), actions.clone(), open.clone());
         move || {
             let c = chapter.get();
-            chapter_view(&s, &actions, &open, book, c)
+            chapter_view(&s, &actions, &open, book, text, c)
         }
     };
     view! {
@@ -160,6 +168,7 @@ fn chapter_view(
     actions: &Actions,
     open: &Open,
     book: Memo<Option<Arc<BookView>>>,
+    text: Memo<Option<Arc<ChaptersView>>>,
     chapter: u16,
 ) -> AnyView {
     let Some(runtime) = use_runtime() else {
@@ -212,6 +221,19 @@ fn chapter_view(
             Some(rows) => frame_units(book_id, chapter, &rows),
             None => chapter_text.with(|c| units(mode, book_id, chapter, c.as_ref())),
         }
+    });
+    // A word lights by Translate's sections in either mode, so it lights alike in both screens.
+    let sections = Memo::new(move |_| {
+        let cross = cross_frame.get();
+        text.with(|read| {
+            read.as_ref()
+                .and_then(|v| v.chapters.iter().find(|c| c.chapter == chapter))
+                .map(|text| {
+                    chapter_text
+                        .with(|pane| crate::app::translate::sections(pane.as_ref(), text, cross))
+                })
+                .unwrap_or_default()
+        })
     });
     let active_key: RwSignal<Option<String>> = RwSignal::new(None);
     let focused_key = Memo::new(move |_| {
@@ -352,6 +374,7 @@ fn chapter_view(
                                     &at,
                                     book_id,
                                     helps,
+                                    sections,
                                 )
                             })
                             .collect_view()
@@ -362,7 +385,7 @@ fn chapter_view(
     };
     let panel = move || {
         let pane = chosen.get().unwrap_or_default();
-        view! { <HelpsPanel chapter=chapter focus_verses=focus_verses helps=helps pane=pane /> }
+        view! { <HelpsPanel chapter=chapter focus_verses=focus_verses helps=helps pane=pane sections=sections /> }
     };
     view! {
         <main style=main.to_style()>
@@ -550,8 +573,13 @@ fn passage_status(
     view! { {none} {absent} {error} {loading} }.into_any()
 }
 
-/// The first note or key word in a unit's verses (tC4's `firstHelpIn`).
-fn first_help_in(helps: Option<&PassageView>, unit: &Unit) -> Option<HelpFocus> {
+/// The first note or key word in a unit's verses (tC4's `firstHelpIn`); a word lights its
+/// article across `sections`.
+fn first_help_in(
+    helps: Option<&PassageView>,
+    unit: &Unit,
+    sections: &[Vec<String>],
+) -> Option<HelpFocus> {
     let helps = helps?;
     let carries = |verse: &str| {
         unit.verses
@@ -563,18 +591,22 @@ fn first_help_in(helps: Option<&PassageView>, unit: &Unit) -> Option<HelpFocus> 
     {
         return Some(HelpFocus {
             id: n.id.clone(),
-            verse: n.verse.as_str().to_owned(),
             panes: n.panes.clone(),
         });
     }
-    if let Slot::Ready(words) = &helps.words
-        && let Some(w) = words.items.iter().find(|w| carries(w.verse.as_str()))
-    {
-        return Some(HelpFocus {
-            id: w.id.clone(),
-            verse: w.verse.as_str().to_owned(),
-            panes: w.panes.clone(),
-        });
+    if let Slot::Ready(words) = &helps.words {
+        let panes = crate::app::understand::word_panes(&words.items, sections);
+        if let Some((w, panes)) = words
+            .items
+            .iter()
+            .zip(panes)
+            .find(|(w, _)| carries(w.verse.as_str()))
+        {
+            return Some(HelpFocus {
+                id: w.id.clone(),
+                panes,
+            });
+        }
     }
     None
 }
@@ -596,6 +628,7 @@ fn understand_unit(
     at: &Scope,
     book_id: BookId,
     helps: Signal<Load<Arc<PassageView>>>,
+    sections: Memo<Vec<Vec<String>>>,
 ) -> AnyView {
     if let Some(notice) = &unit.notice {
         let text = match notice {
@@ -715,8 +748,11 @@ fn understand_unit(
         let unit = unit.clone();
         move || {
             active_key.set(Some(unit.key.clone()));
-            let next =
-                helps.with_untracked(|h| first_help_in(h.value().map(|h| h.as_ref()), &unit));
+            let next = sections.with_untracked(|sections| {
+                helps.with_untracked(|h| {
+                    first_help_in(h.value().map(|h| h.as_ref()), &unit, sections)
+                })
+            });
             let had = s.u.helps_active.get_untracked();
             let changed = match (&next, &had) {
                 (Some(item), Some(active)) => item.id != active.id,

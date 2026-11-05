@@ -17,7 +17,7 @@ use super::panel_icons::helps_icon;
 use crate::app::load::Load;
 use crate::app::understand::{
     HelpFocus, HelpsTab, PREVIEW_CHARS, blocks_len, drag_width, in_focus, preview_blocks,
-    simplified_label, slot_state,
+    simplified_label, slot_state, word_panes,
 };
 use crate::app::web::understand::ArticleState;
 use crate::app::web::{Actions, AppCtx, use_app};
@@ -74,6 +74,10 @@ pub fn HelpsPanel(
     focus_verses: Memo<Option<Vec<String>>>,
     helps: Signal<Load<Arc<PassageView>>>,
     pane: String,
+    /// The verse keys of each section the screen shows: a word card lights every instance of
+    /// its article in its section.
+    #[prop(optional)]
+    sections: Option<Memo<Vec<Vec<String>>>>,
     #[prop(optional)] comments: Option<Signal<Vec<CommentView>>>,
     #[prop(optional)] story: Option<StoryPanel>,
 ) -> impl IntoView {
@@ -188,7 +192,7 @@ pub fn HelpsPanel(
                     (HelpsTab::Comments, Some(comments)) => {
                         comments_tab(&s, comments, chapter, focus_verses).into_any()
                     }
-                    _ => helps_tab(&s, &actions, tab, view, focus_verses, &pane, story.as_ref())
+                    _ => helps_tab(&s, &actions, tab, view, focus_verses, &pane, story.as_ref(), sections)
                         .into_any(),
                 },
             })
@@ -306,6 +310,10 @@ fn helps_divider(actions: &Actions, panel: NodeRef<html::Aside>) -> impl IntoVie
 }
 
 /// tC4's `HelpsTab`.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "a view's inputs: the state, handles and signals it reads"
+)]
 fn helps_tab(
     s: &crate::app::web::AppState,
     actions: &Actions,
@@ -314,6 +322,7 @@ fn helps_tab(
     focus_verses: Memo<Option<Vec<String>>>,
     pane: &str,
     story: Option<&StoryPanel>,
+    sections: Option<Memo<Vec<Vec<String>>>>,
 ) -> AnyView {
     // tC4's `chapterAllCrossBook`: a chapter the sources have in another book has its helps
     // there.
@@ -334,7 +343,10 @@ fn helps_tab(
     let frame = story.map(|s| s.focus_frame);
     match tab {
         HelpsTab::Notes => notes_tab(s, actions, &view.notes, focus, pane, frame),
-        HelpsTab::Words => words_tab(s, actions, &view.words, focus, pane, frame),
+        HelpsTab::Words => {
+            let sections = sections.map(|s| s.get()).unwrap_or_default();
+            words_tab(s, actions, &view.words, focus, pane, frame, &sections)
+        }
         HelpsTab::Questions => questions_tab(s, &view.questions, focus, frame),
         HelpsTab::Simplified => simplified_tab(&view.simplified, focus),
         HelpsTab::Comments => match story.and_then(|s| s.comments) {
@@ -499,11 +511,10 @@ fn empty_tab(focus: Option<&[String]>) -> AnyView {
     view! { <p style=style.to_style()>{t(key, &[])}</p> }.into_any()
 }
 
-fn focus_of(id: &str, verse: &str, panes: &[tc_api::helps::PaneFocus]) -> HelpFocus {
+fn focus_of(id: &str, panes: Vec<tc_api::helps::PaneFocus>) -> HelpFocus {
     HelpFocus {
         id: id.to_owned(),
-        verse: verse.to_owned(),
-        panes: panes.to_vec(),
+        panes,
     }
 }
 
@@ -551,7 +562,7 @@ fn notes_tab(
             .into_iter()
             .map(|n| {
                 let verse = n.verse.as_str().to_owned();
-                let focus = focus_of(&n.id, &verse, &n.panes);
+                let focus = focus_of(&n.id, n.panes.clone());
                 let (click, enter, leave) = card_events(actions, focus);
                 let lit = card_lit(&active, &n.id, &verse, frame);
                 let title = HelpFocus::title(&n.panes, pane)
@@ -666,6 +677,7 @@ fn words_tab(
     focus: Option<&[String]>,
     pane: &str,
     frame: Option<Memo<Option<u16>>>,
+    sections: &[Vec<String>],
 ) -> AnyView {
     let Slot::Ready(ready) = slot else {
         return slot_status(actions, slot);
@@ -673,7 +685,8 @@ fn words_tab(
     let words: Vec<_> = ready
         .items
         .iter()
-        .filter(|w| in_focus(w.verse.as_str(), focus))
+        .zip(word_panes(&ready.items, sections))
+        .filter(|(w, _)| in_focus(w.verse.as_str(), focus))
         .collect();
     let dir = dir_str(ready.dir);
     let active = s.u.helps_active.clone();
@@ -682,9 +695,9 @@ fn words_tab(
     } else {
         words
             .into_iter()
-            .map(|w| {
+            .map(|(w, panes)| {
                 let verse = w.verse.as_str().to_owned();
-                let (click, enter, leave) = card_events(actions, focus_of(&w.id, &verse, &w.panes));
+                let (click, enter, leave) = card_events(actions, focus_of(&w.id, panes));
                 let lit = card_lit(&active, &w.id, &verse, frame);
                 let title = HelpFocus::title(&w.panes, pane)
                     .or_else(|| (!w.quote.is_empty()).then(|| w.quote.clone()))

@@ -425,7 +425,9 @@ And these (unit D2):
   "Introduction"), and a card carries no "Note" or "Key word" badge and no verse label: the tab
   names the kind. A note's link names its Translation Academy article ("Abstract Nouns →"),
   where tC4's reads "Translation Academy →" on every note. A key word's card shows the first
-  paragraph of its article, where tC4 shows the article's slug (owner, 2026-11-05).
+  paragraph of its article, where tC4 shows the article's slug. A key word's card lights every
+  instance of its article in its section of the source text, where tC4 lights only the card's
+  own occurrence (owner, 2026-11-05).
 
 The rebuild does not port tC4's sync mechanism: the scratch copy, the apply marker, the
 ops log, `recoverySettled`, `unreadableSettings` and the sync generation. STORAGE §6 and §9
