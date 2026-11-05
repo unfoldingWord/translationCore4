@@ -112,6 +112,7 @@ pub fn synced_view(
         restored,
         missing_pins: missing_pins(snapshot, installed),
         recreated: false,
+        format_restored: false,
         replaced,
         hand_edited: Vec::new(),
     }
@@ -401,7 +402,7 @@ impl App {
             })?;
         let handle = lease.session().handle().clone();
         let report = handle.door43_sync(client, Some(session.clone())).await;
-        let (ended, received_ids, recreated, restored) = match report {
+        let (ended, received_ids, recreated, format_restored, restored) = match report {
             Some(report) => (
                 match report.ended {
                     tc_sync::machine::Ended::Synced { .. } => Ok(()),
@@ -411,11 +412,13 @@ impl App {
                 },
                 report.received_ids,
                 report.recreated,
+                report.format_restored,
                 report.restored,
             ),
             None => (
                 Err(ApiError::Unavailable(tc_api::error::Feature::Sync)),
                 Vec::new(),
+                false,
                 false,
                 0,
             ),
@@ -434,6 +437,7 @@ impl App {
                 &|pin| resources.has_dcs(pin),
             );
             view.recreated = recreated;
+            view.format_restored = format_restored;
             view
         };
         drop(lease);
@@ -496,7 +500,7 @@ impl App {
     ) -> Result<SyncResultView, JobEnd> {
         use serde_json::json;
         use tc_api::test::ScriptedSync as Scripted;
-        let (teammates, joined, kinds, restored) = match outcome {
+        let (teammates, joined, kinds, restored, format_restored) = match outcome {
             Scripted::Failed(failure) => {
                 return Err(JobEnd::Failed(ApiError::Refused(tc_api::Refusal::Sync(
                     failure,
@@ -507,7 +511,8 @@ impl App {
                 joined,
                 kinds,
                 restored,
-            } => (teammates, joined, kinds, restored),
+                format_restored,
+            } => (teammates, joined, kinds, restored, format_restored),
         };
         let failed = |what: &str, reason: String| {
             JobEnd::Failed(self.internal(what, crate::reports::facts(json!({ "reason": reason }))))
@@ -590,14 +595,16 @@ impl App {
                 .synced(&folder, session.handle().snapshot().fold().clone());
             let facts = session.handle().facts();
             let resources = &self.inner.resources;
-            synced_view(
+            let mut view = synced_view(
                 &session.read(),
                 facts.device,
                 facts.kind,
                 &received,
                 restored,
                 &|pin| resources.has_dcs(pin),
-            )
+            );
+            view.format_restored = format_restored;
+            view
         };
         drop(lease);
         self.inner.sessions.settled(&folder).await;

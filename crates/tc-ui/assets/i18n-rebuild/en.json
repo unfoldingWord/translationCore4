@@ -282,6 +282,7 @@
   "syncResult.error.stopped": "The sync stopped. Nothing changed. Ask for help.",
   "syncResult.error.tc4TeamRepository": "This project is shared by translationCore 4, so the sync stopped. Nothing changed. Move the team to the new translationCore first.",
   "syncResult.error.unexpected": "The sync stopped for a reason translationCore did not expect. Ask for help.",
+  "syncResult.formatRestored": "A project file was deleted or damaged on Door43, so tC4 put your copy back.",
   "syncResult.frameConflictsMany": "{n} frame conflicts to review",
   "syncResult.frameConflictsOne": "1 frame conflict to review",
   "syncResult.receivedKept": "Your teammates' changes were received and kept.",

@@ -2345,3 +2345,89 @@ async fn a_teammate_on_a_newer_minor_this_app_cannot_write_blocks_the_sync() {
     );
     assert!(!sent, "nothing sent");
 }
+
+const FORMAT_JSON: &str = "ingredients/tc/format.json";
+
+/// INV-FORMAT-RESTORED-AND-SAID (§9.2 N1): Ana and Juan share a project; when `saves`, Juan
+/// saves a verse and syncs. Then a hand edit on Door43 sets `format.json` to `lost` (`None`
+/// deletes it); when `saves`, Ana saves a verse; and Ana syncs. Checks that the sync ends
+/// synced, that Door43's `format.json` is Ana's byte for byte, and that both computers hold
+/// both verses after Juan syncs. Returns Ana's report.
+async fn sync_after_format_lost_on_door43(
+    repo: &str,
+    lost: Option<&[u8]>,
+    saves: bool,
+) -> SyncReport {
+    let door43 = door43(repo).await;
+    let dir = tempfile::tempdir().unwrap();
+    let ana = computer(dir.path(), "ana");
+    let folder_a = titus(&ana);
+    let a = open(&ana, &folder_a);
+    connect(&a, &door43, repo);
+    synced(&sync(&a, &door43).await);
+    a.close().unwrap();
+    let juan = computer(dir.path(), "juan");
+    let folder_b = copy_to(&folder_a, &juan);
+    let b = open(&juan, &folder_b);
+    let a = open(&ana, &folder_a);
+    if saves {
+        save(&b, 1, 2, "in hope, as Juan has it");
+        synced(&sync(&b, &door43).await);
+    }
+    door43_commit(&door43, repo, FORMAT_JSON, lost);
+    if saves {
+        save(&a, 1, 1, "Paul, as Ana has it");
+    }
+    let report = sync(&a, &door43).await;
+    synced(&report);
+    let ours = std::fs::read(folder_a.join(FORMAT_JSON)).unwrap();
+    assert_eq!(
+        on_door43(&door43, repo, FORMAT_JSON),
+        Some(ours),
+        "restored"
+    );
+    let juans = sync(&b, &door43).await;
+    synced(&juans);
+    assert!(!juans.format_restored, "said once: {juans:?}");
+    if saves {
+        for handle in [&a, &b] {
+            assert_eq!(words(handle, 1, 1).as_deref(), Some("Paul, as Ana has it"));
+            assert_eq!(
+                words(handle, 1, 2).as_deref(),
+                Some("in hope, as Juan has it")
+            );
+        }
+    }
+    a.close().unwrap();
+    b.close().unwrap();
+    report
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_format_json_deleted_on_door43_is_restored_and_said() {
+    let report = sync_after_format_lost_on_door43("titus-fmt-gone", None, true).await;
+    assert!(report.format_restored, "{report:?}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_format_json_damaged_on_door43_is_restored_and_said() {
+    let not_json: &[u8] = b"{\"format\": \"tc-pro";
+    let no_header: &[u8] = br#"{"format":"tc-project","major":"one","minReaderMinor":0}"#;
+    for (repo, damaged) in [("titus-fmt-text", not_json), ("titus-fmt-head", no_header)] {
+        let report = sync_after_format_lost_on_door43(repo, Some(damaged), true).await;
+        assert!(report.format_restored, "{repo}: {report:?}");
+    }
+}
+
+/// The same when losing `format.json` is Door43's only change, and Ana has nothing new: the
+/// merge takes in no pack and changes no verse.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_format_json_lost_on_door43_alone_is_restored() {
+    for (repo, lost) in [
+        ("titus-fmt-gone-alone", None),
+        ("titus-fmt-text-alone", Some(&b"not json"[..])),
+    ] {
+        let report = sync_after_format_lost_on_door43(repo, lost, false).await;
+        assert!(report.format_restored, "{repo}: {report:?}");
+    }
+}

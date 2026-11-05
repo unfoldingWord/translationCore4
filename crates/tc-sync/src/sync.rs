@@ -48,6 +48,9 @@ pub struct SyncReport {
     /// as the branch again (owner ruling, `rulings/2026-10-24-H5.md`): "The project was missing
     /// from Door43, so tC4 put your copy back. Ask your teammates to sync."
     pub recreated: bool,
+    /// `format.json` on Door43 was missing or its header did not read, and this sync put the
+    /// local one back (§9.2 N1).
+    pub format_restored: bool,
     /// A large push failed for want of a connection three times in a row (§9.5): the report
     /// offers "Save an exchange file instead" (§10).
     pub offer_exchange: bool,
@@ -116,6 +119,7 @@ pub async fn sync(
         target: None,
         fetched: None,
         branch_gone: false,
+        restore_format: false,
         packs: Vec::new(),
         merged: None,
         report: SyncReport {
@@ -131,6 +135,7 @@ pub async fn sync(
             received_ids: Vec::new(),
             new_conflicts: Vec::new(),
             recreated: false,
+            format_restored: false,
             offer_exchange: false,
             restored: 0,
         },
@@ -179,6 +184,9 @@ struct Run<'a> {
     fetched: Option<git2::Oid>,
     /// The last fetch found the branch deleted on Door43: the push makes it again.
     branch_gone: bool,
+    /// The last fetched tree had no `format.json` this app could read (§9.2 N1): the merge
+    /// commit puts the local one back, and the push makes that so on Door43.
+    restore_format: bool,
     packs: Vec<ReceivedPack>,
     /// The merge's answer: the take-in and the commit come back together.
     merged: Option<Result<CheckpointReport, String>>,
@@ -400,9 +408,15 @@ impl Run<'_> {
         };
         let read = tokio::task::spawn_blocking(move || read_tree(&target.git_dir, remote)).await;
         match read {
-            Ok(Ok(Intake::Packs(packs, other_tools))) => {
+            Ok(Ok(Intake::Packs {
+                packs,
+                other_tools,
+                restore_format,
+            })) => {
                 self.count_received(&packs);
                 self.packs = packs;
+                // Each round reads Door43 afresh, as `branch_gone`.
+                self.restore_format = restore_format;
                 for commit in other_tools {
                     if !self.report.other_tools.contains(&commit) {
                         self.report.other_tools.push(commit);
@@ -504,6 +518,7 @@ impl Run<'_> {
             Ok(restored) => {
                 // Said only once the push made the branch again (tC4 reports it after the push).
                 self.report.recreated = self.branch_gone || self.put_back(None).await;
+                self.report.format_restored = self.restore_format;
                 self.report.restored += restored;
                 SyncEvent::Pushed
             }
@@ -785,7 +800,11 @@ enum Pushed {
 }
 
 enum Intake {
-    Packs(Vec<ReceivedPack>, Vec<OtherToolCommit>),
+    Packs {
+        packs: Vec<ReceivedPack>,
+        other_tools: Vec<OtherToolCommit>,
+        restore_format: bool,
+    },
     Blocked(SyncBlock),
 }
 
@@ -880,10 +899,12 @@ fn read_tree(git_dir: &std::path::Path, remote: git2::Oid) -> Result<Intake, Str
         let blob = repo.find_blob(entry.id()).ok()?;
         Some(blob.content().to_vec())
     };
-    // N1: a newer format, or tC4's team format.
-    if let Some(block) = gate_of(&repo, &theirs) {
-        return Ok(Intake::Blocked(block));
-    }
+    // N1: a newer format, or tC4's team format; a lost one the merge commit puts back.
+    let restore_format = match gate_of(&repo, &theirs) {
+        Gate::Block(block) => return Ok(Intake::Blocked(block)),
+        Gate::Go => false,
+        Gate::GoAndRestoreFormat => true,
+    };
     // N2: two projects are never merged.
     let id = |bytes: Option<Vec<u8>>| -> Option<String> {
         let json: serde_json::Value = serde_json::from_slice(&bytes?).ok()?;
@@ -921,7 +942,11 @@ fn read_tree(git_dir: &std::path::Path, remote: git2::Oid) -> Result<Intake, Str
         })
         .map_err(|e| e.message().to_owned())?;
     let head = repo.head().ok().and_then(|h| h.target());
-    Ok(Intake::Packs(packs, other_tools(&repo, remote, head)?))
+    Ok(Intake::Packs {
+        packs,
+        other_tools: other_tools(&repo, remote, head)?,
+        restore_format,
+    })
 }
 
 /// §9.2 N4: the commits of Door43's branch this history lacks that no translationCore made
@@ -992,25 +1017,39 @@ fn other_tools(
     Ok(out)
 }
 
-/// §9.2 N1 for a tree: a newer format than this app reads, or tC4's team format.
-pub(crate) fn gate_of(repo: &git2::Repository, tree: &git2::Tree<'_>) -> Option<SyncBlock> {
+/// What §9.2 N1 decides about a fetched tree.
+#[derive(Debug)]
+pub(crate) enum Gate {
+    /// A newer format than this app reads, or tC4's team format.
+    Block(SyncBlock),
+    Go,
+    /// `format.json` is missing, or its header does not read: the merge commit puts the local
+    /// one back, and the report says so. A newer version never writes a header this app cannot
+    /// read (INV-FORMAT-HEADER-FROZEN), so this never replaces a newer format.
+    GoAndRestoreFormat,
+}
+
+/// §9.2 N1 for a tree.
+pub(crate) fn gate_of(repo: &git2::Repository, tree: &git2::Tree<'_>) -> Gate {
     let blob_at = |path: &str| -> Option<Vec<u8>> {
         let entry = tree.get_path(std::path::Path::new(path)).ok()?;
         Some(repo.find_blob(entry.id()).ok()?.content().to_vec())
     };
     match blob_at(tc_journal::format::FORMAT_PATH) {
-        // A header that does not read is damaged on Door43: N1 uses the local one.
-        Some(bytes) => tc_journal::format::FormatHeader::parse(&bytes)
-            .ok()
-            .and_then(|header| crate::newer_format(&header))
-            .map(SyncBlock::NeedsNewerApp),
+        Some(bytes) => match tc_journal::format::FormatHeader::parse(&bytes) {
+            Ok(header) => match crate::newer_format(&header) {
+                Some(newer) => Gate::Block(SyncBlock::NeedsNewerApp(newer)),
+                None => Gate::Go,
+            },
+            Err(_) => Gate::GoAndRestoreFormat,
+        },
         None if tree
             .get_path(std::path::Path::new(TC4_JOURNAL.trim_end_matches('/')))
             .is_ok() =>
         {
-            Some(SyncBlock::Tc4TeamRepository)
+            Gate::Block(SyncBlock::Tc4TeamRepository)
         }
-        None => None,
+        None => Gate::GoAndRestoreFormat,
     }
 }
 

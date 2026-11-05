@@ -282,6 +282,7 @@
   "syncResult.error.stopped": "A sincronização parou devido a um erro. Nada foi alterado.",
   "syncResult.error.tc4TeamRepository": "Este repositório é de uma equipe do translationCore 4.0 e não pode ser sincronizado aqui.",
   "syncResult.error.unexpected": "Ocorreu um erro inesperado durante a sincronização.",
+  "syncResult.formatRestored": "Um arquivo do projeto foi excluído ou danificado no Door43, então o tC4 colocou sua cópia de volta.",
   "syncResult.frameConflictsMany": "{n} conflitos de quadros para revisar",
   "syncResult.frameConflictsOne": "1 conflito de quadro para revisar",
   "syncResult.receivedKept": "O trabalho recebido foi mantido em segurança.",

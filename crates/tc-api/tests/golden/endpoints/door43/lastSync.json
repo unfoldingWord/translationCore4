@@ -26,6 +26,7 @@
         "restored": 0,
         "missingPins": 0,
         "recreated": false,
+        "formatRestored": false,
         "replaced": [
           {
             "by": {

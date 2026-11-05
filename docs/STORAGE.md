@@ -3803,7 +3803,8 @@ N1  Format. Read R:ingredients/tc/format.json. A larger major, or a minReaderMin
     Nothing was changed." R has ingredients/checking/journal/ and no tc/format.json → it is a
     tC4 team repository: stop and offer the team move (§13.3). Missing or unreadable in R,
     with no journal → use the local format.json; the merge commit restores it, and the report
-    says "format.json was deleted or damaged on Door43 and was restored".
+    says "A project file was deleted or damaged on Door43, so tC4 put your copy back."
+    (INV-FORMAT-RESTORED-AND-SAID, #941).
 N2  Project. If R:ingredients/tc/project.json is readable and names another projectId, refuse
     `sync.project-mismatch`: two projects are never merged (tC4 D53). Missing or unreadable in
     R is not a mismatch: continue with the local file, which the merge commit restores, and the

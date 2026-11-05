@@ -112,6 +112,7 @@
             "restored": 0,
             "missingPins": 5,
             "recreated": false,
+            "formatRestored": false,
             "replaced": [
               {
                 "by": {
@@ -192,6 +193,7 @@
             "restored": 0,
             "missingPins": 0,
             "recreated": false,
+            "formatRestored": false,
             "replaced": [],
             "handEdited": [
               {

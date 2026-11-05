@@ -282,6 +282,7 @@
   "syncResult.error.stopped": "Sinkronisasi terhenti karena terjadi kesalahan. Tidak ada yang diubah.",
   "syncResult.error.tc4TeamRepository": "Repositori ini berasal dari tim translationCore 4.0 dan tidak dapat disinkronkan di sini.",
   "syncResult.error.unexpected": "Terjadi kesalahan tak terduga selama sinkronisasi.",
+  "syncResult.formatRestored": "Sebuah berkas proyek dihapus atau rusak di Door43, jadi tC4 mengembalikan salinan Anda.",
   "syncResult.frameConflictsMany": "{n} konflik bingkai untuk ditinjau",
   "syncResult.frameConflictsOne": "1 konflik bingkai untuk ditinjau",
   "syncResult.receivedKept": "Pekerjaan yang diterima disimpan dengan aman.",
