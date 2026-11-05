@@ -19,7 +19,6 @@ use tc_store::{
 
 /// The folder Door43's teammates' packs are in, in every tree.
 const PACKS: &str = "ingredients/tc/changes/";
-const FORMAT_JSON: &str = "ingredients/tc/format.json";
 const PROJECT_JSON: &str = "ingredients/tc/project.json";
 const TC4_JOURNAL: &str = "ingredients/checking/journal/";
 
@@ -999,19 +998,25 @@ pub(crate) fn gate_of(repo: &git2::Repository, tree: &git2::Tree<'_>) -> Option<
         let entry = tree.get_path(std::path::Path::new(path)).ok()?;
         Some(repo.find_blob(entry.id()).ok()?.content().to_vec())
     };
-    match blob_at(FORMAT_JSON) {
-        Some(bytes) => match tc_journal::format::FormatDoc::parse(&bytes).map(|d| (d.gate(), d)) {
-            Ok((tc_journal::format::FormatGate::Refused { major }, doc)) => {
-                let number = |n: &tc_journal::format::FormatNumber| {
-                    n.to_string().parse::<u16>().unwrap_or(u16::MAX)
-                };
-                Some(SyncBlock::NeedsNewerApp {
-                    major: number(&major),
-                    min_reader_minor: number(&doc.min_reader_minor),
-                })
+    match blob_at(tc_journal::format::FORMAT_PATH) {
+        Some(bytes) => {
+            use tc_journal::format::{FormatGate, FormatHeader, FormatNumber};
+            // A header that does not read is damaged on Door43: N1 uses the local one.
+            let header = FormatHeader::parse(&bytes).ok()?;
+            let number = |n: &FormatNumber| n.to_string().parse::<u16>().unwrap_or(u16::MAX);
+            match header.gate() {
+                FormatGate::Writable => None,
+                FormatGate::ReadOnly { .. } | FormatGate::Refused { .. } => {
+                    Some(SyncBlock::NeedsNewerApp {
+                        major: number(&header.major),
+                        min_reader_minor: number(&header.min_reader_minor),
+                    })
+                }
+                // Format 1 is the first major: what a teammate on an older one gets waits on
+                // #938.
+                FormatGate::NeedsMigration { .. } => None,
             }
-            _ => None,
-        },
+        }
         None if tree
             .get_path(std::path::Path::new(TC4_JOURNAL.trim_end_matches('/')))
             .is_ok() =>

@@ -131,6 +131,10 @@ pub fn sync_blocks() -> Vec<SyncBlock> {
             major: 2,
             min_reader_minor: 0,
         },
+        SyncBlock::NeedsNewerApp {
+            major: 1,
+            min_reader_minor: 4,
+        },
         SyncBlock::Tc4TeamRepository,
     ]
 }
@@ -237,7 +241,14 @@ pub fn resources() -> Vec<ResourceRefusal> {
 pub fn exchange() -> Vec<ExchangeRefusal> {
     vec![
         ExchangeRefusal::Damaged,
-        ExchangeRefusal::NewerFormat { format: 2 },
+        ExchangeRefusal::NewerFormat {
+            format: 2,
+            min_reader_minor: 0,
+        },
+        ExchangeRefusal::NewerFormat {
+            format: 1,
+            min_reader_minor: 4,
+        },
         ExchangeRefusal::VerifyFailed,
         ExchangeRefusal::OtherProject {
             name: "Tito".into(),

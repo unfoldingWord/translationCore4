@@ -30,8 +30,12 @@ fn refusal(error: ExchangeError, export: bool) -> ExchangeRefusal {
         ExchangeError::OtherProject => ExchangeRefusal::OtherProject {
             name: String::new(),
         },
-        ExchangeError::NeedsNewerApp { major } => ExchangeRefusal::NewerFormat {
+        ExchangeError::NeedsNewerApp {
+            major,
+            min_reader_minor,
+        } => ExchangeRefusal::NewerFormat {
             format: major.parse().unwrap_or(u16::MAX),
+            min_reader_minor: min_reader_minor.parse().unwrap_or(u16::MAX),
         },
         ExchangeError::NotVerified(_) => ExchangeRefusal::VerifyFailed,
         ExchangeError::PartlyReceived(reason) => ExchangeRefusal::PartlyReceived { reason },

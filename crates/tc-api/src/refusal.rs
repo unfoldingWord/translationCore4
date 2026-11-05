@@ -541,6 +541,16 @@ pub enum SyncFailure {
     AfterIntake(SyncRefusal),
 }
 
+/// The project format a newer-version refusal names: the major, with the minor this app
+/// would need when that is what stops it ("1.4"), so the number never reads as this app's own.
+fn format_words(major: u16, min_reader_minor: u16) -> String {
+    if min_reader_minor == 0 {
+        major.to_string()
+    } else {
+        format!("{major}.{min_reader_minor}")
+    }
+}
+
 /// Why a project and its repository cannot sync (DELTA §3.15.2; tC4 `SYNC_REFUSALS`,
 /// `tC4:src/views/SyncResult.jsx:14-51`). Each is found before intake.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -668,9 +678,10 @@ impl Message for SyncFailure {
     fn vars(&self) -> Vec<(&'static str, String)> {
         use SyncRefusal as R;
         match self {
-            Self::Blocked(SyncBlock::NeedsNewerApp { major, .. }) => {
-                vec![("format", major.to_string())]
-            }
+            Self::Blocked(SyncBlock::NeedsNewerApp {
+                major,
+                min_reader_minor,
+            }) => vec![("format", format_words(*major, *min_reader_minor))],
             Self::Blocked(
                 SyncBlock::NotShared | SyncBlock::ProjectMismatch | SyncBlock::Tc4TeamRepository,
             ) => Vec::new(),
@@ -954,9 +965,11 @@ impl Message for ResourceRefusal {
 pub enum ExchangeRefusal {
     /// The zip's central directory cannot be read (R1).
     Damaged,
-    /// The file's project format is newer than this app's (R3).
+    /// The file's project format is newer than this app's major, or its `minReaderMinor` is
+    /// above this app's minor (R3).
     NewerFormat {
         format: u16,
+        min_reader_minor: u16,
     },
     /// The written file did not read back from the drive; it was deleted (E5).
     VerifyFailed,
@@ -1001,7 +1014,10 @@ impl Message for ExchangeRefusal {
     }
     fn vars(&self) -> Vec<(&'static str, String)> {
         match self {
-            Self::NewerFormat { format } => vec![("format", format.to_string())],
+            Self::NewerFormat {
+                format,
+                min_reader_minor,
+            } => vec![("format", format_words(*format, *min_reader_minor))],
             Self::OtherProject { name } => vec![("name", name.clone())],
             Self::NotWritten { reason }
             | Self::Unreadable { reason }

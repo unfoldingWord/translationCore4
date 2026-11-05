@@ -105,3 +105,6 @@ mod update;
 
 #[path = "store/kept.rs"]
 mod kept;
+
+#[path = "store/format_gate.rs"]
+mod format_gate;

@@ -617,6 +617,27 @@
       "value": {
         "type": "blocked",
         "value": {
+          "type": "needsNewerApp",
+          "value": {
+            "major": 1,
+            "minReaderMinor": 4
+          }
+        }
+      }
+    },
+    "code": null,
+    "key": "syncResult.error.needsNewerApp",
+    "vars": {
+      "format": "1.4"
+    },
+    "detail": null
+  },
+  {
+    "wire": {
+      "type": "sync",
+      "value": {
+        "type": "blocked",
+        "value": {
           "type": "tc4TeamRepository"
         }
       }
@@ -1284,7 +1305,8 @@
       "value": {
         "type": "newerFormat",
         "value": {
-          "format": 2
+          "format": 2,
+          "minReaderMinor": 0
         }
       }
     },
@@ -1292,6 +1314,24 @@
     "key": "exchange.error.newerFormat",
     "vars": {
       "format": "2"
+    },
+    "detail": null
+  },
+  {
+    "wire": {
+      "type": "exchange",
+      "value": {
+        "type": "newerFormat",
+        "value": {
+          "format": 1,
+          "minReaderMinor": 4
+        }
+      }
+    },
+    "code": null,
+    "key": "exchange.error.newerFormat",
+    "vars": {
+      "format": "1.4"
     },
     "detail": null
   },

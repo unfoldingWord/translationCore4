@@ -273,7 +273,8 @@ struct Gates {
     read_only: Option<ReadOnlyReason>,
     lock: Option<Box<dyn LockHandle>>,
     network: bool,
-    format: Option<FormatDoc>,
+    /// `None` when `format.json` is missing or its header cannot be read: O4 repairs it.
+    format: Option<FormatGate>,
 }
 
 fn open_inner(
@@ -880,7 +881,7 @@ fn gates(
     let mut read_only: Option<ReadOnlyReason> = None;
     // O4.
     let format = match vfs.read(&folder.path(FORMAT_JSON)) {
-        Ok(bytes) => FormatDoc::parse(&bytes).ok(),
+        Ok(bytes) => tc_journal::format::gate(&bytes).ok(),
         Err(e) if is_not_found(&e) => None,
         Err(e) => {
             return Err(OpenError::Unreadable(StoreError::io(
@@ -890,8 +891,8 @@ fn gates(
             )));
         }
     };
-    if let Some(doc) = &format {
-        match doc.gate() {
+    if let Some(gate) = &format {
+        match gate.clone() {
             FormatGate::Writable => {}
             FormatGate::ReadOnly { min_reader_minor } => {
                 read_only = Some(ReadOnlyReason::NewerMinor {

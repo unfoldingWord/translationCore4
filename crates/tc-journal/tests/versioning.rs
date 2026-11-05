@@ -298,6 +298,54 @@ fn format_json_is_written_in_one_byte_form() {
     assert!(!text.contains("version\":\"0."), "no app version: {text}");
 }
 
+/// INV-FORMAT-HEADER-FROZEN: the gate reads `format`, `major` and `minReaderMinor` and
+/// nothing else, so a later version that reshapes any other field is still gated by its
+/// numbers. Only a header that does not read is an error (a damaged file).
+#[test]
+fn the_gate_reads_only_the_frozen_header() {
+    let cases: [(&[u8], Result<FormatGate, ()>); 9] = [
+        (
+            br#"{"format":"tc-project","major":2,"minReaderMinor":0,"derivations":"moved"}"#,
+            Ok(FormatGate::Refused { major: 2.into() }),
+        ),
+        (
+            br#"{"format":"tc-project","major":1,"minor":9,"minReaderMinor":9,"derivedPaths":{}}"#,
+            Ok(FormatGate::ReadOnly {
+                min_reader_minor: 9.into(),
+            }),
+        ),
+        (
+            br#"{"format":"tc-project","major":1,"minReaderMinor":0,"derivations":{"plainText":"2.1"}}"#,
+            Ok(FormatGate::Writable),
+        ),
+        (
+            br#"{"format":"tc-project","major":0,"minReaderMinor":0}"#,
+            Ok(FormatGate::NeedsMigration { major: 0.into() }),
+        ),
+        (
+            br#"{"format":"tc-project","major":99999999999999999999999,"minReaderMinor":0}"#,
+            Ok(FormatGate::Refused {
+                major: FormatNumber::parse("99999999999999999999999").unwrap(),
+            }),
+        ),
+        (br#"{"format":"tc-project","major":"2","minReaderMinor":0}"#, Err(())),
+        (br#"{"format":"tc-project","major":2}"#, Err(())),
+        (br#"{"format":"x","major":2,"minReaderMinor":0}"#, Err(())),
+        (b"not json", Err(())),
+    ];
+    for (bytes, want) in cases {
+        let text = String::from_utf8_lossy(bytes);
+        assert_eq!(gate(bytes).map_err(|_| ()), want, "{text}");
+        if let Ok(doc) = FormatDoc::parse(bytes) {
+            assert_eq!(
+                Ok(doc.gate()),
+                want,
+                "the document and the header agree: {text}"
+            );
+        }
+    }
+}
+
 #[test]
 fn the_gate_refuses_newer_majors_and_reads_newer_minors() {
     assert_eq!(FormatDoc::current().gate(), FormatGate::Writable);
