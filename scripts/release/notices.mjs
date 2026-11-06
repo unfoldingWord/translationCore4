@@ -112,14 +112,17 @@ function fileBlock(title, file) {
 }
 
 export function notices({ bundle, electroniteLicense }) {
-  const fonts = path.join(repo, 'crates/tc-ui/assets/ds/assets/fonts');
+  // tC4's fonts, and the ones the rebuild adds beside them (#613).
+  const ofl = ['crates/tc-ui/assets/ds/assets/fonts', 'crates/tc-ui/assets/ds-rebuild/fonts']
+    .flatMap((dir) => fs.readdirSync(path.join(repo, dir)).filter((f) => /^OFL-.*\.txt$/.test(f)).map((f) => path.join(repo, dir, f)))
+    .sort((a, b) => (path.basename(a) < path.basename(b) ? -1 : 1));
   return [
     'translationCore 4: third-party notices\n\nThe software and content below ship with translationCore 4, each under its own licence.\n',
     fileBlock('translationCore 4 (tc-rst)', path.join(repo, 'LICENSE')),
     fileBlock('tc-door43 NOTICE', path.join(repo, 'crates/tc-door43/NOTICE')),
     fileBlock('tc-align NOTICE', path.join(repo, 'crates/tc-align/NOTICE')),
     fileBlock('Electronite (https://github.com/unfoldingWord/electronite)', electroniteLicense),
-    ...fs.readdirSync(fonts).filter((f) => /^OFL-.*\.txt$/.test(f)).sort().map((f) => fileBlock(`Font licence ${f}`, path.join(fonts, f))),
+    ...ofl.map((file) => fileBlock(`Font licence ${path.basename(file)}`, file)),
     ...resourceBlocks(bundle),
     ...crateBlocks(),
   ].join('\n');

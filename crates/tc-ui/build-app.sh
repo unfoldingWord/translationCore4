@@ -72,6 +72,7 @@ mkdir -p "$STAGE"
 "$BINDGEN" --target web --no-typescript --out-dir "$STAGE" "$WASM"
 cp "$HERE/app/boot.js" "$HERE/app/recovery.js" "$HERE/assets/ui.css" "$STAGE/"
 cp -r "$HERE/assets/ds" "$STAGE/ds"
+cp -r "$HERE/assets/ds-rebuild" "$STAGE/ds-rebuild"
 cp -r "$HERE/assets/images" "$STAGE/images"
 cp -r "$HERE/assets/i18n" "$STAGE/i18n"
 

@@ -347,6 +347,7 @@ browserTest('h. (no-project half) Arabic reads right to left at once, the dialog
 });
 
 const ARABIC = 'Noto Sans Arabic';
+const DEVANAGARI = 'Noto Sans Devanagari';
 /** The faces Chromium painted the text of `locator` with (CSS.getPlatformFontsForNode). */
 async function faces(page, locator) {
   const cdp = await page.context().newCDPSession(page);
@@ -357,7 +358,7 @@ async function faces(page, locator) {
     const { root } = await cdp.send('DOM.getDocument');
     const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector: '[data-face-probe]' });
     const { fonts } = await cdp.send('CSS.getPlatformFontsForNode', { nodeId });
-    const family = (name) => [ARABIC, 'Mulish'].find((known) => name.startsWith(known)) ?? name;
+    const family = (name) => [ARABIC, DEVANAGARI, 'Mulish'].find((known) => name.startsWith(known)) ?? name;
     return fonts.map((f) => ({ family: family(f.familyName), bundled: f.isCustomFont, glyphs: f.glyphCount }));
   } finally {
     await locator.evaluate((el) => el.removeAttribute('data-face-probe'));
@@ -365,26 +366,30 @@ async function faces(page, locator) {
   }
 }
 
-browserTest('j. (no-project half) Arabic interface text is painted in the bundled Noto Sans Arabic at each weight, Latin in Mulish, with no other origin', async () => {
+/** Applies `id`, then paints the menu and Report a problem, and checks that the text in `script`
+ * (a character class) is drawn in the bundled `face` at each weight, Latin in Mulish, and that
+ * every font comes from the app. */
+async function paintsInBundledFace(id, script, face) {
   await withApp(async ({ page, env }) => {
     const fonts = recordRequests(page);
     const latin = await faces(page, page.locator('main h1'));
     assert.deepEqual(latin.map((f) => [f.family, f.bundled]), [['Mulish', true]]);
-    await applyLanguage(page, 'ar');
+    await applyLanguage(page, id);
     await page.evaluate(() => document.fonts.ready);
     const byWeight = {};
     const probe = async () => {
-      const weights = await page.evaluate(() => {
+      const weights = await page.evaluate((source) => {
+        const inScript = new RegExp(source);
         const seen = new Set();
         for (const el of document.querySelectorAll('body *')) {
           const own = Array.from(el.childNodes).filter((n) => n.nodeType === 3).map((n) => n.textContent).join('').trim();
-          if (!/[؀-ۿ]/.test(own) || !el.getClientRects().length) continue;
+          if (!inScript.test(own) || !el.getClientRects().length) continue;
           const weight = Number(getComputedStyle(el).fontWeight);
           if (!seen.has(weight) && !document.querySelector(`[data-face-weight="${weight}"]`)) el.setAttribute('data-face-weight', String(weight));
           seen.add(weight);
         }
         return [...document.querySelectorAll('[data-face-weight]')].map((el) => Number(el.getAttribute('data-face-weight')));
-      });
+      }, script);
       for (const weight of weights) {
         if (byWeight[weight]) continue;
         byWeight[weight] = (await faces(page, page.locator(`[data-face-weight="${weight}"]`))).filter((f) => f.family !== 'Mulish');
@@ -399,14 +404,21 @@ browserTest('j. (no-project half) Arabic interface text is painted in the bundle
     await page.getByTestId('feedback-cancel').click();
     assert.ok(Object.keys(byWeight).length >= 2, `weights: ${Object.keys(byWeight)}`);
     for (const [weight, list] of Object.entries(byWeight)) {
-      assert.deepEqual(list.map((f) => f.family), [ARABIC], `weight ${weight}`);
+      assert.deepEqual(list.map((f) => f.family), [face], `weight ${weight}`);
       assert.equal(list[0].bundled, true, `weight ${weight}`);
     }
     const fontLoads = fonts.all.filter((r) => r.type === 'font');
     assert.ok(fontLoads.length > 0 && fontLoads.every((r) => new URL(r.url).origin === env.origin), 'the faces come from the app');
     assert.deepEqual(env.refused(), []);
   });
-});
+}
+
+browserTest('j. (no-project half) Arabic interface text is painted in the bundled Noto Sans Arabic at each weight, Latin in Mulish, with no other origin', () =>
+  paintsInBundledFace('ar', '[؀-ۿ]', ARABIC));
+
+// #613: the app ships its own Devanagari face, so Hindi never depends on the computer's fonts.
+browserTest('l. (no-project half) Hindi interface text is painted in the bundled Noto Sans Devanagari at each weight, Latin in Mulish, with no other origin', () =>
+  paintsInBundledFace('hi', '[ऀ-ॿ]', DEVANAGARI));
 
 // ---- the Home halves (B2) -----------------------------------------------------------------
 

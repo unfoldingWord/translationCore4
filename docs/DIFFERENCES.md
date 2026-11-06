@@ -435,6 +435,14 @@ And these (unit D2):
   instance of its article in its section of the source text, where tC4 lights only the card's
   own occurrence (owner, 2026-11-05).
 
+And this (#613):
+
+- The app ships a Devanagari interface face, Noto Sans Devanagari, after Mulish and Noto Sans
+  Arabic in `--font-ui`, so Hindi shows its letters on a computer with no Devanagari font. tC4
+  4.0 ships none, and Hindi falls back to the computer's fonts. The face and its `--font-ui`
+  live in `crates/tc-ui/assets/ds-rebuild/`, beside tC4's design system, which stays byte for
+  byte (app-language case l).
+
 The rebuild does not port tC4's sync mechanism: the scratch copy, the apply marker, the
 ops log, `recoverySettled`, `unreadableSettings` and the sync generation. STORAGE §6 and §9
 give the same outcomes, and STORAGE §9.9 keeps saves flowing while a sync runs. tC4 can
