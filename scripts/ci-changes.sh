@@ -2,8 +2,8 @@
 # Whether a CI run's change can affect the Rust tests, the journeys or the shell: prints
 # `code=true` or `code=false` (to $GITHUB_OUTPUT when set). Only a change wholly in prose can be
 # false: files under docs/ (but not docs/contracts/, which tests read) and top-level *.md files.
-# The node step still checks the prose. Anything unknown (no base, a failed compare, a schedule
-# or a dispatch) is true.
+# The node step still checks the prose. Anything unknown (no base, a failed compare, a dispatch)
+# is true.
 #
 #   scripts/ci-changes.sh                 in CI: BASE, HEAD and GITHUB_REPOSITORY from the event
 #   scripts/ci-changes.sh --classify      the file list on stdin, one path per line

@@ -1,0 +1,14 @@
+# Starts the nightly CI run at 2:30 AM US Eastern, through the clock changes. Install on a machine
+# that stays on, signed in to gh:
+#   cp scripts/tools/nightly/tc-nightly.* ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now tc-nightly.timer
+[Unit]
+Description=translationCore4 nightly CI run
+
+[Timer]
+OnCalendar=*-*-* 02:30 America/New_York
+# A night the machine was off runs when it starts.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

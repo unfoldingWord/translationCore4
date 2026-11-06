@@ -1,0 +1,12 @@
+[Unit]
+Description=Start translationCore4's nightly CI run
+After=network-online.target
+# A dropped network is tried again every 10 minutes, for up to an hour.
+StartLimitIntervalSec=2h
+StartLimitBurst=6
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/env gh workflow run ci --repo unfoldingWord/translationCore4 --ref main -f nightly=true
+Restart=on-failure
+RestartSec=10min
