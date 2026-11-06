@@ -33,6 +33,8 @@ pub(crate) struct Burrito {
     records: Vec<Record>,
     pub texts: Vec<tc_store::BookText>,
     pub carried: Vec<(String, Vec<u8>)>,
+    /// The key of the first language's `name` the Language name field showed.
+    language_locale: String,
 }
 
 fn unusable(reason: impl Into<String>) -> CreateRefusal {
@@ -143,11 +145,13 @@ pub(crate) fn read(bytes: &[u8], file_name: &str) -> Result<Burrito, CreateRefus
         books: texts.iter().map(|text| text.book).collect(),
         carried: carried.iter().map(|(path, _)| path.clone()).collect(),
     };
+    let language_locale = shown_locale(&doc, &doc["languages"][0]["name"]);
     Ok(Burrito {
         found,
         records,
         texts,
         carried,
+        language_locale,
     })
 }
 
@@ -162,26 +166,41 @@ impl Burrito {
         if chosen.name.trim() != shown.name.trim() {
             changed.push(RecordKey::ProjectMeta(MetaField::Name));
         }
-        if (
-            chosen.language_name.trim(),
-            chosen.code.trim(),
-            chosen.direction,
-            &chosen.door43_code,
-        ) != (
-            shown.language_name.trim(),
-            shown.code.trim(),
-            shown.direction,
-            &shown.door43_code,
-        ) {
-            changed.push(RecordKey::ProjectMeta(MetaField::Languages));
-            changed.extend(
-                ["textDirection", "languageName", "door43Language"]
-                    .into_iter()
-                    .filter_map(setting),
-            );
+        let name_changed = chosen.language_name.trim() != shown.language_name.trim();
+        let code_changed = chosen.code.trim() != shown.code.trim();
+        let direction_changed = chosen.direction != shown.direction;
+        if direction_changed {
+            changed.extend(setting("textDirection"));
+        }
+        if name_changed {
+            changed.extend(setting("languageName"));
+        }
+        if code_changed || chosen.door43_code != shown.door43_code {
+            changed.extend(setting("door43Language"));
         }
         if chosen.font != shown.font {
             changed.extend(setting("textFont"));
+        }
+        // The languages record holds what the form never shows (a second language, other
+        // locales of the name, more properties): an edit changes only the edited parts of it.
+        let languages = RecordKey::ProjectMeta(MetaField::Languages);
+        let language_edited = name_changed || code_changed || direction_changed;
+        let made = if language_edited {
+            first_language(&base)
+        } else {
+            None
+        };
+        let edited_language = made.and_then(|made| {
+            let own = self.records.iter().find(|record| record.key() == languages)?;
+            let edits = [
+                (name_changed, "name", made["name"]["en"].clone()),
+                (code_changed, "tag", made["tag"].clone()),
+                (direction_changed, "scriptDirection", made["scriptDirection"].clone()),
+            ];
+            with_language_edits(own, &self.language_locale, &edits)
+        });
+        if edited_language.is_none() && language_edited {
+            changed.push(languages.clone());
         }
         let mut out: BTreeMap<RecordKey, Record> = base
             .into_iter()
@@ -193,8 +212,79 @@ impl Burrito {
                 out.insert(key, record.clone());
             }
         }
+        if let Some(record) = edited_language {
+            out.insert(languages, record);
+        }
         out.into_values().collect()
     }
+}
+
+/// The first language of the languages record `create::project_records` made from the fields.
+fn first_language(base: &[Record]) -> Option<Value> {
+    base.iter().find_map(|record| match record {
+        Record::ProjectMeta {
+            field,
+            value: Some(value),
+        } if *field == MetaField::Languages => {
+            serde_json::from_slice::<Value>(&value.to_canonical())
+                .ok()?
+                .get(0)
+                .cloned()
+        }
+        _ => None,
+    })
+}
+
+/// The Burrito's languages record `own` with each edited part of its first language set to
+/// the value the fields made; the name is set in the locale the field showed. `None` when the
+/// record is not a list whose first entry is an object.
+fn with_language_edits(
+    own: &Record,
+    locale: &str,
+    edits: &[(bool, &str, Value)],
+) -> Option<Record> {
+    let Record::ProjectMeta {
+        field,
+        value: Some(value),
+    } = own
+    else {
+        return None;
+    };
+    let mut doc: Value = serde_json::from_slice(&value.to_canonical()).ok()?;
+    let first = doc.get_mut(0)?.as_object_mut()?;
+    for (edited, part, made) in edits {
+        if !edited || made.is_null() {
+            continue;
+        }
+        if *part == "name" {
+            let names = first
+                .entry("name")
+                .or_insert_with(|| Value::Object(serde_json::Map::new()));
+            names.as_object_mut()?.insert(locale.to_owned(), made.clone());
+        } else {
+            first.insert((*part).to_owned(), made.clone());
+        }
+    }
+    let value = tc_journal::json::parse(doc.to_string().as_bytes()).ok()?;
+    Some(Record::ProjectMeta {
+        field: field.clone(),
+        value: Some(value),
+    })
+}
+
+/// The key of a localized `value` that [`details`] reads: the Burrito's own locale, else
+/// English, else the first; English when there is none.
+fn shown_locale(doc: &Value, value: &Value) -> String {
+    let locale = doc["meta"]["defaultLocale"].as_str().unwrap_or("en");
+    let Some(names) = value.as_object() else {
+        return "en".to_owned();
+    };
+    [locale, "en"]
+        .into_iter()
+        .find(|key| names.contains_key(*key))
+        .map(str::to_owned)
+        .or_else(|| names.keys().next().cloned())
+        .unwrap_or_else(|| "en".to_owned())
 }
 
 /// The file entries of the zip under R1's rules, by path. A zip of the Burrito's folder (what a
