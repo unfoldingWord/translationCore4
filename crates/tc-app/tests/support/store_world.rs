@@ -214,6 +214,7 @@ fn base() -> &'static Base {
                     kind: ProjectKind::Bible,
                     records: records.clone(),
                     books: Vec::new(),
+                    texts: Vec::new(),
                 })
                 .unwrap();
             assert_valid_burrito(&fs, &folder);
@@ -275,6 +276,7 @@ pub fn add_obs(world: &StoreWorld) -> ProjectRef {
             kind: ProjectKind::Stories,
             records,
             books: Vec::new(),
+            texts: Vec::new(),
         })
         .unwrap();
     assert_valid_burrito(&world.fs, &path);

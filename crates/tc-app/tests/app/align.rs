@@ -1012,6 +1012,7 @@ async fn a_right_to_left_project_aligns_with_its_bank_right_to_left() {
                 font: String::new(),
             },
             versification: "eng".to_owned(),
+            files: Vec::new(),
         },
     )
     .await

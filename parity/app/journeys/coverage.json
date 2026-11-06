@@ -192,9 +192,15 @@
         "tC3 name clash: a Bible name of a project on this computer is flagged and Import stays off; a stale review still writes nothing (#436)"
       ]
     },
-    "J9c": {
-      "pending": "DONE"
-    },
+    "J9c": [
+      {
+        "file": "parity/app/journeys/j09c-from-usfm.test.mjs",
+        "tests": [
+          "J9c 1. New Bible asks how to start: blank, from USFM files, or from a Scripture Burrito, which waits for its importer",
+          "J9c 2. From USFM files: damaged and doubled files are refused in their rows, then Create makes the project and its books in one write"
+        ]
+      }
+    ],
     "J9d": {
       "pending": "DONE"
     },

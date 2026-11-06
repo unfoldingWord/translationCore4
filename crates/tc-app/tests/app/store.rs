@@ -43,6 +43,7 @@ pub(super) fn make_project(app_data: &Path, projects: &Path, name: &str) -> Path
             kind: ProjectKind::Bible,
             records: sample_records(&BTreeMap::from([(BookId::Titus, titus)]), None),
             books: Vec::new(),
+            texts: Vec::new(),
         })
         .unwrap();
     // P5/INV-VALID-BURRITO on the real filesystem, which no FaultFs watch sees.

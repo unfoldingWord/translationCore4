@@ -98,6 +98,7 @@ browserTest('add_project_dialogs_swap_in_place_and_close', async () => {
     const chooser = page.getByTestId('add-project-modal');
     await page.getByTestId('add-project').click();
     await page.getByTestId('add-project-bible').click();
+    await page.getByTestId('nb-start-blank').click();
     await page.locator('#nb-name').waitFor();
     assert.equal(await chooser.count(), 0, 'New Bible takes the chooser\'s place');
     await page.getByRole('button', { name: 'Close' }).click();

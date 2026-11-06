@@ -121,7 +121,7 @@ fn verse_counts(parts: &BookParts) -> (u32, u32) {
 }
 
 /// A book's chapters as its verse markers number them, for the versification guess.
-fn shape(book: BookId, parts: &BookParts) -> tc_versification::BookShape {
+pub(crate) fn shape(book: BookId, parts: &BookParts) -> tc_versification::BookShape {
     tc_versification::BookShape {
         book: book.into(),
         chapters: parts
@@ -144,7 +144,7 @@ fn shape(book: BookId, parts: &BookParts) -> tc_versification::BookShape {
 }
 
 /// The review page's default versification (H13), from the books' verse counts.
-fn scheme_guess(shapes: &[tc_versification::BookShape]) -> SchemeGuess {
+pub(crate) fn scheme_guess(shapes: &[tc_versification::BookShape]) -> SchemeGuess {
     use tc_versification::SchemeGuess as G;
     let guess = tc_versification::guess(shapes);
     let names = |schemes: &[StandardScheme]| schemes.iter().map(|s| s.name().to_owned()).collect();
@@ -1024,6 +1024,7 @@ impl ImportPort for TcImport {
                 folder: folder.clone(),
                 kind: ProjectKind::Bible,
                 records,
+                texts: Vec::new(),
             };
             ctx.cancel.check()?;
             let cause = Cause::Import(ImportSource::Tc3 { user: None });

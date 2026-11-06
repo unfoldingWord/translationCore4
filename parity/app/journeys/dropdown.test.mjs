@@ -11,6 +11,7 @@ const en = catalog('en');
 async function openAddBook(page) {
   await page.getByTestId('add-project').click();
   await page.getByTestId('add-project-bible').click();
+  await page.getByTestId('nb-start-blank').click();
   await page.getByLabel('Language name').waitFor();
   await page.getByLabel('Bible name').fill('Equipo 552');
   await page.getByLabel('Language name').fill('Español');

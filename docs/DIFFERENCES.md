@@ -448,6 +448,17 @@ And this (#613):
   live in `crates/tc-ui/assets/ds-rebuild/`, beside tC4's design system, which stays byte for
   byte (app-language case l).
 
+And this (#844):
+
+- New Bible first asks how to start: Blank, From USFM files, or From a Scripture Burrito (greyed
+  out until its importer arrives, #845). Blank opens tC4's New Bible fields. From USFM files
+  takes the files first, and each row says what its file is: a damaged file is refused with the
+  reason and its line, and a second file of one book is refused naming the book; Next waits
+  until every row is a book. The fields then open with the versification the files' verse counts
+  fit and a note saying how (ruling H13), and Create makes the project and every book in one
+  write, or nothing. Add a book follows as after a blank Create. tC4 4.0 makes a project from
+  USFM files only through Import, whose USFM kind 4.1.0 left out (J9c, owner 2026-11-06).
+
 The rebuild does not port tC4's sync mechanism: the scratch copy, the apply marker, the
 ops log, `recoverySettled`, `unreadableSettings` and the sync generation. STORAGE §6 and §9
 give the same outcomes, and STORAGE §9.9 keeps saves flowing while a sync runs. tC4 can

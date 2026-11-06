@@ -176,6 +176,14 @@ budget in `docs/PERFORMANCE.md`). Their tC4 tests stay mapped under `specs` in `
   with no pins gets the installed sources at its first open.
 - Must not: create a project from damaged or incomplete input; leave part of a project after a
   failed or stopped import.
+- J9c steps: New Bible · From USFM files · pick the files; each row says what its file is, and a
+  damaged file (with its line) or a second file of one book is refused until it is removed · Next ·
+  the New Bible fields, with the files' books and the versification their verse counts fit (H13;
+  a tie gives `eng` and says the files did not decide) · Create, which makes the project and
+  every book in one write · Add a book, as after a blank project. Aligned files keep their
+  alignments.
+- **Differs from tC4:** New Bible asks how to start (Blank, From USFM files, From a Scripture
+  Burrito), and raw USFM starts there rather than in Import (#844, `docs/DIFFERENCES.md`).
 
 ### J11 Share the project to Door43
 

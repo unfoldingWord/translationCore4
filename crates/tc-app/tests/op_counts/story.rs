@@ -207,6 +207,7 @@ fn story_disk(project: &MemoryProject) -> FaultFs {
             kind: tc_journal::fold::ProjectKind::Stories,
             records,
             books: Vec::new(),
+            texts: Vec::new(),
         })
         .unwrap();
     crate::store_world::assert_valid_burrito(&fs, &path);

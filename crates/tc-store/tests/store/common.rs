@@ -195,6 +195,7 @@ pub fn create_titus(rig: &Rig, name: &str) -> PathBuf {
             kind: ProjectKind::Bible,
             records: first_records(),
             books: vec![(TIT, Scope::Whole, SeedSource { usfm: ult("TIT") })],
+            texts: Vec::new(),
         })
         .unwrap()
 }

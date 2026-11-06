@@ -8,7 +8,7 @@ use std::sync::Arc;
 use tc_api::ApiError;
 use tc_api::Refusal;
 use tc_api::create::{
-    AddBlankBooks, AddUsfmBooks, Bible, BooksAdded, Details, Obs, ReviewUsfm, UsfmFile,
+    AddBlankBooks, AddUsfmBooks, Bible, BooksAdded, Details, GuessUsfm, Obs, ReviewUsfm, UsfmFile,
     UsfmOutcome, UsfmProblem, UsfmVerdict,
 };
 use tc_api::home::{List, ProjectKind};
@@ -43,6 +43,7 @@ fn bible(request: u8, details: Details) -> Bible {
         request: rid(request),
         details,
         versification: "eng".to_owned(),
+        files: Vec::new(),
     }
 }
 
@@ -93,12 +94,17 @@ fn upload(dir: &Path, n: u8, name: &str, bytes: &[u8]) -> UsfmFile {
     }
 }
 
-fn aligned_titus() -> Vec<u8> {
+fn fixture(rel: &str) -> Vec<u8> {
     std::fs::read(
         Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../fixtures/tc4/test-fixtures/en_ult/TIT.usfm"),
+            .join("../../fixtures/tc4/test-fixtures")
+            .join(rel),
     )
     .unwrap()
+}
+
+fn aligned_titus() -> Vec<u8> {
+    fixture("en_ult/TIT.usfm")
 }
 
 /// J1: New Bible's Create makes a project that is listed, keeps its language, direction, font
@@ -408,6 +414,85 @@ async fn new_obs_makes_fifty_stories() {
         .find(|c| c.project == created.project)
         .unwrap();
     assert_eq!(card.kind, ProjectKind::Stories);
+}
+
+/// J9c: New Bible from USFM files. The files' verse counts give the versification, a tie
+/// saying so (H13); a damaged file or two files of one book create nothing and keep the files
+/// for another try; then Create makes the project and every book in one write: a plain book's
+/// text byte for byte, an aligned book's alignments split out, the installed pins, a valid
+/// Scripture Burrito, and no upload left.
+#[tokio::test]
+async fn a_bible_from_usfm_files_is_created_with_its_books_in_one_write() {
+    let (dir, t, world, _store) = app().await;
+    let jonah_bytes = fixture("usfm-corpus/sample-JON-span.usfm");
+    let titus = upload(dir.path(), 1, "57-TIT.usfm", &aligned_titus());
+    let jonah = upload(dir.path(), 2, "JON.usfm", &jonah_bytes);
+    let twin = upload(dir.path(), 3, "TIT-copy.usfm", &aligned_titus());
+    let damaged = upload(
+        dir.path(),
+        4,
+        "bad.usfm",
+        b"\\id GEN\n\\c 1\n\\v 1 In\n\\c 1\n\\v 2 again\n",
+    );
+
+    let guess = |files: Vec<UsfmFile>| {
+        let app = &t.app;
+        async move { post(app, &GuessUsfm { files }).await }
+    };
+    let titus_alone = guess(vec![titus.clone()]).await.unwrap();
+    assert_eq!(titus_alone.scheme, "eng");
+    assert_eq!(titus_alone.fit, tc_api::import::SchemeFit::Undecided);
+    assert_eq!(
+        guess(vec![titus.clone(), jonah.clone()])
+            .await
+            .unwrap()
+            .scheme,
+        "eng"
+    );
+
+    let listed = || async {
+        post(&t.app, &List {})
+            .await
+            .unwrap()
+            .cards
+            .into_iter()
+            .map(|card| card.project)
+            .collect::<Vec<_>>()
+    };
+    let before = listed().await;
+    let with = |n: u8, files: Vec<UsfmFile>| Bible {
+        files,
+        ..bible(n, kanuri())
+    };
+    for (n, files) in [
+        (10, vec![titus.clone(), twin.clone()]),
+        (11, vec![titus.clone(), damaged.clone()]),
+    ] {
+        let refused = post(&t.app, &with(n, files)).await.unwrap_err();
+        assert!(
+            matches!(&refused, ApiError::BadRequest { field, .. } if field == "files"),
+            "{refused:?}"
+        );
+    }
+    assert_eq!(listed().await, before, "a refused create makes no project");
+
+    let created = post(&t.app, &with(12, vec![titus.clone(), jonah.clone()]))
+        .await
+        .unwrap();
+    let on_disk = project_files(&world, &created.project);
+    assert_eq!(on_disk["ingredients/JON.usfm"], jonah_bytes);
+    let titus_text = String::from_utf8(on_disk["ingredients/TIT.usfm"].clone()).unwrap();
+    assert!(titus_text.contains("\\c 3") && !titus_text.contains("\\zaln"));
+    assert!(on_disk.contains_key("ingredients/checking/alignments/TIT.json"));
+    assert!(on_disk.contains_key("ingredients/checking/resources.json"));
+    assert_valid_burrito(&world.fs, &world.folder(&created.project));
+    for file in [&titus, &jonah] {
+        let path = dir
+            .path()
+            .join("app-data/uploads")
+            .join(file.upload.as_str());
+        assert!(!path.exists(), "the created project's uploads are deleted");
+    }
 }
 
 /// Add books from USFM files (tC4 #484, #767, #553): each file a book in one batch, the

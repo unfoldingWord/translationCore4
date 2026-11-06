@@ -1059,6 +1059,8 @@ pub struct NewProjectSpec {
     pub folder: ProjectRef,
     pub kind: ProjectKind,
     pub records: Vec<tc_journal::Record>,
+    /// Books that bring their own text (a new project from USFM files), in the same write.
+    pub texts: Vec<tc_store::BookText>,
 }
 
 /// Why a project was not created (tc-store `CreateError`). Nothing of it is left.

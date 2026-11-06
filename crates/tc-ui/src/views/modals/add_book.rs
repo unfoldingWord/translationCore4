@@ -131,7 +131,15 @@ pub fn AddBook() -> impl IntoView {
             let (actions, ab) = (actions.clone(), ab);
             (move || match step.get() {
                 AddBookStep::Method => method_step(&actions).into_any(),
-                AddBookStep::Usfm => usfm_step(&actions, &ab).into_any(),
+                AddBookStep::Usfm => {
+                    let rows = Signal::derive(move || {
+                        ab.with(|ab| ab.as_ref().map(AddBookForm::rows).unwrap_or_default())
+                    });
+                    let error = Signal::derive(move || {
+                        ab.with(|ab| ab.as_ref().and_then(|ab| ab.error.clone()))
+                    });
+                    usfm_step(&actions, rows, error, "ab").into_any()
+                }
                 AddBookStep::Pick => pick_step(&actions, &ab).into_any(),
             })
             .into_any()
@@ -201,14 +209,20 @@ fn error_callout(ab: &Signal<Option<AddBookForm>>) -> impl IntoView + use<> {
     }
 }
 
-/// The from-USFM-files step (tC4 `UsfmStep`).
-fn usfm_step(actions: &Actions, ab: &Signal<Option<AddBookForm>>) -> impl IntoView + use<> {
+/// The from-USFM-files step (tC4 `UsfmStep`), of Add a book (`prefix` "ab") and of New Bible
+/// from USFM files ("nb"): the drop zone, a row for each file with what it is, and `error`.
+pub fn usfm_step(
+    actions: &Actions,
+    rows: Signal<Vec<UsfmRow>>,
+    error: Signal<Option<String>>,
+    prefix: &'static str,
+) -> impl IntoView + use<> {
     let input = NodeRef::<leptos::html::Input>::new();
     let add = {
         let actions = actions.clone();
         move |list: Option<web_sys::FileList>| {
             if let Some(list) = list.filter(|list| list.length() > 0) {
-                actions.ab_add_files(list);
+                actions.add_usfm_files(list);
             }
         }
     };
@@ -232,17 +246,22 @@ fn usfm_step(actions: &Actions, ab: &Signal<Option<AddBookForm>>) -> impl IntoVi
         }
     });
     let rows = {
-        let (actions, ab) = (actions.clone(), *ab);
+        let actions = actions.clone();
         move || {
-            let rows = ab.with(|ab| ab.as_ref().map(AddBookForm::rows).unwrap_or_default());
-            rows.into_iter()
-                .map(|row| usfm_row(&actions, row))
+            rows.get()
+                .into_iter()
+                .map(|row| usfm_row(&actions, row, prefix))
                 .collect_view()
         }
     };
+    let error = move || {
+        error.get().map(|error| {
+            view! { <Callout tone=CalloutTone::Warn attrs=Attrs::from([("role", "alert")])>{error}</Callout> }
+        })
+    };
     view! {
         <div
-            data-testid="ab-usfm"
+            data-testid=format!("{prefix}-usfm")
             style="display: flex; flex-direction: column; gap: 14px; padding-bottom: 18px;"
             on:dragover=move |event: web_sys::DragEvent| event.prevent_default()
             on:drop=on_drop
@@ -252,28 +271,28 @@ fn usfm_step(actions: &Actions, ab: &Signal<Option<AddBookForm>>) -> impl IntoVi
                 type="file"
                 multiple
                 accept=".usfm,.sfm,.txt"
-                data-testid="ab-usfm-input"
+                data-testid=format!("{prefix}-usfm-input")
                 hidden
                 on:change=on_change
             />
             <DropZone
                 title=t(keys::importer::kind::usfm::DROP, &[])
                 hint=t(keys::importer::kind::usfm::HINT, &[])
-                attrs=Attrs::from([("data-testid", "ab-usfm-drop")])
+                attrs=Attrs::new().with("data-testid", format!("{prefix}-usfm-drop"))
                 on_click=click
             />
             {rows}
-            {error_callout(ab)}
+            {error}
         </div>
     }
 }
 
-fn usfm_row(actions: &Actions, row: UsfmRow) -> impl IntoView + use<> {
+fn usfm_row(actions: &Actions, row: UsfmRow, prefix: &'static str) -> impl IntoView + use<> {
     let valid = matches!(row.state, RowState::Adds(_) | RowState::Reading);
     let remove = {
         let actions = actions.clone();
         let id = row.id;
-        Callback::new(move |_| actions.ab_remove_file(id))
+        Callback::new(move |_| actions.remove_usfm_file(id))
     };
     let words = row_words(&row);
     let tone = if valid {
@@ -287,10 +306,9 @@ fn usfm_row(actions: &Actions, row: UsfmRow) -> impl IntoView + use<> {
             border=Edge::Line
             radius=Corner::Md
             pad="10px 10px 10px 14px"
-            attrs=Attrs::from([
-                ("data-testid", "ab-usfm-file"),
-                ("data-status", if valid { "valid" } else { "refused" }),
-            ])
+            attrs=Attrs::new()
+                .with("data-testid", format!("{prefix}-usfm-file"))
+                .with("data-status", if valid { "valid" } else { "refused" })
         >
             <div style="display: flex; align-items: baseline; gap: 10px;">
                 <StatusDot status=if valid { Status::Valid } else { Status::Warn } size=8.0 />

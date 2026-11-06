@@ -35,6 +35,7 @@ async function suggest(page, query, expected) {
 async function openNew(page, which) {
   await page.getByTestId('add-project').click();
   await page.getByTestId(`add-project-${which}`).click();
+  if (which === 'bible') await page.getByTestId('nb-start-blank').click();
   await nameField(page).waitFor();
 }
 

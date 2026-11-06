@@ -1133,6 +1133,58 @@ fn aligned_titus_added_as_a_book_has_no_inline_zaln_and_46_records() {
     assert!(tc_usfm::codec::join_verse(&words, &layout).starts_with("Paul, a servant"));
 }
 
+fn new_from_usfm(texts: Vec<(BookId, String, &str)>) -> tc_store::NewProject {
+    tc_store::NewProject {
+        name: "FromUsfm".into(),
+        kind: tc_journal::fold::ProjectKind::Bible,
+        records: first_records(),
+        books: Vec::new(),
+        texts: texts
+            .into_iter()
+            .map(|(book, usfm, name)| tc_store::BookText {
+                book,
+                usfm,
+                file_name: name.into(),
+            })
+            .collect(),
+    }
+}
+
+/// J9c: a new project from USFM files is created with its books in one write, each book's
+/// alignments split out (tC4 #553), a valid Scripture Burrito.
+#[test]
+fn a_new_project_from_usfm_files_is_created_with_its_books() {
+    let fs = FaultFs::new();
+    let rig = rig(fs.clone());
+    let folder = rig
+        .store
+        .create(&new_from_usfm(vec![(TIT, ult("TIT"), "57-TIT.usfm")]))
+        .unwrap();
+    let on_disk = files(&fs, &folder);
+    let usfm = String::from_utf8(on_disk["ingredients/TIT.usfm"].clone()).unwrap();
+    assert!(usfm.contains("\\c 3") && !usfm.contains("\\zaln"), "{usfm}");
+    assert!(on_disk.contains_key("ingredients/checking/alignments/TIT.json"));
+    assert_valid_burrito(&fs, &folder);
+}
+
+/// J9c "must not": a file that does not read refuses the whole create. Nothing is left in the
+/// projects folder: not the project, not the book that read, not the staging folder.
+#[test]
+fn a_new_project_with_a_damaged_book_is_not_created_at_all() {
+    let fs = FaultFs::new();
+    let rig = rig(fs.clone());
+    let damaged = "\\id GEN\n\\c 1\n\\v 1 In\n\\c 1\n\\v 2 again\n".to_owned();
+    let made = rig.store.create(&new_from_usfm(vec![
+        (TIT, ult("TIT"), "57-TIT.usfm"),
+        (BookId::Genesis, damaged, "bad.usfm"),
+    ]));
+    assert!(
+        matches!(made, Err(tc_store::CreateError::Refused(_))),
+        "{made:?}"
+    );
+    assert!(files(&fs, Path::new(PROJECTS)).is_empty());
+}
+
 /// tC4 #767 (DELTA C37): a poetry book adds whole, every verse present with its text, and its
 /// alignments split out; the Selah inside `\qs` stays in the verse.
 #[test]
@@ -1755,6 +1807,7 @@ pub(crate) fn stories() -> (FaultFs, PathBuf) {
             kind: tc_journal::fold::ProjectKind::Stories,
             records,
             books: Vec::new(),
+            texts: Vec::new(),
         })
         .unwrap();
     (fs.crash(false), folder)

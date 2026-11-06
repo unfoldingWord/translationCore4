@@ -484,6 +484,7 @@ async fn build(decided: usize, orphans: usize, vrs: Option<&[u8]>, opts: Opts) -
             kind: ProjectKind::Bible,
             records,
             books: Vec::new(),
+            texts: Vec::new(),
         })
         .unwrap();
     assert_valid_burrito(&fs, &folder);

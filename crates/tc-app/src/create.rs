@@ -9,8 +9,8 @@
 
 use serde_json::{Value, json};
 use tc_api::create::{
-    AddBlankBooks, AddUsfmBooks, Bible, BooksAdded, Claims, Created, Details, Obs, ReviewUsfm,
-    UsfmAdded, UsfmOutcome, UsfmProblem, UsfmRow, UsfmVerdict,
+    AddBlankBooks, AddUsfmBooks, Bible, BooksAdded, Claims, Created, Details, GuessUsfm, Obs,
+    ReviewUsfm, UsfmAdded, UsfmFile, UsfmOutcome, UsfmProblem, UsfmRow, UsfmVerdict,
 };
 use tc_api::ids::{ProjectRef, WallMs};
 use tc_api::jobs::{OpenPhase, Phase};
@@ -176,6 +176,7 @@ impl App {
         details: Details,
         kind: ProjectKind,
         versification: Option<StandardScheme>,
+        texts: Vec<tc_store::BookText>,
     ) -> Result<Created, ApiError> {
         let folder = details
             .folder()
@@ -208,6 +209,7 @@ impl App {
             folder: folder.clone(),
             kind,
             records,
+            texts,
         };
         let created = self.with_store(move |store| store.create(spec)).await?;
         match created {
@@ -306,6 +308,35 @@ impl App {
             reason: "no such upload".to_owned(),
         })
     }
+
+    /// The books of a new project's USFM files (J9c), judged again here as the dialog judged
+    /// them: every file a book, no two files one book. The dialog sends no other, so a file
+    /// that fails is a bad request. The uploads stay held until the caller is done with them.
+    async fn new_books(
+        &self,
+        files: &[UsfmFile],
+    ) -> Result<(Vec<HeldUpload>, Vec<tc_store::BookText>), ApiError> {
+        let held = self.hold_uploads(files.iter().map(|file| &file.upload))?;
+        let mut claims = Claims::default();
+        let mut texts = Vec::new();
+        for (file, upload) in files.iter().zip(&held) {
+            let (verdict, text) = self.upload_verdict(upload).await?;
+            let book = match verdict {
+                UsfmVerdict::Book { book } => claims.claim(&file.name, book, false),
+                UsfmVerdict::Refused(problem) => Err(problem),
+            }
+            .map_err(|problem| ApiError::BadRequest {
+                field: "files".to_owned(),
+                reason: format!("{}: {problem:?}", file.name),
+            })?;
+            texts.push(tc_store::BookText {
+                book,
+                usfm: text.unwrap_or_default(),
+                file_name: file.name.clone(),
+            });
+        }
+        Ok((held, texts))
+    }
 }
 
 /// What an uploaded file is (tC4 `classifyUsfmFiles`' damage checks). The text comes back with
@@ -341,14 +372,38 @@ impl Handle<Bible> for App {
                 field: "versification".to_owned(),
                 reason: "not a standard versification".to_owned(),
             })?;
-        self.create_project(req.details, ProjectKind::Bible, Some(scheme))
-            .await
+        // The books are read first: a file that fails leaves nothing, and a create that fails
+        // gives the files back for the next press.
+        let (held, texts) = self.new_books(&req.files).await?;
+        let created = self
+            .create_project(req.details, ProjectKind::Bible, Some(scheme), texts)
+            .await?;
+        crate::uploads::used_up(held);
+        Ok(created)
+    }
+}
+
+impl Handle<GuessUsfm> for App {
+    async fn handle(&self, req: GuessUsfm) -> Result<tc_api::import::SchemeGuess, ApiError> {
+        let (_held, texts) = self.new_books(&req.files).await?;
+        tokio::task::spawn_blocking(move || {
+            let shapes: Vec<_> = texts
+                .iter()
+                .filter_map(|text| {
+                    let parts = tc_usfm::codec::decompose(&text.usfm).ok()?;
+                    Some(crate::import::shape(text.book, &parts))
+                })
+                .collect();
+            crate::import::scheme_guess(&shapes)
+        })
+        .await
+        .map_err(|e| create_failed(e.to_string()))
     }
 }
 
 impl Handle<Obs> for App {
     async fn handle(&self, req: Obs) -> Result<Created, ApiError> {
-        self.create_project(req.details, ProjectKind::Stories, None)
+        self.create_project(req.details, ProjectKind::Stories, None, Vec::new())
             .await
     }
 }

@@ -759,6 +759,26 @@ fn license_pick(
     })
 }
 
+/// What the note under a guessed versification says (H13), and its `data-fit`: an import's and
+/// New Bible's from USFM files.
+pub fn scheme_note(guess: &tc_api::import::SchemeGuess) -> (String, &'static str) {
+    use keys::importer::review as k;
+    use tc_api::import::SchemeFit;
+    let scheme = guess.scheme.as_str();
+    match &guess.fit {
+        SchemeFit::Exact => (t(k::SCHEME_EXACT, &[("scheme", &scheme)]), "exact"),
+        SchemeFit::Undecided => (t(k::SCHEME_UNDECIDED, &[("scheme", &scheme)]), "undecided"),
+        SchemeFit::Tied { schemes } => (
+            t(
+                k::SCHEME_TIED,
+                &[("schemes", &schemes.join(", ")), ("scheme", &scheme)],
+            ),
+            "tied",
+        ),
+        SchemeFit::Nearest => (t(k::SCHEME_NEAREST, &[("scheme", &scheme)]), "nearest"),
+    }
+}
+
 /// The versification the project gets (H13): the books' verse counts give the default, the
 /// note says how, and the person can choose another.
 fn versification_pick(
@@ -766,24 +786,7 @@ fn versification_pick(
     im: &Signal<Option<ImportForm>>,
     guess: &tc_api::import::SchemeGuess,
 ) -> impl IntoView + use<> {
-    use keys::importer::review as k;
-    use tc_api::import::SchemeFit;
-    let scheme = guess.scheme.as_str();
-    let note = match &guess.fit {
-        SchemeFit::Exact => t(k::SCHEME_EXACT, &[("scheme", &scheme)]),
-        SchemeFit::Undecided => t(k::SCHEME_UNDECIDED, &[("scheme", &scheme)]),
-        SchemeFit::Tied { schemes } => t(
-            k::SCHEME_TIED,
-            &[("schemes", &schemes.join(", ")), ("scheme", &scheme)],
-        ),
-        SchemeFit::Nearest => t(k::SCHEME_NEAREST, &[("scheme", &scheme)]),
-    };
-    let fit = match guess.fit {
-        SchemeFit::Exact => "exact",
-        SchemeFit::Undecided => "undecided",
-        SchemeFit::Tied { .. } => "tied",
-        SchemeFit::Nearest => "nearest",
-    };
+    let (note, fit) = scheme_note(guess);
     let options: Vec<SelectOption> = guess
         .names
         .iter()

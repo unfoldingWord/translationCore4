@@ -37,7 +37,7 @@ use crate::app::account::{SignInFlow, SignInForm, SignInNext};
 use crate::app::client::CallError;
 use crate::app::feedback::{self, Attachment, FeedbackForm, HelpRequest, Opened};
 use crate::app::fix::Fix;
-use crate::app::forms::{AddBookForm, ImportForm, NewProjectForm};
+use crate::app::forms::{AddBookForm, ImportForm, NewProjectForm, PicksUsfm};
 use crate::app::internet::{InternetFlow, LinkKind, NetStep, Pending, SwitchRequests, SwitchStep};
 use crate::app::latest::Latest;
 pub(crate) use crate::app::net::NetEnd;
@@ -1177,6 +1177,31 @@ impl Actions {
                 patch(ab);
             }
         });
+    }
+
+    /// The open dialog's USFM files: Add a book's, or New Bible's from USFM files (J9c).
+    pub fn patch_usfm<R>(&self, patch: impl FnOnce(&mut dyn PicksUsfm) -> R) -> Option<R> {
+        self.s()
+            .layers
+            .dialog
+            .try_update(|dialog| match dialog {
+                Some(Dialog::AddBook(ab)) => Some(patch(ab)),
+                Some(Dialog::NewProject(np)) => Some(patch(np)),
+                _ => None,
+            })
+            .flatten()
+    }
+
+    /// Whether the open dialog still lists USFM file `row`.
+    pub fn lists_usfm(&self, row: u32) -> bool {
+        self.s().layers.dialog.with_untracked(|dialog| {
+            let usfm = match dialog {
+                Some(Dialog::AddBook(ab)) => &ab.usfm,
+                Some(Dialog::NewProject(np)) => &np.usfm,
+                _ => return false,
+            };
+            usfm.files.iter().any(|entry| entry.id == row)
+        })
     }
 
     pub fn patch_im(&self, patch: impl FnOnce(&mut ImportForm)) {
