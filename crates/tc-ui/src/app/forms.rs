@@ -162,11 +162,14 @@ impl NewProjectForm {
 
     /// Back from the files to the first step: the files go, so a blank project never takes
     /// them. Returns the rows that went, whose uploads the page drops.
+    /// A guess still in flight is forgotten. The row ids keep counting: an upload still being
+    /// sent for a row that went must not land in a later file's row of the same id.
     pub fn back_to_start(&mut self) -> Vec<u32> {
-        let gone = self.usfm.files.iter().map(|entry| entry.id).collect();
-        self.usfm = UsfmFiles::default();
+        let gone = self.usfm.files.drain(..).map(|entry| entry.id).collect();
         self.step = NewStep::Start;
         self.error = None;
+        self.busy = false;
+        self.guess = None;
         gone
     }
 
@@ -210,8 +213,13 @@ impl NewProjectForm {
     }
 
     /// The guess came (H13): it is the versification, the note says how, and the picker shows.
-    /// Without one the files step stays with the reason.
-    pub fn guessed(&mut self, guess: Result<SchemeGuess, String>) {
+    /// Without one the files step stays with the reason. A guess for `asked` applies only while
+    /// the files step still waits for it with those same files: after Back, or a file picked or
+    /// removed meanwhile, it would open the fields for files that were never checked together.
+    pub fn guessed(&mut self, asked: &[UsfmFile], guess: Result<SchemeGuess, String>) {
+        if !(self.step == NewStep::Files && self.busy && self.usfm.sent() == asked) {
+            return;
+        }
         self.busy = false;
         match guess {
             Ok(guess) => {
@@ -508,6 +516,10 @@ impl PicksUsfm for NewProjectForm {
 
     fn edited(&mut self) {
         NewProjectForm::edited(self);
+        // The files changed under a guess in flight: Next asks again for the files as they are.
+        if self.step == NewStep::Files {
+            self.busy = false;
+        }
     }
 }
 

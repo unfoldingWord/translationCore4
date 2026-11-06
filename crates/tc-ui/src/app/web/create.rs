@@ -172,9 +172,10 @@ impl Actions {
         let opening = self.upload_opening();
         let this = self.clone();
         spawn_local(async move {
-            let guess = this.runtime().api().call(&GuessUsfm { files }).await;
+            let asked = GuessUsfm { files };
+            let guess = this.runtime().api().call(&asked).await;
             if this.upload_current(opening) {
-                this.patch_np(|np| np.guessed(guess.map_err(unreadable)));
+                this.patch_np(|np| np.guessed(&asked.files, guess.map_err(unreadable)));
             }
         });
     }

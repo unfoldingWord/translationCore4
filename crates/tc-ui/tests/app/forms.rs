@@ -327,17 +327,14 @@ fn new_bible_from_usfm_files_checks_the_files_then_takes_the_guessed_versificati
     let c = form.add_file("MAL.usfm".into());
     form.file_read(c, read(3, BookId::Malachi));
     assert!(form.files_ready());
-    assert_eq!(form.press_next().unwrap().len(), 2);
+    let asked = form.press_next().unwrap();
+    assert_eq!(asked.len(), 2);
     assert_eq!(form.press_next(), None, "disabled in flight");
-    form.guessed(Err("the server did not answer".into()));
+    form.guessed(&asked, Err("the server did not answer".into()));
     assert_eq!(form.step, NewStep::Files, "no guess, no fields");
     assert!(form.error.is_some());
-    form.press_next().unwrap();
-    form.guessed(Ok(tc_api::import::SchemeGuess {
-        scheme: "org".into(),
-        fit: tc_api::import::SchemeFit::Exact,
-        names: vec!["eng".into(), "org".into()],
-    }));
+    let asked = form.press_next().unwrap();
+    form.guessed(&asked, Ok(guess("org")));
     assert_eq!(form.step, NewStep::Details);
     assert_eq!(form.versification, "org");
     assert!(form.show_advanced, "the picker shows the guess");
@@ -347,6 +344,54 @@ fn new_bible_from_usfm_files_checks_the_files_then_takes_the_guessed_versificati
     form.choose_start(NewStart::Blank);
     assert_eq!(form.step, NewStep::Details);
     assert!(form.usfm.sent().is_empty() && form.file_books().is_empty());
+}
+
+fn guess(scheme: &str) -> tc_api::import::SchemeGuess {
+    tc_api::import::SchemeGuess {
+        scheme: scheme.into(),
+        fit: tc_api::import::SchemeFit::Exact,
+        names: vec!["eng".into(), "org".into()],
+    }
+}
+
+/// J9c "Create makes the project with all of it": a guess answered after Back, or after the
+/// files changed, opens no fields and sets no versification; only the guess for the files as
+/// they are now does.
+#[test]
+fn a_late_guess_for_other_files_opens_no_fields() {
+    let mut form = NewProjectForm::bible(Ok(vec!["eng".into(), "org".into()]));
+    form.choose_start(NewStart::Usfm);
+    let a = form.add_file("TIT.usfm".into());
+    form.file_read(a, read(1, BookId::Titus));
+    let first = form.press_next().unwrap();
+    // Back while the guess runs: the files go, the wait ends, the late guess changes nothing.
+    assert_eq!(form.back_to_start(), vec![a]);
+    assert!(!form.busy && form.guess.is_none());
+    form.guessed(&first, Ok(guess("org")));
+    assert_eq!(form.step, NewStep::Start);
+    assert_eq!(form.versification, "eng");
+    // Files again, and Next for them while the first guess is still on its way.
+    form.choose_start(NewStart::Usfm);
+    let b = form.add_file("MAL.usfm".into());
+    assert_ne!(b, a, "a late upload for the row that went cannot land in this one");
+    form.file_read(b, read(2, BookId::Malachi));
+    let second = form.press_next().unwrap();
+    form.guessed(&first, Ok(guess("org")));
+    assert_eq!(form.step, NewStep::Files, "the first files' guess");
+    assert!(form.busy, "still waiting for its own");
+    // A file picked while the guess runs: that guess is for fewer files than the list holds.
+    let c = form.add_file("JUD.usfm".into());
+    assert!(!form.busy);
+    form.guessed(&second, Ok(guess("org")));
+    assert_eq!(form.step, NewStep::Files);
+    assert!(!form.files_ready(), "the new file is still being read");
+    form.file_read(c, read(3, BookId::Jude));
+    let third = form.press_next().unwrap();
+    assert_eq!(third.len(), 2);
+    form.guessed(&third, Ok(guess("org")));
+    assert_eq!(form.step, NewStep::Details);
+    assert_eq!(form.versification, "org");
+    assert_eq!(form.file_books(), vec![BookId::Malachi, BookId::Jude]);
 }
 
 #[test]
