@@ -439,10 +439,12 @@ impl ReceiveForm {
                 &[("n", &n), ("from", &from)],
             ),
         });
-        match view.verse_conflicts {
-            0 => {}
-            1 => lines.push(t(keys::exchange::receive::CONFLICTS_ONE, &[])),
-            n => lines.push(t(keys::exchange::receive::CONFLICTS, &[("n", &n)])),
+        match (view.frame_conflicts, view.verse_conflicts) {
+            (Some(0), _) | (None, 0) => {}
+            (Some(1), _) => lines.push(t(keys::exchange::receive::FRAME_CONFLICTS_ONE, &[])),
+            (Some(n), _) => lines.push(t(keys::exchange::receive::FRAME_CONFLICTS, &[("n", &n)])),
+            (None, 1) => lines.push(t(keys::exchange::receive::CONFLICTS_ONE, &[])),
+            (None, n) => lines.push(t(keys::exchange::receive::CONFLICTS, &[("n", &n)])),
         }
         for row in &view.replaced {
             lines.push(crate::app::sync::replaced_text(row));

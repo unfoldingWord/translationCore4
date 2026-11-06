@@ -340,11 +340,14 @@ impl CachedQuery for tc_api::story::List {
     }
 }
 
-/// One story (B7): its text and its comments, the pictures and the gateway story its pins give.
+/// One story (B7): its text and its comments, the pictures and the gateway story its pins give,
+/// and the project's conflicts, which `StoryView::conflicts` counts across every story.
 impl CachedQuery for tc_api::story::Open {
     fn read_of(&self) -> crate::app::cache::ReadOf {
+        use tc_api::{event::Aspect, query::QueryKey};
         let mut keys = resource_keys();
-        keys.push(tc_api::query::QueryKey::Story(self.story));
+        keys.push(QueryKey::Story(self.story));
+        keys.push(QueryKey::Aspect(Aspect::Conflicts));
         project_read(&self.at, keys)
     }
 }

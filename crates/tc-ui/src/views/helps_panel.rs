@@ -17,7 +17,7 @@ use super::panel_icons::helps_icon;
 use crate::app::load::Load;
 use crate::app::understand::{
     HelpFocus, HelpsTab, PREVIEW_CHARS, blocks_len, drag_width, in_focus, preview_blocks,
-    simplified_label, slot_state,
+    simplified_label, slot_state, word_panes,
 };
 use crate::app::web::understand::ArticleState;
 use crate::app::web::{Actions, AppCtx, use_app};
@@ -74,6 +74,10 @@ pub fn HelpsPanel(
     focus_verses: Memo<Option<Vec<String>>>,
     helps: Signal<Load<Arc<PassageView>>>,
     pane: String,
+    /// The verse keys of each section the screen shows: a word card lights every instance of
+    /// its article in its section.
+    #[prop(optional)]
+    sections: Option<Memo<Vec<Vec<String>>>>,
     #[prop(optional)] comments: Option<Signal<Vec<CommentView>>>,
     #[prop(optional)] story: Option<StoryPanel>,
 ) -> impl IntoView {
@@ -188,7 +192,7 @@ pub fn HelpsPanel(
                     (HelpsTab::Comments, Some(comments)) => {
                         comments_tab(&s, comments, chapter, focus_verses).into_any()
                     }
-                    _ => helps_tab(&s, &actions, tab, view, focus_verses, &pane, story.as_ref())
+                    _ => helps_tab(&s, &actions, tab, view, focus_verses, &pane, story.as_ref(), sections)
                         .into_any(),
                 },
             })
@@ -306,6 +310,10 @@ fn helps_divider(actions: &Actions, panel: NodeRef<html::Aside>) -> impl IntoVie
 }
 
 /// tC4's `HelpsTab`.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "a view's inputs: the state, handles and signals it reads"
+)]
 fn helps_tab(
     s: &crate::app::web::AppState,
     actions: &Actions,
@@ -314,6 +322,7 @@ fn helps_tab(
     focus_verses: Memo<Option<Vec<String>>>,
     pane: &str,
     story: Option<&StoryPanel>,
+    sections: Option<Memo<Vec<Vec<String>>>>,
 ) -> AnyView {
     // tC4's `chapterAllCrossBook`: a chapter the sources have in another book has its helps
     // there.
@@ -334,7 +343,10 @@ fn helps_tab(
     let frame = story.map(|s| s.focus_frame);
     match tab {
         HelpsTab::Notes => notes_tab(s, actions, &view.notes, focus, pane, frame),
-        HelpsTab::Words => words_tab(s, actions, &view.words, focus, pane, frame),
+        HelpsTab::Words => {
+            let sections = sections.map(|s| s.get()).unwrap_or_default();
+            words_tab(s, actions, &view.words, focus, pane, frame, &sections)
+        }
         HelpsTab::Questions => questions_tab(s, &view.questions, focus, frame),
         HelpsTab::Simplified => simplified_tab(&view.simplified, focus),
         HelpsTab::Comments => match story.and_then(|s| s.comments) {
@@ -499,11 +511,10 @@ fn empty_tab(focus: Option<&[String]>) -> AnyView {
     view! { <p style=style.to_style()>{t(key, &[])}</p> }.into_any()
 }
 
-fn focus_of(id: &str, verse: &str, panes: &[tc_api::helps::PaneFocus]) -> HelpFocus {
+fn focus_of(id: &str, panes: Vec<tc_api::helps::PaneFocus>) -> HelpFocus {
     HelpFocus {
         id: id.to_owned(),
-        verse: verse.to_owned(),
-        panes: panes.to_vec(),
+        panes,
     }
 }
 
@@ -547,11 +558,11 @@ fn notes_tab(
     let cards = if notes.is_empty() {
         empty_tab(focus)
     } else {
-        notes
+        let cards = notes
             .into_iter()
             .map(|n| {
                 let verse = n.verse.as_str().to_owned();
-                let focus = focus_of(&n.id, &verse, &n.panes);
+                let focus = focus_of(&n.id, n.panes.clone());
                 let (click, enter, leave) = card_events(actions, focus);
                 let lit = card_lit(&active, &n.id, &verse, frame);
                 let title = HelpFocus::title(&n.panes, pane)
@@ -566,7 +577,11 @@ fn notes_tab(
                 let note = n.note.clone();
                 let body: crate::ds::Slot =
                     Box::new(move || expandable_note(note.clone()).into_any());
-                match n.academy.clone() {
+                let action_label = match &n.academy_title {
+                    Some(title) => t(keys::understand::ACADEMY_ARTICLE, &[("title", title)]),
+                    None => t(keys::understand::ACADEMY_LINK, &[]),
+                };
+                let card = match n.academy.clone() {
                     Some(slug) => {
                         let actions = actions.clone();
                         let academy = Callback::new(move |()| {
@@ -576,14 +591,13 @@ fn notes_tab(
                             <HelpCard
                                 kind=HelpKind::Note
                                 attrs=attrs
-                                verse=verse
                                 active=lit
                                 on_click=click
                                 on_mouse_enter=enter
                                 on_mouse_leave=leave
                                 title=title
                                 body=body
-                                action_label=t(keys::understand::ACADEMY_LINK, &[])
+                                action_label=action_label
                                 on_action=academy
                                 attr:data-focused=move || lit.get().then_some("true")
                             />
@@ -594,24 +608,66 @@ fn notes_tab(
                         <HelpCard
                             kind=HelpKind::Note
                             attrs=attrs
-                            verse=verse
                             active=lit
                             on_click=click
                             on_mouse_enter=enter
                             on_mouse_leave=leave
                             title=title
                             body=body
-                            action_label=t(keys::understand::ACADEMY_LINK, &[])
+                            action_label=action_label
                             attr:data-focused=move || lit.get().then_some("true")
                         />
                     }
                     .into_any(),
-                }
+                };
+                (verse, card)
             })
-            .collect_view()
-            .into_any()
+            .collect();
+        verse_groups(cards, frame.is_some())
     };
     view! { {banners(ready)} {cards} }.into_any()
+}
+
+/// A tab's cards under one heading for each verse, in the resource's order: a run of one
+/// verse's cards shares its heading.
+fn verse_groups(cards: Vec<(String, AnyView)>, story: bool) -> AnyView {
+    let mut groups: Vec<(String, Vec<AnyView>)> = Vec::new();
+    for (verse, card) in cards {
+        match groups.last_mut() {
+            Some((v, run)) if *v == verse => run.push(card),
+            _ => groups.push((verse, vec![card])),
+        }
+    }
+    let stack = crate::css! { "display": "flex", "flex-direction": "column", "gap": 6 }.to_style();
+    groups
+        .into_iter()
+        .map(|(verse, cards)| {
+            view! {
+                <section data-testid="helps-verse" style=stack.clone()>
+                    <Overline>{verse_label(&verse, story)}</Overline>
+                    {cards}
+                </section>
+            }
+        })
+        .collect_view()
+        .into_any()
+}
+
+/// A verse group's heading: the introduction, the story frame, or the verse or verses.
+fn verse_label(verse: &str, story: bool) -> String {
+    if verse == "intro" {
+        return t(keys::understand::INTRODUCTION, &[]);
+    }
+    if story {
+        return t(keys::story_draft::FRAME_LABEL, &[("n", &verse)]);
+    }
+    match verse.split_once('-') {
+        Some((from, to)) => t(
+            keys::understand::VERSES_RANGE,
+            &[("from", &from), ("to", &to)],
+        ),
+        None => t(keys::understand::VERSE_ONE, &[("n", &verse)]),
+    }
 }
 
 fn words_tab(
@@ -621,6 +677,7 @@ fn words_tab(
     focus: Option<&[String]>,
     pane: &str,
     frame: Option<Memo<Option<u16>>>,
+    sections: &[Vec<String>],
 ) -> AnyView {
     let Slot::Ready(ready) = slot else {
         return slot_status(actions, slot);
@@ -628,7 +685,8 @@ fn words_tab(
     let words: Vec<_> = ready
         .items
         .iter()
-        .filter(|w| in_focus(w.verse.as_str(), focus))
+        .zip(word_panes(&ready.items, sections))
+        .filter(|(w, _)| in_focus(w.verse.as_str(), focus))
         .collect();
     let dir = dir_str(ready.dir);
     let active = s.u.helps_active.clone();
@@ -637,9 +695,9 @@ fn words_tab(
     } else {
         words
             .into_iter()
-            .map(|w| {
+            .map(|(w, panes)| {
                 let verse = w.verse.as_str().to_owned();
-                let (click, enter, leave) = card_events(actions, focus_of(&w.id, &verse, &w.panes));
+                let (click, enter, leave) = card_events(actions, focus_of(&w.id, panes));
                 let lit = card_lit(&active, &w.id, &verse, frame);
                 let title = HelpFocus::title(&w.panes, pane)
                     .or_else(|| (!w.quote.is_empty()).then(|| w.quote.clone()))
@@ -649,7 +707,14 @@ fn words_tab(
                     attrs.set("dir", dir);
                 }
                 attrs.set("data-frame", verse.as_str());
-                let slug = w.slug.clone();
+                let (slug, intro) = (w.slug.clone(), w.intro.clone());
+                let body: crate::ds::Slot = Box::new(move || {
+                    if intro.is_empty() {
+                        view! { <span dir="auto">{slug.clone()}</span> }.into_any()
+                    } else {
+                        expandable_note(intro.clone()).into_any()
+                    }
+                });
                 let link = ArticleLink::Words {
                     category: w.category.clone(),
                     slug: w.slug.clone(),
@@ -659,13 +724,12 @@ fn words_tab(
                         <HelpCard
                             kind=HelpKind::Word
                             attrs=attrs
-                            verse=verse
                             active=lit
                             on_click=click
                             on_mouse_enter=enter
                             on_mouse_leave=leave
                             title=title
-                            body=Box::new(move || view! { <span dir="auto">{slug.clone()}</span> }.into_any())
+                            body=body
                             action_label=t(keys::understand::WORD_LINK, &[])
                             on_action=Callback::new(move |()| actions.load_help_article(link.clone()))
                             attr:data-focused=move || lit.get().then_some("true")

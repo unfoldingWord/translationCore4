@@ -14,7 +14,7 @@ use tc_api::door43::SyncProject;
 use tc_api::endpoint::NetKind;
 use tc_api::error::{Feature, SignInReason};
 use tc_api::home::{BookTileView, Card, HomeCard, List};
-use tc_api::ids::{JobId, RequestId};
+use tc_api::ids::{JobId, ProjectRef, RequestId};
 use tc_api::jobs::{JobOutcome, JobState, SyncResultView};
 use tc_api::net::Set;
 use tc_api::refusal::{Refusal, SyncFailure, SyncRefusal};
@@ -173,16 +173,28 @@ pub(super) async fn synced(app: &App, n: u8) -> SyncResultView {
 
 /// The card once its summary is computed, after the sync told Home it changed.
 pub(super) async fn card_with_counts(app: &App) -> HomeCard {
+    card_where(app, &folder(SAMPLE), |card| {
+        card.conflicts != Known::Unknown
+    })
+    .await
+}
+
+/// `project`'s card once `ready` holds of it: Home computes a summary after it is told.
+pub(super) async fn card_where(
+    app: &App,
+    project: &ProjectRef,
+    ready: impl Fn(&HomeCard) -> bool,
+) -> HomeCard {
     for () in crate::store_world::for_a_minute() {
         let card: HomeCard = post(
             app,
             &Card {
-                project: folder(SAMPLE),
+                project: project.clone(),
             },
         )
         .await
         .unwrap();
-        if card.conflicts != Known::Unknown {
+        if ready(&card) {
             return card;
         }
         tokio::time::sleep(Duration::from_millis(5)).await;
@@ -221,6 +233,7 @@ pub(super) const TWO_TEAMMATES: fn() -> ScriptedSync = || ScriptedSync::Synced {
     joined: None,
     kinds: Vec::new(),
     restored: 0,
+    format_restored: false,
 };
 
 /// tC4 #678: only the press syncs, and it asks the internet question, then the sign-in, before
@@ -268,6 +281,7 @@ async fn teammates_a_sync_receives_stand_as_one_verse_conflict_on_the_toast_the_
             joined: None,
             kinds: Vec::new(),
             restored: 0,
+            format_restored: false,
         },
     )
     .await;
@@ -279,10 +293,12 @@ async fn teammates_a_sync_receives_stand_as_one_verse_conflict_on_the_toast_the_
             from: Vec::new(),
             kept_newest: 0,
             verse_conflicts: 0,
+            frame_conflicts: None,
             alignments: 0,
             restored: 0,
             missing_pins: 5,
             recreated: false,
+            format_restored: false,
             hand_edited: Vec::new(),
             replaced: Vec::new(),
         }
@@ -297,10 +313,12 @@ async fn teammates_a_sync_receives_stand_as_one_verse_conflict_on_the_toast_the_
             from: vec![teammate(1), teammate(2)],
             kept_newest: 0,
             verse_conflicts: 1,
+            frame_conflicts: None,
             alignments: 0,
             restored: 0,
             missing_pins: 5,
             recreated: false,
+            format_restored: false,
             hand_edited: Vec::new(),
             replaced: Vec::new(),
         }
@@ -328,6 +346,7 @@ async fn a_second_sync_sends_again_what_door43_lost_and_still_names_the_conflict
             joined: None,
             kinds: Vec::new(),
             restored: 1,
+            format_restored: false,
         },
     )
     .await;
@@ -360,7 +379,7 @@ async fn a_failed_sync_ends_with_its_refusal_and_changes_nothing() {
 /// #791: verses with two alignments are counted apart from verse conflicts and from the kinds
 /// that show their newest version, from the fold's counts by kind.
 #[test]
-fn the_toast_counts_verse_conflicts_alignments_and_the_rest_apart() {
+fn the_toast_counts_verse_conflicts_frames_alignments_and_the_rest_apart() {
     let mut counts = ConflictCounts::new();
     counts.insert((Some(BookId::Titus), ConflictKind::VerseText.order()), 2);
     counts.insert((Some(BookId::Titus), ConflictKind::Passage.order()), 1);
@@ -371,12 +390,15 @@ fn the_toast_counts_verse_conflicts_alignments_and_the_rest_apart() {
     counts.insert((Some(BookId::Titus), ConflictKind::Alignment.order()), 3);
     counts.insert((Some(BookId::Titus), ConflictKind::Check.order()), 1);
     counts.insert((None, ConflictKind::Setting.order()), 1);
+    counts.insert((None, ConflictKind::Frame.order()), 2);
+    counts.insert((None, ConflictKind::StoryRef.order()), 1);
     assert_eq!(
         ConflictTally::of(&counts),
         ConflictTally {
             verse: 4,
+            frames: 2,
             alignments: 3,
-            others: 2,
+            others: 3,
         }
     );
 }

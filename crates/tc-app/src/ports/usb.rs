@@ -30,9 +30,7 @@ fn refusal(error: ExchangeError, export: bool) -> ExchangeRefusal {
         ExchangeError::OtherProject => ExchangeRefusal::OtherProject {
             name: String::new(),
         },
-        ExchangeError::NeedsNewerApp { major } => ExchangeRefusal::NewerFormat {
-            format: major.parse().unwrap_or(u16::MAX),
-        },
+        ExchangeError::NeedsNewerApp(format) => ExchangeRefusal::NewerFormat(format),
         ExchangeError::NotVerified(_) => ExchangeRefusal::VerifyFailed,
         ExchangeError::PartlyReceived(reason) => ExchangeRefusal::PartlyReceived { reason },
         ExchangeError::NoHistory
@@ -236,12 +234,16 @@ async fn receive_into(
     let view = match report {
         Ok(report) => {
             let session = lease.session();
-            let me = session.handle().facts().device;
+            let facts = session.handle().facts();
             let resources = &app.inner.resources;
-            let mut view =
-                crate::sync::synced_view(&session.read(), me, &report.received_ids, 0, &|pin| {
-                    resources.has_dcs(pin)
-                });
+            let mut view = crate::sync::synced_view(
+                &session.read(),
+                facts.device,
+                facts.kind,
+                &report.received_ids,
+                0,
+                &|pin| resources.has_dcs(pin),
+            );
             view.hand_edited = report
                 .hand_edited
                 .into_iter()

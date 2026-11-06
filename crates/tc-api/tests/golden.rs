@@ -618,10 +618,12 @@ impl Example for tc_api::door43::LastSyncView {
                 from: vec![juan.clone()],
                 kept_newest: 3,
                 verse_conflicts: 0,
+                frame_conflicts: None,
                 alignments: 0,
                 restored: 0,
                 missing_pins: 0,
                 recreated: false,
+                format_restored: false,
                 hand_edited: Vec::new(),
                 replaced: vec![
                     setting(
@@ -2243,6 +2245,7 @@ impl Example for PassageView {
                         spans(" is an abstract noun.", "Faith"),
                     )],
                     academy: Some("figs-abstractnouns".into()),
+                    academy_title: Some("Abstract Nouns".into()),
                     panes: vec![focus.clone()],
                 }],
                 dir: Some(Direction::Ltr),
@@ -2257,6 +2260,11 @@ impl Example for PassageView {
                     occurrence: 1,
                     category: Some("kt".into()),
                     slug: "god".into(),
+                    intro: vec![ArticleBlock::new(
+                        BlockKind::P,
+                        0,
+                        spans(" refers to the eternal being.", "God"),
+                    )],
                     panes: vec![focus],
                 }],
                 dir: None,
@@ -2776,6 +2784,7 @@ impl Example for story::StoryView {
                 text: "Check the title with the team.".into(),
                 at: WallMs(1_790_000_000_000),
             }],
+            conflicts: 1,
         }
     }
 }
@@ -3284,6 +3293,7 @@ impl Example for Script {
                     }),
                     kinds: vec![TeammatesKind::Check, TeammatesKind::CarriedFile],
                     restored: 0,
+                    format_restored: false,
                 },
             },
         }
@@ -3524,7 +3534,7 @@ impl Example for export::PreflightView {
     fn example() -> Self {
         export::PreflightView {
             conflicts: 4,
-            verses: 3,
+            two_versions: export::TwoVersions::Verses(3),
         }
     }
 }
@@ -3944,10 +3954,12 @@ fn events() -> Vec<Event> {
                 ],
                 kept_newest: 0,
                 verse_conflicts: 1,
+                frame_conflicts: None,
                 alignments: 0,
                 restored: 0,
                 missing_pins: 5,
                 recreated: false,
+                format_restored: false,
                 hand_edited: Vec::new(),
                 replaced: vec![tc_api::jobs::ReplacedView {
                     by: PersonLabel {
@@ -3987,11 +3999,13 @@ fn events() -> Vec<Event> {
                 }],
                 kept_newest: 1,
                 verse_conflicts: 1,
+                frame_conflicts: None,
                 alignments: 0,
                 restored: 0,
                 missing_pins: 0,
                 replaced: Vec::new(),
                 recreated: false,
+                format_restored: false,
                 hand_edited: vec![HandEdited {
                     path: "ingredients/TIT.usfm".into(),
                     outcome: HandEditOutcome::NotTakenIn,

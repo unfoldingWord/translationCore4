@@ -2258,3 +2258,176 @@ async fn a_branch_put_back_by_a_broken_chain_is_said_by_the_next_sync() {
     assert!(!sync(&a, &door43).await.recreated, "said once");
     a.close().unwrap();
 }
+
+/// Ana syncs once, a teammate's newer app then commits `format` as the project's format on
+/// Door43, and Ana saves and syncs again. Returns the report, whether Door43's tip moved,
+/// and whether Ana's own `format.json` changed.
+async fn sync_after_a_teammate_writes_format(
+    repo: &str,
+    format: &[u8],
+) -> (SyncReport, bool, bool) {
+    let door43 = door43(repo).await;
+    let dir = tempfile::tempdir().unwrap();
+    let ana = computer(dir.path(), "ana");
+    let folder = titus(&ana);
+    let a = open(&ana, &folder);
+    connect(&a, &door43, repo);
+    synced(&sync(&a, &door43).await);
+    door43_commit(&door43, repo, "ingredients/tc/format.json", Some(format));
+    let tip = on_door43_tip(&door43, repo);
+    let before = std::fs::read(folder.join("ingredients/tc/format.json")).unwrap();
+    save(&a, 1, 1, "Paul");
+    let report = sync(&a, &door43).await;
+    let sent = on_door43_tip(&door43, repo) != tip;
+    a.close().unwrap();
+    let changed = std::fs::read(folder.join("ingredients/tc/format.json")).unwrap() != before;
+    (report, sent, changed)
+}
+
+fn blocked_by(report: &SyncReport, format: tc_api::refusal::NewerFormat) -> bool {
+    report.ended
+        == Ended::Failed(tc_api::refusal::SyncFailure::Blocked(
+            tc_api::refusal::SyncBlock::NeedsNewerApp(format),
+        ))
+}
+
+const MAJOR_2: tc_api::refusal::NewerFormat = tc_api::refusal::NewerFormat::Major { major: 2 };
+
+/// INV-NEWER-MAJOR-REFUSED (§9.2 N1): a teammate on a newer major blocks the sync, and
+/// nothing is taken or sent.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_teammate_on_a_newer_major_blocks_the_sync_and_nothing_changes() {
+    let format_2 = std::fs::read(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/journal/format-2.0.json"),
+    )
+    .unwrap();
+    let (report, sent, changed) =
+        sync_after_a_teammate_writes_format("titus-major", &format_2).await;
+    assert!(blocked_by(&report, MAJOR_2), "{:?}", report.ended);
+    assert!(!sent, "nothing sent");
+    assert!(!changed, "nothing taken");
+}
+
+/// INV-FORMAT-HEADER-FROZEN: the same when a field this app reads has a shape it cannot
+/// parse (§9.2 N1 would otherwise call it damaged and restore this app's format.json over it).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_teammate_on_a_newer_major_with_fields_this_app_cannot_parse_blocks_the_sync() {
+    let reshaped = br#"{"format":"tc-project","major":2,"minor":0,"minReaderMinor":0,"derivations":"moved","derivedPaths":{}}"#;
+    let (report, sent, changed) =
+        sync_after_a_teammate_writes_format("titus-reshaped", reshaped).await;
+    assert!(
+        blocked_by(&report, MAJOR_2),
+        "{:?}; sent {sent}; local format.json changed {changed}",
+        report.ended
+    );
+    assert!(!sent, "nothing sent");
+    assert!(!changed, "nothing taken");
+}
+
+/// §9.2 N1: a teammate whose `minReaderMinor` is above this app's minor blocks the sync too.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_teammate_on_a_newer_minor_this_app_cannot_write_blocks_the_sync() {
+    let format_1_4 = std::fs::read(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/journal/format-1.4-read-only.json"),
+    )
+    .unwrap();
+    let (report, sent, changed) =
+        sync_after_a_teammate_writes_format("titus-minor", &format_1_4).await;
+    let format_1_4 = tc_api::refusal::NewerFormat::ReaderMinor {
+        major: 1,
+        min_reader_minor: 4,
+    };
+    assert!(
+        blocked_by(&report, format_1_4),
+        "{:?}; sent {sent}; local format.json changed {changed}",
+        report.ended
+    );
+    assert!(!sent, "nothing sent");
+}
+
+const FORMAT_JSON: &str = "ingredients/tc/format.json";
+
+/// INV-FORMAT-RESTORED-AND-SAID (§9.2 N1): Ana and Juan share a project; when `saves`, Juan
+/// saves a verse and syncs. Then a hand edit on Door43 sets `format.json` to `lost` (`None`
+/// deletes it); when `saves`, Ana saves a verse; and Ana syncs. Checks that the sync ends
+/// synced, that Door43's `format.json` is Ana's byte for byte, and that both computers hold
+/// both verses after Juan syncs. Returns Ana's report.
+async fn sync_after_format_lost_on_door43(
+    repo: &str,
+    lost: Option<&[u8]>,
+    saves: bool,
+) -> SyncReport {
+    let door43 = door43(repo).await;
+    let dir = tempfile::tempdir().unwrap();
+    let ana = computer(dir.path(), "ana");
+    let folder_a = titus(&ana);
+    let a = open(&ana, &folder_a);
+    connect(&a, &door43, repo);
+    synced(&sync(&a, &door43).await);
+    a.close().unwrap();
+    let juan = computer(dir.path(), "juan");
+    let folder_b = copy_to(&folder_a, &juan);
+    let b = open(&juan, &folder_b);
+    let a = open(&ana, &folder_a);
+    if saves {
+        save(&b, 1, 2, "in hope, as Juan has it");
+        synced(&sync(&b, &door43).await);
+    }
+    door43_commit(&door43, repo, FORMAT_JSON, lost);
+    if saves {
+        save(&a, 1, 1, "Paul, as Ana has it");
+    }
+    let report = sync(&a, &door43).await;
+    synced(&report);
+    let ours = std::fs::read(folder_a.join(FORMAT_JSON)).unwrap();
+    assert_eq!(
+        on_door43(&door43, repo, FORMAT_JSON),
+        Some(ours),
+        "restored"
+    );
+    let juans = sync(&b, &door43).await;
+    synced(&juans);
+    assert!(!juans.format_restored, "said once: {juans:?}");
+    if saves {
+        for handle in [&a, &b] {
+            assert_eq!(words(handle, 1, 1).as_deref(), Some("Paul, as Ana has it"));
+            assert_eq!(
+                words(handle, 1, 2).as_deref(),
+                Some("in hope, as Juan has it")
+            );
+        }
+    }
+    a.close().unwrap();
+    b.close().unwrap();
+    report
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_format_json_deleted_on_door43_is_restored_and_said() {
+    let report = sync_after_format_lost_on_door43("titus-fmt-gone", None, true).await;
+    assert!(report.format_restored, "{report:?}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_format_json_damaged_on_door43_is_restored_and_said() {
+    let not_json: &[u8] = b"{\"format\": \"tc-pro";
+    let no_header: &[u8] = br#"{"format":"tc-project","major":"one","minReaderMinor":0}"#;
+    for (repo, damaged) in [("titus-fmt-text", not_json), ("titus-fmt-head", no_header)] {
+        let report = sync_after_format_lost_on_door43(repo, Some(damaged), true).await;
+        assert!(report.format_restored, "{repo}: {report:?}");
+    }
+}
+
+/// The same when losing `format.json` is Door43's only change, and Ana has nothing new: the
+/// merge takes in no pack and changes no verse.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_format_json_lost_on_door43_alone_is_restored() {
+    for (repo, lost) in [
+        ("titus-fmt-gone-alone", None),
+        ("titus-fmt-text-alone", Some(&b"not json"[..])),
+    ] {
+        let report = sync_after_format_lost_on_door43(repo, lost, false).await;
+        assert!(report.format_restored, "{repo}: {report:?}");
+    }
+}

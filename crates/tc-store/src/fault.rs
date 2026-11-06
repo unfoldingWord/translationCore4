@@ -191,7 +191,8 @@ impl Drop for FaultWatch {
 /// The real folder beside the model where libgit2 keeps a project's `.git` (D3): git is outside
 /// the `Vfs` (§16.2), so its files are real, one mirror for each independent filesystem. The
 /// folder is removed when the last filesystem that uses it is dropped, and a folder left by
-/// a process that no longer exists is removed by the next process that makes one.
+/// a process that no longer exists is removed by the next process that makes one, or that
+/// makes one of the same name.
 #[derive(Debug, Clone)]
 enum Mirror {
     /// Not made yet: no project asked for a repository.
@@ -249,6 +250,13 @@ impl MirrorDir {
         SWEPT.call_once(|| sweep_dead_mirrors(&base));
         let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let root = base.join(format!("{}-{n}", std::process::id()));
+        // A process id is unique only among live processes: a folder of this name was left by
+        // one that ended (Windows reuses ids at once and is not swept), and its read-only git
+        // files refuse a copy over them.
+        match std::fs::remove_dir_all(&root) {
+            Err(e) if e.kind() != io::ErrorKind::NotFound => return Err(e),
+            _ => {}
+        }
         std::fs::create_dir_all(&root)?;
         Ok(Arc::new(Self { root }))
     }

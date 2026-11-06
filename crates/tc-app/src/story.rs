@@ -479,6 +479,12 @@ impl Handle<Open> for App {
                 packs: note.packs.into_iter().map(pack_report).collect(),
             }),
             comments: comments_of(self, &read, req.story)?,
+            conflicts: read
+                .conflict_counts()
+                .iter()
+                .filter(|((_, kind), _)| *kind == tc_journal::fold::ConflictKind::Frame.order())
+                .map(|(_, n)| *n)
+                .sum(),
         })
     }
 }
@@ -516,6 +522,11 @@ impl LoadedObs {
                 .iter()
                 .filter_map(|note| {
                     let (chapter, verse) = at(&note.reference)?;
+                    let academy = note
+                        .support_reference
+                        .as_ref()
+                        .and_then(|a| a.slug())
+                        .map(str::to_owned);
                     Some(NoteCard {
                         id: item_id(&note.id),
                         chapter,
@@ -523,11 +534,10 @@ impl LoadedObs {
                         quote: note.quote.as_str().to_owned(),
                         occurrence: occurrence(note.occurrence),
                         note: blocks(&note.text),
-                        academy: note
-                            .support_reference
-                            .as_ref()
-                            .and_then(|a| a.slug())
-                            .map(str::to_owned),
+                        academy_title: academy
+                            .as_deref()
+                            .and_then(|slug| crate::understand::academy_title(helps, slug)),
+                        academy,
                         panes: Vec::new(),
                     })
                 })
@@ -539,14 +549,17 @@ impl LoadedObs {
                 .iter()
                 .filter_map(|link| {
                     let (chapter, verse) = at(&link.reference)?;
+                    let category = link.article.category().map(|c| c.folder().to_owned());
+                    let slug = word_slug(&link.article);
                     Some(WordCard {
                         id: item_id(&link.id),
                         chapter,
                         verse,
                         quote: link.orig_words.as_str().to_owned(),
                         occurrence: occurrence(link.occurrence),
-                        category: link.article.category().map(|c| c.folder().to_owned()),
-                        slug: word_slug(&link.article),
+                        intro: crate::understand::word_intro(helps, category.clone(), slug.clone()),
+                        category,
+                        slug,
                         panes: Vec::new(),
                     })
                 })

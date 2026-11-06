@@ -224,6 +224,10 @@ pub struct SyncResultView {
     pub kept_newest: u32,
     /// Open verse conflicts.
     pub verse_conflicts: u32,
+    /// Open frame conflicts of a story project, which the toast counts in place of verse
+    /// conflicts (J18, #761); `None` for a Bible.
+    #[serde(default)]
+    pub frame_conflicts: Option<u32>,
     /// Verses with two alignments to review (#791).
     pub alignments: u32,
     /// Changes that Door43 had lost and this sync sent again.
@@ -233,6 +237,10 @@ pub struct SyncResultView {
     /// Door43 no longer had the project's branch, and this sync put this computer's copy back
     /// (owner ruling of 2026-10-24; tC4 says nothing).
     pub recreated: bool,
+    /// `format.json` on Door43 was deleted or damaged, and this sync put this computer's copy
+    /// back (§9.2 N1).
+    #[serde(default)]
+    pub format_restored: bool,
     /// What a teammate's newer version replaced, with no question (owner ruling H5): "Juan's
     /// alignment of Titus 1:1 replaced yours. Your version is in History."
     #[serde(default)]

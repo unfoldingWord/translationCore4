@@ -76,7 +76,9 @@ const STEPS = [
 ];
 const BLOCKS = [
   { type: 'notShared' }, { type: 'projectMismatch' },
-  { type: 'needsNewerApp', value: { major: 3, minReaderMinor: 0 } }, { type: 'tc4TeamRepository' },
+  { type: 'needsNewerApp', value: { type: 'major', value: { major: 3 } } },
+  { type: 'needsNewerApp', value: { type: 'readerMinor', value: { major: 1, minReaderMinor: 4 } } },
+  { type: 'tc4TeamRepository' },
 ];
 const FAILURES = [
   ...BLOCKS.map((value) => ({ type: 'blocked', value })),
@@ -111,6 +113,21 @@ browserTest('#678, #724 item 6. Every refusal a sync can end with shows its own 
     assert.ok(seen.size >= 6, `${seen.size} coded sentences`);
     await until('no sync runs', async () => !(await env.busy(page)));
     assert.equal(await button(page).isDisabled(), false);
+  }, opts);
+});
+
+// #941, INV-FORMAT-RESTORED-AND-SAID: a sync that put Door43's deleted or damaged format.json
+// back says so in one sentence under the line, with nothing to press. The tc-sync tests prove
+// the file is put back on Door43.
+browserTest('#941. A sync that put format.json back on Door43 says so on the toast', async () => {
+  await withApp(async ({ page, env }) => {
+    await env.call('test/script', { request: newRequestId(), next: { type: 'sync', value: { project: FOLDER, outcome: { type: 'synced', value: { teammates: null, restored: 0, formatRestored: true } } } } });
+    await syncSignedIn(page);
+    await toast(page).waitFor();
+    assert.equal(await toast(page).getAttribute('data-ok'), '1');
+    const note = page.getByTestId('sync-format-restored');
+    assert.equal(await note.textContent(), en['syncResult.formatRestored']);
+    assert.equal(await page.getByTestId('sync-review').count(), 0, 'nothing to press');
   }, opts);
 });
 

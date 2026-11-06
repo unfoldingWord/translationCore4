@@ -3,6 +3,7 @@
 use crate::door43::{computer, computer_on, copy_to, open, save, titus, words};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use tc_api::refusal::NewerFormat;
 use tc_sync::exchange::{ExchangeError, export, receive};
 
 fn usb(dir: &Path) -> PathBuf {
@@ -629,4 +630,106 @@ async fn a_failed_export_or_receive_names_the_file() {
         other => panic!("{other:?}"),
     }
     a.close().unwrap();
+}
+
+/// A newer major whose other fields this app cannot parse (INV-FORMAT-HEADER-FROZEN).
+const FORMAT_2_RESHAPED: &str = r#"{"format":"tc-project","major":2,"minor":0,"minReaderMinor":0,"derivations":"moved","derivedPaths":{}}"#;
+
+fn fixture(name: &str) -> String {
+    std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/journal")
+            .join(name),
+    )
+    .unwrap()
+}
+
+/// Ana's computer, her project, and her exported file with its `format.json` replaced.
+async fn file_of_format(dir: &Path, format: String) -> (crate::door43::Computer, PathBuf, PathBuf) {
+    let stick = usb(dir);
+    let ana = computer(dir, "ana");
+    let folder_a = titus(&ana);
+    let a = open(&ana, &folder_a);
+    let exported = export(&a, &stick, "Ana").await.unwrap();
+    a.close().unwrap();
+    let newer = stick.join("newer.zip");
+    rewrite_entry(&exported, &newer, "ingredients/tc/format.json", |_| {
+        format.clone()
+    });
+    (ana, folder_a, newer)
+}
+
+fn needs_newer_app<T>(result: &Result<T, ExchangeError>, format: NewerFormat) -> bool {
+    matches!(result, Err(ExchangeError::NeedsNewerApp(found)) if *found == format)
+}
+
+/// Juan creates the project from `format`'s file, and receives it into his copy of Ana's
+/// project. Both are refused as `refused`, and his copy's files stay as they were.
+async fn both_receives_refuse(format: String, refused: NewerFormat) {
+    let dir = tempfile::tempdir().unwrap();
+    let (_ana, folder_a, newer) = file_of_format(dir.path(), format).await;
+    let juan = computer(dir.path(), "juan");
+    let created = tc_sync::exchange::receive_new(&juan.store, &newer, "Titus from Ana");
+    assert!(
+        needs_newer_app(&created, refused),
+        "receive_new: {:?}",
+        created.map(|r| r.folder)
+    );
+    assert!(
+        !juan.projects.join("Titus from Ana").exists(),
+        "no project created"
+    );
+    let folder_b = copy_to(&folder_a, &juan);
+    // One open and close first, so the snapshot holds what any open leaves behind.
+    open(&juan, &folder_b).close().unwrap();
+    let snapshot = || {
+        let mut files: Vec<(String, Vec<u8>)> = walk(&folder_b)
+            .into_iter()
+            .map(|rel| (rel.clone(), std::fs::read(folder_b.join(&rel)).unwrap()))
+            .collect();
+        files.sort();
+        files
+    };
+    let before = snapshot();
+    let b = open(&juan, &folder_b);
+    let received = receive(&b, &newer, "Ana").await;
+    b.close().unwrap();
+    assert!(
+        needs_newer_app(&received, refused),
+        "receive: {:?}",
+        received.map(|_| "taken in")
+    );
+    let after = snapshot();
+    assert_eq!(after, before, "a refused receive writes nothing");
+}
+
+/// INV-NEWER-MAJOR-REFUSED (§10.2 R3): a file of a newer major is refused.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_file_of_a_newer_major_is_refused() {
+    both_receives_refuse(fixture("format-2.0.json"), NewerFormat::Major { major: 2 }).await;
+}
+
+/// INV-FORMAT-HEADER-FROZEN: a file of a newer major is refused by its `major` alone, even
+/// when a field this app reads has a shape it cannot parse.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_file_of_a_newer_major_with_fields_this_app_cannot_parse_is_refused() {
+    both_receives_refuse(
+        FORMAT_2_RESHAPED.to_owned(),
+        NewerFormat::Major { major: 2 },
+    )
+    .await;
+}
+
+/// INV-NEWER-MINOR-READ-ONLY (owner, #46): a file whose `minReaderMinor` is above this app's
+/// minor is refused, as sync stops for it (§9.2 N1); nothing changes.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_file_of_a_newer_minor_this_app_cannot_write_is_refused() {
+    both_receives_refuse(
+        fixture("format-1.4-read-only.json"),
+        NewerFormat::ReaderMinor {
+            major: 1,
+            min_reader_minor: 4,
+        },
+    )
+    .await;
 }

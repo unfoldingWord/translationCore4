@@ -469,12 +469,12 @@ async fn preflight_counts_open_conflicts() {
         titus,
         export::PreflightView {
             conflicts: 1,
-            verses: 1
+            two_versions: export::TwoVersions::Verses(1),
         }
     );
     let none = export::PreflightView {
         conflicts: 0,
-        verses: 0,
+        two_versions: export::TwoVersions::Verses(0),
     };
     let jonah = post(
         &w.t.app,
@@ -488,7 +488,13 @@ async fn preflight_counts_open_conflicts() {
     let stories = post(&w.t.app, &preflight(export::Subject::Stories))
         .await
         .unwrap();
-    assert_eq!(stories, none);
+    assert_eq!(
+        stories,
+        export::PreflightView {
+            conflicts: 0,
+            two_versions: export::TwoVersions::Frames(0),
+        }
+    );
 }
 
 /// The server's downloads, kept in memory: each file registered, by its name, and where the

@@ -9,7 +9,7 @@
 use tc_api::ApiError;
 use tc_api::export::{
     Exported, ExportedFile, PrintRequest, PrintWords, Producer, Run, RunExport, StoryRun, Subject,
-    UtcOffset,
+    TwoVersions, UtcOffset,
 };
 use tc_api::home::ProjectKind;
 use tc_api::ids::{RequestId, Scope};
@@ -321,12 +321,20 @@ impl ExportOf {
 }
 
 /// "3 verses have two versions. The export uses the version shown. Review first?" (STORAGE
-/// §8.5), or `None` when no verse the export reads is in conflict.
-pub fn conflict_question(verses: u32) -> Option<String> {
-    match verses {
+/// §8.5), for stories "3 frames have two versions…" (#935), or `None` when nothing the export
+/// reads is in conflict.
+pub fn conflict_question(two_versions: TwoVersions) -> Option<String> {
+    let (one, many) = match two_versions {
+        TwoVersions::Verses(_) => (keys::export::CONFLICTS_ONE, keys::export::CONFLICTS_MANY),
+        TwoVersions::Frames(_) => (
+            keys::export::FRAME_CONFLICTS_ONE,
+            keys::export::FRAME_CONFLICTS_MANY,
+        ),
+    };
+    match two_versions.count() {
         0 => None,
-        1 => Some(t(keys::export::CONFLICTS_ONE, &[])),
-        n => Some(t(keys::export::CONFLICTS_MANY, &[("n", &n)])),
+        1 => Some(t(one, &[])),
+        n => Some(t(many, &[("n", &n)])),
     }
 }
 

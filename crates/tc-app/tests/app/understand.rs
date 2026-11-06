@@ -374,6 +374,41 @@ async fn a_chapters_helps_are_tc4s_cards_with_gateway_titles() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_notes_link_names_its_article_and_a_word_card_shows_its_articles_first_paragraph() {
+    let (_dir, t) = start("en-pins").await;
+    let at = at(&t).await;
+    let helps = ok(
+        &t.app,
+        &Passage {
+            at,
+            book: BookId::Titus,
+            chapter: 1,
+        },
+    )
+    .await;
+    let Slot::Ready(notes) = &helps.notes else {
+        panic!("{:?}", helps.notes)
+    };
+    let abstract_nouns = notes
+        .items
+        .iter()
+        .find(|n| n.academy.as_deref() == Some("figs-abstractnouns"))
+        .unwrap();
+    assert_eq!(
+        abstract_nouns.academy_title.as_deref(),
+        Some("Abstract Nouns")
+    );
+    let Slot::Ready(words) = &helps.words else {
+        panic!("{:?}", helps.words)
+    };
+    let god = words.items.iter().find(|w| w.slug == "god").unwrap();
+    // The paragraph under "## Definition:", not the headings above it.
+    assert_eq!(god.intro.len(), 1);
+    assert_eq!(god.intro[0].kind, tc_api::model::BlockKind::P);
+    assert!(god.intro[0].text().starts_with("In the Bible, the term"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_article_comes_from_the_books_helps() {
     let (_dir, t) = start("en-pins").await;
     let at = at(&t).await;

@@ -707,7 +707,7 @@ impl Writer {
         });
         let reads = |bytes: &[u8]| match rel {
             layout::PROJECT_JSON => crate::open::ProjectJson::reads(bytes),
-            _ => tc_journal::format::FormatDoc::parse(bytes).is_ok(),
+            _ => tc_journal::format::FormatHeader::parse(bytes).is_ok(),
         };
         if let Some(bytes) = from_head.filter(|b| reads(b)) {
             return bytes;

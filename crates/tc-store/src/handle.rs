@@ -214,6 +214,19 @@ pub enum Mode {
     ReadOnly(ReadOnlyReason),
 }
 
+impl Mode {
+    pub fn is_writable(&self) -> bool {
+        matches!(self, Self::Writable)
+    }
+
+    /// An open only narrows: a writable project turns read-only, and the first reason stands.
+    pub(crate) fn narrow(&mut self, reason: ReadOnlyReason) {
+        if self.is_writable() {
+            *self = Self::ReadOnly(reason);
+        }
+    }
+}
+
 /// What a handle says of its project.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectFacts {
@@ -1354,5 +1367,27 @@ impl Drop for ProjectHandle {
             let _ = actor.join();
         }
         self.drafts.stop();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// An open only narrows: the first reason it turns read-only for stands.
+    #[test]
+    fn an_open_only_narrows_and_the_first_reason_stands() {
+        let mut mode = Mode::Writable;
+        mode.narrow(ReadOnlyReason::NewerMinor {
+            min_reader_minor: "4".into(),
+        });
+        mode.narrow(ReadOnlyReason::WriteFailed("disk full".into()));
+        assert_eq!(
+            mode,
+            Mode::ReadOnly(ReadOnlyReason::NewerMinor {
+                min_reader_minor: "4".into()
+            })
+        );
+        assert!(!mode.is_writable());
     }
 }

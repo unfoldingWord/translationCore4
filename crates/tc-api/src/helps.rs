@@ -116,6 +116,8 @@ pub struct NoteCard {
     pub note: Vec<ArticleBlock>,
     /// The Translation Academy article the note names (its slug).
     pub academy: Option<String>,
+    /// That article's title, which names the link; none when the resources do not carry it.
+    pub academy_title: Option<String>,
     #[cfg_attr(feature = "proptest", proptest(strategy = "crate::arb::few()"))]
     pub panes: Vec<PaneFocus>,
 }
@@ -133,8 +135,12 @@ pub struct WordCard {
     pub occurrence: i32,
     /// The article's folder, `kt`, `names` or `other`.
     pub category: Option<String>,
-    /// The article's name: the card's body, and the link.
+    /// The article's name, which opens it.
     pub slug: String,
+    /// The article's first paragraph: the card's body. Empty when the resources do not carry
+    /// the article.
+    #[cfg_attr(feature = "proptest", proptest(strategy = "crate::arb::few()"))]
+    pub intro: Vec<ArticleBlock>,
     #[cfg_attr(feature = "proptest", proptest(strategy = "crate::arb::few()"))]
     pub panes: Vec<PaneFocus>,
 }

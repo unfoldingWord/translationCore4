@@ -598,8 +598,10 @@
         "value": {
           "type": "needsNewerApp",
           "value": {
-            "major": 2,
-            "minReaderMinor": 0
+            "type": "major",
+            "value": {
+              "major": 2
+            }
           }
         }
       }
@@ -608,6 +610,30 @@
     "key": "syncResult.error.needsNewerApp",
     "vars": {
       "format": "2"
+    },
+    "detail": null
+  },
+  {
+    "wire": {
+      "type": "sync",
+      "value": {
+        "type": "blocked",
+        "value": {
+          "type": "needsNewerApp",
+          "value": {
+            "type": "readerMinor",
+            "value": {
+              "major": 1,
+              "minReaderMinor": 4
+            }
+          }
+        }
+      }
+    },
+    "code": null,
+    "key": "syncResult.error.needsNewerApp",
+    "vars": {
+      "format": "1.4"
     },
     "detail": null
   },
@@ -1284,7 +1310,10 @@
       "value": {
         "type": "newerFormat",
         "value": {
-          "format": 2
+          "type": "major",
+          "value": {
+            "major": 2
+          }
         }
       }
     },
@@ -1292,6 +1321,27 @@
     "key": "exchange.error.newerFormat",
     "vars": {
       "format": "2"
+    },
+    "detail": null
+  },
+  {
+    "wire": {
+      "type": "exchange",
+      "value": {
+        "type": "newerFormat",
+        "value": {
+          "type": "readerMinor",
+          "value": {
+            "major": 1,
+            "minReaderMinor": 4
+          }
+        }
+      }
+    },
+    "code": null,
+    "key": "exchange.error.newerFormat",
+    "vars": {
+      "format": "1.4"
     },
     "detail": null
   },
