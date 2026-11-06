@@ -194,7 +194,7 @@ function apiCall(base, token, endpoint, body) {
  * `door43` is a started fake Door43 (`startDoor43Fake`), which `tc4` then signs in to;
  * without it Door43 is a port nothing listens on.
  */
-export async function startRustEnv({ scenario, tc4, ui, seed, door43, realSync = false, backend = 'store', runDir = path.join(REPO, 'target', 'parity-rust', `${process.pid}-${Date.now()}`) }) {
+export async function startRustEnv({ scenario, tc4, ui, seed, door43, realSync = false, notices, backend = 'store', runDir = path.join(REPO, 'target', 'parity-rust', `${process.pid}-${Date.now()}`) }) {
   if (!PROJECTS[scenario]) throw new Error(`no scenario ${scenario}; the scenarios are ${Object.keys(PROJECTS).join(', ')}`);
   const dir = path.join(runDir, scenario);
   fs.rmSync(dir, { recursive: true, force: true });
@@ -206,7 +206,7 @@ export async function startRustEnv({ scenario, tc4, ui, seed, door43, realSync =
   // stdin stays open: a closed stdin makes tc4 quit.
   const child = spawn(path.resolve(tc4), [
     'serve', '--app-data', path.join(dir, 'appdata'), '--projects', path.join(dir, 'projects'), '--ui', path.resolve(ui),
-    '--door43', door43?.url ?? DEAD_DOOR43, '--test-hooks', ...(realSync ? ['--real-sync'] : []), ...(scenario === 'store' ? [] : scenarioArgs(scenario, dir, backend)),
+    '--door43', door43?.url ?? DEAD_DOOR43, '--test-hooks', ...(realSync ? ['--real-sync'] : []), ...(notices ? ['--notices', notices] : []), ...(scenario === 'store' ? [] : scenarioArgs(scenario, dir, backend)),
   ], { stdio: ['pipe', 'pipe', 'inherit'] });
   const lines = readline.createInterface({ input: child.stdout })[Symbol.asyncIterator]();
   const exited = new Promise((resolve) => child.once('exit', (code, signal) => resolve({ code, signal })));

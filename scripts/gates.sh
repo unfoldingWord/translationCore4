@@ -101,6 +101,9 @@ run_step_windows_ready() {
 # journeys must never run against an older build.
 journeys() {
   [[ -d "${PLAYWRIGHT_MODULE:-parity/tc4-baseline/node_modules/playwright}" ]] || (cd parity/tc4-baseline && npm ci)
+  # The About journey writes THIRD-PARTY-NOTICES.txt with notices.mjs, which reads every locked
+  # crate's source offline; the builds below leave out crates no build here needs (#606).
+  cargo fetch --locked || return 1
   cargo build --locked -p tc4 --features test-hooks,fixture-backend || return 1
   cargo build --locked -p tc-door43-fake || return 1
   crates/tc-ui/build-app.sh --out "$target/tc-ui-app" || return 1

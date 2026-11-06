@@ -931,6 +931,19 @@ impl Actions {
         Ok(())
     }
 
+    // ---- About (#606) ----------------------------------------------------------------------
+
+    /// The build's THIRD-PARTY-NOTICES.txt from the app's own server; `None` in a run that was
+    /// given none.
+    pub async fn third_party_notices(&self) -> Option<String> {
+        self.0
+            .runtime
+            .api()
+            .get_text(tc_api::endpoint::NOTICES_PATH)
+            .await
+            .ok()
+    }
+
     // ---- Feedback (M14) -------------------------------------------------------------------
 
     /// "Report a problem" in the account menu (tC4 #521).

@@ -1,4 +1,8 @@
 {
+  "about.thirdParty": "تراخيص الجهات الخارجية",
+  "about.thirdPartyLoading": "جارٍ قراءة التراخيص…",
+  "about.thirdPartyMissing": "تراخيص الجهات الخارجية غير متاحة في هذا التشغيل. يعرض التطبيق المثبَّت THIRD-PARTY-NOTICES.txt هنا.",
+  "about.thirdPartyText": "نص تراخيص الجهات الخارجية",
   "account.updateBook": "تحديث سفر من USFM",
   "account.updateBookHint": "جلب سفر تم تحريره في برنامج آخر",
   "addBook.notAdded": "لم تتم إضافة {file}: {reason}",

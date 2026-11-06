@@ -1,4 +1,8 @@
 {
+  "about.thirdParty": "Licencias de terceros",
+  "about.thirdPartyLoading": "Leyendo las licencias…",
+  "about.thirdPartyMissing": "Las licencias de terceros no están disponibles en esta ejecución. Una app instalada muestra THIRD-PARTY-NOTICES.txt aquí.",
+  "about.thirdPartyText": "Texto de las licencias de terceros",
   "account.updateBook": "Actualizar un libro desde USFM",
   "account.updateBookHint": "Incorporar un libro editado en otro programa",
   "addBook.notAdded": "{file} no se agregó: {reason}",

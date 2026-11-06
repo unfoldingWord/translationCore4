@@ -1632,8 +1632,9 @@ fields of `test/fieldStore` (§5.8), written atomically before each `Ack`.
   was minimized, on `second-instance` (`tC4:scripts/desktop-main.cjs:134-140`). People work on
   one project at the same time from separate machines.
 - `tc4 serve --app-data <dir> [--projects <dir>] --ui <dir> [--door43 <url>] [--bundle <dir>]`
-  `[--backend memory --scenario <dir>] [--test-hooks] [--test-seed-pace <ms>]`. The last four
-  exist only with their cargo features. `--scenario` writes the scenario's projects into the
+  `[--notices <file>] [--backend memory --scenario <dir>] [--test-hooks] [--test-seed-pace <ms>]`. The last four
+  exist only with their cargo features. `--notices` names the THIRD-PARTY-NOTICES.txt that About
+  shows at `GET /third-party-notices.txt` (#606); without it that route is a 404. `--scenario` writes the scenario's projects into the
   `--projects` folder through the store, so it needs `--projects`, and that folder must exist and
   be empty: a scenario never writes into a folder that holds anyone's work; `--backend memory`
   keeps them in the memory backend, which writes nothing *(C1a, D2)*. Without `--projects`, tc-app chooses the projects folder

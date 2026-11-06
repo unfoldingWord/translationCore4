@@ -1,4 +1,8 @@
 {
+  "about.thirdParty": "Lisensi pihak ketiga",
+  "about.thirdPartyLoading": "Membaca lisensi…",
+  "about.thirdPartyMissing": "Lisensi pihak ketiga tidak tersedia dalam sesi ini. Aplikasi yang terpasang menampilkan THIRD-PARTY-NOTICES.txt di sini.",
+  "about.thirdPartyText": "Teks lisensi pihak ketiga",
   "account.updateBook": "Perbarui kitab dari USFM",
   "account.updateBookHint": "Masukkan kitab yang diedit di program lain",
   "addBook.notAdded": "{file} tidak ditambahkan: {reason}",

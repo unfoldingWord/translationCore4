@@ -20,8 +20,9 @@ H3, H4, H10 and H16). The pipeline is `.github/workflows/release.yml`; its scrip
 - **THIRD-PARTY-NOTICES.txt** (beside `LICENSE` in the installed app; in
   `Contents/Resources` on macOS): the licence of every crate in `Cargo.lock`, tc-rst's NOTICE
   files, the fonts' OFL texts, Electronite's licence, and an attribution block (title, creator,
-  rights, source, changes) for each bundled Door43 resource, as CC BY-SA asks. The app does not
-  show it yet.
+  rights, source, changes) for each bundled Door43 resource, as CC BY-SA asks. About
+  translationCore shows it under Third-party licenses, read from this file with no network: the
+  launcher passes its path to `tc4 serve --notices` (#606).
 - **BUILD-MANIFEST.json** (also inside each installed app): the commit, the version, the platform,
   Electronite's tag and archive sha256, and the sha256 and size of every shipped file. About shows
   the same commit (`app/hello`'s `build.commit`), and the smoke test checks they match.

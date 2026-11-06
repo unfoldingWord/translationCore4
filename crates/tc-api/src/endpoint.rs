@@ -26,6 +26,10 @@ pub const TOKEN_HEADER: &str = "X-Tc-Token";
 /// holds.
 pub const EVENTS_PATH: &str = "/api/v1/events";
 
+/// `GET`, the build's THIRD-PARTY-NOTICES.txt, which About shows (#606); 404 in a run that
+/// was given none.
+pub const NOTICES_PATH: &str = "/third-party-notices.txt";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Kind {

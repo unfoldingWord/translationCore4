@@ -1,4 +1,8 @@
 {
+  "about.thirdParty": "Лицензии третьих сторон",
+  "about.thirdPartyLoading": "Чтение лицензий…",
+  "about.thirdPartyMissing": "Лицензии третьих сторон недоступны в этом запуске. Установленное приложение показывает здесь THIRD-PARTY-NOTICES.txt.",
+  "about.thirdPartyText": "Текст лицензий третьих сторон",
   "account.updateBook": "Обновить книгу из USFM",
   "account.updateBookHint": "Внести книгу, отредактированную в другой программе",
   "addBook.notAdded": "{file} не добавлен: {reason}",

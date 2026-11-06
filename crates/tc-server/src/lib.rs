@@ -111,6 +111,9 @@ pub struct ServerConfig {
     pub app_data: PathBuf,
     /// The folder `--ui` names: `index.html`, `ui/`, `help/`, `prepare.html`.
     pub ui_dir: PathBuf,
+    /// The THIRD-PARTY-NOTICES.txt the installer wrote beside the app's LICENSE; `None` in a
+    /// development run, which About says plainly.
+    pub notices: Option<PathBuf>,
     pub limits: Limits,
     /// End the run on Ctrl+C and SIGTERM. A test run leaves it off and keeps its Ctrl+C. When
     /// on, [`Server::bind`] must run inside a Tokio runtime.
@@ -125,6 +128,7 @@ impl ServerConfig {
         Self {
             app_data,
             ui_dir,
+            notices: None,
             limits: Limits::default(),
             handle_signals: false,
             #[cfg(feature = "test-hooks")]
@@ -193,6 +197,7 @@ impl Server {
         let ServerConfig {
             app_data,
             ui_dir,
+            notices,
             limits,
             handle_signals,
             #[cfg(feature = "test-hooks")]
@@ -218,6 +223,7 @@ impl Server {
             origin: format!("http://127.0.0.1:{port}"),
             limits,
             ui_dir,
+            notices,
             routes: routes::RouteTable::new(),
             uploads: Arc::new(Uploads::new(uploads_dir, uploads_keep)),
             downloads: Arc::new(Downloads::new(downloads_dir, downloads_keep)),
@@ -348,6 +354,7 @@ fn router<B: Backend>(state: AppState<B>) -> Router {
         .route("/prepare.html", get(statics::prepare))
         .route("/ui/{*path}", get(statics::ui))
         .route("/help/{*path}", get(statics::help))
+        .route(tc_api::endpoint::NOTICES_PATH, get(statics::notices))
         .route(tc_api::endpoint::EVENTS_PATH, get(events::stream::<B>))
         .route(
             tc_api::upload::UPLOADS_PATH,

@@ -3,11 +3,17 @@
 // from License, About holds the focus on "Read the license" for ten frames; a close inside them
 // must end the hold, as tC4's effect cancels its frame, and not read the dialog that is gone.
 //
+// Third-party licenses (#606) shows the THIRD-PARTY-NOTICES.txt the run was given, the way
+// License shows the LICENSE.
+//
 //   TC4_BIN=target/debug/tc4 TC4_UI=target/tc-ui-app node --test parity/app/journeys/about.test.mjs
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { REPO } from '../env-rust.mjs';
+import { bundledInstalls, lockedCrates, missing, notices as writeNotices } from '../../../scripts/release/notices.mjs';
+import { smallBundle } from '../../../scripts/release/notices-fixture.mjs';
 import { browserTest, focused, openMenu, panel, recordRequests, sleep, trigger, until, withApp } from './kit.mjs';
 
 const notice = fs.readFileSync(path.join(REPO, 'crates', 'tc-ui', 'assets', 'about', 'LICENSE'), 'utf8');
@@ -15,6 +21,8 @@ const copyright = notice.split('\n').find((line) => line.startsWith('Copyright')
 const aboutDialog = (page) => page.getByRole('dialog', { name: 'About translationCore' });
 const licenseDialog = (page) => page.getByRole('dialog', { name: 'License', exact: true });
 const region = (page) => page.getByRole('region', { name: 'License text' });
+const noticesDialog = (page) => page.getByRole('dialog', { name: 'Third-party licenses', exact: true });
+const noticesRegion = (page) => page.getByRole('region', { name: 'Third-party license text' });
 const gone = (what, locator) => until(`${what} closes`, async () => (await locator.count()) === 0);
 const focusOn = (page, what, id) => until(`the focus on ${what}`, async () => (await focused(page)) === id);
 
@@ -148,4 +156,78 @@ browserTest('the_console_names_the_running_build_at_start', async () => {
     const expected = `translationCore ${build.version} (${short}) · server ${build.version} (${short})`;
     assert.deepEqual(lines.filter((line) => line.startsWith('translationCore ')), [expected]);
   }, { init: (context) => context.on('console', (m) => { if (m.type() === 'info') lines.push(m.text()); }) });
+});
+
+/** THIRD-PARTY-NOTICES.txt as the release writes it, over a small bundle, with what it covers. */
+function releaseNotices() {
+  process.env.CARGO_NET_OFFLINE = 'true';
+  const given = smallBundle();
+  const text = writeNotices(given);
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'about-notices-')), 'THIRD-PARTY-NOTICES.txt');
+  fs.writeFileSync(file, text);
+  const crates = lockedCrates(fs.readFileSync(path.join(REPO, 'Cargo.lock'), 'utf8'));
+  return { file, text, crates, installs: bundledInstalls(given.bundle) };
+}
+
+browserTest('third_party_licenses_show_every_notice_by_keyboard_and_ask_only_the_app', async () => {
+  const given = releaseNotices();
+  await withApp(async ({ page }) => {
+    const requests = recordRequests(page);
+    await page.waitForFunction(() => window.__tcIdle === true);
+    const mark = requests.mark();
+    await openMenu(page);
+    await page.getByTestId('account-about').click();
+    await aboutDialog(page).waitFor();
+    // Third-party licenses closes About and opens the notices.
+    await page.getByTestId('about-third-party').focus();
+    await page.keyboard.press('Enter');
+    await gone('About', aboutDialog(page));
+    await notWhite(noticesDialog(page).getByText('Third-party licenses', { exact: true }).first());
+    const body = page.getByTestId('notices-body');
+    await body.waitFor();
+    const shown = await body.textContent();
+    assert.equal(shown, given.text, 'the whole file, as written');
+    assert.deepEqual(missing(shown, given.crates, given.installs), [], 'every crate and resource block');
+    assert.match(shown, /Font licence OFL-/);
+    // The keyboard reaches the text and scrolls it.
+    assert.equal(await noticesRegion(page).getAttribute('tabindex'), '0');
+    for (let i = 0; i < 4 && (await focused(page)) !== 'notices-text'; i += 1) await page.keyboard.press('Tab');
+    assert.equal(await focused(page), 'notices-text', 'Tab reaches the text');
+    await page.keyboard.press('End');
+    await until('the text scrolls', async () => (await noticesRegion(page).evaluate((el) => el.scrollTop)) > 0);
+    // Escape returns to About, with the focus on Third-party licenses; Close does the same.
+    await page.keyboard.press('Escape');
+    await gone('the notices', noticesDialog(page));
+    await aboutDialog(page).waitFor();
+    await focusOn(page, 'Third-party licenses', 'about-third-party');
+    await page.getByTestId('about-third-party').click();
+    await page.getByTestId('notices-close').click();
+    await gone('the notices', noticesDialog(page));
+    await focusOn(page, 'Third-party licenses', 'about-third-party');
+    // Read the license still returns to its own button.
+    await page.getByTestId('about-read-license').click();
+    await page.keyboard.press('Escape');
+    await focusOn(page, 'Read the license', 'about-read-license');
+    // Nothing but the app's own server, offline: the notices come from the local file.
+    const origin = new URL(page.url()).origin;
+    const asked = requests.since(mark).map((r) => r.url);
+    assert.ok(asked.length > 0, 'the notices were fetched');
+    assert.deepEqual(asked.filter((url) => new URL(url).origin !== origin), [], 'no request left the app');
+  }, { notices: given.file });
+});
+
+browserTest('third_party_licenses_say_plainly_when_the_run_has_no_notices_file', async () => {
+  await withApp(async ({ page, allow }) => {
+    // The 404 of the missing file is the browser's console line, and the case under test.
+    allow(/404/);
+    await openMenu(page);
+    await page.getByTestId('account-about').click();
+    await page.getByTestId('about-third-party').click();
+    const missingText = page.getByTestId('notices-missing');
+    await missingText.waitFor();
+    assert.match(await missingText.textContent(), /THIRD-PARTY-NOTICES\.txt/);
+    assert.equal(await page.getByTestId('notices-body').count(), 0, 'no empty region');
+    await page.keyboard.press('Escape');
+    await focusOn(page, 'Third-party licenses', 'about-third-party');
+  });
 });

@@ -342,6 +342,10 @@
   "upgrade.checkFailedUnreachable": "Could not check for updates: Door43 cannot be reached. Check the connection and try again.",
   "upload.notWritten": "The file could not be copied into translationCore: {reason}. Nothing was changed.",
   "wizard.codeNotHeld": "A project cannot keep the language code {code}, so nothing was created. Choose another code.",
+  "about.thirdParty": "Third-party licenses",
+  "about.thirdPartyText": "Third-party license text",
+  "about.thirdPartyLoading": "Reading the licenses…",
+  "about.thirdPartyMissing": "The third-party licenses are not available in this run. An installed app shows THIRD-PARTY-NOTICES.txt here.",
   "understand.academyArticle": "{title} →",
   "understand.introduction": "Introduction"
 }

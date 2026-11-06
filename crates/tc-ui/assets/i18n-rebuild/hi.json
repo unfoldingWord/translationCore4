@@ -1,4 +1,8 @@
 {
+  "about.thirdParty": "तृतीय-पक्ष लाइसेंस",
+  "about.thirdPartyLoading": "लाइसेंस पढ़े जा रहे हैं…",
+  "about.thirdPartyMissing": "इस रन में तृतीय-पक्ष लाइसेंस उपलब्ध नहीं हैं। इंस्टॉल किया गया ऐप यहाँ THIRD-PARTY-NOTICES.txt दिखाता है।",
+  "about.thirdPartyText": "तृतीय-पक्ष लाइसेंस का पाठ",
   "account.updateBook": "USFM से पुस्तक अपडेट करें",
   "account.updateBookHint": "किसी अन्य प्रोग्राम में संपादित पुस्तक लाएँ",
   "addBook.notAdded": "{file} नहीं जोड़ा गया: {reason}",

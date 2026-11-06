@@ -198,12 +198,20 @@ fn switch(on: Signal<bool>) -> AnyView {
     .into_any()
 }
 
-/// What About shows after License closes: the focus goes back to "Read the license".
+/// A dialog About opens in its place.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AboutChild {
+    License,
+    Notices,
+}
+
+/// Where About is. Closing a child shows About again with the focus on the button that opened
+/// it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AboutStep {
     About,
-    License,
-    Back,
+    Open(AboutChild),
+    Back(AboutChild),
 }
 
 /// The account button and its menu (`tC4:AccountMenu.jsx:73-180`).
@@ -363,6 +371,7 @@ pub fn AccountMenu() -> impl IntoView {
         focus_trigger();
     };
     let dialogs = {
+        let about_actions = actions.clone();
         let actions = actions.clone();
         let applied = s.server.app_locale.clone();
         let saved = s.server.saved_locale.clone();
@@ -392,16 +401,25 @@ pub fn AccountMenu() -> impl IntoView {
                 })
             }}
             {move || {
+                let actions = about_actions.clone();
                 about.get().map(|step| {
+                    let back = move |child| Callback::new(move |()| about.set(Some(AboutStep::Back(child))));
                     let dialog = match step {
-                        AboutStep::License => view! {
-                            <LicenseDialog on_close=Callback::new(move |()| about.set(Some(AboutStep::Back))) />
+                        AboutStep::Open(AboutChild::License) => view! {
+                            <LicenseDialog on_close=back(AboutChild::License) />
                         }
                         .into_any(),
-                        AboutStep::About | AboutStep::Back => view! {
+                        AboutStep::Open(AboutChild::Notices) => view! {
+                            <NoticesDialog actions=actions.clone() on_close=back(AboutChild::Notices) />
+                        }
+                        .into_any(),
+                        AboutStep::About | AboutStep::Back(_) => view! {
                             <AboutDialog
-                                focus_read=step == AboutStep::Back
-                                on_read=Callback::new(move |()| about.set(Some(AboutStep::License)))
+                                focus=match step {
+                                    AboutStep::Back(child) => Some(child),
+                                    AboutStep::About | AboutStep::Open(_) => None,
+                                }
+                                on_open=Callback::new(move |child| about.set(Some(AboutStep::Open(child))))
                                 on_close=Callback::new(move |()| close_about())
                             />
                         }
@@ -715,14 +733,23 @@ fn close_label() -> Signal<String> {
 /// About translationCore (#520): the build's version and commit, the copyright line and the
 /// license name. Every value is compiled in, so opening it sends no request.
 #[component]
-fn AboutDialog(focus_read: bool, on_read: Callback<()>, on_close: Callback<()>) -> impl IntoView {
+fn AboutDialog(
+    focus: Option<AboutChild>,
+    on_open: Callback<AboutChild>,
+    on_close: Callback<()>,
+) -> impl IntoView {
     let read = NodeRef::<html::Div>::new();
-    if focus_read {
-        // Back from License: the focus returns to "Read the license", held while the Layer
-        // puts it on its first control over its first frames. Closing About inside them ends
-        // the hold (`tC4:AccountMenu.jsx:298-309`).
+    let third_party = NodeRef::<html::Div>::new();
+    if let Some(child) = focus {
+        // Back from a child: the focus returns to the button that opened it, held while the
+        // Layer puts it on its first control over its first frames. Closing About inside them
+        // ends the hold (`tC4:AccountMenu.jsx:298-309`).
+        let opener = match child {
+            AboutChild::License => read,
+            AboutChild::Notices => third_party,
+        };
         let hold = move || {
-            let button = read
+            let button = opener
                 .try_get_untracked()
                 .flatten()
                 .and_then(|div| div.query_selector("button").ok().flatten())
@@ -764,9 +791,18 @@ fn AboutDialog(focus_read: bool, on_read: Callback<()>, on_close: Callback<()>) 
                 <Button
                     variant=ButtonVariant::Secondary
                     attrs=Attrs::from([("data-testid", "about-read-license")])
-                    on_click=Callback::new(move |_| on_read.run(()))
+                    on_click=Callback::new(move |_| on_open.run(AboutChild::License))
                 >
                     {move || t(keys::about::READ_LICENSE, &[])}
+                </Button>
+            </div>
+            <div node_ref=third_party>
+                <Button
+                    variant=ButtonVariant::Secondary
+                    attrs=Attrs::from([("data-testid", "about-third-party")])
+                    on_click=Callback::new(move |_| on_open.run(AboutChild::Notices))
+                >
+                    {move || t(keys::about::THIRD_PARTY, &[])}
                 </Button>
             </div>
         }
@@ -797,13 +833,6 @@ fn LicenseDialog(on_close: Callback<()>) -> impl IntoView {
         .into_any()
     });
     let children: ChildrenFn = Arc::new(move || {
-        let region = crate::css! {
-            "max-height": "52vh",
-            "overflow": "auto",
-            "padding": "10px 12px",
-            "border": "1px solid var(--border)",
-            "border-radius": 8,
-        };
         let notice = license_pre().with("margin", 0).to_style();
         view! {
             <div
@@ -811,7 +840,7 @@ fn LicenseDialog(on_close: Callback<()>) -> impl IntoView {
                 aria-label=move || t(keys::about::LICENSE_TEXT, &[])
                 tabindex="0"
                 data-testid="license-text"
-                style=region.to_style()
+                style=text_region().to_style()
             >
                 <pre data-testid="license-notice" style=notice>{LICENSE_TEXT}</pre>
             </div>
@@ -825,6 +854,87 @@ fn LicenseDialog(on_close: Callback<()>) -> impl IntoView {
         on_close: Some(on_close),
         footer: Some(footer),
         attrs: Attrs::from([("data-testid", "license-dialog")]),
+        children: Some(children),
+        ..Default::default()
+    })
+}
+
+/// The scrollable box License and Third-party licenses show their text in.
+fn text_region() -> Css {
+    crate::css! {
+        "max-height": "52vh",
+        "overflow": "auto",
+        "padding": "10px 12px",
+        "border": "1px solid var(--border)",
+        "border-radius": 8,
+    }
+}
+
+/// What Third-party licenses has to show.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Notices {
+    Loading,
+    Shown(String),
+    /// The run was given no THIRD-PARTY-NOTICES.txt: a development run.
+    Missing,
+}
+
+/// The build's THIRD-PARTY-NOTICES.txt (#606), from the app's own server, in one region the
+/// keyboard can reach and scroll, as License shows the LICENSE. Closing it returns to About.
+#[component]
+fn NoticesDialog(actions: Actions, on_close: Callback<()>) -> impl IntoView {
+    let notices = RwSignal::new(Notices::Loading);
+    wasm_bindgen_futures::spawn_local(async move {
+        let shown = match actions.third_party_notices().await {
+            Some(text) => Notices::Shown(text),
+            None => Notices::Missing,
+        };
+        notices.try_set(shown);
+    });
+    let footer: ChildrenFn = Arc::new(move || {
+        view! {
+            <Button attrs=Attrs::from([("data-testid", "notices-close")]) on_click=Callback::new(move |_| on_close.run(()))>
+                {move || t(keys::common::CLOSE, &[])}
+            </Button>
+        }
+        .into_any()
+    });
+    let children: ChildrenFn = Arc::new(move || {
+        let text = license_pre().with("margin", 0).to_style();
+        let plain = body().to_style();
+        view! {
+            {move || match notices.get() {
+                Notices::Loading => view! {
+                    <p style=plain.clone() data-testid="notices-loading">{move || t(keys::about::THIRD_PARTY_LOADING, &[])}</p>
+                }
+                .into_any(),
+                Notices::Missing => view! {
+                    <p style=plain.clone() data-testid="notices-missing">{move || t(keys::about::THIRD_PARTY_MISSING, &[])}</p>
+                }
+                .into_any(),
+                Notices::Shown(notices) => view! {
+                    <div
+                        role="region"
+                        aria-label=move || t(keys::about::THIRD_PARTY_TEXT, &[])
+                        tabindex="0"
+                        data-testid="notices-text"
+                        style=text_region().to_style()
+                    >
+                        <pre data-testid="notices-body" style=text.clone()>{notices}</pre>
+                    </div>
+                }
+                .into_any(),
+            }}
+        }
+        .into_any()
+    });
+    crate::ds::Modal(crate::ds::ModalProps {
+        title: Some((move || move || t(keys::about::THIRD_PARTY, &[])).into()),
+        width: Some(720.into()),
+        close_label: Some(close_label()),
+        on_close: Some(on_close),
+        footer: Some(footer),
+        attrs: Attrs::from([("data-testid", "notices-dialog")]),
         children: Some(children),
         ..Default::default()
     })
