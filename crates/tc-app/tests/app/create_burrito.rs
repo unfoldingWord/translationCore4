@@ -291,7 +291,10 @@ async fn a_language_edit_keeps_what_the_form_does_not_show() {
             "direction" => expected[0]["scriptDirection"] = json!("rtl"),
             _ => expected[0]["tag"] = json!("es"),
         }
-        assert_eq!(made["languages"], expected, "a {n} edit changes only the {n}");
+        assert_eq!(
+            made["languages"], expected,
+            "a {n} edit changes only the {n}"
+        );
     }
 }
 

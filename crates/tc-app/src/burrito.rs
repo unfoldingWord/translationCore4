@@ -191,11 +191,18 @@ impl Burrito {
             None
         };
         let edited_language = made.and_then(|made| {
-            let own = self.records.iter().find(|record| record.key() == languages)?;
+            let own = self
+                .records
+                .iter()
+                .find(|record| record.key() == languages)?;
             let edits = [
                 (name_changed, "name", made["name"]["en"].clone()),
                 (code_changed, "tag", made["tag"].clone()),
-                (direction_changed, "scriptDirection", made["scriptDirection"].clone()),
+                (
+                    direction_changed,
+                    "scriptDirection",
+                    made["scriptDirection"].clone(),
+                ),
             ];
             with_language_edits(own, &self.language_locale, &edits)
         });
@@ -260,7 +267,9 @@ fn with_language_edits(
             let names = first
                 .entry("name")
                 .or_insert_with(|| Value::Object(serde_json::Map::new()));
-            names.as_object_mut()?.insert(locale.to_owned(), made.clone());
+            names
+                .as_object_mut()?
+                .insert(locale.to_owned(), made.clone());
         } else {
             first.insert((*part).to_owned(), made.clone());
         }
