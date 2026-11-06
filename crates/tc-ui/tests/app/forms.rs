@@ -373,7 +373,10 @@ fn a_late_guess_for_other_files_opens_no_fields() {
     // Files again, and Next for them while the first guess is still on its way.
     form.choose_start(NewStart::Usfm);
     let b = form.add_file("MAL.usfm".into());
-    assert_ne!(b, a, "a late upload for the row that went cannot land in this one");
+    assert_ne!(
+        b, a,
+        "a late upload for the row that went cannot land in this one"
+    );
     form.file_read(b, read(2, BookId::Malachi));
     let second = form.press_next().unwrap();
     form.guessed(&first, Ok(guess("org")));
