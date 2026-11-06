@@ -205,6 +205,7 @@ macro_rules! endpoint_table {
             command "create/addBlankBooks": $crate::create::AddBlankBooks
                 => $crate::create::BooksAdded;
             query "create/reviewUsfm": $crate::create::ReviewUsfm => $crate::create::UsfmVerdict;
+            query "create/guessUsfm": $crate::create::GuessUsfm => $crate::import::SchemeGuess;
             command "create/addUsfmBooks": $crate::create::AddUsfmBooks
                 => $crate::create::UsfmAdded;
 

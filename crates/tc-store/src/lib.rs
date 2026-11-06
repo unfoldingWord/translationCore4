@@ -84,6 +84,8 @@ pub use progress::{Phase, Progress, ProgressSink};
 pub use reply::{
     CommandError, DroppedLinks, FocusReport, ReadOnlyReason, Refusal, StoreReply, Stored, TakenIn,
 };
-pub use store::{CreateError, NewProject, RemovedStaging, StagingKind, Store, StoreConfig};
+pub use store::{
+    BookText, CreateError, NewProject, RemovedStaging, StagingKind, Store, StoreConfig,
+};
 pub use training::{EditorText, TrainingVerse};
 pub use vfs::{StdFs, Vfs};

@@ -10,7 +10,9 @@
 use leptos::prelude::*;
 use tc_api::ApiError;
 use tc_api::Refusal;
-use tc_api::create::{AddBlankBooks, AddUsfmBooks, Bible, Obs, ReviewUsfm, UsfmFile, UsfmOutcome};
+use tc_api::create::{
+    AddBlankBooks, AddUsfmBooks, Bible, GuessUsfm, Obs, ReviewUsfm, UsfmFile, UsfmOutcome,
+};
 use tc_api::refusal::{CreateRefusal, Message};
 use tc_api::upload::UploadFlow;
 use tc_core::BookId;
@@ -19,7 +21,7 @@ use wasm_bindgen_futures::spawn_local;
 use super::app_ctx::{Actions, Dialog, OpenTarget};
 use super::js;
 use crate::app::client::CallError;
-use crate::app::forms::{AddBookForm, AddBookStep, NewKind, UsfmState};
+use crate::app::forms::{AddBookForm, AddBookStep, NewKind, NewStart, UsfmState};
 use crate::app::uploads::{Opening, Slot};
 use crate::i18n::{keys, t, t_dyn};
 
@@ -70,13 +72,14 @@ impl Actions {
             .try_update(|np| {
                 let np = np.as_mut()?;
                 let versification = np.versification.clone();
+                let (files, books) = (np.usfm.sent(), np.file_books());
                 Some(
                     np.press(js::random_request_id)?
-                        .map(|(request, details)| (request, details, versification)),
+                        .map(|(request, details)| (request, details, versification, files, books)),
                 )
             })
             .flatten();
-        let (request, details, versification) = match pressed {
+        let (request, details, versification, files, books) = match pressed {
             None => return,
             Some(Err(problem)) => {
                 let error = words(&Refusal::Create(problem));
@@ -89,6 +92,8 @@ impl Actions {
             }
             Some(Ok(pressed)) => pressed,
         };
+        // A project from USFM files sends its files: the server deletes them once it is made.
+        let taken = (!files.is_empty()).then(|| self.uploads_taken());
         let this = self.clone();
         spawn_local(async move {
             let name = details.name.trim().to_owned();
@@ -99,11 +104,18 @@ impl Actions {
                         request,
                         details,
                         versification,
+                        files,
                     })
                     .await
                 }
                 NewKind::Stories => api.call(&Obs { request, details }).await,
             };
+            if let Some(taken) = &taken {
+                match &made {
+                    Ok(_) => this.uploads_finished(taken),
+                    Err(_) => this.uploads_given_back(taken),
+                }
+            }
             match made {
                 Ok(created) => {
                     let open = this.s().np_slot().with_untracked(|np| {
@@ -111,8 +123,9 @@ impl Actions {
                     });
                     this.refresh_projects();
                     if open && kind == NewKind::Bible {
-                        // "You'll add books next" (tC4): Add a book opens for the new project.
-                        let form = AddBookForm::of_new(created.project, name);
+                        // "You'll add books next" (tC4): Add a book opens for the new project,
+                        // which holds the books of its files.
+                        let form = AddBookForm::of_new(created.project, name, books);
                         this.s().layers.dialog.try_set(Some(Dialog::AddBook(form)));
                     } else if open {
                         this.close_modal();
@@ -129,6 +142,40 @@ impl Actions {
                         }
                     });
                 }
+            }
+        });
+    }
+
+    /// A card of New Bible's first step (J9c).
+    pub fn np_choose_start(&self, start: NewStart) {
+        self.patch_np(|np| np.choose_start(start));
+    }
+
+    /// Back from the files to the first step: the files are dropped.
+    pub fn np_back_to_start(&self) {
+        let mut gone = Vec::new();
+        self.patch_np(|np| gone = np.back_to_start());
+        for id in gone {
+            self.removed_upload(Slot::Usfm(id));
+        }
+    }
+
+    /// Next on the files step: the versification the files fit (H13) comes first, then the
+    /// project's fields with it chosen.
+    pub fn np_files_next(&self) {
+        let pressed = self
+            .s()
+            .np_slot()
+            .try_update(|np| np.as_mut()?.press_next())
+            .flatten();
+        let Some(files) = pressed else { return };
+        let opening = self.upload_opening();
+        let this = self.clone();
+        spawn_local(async move {
+            let asked = GuessUsfm { files };
+            let guess = this.runtime().api().call(&asked).await;
+            if this.upload_current(opening) {
+                this.patch_np(|np| np.guessed(&asked.files, guess.map_err(unreadable)));
             }
         });
     }
@@ -228,17 +275,13 @@ impl Actions {
         });
     }
 
-    /// Files picked or dropped (tC4 `abAddUsfmFiles`): each file goes to the server at once and
-    /// its row says what it is when the server has read it.
-    pub fn ab_add_files(&self, list: web_sys::FileList) {
+    /// Files picked or dropped in Add a book or New Bible (tC4 `abAddUsfmFiles`): each file
+    /// goes to the server at once and its row says what it is when the server has read it.
+    pub fn add_usfm_files(&self, list: web_sys::FileList) {
         let files: Vec<web_sys::File> = (0..list.length()).filter_map(|n| list.get(n)).collect();
         for file in files {
             let name = file.name();
-            let added = self
-                .s()
-                .ab_slot()
-                .try_update(|ab| ab.as_mut().map(|ab| ab.add_file(name.clone())))
-                .flatten();
+            let added = self.patch_usfm(|form| form.add_file(name.clone()));
             let Some(id) = added else { return };
             let opening = self.upload_opening();
             let this = self.clone();
@@ -247,7 +290,7 @@ impl Actions {
                 // Row ids start again in each opening: an answer for a closed dialog would
                 // mark the new dialog's row with the same id.
                 if this.upload_current(opening) {
-                    this.patch_ab(|ab| ab.file_read(id, state));
+                    this.patch_usfm(|form| form.file_read(id, state));
                 }
             });
         }
@@ -273,11 +316,7 @@ impl Actions {
             return UsfmState::Unreadable(String::new());
         }
         // Its row was removed while it was sent.
-        let listed = self.s().ab_slot().with_untracked(|ab| {
-            ab.as_ref()
-                .is_some_and(|ab| ab.files.iter().any(|f| f.id == row))
-        });
-        if !listed {
+        if !self.lists_usfm(row) {
             self.removed_upload(Slot::Usfm(row));
             return UsfmState::Unreadable(String::new());
         }
@@ -297,8 +336,8 @@ impl Actions {
     }
 
     /// The ✕ of a row (tC4 `abRemoveUsfmFile`).
-    pub fn ab_remove_file(&self, id: u32) {
-        self.patch_ab(|ab| ab.remove_file(id));
+    pub fn remove_usfm_file(&self, id: u32) {
+        self.patch_usfm(|form| form.remove_file(id));
         self.removed_upload(Slot::Usfm(id));
     }
 

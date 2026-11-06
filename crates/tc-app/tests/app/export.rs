@@ -375,6 +375,7 @@ async fn the_preview_prints_the_words_inside_nested_alignments() {
                 font: String::new(),
             },
             versification: "eng".to_owned(),
+            files: Vec::new(),
         },
     )
     .await

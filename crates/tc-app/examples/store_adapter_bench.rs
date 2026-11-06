@@ -221,6 +221,7 @@ async fn in_memory() {
                 kind: tc_journal::fold::ProjectKind::Bible,
                 records: titus_records(),
                 books: Vec::new(),
+                texts: Vec::new(),
             })
             .unwrap();
     }

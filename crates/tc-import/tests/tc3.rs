@@ -487,6 +487,7 @@ fn a_tc3_project_imports_with_its_text_unchanged_into_a_valid_project() {
                 kind: ProjectKind::Bible,
                 records,
                 books: Vec::new(),
+                texts: Vec::new(),
             },
             Cause::Import(ImportSource::Tc3 { user: None }),
         )
@@ -544,6 +545,7 @@ fn crash_import_leaves_no_project_or_a_whole_one() {
                     kind: ProjectKind::Bible,
                     records: records.clone(),
                     books: Vec::new(),
+                    texts: Vec::new(),
                 },
                 Cause::Import(ImportSource::Tc3 { user: None }),
             )

@@ -23,6 +23,7 @@ fn titus_project(name: &str) -> NewProject {
             Scope::Whole,
             tc_journal::command::SeedSource { usfm: ult("TIT") },
         )],
+        texts: Vec::new(),
     }
 }
 

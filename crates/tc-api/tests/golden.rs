@@ -46,8 +46,8 @@ use tc_api::check::{
     TargetWords, Testament as CheckTestament, Tool, ToolCard, ToolState,
 };
 use tc_api::create::{
-    AddBlankBooks, AddUsfmBooks, Bible, BooksAdded, Created, Details, Obs, ReviewUsfm, UsfmAdded,
-    UsfmFile, UsfmOutcome, UsfmProblem, UsfmRow, UsfmVerdict,
+    AddBlankBooks, AddUsfmBooks, Bible, BooksAdded, Created, Details, GuessUsfm, Obs, ReviewUsfm,
+    UsfmAdded, UsfmFile, UsfmOutcome, UsfmProblem, UsfmRow, UsfmVerdict,
 };
 use tc_api::door43::{
     OpenDoor43, ProjectName, RepoName, RepoSource, ShareOnDoor43, ShareOwner, SharedRepo,
@@ -761,6 +761,7 @@ impl Example for Bible {
             request: request(41),
             details: details(),
             versification: "eng".into(),
+            files: vec![usfm_file("57-TIT.usfm")],
         }
     }
 }
@@ -820,6 +821,26 @@ impl Example for ReviewUsfm {
     fn example() -> Self {
         ReviewUsfm {
             file: usfm_file("57-TIT.usfm"),
+        }
+    }
+}
+
+impl Example for GuessUsfm {
+    fn example() -> Self {
+        GuessUsfm {
+            files: vec![usfm_file("57-TIT.usfm")],
+        }
+    }
+}
+
+impl Example for tc_api::import::SchemeGuess {
+    fn example() -> Self {
+        tc_api::import::SchemeGuess {
+            scheme: "eng".into(),
+            fit: tc_api::import::SchemeFit::Undecided,
+            names: ["eng", "lxx", "org", "rsc", "rso", "vul"]
+                .map(String::from)
+                .to_vec(),
         }
     }
 }

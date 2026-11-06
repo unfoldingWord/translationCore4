@@ -12,7 +12,13 @@
       "direction": "rtl",
       "font": "Noto Sans (default)"
     },
-    "versification": "eng"
+    "versification": "eng",
+    "files": [
+      {
+        "upload": "00112233445566778899aabbccddeeff",
+        "name": "57-TIT.usfm"
+      }
+    ]
   },
   "reply": {
     "type": "ok",

@@ -26,6 +26,7 @@ const languageField = (page) => page.getByLabel('Language name');
 async function openNew(page, which) {
   await page.getByTestId('add-project').click();
   await page.getByTestId(`add-project-${which}`).click();
+  if (which === 'bible') await page.getByTestId('nb-start-blank').click();
   await languageField(page).waitFor();
 }
 

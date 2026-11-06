@@ -1,0 +1,39 @@
+{
+  "path": "create/guessUsfm",
+  "kind": "query",
+  "net": null,
+  "request": {
+    "files": [
+      {
+        "upload": "00112233445566778899aabbccddeeff",
+        "name": "57-TIT.usfm"
+      }
+    ]
+  },
+  "reply": {
+    "type": "ok",
+    "value": {
+      "scheme": "eng",
+      "fit": {
+        "kind": "undecided"
+      },
+      "names": [
+        "eng",
+        "lxx",
+        "org",
+        "rsc",
+        "rso",
+        "vul"
+      ]
+    }
+  },
+  "error": {
+    "type": "err",
+    "value": {
+      "type": "internal",
+      "value": {
+        "report": 9
+      }
+    }
+  }
+}

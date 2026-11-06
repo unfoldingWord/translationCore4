@@ -4,9 +4,10 @@
 
 use std::collections::BTreeSet;
 
-use tc_api::create::{Claims, Details, UsfmProblem, UsfmVerdict};
+use tc_api::create::{Claims, Details, UsfmFile, UsfmProblem, UsfmVerdict};
 use tc_api::home::{HomeCard, LanguageSuggestion};
 use tc_api::ids::{ProjectRef, RequestId, UploadId};
+use tc_api::import::SchemeGuess;
 use tc_api::refusal::CreateRefusal;
 use tc_api::shown::{Direction, Known};
 use tc_core::BookId;
@@ -77,6 +78,50 @@ pub struct NewProjectForm {
     /// answered from the server's reply cache and creates nothing twice (A-27). An edit or an
     /// answer ends the attempt.
     pub request: Option<RequestId>,
+    /// Where New Bible is: how to start, the files, then the fields. New Open Bible Stories
+    /// starts at its fields.
+    pub step: NewStep,
+    /// The files a project from USFM files starts with (J9c); none for a blank project.
+    pub usfm: UsfmFiles,
+    /// What the files' verse counts made of the versification (H13), for the note.
+    pub guess: Option<SchemeGuess>,
+}
+
+/// The steps of New Bible (J9c).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NewStep {
+    /// How to start: [`NewStart`].
+    Start,
+    /// From USFM files: pick and check them.
+    Files,
+    /// The project's name, language, direction, font and versification.
+    Details,
+}
+
+/// The ways New Bible starts (owner, 2026-11-06).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NewStart {
+    Blank,
+    Usfm,
+    Burrito,
+}
+
+impl NewStart {
+    pub const ALL: [NewStart; 3] = [Self::Blank, Self::Usfm, Self::Burrito];
+
+    /// The card's test id.
+    pub fn id(self) -> &'static str {
+        match self {
+            Self::Blank => "blank",
+            Self::Usfm => "usfm",
+            Self::Burrito => "burrito",
+        }
+    }
+
+    /// A way with no importer yet is drawn greyed out, as Import draws its kinds (#845).
+    pub fn has_importer(self) -> bool {
+        self != Self::Burrito
+    }
 }
 
 impl NewProjectForm {
@@ -97,6 +142,93 @@ impl NewProjectForm {
             busy: false,
             error: None,
             request: None,
+            step: match kind {
+                NewKind::Bible => NewStep::Start,
+                NewKind::Stories => NewStep::Details,
+            },
+            usfm: UsfmFiles::default(),
+            guess: None,
+        }
+    }
+
+    /// A card of the first step. A way with no importer does nothing.
+    pub fn choose_start(&mut self, start: NewStart) {
+        match start {
+            NewStart::Blank => self.step = NewStep::Details,
+            NewStart::Usfm => self.step = NewStep::Files,
+            NewStart::Burrito => {}
+        }
+    }
+
+    /// Back from the files to the first step: the files go, so a blank project never takes
+    /// them. Returns the rows that went, whose uploads the page drops.
+    /// A guess still in flight is forgotten. The row ids keep counting: an upload still being
+    /// sent for a row that went must not land in a later file's row of the same id.
+    pub fn back_to_start(&mut self) -> Vec<u32> {
+        let gone = self.usfm.files.drain(..).map(|entry| entry.id).collect();
+        self.step = NewStep::Start;
+        self.error = None;
+        self.busy = false;
+        self.guess = None;
+        gone
+    }
+
+    /// The rows of the files step: a project holds no book yet, so only a damaged file or a
+    /// second file of a book is refused.
+    pub fn rows(&self) -> Vec<UsfmRow> {
+        self.usfm.rows(&[])
+    }
+
+    /// The books the files bring, in the files' order.
+    pub fn file_books(&self) -> Vec<BookId> {
+        self.rows()
+            .into_iter()
+            .filter_map(|row| match row.state {
+                RowState::Adds(book) => Some(book),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Next is enabled when every file is read and is a book of its own: a refused file is
+    /// removed or replaced first, so no file the translator chose is left out silently.
+    pub fn files_ready(&self) -> bool {
+        !self.busy
+            && !self.usfm.files.is_empty()
+            && self
+                .rows()
+                .iter()
+                .all(|row| matches!(row.state, RowState::Adds(_)))
+    }
+
+    /// The press of Next: the files to guess the versification from, the button disabled
+    /// until the answer.
+    pub fn press_next(&mut self) -> Option<Vec<UsfmFile>> {
+        if !self.files_ready() {
+            return None;
+        }
+        self.busy = true;
+        self.error = None;
+        Some(self.usfm.sent())
+    }
+
+    /// The guess came (H13): it is the versification, the note says how, and the picker shows.
+    /// Without one the files step stays with the reason. A guess for `asked` applies only while
+    /// the files step still waits for it with those same files: after Back, or a file picked or
+    /// removed meanwhile, it would open the fields for files that were never checked together.
+    pub fn guessed(&mut self, asked: &[UsfmFile], guess: Result<SchemeGuess, String>) {
+        if !(self.step == NewStep::Files && self.busy && self.usfm.sent() == asked) {
+            return;
+        }
+        self.busy = false;
+        match guess {
+            Ok(guess) => {
+                self.versification = guess.scheme.clone();
+                self.guess = Some(guess);
+                self.show_advanced = true;
+                self.step = NewStep::Details;
+            }
+            Err(error) => self.error = Some(error),
         }
     }
 
@@ -270,6 +402,127 @@ pub enum RowState {
     Unreadable(String),
 }
 
+/// The USFM files a dialog picked, in the order they were picked, each with what the server
+/// made of it: Add a book's (#484) and New Bible's from USFM files (J9c).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct UsfmFiles {
+    pub files: Vec<UsfmEntry>,
+    next_file: u32,
+}
+
+impl UsfmFiles {
+    /// Each file's row, judged in order (tC4 `classifyUsfmFiles`): a book in `existing` or an
+    /// earlier file claimed is refused in its row.
+    pub fn rows(&self, existing: &[BookId]) -> Vec<UsfmRow> {
+        let mut claims = Claims::default();
+        self.files
+            .iter()
+            .map(|entry| {
+                let state = match &entry.state {
+                    UsfmState::Reading => RowState::Reading,
+                    UsfmState::Unreadable(reason) => RowState::Unreadable(reason.clone()),
+                    UsfmState::Read { verdict, .. } => match verdict {
+                        UsfmVerdict::Refused(problem) => RowState::Refused(problem.clone()),
+                        UsfmVerdict::Book { book } => {
+                            match claims.claim(&entry.name, *book, existing.contains(book)) {
+                                Ok(book) => RowState::Adds(book),
+                                Err(problem) => RowState::Refused(problem),
+                            }
+                        }
+                    },
+                };
+                UsfmRow {
+                    id: entry.id,
+                    name: entry.name.clone(),
+                    state,
+                }
+            })
+            .collect()
+    }
+
+    /// Whether a file is still being sent or read.
+    pub fn reading(&self) -> bool {
+        self.files
+            .iter()
+            .any(|entry| entry.state == UsfmState::Reading)
+    }
+
+    /// The files the server read, in order, to send with a request. The server judges each
+    /// again.
+    pub fn sent(&self) -> Vec<UsfmFile> {
+        self.files
+            .iter()
+            .filter_map(|entry| match &entry.state {
+                UsfmState::Read { upload, .. } => Some(UsfmFile {
+                    upload: upload.clone(),
+                    name: entry.name.clone(),
+                }),
+                _ => None,
+            })
+            .collect()
+    }
+}
+
+/// A dialog that picks USFM files, and its rows' edits: Add a book and New Bible.
+pub trait PicksUsfm {
+    fn usfm(&mut self) -> &mut UsfmFiles;
+
+    /// The list changed: what the next press sends is another request.
+    fn edited(&mut self);
+
+    /// A file picked: its row reads until the server says what it is. Its id finds the row
+    /// again.
+    fn add_file(&mut self, name: String) -> u32 {
+        let usfm = self.usfm();
+        let id = usfm.next_file;
+        usfm.next_file += 1;
+        usfm.files.push(UsfmEntry {
+            id,
+            name,
+            state: UsfmState::Reading,
+        });
+        self.edited();
+        id
+    }
+
+    /// The server read file `id`; a file removed meanwhile has no row to change.
+    fn file_read(&mut self, id: u32, state: UsfmState) {
+        if let Some(entry) = self.usfm().files.iter_mut().find(|e| e.id == id) {
+            entry.state = state;
+        }
+    }
+
+    /// Remove (✕): the file leaves, and the verdicts of the others are judged again.
+    fn remove_file(&mut self, id: u32) {
+        self.usfm().files.retain(|entry| entry.id != id);
+        self.edited();
+    }
+}
+
+impl PicksUsfm for AddBookForm {
+    fn usfm(&mut self) -> &mut UsfmFiles {
+        &mut self.usfm
+    }
+
+    fn edited(&mut self) {
+        self.request = None;
+    }
+}
+
+impl PicksUsfm for NewProjectForm {
+    fn usfm(&mut self) -> &mut UsfmFiles {
+        &mut self.usfm
+    }
+
+    fn edited(&mut self) {
+        NewProjectForm::edited(self);
+        // The files changed under a guess in flight: Next asks again for the files as they are.
+        if self.step == NewStep::Files {
+            self.busy = false;
+        }
+    }
+}
+
 /// tC4's `ab`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AddBookForm {
@@ -281,8 +534,7 @@ pub struct AddBookForm {
     pub multi: bool,
     pub books: BTreeSet<BookId>,
     /// The picked files, in the order they were picked (#484).
-    pub files: Vec<UsfmEntry>,
-    next_file: u32,
+    pub usfm: UsfmFiles,
     pub busy: bool,
     pub error: Option<String>,
     /// The id of the add in flight or lost: see [`NewProjectForm::request`].
@@ -297,16 +549,12 @@ impl AddBookForm {
             Known::Known(books) => books.iter().map(|b| b.book).collect(),
             Known::Unknown => Vec::new(),
         };
-        Self::of(card.project.clone(), card.name.clone(), existing)
+        Self::of_new(card.project.clone(), card.name.clone(), existing)
     }
 
-    /// The form for a project just created, which holds no book (tC4 `createBible` ends in
-    /// `openAddBook`).
-    pub fn of_new(project: ProjectRef, name: String) -> Self {
-        Self::of(project, name, Vec::new())
-    }
-
-    fn of(project: ProjectRef, project_name: String, existing: Vec<BookId>) -> Self {
+    /// The form for a project just created, which holds the books of its files, if any (tC4
+    /// `createBible` ends in `openAddBook`).
+    pub fn of_new(project: ProjectRef, project_name: String, existing: Vec<BookId>) -> Self {
         let book = BookId::ALL
             .into_iter()
             .find(|book| !existing.contains(book))
@@ -319,8 +567,7 @@ impl AddBookForm {
             book,
             multi: false,
             books: BTreeSet::new(),
-            files: Vec::new(),
-            next_file: 0,
+            usfm: UsfmFiles::default(),
             busy: false,
             error: None,
             request: None,
@@ -386,60 +633,9 @@ impl AddBookForm {
         Some(Ok((*self.request.get_or_insert_with(fresh), books)))
     }
 
-    /// A file picked: its row reads until the server says what it is. Its id finds the row
-    /// again.
-    pub fn add_file(&mut self, name: String) -> u32 {
-        let id = self.next_file;
-        self.next_file += 1;
-        self.files.push(UsfmEntry {
-            id,
-            name,
-            state: UsfmState::Reading,
-        });
-        self.request = None;
-        id
-    }
-
-    /// The server read file `id`; a file removed meanwhile has no row to change.
-    pub fn file_read(&mut self, id: u32, state: UsfmState) {
-        if let Some(entry) = self.files.iter_mut().find(|e| e.id == id) {
-            entry.state = state;
-        }
-    }
-
-    /// Remove (✕): the file leaves, and the verdicts of the others are judged again.
-    pub fn remove_file(&mut self, id: u32) {
-        self.files.retain(|entry| entry.id != id);
-        self.request = None;
-    }
-
-    /// Each file's row, judged in order (tC4 `classifyUsfmFiles`): a book the project holds or
-    /// an earlier file claimed is refused in its row.
+    /// Each file's row, judged in order: a book the project holds is refused in its row too.
     pub fn rows(&self) -> Vec<UsfmRow> {
-        let mut claims = Claims::default();
-        self.files
-            .iter()
-            .map(|entry| {
-                let state = match &entry.state {
-                    UsfmState::Reading => RowState::Reading,
-                    UsfmState::Unreadable(reason) => RowState::Unreadable(reason.clone()),
-                    UsfmState::Read { verdict, .. } => match verdict {
-                        UsfmVerdict::Refused(problem) => RowState::Refused(problem.clone()),
-                        UsfmVerdict::Book { book } => {
-                            match claims.claim(&entry.name, *book, self.existing.contains(book)) {
-                                Ok(book) => RowState::Adds(book),
-                                Err(problem) => RowState::Refused(problem),
-                            }
-                        }
-                    },
-                };
-                UsfmRow {
-                    id: entry.id,
-                    name: entry.name.clone(),
-                    state,
-                }
-            })
-            .collect()
+        self.usfm.rows(&self.existing)
     }
 
     /// The files Add would add.
@@ -453,12 +649,7 @@ impl AddBookForm {
     /// Add is disabled while it runs, while a file is still read, and with nothing to add
     /// (tC4 `ab-usfm-add`; the label stays "Add book", #564).
     pub fn add_disabled(&self) -> bool {
-        self.busy
-            || self.addable() == 0
-            || self
-                .files
-                .iter()
-                .any(|entry| entry.state == UsfmState::Reading)
+        self.busy || self.addable() == 0 || self.usfm.reading()
     }
 
     /// The press of Add (tC4 `addUsfmBooks`): the id of the attempt and the files to send, in
@@ -471,17 +662,7 @@ impl AddBookForm {
         if self.add_disabled() {
             return None;
         }
-        let files = self
-            .files
-            .iter()
-            .filter_map(|entry| match &entry.state {
-                UsfmState::Read { upload, .. } => Some(tc_api::create::UsfmFile {
-                    upload: upload.clone(),
-                    name: entry.name.clone(),
-                }),
-                _ => None,
-            })
-            .collect();
+        let files = self.usfm.sent();
         self.busy = true;
         self.error = None;
         Some((*self.request.get_or_insert_with(fresh), files))
@@ -494,7 +675,7 @@ impl AddBookForm {
         self.request = None;
         self.error = error;
         for (name, book) in added {
-            self.files.retain(|entry| entry.name != *name);
+            self.usfm.files.retain(|entry| entry.name != *name);
             if !self.existing.contains(book) {
                 self.existing.push(*book);
             }

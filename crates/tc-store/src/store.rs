@@ -73,6 +73,17 @@ pub struct NewProject {
     pub records: Vec<Record>,
     /// Books to add, each seeded from a literal source book (§5.7).
     pub books: Vec<(BookId, Scope, SeedSource)>,
+    /// Books to add whole with their own text, as `AddBookText` (§13.5): a new project from
+    /// USFM files is created with them or not at all.
+    pub texts: Vec<BookText>,
+}
+
+/// A book of a new project that brings its own text: the file's USFM, and its name for History.
+#[derive(Debug, Clone)]
+pub struct BookText {
+    pub book: BookId,
+    pub usfm: String,
+    pub file_name: String,
 }
 
 /// Why a project was not created.
@@ -423,6 +434,17 @@ impl Store {
                     book: *book,
                     scope: scope.clone(),
                     seed: seed.clone(),
+                })
+                .wait()
+                .map_err(CreateError::Refused)?;
+        }
+        for text in &new.texts {
+            handle
+                .submit(Command::AddBookText {
+                    book: text.book,
+                    scope: Scope::Whole,
+                    usfm: text.usfm.clone(),
+                    file_name: text.file_name.clone(),
                 })
                 .wait()
                 .map_err(CreateError::Refused)?;

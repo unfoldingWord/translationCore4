@@ -4,6 +4,11 @@
 //! When a chosen language's Door43 code is not one a project can hold, the Code box gets one it
 //! can and one sentence says so (owner's answer to Q35); when none can be made, the box stays
 //! empty and the sentence says why.
+//!
+//! New Bible first asks how to start (J9c, owner 2026-11-06; a change from tC4 in
+//! `docs/DIFFERENCES.md`): blank, from USFM files, or from a Scripture Burrito (#845). From USFM
+//! files, the files are picked and checked first; then the fields open with the versification
+//! the files fit (H13), and Create makes the project and its books in one write.
 
 use std::sync::Arc;
 
@@ -11,11 +16,13 @@ use leptos::prelude::*;
 use tc_api::shown::Direction;
 
 use super::language_name_field::LanguageNameField;
-use crate::app::forms::{CodeOffer, NewKind, NewProjectForm, SCRIPT_FONTS, code_offer};
+use crate::app::forms::{
+    CodeOffer, NewKind, NewProjectForm, NewStart, NewStep, SCRIPT_FONTS, code_offer,
+};
 use crate::app::web::{Actions, AppCtx, use_app};
 use crate::ds::{
     Attrs, Button, ButtonVariant, Callout, CalloutTone, FilterChip, OptionCard, Overline, Select,
-    SelectOption, TextField,
+    SelectOption, Text, TextField, TextRole, TextTone,
 };
 use crate::i18n::{keys, t};
 
@@ -70,25 +77,51 @@ fn new_project(kind: NewKind) -> AnyView {
         let np = s.new_project_form();
         Signal::derive(move || np.with(|np| np.as_ref().is_some_and(|np| np.busy)))
     };
+    let step = Memo::new(move |_| np.with(|np| np.as_ref().map_or(NewStep::Details, |np| np.step)));
+    let next_disabled =
+        Signal::derive(move || !np.with(|np| np.as_ref().is_some_and(NewProjectForm::files_ready)));
     let footer: ChildrenFn = {
         let actions = actions.clone();
         Arc::new(move || {
-            let (cancel, create) = (actions.clone(), actions.clone());
-            view! {
-                <Button variant=ButtonVariant::Secondary on_click=Callback::new(move |_| cancel.close_modal())>
-                    {move || t(keys::new_bible::CANCEL, &[])}
-                </Button>
-                <Button
-                    disabled=busy
-                    on_click=Callback::new(move |_| if bible { create.create_bible() } else { create.create_obs() })
-                >
-                    {move || t(if bible { keys::new_bible::CREATE } else { keys::new_obs::CREATE }, &[])}
-                </Button>
-            }
+            let actions = actions.clone();
+            (move || match step.get() {
+                NewStep::Start => ().into_any(),
+                NewStep::Files => {
+                    let (back, next) = (actions.clone(), actions.clone());
+                    view! {
+                        <Button variant=ButtonVariant::Secondary on_click=Callback::new(move |_| back.np_back_to_start())>
+                            {move || t(keys::importer::kind::BACK, &[])}
+                        </Button>
+                        <Button
+                            disabled=next_disabled
+                            attrs=Attrs::from([("data-testid", "nb-usfm-next")])
+                            on_click=Callback::new(move |_| next.np_files_next())
+                        >
+                            {move || t(keys::share_dialog::NEXT, &[])}
+                        </Button>
+                    }
+                    .into_any()
+                }
+                NewStep::Details => {
+                    let (cancel, create) = (actions.clone(), actions.clone());
+                    view! {
+                        <Button variant=ButtonVariant::Secondary on_click=Callback::new(move |_| cancel.close_modal())>
+                            {move || t(keys::new_bible::CANCEL, &[])}
+                        </Button>
+                        <Button
+                            disabled=busy
+                            on_click=Callback::new(move |_| if bible { create.create_bible() } else { create.create_obs() })
+                        >
+                            {move || t(if bible { keys::new_bible::CREATE } else { keys::new_obs::CREATE }, &[])}
+                        </Button>
+                    }
+                    .into_any()
+                }
+            })
             .into_any()
         })
     };
-    let children: ChildrenFn = {
+    let details: ChildrenFn = {
         let (actions, np) = (actions.clone(), s.new_project_form());
         let name = read(|np| np.name.clone());
         let code = read(|np| np.code.clone());
@@ -183,8 +216,29 @@ fn new_project(kind: NewKind) -> AnyView {
                     options=fonts
                 />
                 {versification}
+                {from_files(&np)}
                 {error}
             }
+            .into_any()
+        })
+    };
+    let children: ChildrenFn = {
+        let actions = actions.clone();
+        Arc::new(move || {
+            let (actions, details) = (actions.clone(), details.clone());
+            (move || match step.get() {
+                NewStep::Start => start_step(&actions).into_any(),
+                NewStep::Files => {
+                    let rows = Signal::derive(move || {
+                        np.with(|np| np.as_ref().map(NewProjectForm::rows).unwrap_or_default())
+                    });
+                    let error = Signal::derive(move || {
+                        np.with(|np| np.as_ref().and_then(|np| np.error.clone()))
+                    });
+                    super::add_book::usfm_step(&actions, rows, error, "nb").into_any()
+                }
+                NewStep::Details => details().into_any(),
+            })
             .into_any()
         })
     };
@@ -194,16 +248,99 @@ fn new_project(kind: NewKind) -> AnyView {
     } else {
         (keys::new_obs::TITLE, keys::new_obs::SUBTITLE)
     };
+    let subtitle = move || {
+        move || match step.get() {
+            NewStep::Start => t(keys::new_bible::START_SUBTITLE, &[]),
+            NewStep::Files | NewStep::Details => t(subtitle, &[]),
+        }
+    };
     crate::ds::Modal(crate::ds::ModalProps {
         title: Some((move || move || t(title, &[])).into()),
-        subtitle: Some((move || move || t(subtitle, &[])).into()),
+        subtitle: Some(subtitle.into()),
         close_label: Some(Signal::derive(|| t(keys::new_bible::CLOSE, &[]))),
         on_close: Some(Callback::new(move |()| close.close_modal())),
         footer: Some(footer),
+        footer_shown: Some(Signal::derive(move || step.get() != NewStep::Start)),
         children: Some(children),
         ..Default::default()
     })
     .into_any()
+}
+
+/// How New Bible starts (J9c): a card for each way; a way with no importer yet is greyed out.
+fn start_step(actions: &Actions) -> impl IntoView + use<> {
+    let cards = NewStart::ALL
+        .into_iter()
+        .map(|start| {
+            let actions = actions.clone();
+            let live = start.has_importer();
+            let (icon, title, desc): (crate::ds::Content, _, _) = match start {
+                NewStart::Blank => (
+                    "+".into(),
+                    keys::new_bible::START_BLANK,
+                    keys::new_bible::START_BLANK_DESC,
+                ),
+                NewStart::Usfm => (
+                    (move || t(keys::importer::kind::usfm::ICON, &[])).into(),
+                    keys::new_bible::START_USFM,
+                    keys::importer::kind::usfm::DESC,
+                ),
+                NewStart::Burrito => (
+                    (move || t(keys::importer::kind::burrito::ICON, &[])).into(),
+                    keys::new_bible::START_BURRITO,
+                    keys::importer::kind::LATER,
+                ),
+            };
+            view! {
+                <OptionCard
+                    icon=icon
+                    title=move || t(title, &[])
+                    description=move || t(desc, &[])
+                    trailing="→"
+                    disabled=!live
+                    style=if live {
+                        crate::css! {}
+                    } else {
+                        crate::css! { "opacity": 0.5, "cursor": "default" }
+                    }
+                    attrs=Attrs::new().with("data-testid", format!("nb-start-{}", start.id()))
+                    on_click=Callback::new(move |_| actions.np_choose_start(start))
+                />
+            }
+        })
+        .collect_view();
+    view! {
+        <div style="display: flex; flex-direction: column; gap: 10px; padding-bottom: 18px;">
+            {cards}
+        </div>
+    }
+}
+
+/// The books the files bring and what their verse counts made of the versification (H13),
+/// under the fields of a project from USFM files.
+fn from_files(np: &Signal<Option<NewProjectForm>>) -> impl IntoView + use<> {
+    let np = *np;
+    move || {
+        np.with(|np| {
+            let np = np.as_ref()?;
+            let guess = np.guess.as_ref()?;
+            let books = np
+                .file_books()
+                .iter()
+                .map(|book| book.english_name())
+                .collect::<Vec<_>>()
+                .join(", ");
+            let (note, fit) = super::import::scheme_note(guess);
+            Some(view! {
+                <Text role=TextRole::Caption tone=TextTone::Muted attrs=Attrs::from([("data-testid", "nb-usfm-books")])>
+                    {t(keys::new_bible::USFM_BOOKS, &[("books", &books)])}
+                </Text>
+                <Text role=TextRole::Caption tone=TextTone::Muted attrs=Attrs::new().with("data-testid", "nb-versification-note").with("data-fit", fit)>
+                    {note}
+                </Text>
+            })
+        })
+    }
 }
 
 /// The direction chips.

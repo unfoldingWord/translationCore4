@@ -296,6 +296,7 @@ async fn import_accepts_x_codes_and_refuses_unusable_codes_before_import() {
                     font: "Noto Sans (default)".to_owned(),
                 },
                 versification: "eng".to_owned(),
+                files: Vec::new(),
             },
         )
         .await;

@@ -8,8 +8,8 @@ use tc_api::refusal::CreateRefusal;
 use tc_api::shown::{Direction, Known};
 use tc_core::BookId;
 use tc_ui::app::forms::{
-    AddBookForm, AddBookStep, CodeOffer, NewKind, NewProjectForm, RowState, UsfmState,
-    book_info_key, chapters, code_offer,
+    AddBookForm, AddBookStep, CodeOffer, NewKind, NewProjectForm, NewStart, NewStep, PicksUsfm,
+    RowState, UsfmState, book_info_key, chapters, code_offer,
 };
 
 fn suggestion(
@@ -297,11 +297,104 @@ fn usfm_rows_are_judged_again_at_every_add_and_remove() {
     assert_eq!(form.rows()[0].state, RowState::Adds(BookId::Titus));
     // The answer for a file that was removed meanwhile changes nothing.
     form.file_read(a, UsfmState::Unreadable("late".into()));
-    assert_eq!(form.files.len(), 4);
+    assert_eq!(form.usfm.files.len(), 4);
     form.remove_file(b);
     form.remove_file(c);
     assert_eq!(form.addable(), 0);
     assert!(form.add_disabled());
+}
+
+/// J9c: New Bible asks how to start. From USFM files, Next waits until every file is read and is
+/// a book of its own; the files' guess sets the versification and opens the fields; Back drops
+/// the files, so a blank project never takes them.
+#[test]
+fn new_bible_from_usfm_files_checks_the_files_then_takes_the_guessed_versification() {
+    let mut form = NewProjectForm::bible(Ok(vec!["eng".into(), "org".into()]));
+    assert_eq!(form.step, NewStep::Start);
+    assert_eq!(NewProjectForm::stories().step, NewStep::Details);
+    form.choose_start(NewStart::Burrito);
+    assert_eq!(form.step, NewStep::Start, "the Burrito has no importer yet");
+    form.choose_start(NewStart::Usfm);
+    assert_eq!(form.step, NewStep::Files);
+    assert!(!form.files_ready(), "no file");
+    let a = form.add_file("a-TIT.usfm".into());
+    assert!(!form.files_ready(), "a file still being read");
+    form.file_read(a, read(1, BookId::Titus));
+    let b = form.add_file("b-TIT.usfm".into());
+    form.file_read(b, read(2, BookId::Titus));
+    assert!(!form.files_ready(), "two files of one book");
+    form.remove_file(b);
+    let c = form.add_file("MAL.usfm".into());
+    form.file_read(c, read(3, BookId::Malachi));
+    assert!(form.files_ready());
+    let asked = form.press_next().unwrap();
+    assert_eq!(asked.len(), 2);
+    assert_eq!(form.press_next(), None, "disabled in flight");
+    form.guessed(&asked, Err("the server did not answer".into()));
+    assert_eq!(form.step, NewStep::Files, "no guess, no fields");
+    assert!(form.error.is_some());
+    let asked = form.press_next().unwrap();
+    form.guessed(&asked, Ok(guess("org")));
+    assert_eq!(form.step, NewStep::Details);
+    assert_eq!(form.versification, "org");
+    assert!(form.show_advanced, "the picker shows the guess");
+    assert_eq!(form.file_books(), vec![BookId::Titus, BookId::Malachi]);
+    form.step = NewStep::Files;
+    assert_eq!(form.back_to_start(), vec![a, c]);
+    form.choose_start(NewStart::Blank);
+    assert_eq!(form.step, NewStep::Details);
+    assert!(form.usfm.sent().is_empty() && form.file_books().is_empty());
+}
+
+fn guess(scheme: &str) -> tc_api::import::SchemeGuess {
+    tc_api::import::SchemeGuess {
+        scheme: scheme.into(),
+        fit: tc_api::import::SchemeFit::Exact,
+        names: vec!["eng".into(), "org".into()],
+    }
+}
+
+/// J9c "Create makes the project with all of it": a guess answered after Back, or after the
+/// files changed, opens no fields and sets no versification; only the guess for the files as
+/// they are now does.
+#[test]
+fn a_late_guess_for_other_files_opens_no_fields() {
+    let mut form = NewProjectForm::bible(Ok(vec!["eng".into(), "org".into()]));
+    form.choose_start(NewStart::Usfm);
+    let a = form.add_file("TIT.usfm".into());
+    form.file_read(a, read(1, BookId::Titus));
+    let first = form.press_next().unwrap();
+    // Back while the guess runs: the files go, the wait ends, the late guess changes nothing.
+    assert_eq!(form.back_to_start(), vec![a]);
+    assert!(!form.busy && form.guess.is_none());
+    form.guessed(&first, Ok(guess("org")));
+    assert_eq!(form.step, NewStep::Start);
+    assert_eq!(form.versification, "eng");
+    // Files again, and Next for them while the first guess is still on its way.
+    form.choose_start(NewStart::Usfm);
+    let b = form.add_file("MAL.usfm".into());
+    assert_ne!(
+        b, a,
+        "a late upload for the row that went cannot land in this one"
+    );
+    form.file_read(b, read(2, BookId::Malachi));
+    let second = form.press_next().unwrap();
+    form.guessed(&first, Ok(guess("org")));
+    assert_eq!(form.step, NewStep::Files, "the first files' guess");
+    assert!(form.busy, "still waiting for its own");
+    // A file picked while the guess runs: that guess is for fewer files than the list holds.
+    let c = form.add_file("JUD.usfm".into());
+    assert!(!form.busy);
+    form.guessed(&second, Ok(guess("org")));
+    assert_eq!(form.step, NewStep::Files);
+    assert!(!form.files_ready(), "the new file is still being read");
+    form.file_read(c, read(3, BookId::Jude));
+    let third = form.press_next().unwrap();
+    assert_eq!(third.len(), 2);
+    form.guessed(&third, Ok(guess("org")));
+    assert_eq!(form.step, NewStep::Details);
+    assert_eq!(form.versification, "org");
+    assert_eq!(form.file_books(), vec![BookId::Malachi, BookId::Jude]);
 }
 
 #[test]
@@ -319,7 +412,7 @@ fn an_add_keeps_its_error_until_the_next_add_and_the_books_it_added_leave_the_li
         &[("a.usfm".into(), BookId::Titus)],
         Some("b.usfm was not added: the disk is full".into()),
     );
-    assert_eq!(form.files.len(), 1);
+    assert_eq!(form.usfm.files.len(), 1);
     assert_eq!(form.existing, vec![BookId::Titus]);
     // The error stays while the list changes (#564)...
     let at = form.add_file("c.usfm".into());

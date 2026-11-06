@@ -50,6 +50,7 @@ async function createArabicTitus(page, env) {
   const before = listed(env);
   await page.getByTestId('add-project').click();
   await page.getByTestId('add-project-bible').click();
+  await page.getByTestId('nb-start-blank').click();
   await page.getByLabel(en['newBible.langName']).waitFor();
   await page.getByLabel(en['newBible.name']).fill('Arabic Titus');
   await page.getByLabel(en['newBible.langName']).fill('العربية');

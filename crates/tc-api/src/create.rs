@@ -77,6 +77,19 @@ pub struct Bible {
     pub details: Details,
     /// A standard versification's name; `eng` unless the person chose another.
     pub versification: String,
+    /// The USFM files a project from USFM files starts with (J9c): each one a book, made with
+    /// the project in one write, or no project at all. Empty for a blank project.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub files: Vec<UsfmFile>,
+}
+
+/// `create/guessUsfm`: the versification the files' verse counts fit best (ruling H13), which
+/// New Bible from USFM files offers as its default. The person can choose another.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "proptest", derive(proptest_derive::Arbitrary))]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GuessUsfm {
+    pub files: Vec<UsfmFile>,
 }
 
 /// `create/obs`: New Open Bible Stories' Create.

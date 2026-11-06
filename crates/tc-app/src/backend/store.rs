@@ -1017,6 +1017,7 @@ fn new_project(new: super::NewProjectSpec) -> tc_store::NewProject {
         kind: new.kind,
         records: new.records,
         books: Vec::new(),
+        texts: new.texts,
     }
 }
 
@@ -2233,6 +2234,7 @@ mod tests {
                 kind: Kind::Bible,
                 records,
                 books: Vec::new(),
+                texts: Vec::new(),
             })
             .unwrap();
         backend
