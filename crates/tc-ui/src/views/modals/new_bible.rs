@@ -406,7 +406,7 @@ fn burrito_step(actions: &Actions, np: &Signal<Option<NewProjectForm>>) -> impl 
         move || {
             let pick = np.with(|np| np.as_ref().map(|np| np.burrito.clone()))?;
             Some(match pick {
-                BurritoPick::Reading { name } => view! {
+                BurritoPick::Reading { name, .. } => view! {
                     <Text role=TextRole::Caption tone=TextTone::Muted attrs=Attrs::from([("data-testid", "nb-burrito-reading")])>
                         {t(keys::new_bible::BURRITO_READING, &[("file", &name)])}
                     </Text>

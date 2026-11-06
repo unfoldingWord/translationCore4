@@ -87,6 +87,9 @@ pub struct NewProjectForm {
     pub guess: Option<SchemeGuess>,
     /// The Scripture Burrito a project from a Burrito starts with (J9d).
     pub burrito: BurritoPick,
+    /// How many Burritos were picked in this opening: an answer for an earlier one, which
+    /// comes after Back or another pick, changes nothing.
+    burrito_picks: u32,
 }
 
 /// New Bible from a Scripture Burrito (J9d): the picked `.zip`, from its upload to its reading.
@@ -94,8 +97,8 @@ pub struct NewProjectForm {
 pub enum BurritoPick {
     #[default]
     None,
-    /// Sent, and being opened and checked.
-    Reading { name: String },
+    /// Sent, and being opened and checked: the form's `pick`-th Burrito.
+    Reading { name: String, pick: u32 },
     /// Refused, in words; `receive` when it is work Receive work takes.
     Refused {
         name: String,
@@ -168,6 +171,7 @@ impl NewProjectForm {
             usfm: UsfmFiles::default(),
             guess: None,
             burrito: BurritoPick::None,
+            burrito_picks: 0,
         }
     }
 
@@ -182,30 +186,51 @@ impl NewProjectForm {
 
     /// Back from the files or the Burrito to the first step: they go, so a blank project never
     /// takes them. Returns the rows that went, whose uploads the page drops with the Burrito's.
+    /// A guess still in flight is forgotten. The row ids keep counting: an upload still being
+    /// sent for a row that went must not land in a later file's row of the same id.
     pub fn back_to_start(&mut self) -> Vec<u32> {
-        let gone = self.usfm.files.iter().map(|entry| entry.id).collect();
-        self.usfm = UsfmFiles::default();
+        let gone = self.usfm.files.drain(..).map(|entry| entry.id).collect();
         self.burrito = BurritoPick::None;
         self.step = NewStep::Start;
         self.error = None;
+        self.busy = false;
+        self.guess = None;
         gone
     }
 
     /// A Burrito was picked: it is being sent and read. Nothing else can be pressed meanwhile.
-    pub fn pick_burrito(&mut self, name: String) {
-        self.burrito = BurritoPick::Reading { name };
+    /// Returns the pick, which its answer names.
+    pub fn pick_burrito(&mut self, name: String) -> u32 {
+        self.burrito_picks += 1;
+        let pick = self.burrito_picks;
+        self.burrito = BurritoPick::Reading { name, pick };
         self.busy = true;
         self.error = None;
+        pick
+    }
+
+    /// Whether the form still waits for the answer to `pick`.
+    pub fn waits_for_burrito(&self, pick: u32) -> bool {
+        matches!(&self.burrito, BurritoPick::Reading { pick: p, .. } if *p == pick)
     }
 
     /// The Burrito was read, or refused in words (`receive` when Receive work takes it). Read,
     /// its metadata fills the fields, and its own versification leaves no choice (H13) or the
     /// one its books fit is offered as from USFM files.
+    /// An answer for a pick the form no longer waits for changes nothing; returns whether it
+    /// was taken.
     pub fn burrito_read(
         &mut self,
-        name: String,
+        pick: u32,
         read: Result<(UploadId, BurritoFound), (String, bool)>,
-    ) {
+    ) -> bool {
+        let BurritoPick::Reading { name, .. } = &self.burrito else {
+            return false;
+        };
+        if !self.waits_for_burrito(pick) {
+            return false;
+        }
+        let name = name.clone();
         self.busy = false;
         match read {
             Ok((upload, found)) => {
@@ -236,6 +261,7 @@ impl NewProjectForm {
                 }
             }
         }
+        true
     }
 
     /// What the Burrito brings, once read.
@@ -306,8 +332,13 @@ impl NewProjectForm {
     }
 
     /// The guess came (H13): it is the versification, the note says how, and the picker shows.
-    /// Without one the files step stays with the reason.
-    pub fn guessed(&mut self, guess: Result<SchemeGuess, String>) {
+    /// Without one the files step stays with the reason. A guess for `asked` applies only while
+    /// the files step still waits for it with those same files: after Back, or a file picked or
+    /// removed meanwhile, it would open the fields for files that were never checked together.
+    pub fn guessed(&mut self, asked: &[UsfmFile], guess: Result<SchemeGuess, String>) {
+        if !(self.step == NewStep::Files && self.busy && self.usfm.sent() == asked) {
+            return;
+        }
         self.busy = false;
         match guess {
             Ok(guess) => {
@@ -627,6 +658,10 @@ impl PicksUsfm for NewProjectForm {
 
     fn edited(&mut self) {
         NewProjectForm::edited(self);
+        // The files changed under a guess in flight: Next asks again for the files as they are.
+        if self.step == NewStep::Files {
+            self.busy = false;
+        }
     }
 }
 

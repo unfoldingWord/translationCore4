@@ -171,24 +171,39 @@ impl Actions {
     /// server before the fields open. A file picked again takes the first one's place.
     pub fn np_pick_burrito(&self, file: web_sys::File) {
         let name = file.name();
+        let mut pick = 0;
+        self.patch_np(|np| pick = np.pick_burrito(name));
         if file.size() > UploadFlow::Import.cap() as f64 {
             let error = t(keys::wizard::ERROR, &[]);
-            self.patch_np(|np| np.burrito_read(name, Err((error, false))));
+            self.patch_np(|np| {
+                np.burrito_read(pick, Err((error, false)));
+            });
             return;
         }
-        self.patch_np(|np| np.pick_burrito(name.clone()));
         let opening = self.upload_opening();
         let this = self.clone();
         spawn_local(async move {
             let api = this.runtime().api();
             let read = match api.upload(&file, UploadFlow::Import).await {
-                Ok(upload) if this.picked_upload(opening, Slot::Burrito, &upload.id) => api
-                    .call(&ReadBurrito {
+                Ok(upload) => {
+                    // An upload for a pick that went (Back, another file) never takes the slot
+                    // of the Burrito picked after it.
+                    let waits = this.s().np_slot().with_untracked(|np| {
+                        np.as_ref().is_some_and(|np| np.waits_for_burrito(pick))
+                    });
+                    if !waits {
+                        this.drop_upload(upload.id);
+                        return;
+                    }
+                    if !this.picked_upload(opening, Slot::Burrito, &upload.id) {
+                        return;
+                    }
+                    api.call(&ReadBurrito {
                         upload: upload.id.clone(),
                     })
                     .await
-                    .map(|found| (upload.id, found)),
-                Ok(_) => return,
+                    .map(|found| (upload.id, found))
+                }
                 Err(error) => Err(error),
             };
             let read = read.map_err(|error| {
@@ -201,7 +216,9 @@ impl Actions {
                 (unreadable(error), receive)
             });
             if this.upload_current(opening) {
-                this.patch_np(|np| np.burrito_read(name, read));
+                this.patch_np(|np| {
+                    np.burrito_read(pick, read);
+                });
             }
         });
     }
@@ -225,9 +242,10 @@ impl Actions {
         let opening = self.upload_opening();
         let this = self.clone();
         spawn_local(async move {
-            let guess = this.runtime().api().call(&GuessUsfm { files }).await;
+            let asked = GuessUsfm { files };
+            let guess = this.runtime().api().call(&asked).await;
             if this.upload_current(opening) {
-                this.patch_np(|np| np.guessed(guess.map_err(unreadable)));
+                this.patch_np(|np| np.guessed(&asked.files, guess.map_err(unreadable)));
             }
         });
     }
