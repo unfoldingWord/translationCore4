@@ -29,7 +29,8 @@ use tc_journal::record::VerseValue;
 
 use super::common::{folder, open_progress, post, rid, tit, until};
 use super::sync::{
-    World, card_with_counts, internet_on, script, shared, shared_with, sign_in, synced, world_of,
+    World, card_where, card_with_counts, internet_on, script, shared, shared_with, sign_in, synced,
+    world_of,
 };
 use std::sync::Arc;
 use tc_door43_fake::{Fault, FaultRule, RepoSeed};
@@ -86,6 +87,7 @@ async fn script_synced(w: &World, n: u8, project: &ProjectRef) {
                     teammates: None,
                     joined: None,
                     restored: 0,
+                    format_restored: false,
                     kinds: Vec::new(),
                 },
             },
@@ -2013,4 +2015,124 @@ mod import_ports {
 
     import_port_contract!(scripted, Scripted);
     import_port_contract!(tc_import, Real);
+}
+
+/// Story 1, frame 1 of `project` saved as `text`; then closed.
+async fn save_frame_1_1(app: &App, project: &ProjectRef, n: u8, text: &str) {
+    let at = app
+        .sessions()
+        .open_screen(project, open_progress())
+        .await
+        .unwrap()
+        .at;
+    let minted = app
+        .sessions()
+        .reader(&at)
+        .unwrap()
+        .read()
+        .mint(&frame_1_1(), None)
+        .unwrap();
+    post(
+        app,
+        &tc_api::story::SaveFrame {
+            at: at.clone(),
+            request: rid(n),
+            shown: shown(&minted).unwrap(),
+            text: text.to_owned(),
+        },
+    )
+    .await
+    .unwrap();
+    post(
+        app,
+        &Close {
+            at,
+            request: rid(n.wrapping_add(1)),
+        },
+    )
+    .await
+    .unwrap();
+}
+
+fn frame_1_1() -> tc_journal::RecordKey {
+    let story = tc_journal::StoryNo::new(1).unwrap();
+    tc_journal::RecordKey::Frame(story, tc_journal::FrameNo::new(1))
+}
+
+/// J18, G7 for frames (#761): two computers change the same frame of a shared story project
+/// from the same version. A real Door43 sync keeps both and tells the person three ways: its
+/// toast counts one frame conflict (never a verse conflict), Home's story card shows the
+/// chip, and the story screen's Review counts it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_frame_two_teammates_changed_is_counted_on_the_toast_the_card_and_the_story_screen() {
+    let w = <Door43 as SyncPortFixture>::world().await;
+    let a = &w.t.app;
+    internet_on(a).await;
+    sign_in(a).await;
+    let stories = folder(STORIES);
+    let shared = synced_project(a, &stories, 70).await;
+    assert_eq!(
+        (shared.frame_conflicts, shared.verse_conflicts),
+        (Some(0), 0)
+    );
+    let (b, _dir) = computer_b(&w).await;
+    let job = post(
+        &b.app,
+        &OpenDoor43 {
+            request: rid(72),
+            repo: RepoSource::new(PARITY_USER, STORY_REPO).unwrap(),
+        },
+    )
+    .await
+    .unwrap();
+    let JobState::Done(JobOutcome::Created { project: b_stories }) = ended(&b.app, job).await
+    else {
+        panic!("B opens the story project from Door43");
+    };
+    save_frame_1_1(
+        &b.app,
+        &b_stories,
+        73,
+        "Dios creó todo, como B lo escribió.",
+    )
+    .await;
+    synced_project(&b.app, &b_stories, 75).await;
+    save_frame_1_1(a, &stories, 77, "Dios creó todo, como A lo escribió.").await;
+
+    let view = synced_project(a, &stories, 79).await;
+    assert_eq!(
+        (view.frame_conflicts, view.verse_conflicts),
+        (Some(1), 0),
+        "the toast counts one frame conflict: {view:?}"
+    );
+    let card = card_where(a, &stories, |card| {
+        card.conflicts == tc_api::shown::Known::Known(1)
+    })
+    .await;
+    assert_eq!(card.kind, tc_api::home::ProjectKind::Stories);
+    let at = a
+        .sessions()
+        .open_screen(&stories, open_progress())
+        .await
+        .unwrap()
+        .at;
+    let story: tc_api::story::StoryView = post(
+        a,
+        &tc_api::story::Open {
+            at: at.clone(),
+            story: tc_api::ids::StoryNo::new(1).unwrap(),
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(story.conflicts, 1, "the story screen's Review counts it");
+    post(
+        a,
+        &Close {
+            at,
+            request: rid(81),
+        },
+    )
+    .await
+    .unwrap();
 }

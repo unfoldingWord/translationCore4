@@ -8,7 +8,10 @@
 //! the facts: [`SkipReason::InlineAlignment`] when it already holds `\zaln` markup (its
 //! bytes are its alignment, #553), [`SkipReason::NeedsReview`], or
 //! [`SkipReason::WeaveRefused`]. A record that places no word has nothing to weave and is
-//! not named (tC4 F20 wrapped every word in `\w`). Nothing writes `x-ref` (#409).
+//! not named (tC4 F20 wrapped every word in `\w`). In a verse span each source word is
+//! counted in its own verse of the pin and names it in `x-ref`
+//! ([`tc_align::counted_by_verse`], #409); without the pin the span keeps tC4's span-wide
+//! counts.
 //!
 //! Plain USFM is the aligned book with its alignment markup removed
 //! ([`tc_usfm::strip_alignment`]) piece by piece: the stored text, and a verse added from an
@@ -172,7 +175,11 @@ fn weave(
     if needs_review(value, &run, &verse, alignment.pin.as_ref()) {
         return Woven::Skipped(SkipReason::NeedsReview);
     }
-    match tc_align::usfm::weave_verse(stored, value) {
+    let by_verse = alignment
+        .pin
+        .as_ref()
+        .and_then(|pin| tc_align::counted_by_verse(value, pin));
+    match tc_align::usfm::weave_verse(stored, by_verse.as_ref().unwrap_or(value)) {
         Ok(woven) => Woven::Aligned(woven),
         Err(_) => Woven::Skipped(SkipReason::WeaveRefused),
     }

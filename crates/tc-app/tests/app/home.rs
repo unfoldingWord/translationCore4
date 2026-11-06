@@ -870,6 +870,32 @@ async fn a_kept_summary_is_used_only_for_its_own_project() {
     );
 }
 
+/// #761: a story's summary kept from before frame conflicts were counted is counted again; one
+/// that holds the frame count, a Bible's, or one whose conflicts could not be read is kept.
+#[test]
+fn a_story_summary_kept_from_before_frame_counts_is_counted_again() {
+    use tc_journal::fold::ProjectKind as Kind;
+    let old: tc_app::home::Summary = serde_json::from_value(serde_json::json!({
+        "books": [],
+        "stories": null,
+        "verseConflicts": {},
+    }))
+    .unwrap();
+    assert_eq!(old.frame_conflicts, None);
+    assert!(!old.holds_counts_of(Kind::Stories));
+    assert!(old.holds_counts_of(Kind::Bible));
+    let counted = tc_app::home::Summary {
+        frame_conflicts: Some(0),
+        ..old.clone()
+    };
+    assert!(counted.holds_counts_of(Kind::Stories));
+    let unreadable = tc_app::home::Summary {
+        verse_conflicts: None,
+        ..old
+    };
+    assert!(unreadable.holds_counts_of(Kind::Stories));
+}
+
 /// The story tiles of tC4's sample OBS project (`homeObsCard`, #328): fifty tiles, story 1
 /// "La Creación" at 13%, stories 2 and 3 untitled (no gateway on this computer) at 0%, and
 /// the project at 1% drafted.

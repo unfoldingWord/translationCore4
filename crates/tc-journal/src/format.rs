@@ -443,24 +443,16 @@ impl FormatDoc {
         out
     }
 
+    fn header(&self) -> FormatHeader {
+        FormatHeader {
+            major: self.major.clone(),
+            min_reader_minor: self.min_reader_minor.clone(),
+        }
+    }
+
     /// What this app may do with a project of this format.
     pub fn gate(&self) -> FormatGate {
-        let major = u64::from(FORMAT_MAJOR);
-        if self.major > major {
-            FormatGate::Refused {
-                major: self.major.clone(),
-            }
-        } else if self.major < major {
-            FormatGate::NeedsMigration {
-                major: self.major.clone(),
-            }
-        } else if self.min_reader_minor > u64::from(FORMAT_MINOR) {
-            FormatGate::ReadOnly {
-                min_reader_minor: self.min_reader_minor.clone(),
-            }
-        } else {
-            FormatGate::Writable
-        }
+        self.header().gate()
     }
 
     /// The document after an intake of `other` (§12.1): `minor` and `minReaderMinor` by
@@ -511,9 +503,63 @@ impl FormatDoc {
     }
 }
 
-/// The gate for raw `format.json` bytes, or why they cannot be read.
+/// The fields of `format.json` no later version changes (INV-FORMAT-HEADER-FROZEN): the gate
+/// reads only these, so a newer version that reshapes any other field is still gated by its
+/// numbers, never taken for a damaged file and rewritten.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FormatHeader {
+    pub major: FormatNumber,
+    pub min_reader_minor: FormatNumber,
+}
+
+impl FormatHeader {
+    /// Reads `format`, `major` and `minReaderMinor`; every other member is left unread.
+    pub fn parse(bytes: &[u8]) -> Result<Self, FormatError> {
+        let mut map: BTreeMap<String, Box<RawValue>> =
+            serde_json::from_slice(bytes).map_err(|_| FormatError::NotJson)?;
+        let shape = |text: &str| FormatError::Shape(text.to_owned());
+        let format: Option<String> = map
+            .remove("format")
+            .and_then(|raw| serde_json::from_str(raw.get()).ok());
+        if format.as_deref() != Some("tc-project") {
+            return Err(shape("format is not \"tc-project\""));
+        }
+        let mut number = |key: &str| {
+            let raw = map.remove(key);
+            FormatNumber::parse(raw.as_ref().map_or("", |raw| raw.get()))
+                .ok_or_else(|| shape(&format!("{key} is not a non-negative integer")))
+        };
+        Ok(Self {
+            major: number("major")?,
+            min_reader_minor: number("minReaderMinor")?,
+        })
+    }
+
+    /// What this app may do with a project of this format.
+    pub fn gate(&self) -> FormatGate {
+        let major = u64::from(FORMAT_MAJOR);
+        if self.major > major {
+            FormatGate::Refused {
+                major: self.major.clone(),
+            }
+        } else if self.major < major {
+            FormatGate::NeedsMigration {
+                major: self.major.clone(),
+            }
+        } else if self.min_reader_minor > u64::from(FORMAT_MINOR) {
+            FormatGate::ReadOnly {
+                min_reader_minor: self.min_reader_minor.clone(),
+            }
+        } else {
+            FormatGate::Writable
+        }
+    }
+}
+
+/// The gate for raw `format.json` bytes, or why its header cannot be read. Open, sync and
+/// receive all gate through this.
 pub fn gate(bytes: &[u8]) -> Result<FormatGate, FormatError> {
-    FormatDoc::parse(bytes).map(|doc| doc.gate())
+    FormatHeader::parse(bytes).map(|header| header.gate())
 }
 
 #[cfg(test)]

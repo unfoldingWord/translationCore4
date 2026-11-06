@@ -43,6 +43,7 @@
                 }
               ],
               "academy": "figs-abstractnouns",
+              "academyTitle": "Abstract Nouns",
               "panes": [
                 {
                   "pane": "ult",
@@ -76,6 +77,25 @@
               "occurrence": 1,
               "category": "kt",
               "slug": "god",
+              "intro": [
+                {
+                  "kind": "p",
+                  "quote": 0,
+                  "spans": [
+                    {
+                      "text": "God",
+                      "bold": true
+                    },
+                    {
+                      "text": " refers to the eternal being."
+                    }
+                  ],
+                  "depth": 0,
+                  "number": null,
+                  "cells": [],
+                  "header": false
+                }
+              ],
               "panes": [
                 {
                   "pane": "ult",

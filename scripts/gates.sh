@@ -36,7 +36,9 @@ NIGHTLY=(
   "cache-warm|cargo test --locked --workspace --exclude tc-app --no-run && cargo test --locked -p tc-app --no-run"
   "model-long|TC_MODEL_ROWS=1 cargo test --locked -p tc-store --test store model::random_histories_lose_no_work_long -- --ignored --exact --nocapture"
   # The scale tests at ten times Psalms (rulings/2026-10-26-test-scale.md); pushes and gates run 2.
-  "scale-long|TC_SCALE_FACTOR=10 cargo test --locked --no-fail-fast -p tc-journal --test operation_counts -p tc-store --test store -p tc-app --test op_counts"
+  # Two at a time: each builds its own corpus, and four at once peaked at 18.5 GB, past the
+  # 16 GB runner, which then stopped (nightlies of 2026-10-31 to 2026-11-05).
+  "scale-long|TC_SCALE_FACTOR=10 RUST_TEST_THREADS=2 cargo test --locked --no-fail-fast -p tc-journal --test operation_counts -p tc-store --test store -p tc-app --test op_counts"
   "sync-model-long|cargo test --locked -p tc-sync --test sync model::random_syncs_lose_no_work_long -- --ignored --exact"
   # tc-store's full crash sweeps and property counts; the gate runs a cheaper test that catches
   # the same bug (each `_nightly` test's ignore reason names it).

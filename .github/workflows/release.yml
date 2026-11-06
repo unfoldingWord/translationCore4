@@ -224,7 +224,7 @@ jobs:
           path: dist
       - if: matrix.platform == 'linux-x64'
         run: sudo apt-get install -y --no-install-recommends xvfb libgtk-3-0 libnss3 libasound2t64 libgbm1
-      - name: install, smoke-test, start, uninstall
+      - name: install, smoke-test, start, uninstall, reinstall
         run: scripts/release/smoke-installed.sh ${{ matrix.platform }} dist
       - if: always()
         uses: actions/upload-artifact@v7

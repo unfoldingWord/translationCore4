@@ -1033,6 +1033,11 @@ impl LoadedBook {
                 .iter()
                 .filter_map(|note| {
                     let at = self.place(frame, chapter, &note.reference)?;
+                    let academy = note
+                        .support_reference
+                        .as_ref()
+                        .and_then(|a| a.slug())
+                        .map(str::to_owned);
                     Some(NoteCard {
                         id: item_id(&note.id),
                         panes: self.placed_focus(frame, &at, &note.quote, note.occurrence),
@@ -1041,11 +1046,10 @@ impl LoadedBook {
                         quote: note.quote.as_str().to_owned(),
                         occurrence: occurrence(note.occurrence),
                         note: blocks(&note.text),
-                        academy: note
-                            .support_reference
-                            .as_ref()
-                            .and_then(|a| a.slug())
-                            .map(str::to_owned),
+                        academy_title: academy
+                            .as_deref()
+                            .and_then(|slug| academy_title(helps, slug)),
+                        academy,
                     })
                 })
                 .collect()
@@ -1056,6 +1060,8 @@ impl LoadedBook {
                 .iter()
                 .filter_map(|link| {
                     let at = self.place(frame, chapter, &link.reference)?;
+                    let category = link.article.category().map(|c| c.folder().to_owned());
+                    let slug = word_slug(&link.article);
                     Some(WordCard {
                         id: item_id(&link.id),
                         panes: self.placed_focus(frame, &at, &link.orig_words, link.occurrence),
@@ -1063,8 +1069,9 @@ impl LoadedBook {
                         verse: at.verse,
                         quote: link.orig_words.as_str().to_owned(),
                         occurrence: occurrence(link.occurrence),
-                        category: link.article.category().map(|c| c.folder().to_owned()),
-                        slug: word_slug(&link.article),
+                        intro: word_intro(helps, category.clone(), slug.clone()),
+                        category,
+                        slug,
                     })
                 })
                 .collect()
@@ -1301,6 +1308,37 @@ pub(crate) fn article_title(loaded: &LoadedBook, link: &ArticleLink) -> Option<S
     )
     .0
     .map(|found| found.title.to_owned())
+}
+
+/// The title of the Translation Academy article `slug` names, when the helps carry it.
+pub(crate) fn academy_title(helps: &tc_helps::Helps, slug: &str) -> Option<String> {
+    let link = ArticleLink::Academy {
+        slug: slug.to_owned(),
+    };
+    find_article(helps, &link, (HelpsPart::Notes, HelpsPart::WordLinks))
+        .0
+        .map(|found| found.title.to_owned())
+}
+
+/// The first paragraph of a words article, which a word's card shows; empty when the helps do
+/// not carry the article or it has no paragraph.
+pub(crate) fn word_intro(
+    helps: &tc_helps::Helps,
+    category: Option<String>,
+    slug: String,
+) -> Vec<ArticleBlock> {
+    let link = ArticleLink::Words { category, slug };
+    let Some(found) = find_article(helps, &link, (HelpsPart::Notes, HelpsPart::WordLinks)).0 else {
+        return Vec::new();
+    };
+    // Paragraph by paragraph, so a card reads only the top of a long article.
+    found
+        .body
+        .split("\n\n")
+        .flat_map(blocks)
+        .find(|b| b.kind == BlockKind::P && b.quote == 0)
+        .into_iter()
+        .collect()
 }
 
 /// [`article_title`] in the helps of either resource kind.

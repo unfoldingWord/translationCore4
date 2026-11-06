@@ -1647,6 +1647,7 @@ impl ProjectHandle for StoreHandle {
                 }
                 report.received_ids.extend(next.received_ids);
                 report.recreated |= next.recreated;
+                report.format_restored |= next.format_restored;
                 report.restored += next.restored;
                 // A failed second sync takes nothing back from the first; the name goes out
                 // with the next sync instead.

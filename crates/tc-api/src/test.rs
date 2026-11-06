@@ -443,6 +443,9 @@ pub enum ScriptedSync {
         #[serde(default)]
         kinds: Vec<TeammatesKind>,
         restored: u32,
+        /// Door43's `format.json` was deleted or damaged, and the sync put it back.
+        #[serde(default)]
+        format_restored: bool,
     },
     Failed(crate::refusal::SyncFailure),
 }

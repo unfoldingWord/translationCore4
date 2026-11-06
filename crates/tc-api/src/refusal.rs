@@ -541,6 +541,38 @@ pub enum SyncFailure {
     AfterIntake(SyncRefusal),
 }
 
+/// What a newer translationCore saved that stops this app taking a teammate's work in
+/// (STORAGE §12.2 rules 1 and 3; §9.2 N1, §10.2 R3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "proptest", derive(proptest_derive::Arbitrary))]
+#[serde(
+    tag = "type",
+    content = "value",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum NewerFormat {
+    /// A larger major than this app reads.
+    Major { major: u16 },
+    /// This app's major, with a `minReaderMinor` above this app's minor.
+    ReaderMinor { major: u16, min_reader_minor: u16 },
+}
+
+/// The project format the message names: "2" for a major, "1.4" for the minor a project
+/// needs, so the number never reads as this app's own.
+impl std::fmt::Display for NewerFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Major { major } => write!(f, "{major}"),
+            Self::ReaderMinor {
+                major,
+                min_reader_minor,
+            } => write!(f, "{major}.{min_reader_minor}"),
+        }
+    }
+}
+
 /// Why a project and its repository cannot sync (DELTA §3.15.2; tC4 `SYNC_REFUSALS`,
 /// `tC4:src/views/SyncResult.jsx:14-51`). Each is found before intake.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -558,7 +590,7 @@ pub enum SyncBlock {
     /// The repository holds another project (N2).
     ProjectMismatch,
     /// A teammate uses a newer project format (N1).
-    NeedsNewerApp { major: u16, min_reader_minor: u16 },
+    NeedsNewerApp(NewerFormat),
     /// The repository is still in tC4's team format; the team move is offered (N1).
     Tc4TeamRepository,
 }
@@ -631,7 +663,7 @@ impl Message for SyncFailure {
             Err(SyncBlock::NotShared) => Some("sync.not-shared"),
             Err(
                 SyncBlock::ProjectMismatch
-                | SyncBlock::NeedsNewerApp { .. }
+                | SyncBlock::NeedsNewerApp(_)
                 | SyncBlock::Tc4TeamRepository,
             ) => None,
             Ok((R::Offline, _)) => Some("sync.offline"),
@@ -651,7 +683,7 @@ impl Message for SyncFailure {
         match self.stage() {
             Err(SyncBlock::NotShared) => "syncResult.error.notShared",
             Err(SyncBlock::ProjectMismatch) => "syncResult.error.projectMismatch",
-            Err(SyncBlock::NeedsNewerApp { .. }) => "syncResult.error.needsNewerApp",
+            Err(SyncBlock::NeedsNewerApp(_)) => "syncResult.error.needsNewerApp",
             Err(SyncBlock::Tc4TeamRepository) => "syncResult.error.tc4TeamRepository",
             Ok((R::Offline, _)) => "syncResult.error.offline",
             Ok((R::NotSignedIn | R::AuthFailed, _)) => "syncResult.error.authFailed",
@@ -668,8 +700,8 @@ impl Message for SyncFailure {
     fn vars(&self) -> Vec<(&'static str, String)> {
         use SyncRefusal as R;
         match self {
-            Self::Blocked(SyncBlock::NeedsNewerApp { major, .. }) => {
-                vec![("format", major.to_string())]
+            Self::Blocked(SyncBlock::NeedsNewerApp(format)) => {
+                vec![("format", format.to_string())]
             }
             Self::Blocked(
                 SyncBlock::NotShared | SyncBlock::ProjectMismatch | SyncBlock::Tc4TeamRepository,
@@ -954,10 +986,8 @@ impl Message for ResourceRefusal {
 pub enum ExchangeRefusal {
     /// The zip's central directory cannot be read (R1).
     Damaged,
-    /// The file's project format is newer than this app's (R3).
-    NewerFormat {
-        format: u16,
-    },
+    /// The file's project format is one this app cannot take in (R3).
+    NewerFormat(NewerFormat),
     /// The written file did not read back from the drive; it was deleted (E5).
     VerifyFailed,
     /// The file holds another project (R2): "This file is for {name}."
@@ -989,7 +1019,7 @@ impl Message for ExchangeRefusal {
     fn key(&self) -> &'static str {
         match self {
             Self::Damaged => "exchange.error.damaged",
-            Self::NewerFormat { .. } => "exchange.error.newerFormat",
+            Self::NewerFormat(_) => "exchange.error.newerFormat",
             Self::VerifyFailed => "exchange.error.verifyFailed",
             Self::OtherProject { .. } => "exchange.error.otherProject",
             Self::NotTranslationCore => "exchange.error.notTranslationCore",
@@ -1001,7 +1031,7 @@ impl Message for ExchangeRefusal {
     }
     fn vars(&self) -> Vec<(&'static str, String)> {
         match self {
-            Self::NewerFormat { format } => vec![("format", format.to_string())],
+            Self::NewerFormat(format) => vec![("format", format.to_string())],
             Self::OtherProject { name } => vec![("name", name.clone())],
             Self::NotWritten { reason }
             | Self::Unreadable { reason }

@@ -14,7 +14,7 @@ use tc_api::ids::{JobId, ProjectRef};
 use tc_api::jobs::{JobKind, Phase, SyncPhase, SyncResultView};
 use tc_api::shown::{Computer, PersonLabel, Who};
 use tc_journal::change::ChangeBody;
-use tc_journal::fold::{ConflictCounts, ConflictKind};
+use tc_journal::fold::{ConflictCounts, ConflictKind, ProjectKind};
 use tc_journal::{ChangeId, DeviceId};
 use tc_resources::{ProjectPins, ResourcePin};
 
@@ -25,11 +25,13 @@ use crate::flows::FlowRequest;
 use crate::jobs::{JobEnd, JobSpec};
 
 /// A project's open conflicts as the toast counts them: verse conflicts (the kinds
-/// `ConflictKind::is_verse` names, as Home's chip counts them), verses with two alignments
-/// (#791), and every other kind, which shows its newest version until it is reviewed.
+/// `ConflictKind::is_verse` names, as Home's chip counts them), frame conflicts (a story's
+/// counterpart, J18, #761), verses with two alignments (#791), and every other kind, which
+/// shows its newest version until it is reviewed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ConflictTally {
     pub verse: u32,
+    pub frames: u32,
     pub alignments: u32,
     pub others: u32,
 }
@@ -37,19 +39,13 @@ pub struct ConflictTally {
 impl ConflictTally {
     /// From the fold's counts by book and kind, so the toast walks no conflict list.
     pub fn of(counts: &ConflictCounts) -> Self {
-        let verse = [
-            ConflictKind::VerseText,
-            ConflictKind::VerseStructure,
-            ConflictKind::Passage,
-            ConflictKind::StructureIssue,
-        ]
-        .map(|kind| kind.order());
-        let alignment = ConflictKind::Alignment.order();
         let mut tally = Self::default();
         for (&(_, kind), &n) in counts {
-            let slot = if verse.contains(&kind) {
+            let slot = if ConflictKind::is_verse_order(kind) {
                 &mut tally.verse
-            } else if kind == alignment {
+            } else if kind == ConflictKind::Frame.order() {
+                &mut tally.frames
+            } else if kind == ConflictKind::Alignment.order() {
                 &mut tally.alignments
             } else {
                 &mut tally.others
@@ -63,10 +59,12 @@ impl ConflictTally {
 /// What a completed sync's toast shows, read from the project after the sync: `received` are
 /// the teammates' changes it took in, each sender named by the fold's label for its device
 /// (the one label the review gives, #680), and `installed` answers whether this computer holds
-/// a pinned version.
+/// a pinned version. A story project's toast counts frame conflicts where a Bible's counts
+/// verse conflicts.
 pub fn synced_view(
     snapshot: &CountingSnapshot,
     me: DeviceId,
+    kind: ProjectKind,
     received: &[ChangeId],
     restored: u32,
     installed: &dyn Fn(&ResourcePin) -> bool,
@@ -109,10 +107,12 @@ pub fn synced_view(
         // versions (tC4 sync.mjs): under H5, each such record a newer version settled.
         kept_newest: records,
         verse_conflicts: tally.verse,
+        frame_conflicts: (kind == ProjectKind::Stories).then_some(tally.frames),
         alignments: tally.alignments,
         restored,
         missing_pins: missing_pins(snapshot, installed),
         recreated: false,
+        format_restored: false,
         replaced,
         hand_edited: Vec::new(),
     }
@@ -402,7 +402,7 @@ impl App {
             })?;
         let handle = lease.session().handle().clone();
         let report = handle.door43_sync(client, Some(session.clone())).await;
-        let (ended, received_ids, recreated, restored) = match report {
+        let (ended, received_ids, recreated, format_restored, restored) = match report {
             Some(report) => (
                 match report.ended {
                     tc_sync::machine::Ended::Synced { .. } => Ok(()),
@@ -412,24 +412,32 @@ impl App {
                 },
                 report.received_ids,
                 report.recreated,
+                report.format_restored,
                 report.restored,
             ),
             None => (
                 Err(ApiError::Unavailable(tc_api::error::Feature::Sync)),
                 Vec::new(),
                 false,
+                false,
                 0,
             ),
         };
         let view = {
             let session = lease.session();
-            let me = session.handle().facts().device;
+            let facts = session.handle().facts();
             let snapshot = session.read();
             let resources = &self.inner.resources;
-            let mut view = synced_view(&snapshot, me, &received_ids, restored, &|pin| {
-                resources.has_dcs(pin)
-            });
+            let mut view = synced_view(
+                &snapshot,
+                facts.device,
+                facts.kind,
+                &received_ids,
+                restored,
+                &|pin| resources.has_dcs(pin),
+            );
             view.recreated = recreated;
+            view.format_restored = format_restored;
             view
         };
         drop(lease);
@@ -492,7 +500,7 @@ impl App {
     ) -> Result<SyncResultView, JobEnd> {
         use serde_json::json;
         use tc_api::test::ScriptedSync as Scripted;
-        let (teammates, joined, kinds, restored) = match outcome {
+        let (teammates, joined, kinds, restored, format_restored) = match outcome {
             Scripted::Failed(failure) => {
                 return Err(JobEnd::Failed(ApiError::Refused(tc_api::Refusal::Sync(
                     failure,
@@ -503,7 +511,8 @@ impl App {
                 joined,
                 kinds,
                 restored,
-            } => (teammates, joined, kinds, restored),
+                format_restored,
+            } => (teammates, joined, kinds, restored, format_restored),
         };
         let failed = |what: &str, reason: String| {
             JobEnd::Failed(self.internal(what, crate::reports::facts(json!({ "reason": reason }))))
@@ -584,11 +593,18 @@ impl App {
                 .sessions
                 .store()
                 .synced(&folder, session.handle().snapshot().fold().clone());
-            let me = session.handle().facts().device;
+            let facts = session.handle().facts();
             let resources = &self.inner.resources;
-            synced_view(&session.read(), me, &received, restored, &|pin| {
-                resources.has_dcs(pin)
-            })
+            let mut view = synced_view(
+                &session.read(),
+                facts.device,
+                facts.kind,
+                &received,
+                restored,
+                &|pin| resources.has_dcs(pin),
+            );
+            view.format_restored = format_restored;
+            view
         };
         drop(lease);
         self.inner.sessions.settled(&folder).await;

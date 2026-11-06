@@ -18,7 +18,10 @@
     "type": "ok",
     "value": {
       "conflicts": 4,
-      "verses": 3
+      "twoVersions": {
+        "type": "verses",
+        "value": 3
+      }
     }
   },
   "error": {

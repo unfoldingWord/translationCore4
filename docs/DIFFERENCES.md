@@ -29,6 +29,10 @@ The project owner ruled on these points on 2026-10-16 (`docs/TC4-DELTA-2026-10-1
 
 - OBS projects sync like Bible projects. The card reads "Sync with Door43", and the Share
   dialog shows the line about team access. tC4 4.0 syncs Bible projects only (Q2).
+- A story frame that two teammates changed is counted where a verse conflict is: the sync
+  result reads "1 frame conflict to review" and offers Review, a received file says "1 frame
+  now has two versions", the story card on Home shows "1 conflict · Review", and the story
+  screen's Review button counts it. tC4 4.0 draws no conflict chip on a story project (#761).
 - The Share dialog asks Door43 about a person's organizations at most 4 requests at a time, so
   its wait no longer grows one request per organization. It shows them in Door43's order, as
   tC4 4.0 does; tC4 4.0 asks one after another (#897).
@@ -405,17 +409,31 @@ And these (unit D2):
 - An export of a book or the stories with verses in conflict first asks, under the menu,
   whether to review them, with Review and Export anyway (STORAGE §8.5). tC4 exports the
   version shown without a word, so the person cannot know the file holds only one of two
-  versions. The question is inline, never modal.
+  versions. The question is inline, never modal. For the stories it counts frames, titles
+  included, as the sync result does: "1 frame has two versions" (#935).
 - A verse whose cards stand on a source word the pinned verse lacks keeps its stored text,
   and the export names it. tC4 #816 (D107, newer than d310bf3) fits the cards to the pin and
   weaves the rest, so a link leaves the file without a word to the person; the rebuild weaves
   none of that verse until it is aligned again
   (`the_export_weaves_no_link_to_a_source_word_the_pin_lacks`).
+- In a verse span such as `\v 1-3`, aligned USFM counts each original-language word within
+  its own verse and names that verse in `x-ref="C:V"`, right after `x-content`, as
+  word-aligner-rcl and uw-content-validation expect. tC4 counts across the whole span and
+  writes no `x-ref`, so a lookup for one verse of the span cannot find its English words. A
+  span exported without its pinned original-language text keeps tC4's counts
+  (`a_span_names_each_source_words_verse_and_counts_it_there`) (#409).
 - On Linux the window has no native title bar and no menu row, as on Windows and macOS: the
   app's header is the top, it moves the window, and the minimize, maximize and close buttons
   draw over its right end. The menu's keys (zoom, reload) still work. tC4 4.0 kept the native
   frame and menu row on Linux; the owner ruled on 2026-10-29 that this is fixed before 4.1.0
   (`linux_window_has_no_native_bar_and_keeps_zoom_and_reload`) (#642).
+- The helps panel's Notes tab heads each verse's notes with the verse ("Verse 1", "Frame 3",
+  "Introduction"), and a card carries no "Note" or "Key word" badge and no verse label: the tab
+  names the kind. A note's link names its Translation Academy article ("Abstract Nouns →"),
+  where tC4's reads "Translation Academy →" on every note. A key word's card shows the first
+  paragraph of its article, where tC4 shows the article's slug. A key word's card lights every
+  instance of its article in its section of the source text, where tC4 lights only the card's
+  own occurrence (owner, 2026-11-05).
 
 And this (#613):
 

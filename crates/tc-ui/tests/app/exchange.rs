@@ -213,11 +213,13 @@ fn a_receive_confirms_the_files_project_then_shows_what_it_brought() {
             }],
             kept_newest: 0,
             verse_conflicts: 1,
+            frame_conflicts: None,
             alignments: 0,
             restored: 0,
             missing_pins: 0,
             replaced: Vec::new(),
             recreated: false,
+            format_restored: false,
             hand_edited: vec![HandEdited {
                 path: "ingredients/TIT.usfm".into(),
                 outcome: HandEditOutcome::NotTakenIn,
@@ -233,6 +235,46 @@ fn a_receive_confirms_the_files_project_then_shows_what_it_brought() {
     );
     assert!(lines[1].contains('1'), "{lines:?}");
     assert!(lines[2].contains("ingredients/TIT.usfm"), "{lines:?}");
+}
+
+/// J18, J27, #761: a story file's Received step names its frames with two versions, never verses.
+#[test]
+fn a_received_story_names_its_frame_conflicts() {
+    let mut rx = ReceiveForm::open(Some(titus()), rid(1));
+    let file = ExchangeFile::Path("/media/stick/obs.zip".into());
+    rx.chose_file(file.clone(), rid(2));
+    rx.identified(
+        &file,
+        Ok(IdentifyView {
+            name: "Tito".into(),
+            project: Some(ProjectRef::parse("titus").unwrap()),
+        }),
+    );
+    rx.press().unwrap();
+    rx.progress(rid(2), ExchangePhase::TakeIn);
+    rx.ended(
+        rid(2),
+        JobEnd::Done(ReceivedView {
+            received: 2,
+            from: Vec::new(),
+            kept_newest: 0,
+            verse_conflicts: 0,
+            frame_conflicts: Some(2),
+            alignments: 0,
+            restored: 0,
+            missing_pins: 0,
+            replaced: Vec::new(),
+            recreated: false,
+            format_restored: false,
+            hand_edited: Vec::new(),
+        }),
+        rid(3),
+    );
+    let lines = rx.received_lines();
+    assert_eq!(
+        lines[1], "2 frames now have two versions. Review them to choose.",
+        "{lines:?}"
+    );
 }
 
 #[test]
