@@ -126,6 +126,23 @@ browserTest('a_focused_help_lights_its_words_in_the_passage', async () => {
   }, { scenario: 'en-pins' });
 });
 
+// A unit clicked before the chapter's helps have arrived lights its first help once they do: on a
+// slow computer a person can click a passage while the helps are still loading.
+browserTest('a_unit_focused_before_its_helps_arrive_lights_them_when_they_do', async () => {
+  await withApp(async ({ page }) => {
+    let release;
+    const held = new Promise((resolve) => { release = resolve; });
+    await page.route('**/api/v1/helps/passage', async (route) => { await held; await route.continue(); });
+    await openTitus(page);
+    await page.getByTestId('understand-unit-s4').click();
+    assert.equal(await page.getByTestId('understand-unit-s4').getAttribute('data-focused'), 'true');
+    assert.equal(await page.getByTestId('source-hl').count(), 0, 'no help to light yet');
+    release();
+    await until('words lit in Titus 1:4-5', async () => (await page.getByTestId('understand-unit-s4').getByTestId('source-hl').count()) > 0);
+    assert.equal(await page.getByTestId('understand-unit-s1').getByTestId('source-hl').count(), 0, 'only the focused unit');
+  }, { scenario: 'en-pins' });
+});
+
 // A click on a card lights it and leaves the other cards as they were: a note the person
 // expanded stays expanded, as tC4 keeps each keyed card.
 browserTest('a_card_click_keeps_an_expanded_note_expanded', async () => {

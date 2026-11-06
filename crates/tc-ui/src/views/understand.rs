@@ -257,6 +257,24 @@ fn chapter_view(
         let (hover, active) = (s.u.helps_hover.clone(), s.u.helps_active.clone());
         Memo::new(move |_| hover.get().or_else(|| active.get()))
     };
+    // A passage clicked while the helps load found no help to pick: it gets its first when they
+    // arrive (#946). Only on their arrival, so a card the person turned off stays off.
+    {
+        let s = s.clone();
+        Effect::new(move |was_ready: Option<bool>| {
+            let ready = helps.with(|h| h.value().is_some());
+            if ready && was_ready == Some(false) && active_key.get_untracked().is_some() {
+                let key = focused_key.get_untracked();
+                let unit = all.with_untracked(|units| {
+                    units.iter().find(|u| Some(&u.key) == key.as_ref()).cloned()
+                });
+                if let Some(unit) = unit {
+                    activate_first_help(&s, helps, &unit, sections);
+                }
+            }
+            ready
+        });
+    }
     let main = crate::css! {
         "flex": 1,
         "display": "flex",
@@ -611,6 +629,28 @@ fn first_help_in(
     None
 }
 
+/// Makes `unit`'s first help the active one, as the helps read now; none when they have none
+/// for it. The same help again changes nothing, so its card keeps its place.
+fn activate_first_help(
+    s: &AppState,
+    helps: Signal<Load<Arc<PassageView>>>,
+    unit: &Unit,
+    sections: Memo<Vec<Vec<String>>>,
+) {
+    let next = sections.with_untracked(|sections| {
+        helps.with_untracked(|h| first_help_in(h.value().map(|h| h.as_ref()), unit, sections))
+    });
+    let had = s.u.helps_active.get_untracked();
+    let changed = match (&next, &had) {
+        (Some(item), Some(active)) => item.id != active.id,
+        (Some(_), None) => true,
+        (None, had) => had.is_some(),
+    };
+    if changed {
+        s.u.helps_active.try_set(next);
+    }
+}
+
 #[expect(
     clippy::too_many_arguments,
     reason = "a view's inputs: the state, handles and signals it reads"
@@ -748,20 +788,7 @@ fn understand_unit(
         let unit = unit.clone();
         move || {
             active_key.set(Some(unit.key.clone()));
-            let next = sections.with_untracked(|sections| {
-                helps.with_untracked(|h| {
-                    first_help_in(h.value().map(|h| h.as_ref()), &unit, sections)
-                })
-            });
-            let had = s.u.helps_active.get_untracked();
-            let changed = match (&next, &had) {
-                (Some(item), Some(active)) => item.id != active.id,
-                (Some(_), None) => true,
-                (None, had) => had.is_some(),
-            };
-            if changed {
-                s.u.helps_active.try_set(next);
-            }
+            activate_first_help(&s, helps, &unit, sections);
         }
     };
     let on_click = {
