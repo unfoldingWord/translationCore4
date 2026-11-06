@@ -290,6 +290,9 @@ async fn a_burrito_with_no_versification_imports_and_saves_and_checkpoints() {
     assert_valid_burrito(&world.fs, &world.folder(&created.project));
 }
 
+/// What a refused case must be refused as.
+type Expected = fn(&CreateRefusal) -> bool;
+
 /// J9d: what is not a Bible Burrito to start a project from is refused in words, before
 /// anything is written: work for Receive, a tC4 project with a journal, another flavor, a
 /// damaged file, a Burrito that is not valid, and a metadata value a Burrito cannot hold
@@ -316,7 +319,7 @@ async fn what_is_not_a_bible_burrito_is_refused_in_words_and_nothing_is_written(
     meta["identification"]["name"]["en"] = json!("Equipo Ejemplo ");
     trailing.insert("metadata.json".to_owned(), meta.to_string().into_bytes());
 
-    let cases: Vec<(Vec<u8>, fn(&CreateRefusal) -> bool)> = vec![
+    let cases: Vec<(Vec<u8>, Expected)> = vec![
         (zip(&exchange), |r| {
             matches!(r, CreateRefusal::BurritoForReceive)
         }),

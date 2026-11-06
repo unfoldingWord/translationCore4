@@ -105,7 +105,7 @@ pub enum BurritoPick {
     /// Read: its fields filled the form, and Create sends it.
     Read {
         upload: UploadId,
-        found: BurritoFound,
+        found: Box<BurritoFound>,
     },
 }
 
@@ -222,7 +222,10 @@ impl NewProjectForm {
                     self.show_advanced = true;
                 }
                 self.guess = found.guess.clone();
-                self.burrito = BurritoPick::Read { upload, found };
+                self.burrito = BurritoPick::Read {
+                    upload,
+                    found: Box::new(found),
+                };
                 self.step = NewStep::Details;
             }
             Err((error, receive)) => {
