@@ -1018,6 +1018,7 @@ fn new_project(new: super::NewProjectSpec) -> tc_store::NewProject {
         records: new.records,
         books: Vec::new(),
         texts: new.texts,
+        carried: new.carried,
     }
 }
 
@@ -2235,6 +2236,7 @@ mod tests {
                 records,
                 books: Vec::new(),
                 texts: Vec::new(),
+                carried: Vec::new(),
             })
             .unwrap();
         backend

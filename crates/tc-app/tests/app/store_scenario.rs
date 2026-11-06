@@ -567,6 +567,7 @@ async fn open_writes_creation_pins_only_when_none_exist() {
             records: crate::store_world::sample_records(&world.sources, None),
             books: Vec::new(),
             texts: Vec::new(),
+            carried: Vec::new(),
         })
         .unwrap();
     let opened = world.open(&folder("no_pins"));

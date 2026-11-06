@@ -523,6 +523,7 @@ fn crash_create_leaves_no_project_or_a_whole_one() {
                     tc_journal::command::SeedSource { usfm: ult("TIT") },
                 )],
                 texts: Vec::new(),
+                carried: Vec::new(),
             })
         }));
         let dead = fs.is_dead();

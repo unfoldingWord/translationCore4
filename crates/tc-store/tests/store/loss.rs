@@ -458,6 +458,7 @@ fn a_project_created_through_a_symlinked_projects_folder_keeps_its_device() {
                 tc_journal::command::SeedSource { usfm: ult("TIT") },
             )],
             texts: Vec::new(),
+            carried: Vec::new(),
         })
         .unwrap();
     let device_json: serde_json::Value =

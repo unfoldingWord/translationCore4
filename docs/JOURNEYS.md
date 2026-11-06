@@ -184,6 +184,16 @@ budget in `docs/PERFORMANCE.md`). Their tC4 tests stay mapped under `specs` in `
   alignments.
 - **Differs from tC4:** New Bible asks how to start (Blank, From USFM files, From a Scripture
   Burrito), and raw USFM starts there rather than in Import (#844, `docs/DIFFERENCES.md`).
+- J9d steps: New Bible · From a Scripture Burrito · pick the `.zip`; it is opened and checked
+  before anything is written (work for a project goes to Receive work; a tC4 project with a
+  journal or another flavor is refused in words) · the New Bible fields, filled from its
+  `metadata.json`, with its books and other files listed and its own versification kept (no
+  choice, H13; without `vrs.json` the one its books fit) · a name in use is flagged and Create
+  stays off · Create, which makes the project, books, sidecars, metadata and files in one write ·
+  Add a book, as after a blank project.
+- **Differs from tC4:** a Burrito starts in New Bible rather than in Import, and its
+  abbreviation, copyright and license are kept as written, not shown as fields (#845,
+  `docs/DIFFERENCES.md`).
 
 ### J11 Share the project to Door43
 

@@ -28,15 +28,13 @@ async function openUsfm(page) {
   await page.getByTestId('nb-usfm-drop').waitFor();
 }
 
-browserTest('J9c 1. New Bible asks how to start: blank, from USFM files, or from a Scripture Burrito, which waits for its importer', async () => {
+browserTest('J9c 1. New Bible asks how to start: blank, from USFM files, or from a Scripture Burrito', async () => {
   await withApp(async ({ page }) => {
     await page.getByTestId('add-project').click();
     await page.getByTestId('add-project-bible').click();
     for (const way of ['blank', 'usfm', 'burrito']) await page.getByTestId(`nb-start-${way}`).waitFor();
     assert.equal(await page.getByLabel(en['newBible.name']).count(), 0, 'the fields come after the choice');
-    const burrito = page.getByTestId('nb-start-burrito');
-    assert.match(await burrito.textContent(), new RegExp(en['importer.kind.later']));
-    assert.equal(await burrito.isDisabled(), true);
+    assert.equal(await page.getByTestId('nb-start-burrito').isDisabled(), false, 'J9d brings its importer');
     // From USFM files, then Back: the choice again.
     await page.getByTestId('nb-start-usfm').click();
     await page.getByRole('button', { name: en['importer.kind.back'] }).click();

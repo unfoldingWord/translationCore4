@@ -459,6 +459,21 @@ And this (#844):
   write, or nothing. Add a book follows as after a blank Create. tC4 4.0 makes a project from
   USFM files only through Import, whose USFM kind 4.1.0 left out (J9c, owner 2026-11-06).
 
+And this (#845):
+
+- New Bible's From a Scripture Burrito takes the Burrito's `.zip` first and checks it before
+  anything is written: work for a project is sent to Receive work from a file, a translationCore
+  4 project with a journal and a Burrito that is not a Bible translation are refused in words,
+  and a damaged or invalid Burrito says why. The New Bible fields then open filled from its
+  `metadata.json` (name, language, code, direction); a Burrito with its own `vrs.json` keeps it
+  and shows no versification choice (ruling H13), one without gets the versification its books
+  fit. The books and the other files it keeps are listed, and a name already in use is flagged
+  with Create off (#436). Create makes the project with its books, alignments, decisions, every
+  metadata field the translator did not change as written, and its other files, in one write.
+  Abbreviation, copyright and license are kept as the Burrito wrote them and are not shown as
+  fields. tC4 4.0 imports a Burrito only through Import, whose Burrito kind 4.1.0 left out (J9d,
+  owner 2026-11-06).
+
 The rebuild does not port tC4's sync mechanism: the scratch copy, the apply marker, the
 ops log, `recoverySettled`, `unreadableSettings` and the sync generation. STORAGE §6 and §9
 give the same outcomes, and STORAGE §9.9 keeps saves flowing while a sync runs. tC4 can

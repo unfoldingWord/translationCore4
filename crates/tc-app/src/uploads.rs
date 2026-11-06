@@ -24,6 +24,11 @@ impl HeldUpload {
         &self.file.path
     }
 
+    /// The name the person's file had: a label, never a path.
+    pub(crate) fn name(&self) -> &str {
+        &self.file.name
+    }
+
     /// The request is done with the file: it is deleted. Blocking: one unlink.
     pub(crate) fn used_up(mut self) {
         if let Some(uploads) = self.uploads.take() {

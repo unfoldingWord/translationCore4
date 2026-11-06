@@ -25,6 +25,8 @@ pub enum Slot {
     Import(u32),
     /// Add a book from USFM: a file row, by its id.
     Usfm(u32),
+    /// New Bible from a Scripture Burrito: the one `.zip`.
+    Burrito,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

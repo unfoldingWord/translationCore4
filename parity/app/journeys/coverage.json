@@ -196,14 +196,20 @@
       {
         "file": "parity/app/journeys/j09c-from-usfm.test.mjs",
         "tests": [
-          "J9c 1. New Bible asks how to start: blank, from USFM files, or from a Scripture Burrito, which waits for its importer",
+          "J9c 1. New Bible asks how to start: blank, from USFM files, or from a Scripture Burrito",
           "J9c 2. From USFM files: damaged and doubled files are refused in their rows, then Create makes the project and its books in one write"
         ]
       }
     ],
-    "J9d": {
-      "pending": "DONE"
-    },
+    "J9d": [
+      {
+        "file": "parity/app/journeys/j09d-from-burrito.test.mjs",
+        "tests": [
+          "J9d 1. From a Scripture Burrito: its metadata fills the fields and its own versification is kept; a name in use keeps Create off; Create makes the project with its books, sidecars and files in one write",
+          "J9d 2. A Burrito that is work for a project, or not a Bible, is refused in words and nothing is written"
+        ]
+      }
+    ],
     "J11": [
       {
         "file": "parity/app/journeys/j11-sign-in.test.mjs",

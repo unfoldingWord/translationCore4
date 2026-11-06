@@ -8,8 +8,8 @@ use tc_api::refusal::CreateRefusal;
 use tc_api::shown::{Direction, Known};
 use tc_core::BookId;
 use tc_ui::app::forms::{
-    AddBookForm, AddBookStep, CodeOffer, NewKind, NewProjectForm, NewStart, NewStep, PicksUsfm,
-    RowState, UsfmState, book_info_key, chapters, code_offer,
+    AddBookForm, AddBookStep, BurritoPick, CodeOffer, NewKind, NewProjectForm, NewStart, NewStep,
+    PicksUsfm, RowState, UsfmState, book_info_key, chapters, code_offer,
 };
 
 fn suggestion(
@@ -312,8 +312,6 @@ fn new_bible_from_usfm_files_checks_the_files_then_takes_the_guessed_versificati
     let mut form = NewProjectForm::bible(Ok(vec!["eng".into(), "org".into()]));
     assert_eq!(form.step, NewStep::Start);
     assert_eq!(NewProjectForm::stories().step, NewStep::Details);
-    form.choose_start(NewStart::Burrito);
-    assert_eq!(form.step, NewStep::Start, "the Burrito has no importer yet");
     form.choose_start(NewStart::Usfm);
     assert_eq!(form.step, NewStep::Files);
     assert!(!form.files_ready(), "no file");
@@ -347,6 +345,52 @@ fn new_bible_from_usfm_files_checks_the_files_then_takes_the_guessed_versificati
     form.choose_start(NewStart::Blank);
     assert_eq!(form.step, NewStep::Details);
     assert!(form.usfm.sent().is_empty() && form.file_books().is_empty());
+}
+
+/// J9d: from a Scripture Burrito, a refused file stays on the Burrito step with its words; a
+/// read one fills the fields, keeps the Burrito's own versification with no choice (H13), and
+/// a name that makes the folder of a listed project is flagged (#436). Back drops the Burrito.
+#[test]
+fn new_bible_from_a_burrito_fills_the_fields_and_flags_a_name_in_use() {
+    let mut form = NewProjectForm::bible(Ok(vec!["eng".into(), "org".into()]));
+    form.choose_start(NewStart::Burrito);
+    assert_eq!(form.step, NewStep::Burrito);
+    form.pick_burrito("work.zip".into());
+    assert!(form.busy);
+    form.burrito_read("work.zip".into(), Err(("Receive it instead.".into(), true)));
+    assert_eq!(form.step, NewStep::Burrito, "a refusal stays on the step");
+    assert!(matches!(
+        &form.burrito,
+        BurritoPick::Refused { receive: true, .. }
+    ));
+    assert!(!form.busy);
+    let details = tc_api::create::Details {
+        name: "Sample Burrito".into(),
+        language_name: "Español".into(),
+        code: "es-419".into(),
+        door43_code: None,
+        direction: Direction::Rtl,
+        font: "Charis SIL".into(),
+    };
+    let found = tc_api::create::BurritoFound {
+        details: details.clone(),
+        guess: None,
+        books: vec![BookId::Titus],
+        carried: Vec::new(),
+    };
+    let upload = UploadId::parse(&format!("{:032x}", 9)).unwrap();
+    form.pick_burrito("sb.zip".into());
+    form.burrito_read("sb.zip".into(), Ok((upload.clone(), found)));
+    assert_eq!(form.step, NewStep::Details);
+    assert_eq!(form.details(), details);
+    assert!(form.own_versification());
+    assert_eq!(form.burrito_upload(), Some(upload));
+    assert!(form.burrito_name_in_use(["sample_burrito"]));
+    form.name = "Equipo Tito".into();
+    assert!(!form.burrito_name_in_use(["sample_burrito"]));
+    form.back_to_start();
+    assert_eq!(form.burrito, BurritoPick::None);
+    assert_eq!(form.burrito_upload(), None);
 }
 
 #[test]

@@ -8,21 +8,26 @@
 //! New Bible first asks how to start (J9c, owner 2026-11-06; a change from tC4 in
 //! `docs/DIFFERENCES.md`): blank, from USFM files, or from a Scripture Burrito (#845). From USFM
 //! files, the files are picked and checked first; then the fields open with the versification
-//! the files fit (H13), and Create makes the project and its books in one write.
+//! the files fit (H13), and Create makes the project and its books in one write. From a
+//! Scripture Burrito (J9d), the `.zip` is opened and checked first; then the fields open filled
+//! from its metadata, with its own versification kept and no choice shown (H13), the books and
+//! the files it brings listed, and a name already in use flagged with Create off (#436).
 
 use std::sync::Arc;
 
 use leptos::prelude::*;
+use tc_api::home::List;
+use tc_api::refusal::CreateRefusal;
 use tc_api::shown::Direction;
 
 use super::language_name_field::LanguageNameField;
 use crate::app::forms::{
-    CodeOffer, NewKind, NewProjectForm, NewStart, NewStep, SCRIPT_FONTS, code_offer,
+    BurritoPick, CodeOffer, NewKind, NewProjectForm, NewStart, NewStep, SCRIPT_FONTS, code_offer,
 };
-use crate::app::web::{Actions, AppCtx, use_app};
+use crate::app::web::{Actions, AppCtx, use_app, use_runtime};
 use crate::ds::{
-    Attrs, Button, ButtonVariant, Callout, CalloutTone, FilterChip, OptionCard, Overline, Select,
-    SelectOption, Text, TextField, TextRole, TextTone,
+    Attrs, Button, ButtonVariant, Callout, CalloutTone, DropZone, FilterChip, OptionCard, Overline,
+    Select, SelectOption, Text, TextField, TextRole, TextTone,
 };
 use crate::i18n::{keys, t};
 
@@ -78,6 +83,30 @@ fn new_project(kind: NewKind) -> AnyView {
         Signal::derive(move || np.with(|np| np.as_ref().is_some_and(|np| np.busy)))
     };
     let step = Memo::new(move |_| np.with(|np| np.as_ref().map_or(NewStep::Details, |np| np.step)));
+    // Every entry of the projects folder, for the name check of a project from a Burrito
+    // (tC4 `nameClash`, #436).
+    let listing = use_runtime().map(|runtime| runtime.cache().read(List {}));
+    let name_in_use = Signal::derive(move || {
+        let names: Vec<String> = listing
+            .and_then(|list| {
+                list.with(|l| {
+                    l.value().map(|view| {
+                        view.cards
+                            .iter()
+                            .map(|c| c.project.as_str().to_owned())
+                            .chain(view.unusable.iter().map(|u| u.name.clone()))
+                            .chain(view.others.iter().cloned())
+                            .collect()
+                    })
+                })
+            })
+            .unwrap_or_default();
+        np.with(|np| {
+            np.as_ref()
+                .is_some_and(|np| np.burrito_name_in_use(names.iter().map(String::as_str)))
+        })
+    });
+    let create_disabled = Signal::derive(move || busy.get() || name_in_use.get());
     let next_disabled =
         Signal::derive(move || !np.with(|np| np.as_ref().is_some_and(NewProjectForm::files_ready)));
     let footer: ChildrenFn = {
@@ -86,6 +115,15 @@ fn new_project(kind: NewKind) -> AnyView {
             let actions = actions.clone();
             (move || match step.get() {
                 NewStep::Start => ().into_any(),
+                NewStep::Burrito => {
+                    let back = actions.clone();
+                    view! {
+                        <Button variant=ButtonVariant::Secondary on_click=Callback::new(move |_| back.np_back_to_start())>
+                            {move || t(keys::importer::kind::BACK, &[])}
+                        </Button>
+                    }
+                    .into_any()
+                }
                 NewStep::Files => {
                     let (back, next) = (actions.clone(), actions.clone());
                     view! {
@@ -109,7 +147,7 @@ fn new_project(kind: NewKind) -> AnyView {
                             {move || t(keys::new_bible::CANCEL, &[])}
                         </Button>
                         <Button
-                            disabled=busy
+                            disabled=create_disabled
                             on_click=Callback::new(move |_| if bible { create.create_bible() } else { create.create_obs() })
                         >
                             {move || t(if bible { keys::new_bible::CREATE } else { keys::new_obs::CREATE }, &[])}
@@ -173,7 +211,24 @@ fn new_project(kind: NewKind) -> AnyView {
                 .iter()
                 .map(|f| SelectOption::from(*f))
                 .collect();
-            let versification = bible.then(|| versification(&actions, &np));
+            let own =
+                np.with_untracked(|np| np.as_ref().is_some_and(NewProjectForm::own_versification));
+            let versification = (bible && !own).then(|| versification(&actions, &np));
+            let in_use = move || {
+                name_in_use.get().then(|| {
+                    let abbr = np.with(|np| {
+                        np.as_ref()
+                            .and_then(|np| np.details().folder().ok())
+                            .map(|folder| folder.to_string())
+                            .unwrap_or_default()
+                    });
+                    view! {
+                        <Callout tone=CalloutTone::Warn attrs=Attrs::from([("data-testid", "nb-name-in-use")])>
+                            {crate::i18n::refusal_text(&CreateRefusal::NameInUse { abbr })}
+                        </Callout>
+                    }
+                })
+            };
             let error = {
                 move || {
                     np.with(|np| np.as_ref().and_then(|np| np.error.clone())).map(|error| {
@@ -186,9 +241,11 @@ fn new_project(kind: NewKind) -> AnyView {
                     id=id("name")
                     label=Signal::derive(move || t(if bible { keys::new_bible::NAME } else { keys::new_obs::NAME }, &[]))
                     value=name
+                    invalid=name_in_use
                     placeholder=untrack(|| t(if bible { keys::new_bible::NAME_PLACEHOLDER } else { keys::new_obs::NAME_PLACEHOLDER }, &[]))
                     on_change=on_name
                 />
+                {in_use}
                 <div style="display: grid; grid-template-columns: 1fr 130px; gap: 12px;">
                     <LanguageNameField id=if bible { "nb-lang" } else { "no-lang" } />
                     <TextField
@@ -217,6 +274,7 @@ fn new_project(kind: NewKind) -> AnyView {
                 />
                 {versification}
                 {from_files(&np)}
+                {from_burrito(&np)}
                 {error}
             }
             .into_any()
@@ -228,6 +286,7 @@ fn new_project(kind: NewKind) -> AnyView {
             let (actions, details) = (actions.clone(), details.clone());
             (move || match step.get() {
                 NewStep::Start => start_step(&actions).into_any(),
+                NewStep::Burrito => burrito_step(&actions, &np).into_any(),
                 NewStep::Files => {
                     let rows = Signal::derive(move || {
                         np.with(|np| np.as_ref().map(NewProjectForm::rows).unwrap_or_default())
@@ -251,7 +310,7 @@ fn new_project(kind: NewKind) -> AnyView {
     let subtitle = move || {
         move || match step.get() {
             NewStep::Start => t(keys::new_bible::START_SUBTITLE, &[]),
-            NewStep::Files | NewStep::Details => t(subtitle, &[]),
+            NewStep::Files | NewStep::Burrito | NewStep::Details => t(subtitle, &[]),
         }
     };
     crate::ds::Modal(crate::ds::ModalProps {
@@ -267,13 +326,12 @@ fn new_project(kind: NewKind) -> AnyView {
     .into_any()
 }
 
-/// How New Bible starts (J9c): a card for each way; a way with no importer yet is greyed out.
+/// How New Bible starts (J9c, J9d): a card for each way.
 fn start_step(actions: &Actions) -> impl IntoView + use<> {
     let cards = NewStart::ALL
         .into_iter()
         .map(|start| {
             let actions = actions.clone();
-            let live = start.has_importer();
             let (icon, title, desc): (crate::ds::Content, _, _) = match start {
                 NewStart::Blank => (
                     "+".into(),
@@ -288,7 +346,7 @@ fn start_step(actions: &Actions) -> impl IntoView + use<> {
                 NewStart::Burrito => (
                     (move || t(keys::importer::kind::burrito::ICON, &[])).into(),
                     keys::new_bible::START_BURRITO,
-                    keys::importer::kind::LATER,
+                    keys::importer::kind::burrito::DESC,
                 ),
             };
             view! {
@@ -297,12 +355,6 @@ fn start_step(actions: &Actions) -> impl IntoView + use<> {
                     title=move || t(title, &[])
                     description=move || t(desc, &[])
                     trailing="→"
-                    disabled=!live
-                    style=if live {
-                        crate::css! {}
-                    } else {
-                        crate::css! { "opacity": 0.5, "cursor": "default" }
-                    }
                     attrs=Attrs::new().with("data-testid", format!("nb-start-{}", start.id()))
                     on_click=Callback::new(move |_| actions.np_choose_start(start))
                 />
@@ -316,6 +368,139 @@ fn start_step(actions: &Actions) -> impl IntoView + use<> {
     }
 }
 
+/// From a Scripture Burrito (J9d): the `.zip` is picked or dropped, then opened and checked;
+/// a refusal says why, and work for a project offers Receive work instead.
+fn burrito_step(actions: &Actions, np: &Signal<Option<NewProjectForm>>) -> impl IntoView + use<> {
+    let input = NodeRef::<leptos::html::Input>::new();
+    let pick = {
+        let actions = actions.clone();
+        move |list: Option<web_sys::FileList>| {
+            if let Some(file) = list.and_then(|list| list.get(0)) {
+                actions.np_pick_burrito(file);
+            }
+        }
+    };
+    let on_change = {
+        let pick = pick.clone();
+        move |_| {
+            if let Some(input) = input.get() {
+                pick(input.files());
+                // The same file can be chosen again after it was refused.
+                input.set_value("");
+            }
+        }
+    };
+    let on_drop = move |event: web_sys::DragEvent| {
+        event.prevent_default();
+        pick(event.data_transfer().and_then(|transfer| transfer.files()));
+    };
+    let click = Callback::new(move |_: web_sys::Event| {
+        if let Some(input) = input.get() {
+            input.click();
+        }
+    });
+    let np = *np;
+    let busy = Signal::derive(move || np.with(|np| np.as_ref().is_some_and(|np| np.busy)));
+    let status = {
+        let actions = actions.clone();
+        move || {
+            let pick = np.with(|np| np.as_ref().map(|np| np.burrito.clone()))?;
+            Some(match pick {
+                BurritoPick::Reading { name } => view! {
+                    <Text role=TextRole::Caption tone=TextTone::Muted attrs=Attrs::from([("data-testid", "nb-burrito-reading")])>
+                        {t(keys::new_bible::BURRITO_READING, &[("file", &name)])}
+                    </Text>
+                }
+                .into_any(),
+                BurritoPick::Refused { error, receive, .. } => {
+                    let actions = actions.clone();
+                    let receive = receive.then(|| view! {
+                        <Button
+                            variant=ButtonVariant::Secondary
+                            attrs=Attrs::from([("data-testid", "nb-burrito-receive")])
+                            on_click=Callback::new(move |_| actions.np_receive_instead())
+                        >
+                            {move || t(keys::home::RECEIVE_WORK, &[])}
+                        </Button>
+                    });
+                    view! {
+                        <Callout tone=CalloutTone::Warn attrs=Attrs::from([("role", "alert"), ("data-testid", "nb-burrito-refused")])>
+                            {error}
+                        </Callout>
+                        {receive}
+                    }
+                    .into_any()
+                }
+                BurritoPick::None | BurritoPick::Read { .. } => return None,
+            })
+        }
+    };
+    view! {
+        <div
+            data-testid="nb-burrito"
+            style="display: flex; flex-direction: column; gap: 14px; padding-bottom: 18px;"
+            on:dragover=move |event: web_sys::DragEvent| event.prevent_default()
+            on:drop=on_drop
+        >
+            <input
+                node_ref=input
+                type="file"
+                accept=".zip"
+                data-testid="nb-burrito-input"
+                hidden
+                on:change=on_change
+            />
+            <DropZone
+                title=t(keys::importer::kind::burrito::DROP, &[])
+                hint=t(keys::importer::kind::burrito::HINT, &[])
+                disabled=busy
+                attrs=Attrs::new().with("data-testid", "nb-burrito-drop")
+                on_click=click
+            />
+            {status}
+        </div>
+    }
+}
+
+/// The books and other files a Burrito brings, and its versification: its own, kept (H13),
+/// or the one its books fit, as from USFM files.
+fn from_burrito(np: &Signal<Option<NewProjectForm>>) -> impl IntoView + use<> {
+    let np = *np;
+    move || {
+        np.with(|np| {
+            let np = np.as_ref()?;
+            let found = np.burrito_found()?;
+            let books = found
+                .books
+                .iter()
+                .map(|book| book.english_name())
+                .collect::<Vec<_>>()
+                .join(", ");
+            let files = (!found.carried.is_empty()).then(|| {
+                let files = found.carried.join(", ");
+                view! {
+                    <Text role=TextRole::Caption tone=TextTone::Muted attrs=Attrs::from([("data-testid", "nb-burrito-files")])>
+                        {t(keys::new_bible::BURRITO_FILES, &[("files", &files)])}
+                    </Text>
+                }
+            });
+            let (note, fit) = match &found.guess {
+                Some(guess) => super::import::scheme_note(guess),
+                None => (t(keys::new_bible::BURRITO_VERSIFICATION, &[]), "own"),
+            };
+            Some(view! {
+                <Text role=TextRole::Caption tone=TextTone::Muted attrs=Attrs::from([("data-testid", "nb-burrito-books")])>
+                    {t(keys::new_bible::BURRITO_BOOKS, &[("books", &books)])}
+                </Text>
+                {files}
+                <Text role=TextRole::Caption tone=TextTone::Muted attrs=Attrs::new().with("data-testid", "nb-versification-note").with("data-fit", fit)>
+                    {note}
+                </Text>
+            })
+        })
+    }
+}
+
 /// The books the files bring and what their verse counts made of the versification (H13),
 /// under the fields of a project from USFM files.
 fn from_files(np: &Signal<Option<NewProjectForm>>) -> impl IntoView + use<> {
@@ -323,6 +508,9 @@ fn from_files(np: &Signal<Option<NewProjectForm>>) -> impl IntoView + use<> {
     move || {
         np.with(|np| {
             let np = np.as_ref()?;
+            if np.burrito_found().is_some() {
+                return None;
+            }
             let guess = np.guess.as_ref()?;
             let books = np
                 .file_books()

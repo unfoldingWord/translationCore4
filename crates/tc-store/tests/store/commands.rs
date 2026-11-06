@@ -1143,10 +1143,12 @@ fn new_from_usfm(texts: Vec<(BookId, String, &str)>) -> tc_store::NewProject {
             .into_iter()
             .map(|(book, usfm, name)| tc_store::BookText {
                 book,
+                scope: tc_journal::record::Scope::Whole,
                 usfm,
                 file_name: name.into(),
             })
             .collect(),
+        carried: Vec::new(),
     }
 }
 
@@ -1164,6 +1166,46 @@ fn a_new_project_from_usfm_files_is_created_with_its_books() {
     let usfm = String::from_utf8(on_disk["ingredients/TIT.usfm"].clone()).unwrap();
     assert!(usfm.contains("\\c 3") && !usfm.contains("\\zaln"), "{usfm}");
     assert!(on_disk.contains_key("ingredients/checking/alignments/TIT.json"));
+    assert_valid_burrito(&fs, &folder);
+}
+
+/// J9d: a new project from a Scripture Burrito keeps the Burrito's other files (front matter,
+/// a license) byte for byte as carried files, recorded in the same write as the books.
+#[test]
+fn a_new_project_keeps_its_carried_files_in_the_one_write() {
+    let fs = FaultFs::new();
+    let rig = rig(fs.clone());
+    let mut new = new_from_usfm(vec![(TIT, ult("TIT"), "TIT.usfm")]);
+    let license = b"# License\n\nCC BY-SA 4.0\n".to_vec();
+    new.carried = vec![
+        ("ingredients/LICENSE.md".into(), license.clone()),
+        (
+            "ingredients/front/intro.usfm".into(),
+            b"\\id FRT\n".to_vec(),
+        ),
+    ];
+    let folder = rig.store.create(&new).unwrap();
+    let on_disk = files(&fs, &folder);
+    assert_eq!(on_disk["ingredients/LICENSE.md"], license);
+    assert_eq!(on_disk["ingredients/front/intro.usfm"], b"\\id FRT\n");
+    let handle = rig
+        .store
+        .open(&folder, &tc_store::OpenOptions::default())
+        .unwrap();
+    handle.wait_idle();
+    let carried: Vec<String> = handle
+        .snapshot()
+        .fold()
+        .carried_files()
+        .into_iter()
+        .map(|placement| placement.path)
+        .collect();
+    assert_eq!(
+        carried,
+        ["ingredients/LICENSE.md", "ingredients/front/intro.usfm"],
+        "each file is a carried file of the project"
+    );
+    drop(handle);
     assert_valid_burrito(&fs, &folder);
 }
 
@@ -1808,6 +1850,7 @@ pub(crate) fn stories() -> (FaultFs, PathBuf) {
             records,
             books: Vec::new(),
             texts: Vec::new(),
+            carried: Vec::new(),
         })
         .unwrap();
     (fs.crash(false), folder)

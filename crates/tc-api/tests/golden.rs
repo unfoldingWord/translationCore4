@@ -762,6 +762,7 @@ impl Example for Bible {
             details: details(),
             versification: "eng".into(),
             files: vec![usfm_file("57-TIT.usfm")],
+            burrito: None,
         }
     }
 }
@@ -829,6 +830,25 @@ impl Example for GuessUsfm {
     fn example() -> Self {
         GuessUsfm {
             files: vec![usfm_file("57-TIT.usfm")],
+        }
+    }
+}
+
+impl Example for tc_api::create::ReadBurrito {
+    fn example() -> Self {
+        tc_api::create::ReadBurrito {
+            upload: UploadId::parse("00112233445566778899aabbccddeeff").unwrap(),
+        }
+    }
+}
+
+impl Example for tc_api::create::BurritoFound {
+    fn example() -> Self {
+        tc_api::create::BurritoFound {
+            details: details(),
+            guess: None,
+            books: vec![BookId::Titus, BookId::Jonah],
+            carried: vec!["ingredients/LICENSE.md".into()],
         }
     }
 }

@@ -24,6 +24,7 @@ fn titus_project(name: &str) -> NewProject {
             tc_journal::command::SeedSource { usfm: ult("TIT") },
         )],
         texts: Vec::new(),
+        carried: Vec::new(),
     }
 }
 

@@ -204,6 +204,22 @@ pub enum CreateRefusal {
     CopyUnsafe {
         reason: crate::write::ReadOnlyReason,
     },
+    /// New Bible from a Scripture Burrito (J9d): the file is work for a project of this app,
+    /// which Receive work takes (STORAGE §10.2 R2). Nothing was made.
+    BurritoForReceive,
+    /// The Burrito is a translationCore 4 project with a journal, whose import is still cut
+    /// (STORAGE §13.1). Nothing was made.
+    BurritoTc4,
+    /// The Burrito holds another flavor than a Bible translation (`flavor`: its
+    /// `name/flavor`). Nothing was made.
+    BurritoFlavor {
+        flavor: String,
+    },
+    /// The file is not a Scripture Burrito the app can make a project of: damaged, not valid,
+    /// or a project that would not come back as it is (STORAGE §13). `reason` says which.
+    BurritoUnusable {
+        reason: String,
+    },
 }
 
 impl Message for CreateRefusal {
@@ -219,12 +235,18 @@ impl Message for CreateRefusal {
             Self::CodeNotHeld { .. } => "wizard.codeNotHeld",
             Self::Failed { .. } => "wizard.error",
             Self::CopyUnsafe { .. } => "readOnly.copyUnsafe",
+            Self::BurritoForReceive => "newBible.burritoForReceive",
+            Self::BurritoTc4 => "newBible.burritoTc4",
+            Self::BurritoFlavor { .. } => "newBible.burritoFlavor",
+            Self::BurritoUnusable { .. } => "newBible.burritoUnusable",
         }
     }
     fn vars(&self) -> Vec<(&'static str, String)> {
         match self {
             Self::NameInUse { abbr } => vec![("abbr", abbr.clone())],
             Self::CodeNotHeld { code, .. } => vec![("code", code.clone())],
+            Self::BurritoFlavor { flavor } => vec![("flavor", flavor.clone())],
+            Self::BurritoForReceive | Self::BurritoTc4 | Self::BurritoUnusable { .. } => Vec::new(),
             Self::NameRequired
             | Self::CodeRequired
             | Self::AbbrRequired
@@ -234,12 +256,17 @@ impl Message for CreateRefusal {
     }
     fn detail(&self) -> Option<&str> {
         match self {
-            Self::Failed { reason } | Self::CodeNotHeld { reason, .. } => Some(reason),
+            Self::Failed { reason }
+            | Self::CodeNotHeld { reason, .. }
+            | Self::BurritoUnusable { reason } => Some(reason),
             Self::NameInUse { .. }
             | Self::NameRequired
             | Self::CodeRequired
             | Self::AbbrRequired
-            | Self::CopyUnsafe { .. } => None,
+            | Self::CopyUnsafe { .. }
+            | Self::BurritoForReceive
+            | Self::BurritoTc4
+            | Self::BurritoFlavor { .. } => None,
         }
     }
 }

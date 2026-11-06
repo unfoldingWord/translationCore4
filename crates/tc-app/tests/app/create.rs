@@ -44,6 +44,7 @@ fn bible(request: u8, details: Details) -> Bible {
         details,
         versification: "eng".to_owned(),
         files: Vec::new(),
+        burrito: None,
     }
 }
 
