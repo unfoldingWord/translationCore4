@@ -81,6 +81,40 @@ pub struct Bible {
     /// the project in one write, or no project at all. Empty for a blank project.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub files: Vec<UsfmFile>,
+    /// The Scripture Burrito a project from a Burrito starts with (J9d), as `create/readBurrito`
+    /// read it: its books, sidecars, metadata and other files, made with the project in one
+    /// write. A Burrito with its own versification keeps it, and `versification` is not read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub burrito: Option<UploadId>,
+}
+
+/// `create/readBurrito`: New Bible from a Scripture Burrito (J9d) opens, checks and reads the
+/// picked `.zip` before the fields open (STORAGE §10.2 R1–R2, §13). Nothing is written.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "proptest", derive(proptest_derive::Arbitrary))]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReadBurrito {
+    pub upload: UploadId,
+}
+
+/// What a Scripture Burrito brings to New Bible: the fields as its `metadata.json` fills
+/// them, which the person can change, and what the project will hold.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "proptest", derive(proptest_derive::Arbitrary))]
+#[serde(rename_all = "camelCase")]
+pub struct BurritoFound {
+    pub details: Details,
+    /// The versification the books fit, which the person can change (H13); `None` when the
+    /// Burrito has its own `vrs.json`, which is kept byte for byte and offers no choice.
+    pub guess: Option<crate::import::SchemeGuess>,
+    #[cfg_attr(
+        feature = "proptest",
+        proptest(strategy = "proptest::collection::vec(crate::arb::book(), 0..4)")
+    )]
+    pub books: Vec<BookId>,
+    /// The other files the project keeps as they are (front matter, a license), by their path.
+    #[cfg_attr(feature = "proptest", proptest(strategy = "crate::arb::few()"))]
+    pub carried: Vec<String>,
 }
 
 /// `create/guessUsfm`: the versification the files' verse counts fit best (ruling H13), which

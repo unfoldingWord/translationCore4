@@ -1263,6 +1263,11 @@ impl Actions {
     }
 
     /// `uploads/drop` for each: a lost answer leaves the file to the server's sweep.
+    /// An upload no slot holds and nothing can use any more is dropped.
+    pub(crate) fn drop_upload(&self, id: UploadId) {
+        self.drop_uploads(vec![id]);
+    }
+
     fn drop_uploads(&self, ids: Vec<UploadId>) {
         for upload in ids {
             let this = self.clone();

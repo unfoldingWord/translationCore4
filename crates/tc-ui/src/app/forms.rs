@@ -4,7 +4,7 @@
 
 use std::collections::BTreeSet;
 
-use tc_api::create::{Claims, Details, UsfmFile, UsfmProblem, UsfmVerdict};
+use tc_api::create::{BurritoFound, Claims, Details, UsfmFile, UsfmProblem, UsfmVerdict};
 use tc_api::home::{HomeCard, LanguageSuggestion};
 use tc_api::ids::{ProjectRef, RequestId, UploadId};
 use tc_api::import::SchemeGuess;
@@ -85,6 +85,31 @@ pub struct NewProjectForm {
     pub usfm: UsfmFiles,
     /// What the files' verse counts made of the versification (H13), for the note.
     pub guess: Option<SchemeGuess>,
+    /// The Scripture Burrito a project from a Burrito starts with (J9d).
+    pub burrito: BurritoPick,
+    /// How many Burritos were picked in this opening: an answer for an earlier one, which
+    /// comes after Back or another pick, changes nothing.
+    burrito_picks: u32,
+}
+
+/// New Bible from a Scripture Burrito (J9d): the picked `.zip`, from its upload to its reading.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum BurritoPick {
+    #[default]
+    None,
+    /// Sent, and being opened and checked: the form's `pick`-th Burrito.
+    Reading { name: String, pick: u32 },
+    /// Refused, in words; `receive` when it is work Receive work takes.
+    Refused {
+        name: String,
+        error: String,
+        receive: bool,
+    },
+    /// Read: its fields filled the form, and Create sends it.
+    Read {
+        upload: UploadId,
+        found: Box<BurritoFound>,
+    },
 }
 
 /// The steps of New Bible (J9c).
@@ -94,6 +119,8 @@ pub enum NewStep {
     Start,
     /// From USFM files: pick and check them.
     Files,
+    /// From a Scripture Burrito: pick it, and it is opened and checked.
+    Burrito,
     /// The project's name, language, direction, font and versification.
     Details,
 }
@@ -116,11 +143,6 @@ impl NewStart {
             Self::Usfm => "usfm",
             Self::Burrito => "burrito",
         }
-    }
-
-    /// A way with no importer yet is drawn greyed out, as Import draws its kinds (#845).
-    pub fn has_importer(self) -> bool {
-        self != Self::Burrito
     }
 }
 
@@ -148,29 +170,126 @@ impl NewProjectForm {
             },
             usfm: UsfmFiles::default(),
             guess: None,
+            burrito: BurritoPick::None,
+            burrito_picks: 0,
         }
     }
 
-    /// A card of the first step. A way with no importer does nothing.
+    /// A card of the first step.
     pub fn choose_start(&mut self, start: NewStart) {
-        match start {
-            NewStart::Blank => self.step = NewStep::Details,
-            NewStart::Usfm => self.step = NewStep::Files,
-            NewStart::Burrito => {}
-        }
+        self.step = match start {
+            NewStart::Blank => NewStep::Details,
+            NewStart::Usfm => NewStep::Files,
+            NewStart::Burrito => NewStep::Burrito,
+        };
     }
 
-    /// Back from the files to the first step: the files go, so a blank project never takes
-    /// them. Returns the rows that went, whose uploads the page drops.
+    /// Back from the files or the Burrito to the first step: they go, so a blank project never
+    /// takes them. Returns the rows that went, whose uploads the page drops with the Burrito's.
     /// A guess still in flight is forgotten. The row ids keep counting: an upload still being
     /// sent for a row that went must not land in a later file's row of the same id.
     pub fn back_to_start(&mut self) -> Vec<u32> {
         let gone = self.usfm.files.drain(..).map(|entry| entry.id).collect();
+        self.burrito = BurritoPick::None;
         self.step = NewStep::Start;
         self.error = None;
         self.busy = false;
         self.guess = None;
         gone
+    }
+
+    /// A Burrito was picked: it is being sent and read. Nothing else can be pressed meanwhile.
+    /// Returns the pick, which its answer names.
+    pub fn pick_burrito(&mut self, name: String) -> u32 {
+        self.burrito_picks += 1;
+        let pick = self.burrito_picks;
+        self.burrito = BurritoPick::Reading { name, pick };
+        self.busy = true;
+        self.error = None;
+        pick
+    }
+
+    /// Whether the form still waits for the answer to `pick`.
+    pub fn waits_for_burrito(&self, pick: u32) -> bool {
+        matches!(&self.burrito, BurritoPick::Reading { pick: p, .. } if *p == pick)
+    }
+
+    /// The Burrito was read, or refused in words (`receive` when Receive work takes it). Read,
+    /// its metadata fills the fields, and its own versification leaves no choice (H13) or the
+    /// one its books fit is offered as from USFM files.
+    /// An answer for a pick the form no longer waits for changes nothing; returns whether it
+    /// was taken.
+    pub fn burrito_read(
+        &mut self,
+        pick: u32,
+        read: Result<(UploadId, BurritoFound), (String, bool)>,
+    ) -> bool {
+        let BurritoPick::Reading { name, .. } = &self.burrito else {
+            return false;
+        };
+        if !self.waits_for_burrito(pick) {
+            return false;
+        }
+        let name = name.clone();
+        self.busy = false;
+        match read {
+            Ok((upload, found)) => {
+                let details = found.details.clone();
+                self.name = details.name;
+                self.lang_name = details.language_name;
+                self.code = details.code;
+                self.door43_code = details.door43_code;
+                self.unusable_code = None;
+                self.dir = details.direction;
+                self.font = details.font;
+                if let Some(guess) = &found.guess {
+                    self.versification = guess.scheme.clone();
+                    self.show_advanced = true;
+                }
+                self.guess = found.guess.clone();
+                self.burrito = BurritoPick::Read {
+                    upload,
+                    found: Box::new(found),
+                };
+                self.step = NewStep::Details;
+            }
+            Err((error, receive)) => {
+                self.burrito = BurritoPick::Refused {
+                    name,
+                    error,
+                    receive,
+                }
+            }
+        }
+        true
+    }
+
+    /// What the Burrito brings, once read.
+    pub fn burrito_found(&self) -> Option<&BurritoFound> {
+        match &self.burrito {
+            BurritoPick::Read { found, .. } => Some(found),
+            _ => None,
+        }
+    }
+
+    /// The Burrito Create sends.
+    pub fn burrito_upload(&self) -> Option<UploadId> {
+        match &self.burrito {
+            BurritoPick::Read { upload, .. } => Some(upload.clone()),
+            _ => None,
+        }
+    }
+
+    /// The Burrito keeps its own versification: no choice is shown (H13).
+    pub fn own_versification(&self) -> bool {
+        self.burrito_found()
+            .is_some_and(|found| found.guess.is_none())
+    }
+
+    /// A project from a Burrito whose name makes the folder of a project Home lists (#436):
+    /// flagged, and Create stays off.
+    pub fn burrito_name_in_use<'a>(&self, listing: impl IntoIterator<Item = &'a str>) -> bool {
+        self.burrito_found().is_some() && folder_listed(&self.name, &self.code, listing)
     }
 
     /// The rows of the files step: a project holds no book yet, so only a damaged file or a
@@ -327,6 +446,29 @@ impl NewProjectForm {
     pub fn awaits(&self, kind: NewKind, request: RequestId) -> bool {
         self.kind == kind && self.busy && self.request.is_none_or(|r| r == request)
     }
+}
+
+/// tC4 `nameClash`: the folder `name` makes is one Home lists, without letter case.
+pub fn folder_listed<'a>(
+    name: &str,
+    code: &str,
+    listing: impl IntoIterator<Item = &'a str>,
+) -> bool {
+    // The name alone makes the folder unless it is all punctuation; a missing code says
+    // nothing of a clash.
+    let form = Details {
+        name: name.to_owned(),
+        language_name: String::new(),
+        code: if code.is_empty() { "und" } else { code }.to_owned(),
+        door43_code: None,
+        direction: Direction::Ltr,
+        font: String::new(),
+    };
+    form.folder().is_ok_and(|folder| {
+        listing
+            .into_iter()
+            .any(|name| name.eq_ignore_ascii_case(folder.as_str()))
+    })
 }
 
 /// The sentence under the language row after a choice (Q35).
@@ -1057,29 +1199,7 @@ impl ImportForm {
             return true;
         }
         let details = self.details();
-        let form = Details {
-            name: details.name,
-            language_name: String::new(),
-            code: details.code,
-            door43_code: None,
-            direction: Direction::Ltr,
-            font: String::new(),
-        };
-        // The name alone makes the folder unless it is all punctuation; a missing code says
-        // nothing of a clash.
-        let form = Details {
-            code: if form.code.is_empty() {
-                "und".to_owned()
-            } else {
-                form.code
-            },
-            ..form
-        };
-        form.folder().is_ok_and(|folder| {
-            listing
-                .into_iter()
-                .any(|name| name.eq_ignore_ascii_case(folder.as_str()))
-        })
+        folder_listed(&details.name, &details.code, listing)
     }
 
     /// The review's refusal of the details other than a name in use (no name, a language code

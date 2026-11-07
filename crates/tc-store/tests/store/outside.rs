@@ -987,6 +987,7 @@ fn the_watcher_on_a_real_folder_holds_an_edit() {
                 tc_journal::command::SeedSource { usfm: ult("TIT") },
             )],
             texts: Vec::new(),
+            carried: Vec::new(),
         })
         .unwrap();
     let handle = store.open(&folder, &OpenOptions::default()).unwrap();

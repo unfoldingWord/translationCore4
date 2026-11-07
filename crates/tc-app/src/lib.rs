@@ -13,6 +13,7 @@ mod align;
 pub mod app;
 pub mod backend;
 pub mod bundle;
+mod burrito;
 mod check;
 pub mod clock;
 mod comments;

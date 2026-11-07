@@ -9,8 +9,9 @@
 
 use serde_json::{Value, json};
 use tc_api::create::{
-    AddBlankBooks, AddUsfmBooks, Bible, BooksAdded, Claims, Created, Details, GuessUsfm, Obs,
-    ReviewUsfm, UsfmAdded, UsfmFile, UsfmOutcome, UsfmProblem, UsfmRow, UsfmVerdict,
+    AddBlankBooks, AddUsfmBooks, Bible, BooksAdded, BurritoFound, Claims, Created, Details,
+    GuessUsfm, Obs, ReadBurrito, ReviewUsfm, UsfmAdded, UsfmFile, UsfmOutcome, UsfmProblem,
+    UsfmRow, UsfmVerdict,
 };
 use tc_api::ids::{ProjectRef, WallMs};
 use tc_api::jobs::{OpenPhase, Phase};
@@ -27,6 +28,7 @@ use tc_versification::{BookCode, StandardScheme, Versification};
 
 use crate::app::App;
 use crate::backend::{CommandError, CreateFailure, NewProjectSpec, StoreCommand};
+use crate::burrito::Burrito;
 use crate::dispatch::Handle;
 use crate::feedback::iso_utc_millis;
 use crate::jobs::ProgressSink;
@@ -170,13 +172,16 @@ impl App {
     }
 
     /// Creates the project `details` describe (tC4 `createBible` and `createObs`, after the
-    /// form's checks): the folder its name makes must be free, then one `Store::create`.
+    /// form's checks): the folder its name makes must be free, then one `Store::create`. A
+    /// project from a Scripture Burrito (J9d) is one `Store::create_imported` of the Burrito's
+    /// records, books and files, with the fields the person changed.
     async fn create_project(
         &self,
         details: Details,
         kind: ProjectKind,
         versification: Option<StandardScheme>,
-        texts: Vec<tc_store::BookText>,
+        mut texts: Vec<tc_store::BookText>,
+        burrito: Option<(Burrito, String)>,
     ) -> Result<Created, ApiError> {
         let folder = details
             .folder()
@@ -196,7 +201,7 @@ impl App {
                 .find(|row| row.lc.eq_ignore_ascii_case(code))
                 .map(|row| language_name(row).to_owned())
         });
-        let records = project_records(
+        let mut records = project_records(
             &details,
             &folder,
             kind,
@@ -205,13 +210,31 @@ impl App {
             listed_name.as_deref(),
         )
         .map_err(create_failed)?;
+        let mut carried = Vec::new();
+        let mut cause = None;
+        if let Some((burrito, file_name)) = burrito {
+            records = burrito.records(&details, records);
+            texts.extend(burrito.texts);
+            carried = burrito.carried;
+            cause = Some(tc_journal::Cause::Import(
+                tc_journal::ImportSource::Burrito {
+                    file_name: file_name.as_str().into(),
+                },
+            ));
+        }
         let spec = NewProjectSpec {
             folder: folder.clone(),
             kind,
             records,
             texts,
+            carried,
         };
-        let created = self.with_store(move |store| store.create(spec)).await?;
+        let created = self
+            .with_store(move |store| match cause {
+                Some(cause) => store.create_imported(spec, cause),
+                None => store.create(spec),
+            })
+            .await?;
         match created {
             Ok(()) => {}
             Err(CreateFailure::NameExists) => return Err(name_in_use()),
@@ -331,11 +354,33 @@ impl App {
             })?;
             texts.push(tc_store::BookText {
                 book,
+                scope: tc_journal::record::Scope::Whole,
                 usfm: text.unwrap_or_default(),
                 file_name: file.name.clone(),
             });
         }
         Ok((held, texts))
+    }
+
+    /// The Burrito of an upload, opened, checked and read on the blocking pool (J9d). The
+    /// upload stays held until the caller is done with it.
+    async fn read_burrito(
+        &self,
+        upload: &tc_api::ids::UploadId,
+    ) -> Result<(HeldUpload, Burrito), ApiError> {
+        let held = self.hold_upload(upload)?;
+        let (path, name) = (held.path().to_owned(), held.name().to_owned());
+        let read = tokio::task::spawn_blocking(move || {
+            std::fs::read(path).map(|bytes| crate::burrito::read(&bytes, &name))
+        })
+        .await
+        .map_err(|e| create_failed(e.to_string()))?
+        .map_err(|_| ApiError::BadRequest {
+            field: "upload".to_owned(),
+            reason: "no such upload".to_owned(),
+        })?;
+        let burrito = read.map_err(|refusal| ApiError::Refused(Refusal::Create(refusal)))?;
+        Ok((held, burrito))
     }
 }
 
@@ -374,12 +419,33 @@ impl Handle<Bible> for App {
             })?;
         // The books are read first: a file that fails leaves nothing, and a create that fails
         // gives the files back for the next press.
-        let (held, texts) = self.new_books(&req.files).await?;
+        let (mut held, texts) = self.new_books(&req.files).await?;
+        let burrito = match &req.burrito {
+            Some(upload) => {
+                let (upload, burrito) = self.read_burrito(upload).await?;
+                let name = upload.name().to_owned();
+                held.push(upload);
+                Some((burrito, name))
+            }
+            None => None,
+        };
+        // A Burrito's own versification is one of its records; the chosen one is not written.
+        let scheme = match &burrito {
+            Some((burrito, _)) if burrito.found.guess.is_none() => None,
+            _ => Some(scheme),
+        };
         let created = self
-            .create_project(req.details, ProjectKind::Bible, Some(scheme), texts)
+            .create_project(req.details, ProjectKind::Bible, scheme, texts, burrito)
             .await?;
         crate::uploads::used_up(held);
         Ok(created)
+    }
+}
+
+impl Handle<ReadBurrito> for App {
+    async fn handle(&self, req: ReadBurrito) -> Result<BurritoFound, ApiError> {
+        let (_held, burrito) = self.read_burrito(&req.upload).await?;
+        Ok(burrito.found)
     }
 }
 
@@ -403,7 +469,7 @@ impl Handle<GuessUsfm> for App {
 
 impl Handle<Obs> for App {
     async fn handle(&self, req: Obs) -> Result<Created, ApiError> {
-        self.create_project(req.details, ProjectKind::Stories, None, Vec::new())
+        self.create_project(req.details, ProjectKind::Stories, None, Vec::new(), None)
             .await
     }
 }

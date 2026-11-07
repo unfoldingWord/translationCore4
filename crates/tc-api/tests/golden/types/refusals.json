@@ -182,6 +182,62 @@
   },
   {
     "wire": {
+      "type": "create",
+      "value": {
+        "type": "burritoForReceive"
+      }
+    },
+    "code": null,
+    "key": "newBible.burritoForReceive",
+    "vars": {},
+    "detail": null
+  },
+  {
+    "wire": {
+      "type": "create",
+      "value": {
+        "type": "burritoTc4"
+      }
+    },
+    "code": null,
+    "key": "newBible.burritoTc4",
+    "vars": {},
+    "detail": null
+  },
+  {
+    "wire": {
+      "type": "create",
+      "value": {
+        "type": "burritoFlavor",
+        "value": {
+          "flavor": "gloss/textStories"
+        }
+      }
+    },
+    "code": null,
+    "key": "newBible.burritoFlavor",
+    "vars": {
+      "flavor": "gloss/textStories"
+    },
+    "detail": null
+  },
+  {
+    "wire": {
+      "type": "create",
+      "value": {
+        "type": "burritoUnusable",
+        "value": {
+          "reason": "This file is damaged. Ask for a new copy."
+        }
+      }
+    },
+    "code": null,
+    "key": "newBible.burritoUnusable",
+    "vars": {},
+    "detail": "This file is damaged. Ask for a new copy."
+  },
+  {
+    "wire": {
       "type": "settings",
       "value": {
         "type": "changed"

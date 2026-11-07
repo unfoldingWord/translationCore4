@@ -297,6 +297,7 @@ async fn import_accepts_x_codes_and_refuses_unusable_codes_before_import() {
                 },
                 versification: "eng".to_owned(),
                 files: Vec::new(),
+                burrito: None,
             },
         )
         .await;

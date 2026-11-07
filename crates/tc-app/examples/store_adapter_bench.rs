@@ -222,6 +222,7 @@ async fn in_memory() {
                 records: titus_records(),
                 books: Vec::new(),
                 texts: Vec::new(),
+                carried: Vec::new(),
             })
             .unwrap();
     }

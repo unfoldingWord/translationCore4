@@ -76,12 +76,18 @@ pub struct NewProject {
     /// Books to add whole with their own text, as `AddBookText` (§13.5): a new project from
     /// USFM files is created with them or not at all.
     pub texts: Vec<BookText>,
+    /// Files the project keeps as they are (§11.4), by their `/`-separated path under
+    /// `ingredients/`: a Scripture Burrito's front matter, license and files the format does
+    /// not know. Recorded as carried files in the same write.
+    pub carried: Vec<(String, Vec<u8>)>,
 }
 
-/// A book of a new project that brings its own text: the file's USFM, and its name for History.
+/// A book of a new project that brings its own text: the file's USFM, the part of the book in
+/// scope, and the file's name for History.
 #[derive(Debug, Clone)]
 pub struct BookText {
     pub book: BookId,
+    pub scope: Scope,
     pub usfm: String,
     pub file_name: String,
 }
@@ -442,12 +448,22 @@ impl Store {
             handle
                 .submit(Command::AddBookText {
                     book: text.book,
-                    scope: Scope::Whole,
+                    scope: text.scope.clone(),
                     usfm: text.usfm.clone(),
                     file_name: text.file_name.clone(),
                 })
                 .wait()
                 .map_err(CreateError::Refused)?;
+        }
+        if !new.carried.is_empty() {
+            for (rel, bytes) in &new.carried {
+                let (dir, name) = folder.dir_and_name(rel);
+                atomic_create_dirs(vfs, &dir)?;
+                atomic_write(vfs, &dir, name, bytes, SyncDir::Now).map_err(|e| e.into_inner())?;
+            }
+            // The look a window's focus takes (§11.1) records each new file as a carried file.
+            handle.focus().wait()?;
+            handle.wait_idle();
         }
         handle
             .checkpoint(crate::handle::CheckpointReason::Other("created".into()))

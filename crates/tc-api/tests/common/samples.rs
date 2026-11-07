@@ -45,6 +45,14 @@ pub fn create() -> Vec<CreateRefusal> {
         CreateRefusal::CopyUnsafe {
             reason: tc_api::write::ReadOnlyReason::CloudSynced,
         },
+        CreateRefusal::BurritoForReceive,
+        CreateRefusal::BurritoTc4,
+        CreateRefusal::BurritoFlavor {
+            flavor: s("gloss/textStories"),
+        },
+        CreateRefusal::BurritoUnusable {
+            reason: s("This file is damaged. Ask for a new copy."),
+        },
     ]
 }
 

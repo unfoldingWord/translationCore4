@@ -29,6 +29,7 @@ mod app {
     pub mod common;
     mod conflicts;
     mod create;
+    mod create_burrito;
     mod dispatch;
     mod drafted;
     mod drafts;

@@ -11,7 +11,8 @@ use leptos::prelude::*;
 use tc_api::ApiError;
 use tc_api::Refusal;
 use tc_api::create::{
-    AddBlankBooks, AddUsfmBooks, Bible, GuessUsfm, Obs, ReviewUsfm, UsfmFile, UsfmOutcome,
+    AddBlankBooks, AddUsfmBooks, Bible, GuessUsfm, Obs, ReadBurrito, ReviewUsfm, UsfmFile,
+    UsfmOutcome,
 };
 use tc_api::refusal::{CreateRefusal, Message};
 use tc_api::upload::UploadFlow;
@@ -72,14 +73,17 @@ impl Actions {
             .try_update(|np| {
                 let np = np.as_mut()?;
                 let versification = np.versification.clone();
-                let (files, books) = (np.usfm.sent(), np.file_books());
-                Some(
-                    np.press(js::random_request_id)?
-                        .map(|(request, details)| (request, details, versification, files, books)),
-                )
+                let (files, burrito) = (np.usfm.sent(), np.burrito_upload());
+                let books = match np.burrito_found() {
+                    Some(found) => found.books.clone(),
+                    None => np.file_books(),
+                };
+                Some(np.press(js::random_request_id)?.map(|(request, details)| {
+                    (request, details, versification, files, burrito, books)
+                }))
             })
             .flatten();
-        let (request, details, versification, files, books) = match pressed {
+        let (request, details, versification, files, burrito, books) = match pressed {
             None => return,
             Some(Err(problem)) => {
                 let error = words(&Refusal::Create(problem));
@@ -92,8 +96,9 @@ impl Actions {
             }
             Some(Ok(pressed)) => pressed,
         };
-        // A project from USFM files sends its files: the server deletes them once it is made.
-        let taken = (!files.is_empty()).then(|| self.uploads_taken());
+        // A project from USFM files or a Burrito sends its files: the server deletes them once
+        // it is made.
+        let taken = (!files.is_empty() || burrito.is_some()).then(|| self.uploads_taken());
         let this = self.clone();
         spawn_local(async move {
             let name = details.name.trim().to_owned();
@@ -105,6 +110,7 @@ impl Actions {
                         details,
                         versification,
                         files,
+                        burrito,
                     })
                     .await
                 }
@@ -158,6 +164,70 @@ impl Actions {
         for id in gone {
             self.removed_upload(Slot::Usfm(id));
         }
+        self.removed_upload(Slot::Burrito);
+    }
+
+    /// A Scripture Burrito picked or dropped (J9d): sent, then opened and checked by the
+    /// server before the fields open. A file picked again takes the first one's place.
+    pub fn np_pick_burrito(&self, file: web_sys::File) {
+        let name = file.name();
+        let mut pick = 0;
+        self.patch_np(|np| pick = np.pick_burrito(name));
+        if file.size() > UploadFlow::Import.cap() as f64 {
+            let error = t(keys::wizard::ERROR, &[]);
+            self.patch_np(|np| {
+                np.burrito_read(pick, Err((error, false)));
+            });
+            return;
+        }
+        let opening = self.upload_opening();
+        let this = self.clone();
+        spawn_local(async move {
+            let api = this.runtime().api();
+            let read = match api.upload(&file, UploadFlow::Import).await {
+                Ok(upload) => {
+                    // An upload for a pick that went (Back, another file) never takes the slot
+                    // of the Burrito picked after it.
+                    let waits = this.s().np_slot().with_untracked(|np| {
+                        np.as_ref().is_some_and(|np| np.waits_for_burrito(pick))
+                    });
+                    if !waits {
+                        this.drop_upload(upload.id);
+                        return;
+                    }
+                    if !this.picked_upload(opening, Slot::Burrito, &upload.id) {
+                        return;
+                    }
+                    api.call(&ReadBurrito {
+                        upload: upload.id.clone(),
+                    })
+                    .await
+                    .map(|found| (upload.id, found))
+                }
+                Err(error) => Err(error),
+            };
+            let read = read.map_err(|error| {
+                let receive = matches!(
+                    &error,
+                    CallError::Api(ApiError::Refused(Refusal::Create(
+                        CreateRefusal::BurritoForReceive
+                    )))
+                );
+                (unreadable(error), receive)
+            });
+            if this.upload_current(opening) {
+                this.patch_np(|np| {
+                    np.burrito_read(pick, read);
+                });
+            }
+        });
+    }
+
+    /// "Receive work" under a Burrito that is work for a project: that dialog opens instead.
+    pub fn np_receive_instead(&self) {
+        self.np_back_to_start();
+        self.close_modal();
+        self.open_receive_work_new();
     }
 
     /// Next on the files step: the versification the files fit (H13) comes first, then the

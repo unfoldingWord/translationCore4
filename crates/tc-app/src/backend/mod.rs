@@ -39,7 +39,6 @@ pub mod memory;
 pub mod scenario;
 #[cfg(feature = "fixture-backend")]
 pub mod scenario_store;
-#[cfg(feature = "fixture-backend")]
 pub mod seed;
 pub mod store;
 
@@ -1061,6 +1060,9 @@ pub struct NewProjectSpec {
     pub records: Vec<tc_journal::Record>,
     /// Books that bring their own text (a new project from USFM files), in the same write.
     pub texts: Vec<tc_store::BookText>,
+    /// Files kept as they are (a Scripture Burrito's front matter, license and other files),
+    /// recorded as carried files in the same write.
+    pub carried: Vec<(String, Vec<u8>)>,
 }
 
 /// Why a project was not created (tc-store `CreateError`). Nothing of it is left.

@@ -1,0 +1,38 @@
+{
+  "path": "create/readBurrito",
+  "kind": "query",
+  "net": null,
+  "request": {
+    "upload": "00112233445566778899aabbccddeeff"
+  },
+  "reply": {
+    "type": "ok",
+    "value": {
+      "details": {
+        "name": "Kanuri Bible",
+        "languageName": "Kanuri",
+        "code": "acm-x-lebarabi-c",
+        "door43Code": "acm-x-lebarabic",
+        "direction": "rtl",
+        "font": "Noto Sans (default)"
+      },
+      "guess": null,
+      "books": [
+        "TIT",
+        "JON"
+      ],
+      "carried": [
+        "ingredients/LICENSE.md"
+      ]
+    }
+  },
+  "error": {
+    "type": "err",
+    "value": {
+      "type": "internal",
+      "value": {
+        "report": 9
+      }
+    }
+  }
+}

@@ -118,6 +118,7 @@ const PHASE_0: &[&str] = &[
     "create/addBlankBooks",
     "create/reviewUsfm",
     "create/guessUsfm",
+    "create/readBurrito",
     "create/addUsfmBooks",
     // Review 2026-10-28 #7: a dialog's upload goes when nothing can use it any more.
     "uploads/drop",

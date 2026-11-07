@@ -1013,6 +1013,7 @@ async fn a_right_to_left_project_aligns_with_its_bank_right_to_left() {
             },
             versification: "eng".to_owned(),
             files: Vec::new(),
+            burrito: None,
         },
     )
     .await

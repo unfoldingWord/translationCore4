@@ -1025,6 +1025,7 @@ impl ImportPort for TcImport {
                 kind: ProjectKind::Bible,
                 records,
                 texts: Vec::new(),
+                carried: Vec::new(),
             };
             ctx.cancel.check()?;
             let cause = Cause::Import(ImportSource::Tc3 { user: None });

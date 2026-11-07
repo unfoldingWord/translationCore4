@@ -485,6 +485,7 @@ async fn build(decided: usize, orphans: usize, vrs: Option<&[u8]>, opts: Opts) -
             records,
             books: Vec::new(),
             texts: Vec::new(),
+            carried: Vec::new(),
         })
         .unwrap();
     assert_valid_burrito(&fs, &folder);

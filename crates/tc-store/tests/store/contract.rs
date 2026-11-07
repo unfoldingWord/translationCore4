@@ -341,6 +341,7 @@ fn a_project_name_that_exists_is_refused_and_untouched() {
         records: first_records(),
         books: Vec::new(),
         texts: Vec::new(),
+        carried: Vec::new(),
     });
     assert!(matches!(again, Err(tc_store::CreateError::NameExists(_))));
     assert_eq!(files(&rig.fs, &folder), before);

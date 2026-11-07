@@ -128,6 +128,7 @@ pub fn titus(computer: &Computer) -> PathBuf {
                 },
             )],
             texts: Vec::new(),
+            carried: Vec::new(),
         })
         .unwrap()
 }
@@ -1715,6 +1716,7 @@ fn stories(computer: &Computer) -> PathBuf {
             records,
             books: Vec::new(),
             texts: Vec::new(),
+            carried: Vec::new(),
         })
         .unwrap()
 }
