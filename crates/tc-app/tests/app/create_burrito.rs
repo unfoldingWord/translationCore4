@@ -85,6 +85,19 @@ fn set_file(files: &mut BTreeMap<String, Vec<u8>>, path: &str, bytes: Option<&[u
     );
 }
 
+/// Replaces the bytes of an ingredient the Burrito lists, and its checksum and size.
+fn rewrite(files: &mut BTreeMap<String, Vec<u8>>, path: &str, bytes: &[u8]) {
+    let mut meta = metadata_of(files);
+    let facts = tc_burrito::FileFacts::of(bytes);
+    meta["ingredients"][path]["checksum"] = json!({ "md5": facts.md5.to_string() });
+    meta["ingredients"][path]["size"] = json!(facts.size);
+    files.insert(path.to_owned(), bytes.to_vec());
+    files.insert(
+        "metadata.json".to_owned(),
+        serde_json::to_vec_pretty(&meta).unwrap(),
+    );
+}
+
 fn zip(files: &BTreeMap<String, Vec<u8>>) -> Vec<u8> {
     let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
     for (name, bytes) in files {
@@ -145,10 +158,11 @@ fn refused(error: ApiError) -> CreateRefusal {
 }
 
 /// The non-derived fields of `metadata.json` that P9 compares, by dotted path.
-/// What the fields do not decide (`burrito::from_the_fields`), kept as written.
 const KEPT: &[&str] = &[
+    "identification.name",
     "identification.description",
     "identification.abbreviation",
+    "languages",
     "copyright",
     "confidential",
     "localizedNames",
@@ -216,15 +230,6 @@ async fn a_bible_from_a_burrito_keeps_its_books_sidecars_metadata_and_files() {
     for path in KEPT {
         assert_eq!(at(&made, path), at(&given, path), "{path} as written (P9)");
     }
-    assert_eq!(
-        made["identification"]["name"],
-        json!({ "en": "Equipo Ejemplo — Tito y Jonás" })
-    );
-    assert_eq!(
-        made["languages"],
-        json!([{ "name": { "en": "Spanish (Latin America)" }, "scriptDirection": "ltr", "tag": "es-419" }]),
-        "the language is the fields', as for USFM files"
-    );
     assert_valid_burrito(&world.fs, &folder);
     assert!(
         !uploaded(dir.path(), &id),
@@ -232,7 +237,7 @@ async fn a_bible_from_a_burrito_keeps_its_books_sidecars_metadata_and_files() {
     );
 }
 
-/// J9d: the fields decide the name, language and direction, as for USFM files; every other
+/// J9d: a changed field remakes its record from the fields, as for USFM files; every other
 /// field stays as the Burrito wrote it.
 #[tokio::test]
 async fn a_changed_field_is_written_and_the_rest_as_the_burrito_has_it() {
@@ -260,6 +265,65 @@ async fn a_changed_field_is_written_and_the_rest_as_the_burrito_has_it() {
         "meta.dateCreated",
     ] {
         assert_eq!(at(&made, path), at(&given, path), "{path} as written");
+    }
+}
+
+/// J9d, P9: a Create that changes no field keeps what the fields cannot show: the name in
+/// another locale, a second language, the Door43 language. A changed code remakes the language
+/// from the fields and drops the Door43 language it no longer matches; the name stays.
+#[tokio::test]
+async fn what_the_fields_cannot_show_is_kept_until_its_field_changes() {
+    let mut source = sample();
+    let mut meta = metadata_of(&source);
+    meta["languages"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({ "tag": "qu", "name": { "en": "Quechua" }, "scriptDirection": "ltr" }));
+    source.insert(
+        "metadata.json".to_owned(),
+        serde_json::to_vec_pretty(&meta).unwrap(),
+    );
+    let settings_path = "ingredients/checking/settings.json";
+    let door43 = json!({ "code": "es-419", "name": "Español" });
+    let mut settings: Value = serde_json::from_slice(&source[settings_path]).unwrap();
+    settings["door43Language"] = door43.clone();
+    rewrite(
+        &mut source,
+        settings_path,
+        &serde_json::to_vec_pretty(&settings).unwrap(),
+    );
+    let given = metadata_of(&source);
+    for (n, code) in [(1u8, None), (2u8, Some("es"))] {
+        let (dir, t, world) = app().await;
+        let id = upload(dir.path(), n, &zip(&source));
+        let found = read(&t, &id).await.unwrap();
+        let mut chosen = found.details.clone();
+        if let Some(code) = code {
+            chosen.code = code.to_owned();
+        }
+        let created = post(&t.app, &create(n, chosen, id)).await.unwrap();
+        let on_disk = files(&world.fs, &world.folder(&created.project));
+        let made = metadata_of(&on_disk);
+        let settings: Value = serde_json::from_slice(&on_disk[settings_path]).unwrap();
+        assert_eq!(
+            made["identification"]["name"], given["identification"]["name"],
+            "the name in every locale"
+        );
+        match code {
+            None => {
+                assert_eq!(made["languages"], given["languages"], "every language");
+                assert_eq!(settings["door43Language"], door43);
+            }
+            Some(code) => {
+                let language = json!([{
+                    "name": { "en": "Spanish (Latin America)" },
+                    "scriptDirection": "ltr",
+                    "tag": code,
+                }]);
+                assert_eq!(made["languages"], language, "remade from the fields");
+                assert_eq!(settings.get("door43Language"), None);
+            }
+        }
     }
 }
 

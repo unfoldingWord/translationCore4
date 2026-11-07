@@ -468,9 +468,9 @@ And this (#845):
   `metadata.json` (name, language, code, direction); a Burrito with its own `vrs.json` keeps it
   and shows no versification choice (ruling H13), one without gets the versification its books
   fit. The books and the other files it keeps are listed, and a name already in use is flagged
-  with Create off (#436). As for USFM files, the fields then decide the project's name,
-  language and direction. Create makes the project with its books, alignments, decisions, every
-  other metadata field as written, and its other files, in one write. Abbreviation, copyright
+  with Create off (#436). Create makes the project with its books, alignments, decisions, its
+  other files and every metadata field as written, in one write; a field the translator changes
+  is remade from the fields, as for USFM files. Abbreviation, copyright
   and license are kept as the Burrito wrote them and are not shown as fields. tC4 4.0 imports a Burrito only through Import, whose Burrito kind 4.1.0 left out (J9d,
   owner 2026-11-06).
 

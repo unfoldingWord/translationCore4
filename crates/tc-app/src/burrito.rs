@@ -5,7 +5,7 @@
 //! whose check is §13's common one: every book byte for byte, every sidecar record field for
 //! field and every non-derived `metadata.json` field (P9). Nothing is written until Create,
 //! which reads the file again and makes the project in one write: the Burrito's records with
-//! the name, language, direction and font from the fields, each book through `AddBookText`
+//! each one a changed field makes remade from the fields, each book through `AddBookText`
 //! (aligned verses split out), and the other files carried as they are.
 
 use std::collections::BTreeMap;
@@ -152,18 +152,19 @@ pub(crate) fn read(bytes: &[u8], file_name: &str) -> Result<Burrito, CreateRefus
 }
 
 impl Burrito {
-    /// The new project's first records. The fields decide what they show, as they do for USFM
-    /// files: the name, the language, its direction and the font. Everything else is the
-    /// Burrito's as written, and `base` (the records the fields make, `create::project_records`)
-    /// fills what the Burrito does not hold.
-    pub(crate) fn records(&self, base: Vec<Record>) -> Vec<Record> {
+    /// The new project's first records. A record a field makes is remade whole from the fields
+    /// when the person changed that field, as for USFM files; every other record is the
+    /// Burrito's as written (P9). `base` (the records the fields make,
+    /// `create::project_records`) fills what the Burrito does not hold.
+    pub(crate) fn records(&self, chosen: &Details, base: Vec<Record>) -> Vec<Record> {
+        let edited = edited_records(&self.found.details, chosen);
         let mut out: BTreeMap<RecordKey, Record> = base
             .into_iter()
             .map(|record| (record.key(), record))
             .collect();
         for record in &self.records {
             let key = record.key();
-            if !from_the_fields(&key) {
+            if !edited.contains(&key) {
                 out.insert(key, record.clone());
             }
         }
@@ -171,16 +172,28 @@ impl Burrito {
     }
 }
 
-/// A record the dialog's fields make, so a Burrito's own is replaced.
-fn from_the_fields(key: &RecordKey) -> bool {
-    match key {
-        RecordKey::ProjectMeta(field) => matches!(field, MetaField::Name | MetaField::Languages),
-        RecordKey::Setting(key) => matches!(
-            key.as_str(),
-            "textDirection" | "textFont" | "languageName" | "door43Language"
-        ),
-        _ => false,
-    }
+/// The records a changed field remakes: each field's own, and the languages record for the
+/// language name, code and direction.
+fn edited_records(shown: &Details, chosen: &Details) -> Vec<RecordKey> {
+    let changed = |a: &str, b: &str| a.trim() != b.trim();
+    let name = changed(&chosen.name, &shown.name);
+    let language = changed(&chosen.language_name, &shown.language_name);
+    let code = changed(&chosen.code, &shown.code) || chosen.door43_code != shown.door43_code;
+    let direction = chosen.direction != shown.direction;
+    let font = chosen.font != shown.font;
+    let meta = |field| Some(RecordKey::ProjectMeta(field));
+    let setting = |key: &str| SettingKey::parse(key).ok().map(RecordKey::Setting);
+    [
+        (name, meta(MetaField::Name)),
+        (language || code || direction, meta(MetaField::Languages)),
+        (direction, setting("textDirection")),
+        (font, setting("textFont")),
+        (language, setting("languageName")),
+        (code, setting("door43Language")),
+    ]
+    .into_iter()
+    .filter_map(|(edited, key)| key.filter(|_| edited))
+    .collect()
 }
 
 /// The file entries of the zip under R1's rules, by path. A zip of the Burrito's folder (what a
