@@ -468,10 +468,10 @@ And this (#845):
   `metadata.json` (name, language, code, direction); a Burrito with its own `vrs.json` keeps it
   and shows no versification choice (ruling H13), one without gets the versification its books
   fit. The books and the other files it keeps are listed, and a name already in use is flagged
-  with Create off (#436). Create makes the project with its books, alignments, decisions, every
-  metadata field the translator did not change as written, and its other files, in one write.
-  Abbreviation, copyright and license are kept as the Burrito wrote them and are not shown as
-  fields. tC4 4.0 imports a Burrito only through Import, whose Burrito kind 4.1.0 left out (J9d,
+  with Create off (#436). Create makes the project with its books, alignments, decisions, its
+  other files and every metadata field as written, in one write; a field the translator changes
+  is remade whole from the fields, as for USFM files (ruling H23). Abbreviation, copyright
+  and license are kept as the Burrito wrote them and are not shown as fields. tC4 4.0 imports a Burrito only through Import, whose Burrito kind 4.1.0 left out (J9d,
   owner 2026-11-06).
 
 The rebuild does not port tC4's sync mechanism: the scratch copy, the apply marker, the

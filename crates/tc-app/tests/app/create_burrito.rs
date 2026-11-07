@@ -85,6 +85,19 @@ fn set_file(files: &mut BTreeMap<String, Vec<u8>>, path: &str, bytes: Option<&[u
     );
 }
 
+/// Replaces the bytes of an ingredient the Burrito lists, and its checksum and size.
+fn rewrite(files: &mut BTreeMap<String, Vec<u8>>, path: &str, bytes: &[u8]) {
+    let mut meta = metadata_of(files);
+    let facts = tc_burrito::FileFacts::of(bytes);
+    meta["ingredients"][path]["checksum"] = json!({ "md5": facts.md5.to_string() });
+    meta["ingredients"][path]["size"] = json!(facts.size);
+    files.insert(path.to_owned(), bytes.to_vec());
+    files.insert(
+        "metadata.json".to_owned(),
+        serde_json::to_vec_pretty(&meta).unwrap(),
+    );
+}
+
 fn zip(files: &BTreeMap<String, Vec<u8>>) -> Vec<u8> {
     let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
     for (name, bytes) in files {
@@ -224,8 +237,8 @@ async fn a_bible_from_a_burrito_keeps_its_books_sidecars_metadata_and_files() {
     );
 }
 
-/// J9d: a field the person changes is the project's; every other field stays as the Burrito
-/// wrote it.
+/// J9d: a changed field remakes its record from the fields, as for USFM files; every other
+/// field stays as the Burrito wrote it.
 #[tokio::test]
 async fn a_changed_field_is_written_and_the_rest_as_the_burrito_has_it() {
     let (dir, t, world) = app().await;
@@ -255,10 +268,12 @@ async fn a_changed_field_is_written_and_the_rest_as_the_burrito_has_it() {
     }
 }
 
-/// J9d: an edit to the language row changes only the edited part of the Burrito's languages:
-/// a second language and the name in another locale stay as written.
+/// J9d, P9, H23: a Create that changes no field keeps what the fields cannot show: the name in
+/// another locale, a second language, the Door43 language. A changed language field remakes the
+/// whole languages record from the fields; a changed code also drops the Burrito's Door43
+/// language, as the form does not show it. A Door43 code alone changes only that setting.
 #[tokio::test]
-async fn a_language_edit_keeps_what_the_form_does_not_show() {
+async fn what_the_fields_cannot_show_is_kept_until_its_field_changes() {
     let mut source = sample();
     let mut meta = metadata_of(&source);
     meta["languages"]
@@ -269,31 +284,69 @@ async fn a_language_edit_keeps_what_the_form_does_not_show() {
         "metadata.json".to_owned(),
         serde_json::to_vec_pretty(&meta).unwrap(),
     );
+    let settings_path = "ingredients/checking/settings.json";
+    let door43 = json!({ "code": "es-419", "name": "Español" });
+    let mut settings: Value = serde_json::from_slice(&source[settings_path]).unwrap();
+    settings["door43Language"] = door43.clone();
+    rewrite(
+        &mut source,
+        settings_path,
+        &serde_json::to_vec_pretty(&settings).unwrap(),
+    );
     let given = metadata_of(&source);
-    for (n, edit) in [("direction", 1u8), ("code", 2u8)] {
+    let field_built = |tag: &str, direction: &str, name: &str| json!([{ "name": { "en": name }, "scriptDirection": direction, "tag": tag }]);
+    let picked = json!({ "code": "es-419", "name": "Spanish (Latin America)" });
+    /// What is edited, the edit, then the languages and the Door43 language the project gets.
+    type Case = (&'static str, fn(&mut Details), Value, Value);
+    let cases: [Case; 5] = [
+        (
+            "nothing",
+            |_| {},
+            given["languages"].clone(),
+            door43.clone(),
+        ),
+        (
+            "the code",
+            |d| d.code = "es".to_owned(),
+            field_built("es", "ltr", "Spanish (Latin America)"),
+            Value::Null,
+        ),
+        (
+            "the direction",
+            |d| d.direction = Direction::Rtl,
+            field_built("es-419", "rtl", "Spanish (Latin America)"),
+            door43.clone(),
+        ),
+        (
+            "the language name",
+            |d| d.language_name = "Español".to_owned(),
+            field_built("es-419", "ltr", "Español"),
+            door43.clone(),
+        ),
+        (
+            "the Door43 code alone",
+            |d| d.door43_code = Some("es-419".to_owned()),
+            given["languages"].clone(),
+            picked,
+        ),
+    ];
+    for (n, (edit, change, languages, door43_language)) in (1u8..).zip(cases) {
         let (dir, t, world) = app().await;
-        let id = upload(dir.path(), edit, &zip(&source));
-        let found = read(&t, &id).await.unwrap();
-        let chosen = match n {
-            "direction" => Details {
-                direction: Direction::Rtl,
-                ..found.details.clone()
-            },
-            _ => Details {
-                code: "es".to_owned(),
-                ..found.details.clone()
-            },
-        };
-        let created = post(&t.app, &create(edit, chosen, id)).await.unwrap();
-        let made = metadata_of(&files(&world.fs, &world.folder(&created.project)));
-        let mut expected = given["languages"].clone();
-        match n {
-            "direction" => expected[0]["scriptDirection"] = json!("rtl"),
-            _ => expected[0]["tag"] = json!("es"),
-        }
+        let id = upload(dir.path(), n, &zip(&source));
+        let mut chosen = read(&t, &id).await.unwrap().details;
+        change(&mut chosen);
+        let created = post(&t.app, &create(n, chosen, id)).await.unwrap();
+        let on_disk = files(&world.fs, &world.folder(&created.project));
+        let made = metadata_of(&on_disk);
+        let settings: Value = serde_json::from_slice(&on_disk[settings_path]).unwrap();
         assert_eq!(
-            made["languages"], expected,
-            "a {n} edit changes only the {n}"
+            made["identification"]["name"], given["identification"]["name"],
+            "{edit}: the name in every locale"
+        );
+        assert_eq!(made["languages"], languages, "{edit}: the languages");
+        assert_eq!(
+            settings["door43Language"], door43_language,
+            "{edit}: the Door43 language"
         );
     }
 }
