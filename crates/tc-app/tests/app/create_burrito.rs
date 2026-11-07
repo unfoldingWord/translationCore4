@@ -296,7 +296,9 @@ async fn what_the_fields_cannot_show_is_kept_until_its_field_changes() {
     let given = metadata_of(&source);
     let field_built = |tag: &str, direction: &str, name: &str| json!([{ "name": { "en": name }, "scriptDirection": direction, "tag": tag }]);
     let picked = json!({ "code": "es-419", "name": "Spanish (Latin America)" });
-    let cases: [(&str, fn(&mut Details), Value, Value); 5] = [
+    /// What is edited, the edit, then the languages and the Door43 language the project gets.
+    type Case = (&'static str, fn(&mut Details), Value, Value);
+    let cases: [Case; 5] = [
         (
             "nothing",
             |_| {},
