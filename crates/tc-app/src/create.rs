@@ -213,7 +213,7 @@ impl App {
         let mut carried = Vec::new();
         let mut cause = None;
         if let Some((burrito, file_name)) = burrito {
-            records = burrito.records(&details, records);
+            records = burrito.records(records);
             texts.extend(burrito.texts);
             carried = burrito.carried;
             cause = Some(tc_journal::Cause::Import(

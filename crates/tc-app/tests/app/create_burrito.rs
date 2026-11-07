@@ -145,11 +145,10 @@ fn refused(error: ApiError) -> CreateRefusal {
 }
 
 /// The non-derived fields of `metadata.json` that P9 compares, by dotted path.
+/// What the fields do not decide (`burrito::from_the_fields`), kept as written.
 const KEPT: &[&str] = &[
-    "identification.name",
     "identification.description",
     "identification.abbreviation",
-    "languages",
     "copyright",
     "confidential",
     "localizedNames",
@@ -217,6 +216,15 @@ async fn a_bible_from_a_burrito_keeps_its_books_sidecars_metadata_and_files() {
     for path in KEPT {
         assert_eq!(at(&made, path), at(&given, path), "{path} as written (P9)");
     }
+    assert_eq!(
+        made["identification"]["name"],
+        json!({ "en": "Equipo Ejemplo — Tito y Jonás" })
+    );
+    assert_eq!(
+        made["languages"],
+        json!([{ "name": { "en": "Spanish (Latin America)" }, "scriptDirection": "ltr", "tag": "es-419" }]),
+        "the language is the fields', as for USFM files"
+    );
     assert_valid_burrito(&world.fs, &folder);
     assert!(
         !uploaded(dir.path(), &id),
@@ -224,8 +232,8 @@ async fn a_bible_from_a_burrito_keeps_its_books_sidecars_metadata_and_files() {
     );
 }
 
-/// J9d: a field the person changes is the project's; every other field stays as the Burrito
-/// wrote it.
+/// J9d: the fields decide the name, language and direction, as for USFM files; every other
+/// field stays as the Burrito wrote it.
 #[tokio::test]
 async fn a_changed_field_is_written_and_the_rest_as_the_burrito_has_it() {
     let (dir, t, world) = app().await;
@@ -252,49 +260,6 @@ async fn a_changed_field_is_written_and_the_rest_as_the_burrito_has_it() {
         "meta.dateCreated",
     ] {
         assert_eq!(at(&made, path), at(&given, path), "{path} as written");
-    }
-}
-
-/// J9d: an edit to the language row changes only the edited part of the Burrito's languages:
-/// a second language and the name in another locale stay as written.
-#[tokio::test]
-async fn a_language_edit_keeps_what_the_form_does_not_show() {
-    let mut source = sample();
-    let mut meta = metadata_of(&source);
-    meta["languages"]
-        .as_array_mut()
-        .unwrap()
-        .push(json!({ "tag": "qu", "name": { "en": "Quechua" }, "scriptDirection": "ltr" }));
-    source.insert(
-        "metadata.json".to_owned(),
-        serde_json::to_vec_pretty(&meta).unwrap(),
-    );
-    let given = metadata_of(&source);
-    for (n, edit) in [("direction", 1u8), ("code", 2u8)] {
-        let (dir, t, world) = app().await;
-        let id = upload(dir.path(), edit, &zip(&source));
-        let found = read(&t, &id).await.unwrap();
-        let chosen = match n {
-            "direction" => Details {
-                direction: Direction::Rtl,
-                ..found.details.clone()
-            },
-            _ => Details {
-                code: "es".to_owned(),
-                ..found.details.clone()
-            },
-        };
-        let created = post(&t.app, &create(edit, chosen, id)).await.unwrap();
-        let made = metadata_of(&files(&world.fs, &world.folder(&created.project)));
-        let mut expected = given["languages"].clone();
-        match n {
-            "direction" => expected[0]["scriptDirection"] = json!("rtl"),
-            _ => expected[0]["tag"] = json!("es"),
-        }
-        assert_eq!(
-            made["languages"], expected,
-            "a {n} edit changes only the {n}"
-        );
     }
 }
 
