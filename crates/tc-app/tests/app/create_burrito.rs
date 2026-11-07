@@ -268,9 +268,10 @@ async fn a_changed_field_is_written_and_the_rest_as_the_burrito_has_it() {
     }
 }
 
-/// J9d, P9: a Create that changes no field keeps what the fields cannot show: the name in
-/// another locale, a second language, the Door43 language. A changed code remakes the language
-/// from the fields and drops the Door43 language it no longer matches; the name stays.
+/// J9d, P9, H23: a Create that changes no field keeps what the fields cannot show: the name in
+/// another locale, a second language, the Door43 language. A changed language field remakes the
+/// whole languages record from the fields; a changed code also drops the Burrito's Door43
+/// language, as the form does not show it. A Door43 code alone changes only that setting.
 #[tokio::test]
 async fn what_the_fields_cannot_show_is_kept_until_its_field_changes() {
     let mut source = sample();
@@ -293,37 +294,58 @@ async fn what_the_fields_cannot_show_is_kept_until_its_field_changes() {
         &serde_json::to_vec_pretty(&settings).unwrap(),
     );
     let given = metadata_of(&source);
-    for (n, code) in [(1u8, None), (2u8, Some("es"))] {
+    let field_built = |tag: &str, direction: &str, name: &str| json!([{ "name": { "en": name }, "scriptDirection": direction, "tag": tag }]);
+    let picked = json!({ "code": "es-419", "name": "Spanish (Latin America)" });
+    let cases: [(&str, fn(&mut Details), Value, Value); 5] = [
+        (
+            "nothing",
+            |_| {},
+            given["languages"].clone(),
+            door43.clone(),
+        ),
+        (
+            "the code",
+            |d| d.code = "es".to_owned(),
+            field_built("es", "ltr", "Spanish (Latin America)"),
+            Value::Null,
+        ),
+        (
+            "the direction",
+            |d| d.direction = Direction::Rtl,
+            field_built("es-419", "rtl", "Spanish (Latin America)"),
+            door43.clone(),
+        ),
+        (
+            "the language name",
+            |d| d.language_name = "Español".to_owned(),
+            field_built("es-419", "ltr", "Español"),
+            door43.clone(),
+        ),
+        (
+            "the Door43 code alone",
+            |d| d.door43_code = Some("es-419".to_owned()),
+            given["languages"].clone(),
+            picked,
+        ),
+    ];
+    for (n, (edit, change, languages, door43_language)) in (1u8..).zip(cases) {
         let (dir, t, world) = app().await;
         let id = upload(dir.path(), n, &zip(&source));
-        let found = read(&t, &id).await.unwrap();
-        let mut chosen = found.details.clone();
-        if let Some(code) = code {
-            chosen.code = code.to_owned();
-        }
+        let mut chosen = read(&t, &id).await.unwrap().details;
+        change(&mut chosen);
         let created = post(&t.app, &create(n, chosen, id)).await.unwrap();
         let on_disk = files(&world.fs, &world.folder(&created.project));
         let made = metadata_of(&on_disk);
         let settings: Value = serde_json::from_slice(&on_disk[settings_path]).unwrap();
         assert_eq!(
             made["identification"]["name"], given["identification"]["name"],
-            "the name in every locale"
+            "{edit}: the name in every locale"
         );
-        match code {
-            None => {
-                assert_eq!(made["languages"], given["languages"], "every language");
-                assert_eq!(settings["door43Language"], door43);
-            }
-            Some(code) => {
-                let language = json!([{
-                    "name": { "en": "Spanish (Latin America)" },
-                    "scriptDirection": "ltr",
-                    "tag": code,
-                }]);
-                assert_eq!(made["languages"], language, "remade from the fields");
-                assert_eq!(settings.get("door43Language"), None);
-            }
-        }
+        assert_eq!(made["languages"], languages, "{edit}: the languages");
+        assert_eq!(
+            settings["door43Language"], door43_language,
+            "{edit}: the Door43 language"
+        );
     }
 }
 

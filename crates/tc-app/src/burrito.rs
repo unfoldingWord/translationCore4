@@ -153,8 +153,8 @@ pub(crate) fn read(bytes: &[u8], file_name: &str) -> Result<Burrito, CreateRefus
 
 impl Burrito {
     /// The new project's first records. A record a field makes is remade whole from the fields
-    /// when the person changed that field, as for USFM files; every other record is the
-    /// Burrito's as written (P9). `base` (the records the fields make,
+    /// when the person changed that field, as for USFM files (ruling H23); every other record
+    /// is the Burrito's as written (P9). `base` (the records the fields make,
     /// `create::project_records`) fills what the Burrito does not hold.
     pub(crate) fn records(&self, chosen: &Details, base: Vec<Record>) -> Vec<Record> {
         let edited = edited_records(&self.found.details, chosen);
@@ -178,7 +178,9 @@ fn edited_records(shown: &Details, chosen: &Details) -> Vec<RecordKey> {
     let changed = |a: &str, b: &str| a.trim() != b.trim();
     let name = changed(&chosen.name, &shown.name);
     let language = changed(&chosen.language_name, &shown.language_name);
-    let code = changed(&chosen.code, &shown.code) || chosen.door43_code != shown.door43_code;
+    let code = changed(&chosen.code, &shown.code);
+    // Picking a language from the suggestions sets a Door43 code; only that setting follows it.
+    let door43 = code || chosen.door43_code != shown.door43_code;
     let direction = chosen.direction != shown.direction;
     let font = chosen.font != shown.font;
     let meta = |field| Some(RecordKey::ProjectMeta(field));
@@ -189,7 +191,7 @@ fn edited_records(shown: &Details, chosen: &Details) -> Vec<RecordKey> {
         (direction, setting("textDirection")),
         (font, setting("textFont")),
         (language, setting("languageName")),
-        (code, setting("door43Language")),
+        (door43, setting("door43Language")),
     ]
     .into_iter()
     .filter_map(|(edited, key)| key.filter(|_| edited))

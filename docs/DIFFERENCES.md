@@ -470,7 +470,7 @@ And this (#845):
   fit. The books and the other files it keeps are listed, and a name already in use is flagged
   with Create off (#436). Create makes the project with its books, alignments, decisions, its
   other files and every metadata field as written, in one write; a field the translator changes
-  is remade from the fields, as for USFM files. Abbreviation, copyright
+  is remade whole from the fields, as for USFM files (ruling H23). Abbreviation, copyright
   and license are kept as the Burrito wrote them and are not shown as fields. tC4 4.0 imports a Burrito only through Import, whose Burrito kind 4.1.0 left out (J9d,
   owner 2026-11-06).
 
