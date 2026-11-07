@@ -682,13 +682,19 @@ async fn both_receives_refuse(format: String, refused: NewerFormat) {
     let folder_b = copy_to(&folder_a, &juan);
     // One open and close first, so the snapshot holds what any open leaves behind.
     open(&juan, &folder_b).close().unwrap();
-    let snapshot = || {
-        let mut files: Vec<(String, Vec<u8>)> = walk(&folder_b)
+    let snapshot = || -> std::collections::BTreeMap<String, Vec<u8>> {
+        walk(&folder_b)
             .into_iter()
-            .map(|rel| (rel.clone(), std::fs::read(folder_b.join(&rel)).unwrap()))
-            .collect();
-        files.sort();
-        files
+            .map(|rel| {
+                let bytes = std::fs::read(folder_b.join(&rel)).unwrap();
+                let bytes = if rel == tc_store::layout::MANIFEST {
+                    settled_cleared(&bytes)
+                } else {
+                    bytes
+                };
+                (rel, bytes)
+            })
+            .collect()
     };
     let before = snapshot();
     let b = open(&juan, &folder_b);
@@ -700,7 +706,38 @@ async fn both_receives_refuse(format: String, refused: NewerFormat) {
         received.map(|_| "taken in")
     );
     let after = snapshot();
-    assert_eq!(after, before, "a refused receive writes nothing");
+    let changed: Vec<&String> = before
+        .keys()
+        .chain(after.keys())
+        .filter(|rel| before.get(*rel) != after.get(*rel))
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    assert!(
+        changed.is_empty(),
+        "a refused receive writes nothing: {changed:?}"
+    );
+}
+
+/// The manifest with every placement's `settled` flag false. An open's storage check settles
+/// a placed file once the wall clock is two seconds past its mtime (STORAGE §6.1 O14, §6.2),
+/// so whether the second open settles more than the first depends on how fast the machine
+/// ran, not on the receive (#949, #953).
+fn settled_cleared(manifest: &[u8]) -> Vec<u8> {
+    use tc_store::ledger::State;
+    let mut manifest = tc_store::manifest::Manifest::parse(manifest).unwrap();
+    for entry in manifest.paths.values_mut() {
+        match &mut entry.state {
+            State::Placed { placed }
+            | State::Writing {
+                old: Some(placed), ..
+            } => {
+                placed.settled = false;
+            }
+            _ => {}
+        }
+    }
+    manifest.to_bytes()
 }
 
 /// INV-NEWER-MAJOR-REFUSED (§10.2 R3): a file of a newer major is refused.
