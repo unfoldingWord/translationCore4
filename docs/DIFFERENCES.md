@@ -426,6 +426,13 @@ And these (unit D2):
   writes no `x-ref`, so a lookup for one verse of the span cannot find its English words. A
   span exported without its pinned original-language text keeps tC4's counts
   (`a_span_names_each_source_words_verse_and_counts_it_there`) (#409).
+- A help on one verse of a gateway verse span (en_ust 3JN `\v 6-7`, a note on 1:7) lights and
+  titles only the gateway words whose original word's `x-ref` names a verse the help is on.
+  tC4 reads the whole span for a help on any of its verses (`keyCarries`; `sourceHighlight.ts`
+  keeps only `x-content` and `x-occurrence`), so 1:6's τοῦ, rendered "God", lit with 1:7's
+  τοῦ ὀνόματος, rendered "Jesus". A span with any source word lacking `x-ref`, or naming a
+  verse outside the span, is read whole, as in tC4
+  (`a_help_on_one_verse_of_a_gateway_span_lights_only_that_verses_words`) (#409).
 - On Linux the window has no native title bar and no menu row, as on Windows and macOS: the
   app's header is the top, it moves the window, and the minimize, maximize and close buttons
   draw over its right end. The menu's keys (zoom, reload) still work. tC4 4.0 kept the native

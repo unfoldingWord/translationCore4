@@ -40,6 +40,7 @@ mod app {
     mod field_store;
     mod flows;
     mod folders;
+    mod gateway_span;
     mod hello;
     mod home;
     mod hooks;
