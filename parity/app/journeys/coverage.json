@@ -103,7 +103,11 @@
       {
         "file": "parity/app/journeys/section.test.mjs",
         "tests": [
-          "section_editor_saves_only_on_save"
+          "section_editor_saves_only_on_save",
+          "a_section_card_fills_the_row_its_source_sets_and_scrolls_inside",
+          "a_section_card_resize_handle_moves_both_ways_and_keeps_save_in_reach",
+          "a_section_card_refits_its_row_when_the_window_is_resized",
+          "the_verse_card_keeps_its_own_height_and_a_closed_section_row_its_height"
         ]
       }
     ],
@@ -295,7 +299,9 @@
     "J21": {
       "file": "parity/app/journeys/story-writes.test.mjs",
       "tests": [
-        "j21_frame_title_and_reference_save_only_their_own_story_bytes_and_keep_the_rail"
+        "j21_frame_title_and_reference_save_only_their_own_story_bytes_and_keep_the_rail",
+        "a_frame_editor_fills_the_row_its_source_sets_and_scrolls_inside",
+        "a_frame_editor_resize_handle_works_and_the_window_refits_it"
       ]
     },
     "J22": [

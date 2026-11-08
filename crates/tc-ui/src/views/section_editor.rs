@@ -22,7 +22,7 @@ use tc_api::ids::{Scope, ViewSeq};
 use tc_api::model::section::{SectionBuffer, expand_keys, indent_line, initial_text};
 use wasm_bindgen::JsCast;
 
-use super::draft_chrome::{FooterPress, editing_card};
+use super::draft_chrome::{CardHeight, FooterPress, editing_card};
 use crate::app::save::{FieldSave, FieldScope, Pair, Source, View};
 use crate::app::section::{CancelState, can_save, hints, word_title};
 use crate::app::translate::{card_tokens, card_verses, range_span};
@@ -387,6 +387,7 @@ pub fn SectionEditor(
         view! { {field} }.into_any(),
         footer,
         FooterPress::TakesFocus,
+        CardHeight::FillsCell,
         Attrs::from([("data-testid", "section-editor")]),
     );
     view! { {card} {question} }.into_any()
@@ -466,7 +467,7 @@ fn type_field(
             prop:value=value
             readonly=move || saving.get()
             placeholder=t(keys::draft::SECTION_PLACEHOLDER, &[])
-            rows="6"
+            rows="3"
             style=style.to_style()
             on:input=on_input
             on:focus=on_focus

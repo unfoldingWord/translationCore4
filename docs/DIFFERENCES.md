@@ -293,6 +293,10 @@ And these (unit B10):
 - A section draft not yet saved survives a reload, and its card opens again with the typed
   text when Translate shows its chapter, ready for Save or Cancel. tC4 4.0 keeps the draft only
   in the open card, so a reload or crash loses it (FIX-HIDE2).
+- The section editor in Translate and a story frame's editor fill the row their source sets: the
+  field takes the height the source's text (and a frame's picture) leaves, and text longer than
+  that scrolls inside the field, so the draft and the source line up. The resize handle still
+  makes the field taller or shorter. tC4 4.0 opens them six and four lines tall (#915).
 - When Door43 no longer has a project's branch (its owner deleted it), the next sync puts this
   computer's copy back and says so: "The project was missing from Door43, so tC4 put your copy
   back. Ask your teammates to sync." tC4 4.0 pushes the branch again and says nothing (owner

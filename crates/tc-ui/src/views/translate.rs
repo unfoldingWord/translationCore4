@@ -30,7 +30,9 @@ use wasm_bindgen::JsCast;
 
 use super::book_rail::book_rail;
 use super::conflict_markers::{conflict_verse, conflicts_button};
-use super::draft_chrome::{FooterPress, HAIR, cell, chip_style, draft_pill, editing_card};
+use super::draft_chrome::{
+    CardHeight, FooterPress, HAIR, cell, chip_style, draft_pill, editing_card, filling_cell,
+};
 use super::helps_panel::{HelpsPanel, HelpsToggleButton};
 use super::panel_icons::rail_icon;
 use super::section_editor::SectionEditor;
@@ -1024,7 +1026,14 @@ fn target_cell(
         }
         .into_any(),
     };
-    view! { <div style=style.to_style()>{content}</div> }.into_any()
+    let style = move || {
+        let mut style = style.clone();
+        if open_section.get().is_some() {
+            style.extend(&filling_cell());
+        }
+        style.to_style()
+    };
+    view! { <div style=style>{content}</div> }.into_any()
 }
 
 /// tC4's `TargetVerse` with its number: the drafted words (a click revises the verse in Verse
@@ -1385,6 +1394,7 @@ fn VerseEditor(
         textarea,
         footer,
         FooterPress::KeepsFocus,
+        CardHeight::Content,
         Attrs::default(),
     )
 }

@@ -96,6 +96,33 @@ export async function until(what, read, ms = 60_000) {
   }
 }
 
+/**
+ * Where a Translate editing card sits in its row of the two-column grid (#915): the row's height
+ * (the source cell, which the grid stretches to the row), the height the source cell's own
+ * content needs, how far the card's bottom is from the bottom of its cell's content box, and the
+ * field's height and scroll extent. `el` is the card, or anything inside a cell outside a card,
+ * such as a "Draft …" pill.
+ */
+export async function rowFit(el) {
+  return el.evaluate((node) => {
+    let cell = node;
+    while (getComputedStyle(cell.parentElement).display !== 'grid') cell = cell.parentElement;
+    const source = cell.previousElementSibling;
+    const box = (n) => n.getBoundingClientRect();
+    const field = node.querySelector('textarea');
+    const contentBottom = box(cell).bottom - parseFloat(getComputedStyle(cell).paddingBottom);
+    const last = source.lastElementChild;
+    const sourceBottom = box(last).bottom + parseFloat(getComputedStyle(last).marginBottom) + parseFloat(getComputedStyle(source).paddingBottom);
+    return {
+      row: box(source).height,
+      source: sourceBottom - box(source).top,
+      gap: field ? Math.abs(contentBottom - box(node).bottom) : null,
+      field: field ? box(field).height : null,
+      scrolls: field ? field.scrollHeight > field.clientHeight : null,
+    };
+  });
+}
+
 /** Resolves after the page has drawn two frames: whatever the last event set off has rendered. */
 export const settled = (page) => page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
 
