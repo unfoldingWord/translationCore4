@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { newRequestId } from '../env-rust.mjs';
-import { browserTest, sleep, until, withApp } from './kit.mjs';
+import { browserTest, rowFit, settled, sleep, until, withApp } from './kit.mjs';
 
 const OBS = 'sample_burrito_obs';
 const scenario = { scenario: 'en-pins' };
@@ -156,5 +156,61 @@ browserTest('a_blank_line_in_a_frame_and_spaces_around_a_title_save_in_their_sto
     await save(page, 'story-title', '  La creación  ');
     assert.equal((await read(env)).title, 'La creación');
     assert.equal((await read(env)).frames[0].text, 'Dios hizo todo.\nEn seis días.');
+  }, scenario);
+});
+
+// #915: a frame's editor fills the row its source (picture and text) sets, scrolls inside once
+// the text is longer, keeps its resize handle, and refits when the window changes size.
+const near = (a, b, what) => assert.ok(Math.abs(a - b) <= 4, `${what}: ${a} vs ${b}`);
+
+browserTest('a_frame_editor_fills_the_row_its_source_sets_and_scrolls_inside', async () => {
+  for (const size of [{ width: 1280, height: 800 }, { width: 1920, height: 1080 }]) {
+    await withApp(async ({ page }) => {
+      await page.setViewportSize(size);
+      await open(page);
+      const box = await edit(page, 'story-frame-1');
+      await box.fill('Dios hizo todo.');
+      await settled(page);
+      const fits = await rowFit(editor(page));
+      near(fits.row, fits.source, `${size.width}px: the row is as tall as its source`);
+      assert.ok(fits.gap <= 4, `${size.width}px: the editor reaches the bottom of its cell (${fits.gap}px short)`);
+      assert.equal(fits.scrolls, false, `${size.width}px: a short draft has no inner scrollbar`);
+      await box.fill(Array.from({ length: 20 }, (_, i) => `Línea ${i + 1} de la creación.`).join('\n'));
+      await settled(page);
+      const long = await rowFit(editor(page));
+      near(long.row, long.source, `${size.width}px: twenty lines keep the row`);
+      near(long.field, fits.field, `${size.width}px: twenty lines keep the field's height`);
+      assert.equal(long.scrolls, true, `${size.width}px: the text beyond the source scrolls inside`);
+    }, scenario);
+  }
+});
+
+browserTest('a_frame_editor_resize_handle_works_and_the_window_refits_it', async () => {
+  await withApp(async ({ page }) => {
+    await page.setViewportSize({ width: 1024, height: 800 });
+    await open(page);
+    const box = await edit(page, 'story-frame-1');
+    await settled(page);
+    assert.ok((await rowFit(editor(page))).gap <= 4, 'at 1024px the editor reaches the bottom of its cell');
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await settled(page);
+    const refit = await rowFit(editor(page));
+    near(refit.row, refit.source, 'at 1920px the row is as tall as its source again');
+    assert.ok(refit.gap <= 4, `at 1920px the editor reaches the bottom of its cell (${refit.gap}px short)`);
+    const drag = async (dy) => {
+      const b = await box.boundingBox();
+      await page.mouse.move(b.x + b.width - 3, b.y + b.height - 3);
+      await page.mouse.down();
+      await page.mouse.move(b.x + b.width - 3, b.y + b.height - 3 + dy, { steps: 8 });
+      await page.mouse.up();
+      await settled(page);
+      return (await box.boundingBox()).height;
+    };
+    const start = (await box.boundingBox()).height;
+    const taller = await drag(80);
+    assert.ok(taller >= start + 60, `dragging down grows the field: ${start} → ${taller}`);
+    const shorter = await drag(-200);
+    assert.ok(shorter <= start - 60, `dragging up shrinks it below where it opened: ${start} → ${shorter}`);
+    await editor(page).getByRole('button', { name: 'Save', exact: true }).click({ trial: true });
   }, scenario);
 });

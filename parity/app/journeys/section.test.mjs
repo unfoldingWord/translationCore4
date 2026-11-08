@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { newRequestId } from '../env-rust.mjs';
-import { browserTest, catalog, recordRequests, sleep, storageDump, tabSize, until, withApp } from './kit.mjs';
+import { browserTest, catalog, recordRequests, rowFit, settled, sleep, storageDump, tabSize, until, withApp } from './kit.mjs';
 
 const BIBLE = 'sample_burrito';
 const NINE = 'Exhorta a los siervos a que se sujeten a sus amos y a que agraden en todo';
@@ -747,3 +747,96 @@ browserTest('a_real_section_draft_survives_a_panic_without_saving', async () => 
     assert.ok((await storageDump(page)).includes(NINE), 'Back to Home retains the section for recovery');
   }, { hooks: true });
 }, { hooks: true });
+
+// #915: the section card fills the row its source sets, at both window sizes. Titus 1:1–3's
+// source is taller than the card's own minimum, so the source sets the row.
+const SIZES = [{ width: 1280, height: 800 }, { width: 1920, height: 1080 }];
+const near = (a, b, what) => assert.ok(Math.abs(a - b) <= 4, `${what}: ${a} vs ${b}`);
+
+/** Titus 1 in Translate, by section, at `size`. */
+async function openTitus1(page, size) {
+  await page.setViewportSize(size);
+  await titus(page).click();
+  await page.getByTestId('understand-unit-s1').waitFor();
+  await page.getByTestId('mode-switch').getByRole('tab', { name: 'Translate' }).click();
+  await pill(page, '1–3').waitFor();
+}
+
+browserTest('a_section_card_fills_the_row_its_source_sets_and_scrolls_inside', async () => {
+  for (const size of SIZES) {
+    await withApp(async ({ page }) => {
+      await openTitus1(page, size);
+      await pill(page, '1–3').click();
+      await typing(page, '1–3').fill(`1 ${NINE}`);
+      await settled(page);
+      const open = await rowFit(card(page));
+      near(open.row, open.source, `${size.width}px: the row is as tall as its source`);
+      assert.ok(open.gap <= 4, `${size.width}px: the card reaches the bottom of its cell (${open.gap}px short)`);
+      assert.equal(open.scrolls, false, `${size.width}px: a draft that fits has no inner scrollbar`);
+      await typing(page, '1–3').fill(Array.from({ length: 20 }, (_, i) => `${i + 1} ${NINE}`).join('\n'));
+      await settled(page);
+      const long = await rowFit(card(page));
+      near(long.row, long.source, `${size.width}px: twenty lines keep the row`);
+      near(long.field, open.field, `${size.width}px: twenty lines keep the field's height`);
+      assert.equal(long.scrolls, true, `${size.width}px: the text beyond the source scrolls inside`);
+    });
+  }
+});
+
+browserTest('a_section_card_resize_handle_moves_both_ways_and_keeps_save_in_reach', async () => {
+  await withApp(async ({ page }) => {
+    await openTitus1(page, SIZES[0]);
+    await pill(page, '1–3').click();
+    const field = typing(page, '1–3');
+    const drag = async (dy) => {
+      const b = await field.boundingBox();
+      await page.mouse.move(b.x + b.width - 3, b.y + b.height - 3);
+      await page.mouse.down();
+      await page.mouse.move(b.x + b.width - 3, b.y + b.height - 3 + dy, { steps: 8 });
+      await page.mouse.up();
+      await settled(page);
+      return (await field.boundingBox()).height;
+    };
+    const start = (await field.boundingBox()).height;
+    const taller = await drag(80);
+    assert.ok(taller >= start + 60, `dragging down grows the field: ${start} → ${taller}`);
+    const shorter = await drag(-200);
+    assert.ok(shorter <= start - 60, `dragging up shrinks it below where it opened: ${start} → ${shorter}`);
+    for (const button of [saveButton(page), card(page).getByRole('button', { name: 'Cancel' })]) {
+      await button.scrollIntoViewIfNeeded();
+      assert.ok(await button.isVisible(), `${button} stays visible`);
+      await button.click({ trial: true });
+    }
+  });
+});
+
+browserTest('a_section_card_refits_its_row_when_the_window_is_resized', async () => {
+  await withApp(async ({ page }) => {
+    await openTitus1(page, { width: 1024, height: 800 });
+    await pill(page, '1–3').click();
+    await settled(page);
+    assert.ok((await rowFit(card(page))).gap <= 4, 'at 1024px the card reaches the bottom of its cell');
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await settled(page);
+    const refit = await rowFit(card(page));
+    near(refit.row, refit.source, 'at 1920px the row is as tall as its source again');
+    assert.ok(refit.gap <= 4, `at 1920px the card reaches the bottom of its cell (${refit.gap}px short)`);
+    await saveButton(page).click({ trial: true });
+  });
+});
+
+browserTest('the_verse_card_keeps_its_own_height_and_a_closed_section_row_its_height', async () => {
+  await withApp(async ({ page }) => {
+    await openTitus1(page, SIZES[0]);
+    const before = await rowFit(pill(page, '1–3'));
+    await pill(page, '1–3').click();
+    await card(page).getByRole('button', { name: 'Cancel' }).click();
+    await card(page).waitFor({ state: 'detached' });
+    near((await rowFit(pill(page, '1–3'))).row, before.row, 'a closed section row is as tall as before');
+    await page.getByRole('tab', { name: 'Verse', exact: true }).click();
+    await page.getByTitle('Edit this verse').first().click();
+    const verse = page.getByRole('textbox', { name: /^Verse \d+$/ });
+    await verse.waitFor();
+    assert.equal(await verse.evaluate((el) => getComputedStyle(el.parentElement).display), 'block', 'the verse card is not stretched to its row');
+  });
+});

@@ -101,7 +101,7 @@ budget in `docs/PERFORMANCE.md`). Their tC4 tests stay mapped under `specs` in `
 - Must not: write to another project; save a section before Save; rewrite or drop an alignment or
   decision.
 - Differs from tC4: a section draft not yet saved survives a reload; its card opens again with
-  the typed text.
+  the typed text. The section card fills the row its source sets (#915).
 
 ### J3 Get pinned resources
 
@@ -302,6 +302,7 @@ budget in `docs/PERFORMANCE.md`). Their tC4 tests stay mapped under `specs` in `
   title and the reference line.
 - End state: the story file changes only inside the written frame, title or reference line.
 - Must not: touch another frame; write two paragraphs into one frame; save a picture line.
+- Differs from tC4: a frame's editor fills the row its picture and text set (#915).
 
 ### J22 Check an OBS story
 

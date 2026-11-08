@@ -21,7 +21,7 @@ use tc_api::shown::Direction as TextDir;
 use tc_api::story::{List, Open, StoryLine, StoryList, StoryView};
 use wasm_bindgen::JsCast;
 
-use super::draft_chrome::{FooterPress, editing_card};
+use super::draft_chrome::{CardHeight, FooterPress, editing_card, filling_cell};
 use super::helps_panel::{HelpsPanel, HelpsToggleButton, StoryPanel};
 use super::panel_icons::rail_icon;
 use super::story_rail::story_rail;
@@ -586,8 +586,15 @@ fn target_cell(
             }
         }
     };
+    let style = move || {
+        let mut style = style.clone();
+        if editing.get() {
+            style.extend(&filling_cell());
+        }
+        style.to_style()
+    };
     view! {
-        <div style=style.to_style()>
+        <div style=style>
             <div style=gap.to_style()></div>
             {body}
         </div>
@@ -736,7 +743,7 @@ fn UnitEditor(
     });
     let field = if multiline {
         view! { <textarea node_ref=area aria-label=label.clone() dir=dir prop:value=move || shown.get() disabled=move || saving.get()
-            placeholder=t(keys::story_draft::PLACEHOLDER, &[]) rows="4" style=field.to_style()
+            placeholder=t(keys::story_draft::PLACEHOLDER, &[]) rows="3" style=field.to_style()
             on:input=on_input on:focus=on_focus on:blur=on_blur on:compositionstart=on_composition
         ></textarea> }.into_any()
     } else {
@@ -757,6 +764,13 @@ fn UnitEditor(
         field,
         footer,
         FooterPress::KeepsFocus,
+        // A frame's text fills the row its picture and text set; a title or a reference is one
+        // line.
+        if multiline {
+            CardHeight::FillsCell
+        } else {
+            CardHeight::Content
+        },
         Attrs::from([("data-testid", "story-unit-editor")]),
     )
 }

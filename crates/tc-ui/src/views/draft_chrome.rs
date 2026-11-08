@@ -67,6 +67,24 @@ pub enum FooterPress {
     TakesFocus,
 }
 
+/// How tall an editing card is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CardHeight {
+    /// As tall as its header, field and footer: the verse card, which sits among the verses.
+    Content,
+    /// As tall as the row its source sets, the field taking the room left (#915). The card's cell
+    /// must be laid out by [`filling_cell`] while the card is open. The field is the grid's middle
+    /// track: it fills the track until the person drags its resize handle, and its own text never
+    /// makes the track taller, so text longer than the source scrolls inside the field.
+    FillsCell,
+}
+
+/// The cell of a [`CardHeight::FillsCell`] card while the card is open: a column the card grows
+/// down, to the bottom of the row the grid stretches the cell to.
+pub fn filling_cell() -> Css {
+    crate::css! { "display": "flex", "flex-direction": "column" }
+}
+
 /// tC4's `EditingCard`: the accent border, a header row, the field, and the footer with Save
 /// and Cancel.
 pub fn editing_card(
@@ -74,15 +92,23 @@ pub fn editing_card(
     field: AnyView,
     footer: AnyView,
     press: FooterPress,
+    height: CardHeight,
     attrs: Attrs,
 ) -> AnyView {
-    let card = crate::css! {
+    let mut card = crate::css! {
         "border": "var(--stroke-selected) solid var(--accent)",
         "border-radius": "var(--radius-md)",
         "padding": "12px 14px",
         "background": "var(--surface-card)",
         "box-shadow": "0 2px 8px rgba(49,173,227,.15)",
     };
+    if height == CardHeight::FillsCell {
+        card.extend(&crate::css! {
+            "flex": "1 0 auto",
+            "display": "grid",
+            "grid-template-rows": "auto 1fr auto",
+        });
+    }
     let head = crate::css! {
         "display": "flex",
         "align-items": "center",
