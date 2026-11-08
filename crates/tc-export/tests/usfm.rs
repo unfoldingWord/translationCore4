@@ -359,7 +359,10 @@ fn a_span_names_each_source_words_verse_and_counts_it_there() {
     }
     let value = aligner.value().clone();
 
-    let (out, facts) = export(&input(parts, vec![((1, 1), aligned(value, 1, Some(pin)))]));
+    let (out, facts) = export(&input(
+        parts.clone(),
+        vec![((1, 1), aligned(value.clone(), 1, Some(pin.clone())))],
+    ));
     assert!(facts.skipped.is_empty(), "{facts:?}");
     let milestones: Vec<&str> = out
         .split("\\zaln-s |")
@@ -377,4 +380,15 @@ fn a_span_names_each_source_words_verse_and_counts_it_there() {
         ],
         "{out}"
     );
+
+    // The same record as an import keeps it, counted by verse with `x-ref`, writes the same
+    // bytes: it stands on the pin by each word's own verse.
+    let as_imported = tc_align::counted_by_verse(&value, &pin).unwrap();
+    assert_ne!(as_imported, value);
+    let (again, facts) = export(&input(
+        parts,
+        vec![((1, 1), aligned(as_imported, 1, Some(pin)))],
+    ));
+    assert!(facts.skipped.is_empty(), "{facts:?}");
+    assert_eq!(again, out);
 }
