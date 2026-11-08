@@ -2,15 +2,17 @@
 // this repository's Titus fixture instead of the network, and prints every notice.
 //
 //   npm install uw-content-validation@3.2.2 @babel/runtime@7.26.10   (in a scratch directory)
-//   node run.mjs <that directory's node_modules> <usfm file> [label]
+//   node run.mjs <that directory's node_modules> <usfm file> [label] [UGNT file]
 //
-// The header says whether the validator's span walk is patched (see the evidence document).
+// The UGNT file defaults to this repository's fixture (tC3's bundle, written by usfm-js, which
+// puts a verse's first word on the `\v` line). The header says which file was served and
+// whether the validator's span walk is patched (see the evidence document).
 import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-const [modules, file, label = path.basename(file ?? '')] = process.argv.slice(2);
+const [modules, file, label = path.basename(file ?? ''), ugntArg] = process.argv.slice(2);
 const require = createRequire(path.resolve(modules, 'x.js'));
 
 // The validator caches through localforage, a browser store. Under node, give it a memory map.
@@ -33,7 +35,9 @@ const dist = require.resolve('uw-content-validation/dist/core/usfm-text-check.js
 const patched = !readFileSync(dist, 'utf8').includes('thisV = bookLine.slice(3);');
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const UGNT = path.resolve(here, '../../../fixtures/align/el-x-koine_ugnt-TIT.usfm');
+const UGNT = ugntArg
+  ? path.resolve(ugntArg)
+  : path.resolve(here, '../../../fixtures/align/el-x-koine_ugnt-TIT.usfm');
 const fetched = [];
 async function getFile({ username, repository, path: p, branch }) {
   fetched.push(`${username}/${repository}/${branch}/${p}`);
@@ -48,7 +52,7 @@ const result = await ucv.checkUSFMText('unfoldingWord', 'en', 'ULT', 'TIT', '57-
 });
 const notices = result.noticeList ?? [];
 console.log(
-  `uw-content-validation ${version} (${patched ? 'span walk patched' : 'as published'}) on ${label}: ${notices.length} notices; fetched ${JSON.stringify(fetched)}`,
+  `uw-content-validation ${version} (${patched ? 'span walk patched' : 'as published'}; UGNT from ${path.basename(UGNT)}) on ${label}: ${notices.length} notices; fetched ${JSON.stringify(fetched)}`,
 );
 for (const n of notices) {
   const where = `${n.C ?? ''}:${n.V ?? ''}${n.lineNumber ? ` line ${n.lineNumber}` : ''}`;
