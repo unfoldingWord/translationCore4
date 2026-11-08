@@ -359,7 +359,7 @@ pub fn split_aligned(content: &str, span_end: VerseNo) -> Option<(String, Alignm
 /// within it (#409), so one word of two verses has the same text and count, and `x-ref` tells
 /// the two apart.
 pub fn tc4_cards(runs: &[tc_usfm::AlignmentGroup]) -> Vec<AlignmentGroup> {
-    let mut cards: Vec<((&str, u32, Option<&str>), AlignmentGroup)> = Vec::new();
+    let mut cards: Vec<(CardKey<'_>, AlignmentGroup)> = Vec::new();
     for run in runs {
         let Some(outer) = run.sources.first() else {
             continue;
@@ -401,6 +401,9 @@ pub fn tc4_cards(runs: &[tc_usfm::AlignmentGroup]) -> Vec<AlignmentGroup> {
         .filter(|card| !card.top_words.is_empty())
         .collect()
 }
+
+/// A card's outermost source word: its text, occurrence and `x-ref`.
+type CardKey<'a> = (&'a str, u32, Option<&'a str>);
 
 fn x_ref(word: &tc_usfm::SourceWord) -> Option<&str> {
     word.extra
