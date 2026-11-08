@@ -14,7 +14,7 @@ use tc_align::Alignment;
 
 use common::*;
 use tc_align::suggest::{self, Model, RawLink};
-use tc_align::{Aligner, AlignmentValue, MarkValidRefused, TargetVerse, TargetWord};
+use tc_align::{Aligner, AlignmentValue, MarkValidRefused, SourceVerse, TargetVerse, TargetWord};
 use tc_core::Testament;
 use tc_journal::json::Json;
 
@@ -310,7 +310,7 @@ fn suggestions_from_a_model_trained_on_titus_are_proposals_for_bank_words_only()
 
 #[test]
 fn a_verse_with_no_original_words_or_no_target_words_does_not_open() {
-    use tc_align::{SourceVerse, Unavailable};
+    use tc_align::Unavailable;
     let refused = |verse: &str, source: &SourceVerse| {
         Aligner::open(None, None, TargetVerse::new(verse), source, basis(1)).unwrap_err()
     };
@@ -566,7 +566,7 @@ fn an_x_ref_word_its_verse_lacks_drops_its_link() {
 }
 
 /// tC4 #409: in a single verse `x-ref` changes nothing, so the fit keeps it as the import
-/// kept it, and an export writes it back.
+/// kept it.
 #[test]
 fn a_single_verse_keeps_its_x_ref() {
     let mut stored = open(None, TEXT).into_value();
@@ -576,6 +576,36 @@ fn a_single_verse_keeps_its_x_ref() {
     let reopened = open(Some(&stored), TEXT);
     assert!(!reopened.is_stale());
     assert_eq!(reopened.value().alignments[0].top_words[0], kept);
+}
+
+/// tC4 #409: the pin counts each spelling of a word apart. A span word written in another
+/// spelling than the pin's, and found by its verse in NFC, is saved in the pin's spelling, so
+/// it reopens on the same word and not on the other verse's.
+#[test]
+fn an_x_ref_word_in_another_spelling_reopens_on_its_own_word() {
+    let part = |word: &str| {
+        SourceVerse::from_usfm(&format!("\\w {word}|lemma=\"δέ\" strong=\"G11610\"\\w*")).unwrap()
+    };
+    // 1:1 writes δὲ decomposed, 1:2 composed; an aligned file writes 1:1's composed.
+    let (decomposed, composed) = ("\u{3b4}\u{3b5}\u{300}", "\u{3b4}\u{1f72}");
+    let source = SourceVerse::span(1, [(1, part(decomposed)), (2, part(composed))]);
+    let open = |stored: Option<&AlignmentValue>| {
+        Aligner::open(stored, None, TargetVerse::new("but and"), &source, basis(2)).unwrap()
+    };
+    let mut aligner = open(None);
+    let but = aligner.value().word_bank[0].clone();
+    aligner.place(0, &but).unwrap();
+    let mut stored = aligner.into_value();
+    let word = &mut stored.alignments[0].top_words[0];
+    word.word = composed.to_owned();
+    word.extra.insert("x-ref".to_owned(), Json::from("1:1"));
+
+    let saved = open(Some(&stored)).into_value();
+    let reopened = open(Some(&saved));
+    assert!(reopened.dropped().is_empty(), "{:?}", reopened.dropped());
+    let card = &reopened.value().alignments[0];
+    assert_eq!(card.top_words[0].word, decomposed);
+    assert_eq!(card.bottom_words[0].word, "but", "{:?}", reopened.value());
 }
 
 const TITUS_SPAN: &str =

@@ -404,7 +404,8 @@ pub struct AlignmentGroup { pub top_words: Vec<SourceWord>, pub bottom_words: Ve
 /// where `extra` holds `"x-ref": "C:V"` (#409): such a word, an aligned file's as an import
 /// keeps it, counts within verse C:V of the span. A reader that has the pinned original-language
 /// text finds it by that verse (`tc_align` `Pin`), and Align's fit to the pin writes it counted
-/// across the span at the first save. In a single verse `x-ref` changes nothing.
+/// across the span, in the pin's spelling, at the first save. In a single verse `x-ref` changes
+/// nothing and is kept.
 pub struct SourceWord {
     pub word: String, pub strong: Option<String>, pub lemma: Option<String>, pub morph: Option<String>,
     pub occurrence: u32, pub occurrences: u32, pub extra: JsonMap,
