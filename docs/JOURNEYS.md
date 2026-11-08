@@ -248,7 +248,9 @@ budget in `docs/PERFORMANCE.md`). Their tC4 tests stay mapped under `specs` in `
 - Differs from tC4: a note's or an article's `<br>`, `<sup>` and `<u>` are drawn as a line
   break, superscript and underlined, where tC4 shows the tags as text (#910); notes sit under a
   heading for each verse, a note's link names its article, and a key word shows its article's
-  first paragraph and lights every instance of its article in the section (owner, 2026-11-05).
+  first paragraph and lights every instance of its article in the section (owner, 2026-11-05);
+  a note on one verse of a gateway verse span lights and titles only the gateway words whose
+  `x-ref` names that verse, where tC4 reads the whole span (#409, DIFFERENCES).
 
 ### J17 Open a shared project on another computer
 

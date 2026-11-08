@@ -67,6 +67,15 @@ pub struct DisplayToken {
 pub struct DisplaySource {
     pub content: String,
     pub occurrence: u32,
+    /// `x-ref="C:V"`, the chapter and verse of the word inside a verse span; `None` when
+    /// absent or not two numbers (#409).
+    pub x_ref: Option<(u16, u16)>,
+}
+
+/// `C:V` as two numbers.
+fn chapter_verse(text: &str) -> Option<(u16, u16)> {
+    let (chapter, verse) = text.split_once(':')?;
+    Some((chapter.parse().ok()?, verse.parse().ok()?))
 }
 
 /// A verse as display tokens and the alignment groups its words point at. Each group holds
@@ -133,6 +142,7 @@ impl TokenWalk {
                             occurrence: attribute("x-occurrence")
                                 .and_then(|o| o.parse().ok())
                                 .unwrap_or(0),
+                            x_ref: attribute("x-ref").and_then(chapter_verse),
                         });
                     }
                     self.verse.groups.push(sources);
