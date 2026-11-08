@@ -14,7 +14,7 @@ use tc_align::Alignment;
 
 use common::*;
 use tc_align::suggest::{self, Model, RawLink};
-use tc_align::{Aligner, AlignmentValue, MarkValidRefused, TargetVerse, TargetWord};
+use tc_align::{Aligner, AlignmentValue, MarkValidRefused, SourceVerse, TargetVerse, TargetWord};
 use tc_core::Testament;
 use tc_journal::json::Json;
 
@@ -310,7 +310,7 @@ fn suggestions_from_a_model_trained_on_titus_are_proposals_for_bank_words_only()
 
 #[test]
 fn a_verse_with_no_original_words_or_no_target_words_does_not_open() {
-    use tc_align::{SourceVerse, Unavailable};
+    use tc_align::Unavailable;
     let refused = |verse: &str, source: &SourceVerse| {
         Aligner::open(None, None, TargetVerse::new(verse), source, basis(1)).unwrap_err()
     };
@@ -523,34 +523,126 @@ fn a_source_book_gives_every_verse_the_words_from_book_gives() {
 
 /// tC4 #409: a span aligned verse by verse numbers each source word within its own verse and
 /// names that verse in `x-ref`. Such a value, from a file added as a book, opens with every link
-/// where it was: the pin fit (#790) numbers words across the span, and would read 1:3's "Θεοῦ"
-/// (the first of its verse, the third of the span) as 1:1's.
+/// where it was, on the record the app wrote: the pin fit (#790) finds 1:3's "Θεοῦ" (the
+/// first of its verse) by its verse, not as the span's first, and counts it across the span.
 #[test]
 fn an_imported_span_with_x_ref_opens_with_every_link() {
-    let source = source_verse(UGNT, "1:1-3");
-    let text = "Paul, a servant of God, revealed his word at the right time by the command of God";
-    let open_span = |stored: Option<&AlignmentValue>| {
-        Aligner::open(stored, None, TargetVerse::new(text), &source, basis(3)).unwrap()
+    let (span_wide, stored) = titus_span_with_x_ref();
+    let reopened = open_titus_span(Some(&stored));
+    assert!(reopened.dropped().is_empty(), "{:?}", reopened.dropped());
+    assert_eq!(
+        reopened.value().alignments,
+        span_wide.alignments,
+        "the record the app wrote, back"
+    );
+    assert_eq!(reopened.value().placed(), 3);
+    assert!(!reopened.is_stale(), "the record stands on the pin");
+    assert!(!reopened.is_changed(), "nothing to save");
+}
+
+/// tC4 #409: a source word whose `x-ref` count does not lie in its verse stands on no word of
+/// the pin. Its link is taken off and shown, and the record no longer vouches for the verse,
+/// so the rail marks it and the export leaves it out.
+#[test]
+fn an_x_ref_word_its_verse_lacks_drops_its_link() {
+    let (_, mut stored) = titus_span_with_x_ref();
+    let word = stored
+        .alignments
+        .iter_mut()
+        .flat_map(|g| &mut g.top_words)
+        .find(|w| w.word == "Θεοῦ" && w.extra.contains_key("x-ref"))
+        .unwrap();
+    // 1:3 holds one "Θεοῦ".
+    word.occurrence = 2;
+    word.occurrences = 2;
+    let reopened = open_titus_span(Some(&stored));
+    assert!(
+        reopened.is_stale(),
+        "the record no longer vouches for the verse"
+    );
+    assert_eq!(reopened.dropped().len(), 1, "{:?}", reopened.dropped());
+    assert_eq!(reopened.dropped()[0].word.word, "God");
+    assert_eq!(reopened.value().placed(), 2);
+}
+
+/// tC4 #409: in a single verse `x-ref` changes nothing, so the fit keeps it as the import
+/// kept it.
+#[test]
+fn a_single_verse_keeps_its_x_ref() {
+    let mut stored = open(None, TEXT).into_value();
+    let word = &mut stored.alignments[0].top_words[0];
+    word.extra.insert("x-ref".to_owned(), Json::from("1:1"));
+    let kept = word.clone();
+    let reopened = open(Some(&stored), TEXT);
+    assert!(!reopened.is_stale());
+    assert_eq!(reopened.value().alignments[0].top_words[0], kept);
+}
+
+/// tC4 #409: the pin counts each spelling of a word apart. A span word written in another
+/// spelling than the pin's, and found by its verse in NFC, is saved in the pin's spelling, so
+/// it reopens on the same word and not on the other verse's.
+#[test]
+fn an_x_ref_word_in_another_spelling_reopens_on_its_own_word() {
+    let part = |word: &str| {
+        SourceVerse::from_usfm(&format!("\\w {word}|lemma=\"δέ\" strong=\"G11610\"\\w*")).unwrap()
     };
-    let card_of = |aligner: &Aligner, word: &str, occurrence: u32| {
-        aligner
+    // 1:1 writes δὲ decomposed, 1:2 composed; an aligned file writes 1:1's composed.
+    let (decomposed, composed) = ("\u{3b4}\u{3b5}\u{300}", "\u{3b4}\u{1f72}");
+    let source = SourceVerse::span(1, [(1, part(decomposed)), (2, part(composed))]);
+    let open = |stored: Option<&AlignmentValue>| {
+        Aligner::open(stored, None, TargetVerse::new("but and"), &source, basis(2)).unwrap()
+    };
+    let mut aligner = open(None);
+    let but = aligner.value().word_bank[0].clone();
+    aligner.place(0, &but).unwrap();
+    let mut stored = aligner.into_value();
+    let word = &mut stored.alignments[0].top_words[0];
+    word.word = composed.to_owned();
+    word.extra.insert("x-ref".to_owned(), Json::from("1:1"));
+
+    let saved = open(Some(&stored)).into_value();
+    let reopened = open(Some(&saved));
+    assert!(reopened.dropped().is_empty(), "{:?}", reopened.dropped());
+    let card = &reopened.value().alignments[0];
+    assert_eq!(card.top_words[0].word, decomposed);
+    assert_eq!(card.bottom_words[0].word, "but", "{:?}", reopened.value());
+}
+
+const TITUS_SPAN: &str =
+    "Paul, a servant of God, revealed his word at the right time by the command of God";
+
+fn open_titus_span(stored: Option<&AlignmentValue>) -> Aligner {
+    let source = source_verse(UGNT, "1:1-3");
+    Aligner::open(
+        stored,
+        None,
+        TargetVerse::new(TITUS_SPAN),
+        &source,
+        basis(3),
+    )
+    .unwrap()
+}
+
+/// TIT 1:1-3 with three links as the app stores it, and the same record with 1:3's words as
+/// a verse-by-verse aligner writes them: counted in 1:3 and named by `x-ref`.
+fn titus_span_with_x_ref() -> (AlignmentValue, AlignmentValue) {
+    let source = source_verse(UGNT, "1:1-3");
+    let mut aligner = open_titus_span(None);
+    for (on, at, said, n) in [
+        ("Παῦλος", 1, "Paul", 1),
+        ("Θεοῦ", 1, "God", 1),
+        ("Θεοῦ", 3, "God", 2),
+    ] {
+        let card = aligner
             .value()
             .alignments
             .iter()
             .position(|g| {
                 g.top_words
                     .iter()
-                    .any(|w| w.word == word && w.occurrence == occurrence)
+                    .any(|w| w.word == on && w.occurrence == at)
             })
-            .unwrap()
-    };
-    let mut aligner = open_span(None);
-    for (on, at, said, n) in [
-        ("Παῦλος", 1, "Paul", 1),
-        ("Θεοῦ", 1, "God", 1),
-        ("Θεοῦ", 3, "God", 2),
-    ] {
-        let card = card_of(&aligner, on, at);
+            .unwrap();
         let word = aligner
             .value()
             .word_bank
@@ -560,8 +652,8 @@ fn an_imported_span_with_x_ref_opens_with_every_link() {
             .unwrap();
         aligner.place(card, &word).unwrap();
     }
-    let mut stored = aligner.into_value();
-    // 1:3's words as a verse-by-verse aligner writes them.
+    let span_wide = aligner.into_value();
+    let mut stored = span_wide.clone();
     let before_1_3 =
         source_verse(UGNT, "1:1").words().len() + source_verse(UGNT, "1:2").words().len();
     let own = source_verse(UGNT, "1:3");
@@ -579,9 +671,5 @@ fn an_imported_span_with_x_ref_opens_with_every_link() {
             }
         }
     }
-    let reopened = open_span(Some(&stored));
-    assert!(reopened.dropped().is_empty(), "{:?}", reopened.dropped());
-    assert_eq!(reopened.value().alignments, stored.alignments);
-    assert_eq!(reopened.value().placed(), 3);
-    assert!(!reopened.is_changed(), "nothing to save");
+    (span_wide, stored)
 }

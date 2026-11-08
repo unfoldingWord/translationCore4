@@ -23,7 +23,7 @@ use crate::edit::{self, Alignment, EditError, bootstrap};
 use crate::reflow::{self, DroppedLink};
 use crate::selection::{self, Click};
 use crate::suggest::{self, Proposal, RawLink, SessionInput};
-use crate::value::{Basis, Pin, counts_by_verse, holds_the_words_of, needs_review};
+use crate::value::{Basis, Pin, counted_by_span, holds_the_words_of, needs_review};
 use crate::words::{SourceVerse, TargetVerse};
 use std::collections::HashSet;
 use tc_journal::record::{AlignmentGroup, AlignmentValue, TargetWord};
@@ -104,9 +104,10 @@ impl Aligner {
     /// two cards only while both hold links (aligned USFM writes a word aligned to two
     /// separate runs of the translation so). A card holding a word the pin lacks is taken
     /// apart: its pinned words get cards and its links return to the bank, listed in
-    /// [`Aligner::dropped`] like the carry-over's. A value whose source
-    /// words carry `x-ref` (per-verse occurrences in a span, #409) is left as it is. The fit
-    /// is never saved on its own; it rides on the first save.
+    /// [`Aligner::dropped`] like the carry-over's. A source word that names its verse of the
+    /// span in `x-ref` (#409) is found by that verse and its count there, and the card counts
+    /// it across the span, as a record holds it; a single verse keeps its `x-ref`. The fit is
+    /// never saved on its own; it rides on the first save.
     ///
     /// The open verse shows "The draft changed" ([`Aligner::is_stale`]) when the stored value
     /// [needs review](needs_review) against the verse and `source`: its text, words or pin
@@ -421,9 +422,6 @@ impl Aligner {
 /// Fit `value`'s cards to the pinned words `source`, as [`Aligner::open`] describes, and
 /// return the links it took off.
 fn fit_cards(value: &mut AlignmentValue, source: &SourceVerse) -> Vec<DroppedLink> {
-    if counts_by_verse(value) {
-        return Vec::new();
-    }
     let pin = Pin::new(source);
     // Each card with the places of its source words in the pin. A card with no source word
     // and no link only keeps its fields, and goes last.
@@ -436,7 +434,11 @@ fn fit_cards(value: &mut AlignmentValue, source: &SourceVerse) -> Vec<DroppedLin
         match pin.card(&group) {
             // A source word may stand on two cards: aligned USFM writes a word aligned to two
             // separate runs of the translation as two milestones.
-            Some(at) => cards.push((at, group)),
+            Some(at) => {
+                let mut group = group;
+                counted_by_span(&mut group, &at, source);
+                cards.push((at, group));
+            }
             None => {
                 dropped.extend(group.bottom_words.iter().map(|word| DroppedLink {
                     card,

@@ -119,9 +119,15 @@ pub fn needs_review(
 /// word is found by its text and occurrence as written, else in NFC with the pin's words
 /// numbered in NFC: the pin numbers two forms of one word apart, and an aligned file or a
 /// tC4 4.0 record may write either.
+///
+/// In a span a source word may carry `x-ref="C:V"`, as aligned USFM writes it and an import
+/// keeps it (#409, STORAGE §2.3): its occurrence then counts within verse `C:V` of the span,
+/// and it is found by that verse and count. In a single verse it counts as any word does.
 pub(crate) struct Pin<'a> {
     as_written: HashMap<(&'a str, u32), usize>,
     in_nfc: HashMap<(String, u32), usize>,
+    /// A span's words by their own verse (`C:V`) and their count there, as written and in NFC.
+    by_verse: HashMap<(String, String, u32), usize>,
 }
 
 impl<'a> Pin<'a> {
@@ -144,7 +150,42 @@ impl<'a> Pin<'a> {
                 ((text, *n), at)
             })
             .collect();
-        Self { as_written, in_nfc }
+        let mut by_verse = HashMap::new();
+        let mut seen: HashMap<(String, String), u32> = HashMap::new();
+        for (at, w) in source.words().iter().enumerate() {
+            let Some(own) = source.by_verse(at) else {
+                continue;
+            };
+            let verse = format!("{}:{}", own.chapter, own.verse);
+            let text = nfc(&w.word);
+            let n = seen.entry((text.clone(), verse.clone())).or_default();
+            *n += 1;
+            by_verse.insert((w.word.clone(), verse.clone(), own.occurrence), at);
+            by_verse.entry((text, verse, *n)).or_insert(at);
+        }
+        Self {
+            as_written,
+            in_nfc,
+            by_verse,
+        }
+    }
+
+    /// The place in the pin of one source word, or `None` when the pin lacks it.
+    fn word(&self, w: &SourceWord) -> Option<usize> {
+        if !self.by_verse.is_empty()
+            && let Some(verse) = w.extra.get("x-ref")
+        {
+            let verse = verse.as_str()?.to_owned();
+            return self
+                .by_verse
+                .get(&(w.word.clone(), verse.clone(), w.occurrence))
+                .or_else(|| self.by_verse.get(&(nfc(&w.word), verse, w.occurrence)))
+                .copied();
+        }
+        self.as_written
+            .get(&(w.word.as_str(), w.occurrence))
+            .or_else(|| self.in_nfc.get(&(nfc(&w.word), w.occurrence)))
+            .copied()
     }
 
     /// The places in the pin of `card`'s source words, or `None` when the card cannot stand
@@ -154,40 +195,40 @@ impl<'a> Pin<'a> {
         let at = card
             .top_words
             .iter()
-            .map(|w| {
-                self.as_written
-                    .get(&(w.word.as_str(), w.occurrence))
-                    .or_else(|| self.in_nfc.get(&(nfc(&w.word), w.occurrence)))
-                    .copied()
-            })
+            .map(|w| self.word(w))
             .collect::<Option<Vec<_>>>()?;
         (!at.is_empty() || card.bottom_words.is_empty()).then_some(at)
     }
 
-    /// Whether every card of `value` stands on the pin. A value whose source words carry
-    /// `x-ref` (per-verse occurrences in a span, #409) is not compared.
+    /// Whether every card of `value` stands on the pin.
     pub(crate) fn holds(&self, value: &AlignmentValue) -> bool {
-        counts_by_verse(value) || value.alignments.iter().all(|g| self.card(g).is_some())
+        value.alignments.iter().all(|g| self.card(g).is_some())
     }
 }
 
-/// Whether `value`'s source words carry `x-ref`: their occurrences are counted in their own
-/// verse of a span (#409), not in the pinned span.
-pub(crate) fn counts_by_verse(value: &AlignmentValue) -> bool {
-    value
-        .alignments
-        .iter()
-        .flat_map(|g| &g.top_words)
-        .any(|w| w.extra.contains_key("x-ref"))
+/// `card`'s source words, found in `pin` at `places`, counted across the pin as a span's
+/// record counts them: each word's `x-ref` is taken off and its text and count read from the
+/// pin (#409). The pin counts by its own spelling, so a word found in NFC takes that spelling
+/// too, or the next open would find it by count among the other spelling's words. A single
+/// verse, or a card with no `x-ref`, is left as it is.
+pub(crate) fn counted_by_span(card: &mut AlignmentGroup, places: &[usize], pin: &SourceVerse) {
+    for (word, &at) in card.top_words.iter_mut().zip(places) {
+        if pin.by_verse(at).is_none() || !word.extra.contains_key("x-ref") {
+            continue;
+        }
+        if let Some(own) = pin.words().get(at) {
+            word.extra.remove("x-ref");
+            word.word.clone_from(&own.word);
+            word.occurrence = own.occurrence;
+            word.occurrences = own.occurrences;
+        }
+    }
 }
 
 /// `value` as aligned USFM writes a verse span (#409): each source word counted in its own
 /// verse of `pin`, which it names in `x-ref` (`C:V`). `None` when `pin` is not a span of two
-/// or more verses, `value` already counts by verse, or a card does not stand on `pin`.
+/// or more verses, or a card does not stand on `pin`.
 pub fn counted_by_verse(value: &AlignmentValue, pin: &SourceVerse) -> Option<AlignmentValue> {
-    if counts_by_verse(value) {
-        return None;
-    }
     let found = Pin::new(pin);
     let mut out = value.clone();
     for card in &mut out.alignments {

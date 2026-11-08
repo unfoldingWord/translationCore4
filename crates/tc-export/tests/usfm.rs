@@ -359,7 +359,10 @@ fn a_span_names_each_source_words_verse_and_counts_it_there() {
     }
     let value = aligner.value().clone();
 
-    let (out, facts) = export(&input(parts, vec![((1, 1), aligned(value, 1, Some(pin)))]));
+    let (out, facts) = export(&input(
+        parts.clone(),
+        vec![((1, 1), aligned(value.clone(), 1, Some(pin.clone())))],
+    ));
     assert!(facts.skipped.is_empty(), "{facts:?}");
     let milestones: Vec<&str> = out
         .split("\\zaln-s |")
@@ -377,4 +380,33 @@ fn a_span_names_each_source_words_verse_and_counts_it_there() {
         ],
         "{out}"
     );
+
+    // The file read back as an import reads it (#409): the words of each verse stay apart by
+    // `x-ref`, Align fits them to the span's count, and the record is the one the app wrote.
+    let book = decompose(&out).unwrap();
+    let VersePart::Text(verse) = &book.chapters[&1].verses[&1] else {
+        panic!("1:1-3 is a verse");
+    };
+    let woven = tc_usfm::codec::join_verse(&verse.words, &verse.layout);
+    let (plain, imported) = tc_journal::alignment::split_aligned(&woven, three).unwrap();
+    let opened = tc_align::Aligner::open(
+        Some(&imported),
+        None,
+        tc_align::TargetVerse::new(&plain),
+        &pin,
+        tc_align::Basis::run(one, three, String::new(), None),
+    )
+    .unwrap();
+    assert!(opened.dropped().is_empty(), "{:?}", opened.dropped());
+    assert!(!opened.is_stale());
+    assert_eq!(opened.value().alignments, value.alignments);
+    // Exported as imported, or as saved, the file is the same.
+    for record in [imported, opened.into_value()] {
+        let (again, facts) = export(&input(
+            parts.clone(),
+            vec![((1, 1), aligned(record, 1, Some(pin.clone())))],
+        ));
+        assert!(facts.skipped.is_empty(), "{facts:?}");
+        assert_eq!(again, out);
+    }
 }

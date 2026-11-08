@@ -355,14 +355,16 @@ pub fn split_aligned(content: &str, span_end: VerseNo) -> Option<(String, Alignm
 /// tC4's cards for the runs of an aligned verse, the rule [`split_aligned`] reads with: one
 /// card per outermost source word, in the order its first run stands. A run with no target
 /// word adds no source word, and a card left without one aligns nothing and is not kept, as
-/// in word-aligner.
+/// in word-aligner. In a verse span a source word may name its own verse in `x-ref` and count
+/// within it (#409), so one word of two verses has the same text and count, and `x-ref` tells
+/// the two apart.
 pub fn tc4_cards(runs: &[tc_usfm::AlignmentGroup]) -> Vec<AlignmentGroup> {
-    let mut cards: Vec<((&str, u32), AlignmentGroup)> = Vec::new();
+    let mut cards: Vec<(CardKey<'_>, AlignmentGroup)> = Vec::new();
     for run in runs {
         let Some(outer) = run.sources.first() else {
             continue;
         };
-        let key = (outer.content.as_str(), outer.occurrence);
+        let key = (outer.content.as_str(), outer.occurrence, x_ref(outer));
         let at = match cards.iter().position(|(k, _)| *k == key) {
             Some(at) => at,
             None => {
@@ -380,10 +382,11 @@ pub fn tc4_cards(runs: &[tc_usfm::AlignmentGroup]) -> Vec<AlignmentGroup> {
         let card = &mut cards[at].1;
         if !run.targets.is_empty() {
             for word in &run.sources {
-                let held = card
-                    .top_words
-                    .iter()
-                    .any(|s| s.word == word.content && s.occurrence == word.occurrence);
+                let held = card.top_words.iter().any(|s| {
+                    s.word == word.content
+                        && s.occurrence == word.occurrence
+                        && s.extra.get("x-ref").and_then(|r| r.as_str()) == x_ref(word)
+                });
                 if !held {
                     card.top_words.push(SourceWord::from_usfm(word));
                 }
@@ -397,4 +400,14 @@ pub fn tc4_cards(runs: &[tc_usfm::AlignmentGroup]) -> Vec<AlignmentGroup> {
         .map(|(_, card)| card)
         .filter(|card| !card.top_words.is_empty())
         .collect()
+}
+
+/// A card's outermost source word: its text, occurrence and `x-ref`.
+type CardKey<'a> = (&'a str, u32, Option<&'a str>);
+
+fn x_ref(word: &tc_usfm::SourceWord) -> Option<&str> {
+    word.extra
+        .iter()
+        .find(|(name, _)| name == "x-ref")
+        .map(|(_, value)| value.as_str())
 }
