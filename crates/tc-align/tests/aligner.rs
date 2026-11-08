@@ -565,6 +565,19 @@ fn an_x_ref_word_its_verse_lacks_drops_its_link() {
     assert_eq!(reopened.value().placed(), 2);
 }
 
+/// tC4 #409: in a single verse `x-ref` changes nothing, so the fit keeps it as the import
+/// kept it, and an export writes it back.
+#[test]
+fn a_single_verse_keeps_its_x_ref() {
+    let mut stored = open(None, TEXT).into_value();
+    let word = &mut stored.alignments[0].top_words[0];
+    word.extra.insert("x-ref".to_owned(), Json::from("1:1"));
+    let kept = word.clone();
+    let reopened = open(Some(&stored), TEXT);
+    assert!(!reopened.is_stale());
+    assert_eq!(reopened.value().alignments[0].top_words[0], kept);
+}
+
 const TITUS_SPAN: &str =
     "Paul, a servant of God, revealed his word at the right time by the command of God";
 

@@ -106,8 +106,8 @@ impl Aligner {
     /// apart: its pinned words get cards and its links return to the bank, listed in
     /// [`Aligner::dropped`] like the carry-over's. A source word that names its verse of the
     /// span in `x-ref` (#409) is found by that verse and its count there, and the card counts
-    /// it across the span, as a record holds it. The fit is never saved on its own; it rides
-    /// on the first save.
+    /// it across the span, as a record holds it; a single verse keeps its `x-ref`. The fit is
+    /// never saved on its own; it rides on the first save.
     ///
     /// The open verse shows "The draft changed" ([`Aligner::is_stale`]) when the stored value
     /// [needs review](needs_review) against the verse and `source`: its text, words or pin

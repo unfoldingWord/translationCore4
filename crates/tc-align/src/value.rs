@@ -207,13 +207,18 @@ impl<'a> Pin<'a> {
 }
 
 /// `card`'s source words, found in `pin` at `places`, counted across the pin as a span's
-/// record counts them: each word's `x-ref` is taken off and its count read from the pin
-/// (#409). A card with no `x-ref` is left as it is.
+/// record counts them: each word's `x-ref` is taken off and its text and count read from the
+/// pin (#409). The pin counts by its own spelling, so a word found in NFC takes that spelling
+/// too, or the next open would find it by count among the other spelling's words. A single
+/// verse, or a card with no `x-ref`, is left as it is.
 pub(crate) fn counted_by_span(card: &mut AlignmentGroup, places: &[usize], pin: &SourceVerse) {
     for (word, &at) in card.top_words.iter_mut().zip(places) {
-        if word.extra.remove("x-ref").is_some()
-            && let Some(own) = pin.words().get(at)
-        {
+        if pin.by_verse(at).is_none() || !word.extra.contains_key("x-ref") {
+            continue;
+        }
+        if let Some(own) = pin.words().get(at) {
+            word.extra.remove("x-ref");
+            word.word.clone_from(&own.word);
             word.occurrence = own.occurrence;
             word.occurrences = own.occurrences;
         }
