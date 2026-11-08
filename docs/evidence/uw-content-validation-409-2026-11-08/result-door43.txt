@@ -1,0 +1,32 @@
+uw-content-validation 3.2.2 (as published; UGNT from 57-TIT-door43-v0.34.usfm) on span-export: 29 notices; fetched ["unfoldingWord/el-x-koine_ugnt/master/57-TIT.usfm"]
+  [719] USFM file is recommended to have \ide line (: line 2)
+  [519] Missing expected USFM line (:)
+  [921] Missing expected USFM line (:)
+alignment/x-ref notices: 0
+uw-content-validation 3.2.2 (as published; UGNT from 57-TIT-door43-v0.34.usfm) on ctl-a-order: 31 notices; fetched ["unfoldingWord/el-x-koine_ugnt/master/57-TIT.usfm"]
+  [719] USFM file is recommended to have \ide line (: line 2)
+  [825] Unexpected sixth \zaln-s attribute — line marker='\v' (1:1-3 line 4)
+  [819] Unexpected seventh \zaln-s attribute — line marker='\v' (1:1-3 line 4)
+  [519] Missing expected USFM line (:)
+  [921] Missing expected USFM line (:)
+alignment/x-ref notices: 2
+uw-content-validation 3.2.2 (as published; UGNT from 57-TIT-door43-v0.34.usfm) on ctl-b-chapter: 30 notices; fetched ["unfoldingWord/el-x-koine_ugnt/master/57-TIT.usfm"]
+  [719] USFM file is recommended to have \ide line (: line 2)
+  [795] Aligned x-ref expected to be in the same chapter — found x-ref="2:1" but C=1 (1:1-3 line 4)
+  [519] Missing expected USFM line (:)
+  [921] Missing expected USFM line (:)
+alignment/x-ref notices: 1
+uw-content-validation 3.2.2 (as published; UGNT from 57-TIT-door43-v0.34.usfm) on ctl-c-verse: 30 notices; fetched ["unfoldingWord/el-x-koine_ugnt/master/57-TIT.usfm"]
+  [719] USFM file is recommended to have \ide line (: line 2)
+  [602] Aligned word occurrences in original text is wrong — found 2 occurrences of 'Θεοῦ' instead of 1 from v=1, Παῦλος, δοῦλος, Θεοῦ, ἀπόστολος, δὲ, Ἰησοῦ, Χριστοῦ, κατὰ, πίστιν, ἐκλεκτῶν, Θεοῦ, καὶ, ἐπίγνωσιν, ἀληθείας, τῆς, κατ’, εὐσέβειαν, v=2, ἐπ’, ἐλπίδι, ζωῆς, αἰωνίου, ἣν, ἐπηγγείλατο, ὁ, ἀψευδὴς, Θεὸς, πρὸ, χρόνων, αἰωνίων, v=3, ἐφανέρωσεν, δὲ, καιροῖς, ἰδίοις, τὸν, λόγον, αὐτοῦ, ἐν, κηρύγματι, ὃ, ἐπιστεύθην, ἐγὼ, κατ’, ἐπιταγὴν, τοῦ, Σωτῆρος, ἡμῶν, Θεοῦ (1:1-3 line 20)
+  [519] Missing expected USFM line (:)
+  [921] Missing expected USFM line (:)
+alignment/x-ref notices: 1
+uw-content-validation 3.2.2 (as published; UGNT from 57-TIT-door43-v0.34.usfm) on ctl-d-no-xref: 32 notices; fetched ["unfoldingWord/el-x-koine_ugnt/master/57-TIT.usfm"]
+  [719] USFM file is recommended to have \ide line (: line 2)
+  [602] Aligned word occurrences in original text is wrong — THIS TEXT NEEDS RE-ALIGNING (1:1-3 line 5)
+  [602] Aligned word occurrences in original text is wrong — THIS TEXT NEEDS RE-ALIGNING (1:1-3 line 9)
+  [602] Aligned word occurrences in original text is wrong — THIS TEXT NEEDS RE-ALIGNING (1:1-3 line 20)
+  [519] Missing expected USFM line (:)
+  [921] Missing expected USFM line (:)
+alignment/x-ref notices: 3
