@@ -41,3 +41,17 @@ test('electronite_windows_sha256_is_one_value', () => {
   const values = Object.entries(sums).map(([file, match]) => `${match[1]} in ${file}`);
   assert.equal(new Set(Object.values(sums).map((m) => m[1])).size, 1, `one Windows sha256; found ${values.join('; ')}`);
 });
+
+// The shell workflow's Linux and macOS jobs check their archives too; a sum left at the old tag
+// stops those jobs before their tests run.
+test('electronite_linux_and_macos_sha256_match_the_release', () => {
+  const stage = read('scripts/release/stage.sh');
+  const shell = read('.github/workflows/shell.yml');
+  for (const [platform, zip] of [['linux-x64', 'linux-x64'], ['macos-arm64', 'darwin-arm64']]) {
+    const want = stage.match(new RegExp(`${platform}\\) want=([0-9a-f]{64})`));
+    assert.ok(want, `scripts/release/stage.sh checks no ${platform} Electronite sha256`);
+    const job = shell.match(new RegExp(`\\$ELECTRONITE-${zip}\\.zip"[^]*?echo "([0-9a-f]{64}) `));
+    assert.ok(job, `.github/workflows/shell.yml checks no ${platform} Electronite sha256`);
+    assert.equal(job[1], want[1], `${platform}: shell.yml checks ${job[1]}, stage.sh ${want[1]}`);
+  }
+});
