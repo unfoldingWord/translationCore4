@@ -1,0 +1,1790 @@
+{
+  "format": {
+    "major": 1,
+    "minor": 0
+  },
+  "records": [
+    {
+      "key": {
+        "bookPresence": {
+          "book": "TIT"
+        }
+      },
+      "projected": {
+        "bookPresence": {
+          "book": "TIT",
+          "value": {
+            "present": {
+              "how": "added",
+              "scope": {
+                "whole": {}
+              }
+            }
+          }
+        }
+      },
+      "heads": [
+        "5b44c4c733e4f3fd2e156db26492aff0229345532a0159d732fed70033e72713"
+      ],
+      "history": [
+        "5b44c4c733e4f3fd2e156db26492aff0229345532a0159d732fed70033e72713"
+      ]
+    },
+    {
+      "key": {
+        "bookHeader": {
+          "book": "TIT"
+        }
+      },
+      "projected": {
+        "bookHeader": {
+          "book": "TIT",
+          "value": "\\id TIT Titus test translation\n\\usfm 3.0\n\\ide UTF-8\n\\h Titus\n\\toc1 Titus\n\\toc2 Titus\n\\toc3 TIT\n\\mt Titus\n"
+        }
+      },
+      "heads": [
+        "e55e36959f1057034628c284f1c16a23be3adc9257c8dfd75f6bf76fe52e09a3"
+      ],
+      "history": [
+        "e55e36959f1057034628c284f1c16a23be3adc9257c8dfd75f6bf76fe52e09a3"
+      ]
+    },
+    {
+      "key": {
+        "chapterFront": {
+          "book": "TIT",
+          "chapter": 1
+        }
+      },
+      "projected": {
+        "chapterFront": {
+          "book": "TIT",
+          "chapter": 1,
+          "value": {
+            "present": "\\c 1\n\\p\n"
+          }
+        }
+      },
+      "heads": [
+        "bd4ebb7fda2adccc109418d459cd0573f887e08d8019dde3e5990a78cf0d102c"
+      ],
+      "history": [
+        "bd4ebb7fda2adccc109418d459cd0573f887e08d8019dde3e5990a78cf0d102c"
+      ]
+    },
+    {
+      "key": {
+        "chapterFront": {
+          "book": "TIT",
+          "chapter": 2
+        }
+      },
+      "projected": {
+        "chapterFront": {
+          "book": "TIT",
+          "chapter": 2,
+          "value": {
+            "present": "\\c 2\n\\p\n"
+          }
+        }
+      },
+      "heads": [
+        "2b19e99f432da1373700fee684628b0123cb8f046ffc107bd3d949fb547e9783"
+      ],
+      "history": [
+        "2b19e99f432da1373700fee684628b0123cb8f046ffc107bd3d949fb547e9783"
+      ]
+    },
+    {
+      "key": {
+        "chapterFront": {
+          "book": "TIT",
+          "chapter": 3
+        }
+      },
+      "projected": {
+        "chapterFront": {
+          "book": "TIT",
+          "chapter": 3,
+          "value": {
+            "present": "\\c 3\n\\p\n"
+          }
+        }
+      },
+      "heads": [
+        "7b5377648003677598ea67aba5ef4b25544396027ea3ba58699e4242f3f6e60d"
+      ],
+      "history": [
+        "7b5377648003677598ea67aba5ef4b25544396027ea3ba58699e4242f3f6e60d"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 1,
+          "verse": 1
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 1,
+          "value": {
+            "text": {
+              "last": 1,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "Paul, a servant of God"
+            }
+          },
+          "verse": 1
+        }
+      },
+      "heads": [
+        "b04d2bb1f4c0573f4bd7e223e8f390c80bded81b4e6b63a07da59f5c6f76d565"
+      ],
+      "history": [
+        "09abce233c8d569aa33877074551b29086d5a9e6582b87fa832df288bfab8b2a",
+        "b04d2bb1f4c0573f4bd7e223e8f390c80bded81b4e6b63a07da59f5c6f76d565"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 1,
+          "verse": 2
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 1,
+          "value": {
+            "text": {
+              "last": 2,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 2
+        }
+      },
+      "heads": [
+        "bcb297aa79169d0254cc271d01fdb19fa5f0394bfb5ecc42f9832953d62a02b0"
+      ],
+      "history": [
+        "bcb297aa79169d0254cc271d01fdb19fa5f0394bfb5ecc42f9832953d62a02b0"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 1,
+          "verse": 3
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 1,
+          "value": {
+            "text": {
+              "last": 3,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 3
+        }
+      },
+      "heads": [
+        "28f076b8063c466b5949679d75edb84a257bfd74b614e913e7e0baffd40a5b18"
+      ],
+      "history": [
+        "28f076b8063c466b5949679d75edb84a257bfd74b614e913e7e0baffd40a5b18"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 1,
+          "verse": 4
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 1,
+          "value": {
+            "text": {
+              "last": 4,
+              "layout": "\n\\p\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 4
+        }
+      },
+      "heads": [
+        "71a593b14a3f8559fb287278bee7dfeee5050b1acc7e79549cc209ac4e5363ab"
+      ],
+      "history": [
+        "71a593b14a3f8559fb287278bee7dfeee5050b1acc7e79549cc209ac4e5363ab"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 1,
+          "verse": 5
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 1,
+          "value": {
+            "text": {
+              "last": 5,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 5
+        }
+      },
+      "heads": [
+        "f5af4db51f0458fa1cd1be8e75e4169c6683c8328a4cbe78115085afd6a9fe23"
+      ],
+      "history": [
+        "f5af4db51f0458fa1cd1be8e75e4169c6683c8328a4cbe78115085afd6a9fe23"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 1,
+          "verse": 6
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 1,
+          "value": {
+            "text": {
+              "last": 6,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 6
+        }
+      },
+      "heads": [
+        "b41e2cddd5034d019869fa2d08c050534a901eea479e4ce69c7f545caca15790"
+      ],
+      "history": [
+        "b41e2cddd5034d019869fa2d08c050534a901eea479e4ce69c7f545caca15790"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 1,
+          "verse": 7
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 1,
+          "value": {
+            "text": {
+              "last": 7,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 7
+        }
+      },
+      "heads": [
+        "495223dc0bf0fdf10bab027fcd6c2566a60c6819d4913d40e3868cecc8290059"
+      ],
+      "history": [
+        "495223dc0bf0fdf10bab027fcd6c2566a60c6819d4913d40e3868cecc8290059"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 1,
+          "verse": 8
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 1,
+          "value": {
+            "text": {
+              "last": 8,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 8
+        }
+      },
+      "heads": [
+        "9a86de5602c4ded0c0a3843786fdef86e5ee1ddc36da65376603992a029e3725"
+      ],
+      "history": [
+        "9a86de5602c4ded0c0a3843786fdef86e5ee1ddc36da65376603992a029e3725"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 1,
+          "verse": 9
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 1,
+          "value": {
+            "text": {
+              "last": 9,
+              "layout": "\n\\p\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 9
+        }
+      },
+      "heads": [
+        "22aa756eb1b11a26208009446acc1a46636cf827d775a953b44f1f0714054e43"
+      ],
+      "history": [
+        "22aa756eb1b11a26208009446acc1a46636cf827d775a953b44f1f0714054e43"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 1,
+          "verse": 10
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 1,
+          "value": {
+            "text": {
+              "last": 10,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 10
+        }
+      },
+      "heads": [
+        "9075a2a3853fca870389614bdb7b8e0af8166e5578e2fa69d449c5986a668430"
+      ],
+      "history": [
+        "9075a2a3853fca870389614bdb7b8e0af8166e5578e2fa69d449c5986a668430"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 1,
+          "verse": 11
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 1,
+          "value": {
+            "text": {
+              "last": 11,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 11
+        }
+      },
+      "heads": [
+        "91588208efc352a0287b7c192ec9b93c3e91ab0c90c911f93c4dc17735df7333"
+      ],
+      "history": [
+        "91588208efc352a0287b7c192ec9b93c3e91ab0c90c911f93c4dc17735df7333"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 1,
+          "verse": 12
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 1,
+          "value": {
+            "text": {
+              "last": 12,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 12
+        }
+      },
+      "heads": [
+        "200514834e0206138f5b570beaffe469ca9963f2af5fdeae014369d777b4feeb"
+      ],
+      "history": [
+        "200514834e0206138f5b570beaffe469ca9963f2af5fdeae014369d777b4feeb"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 1,
+          "verse": 13
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 1,
+          "value": {
+            "text": {
+              "last": 13,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 13
+        }
+      },
+      "heads": [
+        "ca013602b47b787432883eb6d32a61629c6b4a044875b22de3d3932ccfa880b3"
+      ],
+      "history": [
+        "ca013602b47b787432883eb6d32a61629c6b4a044875b22de3d3932ccfa880b3"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 1,
+          "verse": 14
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 1,
+          "value": {
+            "text": {
+              "last": 14,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 14
+        }
+      },
+      "heads": [
+        "e9e432174cc0b41164d404825b9a4286a70ccb4953e02d58dd034311aa306c7a"
+      ],
+      "history": [
+        "e9e432174cc0b41164d404825b9a4286a70ccb4953e02d58dd034311aa306c7a"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 1,
+          "verse": 15
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 1,
+          "value": {
+            "text": {
+              "last": 15,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 15
+        }
+      },
+      "heads": [
+        "66cabd90680bb3fe0c7e0223b88ac557b789cefa2bc19845bb00c869e1cf61a5"
+      ],
+      "history": [
+        "66cabd90680bb3fe0c7e0223b88ac557b789cefa2bc19845bb00c869e1cf61a5"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 1,
+          "verse": 16
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 1,
+          "value": {
+            "text": {
+              "last": 16,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 16
+        }
+      },
+      "heads": [
+        "d67d8f56fe0f32aa8fec0215a59cb39ee9122dda77cf601dc24588c4bdabcc79"
+      ],
+      "history": [
+        "d67d8f56fe0f32aa8fec0215a59cb39ee9122dda77cf601dc24588c4bdabcc79"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 2,
+          "verse": 1
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 2,
+          "value": {
+            "text": {
+              "last": 1,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 1
+        }
+      },
+      "heads": [
+        "3fad1b0f73db43afe62e843398ab52dfd7cf619b6f01a01a8178654d64b3ce41"
+      ],
+      "history": [
+        "3fad1b0f73db43afe62e843398ab52dfd7cf619b6f01a01a8178654d64b3ce41"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 2,
+          "verse": 2
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 2,
+          "value": {
+            "text": {
+              "last": 2,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 2
+        }
+      },
+      "heads": [
+        "464f2b2fd6e5b18fe1d080df1725f964cca5f452eb41bf4f8b6479f1dcb76f1a"
+      ],
+      "history": [
+        "464f2b2fd6e5b18fe1d080df1725f964cca5f452eb41bf4f8b6479f1dcb76f1a"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 2,
+          "verse": 3
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 2,
+          "value": {
+            "text": {
+              "last": 3,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 3
+        }
+      },
+      "heads": [
+        "b8d15eaa7cb691a39500a1b3e44da20af723acbdfbe863471b1041bd2dcdd671"
+      ],
+      "history": [
+        "b8d15eaa7cb691a39500a1b3e44da20af723acbdfbe863471b1041bd2dcdd671"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 2,
+          "verse": 4
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 2,
+          "value": {
+            "text": {
+              "last": 4,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 4
+        }
+      },
+      "heads": [
+        "a1f98aafa37db5bcefbdf2fd3f13f863d2a8b2f7bfec185653a673e4ac1d8e0b"
+      ],
+      "history": [
+        "a1f98aafa37db5bcefbdf2fd3f13f863d2a8b2f7bfec185653a673e4ac1d8e0b"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 2,
+          "verse": 5
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 2,
+          "value": {
+            "text": {
+              "last": 5,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 5
+        }
+      },
+      "heads": [
+        "e100ad5557a67ef184c3077c8b5d98ce432b2b1ee5e5f1bcad52973e107dfbd8"
+      ],
+      "history": [
+        "e100ad5557a67ef184c3077c8b5d98ce432b2b1ee5e5f1bcad52973e107dfbd8"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 2,
+          "verse": 6
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 2,
+          "value": {
+            "text": {
+              "last": 6,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 6
+        }
+      },
+      "heads": [
+        "9c62883ffc33818f0a7b9dc0993e745c026693bdd0eff712d57bcd123312af92"
+      ],
+      "history": [
+        "9c62883ffc33818f0a7b9dc0993e745c026693bdd0eff712d57bcd123312af92"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 2,
+          "verse": 7
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 2,
+          "value": {
+            "text": {
+              "last": 7,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 7
+        }
+      },
+      "heads": [
+        "67c683739d67bb2dce8926cb5cc305fb03904f48d83449bfe1d93313bd127bd4"
+      ],
+      "history": [
+        "67c683739d67bb2dce8926cb5cc305fb03904f48d83449bfe1d93313bd127bd4"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 2,
+          "verse": 8
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 2,
+          "value": {
+            "text": {
+              "last": 8,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 8
+        }
+      },
+      "heads": [
+        "d8f7f4cabdae68fc28857aab5c1b99fd67f47ecc3acd6b693ac87bdc7cab6eb0"
+      ],
+      "history": [
+        "d8f7f4cabdae68fc28857aab5c1b99fd67f47ecc3acd6b693ac87bdc7cab6eb0"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 2,
+          "verse": 9
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 2,
+          "value": {
+            "text": {
+              "last": 9,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 9
+        }
+      },
+      "heads": [
+        "ba69336a6d9454213aec4b81893ab3f3d85f58913af3c375f46364f59b2a3039"
+      ],
+      "history": [
+        "ba69336a6d9454213aec4b81893ab3f3d85f58913af3c375f46364f59b2a3039"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 2,
+          "verse": 10
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 2,
+          "value": {
+            "text": {
+              "last": 10,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 10
+        }
+      },
+      "heads": [
+        "1b2aaf592af80d2a8269c92a847de2566edbd43475872b7bf1aae5b42b44f065"
+      ],
+      "history": [
+        "1b2aaf592af80d2a8269c92a847de2566edbd43475872b7bf1aae5b42b44f065"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 2,
+          "verse": 11
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 2,
+          "value": {
+            "text": {
+              "last": 11,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 11
+        }
+      },
+      "heads": [
+        "14b7f5230ee3f939ce612aaaa780a9fcac0a1a230ac16bea0a83c298c220c508"
+      ],
+      "history": [
+        "14b7f5230ee3f939ce612aaaa780a9fcac0a1a230ac16bea0a83c298c220c508"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 2,
+          "verse": 12
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 2,
+          "value": {
+            "text": {
+              "last": 12,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 12
+        }
+      },
+      "heads": [
+        "c803ac36354c4cce7e98dc6dea62f63b97ab4358ed0acb80fcbfbc2cab992888"
+      ],
+      "history": [
+        "c803ac36354c4cce7e98dc6dea62f63b97ab4358ed0acb80fcbfbc2cab992888"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 2,
+          "verse": 13
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 2,
+          "value": {
+            "text": {
+              "last": 13,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 13
+        }
+      },
+      "heads": [
+        "91283a80d0ade9f427965355fd5b81a671c79d22946370cb1316248e057248ea"
+      ],
+      "history": [
+        "91283a80d0ade9f427965355fd5b81a671c79d22946370cb1316248e057248ea"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 2,
+          "verse": 14
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 2,
+          "value": {
+            "text": {
+              "last": 14,
+              "layout": "\n\\p\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 14
+        }
+      },
+      "heads": [
+        "af2c5d966246ac43b74d03b23806617c7860243595f46b6c5dd1282c013e0f0c"
+      ],
+      "history": [
+        "af2c5d966246ac43b74d03b23806617c7860243595f46b6c5dd1282c013e0f0c"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 2,
+          "verse": 15
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 2,
+          "value": {
+            "text": {
+              "last": 15,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 15
+        }
+      },
+      "heads": [
+        "45e29a58cdb632b437189f67bd15ef43d6637cf73f066a87677bc37233f4b1f9"
+      ],
+      "history": [
+        "45e29a58cdb632b437189f67bd15ef43d6637cf73f066a87677bc37233f4b1f9"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 3,
+          "verse": 1
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 3,
+          "value": {
+            "text": {
+              "last": 1,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 1
+        }
+      },
+      "heads": [
+        "fddce372cdf793e567663a48a8e8b27cdef4004f190dd3455fbb72692f4eb80f"
+      ],
+      "history": [
+        "fddce372cdf793e567663a48a8e8b27cdef4004f190dd3455fbb72692f4eb80f"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 3,
+          "verse": 2
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 3,
+          "value": {
+            "text": {
+              "last": 2,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 2
+        }
+      },
+      "heads": [
+        "bbbffadbf122ff62f3fd1a9356ab6f092268fe1b1c54faf7504a39f86466aee0"
+      ],
+      "history": [
+        "bbbffadbf122ff62f3fd1a9356ab6f092268fe1b1c54faf7504a39f86466aee0"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 3,
+          "verse": 3
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 3,
+          "value": {
+            "text": {
+              "last": 3,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 3
+        }
+      },
+      "heads": [
+        "778e1f516d27f97a55a4d6498fe8937da7c348d9b8d5932ef9f8d03b4cf438c6"
+      ],
+      "history": [
+        "778e1f516d27f97a55a4d6498fe8937da7c348d9b8d5932ef9f8d03b4cf438c6"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 3,
+          "verse": 4
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 3,
+          "value": {
+            "text": {
+              "last": 4,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 4
+        }
+      },
+      "heads": [
+        "eac05c393a2a5304d84103ea0e689337e580998c0988e6691fe5dbc18f482306"
+      ],
+      "history": [
+        "eac05c393a2a5304d84103ea0e689337e580998c0988e6691fe5dbc18f482306"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 3,
+          "verse": 5
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 3,
+          "value": {
+            "text": {
+              "last": 5,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 5
+        }
+      },
+      "heads": [
+        "2d6a9347bef0e87327317a83b2d93b6429b3d6e69917b9a7a67bb1f7e61c9a19"
+      ],
+      "history": [
+        "2d6a9347bef0e87327317a83b2d93b6429b3d6e69917b9a7a67bb1f7e61c9a19"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 3,
+          "verse": 6
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 3,
+          "value": {
+            "text": {
+              "last": 6,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 6
+        }
+      },
+      "heads": [
+        "5e20d80be4ac11734782f38358f11c25953ee6cdd312ce84b81e5abdf265e249"
+      ],
+      "history": [
+        "5e20d80be4ac11734782f38358f11c25953ee6cdd312ce84b81e5abdf265e249"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 3,
+          "verse": 7
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 3,
+          "value": {
+            "text": {
+              "last": 7,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 7
+        }
+      },
+      "heads": [
+        "1f608c498a450d140a91773b9b5e21569650345da3e73a9dcd85530b97fec9bc"
+      ],
+      "history": [
+        "1f608c498a450d140a91773b9b5e21569650345da3e73a9dcd85530b97fec9bc"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 3,
+          "verse": 8
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 3,
+          "value": {
+            "text": {
+              "last": 8,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 8
+        }
+      },
+      "heads": [
+        "ea683f36599bee3c8274407d108b1ca34359af42fcdb5c69674b899586ad9e64"
+      ],
+      "history": [
+        "ea683f36599bee3c8274407d108b1ca34359af42fcdb5c69674b899586ad9e64"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 3,
+          "verse": 9
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 3,
+          "value": {
+            "text": {
+              "last": 9,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 9
+        }
+      },
+      "heads": [
+        "c50d5b5222426556c9d852d7a0ae7dc8021be7015e8438c0089f13e9be493d5c"
+      ],
+      "history": [
+        "c50d5b5222426556c9d852d7a0ae7dc8021be7015e8438c0089f13e9be493d5c"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 3,
+          "verse": 10
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 3,
+          "value": {
+            "text": {
+              "last": 10,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 10
+        }
+      },
+      "heads": [
+        "b267ece4ce3b42ada4e12f928ee753e6f18a25d0e132b952032c8922f3b5521a"
+      ],
+      "history": [
+        "b267ece4ce3b42ada4e12f928ee753e6f18a25d0e132b952032c8922f3b5521a"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 3,
+          "verse": 11
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 3,
+          "value": {
+            "text": {
+              "last": 11,
+              "layout": "\n\\p\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 11
+        }
+      },
+      "heads": [
+        "a942dfbb168d78be73ff4b865743728cb0f5f3118b29ca4c1e28d9ad5af8c32f"
+      ],
+      "history": [
+        "a942dfbb168d78be73ff4b865743728cb0f5f3118b29ca4c1e28d9ad5af8c32f"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 3,
+          "verse": 12
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 3,
+          "value": {
+            "text": {
+              "last": 12,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 12
+        }
+      },
+      "heads": [
+        "af7caf09ad6ffd4c14142e64a7631f82fe42449869fe321a05b176b5239410bd"
+      ],
+      "history": [
+        "af7caf09ad6ffd4c14142e64a7631f82fe42449869fe321a05b176b5239410bd"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 3,
+          "verse": 13
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 3,
+          "value": {
+            "text": {
+              "last": 13,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 13
+        }
+      },
+      "heads": [
+        "274688c64598025a5921e53787a286c1a37a17598a337f1e3d680cd8415bd89e"
+      ],
+      "history": [
+        "274688c64598025a5921e53787a286c1a37a17598a337f1e3d680cd8415bd89e"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 3,
+          "verse": 14
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 3,
+          "value": {
+            "text": {
+              "last": 14,
+              "layout": "\n\\p\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 14
+        }
+      },
+      "heads": [
+        "8648c574f2172f4de8817fd8ffff14ed77e747943ad5e6e2d3133257a11d0df1"
+      ],
+      "history": [
+        "8648c574f2172f4de8817fd8ffff14ed77e747943ad5e6e2d3133257a11d0df1"
+      ]
+    },
+    {
+      "key": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 3,
+          "verse": 15
+        }
+      },
+      "projected": {
+        "verse": {
+          "book": "TIT",
+          "chapter": 3,
+          "value": {
+            "text": {
+              "last": 15,
+              "layout": "\n",
+              "marker": {
+                "lead": " ",
+                "term": "space"
+              },
+              "words": "___"
+            }
+          },
+          "verse": 15
+        }
+      },
+      "heads": [
+        "e8d843cdc37d2b5292959e45f1a43775ae89707af5fc6ca02e589b6bf706361a"
+      ],
+      "history": [
+        "e8d843cdc37d2b5292959e45f1a43775ae89707af5fc6ca02e589b6bf706361a"
+      ]
+    },
+    {
+      "key": {
+        "projectMeta": {
+          "field": {
+            "name": {}
+          }
+        }
+      },
+      "projected": {
+        "projectMeta": {
+          "field": {
+            "name": {}
+          },
+          "value": {
+            "en": "Titus test translation"
+          }
+        }
+      },
+      "heads": [
+        "6b56732b94e93f1535f2105be08fb56c91fa7445fb66d408368d77dc747421e4"
+      ],
+      "history": [
+        "6b56732b94e93f1535f2105be08fb56c91fa7445fb66d408368d77dc747421e4"
+      ]
+    },
+    {
+      "key": {
+        "projectMeta": {
+          "field": {
+            "abbreviation": {}
+          }
+        }
+      },
+      "projected": {
+        "projectMeta": {
+          "field": {
+            "abbreviation": {}
+          },
+          "value": {
+            "en": "ttt"
+          }
+        }
+      },
+      "heads": [
+        "14c2d017e6e9cc36155fb85b5cdeea0e29a6d598d1fe5be3a62de18986bf02b7"
+      ],
+      "history": [
+        "14c2d017e6e9cc36155fb85b5cdeea0e29a6d598d1fe5be3a62de18986bf02b7"
+      ]
+    },
+    {
+      "key": {
+        "projectMeta": {
+          "field": {
+            "languages": {}
+          }
+        }
+      },
+      "projected": {
+        "projectMeta": {
+          "field": {
+            "languages": {}
+          },
+          "value": [
+            {
+              "name": {
+                "en": "English"
+              },
+              "scriptDirection": "ltr",
+              "tag": "en"
+            }
+          ]
+        }
+      },
+      "heads": [
+        "a99552457dbff77544789ba587daa18f44b8acfccde5f41bd692fd83334c9bbe"
+      ],
+      "history": [
+        "a99552457dbff77544789ba587daa18f44b8acfccde5f41bd692fd83334c9bbe"
+      ]
+    },
+    {
+      "key": {
+        "projectMeta": {
+          "field": {
+            "extra": "meta.dateCreated"
+          }
+        }
+      },
+      "projected": {
+        "projectMeta": {
+          "field": {
+            "extra": "meta.dateCreated"
+          },
+          "value": "2026-10-17T00:00:00.000Z"
+        }
+      },
+      "heads": [
+        "c72bba54341d92aef6e6b01c10b44b20d1f6aa291835ae20031ab4224108e400"
+      ],
+      "history": [
+        "c72bba54341d92aef6e6b01c10b44b20d1f6aa291835ae20031ab4224108e400"
+      ]
+    },
+    {
+      "key": {
+        "projectMeta": {
+          "field": {
+            "extra": "meta.defaultLocale"
+          }
+        }
+      },
+      "projected": {
+        "projectMeta": {
+          "field": {
+            "extra": "meta.defaultLocale"
+          },
+          "value": "en"
+        }
+      },
+      "heads": [
+        "beee1ff533e163006c4d84cd50329726e47656f8192f317db734e81657254af4"
+      ],
+      "history": [
+        "beee1ff533e163006c4d84cd50329726e47656f8192f317db734e81657254af4"
+      ]
+    },
+    {
+      "key": {
+        "versification": {}
+      },
+      "projected": {
+        "versification": {
+          "value": {
+            "bytes": "{\n  \"maxVerses\": {\n    \"GEN\": [\n      \"31\",\n      \"25\",\n      \"24\",\n      \"26\",\n      \"32\",\n      \"22\",\n      \"24\",\n      \"22\",\n      \"29\",\n      \"32\",\n      \"32\",\n      \"20\",\n      \"18\",\n      \"24\",\n      \"21\",\n      \"16\",\n      \"27\",\n      \"33\",\n      \"38\",\n      \"18\",\n      \"34\",\n      \"24\",\n      \"20\",\n      \"67\",\n      \"34\",\n      \"35\",\n      \"46\",\n      \"22\",\n      \"35\",\n      \"43\",\n      \"55\",\n      \"32\",\n      \"20\",\n      \"31\",\n      \"29\",\n      \"43\",\n      \"36\",\n      \"30\",\n      \"23\",\n      \"23\",\n      \"57\",\n      \"38\",\n      \"34\",\n      \"34\",\n      \"28\",\n      \"34\",\n      \"31\",\n      \"22\",\n      \"33\",\n      \"26\"\n    ],\n    \"EXO\": [\n      \"22\",\n      \"25\",\n      \"22\",\n      \"31\",\n      \"23\",\n      \"30\",\n      \"25\",\n      \"32\",\n      \"35\",\n      \"29\",\n      \"10\",\n      \"51\",\n      \"22\",\n      \"31\",\n      \"27\",\n      \"36\",\n      \"16\",\n      \"27\",\n      \"25\",\n      \"26\",\n      \"36\",\n      \"31\",\n      \"33\",\n      \"18\",\n      \"40\",\n      \"37\",\n      \"21\",\n      \"43\",\n      \"46\",\n      \"38\",\n      \"18\",\n      \"35\",\n      \"23\",\n      \"35\",\n      \"35\",\n      \"38\",\n      \"29\",\n      \"31\",\n      \"43\",\n      \"38\"\n    ],\n    \"LEV\": [\n      \"17\",\n      \"16\",\n      \"17\",\n      \"35\",\n      \"19\",\n      \"30\",\n      \"38\",\n      \"36\",\n      \"24\",\n      \"20\",\n      \"47\",\n      \"8\",\n      \"59\",\n      \"57\",\n      \"33\",\n      \"34\",\n      \"16\",\n      \"30\",\n      \"37\",\n      \"27\",\n      \"24\",\n      \"33\",\n      \"44\",\n      \"23\",\n      \"55\",\n      \"46\",\n      \"34\"\n    ],\n    \"NUM\": [\n      \"54\",\n      \"34\",\n      \"51\",\n      \"49\",\n      \"31\",\n      \"27\",\n      \"89\",\n      \"26\",\n      \"23\",\n      \"36\",\n      \"35\",\n      \"16\",\n      \"33\",\n      \"45\",\n      \"41\",\n      \"50\",\n      \"13\",\n      \"32\",\n      \"22\",\n      \"29\",\n      \"35\",\n      \"41\",\n      \"30\",\n      \"25\",\n      \"18\",\n      \"65\",\n      \"23\",\n      \"31\",\n      \"40\",\n      \"16\",\n      \"54\",\n      \"42\",\n      \"56\",\n      \"29\",\n      \"34\",\n      \"13\"\n    ],\n    \"DEU\": [\n      \"46\",\n      \"37\",\n      \"29\",\n      \"49\",\n      \"33\",\n      \"25\",\n      \"26\",\n      \"20\",\n      \"29\",\n      \"22\",\n      \"32\",\n      \"32\",\n      \"18\",\n      \"29\",\n      \"23\",\n      \"22\",\n      \"20\",\n      \"22\",\n      \"21\",\n      \"20\",\n      \"23\",\n      \"30\",\n      \"25\",\n      \"22\",\n      \"19\",\n      \"19\",\n      \"26\",\n      \"68\",\n      \"29\",\n      \"20\",\n      \"30\",\n      \"52\",\n      \"29\",\n      \"12\"\n    ],\n    \"JOS\": [\n      \"18\",\n      \"24\",\n      \"17\",\n      \"24\",\n      \"15\",\n      \"27\",\n      \"26\",\n      \"35\",\n      \"27\",\n      \"43\",\n      \"23\",\n      \"24\",\n      \"33\",\n      \"15\",\n      \"63\",\n      \"10\",\n      \"18\",\n      \"28\",\n      \"51\",\n      \"9\",\n      \"45\",\n      \"34\",\n      \"16\",\n      \"33\"\n    ],\n    \"JDG\": [\n      \"36\",\n      \"23\",\n      \"31\",\n      \"24\",\n      \"31\",\n      \"40\",\n      \"25\",\n      \"35\",\n      \"57\",\n      \"18\",\n      \"40\",\n      \"15\",\n      \"25\",\n      \"20\",\n      \"20\",\n      \"31\",\n      \"13\",\n      \"31\",\n      \"30\",\n      \"48\",\n      \"25\"\n    ],\n    \"RUT\": [\n      \"22\",\n      \"23\",\n      \"18\",\n      \"22\"\n    ],\n    \"1SA\": [\n      \"28\",\n      \"36\",\n      \"21\",\n      \"22\",\n      \"12\",\n      \"21\",\n      \"17\",\n      \"22\",\n      \"27\",\n      \"27\",\n      \"15\",\n      \"25\",\n      \"23\",\n      \"52\",\n      \"35\",\n      \"23\",\n      \"58\",\n      \"30\",\n      \"24\",\n      \"42\",\n      \"15\",\n      \"23\",\n      \"29\",\n      \"22\",\n      \"44\",\n      \"25\",\n      \"12\",\n      \"25\",\n      \"11\",\n      \"31\",\n      \"13\"\n    ],\n    \"2SA\": [\n      \"27\",\n      \"32\",\n      \"39\",\n      \"12\",\n      \"25\",\n      \"23\",\n      \"29\",\n      \"18\",\n      \"13\",\n      \"19\",\n      \"27\",\n      \"31\",\n      \"39\",\n      \"33\",\n      \"37\",\n      \"23\",\n      \"29\",\n      \"33\",\n      \"43\",\n      \"26\",\n      \"22\",\n      \"51\",\n      \"39\",\n      \"25\"\n    ],\n    \"1KI\": [\n      \"53\",\n      \"46\",\n      \"28\",\n      \"34\",\n      \"18\",\n      \"38\",\n      \"51\",\n      \"66\",\n      \"28\",\n      \"29\",\n      \"43\",\n      \"33\",\n      \"34\",\n      \"31\",\n      \"34\",\n      \"34\",\n      \"24\",\n      \"46\",\n      \"21\",\n      \"43\",\n      \"29\",\n      \"53\"\n    ],\n    \"2KI\": [\n      \"18\",\n      \"25\",\n      \"27\",\n      \"44\",\n      \"27\",\n      \"33\",\n      \"20\",\n      \"29\",\n      \"37\",\n      \"36\",\n      \"21\",\n      \"21\",\n      \"25\",\n      \"29\",\n      \"38\",\n      \"20\",\n      \"41\",\n      \"37\",\n      \"37\",\n      \"21\",\n      \"26\",\n      \"20\",\n      \"37\",\n      \"20\",\n      \"30\"\n    ],\n    \"1CH\": [\n      \"54\",\n      \"55\",\n      \"24\",\n      \"43\",\n      \"26\",\n      \"81\",\n      \"40\",\n      \"40\",\n      \"44\",\n      \"14\",\n      \"47\",\n      \"40\",\n      \"14\",\n      \"17\",\n      \"29\",\n      \"43\",\n      \"27\",\n      \"17\",\n      \"19\",\n      \"8\",\n      \"30\",\n      \"19\",\n      \"32\",\n      \"31\",\n      \"31\",\n      \"32\",\n      \"34\",\n      \"21\",\n      \"30\"\n    ],\n    \"2CH\": [\n      \"17\",\n      \"18\",\n      \"17\",\n      \"22\",\n      \"14\",\n      \"42\",\n      \"22\",\n      \"18\",\n      \"31\",\n      \"19\",\n      \"23\",\n      \"16\",\n      \"22\",\n      \"15\",\n      \"19\",\n      \"14\",\n      \"19\",\n      \"34\",\n      \"11\",\n      \"37\",\n      \"20\",\n      \"12\",\n      \"21\",\n      \"27\",\n      \"28\",\n      \"23\",\n      \"9\",\n      \"27\",\n      \"36\",\n      \"27\",\n      \"21\",\n      \"33\",\n      \"25\",\n      \"33\",\n      \"27\",\n      \"23\"\n    ],\n    \"EZR\": [\n      \"11\",\n      \"70\",\n      \"13\",\n      \"24\",\n      \"17\",\n      \"22\",\n      \"28\",\n      \"36\",\n      \"15\",\n      \"44\"\n    ],\n    \"NEH\": [\n      \"11\",\n      \"20\",\n      \"32\",\n      \"23\",\n      \"19\",\n      \"19\",\n      \"73\",\n      \"18\",\n      \"38\",\n      \"39\",\n      \"36\",\n      \"47\",\n      \"31\"\n    ],\n    \"EST\": [\n      \"22\",\n      \"23\",\n      \"15\",\n      \"17\",\n      \"14\",\n      \"14\",\n      \"10\",\n      \"17\",\n      \"32\",\n      \"3\"\n    ],\n    \"JOB\": [\n      \"22\",\n      \"13\",\n      \"26\",\n      \"21\",\n      \"27\",\n      \"30\",\n      \"21\",\n      \"22\",\n      \"35\",\n      \"22\",\n      \"20\",\n      \"25\",\n      \"28\",\n      \"22\",\n      \"35\",\n      \"22\",\n      \"16\",\n      \"21\",\n      \"29\",\n      \"29\",\n      \"34\",\n      \"30\",\n      \"17\",\n      \"25\",\n      \"6\",\n      \"14\",\n      \"23\",\n      \"28\",\n      \"25\",\n      \"31\",\n      \"40\",\n      \"22\",\n      \"33\",\n      \"37\",\n      \"16\",\n      \"33\",\n      \"24\",\n      \"41\",\n      \"30\",\n      \"24\",\n      \"34\",\n      \"17\"\n    ],\n    \"PSA\": [\n      \"6\",\n      \"12\",\n      \"8\",\n      \"8\",\n      \"12\",\n      \"10\",\n      \"17\",\n      \"9\",\n      \"20\",\n      \"18\",\n      \"7\",\n      \"8\",\n      \"6\",\n      \"7\",\n      \"5\",\n      \"11\",\n      \"15\",\n      \"50\",\n      \"14\",\n      \"9\",\n      \"13\",\n      \"31\",\n      \"6\",\n      \"10\",\n      \"22\",\n      \"12\",\n      \"14\",\n      \"9\",\n      \"11\",\n      \"12\",\n      \"24\",\n      \"11\",\n      \"22\",\n      \"22\",\n      \"28\",\n      \"12\",\n      \"40\",\n      \"22\",\n      \"13\",\n      \"17\",\n      \"13\",\n      \"11\",\n      \"5\",\n      \"26\",\n      \"17\",\n      \"11\",\n      \"9\",\n      \"14\",\n      \"20\",\n      \"23\",\n      \"19\",\n      \"9\",\n      \"6\",\n      \"7\",\n      \"23\",\n      \"13\",\n      \"11\",\n      \"11\",\n      \"17\",\n      \"12\",\n      \"8\",\n      \"12\",\n      \"11\",\n      \"10\",\n      \"13\",\n      \"20\",\n      \"7\",\n      \"35\",\n      \"36\",\n      \"5\",\n      \"24\",\n      \"20\",\n      \"28\",\n      \"23\",\n      \"10\",\n      \"12\",\n      \"20\",\n      \"72\",\n      \"13\",\n      \"19\",\n      \"16\",\n      \"8\",\n      \"18\",\n      \"12\",\n      \"13\",\n      \"17\",\n      \"7\",\n      \"18\",\n      \"52\",\n      \"17\",\n      \"16\",\n      \"15\",\n      \"5\",\n      \"23\",\n      \"11\",\n      \"13\",\n      \"12\",\n      \"9\",\n      \"9\",\n      \"5\",\n      \"8\",\n      \"28\",\n      \"22\",\n      \"35\",\n      \"45\",\n      \"48\",\n      \"43\",\n      \"13\",\n      \"31\",\n      \"7\",\n      \"10\",\n      \"10\",\n      \"9\",\n      \"8\",\n      \"18\",\n      \"19\",\n      \"2\",\n      \"29\",\n      \"176\",\n      \"7\",\n      \"8\",\n      \"9\",\n      \"4\",\n      \"8\",\n      \"5\",\n      \"6\",\n      \"5\",\n      \"6\",\n      \"8\",\n      \"8\",\n      \"3\",\n      \"18\",\n      \"3\",\n      \"3\",\n      \"21\",\n      \"26\",\n      \"9\",\n      \"8\",\n      \"24\",\n      \"13\",\n      \"10\",\n      \"7\",\n      \"12\",\n      \"15\",\n      \"21\",\n      \"10\",\n      \"20\",\n      \"14\",\n      \"9\",\n      \"6\"\n    ],\n    \"PRO\": [\n      \"33\",\n      \"22\",\n      \"35\",\n      \"27\",\n      \"23\",\n      \"35\",\n      \"27\",\n      \"36\",\n      \"18\",\n      \"32\",\n      \"31\",\n      \"28\",\n      \"25\",\n      \"35\",\n      \"33\",\n      \"33\",\n      \"28\",\n      \"24\",\n      \"29\",\n      \"30\",\n      \"31\",\n      \"29\",\n      \"35\",\n      \"34\",\n      \"28\",\n      \"28\",\n      \"27\",\n      \"28\",\n      \"27\",\n      \"33\",\n      \"31\"\n    ],\n    \"ECC\": [\n      \"18\",\n      \"26\",\n      \"22\",\n      \"16\",\n      \"20\",\n      \"12\",\n      \"29\",\n      \"17\",\n      \"18\",\n      \"20\",\n      \"10\",\n      \"14\"\n    ],\n    \"SNG\": [\n      \"17\",\n      \"17\",\n      \"11\",\n      \"16\",\n      \"16\",\n      \"13\",\n      \"13\",\n      \"14\"\n    ],\n    \"ISA\": [\n      \"31\",\n      \"22\",\n      \"26\",\n      \"6\",\n      \"30\",\n      \"13\",\n      \"25\",\n      \"22\",\n      \"21\",\n      \"34\",\n      \"16\",\n      \"6\",\n      \"22\",\n      \"32\",\n      \"9\",\n      \"14\",\n      \"14\",\n      \"7\",\n      \"25\",\n      \"6\",\n      \"17\",\n      \"25\",\n      \"18\",\n      \"23\",\n      \"12\",\n      \"21\",\n      \"13\",\n      \"29\",\n      \"24\",\n      \"33\",\n      \"9\",\n      \"20\",\n      \"24\",\n      \"17\",\n      \"10\",\n      \"22\",\n      \"38\",\n      \"22\",\n      \"8\",\n      \"31\",\n      \"29\",\n      \"25\",\n      \"28\",\n      \"28\",\n      \"25\",\n      \"13\",\n      \"15\",\n      \"22\",\n      \"26\",\n      \"11\",\n      \"23\",\n      \"15\",\n      \"12\",\n      \"17\",\n      \"13\",\n      \"12\",\n      \"21\",\n      \"14\",\n      \"21\",\n      \"22\",\n      \"11\",\n      \"12\",\n      \"19\",\n      \"12\",\n      \"25\",\n      \"24\"\n    ],\n    \"JER\": [\n      \"19\",\n      \"37\",\n      \"25\",\n      \"31\",\n      \"31\",\n      \"30\",\n      \"34\",\n      \"22\",\n      \"26\",\n      \"25\",\n      \"23\",\n      \"17\",\n      \"27\",\n      \"22\",\n      \"21\",\n      \"21\",\n      \"27\",\n      \"23\",\n      \"15\",\n      \"18\",\n      \"14\",\n      \"30\",\n      \"40\",\n      \"10\",\n      \"38\",\n      \"24\",\n      \"22\",\n      \"17\",\n      \"32\",\n      \"24\",\n      \"40\",\n      \"44\",\n      \"26\",\n      \"22\",\n      \"19\",\n      \"32\",\n      \"21\",\n      \"28\",\n      \"18\",\n      \"16\",\n      \"18\",\n      \"22\",\n      \"13\",\n      \"30\",\n      \"5\",\n      \"28\",\n      \"7\",\n      \"47\",\n      \"39\",\n      \"46\",\n      \"64\",\n      \"34\"\n    ],\n    \"LAM\": [\n      \"22\",\n      \"22\",\n      \"66\",\n      \"22\",\n      \"22\"\n    ],\n    \"EZK\": [\n      \"28\",\n      \"10\",\n      \"27\",\n      \"17\",\n      \"17\",\n      \"14\",\n      \"27\",\n      \"18\",\n      \"11\",\n      \"22\",\n      \"25\",\n      \"28\",\n      \"23\",\n      \"23\",\n      \"8\",\n      \"63\",\n      \"24\",\n      \"32\",\n      \"14\",\n      \"49\",\n      \"32\",\n      \"31\",\n      \"49\",\n      \"27\",\n      \"17\",\n      \"21\",\n      \"36\",\n      \"26\",\n      \"21\",\n      \"26\",\n      \"18\",\n      \"32\",\n      \"33\",\n      \"31\",\n      \"15\",\n      \"38\",\n      \"28\",\n      \"23\",\n      \"29\",\n      \"49\",\n      \"26\",\n      \"20\",\n      \"27\",\n      \"31\",\n      \"25\",\n      \"24\",\n      \"23\",\n      \"35\"\n    ],\n    \"DAN\": [\n      \"21\",\n      \"49\",\n      \"30\",\n      \"37\",\n      \"31\",\n      \"28\",\n      \"28\",\n      \"27\",\n      \"27\",\n      \"21\",\n      \"45\",\n      \"13\"\n    ],\n    \"HOS\": [\n      \"11\",\n      \"23\",\n      \"5\",\n      \"19\",\n      \"15\",\n      \"11\",\n      \"16\",\n      \"14\",\n      \"17\",\n      \"15\",\n      \"12\",\n      \"14\",\n      \"16\",\n      \"9\"\n    ],\n    \"JOL\": [\n      \"20\",\n      \"32\",\n      \"21\"\n    ],\n    \"AMO\": [\n      \"15\",\n      \"16\",\n      \"15\",\n      \"13\",\n      \"27\",\n      \"14\",\n      \"17\",\n      \"14\",\n      \"15\"\n    ],\n    \"OBA\": [\n      \"21\"\n    ],\n    \"JON\": [\n      \"17\",\n      \"10\",\n      \"10\",\n      \"11\"\n    ],\n    \"MIC\": [\n      \"16\",\n      \"13\",\n      \"12\",\n      \"13\",\n      \"15\",\n      \"16\",\n      \"20\"\n    ],\n    \"NAM\": [\n      \"15\",\n      \"13\",\n      \"19\"\n    ],\n    \"HAB\": [\n      \"17\",\n      \"20\",\n      \"19\"\n    ],\n    \"ZEP\": [\n      \"18\",\n      \"15\",\n      \"20\"\n    ],\n    \"HAG\": [\n      \"15\",\n      \"23\"\n    ],\n    \"ZEC\": [\n      \"21\",\n      \"13\",\n      \"10\",\n      \"14\",\n      \"11\",\n      \"15\",\n      \"14\",\n      \"23\",\n      \"17\",\n      \"12\",\n      \"17\",\n      \"14\",\n      \"9\",\n      \"21\"\n    ],\n    \"MAL\": [\n      \"14\",\n      \"17\",\n      \"18\",\n      \"6\"\n    ],\n    \"MAT\": [\n      \"25\",\n      \"23\",\n      \"17\",\n      \"25\",\n      \"48\",\n      \"34\",\n      \"29\",\n      \"34\",\n      \"38\",\n      \"42\",\n      \"30\",\n      \"50\",\n      \"58\",\n      \"36\",\n      \"39\",\n      \"28\",\n      \"27\",\n      \"35\",\n      \"30\",\n      \"34\",\n      \"46\",\n      \"46\",\n      \"39\",\n      \"51\",\n      \"46\",\n      \"75\",\n      \"66\",\n      \"20\"\n    ],\n    \"MRK\": [\n      \"45\",\n      \"28\",\n      \"35\",\n      \"41\",\n      \"43\",\n      \"56\",\n      \"37\",\n      \"38\",\n      \"50\",\n      \"52\",\n      \"33\",\n      \"44\",\n      \"37\",\n      \"72\",\n      \"47\",\n      \"20\"\n    ],\n    \"LUK\": [\n      \"80\",\n      \"52\",\n      \"38\",\n      \"44\",\n      \"39\",\n      \"49\",\n      \"50\",\n      \"56\",\n      \"62\",\n      \"42\",\n      \"54\",\n      \"59\",\n      \"35\",\n      \"35\",\n      \"32\",\n      \"31\",\n      \"37\",\n      \"43\",\n      \"48\",\n      \"47\",\n      \"38\",\n      \"71\",\n      \"56\",\n      \"53\"\n    ],\n    \"JHN\": [\n      \"51\",\n      \"25\",\n      \"36\",\n      \"54\",\n      \"47\",\n      \"71\",\n      \"53\",\n      \"59\",\n      \"41\",\n      \"42\",\n      \"57\",\n      \"50\",\n      \"38\",\n      \"31\",\n      \"27\",\n      \"33\",\n      \"26\",\n      \"40\",\n      \"42\",\n      \"31\",\n      \"25\"\n    ],\n    \"ACT\": [\n      \"26\",\n      \"47\",\n      \"26\",\n      \"37\",\n      \"42\",\n      \"15\",\n      \"60\",\n      \"40\",\n      \"43\",\n      \"48\",\n      \"30\",\n      \"25\",\n      \"52\",\n      \"28\",\n      \"41\",\n      \"40\",\n      \"34\",\n      \"28\",\n      \"41\",\n      \"38\",\n      \"40\",\n      \"30\",\n      \"35\",\n      \"27\",\n      \"27\",\n      \"32\",\n      \"44\",\n      \"31\"\n    ],\n    \"ROM\": [\n      \"32\",\n      \"29\",\n      \"31\",\n      \"25\",\n      \"21\",\n      \"23\",\n      \"25\",\n      \"39\",\n      \"33\",\n      \"21\",\n      \"36\",\n      \"21\",\n      \"14\",\n      \"23\",\n      \"33\",\n      \"27\"\n    ],\n    \"1CO\": [\n      \"31\",\n      \"16\",\n      \"23\",\n      \"21\",\n      \"13\",\n      \"20\",\n      \"40\",\n      \"13\",\n      \"27\",\n      \"33\",\n      \"34\",\n      \"31\",\n      \"13\",\n      \"40\",\n      \"58\",\n      \"24\"\n    ],\n    \"2CO\": [\n      \"24\",\n      \"17\",\n      \"18\",\n      \"18\",\n      \"21\",\n      \"18\",\n      \"16\",\n      \"24\",\n      \"15\",\n      \"18\",\n      \"33\",\n      \"21\",\n      \"14\"\n    ],\n    \"GAL\": [\n      \"24\",\n      \"21\",\n      \"29\",\n      \"31\",\n      \"26\",\n      \"18\"\n    ],\n    \"EPH\": [\n      \"23\",\n      \"22\",\n      \"21\",\n      \"32\",\n      \"33\",\n      \"24\"\n    ],\n    \"PHP\": [\n      \"30\",\n      \"30\",\n      \"21\",\n      \"23\"\n    ],\n    \"COL\": [\n      \"29\",\n      \"23\",\n      \"25\",\n      \"18\"\n    ],\n    \"1TH\": [\n      \"10\",\n      \"20\",\n      \"13\",\n      \"18\",\n      \"28\"\n    ],\n    \"2TH\": [\n      \"12\",\n      \"17\",\n      \"18\"\n    ],\n    \"1TI\": [\n      \"20\",\n      \"15\",\n      \"16\",\n      \"16\",\n      \"25\",\n      \"21\"\n    ],\n    \"2TI\": [\n      \"18\",\n      \"26\",\n      \"17\",\n      \"22\"\n    ],\n    \"TIT\": [\n      \"16\",\n      \"15\",\n      \"15\"\n    ],\n    \"PHM\": [\n      \"25\"\n    ],\n    \"HEB\": [\n      \"14\",\n      \"18\",\n      \"19\",\n      \"16\",\n      \"14\",\n      \"20\",\n      \"28\",\n      \"13\",\n      \"28\",\n      \"39\",\n      \"40\",\n      \"29\",\n      \"25\"\n    ],\n    \"JAS\": [\n      \"27\",\n      \"26\",\n      \"18\",\n      \"17\",\n      \"20\"\n    ],\n    \"1PE\": [\n      \"25\",\n      \"25\",\n      \"22\",\n      \"19\",\n      \"14\"\n    ],\n    \"2PE\": [\n      \"21\",\n      \"22\",\n      \"18\"\n    ],\n    \"1JN\": [\n      \"10\",\n      \"29\",\n      \"24\",\n      \"21\",\n      \"21\"\n    ],\n    \"2JN\": [\n      \"13\"\n    ],\n    \"3JN\": [\n      \"15\"\n    ],\n    \"JUD\": [\n      \"25\"\n    ],\n    \"REV\": [\n      \"20\",\n      \"29\",\n      \"22\",\n      \"11\",\n      \"14\",\n      \"17\",\n      \"17\",\n      \"13\",\n      \"21\",\n      \"11\",\n      \"19\",\n      \"18\",\n      \"18\",\n      \"20\",\n      \"8\",\n      \"21\",\n      \"18\",\n      \"24\",\n      \"21\",\n      \"15\",\n      \"27\",\n      \"21\"\n    ],\n    \"TOB\": [\n      \"22\",\n      \"14\",\n      \"17\",\n      \"21\",\n      \"21\",\n      \"17\",\n      \"18\",\n      \"21\",\n      \"6\",\n      \"13\",\n      \"19\",\n      \"22\",\n      \"18\",\n      \"15\"\n    ],\n    \"JDT\": [\n      \"16\",\n      \"28\",\n      \"10\",\n      \"15\",\n      \"24\",\n      \"21\",\n      \"32\",\n      \"36\",\n      \"14\",\n      \"23\",\n      \"23\",\n      \"20\",\n      \"20\",\n      \"19\",\n      \"13\",\n      \"25\"\n    ],\n    \"ESG\": [\n      \"39\",\n      \"23\",\n      \"22\",\n      \"47\",\n      \"28\",\n      \"14\",\n      \"10\",\n      \"39\",\n      \"32\",\n      \"13\"\n    ],\n    \"WIS\": [\n      \"16\",\n      \"24\",\n      \"19\",\n      \"20\",\n      \"23\",\n      \"25\",\n      \"30\",\n      \"21\",\n      \"18\",\n      \"21\",\n      \"26\",\n      \"27\",\n      \"19\",\n      \"31\",\n      \"19\",\n      \"29\",\n      \"21\",\n      \"25\",\n      \"22\"\n    ],\n    \"SIR\": [\n      \"30\",\n      \"18\",\n      \"31\",\n      \"31\",\n      \"15\",\n      \"37\",\n      \"36\",\n      \"19\",\n      \"18\",\n      \"31\",\n      \"34\",\n      \"18\",\n      \"26\",\n      \"27\",\n      \"20\",\n      \"30\",\n      \"32\",\n      \"33\",\n      \"30\",\n      \"32\",\n      \"28\",\n      \"27\",\n      \"27\",\n      \"34\",\n      \"26\",\n      \"29\",\n      \"30\",\n      \"26\",\n      \"28\",\n      \"25\",\n      \"31\",\n      \"24\",\n      \"31\",\n      \"26\",\n      \"20\",\n      \"26\",\n      \"31\",\n      \"34\",\n      \"35\",\n      \"30\",\n      \"23\",\n      \"25\",\n      \"33\",\n      \"23\",\n      \"26\",\n      \"20\",\n      \"25\",\n      \"25\",\n      \"16\",\n      \"29\",\n      \"30\"\n    ],\n    \"BAR\": [\n      \"21\",\n      \"35\",\n      \"37\",\n      \"37\",\n      \"9\",\n      \"73\"\n    ],\n    \"LJE\": [\n      \"73\"\n    ],\n    \"S3Y\": [\n      \"68\"\n    ],\n    \"SUS\": [\n      \"64\"\n    ],\n    \"BEL\": [\n      \"42\"\n    ],\n    \"1MA\": [\n      \"64\",\n      \"70\",\n      \"60\",\n      \"61\",\n      \"68\",\n      \"63\",\n      \"50\",\n      \"32\",\n      \"73\",\n      \"89\",\n      \"74\",\n      \"53\",\n      \"53\",\n      \"49\",\n      \"41\",\n      \"24\"\n    ],\n    \"2MA\": [\n      \"36\",\n      \"32\",\n      \"40\",\n      \"50\",\n      \"27\",\n      \"31\",\n      \"42\",\n      \"36\",\n      \"29\",\n      \"38\",\n      \"38\",\n      \"45\",\n      \"26\",\n      \"46\",\n      \"39\"\n    ],\n    \"3MA\": [\n      \"29\",\n      \"33\",\n      \"30\",\n      \"21\",\n      \"51\",\n      \"41\",\n      \"23\"\n    ],\n    \"4MA\": [\n      \"35\",\n      \"24\",\n      \"21\",\n      \"26\",\n      \"38\",\n      \"35\",\n      \"23\",\n      \"29\",\n      \"32\",\n      \"21\",\n      \"27\",\n      \"19\",\n      \"27\",\n      \"20\",\n      \"32\",\n      \"25\",\n      \"24\",\n      \"24\"\n    ],\n    \"1ES\": [\n      \"58\",\n      \"30\",\n      \"24\",\n      \"63\",\n      \"73\",\n      \"34\",\n      \"15\",\n      \"96\",\n      \"55\"\n    ],\n    \"2ES\": [\n      \"40\",\n      \"48\",\n      \"36\",\n      \"52\",\n      \"56\",\n      \"59\",\n      \"140\",\n      \"63\",\n      \"47\",\n      \"59\",\n      \"46\",\n      \"51\",\n      \"58\",\n      \"48\",\n      \"63\",\n      \"78\"\n    ],\n    \"MAN\": [\n      \"15\"\n    ],\n    \"PS2\": [\n      \"7\"\n    ],\n    \"JSA\": [\n      \"18\",\n      \"24\",\n      \"17\",\n      \"24\",\n      \"15\",\n      \"27\",\n      \"26\",\n      \"35\",\n      \"27\",\n      \"43\",\n      \"23\",\n      \"24\",\n      \"33\",\n      \"15\",\n      \"63\",\n      \"10\",\n      \"18\",\n      \"28\",\n      \"51\",\n      \"9\",\n      \"45\",\n      \"34\",\n      \"16\",\n      \"33\"\n    ],\n    \"JDB\": [\n      \"36\",\n      \"23\",\n      \"31\",\n      \"24\",\n      \"31\",\n      \"40\",\n      \"25\",\n      \"35\",\n      \"57\",\n      \"18\",\n      \"40\",\n      \"15\",\n      \"25\",\n      \"20\",\n      \"20\",\n      \"31\",\n      \"13\",\n      \"31\",\n      \"30\",\n      \"48\",\n      \"25\"\n    ],\n    \"TBS\": [\n      \"22\",\n      \"14\",\n      \"17\",\n      \"21\",\n      \"23\",\n      \"19\",\n      \"17\",\n      \"21\",\n      \"6\",\n      \"14\",\n      \"19\",\n      \"22\",\n      \"18\",\n      \"15\"\n    ],\n    \"SST\": [\n      \"64\"\n    ],\n    \"DNT\": [\n      \"21\",\n      \"49\",\n      \"97\",\n      \"37\",\n      \"30\",\n      \"29\",\n      \"28\",\n      \"27\",\n      \"27\",\n      \"21\",\n      \"45\",\n      \"13\"\n    ],\n    \"BLT\": [\n      \"42\"\n    ],\n    \"DAG\": [\n      \"21\",\n      \"49\",\n      \"97\",\n      \"37\",\n      \"31\",\n      \"28\",\n      \"28\",\n      \"27\",\n      \"27\",\n      \"21\",\n      \"45\",\n      \"13\",\n      \"64\",\n      \"42\"\n    ],\n    \"LAO\": [\n      \"20\"\n    ]\n  },\n  \"mappedVerses\": {\n    \"GEN 31:55\": \"GEN 32:1\",\n    \"GEN 32:1-32\": \"GEN 32:2-33\",\n    \"EXO 8:1-4\": \"EXO 7:26-29\",\n    \"EXO 8:5-32\": \"EXO 8:1-28\",\n    \"EXO 22:1\": \"EXO 21:37\",\n    \"EXO 22:2-31\": \"EXO 22:1-30\",\n    \"LEV 6:1-7\": \"LEV 5:20-26\",\n    \"LEV 6:8-30\": \"LEV 6:1-23\",\n    \"NUM 16:36-50\": \"NUM 17:1-15\",\n    \"NUM 17:1-13\": \"NUM 17:16-28\",\n    \"NUM 29:40\": \"NUM 30:1\",\n    \"NUM 30:1-16\": \"NUM 30:2-17\",\n    \"DEU 12:32\": \"DEU 13:1\",\n    \"DEU 13:1-18\": \"DEU 13:2-19\",\n    \"DEU 22:30\": \"DEU 23:1\",\n    \"DEU 23:1-25\": \"DEU 23:2-26\",\n    \"DEU 29:1\": \"DEU 28:69\",\n    \"DEU 29:2-29\": \"DEU 29:1-28\",\n    \"1SA 20:42\": \"1SA 21:1\",\n    \"1SA 21:1-15\": \"1SA 21:2-16\",\n    \"1SA 23:29\": \"1SA 24:1\",\n    \"1SA 24:1-22\": \"1SA 24:2-23\",\n    \"2SA 18:33\": \"2SA 19:1\",\n    \"2SA 19:1-43\": \"2SA 19:2-44\",\n    \"1KI 4:21-34\": \"1KI 5:1-14\",\n    \"1KI 5:1-18\": \"1KI 5:15-32\",\n    \"1KI 22:43-53\": \"1KI 22:44-54\",\n    \"2KI 11:21\": \"2KI 12:1\",\n    \"2KI 12:1-21\": \"2KI 12:2-22\",\n    \"1CH 6:1-15\": \"1CH 5:27-41\",\n    \"1CH 6:16-81\": \"1CH 6:1-66\",\n    \"1CH 12:4-40\": \"1CH 12:5-41\",\n    \"2CH 2:1\": \"2CH 1:18\",\n    \"2CH 2:2-18\": \"2CH 2:1-17\",\n    \"2CH 14:1\": \"2CH 13:23\",\n    \"2CH 14:2-15\": \"2CH 14:1-14\",\n    \"NEH 4:1-6\": \"NEH 3:33-38\",\n    \"NEH 4:7-23\": \"NEH 4:1-17\",\n    \"NEH 7:69-73\": \"NEH 7:68-72\",\n    \"NEH 9:38\": \"NEH 10:1\",\n    \"NEH 10:1-39\": \"NEH 10:2-40\",\n    \"JOB 41:1-8\": \"JOB 40:25-32\",\n    \"JOB 41:9-34\": \"JOB 41:1-26\",\n    \"PSA 3:0-8\": \"PSA 3:1-9\",\n    \"PSA 4:0-8\": \"PSA 4:1-9\",\n    \"PSA 5:0-12\": \"PSA 5:1-13\",\n    \"PSA 6:0-10\": \"PSA 6:1-11\",\n    \"PSA 7:0-17\": \"PSA 7:1-18\",\n    \"PSA 8:0-9\": \"PSA 8:1-10\",\n    \"PSA 9:0-20\": \"PSA 9:1-21\",\n    \"PSA 12:0-8\": \"PSA 12:1-9\",\n    \"PSA 13:0-5\": \"PSA 13:1-6\",\n    \"PSA 18:0-50\": \"PSA 18:1-51\",\n    \"PSA 19:0-14\": \"PSA 19:1-15\",\n    \"PSA 20:0-9\": \"PSA 20:1-10\",\n    \"PSA 21:0-13\": \"PSA 21:1-14\",\n    \"PSA 22:0-31\": \"PSA 22:1-32\",\n    \"PSA 30:0-12\": \"PSA 30:1-13\",\n    \"PSA 31:0-24\": \"PSA 31:1-25\",\n    \"PSA 34:0-22\": \"PSA 34:1-23\",\n    \"PSA 36:0-12\": \"PSA 36:1-13\",\n    \"PSA 38:0-22\": \"PSA 38:1-23\",\n    \"PSA 39:0-13\": \"PSA 39:1-14\",\n    \"PSA 40:0-17\": \"PSA 40:1-18\",\n    \"PSA 41:0-13\": \"PSA 41:1-14\",\n    \"PSA 42:0-11\": \"PSA 42:1-12\",\n    \"PSA 44:0-26\": \"PSA 44:1-27\",\n    \"PSA 45:0-17\": \"PSA 45:1-18\",\n    \"PSA 46:0-11\": \"PSA 46:1-12\",\n    \"PSA 47:0-9\": \"PSA 47:1-10\",\n    \"PSA 48:0-14\": \"PSA 48:1-15\",\n    \"PSA 49:0-20\": \"PSA 49:1-21\",\n    \"PSA 51:0\": \"PSA 51:2\",\n    \"PSA 51:1-19\": \"PSA 51:3-21\",\n    \"PSA 52:0\": \"PSA 52:2\",\n    \"PSA 52:1-9\": \"PSA 52:3-11\",\n    \"PSA 53:0-6\": \"PSA 53:1-7\",\n    \"PSA 54:0\": \"PSA 54:2\",\n    \"PSA 54:1-7\": \"PSA 54:3-9\",\n    \"PSA 55:0-23\": \"PSA 55:1-24\",\n    \"PSA 56:0-13\": \"PSA 56:1-14\",\n    \"PSA 57:0-11\": \"PSA 57:1-12\",\n    \"PSA 58:0-11\": \"PSA 58:1-12\",\n    \"PSA 59:0-17\": \"PSA 59:1-18\",\n    \"PSA 60:0\": \"PSA 60:2\",\n    \"PSA 60:1-12\": \"PSA 60:3-14\",\n    \"PSA 61:0-8\": \"PSA 61:1-9\",\n    \"PSA 62:0-12\": \"PSA 62:1-13\",\n    \"PSA 63:0-11\": \"PSA 63:1-12\",\n    \"PSA 64:0-10\": \"PSA 64:1-11\",\n    \"PSA 65:0-13\": \"PSA 65:1-14\",\n    \"PSA 67:0-7\": \"PSA 67:1-8\",\n    \"PSA 68:0-35\": \"PSA 68:1-36\",\n    \"PSA 69:0-36\": \"PSA 69:1-37\",\n    \"PSA 70:0-5\": \"PSA 70:1-6\",\n    \"PSA 75:0-10\": \"PSA 75:1-11\",\n    \"PSA 76:0-12\": \"PSA 76:1-13\",\n    \"PSA 77:0-20\": \"PSA 77:1-21\",\n    \"PSA 80:0-19\": \"PSA 80:1-20\",\n    \"PSA 81:0-16\": \"PSA 81:1-17\",\n    \"PSA 83:0-18\": \"PSA 83:1-19\",\n    \"PSA 84:0-12\": \"PSA 84:1-13\",\n    \"PSA 85:0-13\": \"PSA 85:1-14\",\n    \"PSA 88:0-18\": \"PSA 88:1-19\",\n    \"PSA 89:0-52\": \"PSA 89:1-53\",\n    \"PSA 92:0-15\": \"PSA 92:1-16\",\n    \"PSA 102:0-28\": \"PSA 102:1-29\",\n    \"PSA 108:0-13\": \"PSA 108:1-14\",\n    \"PSA 140:0-13\": \"PSA 140:1-14\",\n    \"PSA 142:0-7\": \"PSA 142:1-8\",\n    \"ECC 5:1\": \"ECC 4:17\",\n    \"ECC 5:2-20\": \"ECC 5:1-19\",\n    \"SNG 6:13\": \"SNG 7:1\",\n    \"SNG 7:1-13\": \"SNG 7:2-14\",\n    \"ISA 9:1\": \"ISA 8:23\",\n    \"ISA 9:2-21\": \"ISA 9:1-20\",\n    \"ISA 64:2-12\": \"ISA 64:1-11\",\n    \"JER 9:1\": \"JER 8:23\",\n    \"JER 9:2-26\": \"JER 9:1-25\",\n    \"EZK 20:45-46\": \"EZK 21:1-2\",\n    \"EZK 20:47\": \"EZK 21:3\",\n    \"EZK 20:48-49\": \"EZK 21:4-5\",\n    \"EZK 21:1-32\": \"EZK 21:6-37\",\n    \"DAN 4:1-3\": \"DAN 3:31-33\",\n    \"DAN 4:4-37\": \"DAN 4:1-34\",\n    \"DAN 5:31\": \"DAN 6:1\",\n    \"DAN 6:1-28\": \"DAN 6:2-29\",\n    \"HOS 1:10-11\": \"HOS 2:1-2\",\n    \"HOS 2:1-23\": \"HOS 2:3-25\",\n    \"HOS 11:12\": \"HOS 12:1\",\n    \"HOS 12:1-14\": \"HOS 12:2-15\",\n    \"HOS 13:16\": \"HOS 14:1\",\n    \"HOS 14:1-9\": \"HOS 14:2-10\",\n    \"JOL 2:28-32\": \"JOL 3:1-5\",\n    \"JOL 3:1-21\": \"JOL 4:1-21\",\n    \"JON 1:17\": \"JON 2:1\",\n    \"JON 2:1-10\": \"JON 2:2-11\",\n    \"MIC 5:1\": \"MIC 4:14\",\n    \"MIC 5:2-15\": \"MIC 5:1-14\",\n    \"NAM 1:15\": \"NAM 2:1\",\n    \"NAM 2:1-13\": \"NAM 2:2-14\",\n    \"ZEC 1:18-21\": \"ZEC 2:1-4\",\n    \"ZEC 2:1-13\": \"ZEC 2:5-17\",\n    \"MAL 4:1-6\": \"MAL 3:19-24\",\n    \"BAR 6:1-73\": \"LJE 1:1-73\",\n    \"DAG 13:1-63\": \"SUS 1:1-63\",\n    \"DAG 14:1-42\": \"BEL 1:1-42\",\n    \"ESG 1:1\": \"ESG 1:1a\",\n    \"ESG 1:2\": \"ESG 1:1b\",\n    \"ESG 1:3\": \"ESG 1:1c\",\n    \"ESG 1:4\": \"ESG 1:1d\",\n    \"ESG 1:5\": \"ESG 1:1e\",\n    \"ESG 1:6\": \"ESG 1:1f\",\n    \"ESG 1:7\": \"ESG 1:1g\",\n    \"ESG 1:8\": \"ESG 1:1h\",\n    \"ESG 1:9\": \"ESG 1:1i\",\n    \"ESG 1:10\": \"ESG 1:1k\",\n    \"ESG 1:11\": \"ESG 1:1l\",\n    \"ESG 1:12\": \"ESG 1:1m\",\n    \"ESG 1:13\": \"ESG 1:1n\",\n    \"ESG 1:14\": \"ESG 1:1o\",\n    \"ESG 1:15\": \"ESG 1:1p\",\n    \"ESG 1:16\": \"ESG 1:1q\",\n    \"ESG 1:17\": \"ESG 1:1r\",\n    \"ESG 1:18\": \"ESG 1:1s\",\n    \"ESG 1:19-39\": \"ESG 1:2-22\",\n    \"ESG 3:14\": \"ESG 3:13a\",\n    \"ESG 3:15\": \"ESG 3:13b\",\n    \"ESG 3:16\": \"ESG 3:13c\",\n    \"ESG 3:17\": \"ESG 3:13d\",\n    \"ESG 3:18\": \"ESG 3:13e\",\n    \"ESG 3:19\": \"ESG 3:13f\",\n    \"ESG 3:20\": \"ESG 3:13g\",\n    \"ESG 3:21\": \"ESG 3:14\",\n    \"ESG 3:22\": \"ESG 3:15\",\n    \"ESG 4:18\": \"ESG 4:17a\",\n    \"ESG 4:19\": \"ESG 4:17b\",\n    \"ESG 4:20\": \"ESG 4:17c\",\n    \"ESG 4:21\": \"ESG 4:17c\",\n    \"ESG 4:22\": \"ESG 4:17d\",\n    \"ESG 4:23\": \"ESG 4:17d\",\n    \"ESG 4:24\": \"ESG 4:17e\",\n    \"ESG 4:25\": \"ESG 4:17f\",\n    \"ESG 4:26\": \"ESG 4:17g\",\n    \"ESG 4:27\": \"ESG 4:17h\",\n    \"ESG 4:28\": \"ESG 4:17i\",\n    \"ESG 4:29\": \"ESG 4:17k\",\n    \"ESG 4:30\": \"ESG 4:17k\",\n    \"ESG 4:31\": \"ESG 4:17k\",\n    \"ESG 4:32\": \"ESG 4:17l\",\n    \"ESG 4:33\": \"ESG 4:17m\",\n    \"ESG 4:34\": \"ESG 4:17n\",\n    \"ESG 4:35\": \"ESG 4:17n\",\n    \"ESG 4:36\": \"ESG 4:17o\",\n    \"ESG 4:37\": \"ESG 4:17o\",\n    \"ESG 4:38\": \"ESG 4:17p\",\n    \"ESG 4:39\": \"ESG 4:17q\",\n    \"ESG 4:40\": \"ESG 4:17r\",\n    \"ESG 4:41\": \"ESG 4:17s\",\n    \"ESG 4:42\": \"ESG 4:17t\",\n    \"ESG 4:43\": \"ESG 4:17u\",\n    \"ESG 4:44\": \"ESG 4:17w\",\n    \"ESG 4:45\": \"ESG 4:17x\",\n    \"ESG 4:46\": \"ESG 4:17y\",\n    \"ESG 4:47\": \"ESG 4:17z\",\n    \"ESG 5:2\": \"ESG 5:1a\",\n    \"ESG 5:3\": \"ESG 5:1a\",\n    \"ESG 5:4\": \"ESG 5:1a\",\n    \"ESG 5:5\": \"ESG 5:1b\",\n    \"ESG 5:6\": \"ESG 5:1c\",\n    \"ESG 5:7\": \"ESG 5:1d\",\n    \"ESG 5:8\": \"ESG 5:1e\",\n    \"ESG 5:9\": \"ESG 5:1f\",\n    \"ESG 5:10\": \"ESG 5:1f\",\n    \"ESG 5:11\": \"ESG 5:2\",\n    \"ESG 5:12\": \"ESG 5:2\",\n    \"ESG 5:13\": \"ESG 5:2a\",\n    \"ESG 5:14\": \"ESG 5:2a\",\n    \"ESG 5:15\": \"ESG 5:2b\",\n    \"ESG 5:16\": \"ESG 5:2b\",\n    \"ESG 5:17-28\": \"ESG 5:3-14\",\n    \"ESG 8:13\": \"ESG 8:12a\",\n    \"ESG 8:14\": \"ESG 8:12b\",\n    \"ESG 8:15\": \"ESG 8:12c\",\n    \"ESG 8:16\": \"ESG 8:12d\",\n    \"ESG 8:17\": \"ESG 8:12e\",\n    \"ESG 8:18\": \"ESG 8:12f\",\n    \"ESG 8:19\": \"ESG 8:12g\",\n    \"ESG 8:20\": \"ESG 8:12h\",\n    \"ESG 8:21\": \"ESG 8:12i\",\n    \"ESG 8:22\": \"ESG 8:12k\",\n    \"ESG 8:23\": \"ESG 8:12l\",\n    \"ESG 8:24\": \"ESG 8:12m\",\n    \"ESG 8:25\": \"ESG 8:12n\",\n    \"ESG 8:26\": \"ESG 8:12o\",\n    \"ESG 8:27\": \"ESG 8:12p\",\n    \"ESG 8:28\": \"ESG 8:12q\",\n    \"ESG 8:29\": \"ESG 8:12r\",\n    \"ESG 8:30\": \"ESG 8:12s\",\n    \"ESG 8:31\": \"ESG 8:12t\",\n    \"ESG 8:32\": \"ESG 8:12u\",\n    \"ESG 8:33\": \"ESG 8:12x\",\n    \"ESG 8:34\": \"ESG 8:12y\",\n    \"ESG 8:35\": \"ESG 8:12y\",\n    \"ESG 8:36\": \"ESG 8:12y\",\n    \"ESG 8:37-41\": \"ESG 8:13-17\",\n    \"ESG 10:4\": \"ESG 10:3a\",\n    \"ESG 10:5\": \"ESG 10:3b\",\n    \"ESG 10:6\": \"ESG 10:3c\",\n    \"ESG 10:7\": \"ESG 10:3d\",\n    \"ESG 10:8\": \"ESG 10:3e\",\n    \"ESG 10:9\": \"ESG 10:3f\",\n    \"ESG 10:10\": \"ESG 10:3g\",\n    \"ESG 10:11\": \"ESG 10:3h\",\n    \"ESG 10:12\": \"ESG 10:3i\",\n    \"ESG 10:13\": \"ESG 10:3k\",\n    \"ESG 10:14\": \"ESG 10:3l\",\n    \"S3Y 1:1-29\": \"DAG 3:24-52\",\n    \"S3Y 1:30-31\": \"DAG 3:52-53\",\n    \"S3Y 1:33\": \"DAG 3:54\",\n    \"S3Y 1:32\": \"DAG 3:55\",\n    \"S3Y 1:34-35\": \"DAG 3:56-57\",\n    \"S3Y 1:37\": \"DAG 3:58\",\n    \"S3Y 1:36\": \"DAG 3:59\",\n    \"S3Y 1:38-68\": \"DAG 3:60-90\"\n  },\n  \"excludedVerses\": [],\n  \"partialVerses\": {}\n}",
+            "name": "eng"
+          }
+        }
+      },
+      "heads": [
+        "03edc720a779e163a855ba82218543684fb210757e708728d2252958b69ea72d"
+      ],
+      "history": [
+        "03edc720a779e163a855ba82218543684fb210757e708728d2252958b69ea72d"
+      ]
+    }
+  ],
+  "conflicts": [],
+  "carried": [],
+  "anomalies": []
+}

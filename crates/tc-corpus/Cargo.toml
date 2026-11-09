@@ -23,6 +23,16 @@ ring.workspace = true
 sha2.workspace = true
 # foldbench reads files on the worker pool the fold itself uses, as an open does.
 rayon.workspace = true
+# The capsule generator and the capsule tests (docs/STORAGE.md §12.3, #865) write and open
+# sample projects through the real store, exchange them by file, and seed an OBS project.
+tc-store = { path = "../tc-store", features = ["test-hooks"] }
+tc-sync = { path = "../tc-sync" }
+tc-obs = { path = "../tc-obs" }
+# A teammate's carried file is a blob in the project's object database, as a receive leaves it.
+git2.workspace = true
+# The exchange by file is async.
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros"] }
+tempfile.workspace = true
 
 [lints]
 workspace = true

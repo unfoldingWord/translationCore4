@@ -31,6 +31,12 @@ Luke 1:1 and 1:2 bridged as `1-2` in the text and in the alignment data, as tC3 
 (translationCore `src/js/helpers/WordAlignmentHelpers.js`, `convertAlignmentDataToUSFM`, reads
 the alignment and the verse by one key, `1-2`). Made by `make_bridged.py` in that folder.
 
+## `capsules/`
+
+The sample projects of each frozen format version (`docs/STORAGE.md` §12.3, P10), one folder per
+version, with a lock and an expectation per capsule. Read `capsules/README.md`. Never edited:
+a test fails when a byte moves.
+
 ## `obs/`
 
 What tC4's own OBS code answers, for `tc-obs`. Read `obs/README.md`.

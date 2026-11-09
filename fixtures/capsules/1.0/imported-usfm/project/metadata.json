@@ -1,0 +1,141 @@
+{
+  "confidential": false,
+  "copyright": {
+    "shortStatements": [
+      {
+        "statement": "Not stated"
+      }
+    ]
+  },
+  "format": "scripture burrito",
+  "idAuthorities": {
+    "local": {
+      "id": "http://_local_",
+      "name": {
+        "en": "Local Project"
+      }
+    }
+  },
+  "identification": {
+    "abbreviation": {
+      "en": "tff"
+    },
+    "name": {
+      "en": "Titus from a file"
+    },
+    "primary": {
+      "local": {
+        "tff": {
+          "revision": "1",
+          "timestamp": "2026-10-17T00:00:00.000Z"
+        }
+      }
+    }
+  },
+  "ingredients": {
+    "ingredients/TIT.usfm": {
+      "checksum": {
+        "md5": "7b540078edf56dad5731a9c093c9b175"
+      },
+      "mimeType": "text/plain",
+      "scope": {
+        "TIT": []
+      },
+      "size": 5771
+    },
+    "ingredients/checking/alignments/TIT.json": {
+      "checksum": {
+        "md5": "03ce556a9725a9eea9fdb38b28ce8cbc"
+      },
+      "mimeType": "application/json",
+      "role": "x-alignment",
+      "scope": {
+        "TIT": []
+      },
+      "size": 147171
+    },
+    "ingredients/checking/settings.json": {
+      "checksum": {
+        "md5": "233324635d8599245122ffbf77745c3e"
+      },
+      "mimeType": "application/json",
+      "role": "x-check-settings",
+      "size": 25
+    },
+    "ingredients/tc/changes/daf3cp3ubvmyebu5swg3oks4o7q/2026-10/2f4c6288b666f59b8e09ce362c090768.ndjson": {
+      "checksum": {
+        "md5": "ad45a9c5032822e1ecad6af245ccc269"
+      },
+      "mimeType": "application/octet-stream",
+      "role": "x-tc-changes",
+      "size": 4184
+    },
+    "ingredients/tc/changes/daf3cp3ubvmyebu5swg3oks4o7q/2026-10/faca981a2b398902792a6027853b4014.ndjson": {
+      "checksum": {
+        "md5": "f8cd4db850f184683891815ad879b387"
+      },
+      "mimeType": "application/octet-stream",
+      "role": "x-tc-changes",
+      "size": 227144
+    },
+    "ingredients/tc/format.json": {
+      "checksum": {
+        "md5": "cf3c4185e4f3a7e0da9d8a22262491bd"
+      },
+      "mimeType": "application/json",
+      "role": "x-tc-project",
+      "size": 435
+    },
+    "ingredients/tc/project.json": {
+      "checksum": {
+        "md5": "584aee0026ec0bf3cf4483eaf9d77aa3"
+      },
+      "mimeType": "application/json",
+      "role": "x-tc-project",
+      "size": 123
+    },
+    "ingredients/vrs.json": {
+      "checksum": {
+        "md5": "dd0169fcd7e229933ef72c21b202c903"
+      },
+      "mimeType": "application/json",
+      "size": 27681
+    }
+  },
+  "languages": [
+    {
+      "name": {
+        "en": "English"
+      },
+      "scriptDirection": "ltr",
+      "tag": "en"
+    }
+  ],
+  "localizedNames": {},
+  "meta": {
+    "category": "source",
+    "dateCreated": "2026-10-17T00:00:00.000Z",
+    "defaultLocale": "en",
+    "generator": {
+      "softwareName": "translationCore",
+      "softwareVersion": "tc-project-1.0"
+    },
+    "normalization": "NFC",
+    "version": "1.0.0"
+  },
+  "type": {
+    "flavorType": {
+      "currentScope": {
+        "TIT": []
+      },
+      "flavor": {
+        "audience": "common",
+        "name": "textTranslation",
+        "projectType": "standard",
+        "translationType": "firstTranslation",
+        "usfmVersion": "3.0"
+      },
+      "name": "scripture"
+    }
+  }
+}

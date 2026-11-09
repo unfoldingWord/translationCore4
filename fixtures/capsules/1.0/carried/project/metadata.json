@@ -1,0 +1,151 @@
+{
+  "confidential": false,
+  "copyright": {
+    "shortStatements": [
+      {
+        "statement": "Not stated"
+      }
+    ]
+  },
+  "format": "scripture burrito",
+  "idAuthorities": {
+    "local": {
+      "id": "http://_local_",
+      "name": {
+        "en": "Local Project"
+      }
+    }
+  },
+  "identification": {
+    "abbreviation": {
+      "en": "twr"
+    },
+    "name": {
+      "en": "Titus with recordings"
+    },
+    "primary": {
+      "local": {
+        "twr": {
+          "revision": "1",
+          "timestamp": "2026-10-17T00:00:00.000Z"
+        }
+      }
+    }
+  },
+  "ingredients": {
+    "ingredients/TIT.usfm": {
+      "checksum": {
+        "md5": "a808f8220b348edc78d325f23c30c198"
+      },
+      "mimeType": "text/plain",
+      "scope": {
+        "TIT": []
+      },
+      "size": 576
+    },
+    "ingredients/audio/Intro.mp3": {
+      "checksum": {
+        "md5": "a216503cb86d01a23e71e047d4ccf001"
+      },
+      "mimeType": "audio/mpeg",
+      "size": 3000
+    },
+    "ingredients/audio/intro.case-55de0cfe.mp3": {
+      "checksum": {
+        "md5": "6b9353e180962a4c5c71b4566fe58eb3"
+      },
+      "mimeType": "audio/mpeg",
+      "size": 42
+    },
+    "ingredients/checking/settings.json": {
+      "checksum": {
+        "md5": "233324635d8599245122ffbf77745c3e"
+      },
+      "mimeType": "application/json",
+      "role": "x-check-settings",
+      "size": 25
+    },
+    "ingredients/notes/README.txt": {
+      "checksum": {
+        "md5": "a6e8592a18bdf57df5f94a8ae2206e88"
+      },
+      "mimeType": "text/plain",
+      "size": 38
+    },
+    "ingredients/tc/changes/dah5miekyetxtznmyhuaicu6t5u/2026-10/65d25895c60b46a9dd56578cc0e0cec1.ndjson": {
+      "checksum": {
+        "md5": "12c89b3da3edacbbac1a2b05184e2406"
+      },
+      "mimeType": "application/octet-stream",
+      "role": "x-tc-changes",
+      "size": 627
+    },
+    "ingredients/tc/changes/dah5miekyetxtznmyhuaicu6t5u/2026-10/e24cc119358c7c2746ad01116f0286da.ndjson": {
+      "checksum": {
+        "md5": "5b4ac45aca0cc748d2bdd6dda397d3ce"
+      },
+      "mimeType": "application/octet-stream",
+      "role": "x-tc-changes",
+      "size": 56207
+    },
+    "ingredients/tc/format.json": {
+      "checksum": {
+        "md5": "cf3c4185e4f3a7e0da9d8a22262491bd"
+      },
+      "mimeType": "application/json",
+      "role": "x-tc-project",
+      "size": 435
+    },
+    "ingredients/tc/project.json": {
+      "checksum": {
+        "md5": "30470ce3abe58ccb5a76dfcbefae0b6a"
+      },
+      "mimeType": "application/json",
+      "role": "x-tc-project",
+      "size": 123
+    },
+    "ingredients/vrs.json": {
+      "checksum": {
+        "md5": "dd0169fcd7e229933ef72c21b202c903"
+      },
+      "mimeType": "application/json",
+      "size": 27681
+    }
+  },
+  "languages": [
+    {
+      "name": {
+        "en": "English"
+      },
+      "scriptDirection": "ltr",
+      "tag": "en"
+    }
+  ],
+  "localizedNames": {},
+  "meta": {
+    "category": "source",
+    "dateCreated": "2026-10-17T00:00:00.000Z",
+    "defaultLocale": "en",
+    "generator": {
+      "softwareName": "translationCore",
+      "softwareVersion": "tc-project-1.0"
+    },
+    "normalization": "NFC",
+    "version": "1.0.0"
+  },
+  "type": {
+    "flavorType": {
+      "currentScope": {
+        "TIT": []
+      },
+      "flavor": {
+        "audience": "common",
+        "name": "textTranslation",
+        "projectType": "standard",
+        "translationType": "firstTranslation",
+        "usfmVersion": "3.0"
+      },
+      "name": "scripture"
+    }
+  }
+}
