@@ -123,8 +123,6 @@ pub fn arb_kind() -> impl Strategy<Value = DeviceKind> {
         DeviceKind::Local,
         DeviceKind::Tc4Actor,
         DeviceKind::Tc3User,
-        DeviceKind::Door43Edit,
-        DeviceKind::ExchangeEdit,
         DeviceKind::Importer,
     ])
 }
@@ -702,19 +700,8 @@ pub fn arb_record() -> impl Strategy<Value = Record> {
 }
 
 pub fn arb_cause() -> impl Strategy<Value = Cause> {
-    let source = prop_oneof![
-        (arb_carried_path(), arb_md5())
-            .prop_map(|(path, seen_md5)| ExternalSource::LocalFile { path, seen_md5 }),
-        (arb_oid(), arb_carried_path(), arb_text()).prop_map(|(commit, path, author)| {
-            ExternalSource::Door43 {
-                commit,
-                path,
-                author: author.into(),
-            }
-        }),
-        (arb_carried_path(), prop::option::of(arb_device()))
-            .prop_map(|(path, exporter)| ExternalSource::ExchangeFile { path, exporter }),
-    ];
+    let source = (arb_carried_path(), arb_md5())
+        .prop_map(|(path, seen_md5)| ExternalSource::LocalFile { path, seen_md5 });
     let import = prop_oneof![
         (arb_text(), arb_text(), arb_text()).prop_map(|(a, t, o)| ImportSource::Tc4 {
             actor: a.into(),

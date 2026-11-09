@@ -129,11 +129,9 @@ pub enum DeviceKind {
     Tc4Actor = 2,
     /// A tC3 user: sha256("tc3-user\0" ‖ projectId ‖ userName)[..15].
     Tc3User = 3,
-    /// One file edited in one Door43 commit: sha256("door43-edit\0" ‖ commit oid ‖ path)[..15].
-    Door43Edit = 4,
-    /// One file edited inside one exchange file: sha256("exchange-edit\0" ‖ md5 of the
-    /// file's metadata.json ‖ path)[..15].
-    ExchangeEdit = 5,
+    // 4 (`Door43Edit`) and 5 (`ExchangeEdit`) were retired before the 1.0 freeze (#865): such
+    // edits are unsupported (rulings H18, H22) and no build ever wrote one. The bytes are never
+    // reused.
     /// Deterministic import changes such as the tC4 reconcile:
     /// sha256("import\0" ‖ kind ‖ projectId)[..15].
     Importer = 6,
@@ -145,8 +143,6 @@ impl DeviceKind {
             1 => Self::Local,
             2 => Self::Tc4Actor,
             3 => Self::Tc3User,
-            4 => Self::Door43Edit,
-            5 => Self::ExchangeEdit,
             6 => Self::Importer,
             _ => return None,
         })

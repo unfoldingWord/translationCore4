@@ -132,12 +132,8 @@ pub enum DeviceKind {
     Tc4Actor = 2,
     /// A tC3 user: sha256("tc3-user\0" ‖ projectId ‖ userName)[..15].
     Tc3User = 3,
-    /// One file edited in one Door43 commit: sha256("door43-edit\0" ‖ commit oid ‖ path)[..15].
-    /// Not written since 2026-10-22 (§11.2); removable before the freeze (§12.2).
-    Door43Edit = 4,
-    /// One file edited inside one exchange file: sha256("exchange-edit\0" ‖ md5 of the file's
-    /// metadata.json ‖ path)[..15]. Not written since 2026-10-22 (§11.3); removable before the freeze.
-    ExchangeEdit = 5,
+    // 4 (`Door43Edit`) and 5 (`ExchangeEdit`) left the format before the 1.0 freeze (§12.2,
+    // #865): no build ever wrote one; the bytes are never reused.
     /// Deterministic import changes such as the tC4 reconcile: sha256("import\0" ‖ kind ‖ projectId)[..15].
     Importer = 6,
 }
@@ -571,17 +567,15 @@ pub enum Cause {
     /// read, never written.
     Newer { name: Box<str> },
 }
-/// `Door43` and `ExchangeFile` are not written since 2026-10-22 (§11.2, §11.3).
+/// `Door43` and `ExchangeFile` left the format before the 1.0 freeze (§12.2, #865).
 pub enum ExternalSource {
     LocalFile { path: RepoPath, seen_md5: Md5 },
-    Door43 { commit: GitOid, path: RepoPath, author: Box<str> },
-    ExchangeFile { path: RepoPath, exporter: Option<DeviceId> },
 }
 pub enum ImportSource {
     Tc4 { actor: Box<str>, ts: Box<str>, op: Box<str> },
     Tc4Reconcile,
     Tc3 { user: Option<Box<str>> },
-    Usfm { file_name: Box<str> },
+    Usfm { file_name: Box<str>, unknown_base: bool },
     Burrito { file_name: Box<str> },
 }
 pub enum SystemReason { PinCoverageBackfill }
@@ -983,8 +977,8 @@ it again.
 | `CarriedValue` | `{"present": {"md5", "oid", "size"}}`, `{"removed": {}}` |
 | `BatchReleaseValue` | `{"changes": [..]}` (sorted, no repeats) |
 | `Cause` | `{"edit": {}}`, `{"resolve": {}}`, `{"restore": {"from"}}`, `{"carryOver": {"group"}}`, `{"external": {"source", "unknownBase"}}`, `{"import": <ImportSource>}`, `{"seed": {}}`, `{"startOver": {}}`, `{"system": "pinCoverageBackfill"}` |
-| `ExternalSource` | `{"localFile": {"path", "seenMd5"}}`, `{"door43": {"author", "commit", "path"}}`, `{"exchangeFile": {"exporter"?, "path"}}` |
-| `ImportSource` | `{"tc4": {"actor", "op", "ts"}}`, `{"tc4Reconcile": {}}`, `{"tc3": {"user"?}}`, `{"usfm": {"fileName"}}`, `{"burrito": {"fileName"}}` |
+| `ExternalSource` | `{"localFile": {"path", "seenMd5"}}` (`door43` and `exchangeFile` left the format before the freeze, §12.2) |
+| `ImportSource` | `{"tc4": {"actor", "op", "ts"}}`, `{"tc4Reconcile": {}}`, `{"tc3": {"user"?}}`, `{"usfm": {"fileName", "unknownBase"?}}` (`unknownBase` written only when true), `{"burrito": {"fileName"}}` |
 | identifiers | `ChangeId` 64 hex; `ShortId`, `BatchId`, `CommentId`, `Md5`, `PackName` 32 hex; `GitOid` 40 hex; `DeviceId` `d` + 26 base32, whose unused bits are zero; `BookId` its upper-case USFM code; `ProjectId` lowercase hyphenated; numbers as integers (`ChapterNo`, `VerseNo` 1–65,535, `StoryNo` 1–50, `FrameNo` 0–65,535, `WallTime` an `i64`, `DeviceSeq` a `u64`) |
 
 ---
@@ -4345,8 +4339,8 @@ Door43's history." To use it, a person downloads the file and runs "Update a boo
 was deleted on Door43 by jdoe; translationCore kept it". Nothing is lost: every such version
 stays in Door43's history.
 
-The device kind `Door43Edit` and `ExternalSource::Door43` are no longer written; they can leave
-the format before the freeze (§12.2).
+The device kind `Door43Edit` and `ExternalSource::Door43` left the format before the freeze
+(§12.2, #865): a line holding one is quarantined like any unknown variant.
 
 ### 11.3 A file edited inside an exchange file
 
@@ -4358,7 +4352,7 @@ hand. The receiving app keeps its own text and says once (§10.2 R6, `OutsideToo
 the file on the stick still has it." Nothing is kept as a copy in this project and nothing is
 offered for import; the exchange file is never changed, so nothing is lost. An entry whose size
 or CRC fails is never compared (§10.2 R4). The device kind `ExchangeEdit` and
-`ExternalSource::ExchangeFile` are no longer written (§12.2).
+`ExternalSource::ExchangeFile` left the format before the freeze (§12.2, #865).
 
 ### 11.4 Carried files
 
@@ -4553,22 +4547,50 @@ open repairs it (O4) and sync uses the local one (N1).
    meaning of an existing kind, field or rule, the canonical encoding, or the line framing. An
    existing kind is never reinterpreted.
 
-**Before the 1.0 freeze** (the format is not frozen, H9), these go into 1.0 with no minor raise
-(rulings of 2026-10-21 and 2026-10-22, applied 2026-10-23): "Update a book" writes
-`Import(Usfm { file_name })`; `ImportSource::Markdown { file_name }` is added for a story; the
-import cause carries an `unknown_base` mark, ranked 0 by `CauseClass::rank`, so a change an
-import makes with no parents is never provisional (§13.6 U3). `Cause::External { source:
-LocalFile }` is written only for a carried file's version (§11.4); `ExternalSource::Door43`,
-`ExchangeFile` and the device kinds `Door43Edit` = 4 and `ExchangeEdit` = 5 are no longer
-written, and V removes them before the freeze if no frozen sample project holds one. The pending
-header `reconciles {path, seenMd5}` keeps a narrower meaning (§4.2). The carried-versions reference is no
-longer written (§9.8). `.tc/materialized.json` (local, pinned by V): `held` loses its cause, a
-manifest from a development build that says `damage` opens as a held change and is asked
-about, `kept` is added, and the meaning of `Writing.old` changes while its bytes do not.
-`.tc/heads/*.bin` keeps the same bytes and also the heads of the bases `kept` entries name. Fold
-notices: `OutsideEditHeld` means "book changed outside, waiting", `GeneratedFileRewritten` is
-the one notice for any rewritten generated file (§2.6); none is stored in the project.
-`format.json` `derivedPaths` does not change.
+**Before the 1.0 freeze** (the format is not frozen, H9), the items the 2026-10-21 delta listed
+for 1.0 were settled on 2026-11-08 (#865, step 3 of the freeze; the test
+`format_1_0_holds_the_settled_items` holds the byte-level ones), each with no minor raise:
+
+- **Import causes.** "Update a book" writes `Import(Usfm { file_name, unknown_base })`
+  (`tc-store/src/commands.rs`, `tc-journal/src/outside.rs`); `unknown_base` ranks 0 in
+  `CauseClass::rank`, so a change an import makes with no parents is never provisional (§13.6
+  U3; `outside_edit_without_base_is_never_provisional`). `ImportSource::Markdown` is **not in the
+  format yet**: "Update a story from Markdown" has no backend, so nothing fixes its fields, and a
+  story taken in from a kept Markdown copy is recorded today as `External { LocalFile }` like
+  any outside edit. The row is **deferred, with two exits**: the variant is added when that
+  backend lands, or the owner is asked at the freeze (step 8, H9) to go without it, in which
+  case a later minor adds it and older apps read such a project read-only (rule 7).
+- **Outside sources.** `Cause::External { source: LocalFile }` stays: the delta's "no longer
+  written" was never built, and it is the cause of every outside edit the app records (§11.1,
+  `plan_outside_edit` in `tc-journal/src/outside.rs`, reached from the open, from taking a held
+  file in and from importing a kept story copy) and of a carried file's version (§11.4,
+  `tc-store/src/carried.rs`); only "Update a book" replaces it with `Import(Usfm)`.
+  `ExternalSource::Door43`, `ExchangeFile` and the device kinds `Door43Edit` = 4 and
+  `ExchangeEdit` = 5 **left the format**: such edits are unsupported (rulings H18 and H22), and
+  no build ever wrote one (`git log -S` finds only their definitions and the screens' match
+  arms, and `v4.1.0-preview` constructs none), so no project holds one. A line holding one is
+  quarantined like any unknown variant; bytes 4 and 5 are never reused. The fold cache's probe
+  changed with them, so `INDEX_VERSION` is 7 and every project rebuilds its cache once at its
+  next open: the "cold open with no usable fold cache" row of `docs/PERFORMANCE.md` is the
+  budget for that open.
+- **Pending header.** `reconciles {path, seenMd5}` keeps its shape with the narrower meaning of
+  §4.2. Which paths a reader accepts is a reader rule, not a byte form: on main the app still
+  writes a `reconciles` header for a `metadata.json` edit it takes in (`tc-store/src/outside.rs`,
+  `OutsideFile::Metadata`) and still reads one (`canon.rs` `req_source_path`), against the
+  sentence of §4.2; that mismatch does not gate the freeze.
+- **Carried files.** `CarriedFile` keeps its bytes (§2.14). `refs/tc/carried` lives in `.git`,
+  outside the project and never exchanged, so it is no part of the format whether or not a
+  build writes it (`tc-store/src/checkpoint.rs` `keep_carried_versions` does).
+- **`.tc/materialized.json`** (local, pinned by the freeze): `kept` is there (`manifest.rs`);
+  `held` **keeps its cause for now** (`edit` or `damage`, `ledger.rs`): the delta's removal (S3)
+  was never built, and it would change how a changed file is classified (ledger row R10), not
+  only its bytes. Whether S3 lands before the freeze or the freeze pins today's manifest is the
+  owner's question in #865's notes; the pins of the freeze (step 4) wait for that answer. Both
+  values read in every version. The meaning of `Writing.old` changes while its bytes do not.
+- **`.tc/heads/*.bin`** keeps the same bytes and also the heads of the bases `kept` entries name.
+- **Fold notices** are not stored in the project, so they are outside the format; the names
+  (`StorageDamage`, `OutsideEditHeld`, `MetadataEditedOutside`, `fold.rs`) may change freely.
+- **`format.json`** does not change (`format-1.0.json`).
 
 ---
 

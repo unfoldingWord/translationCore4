@@ -1782,35 +1782,13 @@ impl Wire for ExternalSource {
                 "localFile",
                 Out::new().f("path", path).f("seenMd5", seen_md5).done(),
             ),
-            Self::Door43 {
-                commit,
-                path,
-                author,
-            } => variant(
-                "door43",
-                Out::new()
-                    .f("author", author)
-                    .f("commit", commit)
-                    .f("path", path)
-                    .done(),
-            ),
-            Self::ExchangeFile { path, exporter } => variant(
-                "exchangeFile",
-                Out::new()
-                    .o("exporter", exporter.as_ref())
-                    .f("path", path)
-                    .done(),
-            ),
         }
     }
 
     fn from_json(j: View<'_>, cx: Cx) -> R<Self> {
-        let (name, inner) = known_member(
-            j,
-            cx,
-            "outside source",
-            &["localFile", "door43", "exchangeFile"],
-        )?;
+        // `door43` and `exchangeFile` were members before the 1.0 freeze and are unknown
+        // now (`ExternalSource`): a line holding one is quarantined like any unknown variant.
+        let (name, inner) = known_member(j, cx, "outside source", &["localFile"])?;
         let read = || -> R<Self> {
             let mut o = In::new(inner, cx)?;
             let value = match name {
@@ -1819,15 +1797,6 @@ impl Wire for ExternalSource {
                         RepoPath::parse_source(string(j)?).map_err(DecodeError::identity)
                     })?,
                     seen_md5: o.req("seenMd5")?,
-                },
-                "door43" => Self::Door43 {
-                    author: o.req("author")?,
-                    commit: o.req("commit")?,
-                    path: o.req("path")?,
-                },
-                "exchangeFile" => Self::ExchangeFile {
-                    exporter: o.opt("exporter")?,
-                    path: o.req("path")?,
                 },
                 other => return Err(unknown(cx, "outside source", other)),
             };

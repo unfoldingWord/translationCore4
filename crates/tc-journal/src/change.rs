@@ -3,7 +3,7 @@
 
 use crate::canon;
 use crate::format::FORMAT_MINOR;
-use crate::ids::{BatchRef, ChangeId, DeviceId, DeviceSeq, GitOid, Md5, RepoPath, WallTime};
+use crate::ids::{BatchRef, ChangeId, DeviceId, DeviceSeq, Md5, RepoPath, WallTime};
 use crate::json;
 use crate::keys::PinGroup;
 use crate::record::Record;
@@ -56,21 +56,13 @@ pub enum Cause {
     Newer { name: Box<str> },
 }
 
+/// Where a file changed outside the app was changed. `Door43` (a commit made with another
+/// tool) and `ExchangeFile` (a file edited inside an exchange file) left the format before the
+/// 1.0 freeze: such edits are unsupported (rulings H18 and H22), no build ever wrote one, and
+/// no project holds one (#865).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExternalSource {
-    LocalFile {
-        path: RepoPath,
-        seen_md5: Md5,
-    },
-    Door43 {
-        commit: GitOid,
-        path: RepoPath,
-        author: Box<str>,
-    },
-    ExchangeFile {
-        path: RepoPath,
-        exporter: Option<DeviceId>,
-    },
+    LocalFile { path: RepoPath, seen_md5: Md5 },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

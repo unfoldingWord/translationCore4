@@ -449,3 +449,59 @@ fn quarantined_changes_keep_their_batch_and_device_when_they_read() {
         (Some(local(7)), Some(DeviceSeq(9)), q.id)
     );
 }
+
+/// INV-FORMAT-SETTLED-BEFORE-FREEZE (#865, STORAGE §12 "Before the 1.0 freeze"): the values
+/// that left the format before the freeze are not in it. An outside source `door43` or
+/// `exchangeFile` no longer reads as a typed change (rulings H18 and H22: such edits are
+/// unsupported, and no build ever wrote one), while `localFile`, the source of every outside
+/// edit the app records (§11.1) and of a carried file's version (§11.4), still does; the
+/// device kind bytes 4 and 5 are no kind, and are never reused.
+#[test]
+fn format_1_0_holds_the_settled_items() {
+    let line = |source: &str| {
+        format!(
+            concat!(
+                r#"{{"at":1760520000000,"batch":{{"id":"{batch}","n":2}},"cause":{{"external":{{"#,
+                r#""source":{{{source}}},"unknownBase":true}}}},"device":"{device}","parents":[],"#,
+                r#""record":{{"verse":{{"book":"TIT","chapter":1,"value":{{"text":{{"last":5,"#,
+                r#""layout":"\n\\p\n","marker":{{"lead":" ","term":"space"}},"words":"Ellos deben"#,
+                r#" enseñar"}}}},"verse":4}}}},"seq":4182,"v":0}}"#
+            ),
+            batch = "6f".repeat(16),
+            device = local(3),
+            source = source,
+        )
+    };
+    let read = |text: String| {
+        let raw: Arc<[u8]> = Arc::from(text.as_bytes());
+        parse_change(ChangeId::of(&raw), raw)
+    };
+    let kept = read(line(
+        r#""localFile":{"path":"ingredients/audio/jon_01.wav","seenMd5":"b83725d6b96baa28a30af52d702b76a9"}"#,
+    ));
+    assert!(
+        matches!(kept, Verified::Change(_)),
+        "INV-FORMAT-SETTLED-BEFORE-FREEZE: a localFile source still reads: {kept:?}"
+    );
+    for removed in [
+        r#""door43":{"author":"jdoe","commit":"abba9cf85291f632ddaa9ed401dffb2dd0894c70","path":"ingredients/TIT.usfm"}"#,
+        r#""exchangeFile":{"path":"ingredients/TIT.usfm"}"#,
+    ] {
+        let gone = read(line(removed));
+        assert!(
+            matches!(gone, Verified::Quarantined(_)),
+            "INV-FORMAT-SETTLED-BEFORE-FREEZE: {removed} left the format before the freeze: {gone:?}"
+        );
+    }
+    for byte in [4u8, 5] {
+        assert_eq!(
+            tc_journal::DeviceKind::from_byte(byte),
+            None,
+            "INV-FORMAT-SETTLED-BEFORE-FREEZE: device kind byte {byte} was retired and is never reused"
+        );
+    }
+    assert_eq!(
+        tc_journal::DeviceKind::from_byte(6),
+        Some(tc_journal::DeviceKind::Importer)
+    );
+}
