@@ -48,7 +48,8 @@ pub use change::{
     SystemReason, Verified, parse_change,
 };
 pub use format::{
-    FORMAT_MAJOR, FORMAT_MINOR, FormatDoc, FormatGate, FormatHeader, FormatJson, FormatNumber,
+    EXCHANGE_COMMENT, EXCHANGE_FORMAT, FORMAT_MAJOR, FORMAT_MINOR, FORMAT_PINS, FormatDoc,
+    FormatGate, FormatHeader, FormatJson, FormatNumber, FormatPins,
 };
 pub use ids::{
     BatchId, BatchRef, ChangeId, ChapterNo, CommentId, DeviceId, DeviceKind, DeviceSeq, FrameNo,

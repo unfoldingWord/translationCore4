@@ -1,7 +1,11 @@
 # Journal fixtures for `tc-journal`
 
 Tests read these files read-only. Regenerate them with the commands below; do not edit the
-generated files by hand.
+generated files by hand. While the current format version is frozen
+(`fixtures/capsules/<version>/FROZEN` exists), `TC_JOURNAL_BLESS` and `TC_WRITE_PROBE` refuse to
+rewrite a sample, and `pinned_bytes_need_a_new_version` (`crates/tc-journal/tests/versioning.rs`)
+fails when one differs from its `FORMAT_PINS` row: a byte change needs a new format version first
+(`docs/STORAGE.md` §12.3).
 
 | File | What it is | How it was made |
 |---|---|---|

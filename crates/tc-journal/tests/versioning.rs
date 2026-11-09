@@ -288,6 +288,7 @@ fn format_json_is_written_in_one_byte_form() {
     let path = fixtures().join("format-1.0.json");
     let bytes = FormatDoc::current().to_bytes();
     if std::env::var_os("TC_JOURNAL_BLESS").is_some() {
+        refuse_bless_if_frozen("TC_JOURNAL_BLESS");
         std::fs::write(&path, &bytes).unwrap();
     }
     assert_eq!(std::fs::read(&path).unwrap(), bytes);
@@ -513,4 +514,201 @@ fn minor_0_derives_the_paths_of_section_12_1() {
     );
     assert_eq!(derived_paths(7), derived_paths(0));
     assert!(PathPattern::parse("").is_none());
+}
+
+// ---------------------------------------------------------------------------------------
+// The freeze (§12.3)
+// ---------------------------------------------------------------------------------------
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::Digest as _;
+    sha2::Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+/// The first line of a journal file: its header.
+fn header_line(bytes: &[u8]) -> &[u8] {
+    let end = bytes.iter().position(|b| *b == b'\n').unwrap();
+    &bytes[..=end]
+}
+
+/// Every pinned byte form of this build, hashed as `FORMAT_PINS` records it: the journal
+/// fixtures, the pack and pending headers of one fixed change, the exchange comment, the
+/// shown tokens of `tokens_have_the_pinned_byte_form_and_key`, and the lock of every capsule
+/// of `version`.
+fn pins_now(version: &str) -> std::collections::BTreeMap<String, String> {
+    let mut pins = std::collections::BTreeMap::new();
+    for name in [
+        "format-1.0.json",
+        "newer-minor.ndjson",
+        "v0-every-kind.ndjson",
+    ] {
+        let bytes = std::fs::read(fixtures().join(name)).unwrap();
+        pins.insert(format!("fixtures/journal/{name}"), sha256_hex(&bytes));
+    }
+    let change = verse_change(local(1), 1, 1, "a");
+    let pack = seal(
+        &PackSpec {
+            project: project(),
+            sealer: local(1),
+            sealed: WallTime(1_760_520_000_000),
+        },
+        std::slice::from_ref(&Verified::Change(change.clone())),
+    )
+    .unwrap();
+    pins.insert(
+        "pack header".into(),
+        sha256_hex(header_line(&pack.packs[0].bytes)),
+    );
+    let pending = encode_pending(
+        &PendingHeader {
+            device: local(1),
+            project: project(),
+            purpose: Purpose::Save,
+            reconciles: None,
+        },
+        &[Verified::Change(change)],
+    )
+    .unwrap();
+    pins.insert(
+        "pending header".into(),
+        sha256_hex(header_line(&pending.bytes)),
+    );
+    pins.insert(
+        "exchange comment".into(),
+        sha256_hex(tc_journal::EXCHANGE_COMMENT.as_bytes()),
+    );
+    let key = tc_journal::TokenKey::derive(&[7; 32], project());
+    let verse = RecordKey::Verse(BookId::Titus, chapter(1), verse_no(4));
+    let tokens = [
+        tc_journal::ShownToken::mint(&key, verse.clone(), [tc_journal::ChangeId::of(b"a")])
+            .unwrap(),
+        tc_journal::ShownToken::mint(&key, RecordKey::Versification, []).unwrap(),
+        tc_journal::ShownToken::mint_review(&key, verse, [tc_journal::ChangeId::of(b"a")]).unwrap(),
+    ];
+    let texts: Vec<String> = tokens.iter().map(|t| t.to_text()).collect();
+    pins.insert(
+        "token byte form".into(),
+        sha256_hex(texts.join("\n").as_bytes()),
+    );
+    let set = capsules().join(version);
+    if let Ok(entries) = std::fs::read_dir(&set) {
+        for entry in entries {
+            let entry = entry.unwrap();
+            let lock = entry.path().join("LOCK.sha256");
+            if lock.is_file() {
+                pins.insert(
+                    format!(
+                        "capsule lock {version}/{}",
+                        entry.file_name().to_string_lossy()
+                    ),
+                    sha256_hex(&std::fs::read(lock).unwrap()),
+                );
+            }
+        }
+    }
+    pins
+}
+
+/// The frozen versions: every capsule set with a `FROZEN` marker, as (major, minor).
+fn frozen_versions() -> Vec<(u16, u16)> {
+    let mut out: Vec<(u16, u16)> = std::fs::read_dir(capsules())
+        .map(|entries| {
+            entries
+                .map(|e| e.unwrap())
+                .filter(|e| e.path().join("FROZEN").is_file())
+                .filter_map(|e| {
+                    let name = e.file_name().to_string_lossy().into_owned();
+                    let (major, minor) = name.split_once('.')?;
+                    Some((major.parse().ok()?, minor.parse().ok()?))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    out.sort_unstable();
+    out
+}
+
+/// A `FORMAT_PINS` row, as Rust source, for a version this build writes.
+fn row_source(major: u16, minor: u16, pins: &std::collections::BTreeMap<String, String>) -> String {
+    let mut out =
+        format!("FormatPins {{\n    major: {major},\n    minor: {minor},\n    pins: &[\n");
+    for (name, hash) in pins {
+        out.push_str(&format!("        ({name:?}, {hash:?}),\n"));
+    }
+    out.push_str("    ],\n}");
+    out
+}
+
+/// INV-PINNED-BYTES-NEED-A-VERSION: every pinned byte form of a frozen version equals its
+/// `FORMAT_PINS` row, and while `FORMAT_MAJOR.FORMAT_MINOR` is a frozen version, a pin that
+/// differs fails until the version is raised, with its own row and capsule set. A version
+/// that is not frozen yet is only reported, with its row ready to paste.
+#[test]
+fn pinned_bytes_need_a_new_version() {
+    let frozen = frozen_versions();
+    let current = (tc_journal::FORMAT_MAJOR, FORMAT_MINOR);
+    let current_name = format!("{}.{}", current.0, current.1);
+    let now = pins_now(&current_name);
+    if !frozen.contains(&current) {
+        eprintln!(
+            "format {current_name} is not frozen (no fixtures/capsules/{current_name}/FROZEN); its FORMAT_PINS row would be:\n{}",
+            row_source(current.0, current.1, &now)
+        );
+    }
+    for (major, minor) in &frozen {
+        let version = format!("{major}.{minor}");
+        let row = tc_journal::FormatPins::of(*major, *minor).unwrap_or_else(|| {
+            panic!(
+                "INV-PINNED-BYTES-NEED-A-VERSION: format {version} is frozen but FORMAT_PINS has no row for it"
+            )
+        });
+        // The current version's samples are this build's; an older frozen version keeps only
+        // its capsule locks, which this build can still hash.
+        let pinned: std::collections::BTreeMap<String, String> = if (*major, *minor) == current {
+            now.clone()
+        } else {
+            pins_now(&version)
+                .into_iter()
+                .filter(|(name, _)| name.starts_with("capsule lock "))
+                .collect()
+        };
+        for (name, want) in row.pins {
+            if !((*major, *minor) == current || name.starts_with("capsule lock ")) {
+                continue;
+            }
+            let got = pinned.get(*name).unwrap_or_else(|| {
+                panic!("INV-PINNED-BYTES-NEED-A-VERSION: format {version} pins {name}, which this build does not have")
+            });
+            assert!(
+                got == want,
+                "INV-PINNED-BYTES-NEED-A-VERSION: {name} changed while format {version} is frozen (pinned {want}, now {got}). A pinned byte form needs a new format version: raise FORMAT_MINOR to {} (or FORMAT_MAJOR to {}) in crates/tc-journal/src/format.rs, add its FORMAT_PINS row and its capsule set (docs/STORAGE.md §12.3)",
+                minor + 1,
+                major + 1
+            );
+        }
+        if (*major, *minor) == current {
+            let missing: Vec<&String> = now
+                .keys()
+                .filter(|name| !row.pins.iter().any(|(n, _)| n == name))
+                .collect();
+            assert!(
+                missing.is_empty(),
+                "INV-PINNED-BYTES-NEED-A-VERSION: format {version} is frozen but its FORMAT_PINS row lacks {missing:?}"
+            );
+        }
+    }
+    // The table never names a hash that is not one (a placeholder left from a freeze).
+    for row in tc_journal::FORMAT_PINS {
+        for (name, hash) in row.pins {
+            assert!(
+                hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_hexdigit()),
+                "FORMAT_PINS {}.{} {name} is not a SHA-256: {hash}",
+                row.major,
+                row.minor
+            );
+        }
+    }
 }
