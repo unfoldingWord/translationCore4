@@ -30,7 +30,7 @@ use tc_store::{SyncDir, Vfs, atomic_create_dirs, atomic_write};
 use super::memory::MemoryError;
 use super::memory::teammates::Teammates;
 use super::scenario::{ScenarioError, ScenarioReport, ScenarioState};
-use super::seed::{StateSeed, fixture_project_id, tc4_state_seed};
+use super::seed::{BatchTag, StateSeed, fixture_project_id, tc4_state_seed};
 use super::store::StoreBackend;
 use super::{
     Listing, OpenFailure, ProjectHandle, ProjectPeek, ProjectStore, StoreError, SummaryFiles,
@@ -233,9 +233,13 @@ impl ScenarioStore {
         let mut written = Vec::new();
         let mut door43 = BTreeMap::new();
         for project in state.projects()? {
-            let seeded = project
-                .tc4()
-                .and_then(|tc4| tc4_state_seed(&tc4, fixture_project_id(project.folder.as_str())));
+            let seeded = project.tc4().and_then(|tc4| {
+                tc4_state_seed(
+                    &tc4,
+                    fixture_project_id(project.folder.as_str()),
+                    BatchTag::FIXTURE,
+                )
+            });
             match seeded {
                 Ok(seed) => {
                     let one =

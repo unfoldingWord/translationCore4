@@ -78,6 +78,19 @@ node -e '
   if (want.commit !== got.commit || want.files.length !== got.files.length) { console.log("FAIL installed_manifest_is_the_build_s"); process.exit(1); }
   console.log("ok installed_manifest_is_the_build_s");
 ' "$(np "$manifest")" "$(np "$(dirname "$(find "$root" -name BUILD-MANIFEST.json | head -1)")/BUILD-MANIFEST.json")"
+# INV-FINAL-MANIFEST-ACCURATE (#969): every installed file is the one the manifest records. Inno
+# Setup's uninstaller is the only file beside them the manifest does not name.
+extra=()
+[ "$platform" != windows-x64 ] || extra=(--extra unins000.exe --extra unins000.dat --extra unins000.msg)
+node "$(np "$here/manifest.mjs")" --check "$(np "$manifest")" --root "$(np "$root")" ${extra[@]+"${extra[@]}"} \
+  || { echo "FAIL installed_files_are_the_manifest_s"; exit 1; }
+echo "ok installed_files_are_the_manifest_s"
+# INV-FINAL-MACOS-SEAL (#969): the installed bundle's ad-hoc seal is still valid, so the signature
+# the build verified is the one the translator gets.
+if [ "$platform" = macos-arm64 ]; then
+  codesign --verify --deep --strict "$root" || { echo "FAIL installed_app_seal_is_valid"; exit 1; }
+  echo "ok installed_app_seal_is_valid"
+fi
 
 "${start[@]}" --app-data "$(np "$appdata")" 2>&1 | tee smoke-logs/app-starts.txt
 exe=tc4; [ "$platform" = windows-x64 ] && exe=tc4.exe

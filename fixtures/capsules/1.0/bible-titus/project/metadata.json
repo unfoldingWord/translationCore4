@@ -1,0 +1,179 @@
+{
+  "confidential": false,
+  "copyright": {
+    "shortStatements": [
+      {
+        "statement": "Not stated"
+      }
+    ]
+  },
+  "format": "scripture burrito",
+  "idAuthorities": {
+    "local": {
+      "id": "http://_local_",
+      "name": {
+        "en": "Local Project"
+      }
+    }
+  },
+  "identification": {
+    "abbreviation": {
+      "en": "ttt"
+    },
+    "name": {
+      "en": "Titus test translation"
+    },
+    "primary": {
+      "local": {
+        "ttt": {
+          "revision": "1",
+          "timestamp": "2026-10-17T00:00:00.000Z"
+        }
+      }
+    }
+  },
+  "ingredients": {
+    "ingredients/TIT.usfm": {
+      "checksum": {
+        "md5": "f64d0fa86411374267e7ebc70ce2f985"
+      },
+      "mimeType": "text/plain",
+      "scope": {
+        "TIT": []
+      },
+      "size": 649
+    },
+    "ingredients/checking/alignments/TIT.json": {
+      "checksum": {
+        "md5": "99becc6fc71764fe98a6b8036a1ff522"
+      },
+      "mimeType": "application/json",
+      "role": "x-alignment",
+      "scope": {
+        "TIT": []
+      },
+      "size": 347
+    },
+    "ingredients/checking/settings.json": {
+      "checksum": {
+        "md5": "233324635d8599245122ffbf77745c3e"
+      },
+      "mimeType": "application/json",
+      "role": "x-check-settings",
+      "size": 25
+    },
+    "ingredients/checking/translationNotes/TIT.json": {
+      "checksum": {
+        "md5": "ec6b15f593b11ee8fb10292f1f8a3a7e"
+      },
+      "mimeType": "application/json",
+      "role": "x-check-decisions",
+      "scope": {
+        "TIT": []
+      },
+      "size": 628
+    },
+    "ingredients/tc/changes/dagskqyt5ipowdplog77aiijzry/2026-10/188217161ac077b731c932cbd7c22742.ndjson": {
+      "checksum": {
+        "md5": "55936a191ae2cae7e84bc672462ac71b"
+      },
+      "mimeType": "application/octet-stream",
+      "role": "x-tc-changes",
+      "size": 604
+    },
+    "ingredients/tc/changes/dagskqyt5ipowdplog77aiijzry/2026-10/72b312057e45c2ca9fcda3e645fd49d8.ndjson": {
+      "checksum": {
+        "md5": "4d07f1237c5f0ea532d94e5a1e5bdbe4"
+      },
+      "mimeType": "application/octet-stream",
+      "role": "x-tc-changes",
+      "size": 55115
+    },
+    "ingredients/tc/changes/dagskqyt5ipowdplog77aiijzry/2026-10/8a65baee778f350b351a6001d876c257.ndjson": {
+      "checksum": {
+        "md5": "76da27897ec4c27d0f46b26d5c23991a"
+      },
+      "mimeType": "application/octet-stream",
+      "role": "x-tc-changes",
+      "size": 4598
+    },
+    "ingredients/tc/comments/TIT.json": {
+      "checksum": {
+        "md5": "4ee321ff4f84811790da4de247c7f998"
+      },
+      "mimeType": "application/json",
+      "role": "x-tc-comments",
+      "scope": {
+        "TIT": []
+      },
+      "size": 248
+    },
+    "ingredients/tc/conflicts.json": {
+      "checksum": {
+        "md5": "7d431e46c6d597a0ca2bbef8984d39d6"
+      },
+      "mimeType": "application/json",
+      "role": "x-tc-conflicts",
+      "size": 604
+    },
+    "ingredients/tc/format.json": {
+      "checksum": {
+        "md5": "cf3c4185e4f3a7e0da9d8a22262491bd"
+      },
+      "mimeType": "application/json",
+      "role": "x-tc-project",
+      "size": 435
+    },
+    "ingredients/tc/project.json": {
+      "checksum": {
+        "md5": "893d31dc417a2be16a92a9236d161db7"
+      },
+      "mimeType": "application/json",
+      "role": "x-tc-project",
+      "size": 123
+    },
+    "ingredients/vrs.json": {
+      "checksum": {
+        "md5": "dd0169fcd7e229933ef72c21b202c903"
+      },
+      "mimeType": "application/json",
+      "size": 27681
+    }
+  },
+  "languages": [
+    {
+      "name": {
+        "en": "English"
+      },
+      "scriptDirection": "ltr",
+      "tag": "en"
+    }
+  ],
+  "localizedNames": {},
+  "meta": {
+    "category": "source",
+    "dateCreated": "2026-10-17T00:00:00.000Z",
+    "defaultLocale": "en",
+    "generator": {
+      "softwareName": "translationCore",
+      "softwareVersion": "tc-project-1.0"
+    },
+    "normalization": "NFC",
+    "version": "1.0.0"
+  },
+  "type": {
+    "flavorType": {
+      "currentScope": {
+        "TIT": []
+      },
+      "flavor": {
+        "audience": "common",
+        "name": "textTranslation",
+        "projectType": "standard",
+        "translationType": "firstTranslation",
+        "usfmVersion": "3.0"
+      },
+      "name": "scripture"
+    }
+  }
+}

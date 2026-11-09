@@ -16,7 +16,7 @@ import { bundledInstalls, lockedCrates, missing, notices as writeNotices } from 
 import { smallBundle } from '../../../scripts/release/notices-fixture.mjs';
 import { browserTest, focused, openMenu, panel, recordRequests, sleep, trigger, until, withApp } from './kit.mjs';
 
-const notice = fs.readFileSync(path.join(REPO, 'crates', 'tc-ui', 'assets', 'about', 'LICENSE'), 'utf8');
+const notice = fs.readFileSync(path.join(REPO, 'LICENSE'), 'utf8');
 const copyright = notice.split('\n').find((line) => line.startsWith('Copyright')).trim();
 const aboutDialog = (page) => page.getByRole('dialog', { name: 'About translationCore' });
 const licenseDialog = (page) => page.getByRole('dialog', { name: 'License', exact: true });

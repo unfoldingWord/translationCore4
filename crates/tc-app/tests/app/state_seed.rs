@@ -8,8 +8,8 @@ use std::path::{Path, PathBuf};
 use proptest::prelude::*;
 use serde_json::{Value, json};
 use tc_app::backend::seed::{
-    BatchLabel, CheckRule, DeclaredDifference, IgnoredWhy, Mismatch, SeedRefusal, StateSeed,
-    Tc4Folder, fixture_project_id, tc4_state_seed,
+    BatchLabel, BatchTag, CheckRule, DeclaredDifference, IgnoredWhy, Mismatch, SeedRefusal,
+    StateSeed, Tc4Folder, fixture_project_id, tc4_state_seed,
 };
 use tc_journal::decision::verse_text_md5_v1;
 use tc_journal::fold::DerivedFile;
@@ -115,7 +115,7 @@ fn with_text(mut files: Files, path: &str, edit: impl FnOnce(&str) -> String) ->
 
 fn seed(name: &str, files: Files) -> Result<StateSeed, SeedRefusal> {
     let folder = Tc4Folder::from_files(name, files)?;
-    tc4_state_seed(&folder, fixture_project_id(name))
+    tc4_state_seed(&folder, fixture_project_id(name), BatchTag::FIXTURE)
 }
 
 fn mismatches(result: Result<StateSeed, SeedRefusal>) -> Vec<Mismatch> {

@@ -3721,6 +3721,7 @@ dependencies = [
 name = "tc-corpus"
 version = "4.1.0-preview"
 dependencies = [
+ "git2",
  "rayon",
  "ring",
  "serde_json",
@@ -3728,9 +3729,14 @@ dependencies = [
  "tc-burrito",
  "tc-core",
  "tc-journal",
+ "tc-obs",
+ "tc-store",
+ "tc-sync",
  "tc-usfm",
  "tc-versification",
+ "tempfile",
  "thiserror 2.0.21",
+ "tokio",
  "zip",
 ]
 

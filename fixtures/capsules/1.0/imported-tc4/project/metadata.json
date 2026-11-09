@@ -1,0 +1,130 @@
+{
+  "confidential": false,
+  "copyright": {
+    "shortStatements": [
+      {
+        "statement": "Not stated"
+      }
+    ]
+  },
+  "format": "scripture burrito",
+  "idAuthorities": {
+    "local": {
+      "id": "http://_local_",
+      "name": {
+        "en": "Local Project"
+      }
+    }
+  },
+  "identification": {
+    "abbreviation": {
+      "en": "ttt"
+    },
+    "name": {
+      "en": "Titus test translation"
+    },
+    "primary": {
+      "local": {
+        "ttt": {
+          "revision": "1",
+          "timestamp": "2026-10-17T00:00:00.000Z"
+        }
+      }
+    }
+  },
+  "ingredients": {
+    "ingredients/TIT.usfm": {
+      "checksum": {
+        "md5": "afe60991e34bfaf4842a36485db403c2"
+      },
+      "mimeType": "text/plain",
+      "scope": {
+        "TIT": []
+      },
+      "size": 681
+    },
+    "ingredients/checking/settings.json": {
+      "checksum": {
+        "md5": "233324635d8599245122ffbf77745c3e"
+      },
+      "mimeType": "application/json",
+      "role": "x-check-settings",
+      "size": 25
+    },
+    "ingredients/tc/changes/daeeqscijbeeqscijbeeqscijbe/2026-10/2dc21c5e221fe3bf0b03464e69eaf4f9.ndjson": {
+      "checksum": {
+        "md5": "18aa022b8cc1d9f48ddb20028ba395de"
+      },
+      "mimeType": "application/octet-stream",
+      "role": "x-tc-changes",
+      "size": 1302
+    },
+    "ingredients/tc/changes/daenvesvjxooeh6qmchvn7q5dcm/2026-10/e5b8aa48e19fca831ce300d2ac3c0c85.ndjson": {
+      "checksum": {
+        "md5": "20f3695bcf36867b1400645107e4164a"
+      },
+      "mimeType": "application/octet-stream",
+      "role": "x-tc-changes",
+      "size": 55115
+    },
+    "ingredients/tc/format.json": {
+      "checksum": {
+        "md5": "cf3c4185e4f3a7e0da9d8a22262491bd"
+      },
+      "mimeType": "application/json",
+      "role": "x-tc-project",
+      "size": 435
+    },
+    "ingredients/tc/project.json": {
+      "checksum": {
+        "md5": "786aed6247c56eab288bd3f5b17bcbee"
+      },
+      "mimeType": "application/json",
+      "role": "x-tc-project",
+      "size": 123
+    },
+    "ingredients/vrs.json": {
+      "checksum": {
+        "md5": "dd0169fcd7e229933ef72c21b202c903"
+      },
+      "mimeType": "application/json",
+      "size": 27681
+    }
+  },
+  "languages": [
+    {
+      "name": {
+        "en": "English"
+      },
+      "scriptDirection": "ltr",
+      "tag": "en"
+    }
+  ],
+  "localizedNames": {},
+  "meta": {
+    "category": "source",
+    "dateCreated": "2026-10-17T00:00:00.000Z",
+    "defaultLocale": "en",
+    "generator": {
+      "softwareName": "translationCore",
+      "softwareVersion": "tc-project-1.0"
+    },
+    "normalization": "NFC",
+    "version": "1.0.0"
+  },
+  "type": {
+    "flavorType": {
+      "currentScope": {
+        "TIT": []
+      },
+      "flavor": {
+        "audience": "common",
+        "name": "textTranslation",
+        "projectType": "standard",
+        "translationType": "firstTranslation",
+        "usfmVersion": "3.0"
+      },
+      "name": "scripture"
+    }
+  }
+}

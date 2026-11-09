@@ -28,9 +28,10 @@ use crate::ds::{
 use crate::i18n::{LOCALES, keys, locale_of, t, t_dyn};
 use crate::roving::{Axis, Move, roving};
 
-/// tC4's LICENSE as tC4 ships it (vendor-tc4.sh); its line that starts with "Copyright" is
-/// About's copyright line (`tC4:src/data/about.ts`).
-const LICENSE_TEXT: &str = include_str!("../../assets/about/LICENSE");
+/// The repository's LICENSE, the one file About and License show. Its line that starts with
+/// "Copyright" is About's copyright line (`tC4:src/data/about.ts`); since #965 that line carries
+/// the translationCore® trademark statement too (tests/license.rs says why).
+const LICENSE_TEXT: &str = include_str!("../../../../LICENSE");
 
 fn trigger_base() -> Css {
     crate::css! {
