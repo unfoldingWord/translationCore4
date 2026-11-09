@@ -28,7 +28,9 @@ use tc_resources::{Installed, ResourcePin, ResourceStore, install_dcs_zip};
 
 pub use super::Door43Remote;
 use super::memory::{MemoryBackend, MemoryProject};
-use super::seed::{SeedRefusal, SeedReport, Tc4Folder, fixture_project_id, tc4_state_seed};
+use super::seed::{
+    BatchTag, SeedRefusal, SeedReport, Tc4Folder, fixture_project_id, tc4_state_seed,
+};
 
 const PROJECTS: &str = "repos/_local_/_local_/";
 const SIDELOADED: &str = "repos/_local_/_sideloaded_/";
@@ -470,9 +472,13 @@ impl MemoryBackend {
             refused: Vec::new(),
         };
         for project in state.projects()? {
-            let seeded = project
-                .tc4()
-                .and_then(|tc4| tc4_state_seed(&tc4, fixture_project_id(project.folder.as_str())));
+            let seeded = project.tc4().and_then(|tc4| {
+                tc4_state_seed(
+                    &tc4,
+                    fixture_project_id(project.folder.as_str()),
+                    BatchTag::FIXTURE,
+                )
+            });
             match seeded {
                 Ok(seed) => {
                     let seed_report = seed.report.clone();

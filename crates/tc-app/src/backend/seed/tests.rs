@@ -192,7 +192,12 @@ fn resources_v1_migration_matches_burrito_spec_5_3() {
 #[test]
 fn obs_stories_are_kept_as_the_files_are() {
     let folder = sample("sample-burrito-obs");
-    let built = build(&folder, fixture_project_id(folder.name())).unwrap();
+    let built = build(
+        &folder,
+        fixture_project_id(folder.name()),
+        BatchTag::FIXTURE,
+    )
+    .unwrap();
     assert_eq!(built.kind, ProjectKind::Stories);
     let mut bases = 0;
     for batch in &built.batches {
@@ -603,7 +608,12 @@ fn alignment_reading_applies_i3() {
 /// The Bible sample's built seed, and its check before any change.
 fn bible() -> (Tc4Folder, Built) {
     let folder = sample("sample-burrito");
-    let built = build(&folder, fixture_project_id("sample_burrito")).unwrap();
+    let built = build(
+        &folder,
+        fixture_project_id("sample_burrito"),
+        BatchTag::FIXTURE,
+    )
+    .unwrap();
     assert!(check::check(&folder, &built).mismatches.is_empty());
     (folder, built)
 }
@@ -659,7 +669,12 @@ fn an_obs_projects_settings_json_is_a_derived_file_the_fold_lists() {
     // a story project derives settings.json as a Bible project does, so a materialize writes
     // it and the file-set rule finds nothing to drop.
     let folder = sample("sample-burrito-obs");
-    let built = build(&folder, fixture_project_id("sample_burrito_obs")).unwrap();
+    let built = build(
+        &folder,
+        fixture_project_id("sample_burrito_obs"),
+        BatchTag::FIXTURE,
+    )
+    .unwrap();
     assert!(built.fold.derived_files().contains(&DerivedFile::Settings));
     let found = check::check(&folder, &built).mismatches;
     assert!(
@@ -679,7 +694,12 @@ fn a_derived_file_the_fold_does_not_list_is_a_mismatch() {
     folder
         .files
         .insert(path.to_owned(), b"{\"schemaVersion\":2}\n".to_vec());
-    let built = build(&folder, fixture_project_id("sample_burrito")).unwrap();
+    let built = build(
+        &folder,
+        fixture_project_id("sample_burrito"),
+        BatchTag::FIXTURE,
+    )
+    .unwrap();
     let found = check::check(&folder, &built).mismatches;
     assert!(
         found
@@ -693,7 +713,12 @@ fn a_derived_file_the_fold_does_not_list_is_a_mismatch() {
 /// story 1's file as the fold then projects it.
 fn obs_story_one_after(frame: u16, text: &str) -> (String, String) {
     let folder = sample("sample-burrito-obs");
-    let built = build(&folder, fixture_project_id("sample_burrito_obs")).unwrap();
+    let built = build(
+        &folder,
+        fixture_project_id("sample_burrito_obs"),
+        BatchTag::FIXTURE,
+    )
+    .unwrap();
     let story = StoryNo::new(1).unwrap();
     let base = String::from_utf8(folder.files()["ingredients/content/01.md"].clone()).unwrap();
     let edit = Change::new(ChangeBody {
@@ -806,7 +831,12 @@ fn a_book_or_vrs_json_the_projection_does_not_give_back_byte_for_byte_is_a_misma
 fn a_story_the_projection_does_not_give_back_byte_for_byte_is_a_mismatch() {
     // The OBS sample has mismatches of its own (the write-up); only the new ones count.
     let folder = sample("sample-burrito-obs");
-    let built = build(&folder, fixture_project_id("sample_burrito_obs")).unwrap();
+    let built = build(
+        &folder,
+        fixture_project_id("sample_burrito_obs"),
+        BatchTag::FIXTURE,
+    )
+    .unwrap();
     let before = found(&folder, &built);
     let path = "ingredients/content/07.md";
     let changed = changed(&folder, path, |b| [b, b"\n"].concat());
@@ -825,7 +855,12 @@ fn a_carried_file_the_projection_does_not_place_or_keep_is_a_mismatch() {
     files.push((METADATA.into(), bible.metadata().to_vec()));
     files.push((licence.into(), b"CC BY-SA 4.0\n".to_vec()));
     let folder = Tc4Folder::from_files("sample_burrito", files).unwrap();
-    let mut built = build(&folder, fixture_project_id("sample_burrito")).unwrap();
+    let mut built = build(
+        &folder,
+        fixture_project_id("sample_burrito"),
+        BatchTag::FIXTURE,
+    )
+    .unwrap();
     assert_eq!(found(&folder, &built), []);
     // Other bytes at the path: another blob than the one placed there.
     let other = changed(&folder, licence, |_| b"CC BY 4.0\n".to_vec());

@@ -6,7 +6,7 @@ use tc_api::editor::Book;
 use tc_api::ids::StoryNo;
 use tc_api::story;
 use tc_app::backend::memory::MemoryProject;
-use tc_app::backend::seed::{Tc4Folder, fixture_project_id, tc4_state_seed};
+use tc_app::backend::seed::{BatchTag, Tc4Folder, fixture_project_id, tc4_state_seed};
 use tc_journal::fold::FoldInput;
 use tc_journal::record::{CommentTarget, CommentValue};
 use tc_journal::{
@@ -25,7 +25,12 @@ fn journal_story(n: u8) -> tc_journal::StoryNo {
 /// The OBS sample's project as the memory backend holds it.
 fn sample_stories() -> MemoryProject {
     let folder = Tc4Folder::read(&repo_root().join("fixtures/tc4/sample-burrito-obs")).unwrap();
-    let seed = tc4_state_seed(&folder, fixture_project_id("sample_burrito_obs")).unwrap();
+    let seed = tc4_state_seed(
+        &folder,
+        fixture_project_id("sample_burrito_obs"),
+        BatchTag::FIXTURE,
+    )
+    .unwrap();
     MemoryProject::from_seed(seed, None)
 }
 

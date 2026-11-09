@@ -6,7 +6,9 @@
 //! field and every non-derived `metadata.json` field (P9). Nothing is written until Create,
 //! which reads the file again and makes the project in one write: the Burrito's records with
 //! each one a changed field makes remade from the fields, each book through `AddBookText`
-//! (aligned verses split out), and the other files carried as they are.
+//! (aligned verses split out), and the other files carried as they are. The seed's batches are
+//! read for their records and never written, so they carry a tag of this module's
+//! ([`BATCHES`]), not the fixture backend's, which a release binary never holds (AD35, #971).
 
 use std::collections::BTreeMap;
 
@@ -18,8 +20,12 @@ use tc_journal::keys::{MetaField, SettingKey};
 use tc_journal::record::BookPresence;
 use tc_journal::{BookId, Record, RecordKey};
 
-use crate::backend::seed::{Tc4Folder, fixture_project_id, tc4_state_seed};
+use crate::backend::seed::{BatchTag, Tc4Folder, fixture_project_id, tc4_state_seed};
 
+/// What names the batches of the seed this module reads a Burrito through. Create writes the
+/// project's own batches through the store (`Store::create_imported`), so nothing on disk
+/// carries this tag.
+const BATCHES: BatchTag = BatchTag::new("tc4-burrito-read");
 const METADATA: &str = "metadata.json";
 const INGREDIENTS: &str = "ingredients/";
 const DEFAULT_FONT: &str = "Noto Sans (default)";
@@ -75,8 +81,8 @@ pub(crate) fn read(bytes: &[u8], file_name: &str) -> Result<Burrito, CreateRefus
     let files = books_at_their_places(&doc, files)?;
     let name = file_name.strip_suffix(".zip").unwrap_or(file_name);
     let folder = Tc4Folder::from_files(name, files).map_err(|e| unusable(e.to_string()))?;
-    let seed =
-        tc4_state_seed(&folder, fixture_project_id(name)).map_err(|e| unusable(e.to_string()))?;
+    let seed = tc4_state_seed(&folder, fixture_project_id(name), BATCHES)
+        .map_err(|e| unusable(e.to_string()))?;
 
     let mut records = Vec::new();
     let mut texts = Vec::new();

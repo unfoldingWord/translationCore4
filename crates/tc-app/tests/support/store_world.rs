@@ -260,9 +260,14 @@ pub fn store_world() -> StoreWorld {
 
 /// Adds the real OBS fixture to a test's isolated store, through the store's Burrito writer.
 pub fn add_obs(world: &StoreWorld) -> ProjectRef {
-    use tc_app::backend::seed::{Tc4Folder, fixture_project_id, tc4_state_seed};
+    use tc_app::backend::seed::{BatchTag, Tc4Folder, fixture_project_id, tc4_state_seed};
     let source = Tc4Folder::read(&repo_root().join("fixtures/tc4/sample-burrito-obs")).unwrap();
-    let seed = tc4_state_seed(&source, fixture_project_id("sample_burrito_obs")).unwrap();
+    let seed = tc4_state_seed(
+        &source,
+        fixture_project_id("sample_burrito_obs"),
+        BatchTag::FIXTURE,
+    )
+    .unwrap();
     let records = seed
         .fold
         .record_keys()

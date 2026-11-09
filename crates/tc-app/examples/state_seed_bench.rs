@@ -18,7 +18,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use serde_json::json;
-use tc_app::backend::seed::{SeedRefusal, Tc4Folder, fixture_project_id, tc4_state_seed};
+use tc_app::backend::seed::{BatchTag, SeedRefusal, Tc4Folder, fixture_project_id, tc4_state_seed};
 
 fn millis(start: Instant) -> f64 {
     start.elapsed().as_secs_f64() * 1000.0
@@ -59,7 +59,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut outcome = json!(null);
         for _ in 0..runs {
             let start = Instant::now();
-            let result = tc4_state_seed(&folder, project);
+            let result = tc4_state_seed(&folder, project, BatchTag::FIXTURE);
             times.push(millis(start));
             outcome = match result {
                 Ok(seed) => json!({
