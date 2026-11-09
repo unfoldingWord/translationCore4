@@ -82,6 +82,8 @@ async function start(what) {
   const lines = readline.createInterface({ input: child.stdout })[Symbol.asyncIterator]();
   const first = await bounded(Promise.race([lines.next(), exited.then(() => ({ done: true }))]), what);
   const line = first.done ? null : JSON.parse(first.value);
+  // The rest of stdout is the shell protocol: "damaged" there fails the run too.
+  if (!first.done) (async () => { for (let next; !(next = await lines.next()).done;) seen.push(next.value); })();
   return { child, exited, line };
 }
 
@@ -175,6 +177,8 @@ await step('the_three_folders_are_there', async () => {
   for (const name of [PLAIN, NEWER_MINOR, NEWER_MAJOR]) {
     if (!fs.existsSync(path.join(projects, name, 'metadata.json'))) throw new Error(`${projects}/${name} is no project`);
   }
+  // Before the first start: every run of the old build over the folders counts, not only the open.
+  state.before = { [NEWER_MINOR]: files(NEWER_MINOR), [NEWER_MAJOR]: files(NEWER_MAJOR) };
 });
 
 await step('address', async () => {
@@ -215,17 +219,15 @@ await step('a_restart_reads_the_verse_back', async () => {
 });
 
 await step('a_newer_minor_opens_read_only_and_writes_nothing', async () => {
-  const before = files(NEWER_MINOR);
   state.app = await serve('a_newer_minor_opens_read_only_and_writes_nothing');
   running = [state.app];
   const { mode } = await open(state.app, NEWER_MINOR, 'a_newer_minor_opens_read_only_and_writes_nothing');
   await state.app.quit();
   if (mode.type !== 'readOnly' || mode.value !== 'needsNewerApp') throw new Error(`opened ${JSON.stringify(mode)}`);
-  if (files(NEWER_MINOR) !== before) throw new Error('a read-only open changed the project folder');
+  if (files(NEWER_MINOR) !== state.before[NEWER_MINOR]) throw new Error('the older build changed a project it can only read');
 });
 
 await step('a_newer_major_is_refused_before_anything_is_written', async () => {
-  const before = files(NEWER_MAJOR);
   state.app = await serve('a_newer_major_is_refused_before_anything_is_written');
   running = [state.app];
   const end = await opened(state.app, NEWER_MAJOR, 'a_newer_major_is_refused_before_anything_is_written');
@@ -234,7 +236,7 @@ await step('a_newer_major_is_refused_before_anything_is_written', async () => {
   if (end.type !== 'failed' || refusal?.type !== 'open' || refusal.value?.type !== 'newerFormat' || String(refusal.value.value?.format) !== opt.major) {
     throw new Error(`session/open ended ${JSON.stringify(end)}, not the newer-format refusal of major ${opt.major}`);
   }
-  if (files(NEWER_MAJOR) !== before) throw new Error('a refused open changed the project folder');
+  if (files(NEWER_MAJOR) !== state.before[NEWER_MAJOR]) throw new Error('the older build changed a project of a newer major');
 });
 
 await step('nothing_was_called_damaged', async () => {

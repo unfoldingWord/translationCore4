@@ -37,14 +37,17 @@ version=${tag#format-v}
 read -r type sha < <(gh api "repos/$repo/git/ref/tags/$tag" --jq '"\(.object.type) \(.object.sha)"')
 commit=$(peel "$type" "$sha")
 
-# The release whose own tag points at the frozen commit; drafts are not published.
+# The release whose own tag points at the frozen commit; drafts are not published. Each lookup is
+# an assignment, so a failed call stops the gate under `set -e`: "no published release" is said
+# only when every call succeeded (#865 done-when 4).
 release=
+candidates=$(gh api --paginate "repos/$repo/releases" --jq '.[] | select(.draft == false) | .tag_name')
 while read -r candidate; do
   [ -n "$candidate" ] || continue
-  read -r ctype csha < <(gh api "repos/$repo/git/ref/tags/$candidate" --jq '"\(.object.type) \(.object.sha)"' 2> /dev/null || echo "none none")
-  [ "$ctype" != none ] || continue
-  if [ "$(peel "$ctype" "$csha")" = "$commit" ]; then release=$candidate; break; fi
-done < <(gh api --paginate "repos/$repo/releases" --jq '.[] | select(.draft == false) | .tag_name')
+  cref=$(gh api "repos/$repo/git/ref/tags/$candidate" --jq '"\(.object.type) \(.object.sha)"')
+  ccommit=$(peel "${cref% *}" "${cref#* }")
+  if [ "$ccommit" = "$commit" ]; then release=$candidate; break; fi
+done <<< "$candidates"
 if [ -z "$release" ]; then
   echo "frozen $version at $commit; no published release there yet"
   exit 0
