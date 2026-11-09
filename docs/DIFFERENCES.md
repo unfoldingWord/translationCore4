@@ -485,6 +485,17 @@ And this (#845):
   and license are kept as the Burrito wrote them and are not shown as fields. tC4 4.0 imports a Burrito only through Import, whose Burrito kind 4.1.0 left out (J9d,
   owner 2026-11-06).
 
+And this (#965):
+
+- About's copyright line carries the translationCore® trademark statement: "Copyright (c) 2017-2026
+  unfoldingWord. translationCore® is a registered trademark of unfoldingWord. Use of the
+  translationCore name or logo requires the written permission of unfoldingWord." tC4 shows the
+  copyright alone and states the trademark in a paragraph of its own in `LICENSE`. The rebuild's
+  `LICENSE` keeps every word but puts the statement on the copyright line, because GitHub's
+  license detector drops that line and reads the rest as MIT; a paragraph anywhere else makes
+  the repository read "Other". About and the License dialog show the repository's own `LICENSE`,
+  not a copy of tC4's, and `crates/tc-ui/tests/license.rs` keeps the file in that shape (#965).
+
 The rebuild does not port tC4's sync mechanism: the scratch copy, the apply marker, the
 ops log, `recoverySettled`, `unreadableSettings` and the sync generation. STORAGE §6 and §9
 give the same outcomes, and STORAGE §9.9 keeps saves flowing while a sync runs. tC4 can

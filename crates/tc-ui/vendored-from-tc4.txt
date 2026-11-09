@@ -1,7 +1,6 @@
 # tC4 files in crates/tc-ui/assets, copied byte for byte by vendor-tc4.sh.
 # Each line: the file's git blob id in tC4, then its path in tC4.
 commit d25b7871904228a342c0d80280136d8636833653
-0e6251550837d2363b8f0226eeb2576622c5e51f LICENSE
 68c61b70f8eb00cf8e324faf4792ed853891f652 public/assets/logo-mark-color.png
 f1d7427826efc3d54b33971a7ba61ea9bafe9025 public/assets/translationcore-logo.png
 af1eb69500a96d049816896bcb4bb04cbdcdc637 src/ds/assets/fonts/AwamiNastaliq-Bold.ttf
