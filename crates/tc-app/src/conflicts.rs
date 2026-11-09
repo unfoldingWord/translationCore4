@@ -239,8 +239,6 @@ fn made_by(
         // Update a book writes the file's text from this computer; the file, not the person,
         // made it.
         DeviceKind::Local if matches!(cause, Cause::Import(_)) => MadeBy::Import,
-        DeviceKind::Door43Edit => MadeBy::Door43,
-        DeviceKind::ExchangeEdit => MadeBy::ExchangeFile,
         DeviceKind::Importer => MadeBy::Import,
         DeviceKind::Local | DeviceKind::Tc4Actor | DeviceKind::Tc3User => {
             match labels.get(device) {
@@ -263,9 +261,7 @@ fn cause_of(cause: &Cause) -> VersionCause {
         Cause::Restore { .. } => VersionCause::Restored,
         Cause::CarryOver { .. } => VersionCause::CarriedOver,
         Cause::External { source, .. } => match source {
-            ExternalSource::Door43 { .. } => VersionCause::EditedOnDoor43,
             ExternalSource::LocalFile { .. } => VersionCause::EditedInAnotherProgram,
-            ExternalSource::ExchangeFile { .. } => VersionCause::FromAFile,
         },
         Cause::Import(_) => VersionCause::Imported,
         Cause::Seed => VersionCause::Created,

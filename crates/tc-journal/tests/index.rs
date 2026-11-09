@@ -30,7 +30,7 @@ use tc_journal::json::{self, Json};
 use tc_journal::pack::{PackFacts, PackPath, PackSpec, YearMonth, encode_pack, seal};
 use tc_journal::pending::Reconciles;
 use tc_journal::pending::{PendingHeader, PendingStatus, Purpose, encode_pending, read_pending};
-use tc_journal::record::VerseValue;
+use tc_journal::record::{CarriedValue, VerseValue};
 use tc_journal::{
     Cause, Change, ChangeId, Md5, PackId, ProjectId, Record, RepoPath, Verified, WallTime,
     parse_change,
@@ -718,7 +718,7 @@ fn a_pending_file_that_reconciles_metadata_json_verifies_and_caches_like_any_oth
 /// words, `___`, a span's covered verse or an absent one, a header, a chapter front or a
 /// layout, §7.3), so a build that summarizes any class otherwise makes other sections.
 fn probe_changes() -> Vec<Verified> {
-    use support::{Dev, absent, covered, text, text_from, verse};
+    use support::{Dev, absent, covered, md5, oid, text, text_from, verse};
     let mut out = every_kind();
     for line in every_kind() {
         let Verified::Change(change) = &line else {
@@ -753,6 +753,22 @@ fn probe_changes() -> Vec<Verified> {
             let record = verse(5, v, value);
             out.push(Verified::Change(dev.with(record, vec![], cause.clone())));
         }
+    }
+    // Both carried-file values, whatever the pinned fixture happened to draw (#865).
+    let path = tc_journal::RepoPath::parse("ingredients/audio/jon_01.wav").unwrap();
+    for value in [
+        CarriedValue::Present {
+            oid: oid(7),
+            size: 1234,
+            md5: md5("jon_01"),
+        },
+        CarriedValue::Removed,
+    ] {
+        let record = tc_journal::Record::CarriedFile {
+            path: path.clone(),
+            value,
+        };
+        out.push(Verified::Change(dev.with(record, vec![], Cause::Edit)));
     }
     out
 }
@@ -955,6 +971,13 @@ fn the_encoding_is_pinned() {
             6,
             0xe9be_ed65_457e_0014,
             "c6e74a64914c1415dec7298408188f0afe55b72c5cb30678ef83eed564b7070a",
+        ),
+        // 7: the outside sources `door43` and `exchangeFile` left the format (#865): the pinned
+        // fixture was drawn again without them, and both carried-file values joined the probe.
+        (
+            7,
+            0x590a_7299_7cff_abc6,
+            "21480ea389e58affc01f6994b516723b2d3d03bf0f9fdef4a527608042bf82f9",
         ),
     ];
     let changes = probe();

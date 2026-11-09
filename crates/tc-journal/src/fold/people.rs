@@ -26,9 +26,8 @@ pub enum PersonLabel {
 
 impl FoldState {
     /// The label of every device that stands for a person and holds a change or a profile
-    /// here: Local devices, tC4 actors and tC3 users. Devices that record what a file or a
-    /// commit held (a Door43 edit, an exchange-file edit, an import) are no person; the
-    /// screens name them by their cause. `me` is this device.
+    /// here: Local devices, tC4 actors and tC3 users. A device that records what a file held
+    /// (an import) is no person; the screens name it by its cause. `me` is this device.
     pub fn person_labels(&self, me: DeviceId) -> BTreeMap<DeviceId, PersonLabel> {
         let person = |d: &DeviceId| {
             matches!(
