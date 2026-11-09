@@ -284,17 +284,34 @@ fn a_capsule_with_newer_minor_changes_opens_and_keeps_them() {
             "{what} holds {} changes of a newer minor; the capsule has a known kind with a newer field and an unknown kind",
             newer.len()
         );
+        // Equality, not a substring: the older wording is a prefix of the newer one.
+        let newer_words: Vec<String> = newer
+            .iter()
+            .filter_map(|(_, raw)| {
+                let line: serde_json::Value = serde_json::from_slice(raw).unwrap();
+                let verse = line.pointer("/record/verse")?;
+                if verse["book"] != "TIT" || verse["chapter"] != 1 || verse["verse"] != 1 {
+                    return None;
+                }
+                verse.pointer("/value/text/words")?.as_str().map(String::from)
+            })
+            .collect();
+        assert_eq!(
+            newer_words.len(),
+            1,
+            "{what} holds one newer-minor change of Titus 1:1"
+        );
         let shown = words(&handle, 1, 1).unwrap();
-        assert!(
-            newer
-                .iter()
-                .any(|(_, raw)| { std::str::from_utf8(raw).unwrap().contains(&shown) }),
-            "{what}: the newer minor's verse is the version shown; shown {shown:?}"
+        assert_eq!(
+            shown,
+            newer_words[0],
+            "{what}: the newer minor's verse is the version shown"
         );
         assert!(
-            fold.fold()
-                .anomalies()
-                .any(|a| format!("{a:?}").contains("UnknownKinds")),
+            fold.fold().anomalies().any(|a| matches!(
+                a,
+                tc_journal::fold::Anomaly::UnknownKinds { changes, .. } if *changes >= 1
+            )),
             "{what}: the unknown kind is counted"
         );
         drop(fold);
