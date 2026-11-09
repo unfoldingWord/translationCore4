@@ -6,7 +6,7 @@ members = ["crates/*"]
 exclude = ["spikes"]
 
 [workspace.package]
-version = "4.1.0-preview"
+version = "4.1.0-preview2"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/unfoldingWord/translationCore4"
