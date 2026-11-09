@@ -81,7 +81,7 @@
         "dom",
         "meaning"
       ],
-      "why": "Both projects load and the Rust Home lists both cards, as tC4's does (B7 fixed in tc-journal the three findings of docs/evidence/state-seed-check-2026-10-18.md section 4 that kept the OBS sample out). The DOM with every computed style is line for line tC4's. The pixels differ only in the anti-aliasing of a few glyphs of the cards' summary lines (a few hundred pixels at most, all outside the masks), where a line of text is drawn at another fractional offset (docs/evidence/home-2026-10-19.md). The build line (`about-build`) is masked. Since E2 (6db93580, its step 2) each Home card also offers \"Receive work from a file\" between Share and Settings, the way in for a teammate's exchange file, which tC4 has not: the DOM has the button and the pixels show it, with the card's buttons moved left. With the buttons moved left, each card's Share button lies under the dialog's opaque panel, so what the image shows lists no share action for those cards (`homeCards`, tC4 share, rebuild none).",
+      "why": "Both projects load and the Rust Home lists both cards, as tC4's does (B7 fixed in tc-journal the three findings of docs/evidence/state-seed-check-2026-10-18.md section 4 that kept the OBS sample out). The DOM with every computed style is line for line tC4's. The pixels differ only in the anti-aliasing of a few glyphs of the cards' summary lines (a few hundred pixels at most, all outside the masks), where a line of text is drawn at another fractional offset (docs/evidence/home-2026-10-19.md). The build line (`about-build`) is masked. Since E2 (6db93580, its step 2) each Home card also offers \"Receive work from a file\" between Share and Settings, the way in for a teammate's exchange file, which tC4 has not: the DOM has the button and the pixels show it, with the card's buttons moved left. With the buttons moved left, each card's Share button lies under the dialog's opaque panel, so what the image shows lists no share action for those cards (`homeCards`, tC4 share, rebuild none). Since #965 the copyright line under the version carries the translationCore® trademark statement, which tC4's About does not show: the statement sits on LICENSE's copyright line so that GitHub detects the MIT licence (docs/DIFFERENCES.md).",
       "until": null
     },
     "account-menu": {
@@ -815,7 +815,7 @@
         "pixels",
         "dom"
       ],
-      "why": "Every line and pixel was tC4's before these changes. Since E2 (6db93580, its step 2) each Home card also offers \"Receive work from a file\" between Share and Settings, the way in for a teammate's exchange file, which tC4 has not: the DOM has the button and the pixels show it, with the card's buttons moved left.",
+      "why": "Every line and pixel was tC4's before these changes. Since #965 the text is the repository's own LICENSE, whose copyright line carries the trademark statement tC4 states in a paragraph of its own, so the License dialog differs from tC4's by that line (docs/DIFFERENCES.md); the dom/ capture predates it. Since E2 (6db93580, its step 2) each Home card also offers \"Receive work from a file\" between Share and Settings, the way in for a teammate's exchange file, which tC4 has not: the DOM has the button and the pixels show it, with the card's buttons moved left.",
       "until": null
     },
     "translate-tit1": {
