@@ -1,0 +1,3 @@
+{"schemaVersion":1,"tool":"translationNotes","book":"TIT","decisions":[
+{"contextId":{"checkId":"abcd"},"category":"figures","selections":false,"comments":false,"reminders":true,"nothingToSelect":false,"verseEdits":false,"invalidated":true,"status":"invalid","modifiedTimestamp":"2026-10-17T00:00:00.036Z","userStatus":"valid","verseTextMd5":"152fd90efe495e4e4aa93fd6cbaea9b8","pinnedResource":{"repoPath":"git.door43.org/unfoldingWord/en_tn","sha":"0000000000000000000000000000000000000007"},"checkKey":{"checkId":"abcd","occurrence":1,"target":{"verse":{"book":"TIT","chapter":"1","verse":"2"}},"tool":"translationNotes"}}
+]}

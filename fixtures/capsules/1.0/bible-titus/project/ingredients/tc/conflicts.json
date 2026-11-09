@@ -1,0 +1,3 @@
+{"schemaVersion":1,"conflicts":[
+{"id":"8983238eea130be959fee945fd910b2cf7ab26c465c5489579a844190c9aecff","key":{"verse":{"book":"TIT","chapter":1,"verse":3}},"kind":"verseText","provisional":"6b24fd43d630b25ba6934cac9d8823e5f444cc9d4aead6afaaa18534375f5ce0","candidates":[{"change":"6b24fd43d630b25ba6934cac9d8823e5f444cc9d4aead6afaaa18534375f5ce0","device":"dagskqyt5ipowdplog77aiijzry","author":null,"at":"2026-10-17T00:00:00.024Z"},{"change":"d5a0f0d45b3862e139eef81630d33c26d45c6bd39f9d7c6edb2d8774da764ec0","device":"daedqobyha4dqobyha4dqobyha4","author":null,"at":"2026-10-16T23:59:00.001Z"}]}
+]}
