@@ -2,7 +2,8 @@
 # each installer installed on a fresh runner and smoke-tested there, a draft GitHub release only
 # from a tag. Windows is signed on a release tag, and on a manual run of the default branch with
 # `sign` ticked, inside the `windows-signing` environment (H4; tC4 package-desktop.yml #456, which
-# signs release/* the same way). macOS stays unsigned, as tC4 4.0 rc.2.
+# signs release/* the same way). macOS is ad-hoc signed and not notarized, as tC4 4.0 rc.2; the
+# staged bundle's seal and manifest are verified before packaging and again once installed (#969).
 name: release
 permissions:
   contents: read
@@ -148,6 +149,11 @@ jobs:
           otool -L shipped/tc4
           extra=$(otool -L shipped/tc4 | tail -n +2 | awk '{print $1}' | grep -v -E '^(/System/Library/|/usr/lib/)' || true)
           [ -z "$extra" ] || { echo "tc4 links libraries a translator's Mac does not have: $extra"; exit 1; }
+      # INV-FINAL-MACOS-SEAL, INV-FINAL-MANIFEST-ACCURATE (#969): codesign exists only here, so the
+      # seal sequence's regression runs with the macOS build, not in the gates.
+      - if: matrix.platform == 'macos-arm64'
+        name: the seal sequence leaves the bundle valid
+        run: node --test --test-timeout=120000 scripts/release/seal-macos.test.mjs
       - uses: actions/download-artifact@v8
         with:
           name: release-common
