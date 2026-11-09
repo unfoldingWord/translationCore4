@@ -56,7 +56,7 @@ down the tower (GitHub issues and pull requests, built by the method in `docs/FU
 - Every change lands on `main` by pull request through the merge queue. Never push to `main`.
   A pull request needs one approving review and the required checks: `lint-linux`,
   `lint-windows`, `lint-wasm`, `test`, `test-app`, `alignment-budget`, `parity-baseline`,
-  `unit`, `builds`, `e2e-linux` and `journeys`. A pull request runs only the lints; the merge
+  `format-older-reader`, `unit`, `builds`, `e2e-linux` and `journeys`. A pull request runs only the lints; the merge
   queue runs the full list.
 
 ## The rules that protect translators' work

@@ -410,6 +410,34 @@ jobs:
           tool: cargo-nextest@0.9.149
       - run: scripts/gates.sh --step alignment-budget
 
+  # The build of the last frozen format version (the `format-v*` tag's published release) meets
+  # three folders the current build wrote: writable, read-only with "needs a newer app", refused
+  # before anything is written, and never "damaged" (STORAGE §12.3 step 4, P10). A required check
+  # of the merge queue; it passes with a log line while no format is frozen or no release exists
+  # at the frozen commit. The job downloads a release asset, which tests never do.
+  format-older-reader:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: plan
+    # Full tests run where they gate a merge: main, gate/* and on request (rulings/2026-10-24-test-process.md).
+    # !cancelled(): if plan fails, its outputs are empty and nothing is skipped.
+    if: ${{ !cancelled() && (!inputs.nightly && (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/heads/gate/') || github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch')) && needs.plan.outputs.tested != 'true' && needs.plan.outputs.code != 'false' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/free-disk
+      # With no name, rustup installs the toolchain rust-toolchain.toml names: the one pin.
+      - run: rustup toolchain install && rustc --version
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: tests
+          save-if: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/gates.sh --step format-older-reader
+
   # The Node checks (gates.sh --step node): the mock server answers the sync transport as the
   # platform does, the parity state built from this repository's copies of tC4's fixtures equals
   # the one recorded from tC4, the page observer's request tracking and settle hold, the pure
