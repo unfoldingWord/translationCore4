@@ -1,0 +1,4 @@
+format 1.0
+frozen 2026-11-09 (owner ruling: docs/rulings/2026-11-09-H9-freeze.md)
+capsules: c28fd2e6 (the merge of #974); pins: 7274a6d9 (the merge of #978)
+the tag format-v1.0 points at the commit that merged this marker (.github/workflows/format-tag.yml)
