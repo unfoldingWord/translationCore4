@@ -257,14 +257,11 @@ impl Run<'_> {
             SyncAction::Gate => self.gate().await,
             SyncAction::Checkpoint => {
                 match self.project.checkpoint(CheckpointReason::BeforeSync).await {
-                    Ok(report) => match report.skipped {
-                        Some(CheckpointSkip::ReadOnly) => SyncEvent::CheckpointFailed {
-                            reason: "the project is read-only".into(),
+                    Ok(report) => match crate::checkpoint::require_committed(&report) {
+                        Ok(()) => SyncEvent::CheckpointMade,
+                        Err(why) => SyncEvent::CheckpointFailed {
+                            reason: crate::checkpoint::skip_words(why),
                         },
-                        Some(CheckpointSkip::SecondWriter) => SyncEvent::CheckpointFailed {
-                            reason: "another installation is saving into this folder".into(),
-                        },
-                        _ => SyncEvent::CheckpointMade,
                     },
                     Err(e) => SyncEvent::CheckpointFailed {
                         reason: e.to_string(),

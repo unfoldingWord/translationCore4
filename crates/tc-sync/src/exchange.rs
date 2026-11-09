@@ -12,6 +12,8 @@ use std::path::{Path, PathBuf};
 use tc_journal::fold::{ConflictId, DerivedFile, PersonLabel};
 use tc_store::{CheckpointReason, IntakeReport, ProjectHandle, ReceivedPack};
 
+use crate::checkpoint::{require_committed, skip_words};
+
 const PACKS: &str = "ingredients/tc/changes/";
 const PROJECT_JSON: &str = "ingredients/tc/project.json";
 const METADATA: &str = "metadata.json";
@@ -65,18 +67,6 @@ pub enum ExchangeError {
     History(#[from] tc_store::git::GitError),
 }
 
-/// Why the store skipped the checkpoint, in a translator's words (the reason reaches the
-/// screen inside the refusal's sentence).
-fn skip_words(why: tc_store::CheckpointSkip) -> String {
-    match why {
-        tc_store::CheckpointSkip::ReadOnly => "the project is read-only".to_owned(),
-        tc_store::CheckpointSkip::SecondWriter => {
-            "another translationCore is saving into this project".to_owned()
-        }
-        other => format!("{other:?}"),
-    }
-}
-
 fn io(path: &Path) -> impl FnOnce(std::io::Error) -> ExchangeError + '_ {
     move |source| ExchangeError::Io {
         path: path.to_owned(),
@@ -101,12 +91,7 @@ pub async fn export(
     // The file holds the last commit: a checkpoint that could not commit the latest saves
     // stops the export, so a teammate never gets less than the person sees.
     let checkpoint = project.checkpoint(CheckpointReason::BeforeExport).await?;
-    if let Some(why) = checkpoint
-        .skipped
-        .filter(|why| *why != tc_store::CheckpointSkip::NoChanges)
-    {
-        return Err(ExchangeError::NotCommitted(skip_words(why)));
-    }
+    require_committed(&checkpoint).map_err(|why| ExchangeError::NotCommitted(skip_words(why)))?;
     let facts = project.facts();
     let git_dir = facts.git_dir.ok_or(ExchangeError::NoHistory)?;
     let destination = destination.to_owned();

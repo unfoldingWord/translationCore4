@@ -310,6 +310,175 @@ async fn a_first_sync_pushes_the_project_and_confirms_it() {
     handle.close().unwrap();
 }
 
+/// #961: an external history change can prevent the prerequisite checkpoint from moving
+/// HEAD. That is a failed sync, even though the old tree could still be pushed and confirmed.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn sync_confirms_only_a_made_checkpoint() {
+    let door43 = door43("titus-checkpoint-race").await;
+    let dir = tempfile::tempdir().unwrap();
+    let ana = computer(dir.path(), "ana");
+    let folder = titus(&ana);
+    let a = open(&ana, &folder);
+    connect(&a, &door43, "titus-checkpoint-race");
+    synced(&sync(&a, &door43).await);
+    let before = a.sync_file().await.unwrap().unwrap().confirmed;
+    let remote_before = branch_on_door43(&door43, "titus-checkpoint-race");
+    let requests_before = door43.fake.requests().len();
+    let saved = "the verse saved before the refused checkpoint";
+    save(&a, 1, 1, saved);
+    a.wait_idle();
+
+    let hooks = ana.store.hooks();
+    let point = tc_store::Point::BeforeHeadUpdate;
+    let reached = hooks.reached(point) + 1;
+    hooks.hold(point);
+    let git_dir = a.facts().git_dir.unwrap();
+    let other_program = async {
+        held_at(hooks, point, reached).await;
+        let moved = (|| -> Result<git2::Oid, git2::Error> {
+            let repo = git2::Repository::open(git_dir)?;
+            let old = repo.head()?.peel_to_commit()?;
+            let tree = old.tree()?;
+            let author = git2::Signature::now("another program", "audit@example.invalid")?;
+            repo.commit(
+                Some("HEAD"),
+                &author,
+                &author,
+                "another program moved history",
+                &tree,
+                &[&old],
+            )
+        })();
+        hooks.release(point);
+        moved.unwrap()
+    };
+    let (report, _) = tokio::join!(sync(&a, &door43), other_program);
+
+    assert_eq!(words(&a, 1, 1).as_deref(), Some(saved));
+    assert!(
+        matches!(
+            report.ended,
+            Ended::Failed(tc_api::refusal::SyncFailure::BeforeIntake(
+                tc_api::refusal::SyncRefusal::Io { .. }
+            ))
+        ),
+        "INV-SYNC-CONFIRMS-ONLY-A-MADE-CHECKPOINT: {report:?}"
+    );
+    assert_eq!(report.confirmed, None);
+    assert_eq!(a.sync_file().await.unwrap().unwrap().confirmed, before);
+    assert!(
+        door43.fake.requests()[requests_before..]
+            .iter()
+            .all(|r| !r.path.contains(".git/")),
+        "INV-SYNC-CONFIRMS-ONLY-A-MADE-CHECKPOINT: a refused checkpoint started git transport"
+    );
+    assert_eq!(
+        branch_on_door43(&door43, "titus-checkpoint-race"),
+        remote_before
+    );
+
+    synced(&sync(&a, &door43).await);
+    a.close().unwrap();
+    let juan = computer(dir.path(), "juan");
+    let repo = format!("{}/titus-checkpoint-race", seeded::USER)
+        .parse()
+        .unwrap();
+    let received = tc_sync::join(
+        &juan.store,
+        &door43.client,
+        Some(&door43.session),
+        &repo,
+        "Titus",
+    )
+    .await
+    .unwrap();
+    let b = open(&juan, &received.folder);
+    assert_eq!(
+        words(&b, 1, 1).as_deref(),
+        Some(saved),
+        "INV-SYNC-CONFIRMS-ONLY-A-MADE-CHECKPOINT: retry did not send the saved verse"
+    );
+    b.close().unwrap();
+}
+
+/// #961: missing local history must not be hidden by a successful push of the old HEAD.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn sync_keeps_its_previous_confirmation_until_a_missing_pack_is_repaired() {
+    let door43 = door43("titus-checkpoint-pack").await;
+    let dir = tempfile::tempdir().unwrap();
+    let ana = computer(dir.path(), "ana");
+    let folder = titus(&ana);
+    let a = open(&ana, &folder);
+    connect(&a, &door43, "titus-checkpoint-pack");
+    synced(&sync(&a, &door43).await);
+    let before = a.sync_file().await.unwrap().unwrap().confirmed;
+    let remote_before = branch_on_door43(&door43, "titus-checkpoint-pack");
+    let requests_before = door43.fake.requests().len();
+    let saved = "the verse saved before the missing pack was repaired";
+    save(&a, 1, 1, saved);
+    a.wait_idle();
+
+    let (pack, bytes) = packs_on_door43(&door43, "titus-checkpoint-pack")
+        .into_iter()
+        .next()
+        .unwrap();
+    let git_dir = a.facts().git_dir.unwrap();
+    let repo = git2::Repository::open(&git_dir).unwrap();
+    let blob = repo
+        .head()
+        .unwrap()
+        .peel_to_tree()
+        .unwrap()
+        .get_path(Path::new(&pack))
+        .unwrap()
+        .id()
+        .to_string();
+    let object = git_dir.join("objects").join(&blob[..2]).join(&blob[2..]);
+    let object_bytes = std::fs::read(&object).unwrap();
+    // This external deletion deliberately makes the folder invalid. Check it again once
+    // repaired; the ordinary fixture's probe cannot attribute this damage to the app.
+    ana.store.hooks().check_burrito(|_| Vec::new());
+    std::fs::remove_file(&object).unwrap();
+    std::fs::remove_file(folder.join(&pack)).unwrap();
+    let report = sync(&a, &door43).await;
+    std::fs::write(&object, object_bytes).unwrap();
+    std::fs::write(folder.join(&pack), bytes).unwrap();
+
+    assert!(
+        matches!(
+            report.ended,
+            Ended::Failed(tc_api::refusal::SyncFailure::BeforeIntake(
+                tc_api::refusal::SyncRefusal::Io { .. }
+            ))
+        ),
+        "INV-SYNC-CONFIRMS-ONLY-A-MADE-CHECKPOINT: {report:?}"
+    );
+    assert_eq!(report.confirmed, None);
+    assert_eq!(a.sync_file().await.unwrap().unwrap().confirmed, before);
+    assert_eq!(words(&a, 1, 1).as_deref(), Some(saved));
+    assert!(
+        door43.fake.requests()[requests_before..]
+            .iter()
+            .all(|r| !r.path.contains(".git/")),
+        "INV-SYNC-CONFIRMS-ONLY-A-MADE-CHECKPOINT: a missing pack started git transport"
+    );
+    assert_eq!(
+        branch_on_door43(&door43, "titus-checkpoint-pack"),
+        remote_before
+    );
+    synced(&sync(&a, &door43).await);
+    a.close().unwrap();
+    assert!(tc_burrito::validate_dir(&folder).is_empty());
+    assert!(
+        String::from_utf8(
+            on_door43(&door43, "titus-checkpoint-pack", "ingredients/TIT.usfm").unwrap()
+        )
+        .unwrap()
+        .contains(saved),
+        "INV-SYNC-CONFIRMS-ONLY-A-MADE-CHECKPOINT: repair and retry did not send the verse"
+    );
+}
+
 /// Two computers save different verses and sync in turn: each ends with both verses, and
 /// their book files are byte for byte the same.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
