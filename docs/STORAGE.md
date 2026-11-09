@@ -4460,8 +4460,9 @@ paths break the grammar or have a dot segment are foreign entries (§9.4), kept 
 are not compatible with 1.0, and no team used them. *Owner ruling H9 (freeze, 2026-11-09,
 `rulings/2026-11-09-H9-freeze.md`)*: format 1.0 is frozen as `main` writes it, with the
 removals of #963; the freeze takes effect when the marker `fixtures/capsules/1.0/FROZEN`
-merges (§12.3). `.tc/` is outside the format (ruling 3), and `ImportSource::Markdown` is not in
-1.0 (ruling 2; #967 adds it as a minor).
+merges (§12.3). `.tc/materialized.json` and `.tc/heads/*.bin` are outside the format (ruling 3;
+the pending-file header is pinned), and `ImportSource::Markdown` is not in 1.0 (ruling 2; #967
+adds it as a minor).
 
 ### 12.1 What carries a version
 
@@ -4562,8 +4563,9 @@ two open rows on 2026-11-09 (`rulings/2026-11-09-H9-freeze.md`), each with no mi
   U3; `outside_edit_without_base_is_never_provisional`). `ImportSource::Markdown` is **not in 1.0**
   (freeze ruling 2): "Update a story from Markdown" has no backend, nothing writes the variant,
   and a story taken in from a kept Markdown copy is recorded as `External { LocalFile }` like
-  any outside edit. #967 (milestone 4.2.0) is the writer and adds it as a format minor; older
-  apps read a project that holds it read-only (rule 7).
+  any outside edit. #967 (milestone 4.2.0) is the writer and adds it as a format minor; whether
+  older apps still edit such a project follows rule 7 (an inert cause, read as `Cause::Newer`
+  by rule 2, keeps `minReaderMinor`; #967 decides whether it is inert).
 - **Outside sources.** `Cause::External { source: LocalFile }` stays: the delta's "no longer
   written" was never built, and it is the cause of every outside edit the app records (§11.1,
   `plan_outside_edit` in `tc-journal/src/outside.rs`, reached from the open, from taking a held
@@ -4602,14 +4604,18 @@ PLAN P10. A version is frozen by the owner (H9; for 1.0, `rulings/2026-11-09-H9-
 the freeze is kept by checks, so a byte that older apps read never changes without a new
 version. Every version leaves a capsule set, minors included (freeze ruling 4).
 
-**What a freeze pins.** The bytes two builds must agree on: `ingredients/tc/format.json` as
-`FormatDoc::current` writes it (`fixtures/journal/format-1.0.json`); the canonical change
-line, with every record kind, field and cause of the minor (`fixtures/journal/v0-every-kind.ndjson`)
-and the reading of a newer minor's lines (`fixtures/journal/newer-minor.ndjson`); the pack and
-pending framing (`tcpack`, `pending`, §4); the exchange file's comment (`tc-exchange <n>`,
-§10.1); the shown token's byte form and key (§2.7); the tC4-shaped sidecars' `schemaVersion`;
-and the derived files' bytes, through the `derivations` versions (§7.7). **Not pinned:** `.tc/`
-(§3.6; ruling 3), the fold cache and its `INDEX_VERSION`, and the fold's notices.
+**What a freeze pins** (one list; the ruling's "The rule" is the same list). The bytes another
+build reads: `ingredients/tc/format.json` as `FormatDoc::current` writes it
+(`fixtures/journal/format-1.0.json`); the canonical change line, with every record kind, field
+and cause of the minor (`fixtures/journal/v0-every-kind.ndjson`) and the reading of a newer
+minor's lines (`fixtures/journal/newer-minor.ndjson`); the pack header and the pending-file
+header (`tcpack`, `pending`, §4: a pending file is local, but an updated or rolled-back build on
+the same computer reads the previous build's saves, rule 5); the exchange file's comment
+(`tc-exchange <n>`, §10.1); the shown token's byte form and key derivation (§2.7: a draft's token
+must verify after an update, §5.14); the tC4-shaped sidecars' `schemaVersion`; and the derived
+files' bytes, through the `derivations` versions (§7.7). **Not pinned:** `.tc/materialized.json`
+and `.tc/heads/*.bin` (§3.6; ruling 3, amended 2026-11-09), the fold cache and its
+`INDEX_VERSION`, and the fold's notices.
 `FORMAT_PINS` (`tc-journal/src/format.rs`) lists, per frozen version, the SHA-256 of each
 pinned sample and of each capsule's lock; `pinned_bytes_need_a_new_version`
 (`crates/tc-journal/tests/versioning.rs`) fails when a pin differs while
@@ -4656,16 +4662,22 @@ reading. The nine capsules of 1.0:
    on a copy, a verse is edited and saved, a checkpoint made, an exchange file written and
    received back; and `a_capsule_with_newer_minor_changes_opens_and_keeps_them`).
 3. The `FORMAT_PINS` row of the version, and the guard above.
-4. The CI job `format-older-reader` (`scripts/gates.sh --step format-older-reader`), a required
-   check of the merge queue: it finds the `format-v*` tag of the last frozen version, the
-   published GitHub release whose tag points at that commit, installs its Linux build as
-   `scripts/release/smoke-installed.sh` does and drives it through the API as
-   `scripts/release/smoke.mjs` does, on three folders the current build wrote: a plain one (opens
-   writable, saves a verse), one whose `minReaderMinor` the old build cannot write (opens
+4. The CI job `format-older-reader` (`scripts/gates.sh --step format-older-reader`,
+   `scripts/older-reader.sh`), a required check of the merge queue: it finds the
+   `format-v*` tag of the last frozen version, the published GitHub release whose own tag
+   points at that commit (a release records no commit of its own), downloads its Linux build
+   (each asset's bytes must match the digest the release lists, and the build's
+   `BUILD-MANIFEST.json` must name the frozen commit and match every installed file), unzips it
+   as `scripts/release/smoke-installed.sh` installs it, and drives it through the API as
+   `scripts/release/smoke.mjs` does (`scripts/older-reader.mjs`), on three folders the
+   current build wrote (`capsule reader-folders`): a plain one (opens writable, saves a verse,
+   reads it back after a restart), one whose `minReaderMinor` the old build cannot write (opens
    read-only with "needs a newer app" and writes nothing), one of a newer major (refused before
-   anything is written). "damaged" anywhere fails. While no published release exists at the
-   frozen commit, the job passes and logs `frozen <version> at <commit>; no published release
-   there yet`.
+   anything is written). "damaged" in any reply or on the old build's stderr fails. While no
+   `format-v*` tag exists, nothing is frozen and the job passes saying so; while no published
+   release exists at the frozen commit, it passes and logs `frozen <version> at <commit>; no
+   published release there yet`. The Linux build runs only on Linux, so a local run of the step
+   on another system stops there and says that CI covers it.
 5. The marker `fixtures/capsules/<version>/FROZEN` (the commit and the date). On its merge a
    workflow pushes the tag `format-v<version>` at that commit; from then on the guard of step 3
    is live.
