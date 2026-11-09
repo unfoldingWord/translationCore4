@@ -4623,8 +4623,9 @@ fixtures/capsules/<version>` (`crates/tc-corpus/examples/capsule.rs`; it refuses
 exists), never from a person's project. Its folder holds `project/`, the project as it leaves
 the app: every file of the project folder but `.git/` and `.tc/`, which are local (§3.1; ruling
 3), so an open of the capsule is the open of a received project (§10.2 R2: the first open
-makes the history); `LOCK.sha256`, the SHA-256 of every file under `project/`, in `sha256sum`
-form, sorted by path; and `EXPECT.json`, the projection the frozen build read through the
+makes the history); `LOCK.sha256`, the SHA-256 of every other file of the capsule (every file
+under `project/` and `EXPECT.json`), in `sha256sum` binary form with paths relative to the
+capsule and `/` separators, sorted by the bytes of the path; and `EXPECT.json`, the projection the frozen build read through the
 store's API: every projected record, its heads and its history, every conflict, every
 anomaly and every carried placement. Nobody changes a frozen capsule: `capsules_match_their_lock`
 fails when a byte moves (INV-CAPSULES-ARE-IMMUTABLE), and `every_capsule_opens_unchanged_and_validates`
