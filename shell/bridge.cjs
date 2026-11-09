@@ -77,6 +77,17 @@ async function printPdf(ctx, _event, url) {
   return { ok: true, file: path.basename(answer.filePath) };
 }
 
+// The folder the last choose dialog ended in, from `file`; undefined before the first, and when
+// that folder is gone (a USB stick taken out), where Windows would type its name into the dialog.
+function readLastFolder(file) {
+  try {
+    const folder = fs.readFileSync(file, 'utf8');
+    return folder && fs.statSync(folder).isDirectory() ? folder : undefined;
+  } catch (_) {
+    return undefined;
+  }
+}
+
 // Since Electron 43 a dialog without a defaultPath opens in Downloads, and the system no longer
 // remembers where the translator went last time; the shell remembers it instead (#937).
 async function chooseIn(ctx, properties, folderOf) {
@@ -175,4 +186,4 @@ function register(ipcMain, ctx) {
   }
 }
 
-module.exports = { BRIDGE, HELP_DESK_KEY, SENDGRID_URL, feedbackBody, loadHelpDesk, pdfName, register, trusted };
+module.exports = { BRIDGE, HELP_DESK_KEY, SENDGRID_URL, feedbackBody, loadHelpDesk, pdfName, readLastFolder, register, trusted };

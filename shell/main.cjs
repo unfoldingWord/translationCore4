@@ -330,14 +330,7 @@ const ctx = {
   window: () => win,
   windowOptions: (o) => lib.windowOptions({ platform: process.platform, ...o }),
   downloads: () => app.getPath('downloads'),
-  // The folder the last choose dialog ended in, kept across restarts; undefined before the first.
-  lastFolder: () => {
-    try {
-      return fs.readFileSync(lastFolderFile(), 'utf8') || undefined;
-    } catch (_) {
-      return undefined;
-    }
-  },
+  lastFolder: () => bridge.readLastFolder(lastFolderFile()),
   rememberFolder: (folder) => {
     fs.promises.writeFile(lastFolderFile(), folder).catch((error) => log('remember folder failed', { message: error.message }));
   },

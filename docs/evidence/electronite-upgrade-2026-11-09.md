@@ -35,7 +35,9 @@ Read from Electron's `docs/breaking-changes.md` against what the shell uses. Onl
 translator: since 43.0 an open or save dialog without a `defaultPath` starts in Downloads, and
 the system no longer remembers the last folder. `chooseFolder` and `chooseFile` (exchange save
 and receive) now pass the folder the last one ended in, kept in `shell-profile/last-folder.txt`
-across restarts. `printPdf` already passed a `defaultPath` and is unchanged. Electron 44 needs
+across restarts. A remembered folder that is gone is not passed: on Windows 11 with v44.9.3 a
+missing `E:\Exchange` opened the dialog in Downloads with "Exchange" typed in its field, and
+choosing failed with "the path does not exist". `printPdf` already passed a `defaultPath` and is unchanged. Electron 44 needs
 macOS 13, which `docs/RELEASE.md` already names. Not checked here: the window controls' place on
 Linux, which since 43.0 follows the desktop's own title bar layout.
 

@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const bridge = require('../bridge.cjs');
 const lib = require('../lib.cjs');
@@ -146,6 +147,24 @@ test('choose_dialogs_start_in_the_last_folder', async () => {
     [undefined, '/media/usb', '/media/usb'],
   );
   assert.equal(remembered, '/media/usb', 'a cancelled dialog keeps the folder');
+});
+
+// A remembered folder that is gone (the USB stick was taken out) is not offered: Windows would
+// open in Downloads with its name typed in the field, and choosing would fail (#937).
+test('choose_dialogs_fall_back_when_the_last_folder_is_gone', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tc4-last-folder-'));
+  try {
+    const file = path.join(dir, 'last-folder.txt');
+    assert.equal(bridge.readLastFolder(file), undefined, 'nothing remembered yet');
+    const usb = path.join(dir, 'Exchange');
+    fs.mkdirSync(usb);
+    fs.writeFileSync(file, usb);
+    assert.equal(bridge.readLastFolder(file), usb);
+    fs.rmdirSync(usb);
+    assert.equal(bridge.readLastFolder(file), undefined, 'the folder is gone');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('feedback_send_without_a_key_answers_not_configured', async () => {
