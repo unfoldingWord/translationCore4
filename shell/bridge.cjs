@@ -77,15 +77,18 @@ async function printPdf(ctx, _event, url) {
   return { ok: true, file: path.basename(answer.filePath) };
 }
 
-async function chooseFolder(ctx) {
-  const answer = await ctx.dialog.showOpenDialog(ctx.window(), { properties: ['openDirectory', 'createDirectory'] });
-  return answer.canceled || answer.filePaths.length === 0 ? null : answer.filePaths[0];
+// Since Electron 43 a dialog without a defaultPath opens in Downloads, and the system no longer
+// remembers where the translator went last time; the shell remembers it instead (#937).
+async function chooseIn(ctx, properties, folderOf) {
+  const answer = await ctx.dialog.showOpenDialog(ctx.window(), { properties, defaultPath: ctx.lastFolder() });
+  if (answer.canceled || answer.filePaths.length === 0) return null;
+  const chosen = answer.filePaths[0];
+  ctx.rememberFolder(folderOf(chosen));
+  return chosen;
 }
 
-async function chooseFile(ctx) {
-  const answer = await ctx.dialog.showOpenDialog(ctx.window(), { properties: ['openFile'] });
-  return answer.canceled || answer.filePaths.length === 0 ? null : answer.filePaths[0];
-}
+const chooseFolder = (ctx) => chooseIn(ctx, ['openDirectory', 'createDirectory'], (folder) => folder);
+const chooseFile = (ctx) => chooseIn(ctx, ['openFile'], (file) => path.dirname(file));
 
 // http and https of another site go to the system browser. The app's own origin is refused
 // there, where it is a 401 page without the token (A-33); it opens in the app instead.

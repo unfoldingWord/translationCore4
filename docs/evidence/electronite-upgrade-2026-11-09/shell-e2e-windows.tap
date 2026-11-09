@@ -1,0 +1,99 @@
+TAP version 13
+# Subtest: header_filter_reaches_every_request_type
+ok 1 - header_filter_reaches_every_request_type
+  ---
+  duration_ms: 3585.1567
+  type: 'test'
+  ...
+# \# /api/ p95 idle 2.0 ms, with 20 bufferChanged a second 1.4 ms
+# Subtest: api_p95_is_not_raised_by_mirror_writes
+ok 2 - api_p95_is_not_raised_by_mirror_writes
+  ---
+  duration_ms: 4145.4435
+  type: 'test'
+  ...
+# \# shell win32-x64: {"fontLoaded":true,"boxWidth":302.9,"boxHeight":76,"canvasWidth":322.9,"ascent":61,"descent":13.2}
+# Subtest: graphite_shapes_awami_nastaliq_in_the_shell
+ok 3 - graphite_shapes_awami_nastaliq_in_the_shell
+  ---
+  duration_ms: 3462.5175
+  type: 'test'
+  ...
+# \# window shown 971 ms after the launch, tc4 address after 1224 ms
+# Subtest: window_is_painted_within_1_s_of_the_click
+ok 4 - window_is_painted_within_1_s_of_the_click
+  ---
+  duration_ms: 3308.4253
+  type: 'test'
+  ...
+# Subtest: second_launch_focuses_the_running_window_and_starts_no_server
+ok 5 - second_launch_focuses_the_running_window_and_starts_no_server
+  ---
+  duration_ms: 5174.1685
+  type: 'test'
+  ...
+# \# a line sent from port 49777 while tc4 was gone (the old port: 49777)
+# Subtest: ending_tc4_restarts_it_and_reloads_home
+ok 6 - ending_tc4_restarts_it_and_reloads_home
+  ---
+  duration_ms: 4762.4167
+  type: 'test'
+  ...
+# \# tc4 ended 110 ms after the shell was killed
+# Subtest: ending_the_shell_ends_tc4_within_5s
+ok 7 - ending_the_shell_ends_tc4_within_5s
+  ---
+  duration_ms: 7678.4213
+  type: 'test'
+  ...
+# Subtest: closing_the_window_while_preparing_leaves_no_tc4_process
+ok 8 - closing_the_window_while_preparing_leaves_no_tc4_process
+  ---
+  duration_ms: 7563.5643
+  type: 'test'
+  ...
+# Subtest: same_origin_help_link_stays_in_app
+ok 9 - same_origin_help_link_stays_in_app
+  ---
+  duration_ms: 4450.0377
+  type: 'test'
+  ...
+# Subtest: hard_kill_while_typing_offers_the_text_at_relaunch
+ok 10 - hard_kill_while_typing_offers_the_text_at_relaunch
+  ---
+  duration_ms: 8507.7509
+  type: 'test'
+  ...
+# Subtest: close_with_unsaved_text_asks
+ok 11 - close_with_unsaved_text_asks
+  ---
+  duration_ms: 12457.3046
+  type: 'test'
+  ...
+# Subtest: windows_window_has_no_native_bar_and_keeps_zoom_and_reload
+ok 12 - windows_window_has_no_native_bar_and_keeps_zoom_and_reload
+  ---
+  duration_ms: 3524.9256
+  type: 'test'
+  ...
+# Subtest: a_text_field_right_click_offers_cut_copy_paste
+ok 13 - a_text_field_right_click_offers_cut_copy_paste
+  ---
+  duration_ms: 4026.4691
+  type: 'test'
+  ...
+# Subtest: feedback_send_without_a_key_answers_not_configured
+ok 14 - feedback_send_without_a_key_answers_not_configured
+  ---
+  duration_ms: 3102.4902
+  type: 'test'
+  ...
+1..14
+# tests 14
+# suites 0
+# pass 14
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 148708.8515

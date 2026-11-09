@@ -27,7 +27,7 @@ concurrency:
   # always finish, since they publish.
   cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') && github.ref != format('refs/heads/{0}', github.event.repository.default_branch) }}
 env:
-  ELECTRONITE: v37.1.0-graphite
+  ELECTRONITE: v44.9.3-graphite
   TC4_BUILD_COMMIT: ${{ github.sha }}
 
 jobs:
@@ -97,13 +97,13 @@ jobs:
         include:
           - platform: linux-x64
             os: ubuntu-24.04
-            electronite: electronite-v37.1.0-graphite-linux-x64.zip
+            electronite: electronite-v44.9.3-graphite-linux-x64.zip
           - platform: windows-x64
             os: windows-2025
-            electronite: electronite-v37.1.0-graphite-win32-x64.zip
+            electronite: electronite-v44.9.3-graphite-win32-x64.zip
           - platform: macos-arm64
             os: macos-15
-            electronite: electronite-v37.1.0-graphite-darwin-arm64.zip
+            electronite: electronite-v44.9.3-graphite-darwin-arm64.zip
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     # Signing (H4): Azure trusts only this environment's OIDC subject, and its deployment rules
@@ -177,7 +177,7 @@ jobs:
           scripts/release/sign-windows.ps1 -ToolDir "$env:RUNNER_TEMP\sign" -Setup
           scripts/release/sign-windows.ps1 -ToolDir "$env:RUNNER_TEMP\sign" -Sign "stage\translationCore 4"
           # The manifest records the signed files.
-          node scripts/release/manifest.mjs --root "stage\translationCore 4" --platform windows-x64 --electronite $env:ELECTRONITE --electronite-sha256 8146ca21fa090e12bca01a8af73d234d9a31d90f51da0da86bb0e1731c371b52
+          node scripts/release/manifest.mjs --root "stage\translationCore 4" --platform windows-x64 --electronite $env:ELECTRONITE --electronite-sha256 4a9b1e2161a1e197e08aa518b11419a96e864de36a4970dc53de861a559f69f4
       - name: package
         env:
           AZURE_SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}

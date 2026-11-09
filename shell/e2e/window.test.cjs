@@ -29,7 +29,8 @@ async function menuKeys(app) {
     const win = BrowserWindow.getAllWindows()[0];
     const items = Menu.getApplicationMenu().items.flatMap((menu) => menu.submenu.items);
     const find = (key) => items.find((i) => i.accelerator === key || i.role === key);
-    const keys = items.map((i) => i.accelerator || i.role).filter(Boolean);
+    // Since Electron 44 a role item also reports its default accelerator, so both are read.
+    const keys = items.flatMap((i) => [i.accelerator, i.role]).filter(Boolean);
     const zoom = [];
     find('zoomin').click(undefined, win, win.webContents);
     zoom.push(win.webContents.getZoomLevel());

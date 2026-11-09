@@ -31,7 +31,7 @@ node --test 'shell/test/*.test.cjs'
 
 `SHELL_MODEL_SEED=<n>` runs the two model tests from a given seed; a failure prints its seed.
 
-The end-to-end tests run the real shell in Electronite v37.1.0-graphite over a test build of
+The end-to-end tests run the real shell in Electronite v44.9.3-graphite over a test build of
 `tc4`, driven by Playwright (`npm ci` in `parity/tc4-baseline`, or `PLAYWRIGHT_MODULE`):
 
 ```bash

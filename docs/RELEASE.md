@@ -110,7 +110,7 @@ branch, it can also be run by hand from the Actions tab on any branch.
 | `translations` | translations | no interface string ships untranslated (H10) |
 | `release_has_no_test_hooks` | build | the shipped `tc4` has no test flag, route or text |
 | `tc4_exe_imports_no_vcruntime` | build (Windows) | `tc4.exe` needs no Visual C++ runtime (tC4 #284) |
-| Electronite sha256 | build | the shell is the pinned Electronite v37.1.0-graphite |
+| Electronite sha256 | build | the shell is the pinned Electronite v44.9.3-graphite |
 | `fetch-pinned.mjs`, `, 0 skipped,` | common | every archive `bundle/en/fetched.lock` pins (the OBS pictures) is downloaded, matches the lock's size and sha256, and is installed in the bundle |
 | `notices.mjs` | build | the notices name every crate in `Cargo.lock` and every bundled resource |
 | the Windows installer is signed | publish | no release carries an `-unsigned` Windows installer |

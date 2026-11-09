@@ -20,7 +20,7 @@ concurrency:
   # As in ci.yml: a superseded track run is cancelled; main and gate/* runs always finish.
   cancel-in-progress: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && !startsWith(github.ref, 'refs/heads/gate/') }}
 env:
-  ELECTRONITE: v37.1.0-graphite
+  ELECTRONITE: v44.9.3-graphite
 jobs:
   # Whether the change can affect this workflow's tests: false when it is wholly prose
   # (scripts/ci-changes.sh). A skipped job reports success, so required checks still pass.
@@ -199,7 +199,7 @@ jobs:
           $file = Join-Path $env:RUNNER_TEMP $zip
           Invoke-WebRequest -Uri "https://github.com/unfoldingWord/electronite/releases/download/$env:ELECTRONITE/$zip" -OutFile $file
           $sum = (Get-FileHash -Algorithm SHA256 $file).Hash.ToLower()
-          if ($sum -ne '8146ca21fa090e12bca01a8af73d234d9a31d90f51da0da86bb0e1731c371b52') { throw "electronite sha256 $sum" }
+          if ($sum -ne '4a9b1e2161a1e197e08aa518b11419a96e864de36a4970dc53de861a559f69f4') { throw "electronite sha256 $sum" }
           Expand-Archive -Path $file -DestinationPath (Join-Path $env:RUNNER_TEMP 'electronite')
       - uses: actions/setup-node@v7
         with:
