@@ -580,11 +580,16 @@ pub fn repo_root() -> PathBuf {
 pub fn sample_bible() -> tc_app::backend::memory::MemoryProject {
     use std::sync::OnceLock;
     use tc_app::backend::memory::MemoryProject;
-    use tc_app::backend::seed::{Tc4Folder, fixture_project_id, tc4_state_seed};
+    use tc_app::backend::seed::{BatchTag, Tc4Folder, fixture_project_id, tc4_state_seed};
     static SEED: OnceLock<MemoryProject> = OnceLock::new();
     SEED.get_or_init(|| {
         let folder = Tc4Folder::read(&repo_root().join("fixtures/tc4/sample-burrito")).unwrap();
-        let seed = tc4_state_seed(&folder, fixture_project_id("sample_burrito")).unwrap();
+        let seed = tc4_state_seed(
+            &folder,
+            fixture_project_id("sample_burrito"),
+            BatchTag::FIXTURE,
+        )
+        .unwrap();
         MemoryProject::from_seed(seed, None)
     })
     .clone()

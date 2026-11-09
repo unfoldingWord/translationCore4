@@ -27,8 +27,11 @@
 //! a timestamp is rewritten in tC4's own form; a decision with no `modifiedTimestamp` is
 //! written with the time its change carries.
 //!
-//! The fixture backend loads this seed (B1b); unit I's importer replaces it once
-//! `memory_seed_equals_tc_import_seed` passes (AD7).
+//! The fixture backend loads this seed (B1b), and New Bible from a Scripture Burrito reads
+//! one to check and read the file (J9d, `crate::burrito`); unit I's importer replaces it once
+//! `memory_seed_equals_tc_import_seed` passes (AD7). The caller names the seed's batches
+//! with a [`BatchTag`]: the fixture backend's tag exists only in a build with the feature, so
+//! a release binary never holds it (AD35, `release_has_no_test_hooks`).
 
 mod check;
 mod records;
@@ -610,6 +613,23 @@ fn list_mismatches(mismatches: &[Mismatch]) -> String {
 // The seed
 // ---------------------------------------------------------------------------------------
 
+/// What names a seed's batches: a batch's id is sha256(tag ‖ "\0" ‖ projectId ‖ label)[..16]
+/// (D3 of unit B1a). The fixture backend's tag is `BatchTag::FIXTURE`, which only a build with
+/// the feature `fixture-backend` holds: `release_has_no_test_hooks` reads the release binary for
+/// it (AD35). A caller that seeds to read and check, never to write, names its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BatchTag(&'static str);
+
+impl BatchTag {
+    /// The batch tag of the fixture backend's seed.
+    #[cfg(feature = "fixture-backend")]
+    pub const FIXTURE: Self = Self("tc4-seed-batch");
+
+    pub(crate) const fn new(tag: &'static str) -> Self {
+        Self(tag)
+    }
+}
+
 /// The fixture backend's project id for a folder (D10 of unit B1a): a UUID of version 8
 /// from sha256("tc4-state-seed\0" ‖ the folder's name). STORAGE gives §13.2 no rule for a
 /// project id; this is the fixture backend's, not an import rule.
@@ -624,8 +644,12 @@ pub fn fixture_project_id(folder_name: &str) -> ProjectId {
 
 /// Seeds `folder` as project `project` and checks the result (module docs). Returns the
 /// seed only when the check passes; otherwise every mismatch, and nothing is made.
-pub fn tc4_state_seed(folder: &Tc4Folder, project: ProjectId) -> Result<StateSeed, SeedRefusal> {
-    let built = build(folder, project)?;
+pub fn tc4_state_seed(
+    folder: &Tc4Folder,
+    project: ProjectId,
+    batches: BatchTag,
+) -> Result<StateSeed, SeedRefusal> {
+    let built = build(folder, project, batches)?;
     let checked = check::check(folder, &built);
     if !checked.mismatches.is_empty() {
         return Err(SeedRefusal::Mismatches(checked.mismatches));
@@ -713,6 +737,7 @@ struct Item {
 /// What every change of one seed shares.
 struct Ctx {
     project: ProjectId,
+    batches: BatchTag,
     device: DeviceId,
     cause: Cause,
 }
@@ -725,7 +750,11 @@ struct BookFiles<'a> {
     decisions: BTreeMap<ToolId, (&'a str, &'a [u8])>,
 }
 
-pub(crate) fn build(folder: &Tc4Folder, project: ProjectId) -> Result<Built, SeedRefusal> {
+pub(crate) fn build(
+    folder: &Tc4Folder,
+    project: ProjectId,
+    batches: BatchTag,
+) -> Result<Built, SeedRefusal> {
     let meta_doc = read_json(METADATA, &folder.metadata)?;
     let Value::Object(meta) = &meta_doc else {
         return Err(SeedRefusal::Unreadable {
@@ -742,6 +771,7 @@ pub(crate) fn build(folder: &Tc4Folder, project: ProjectId) -> Result<Built, See
     device_input.extend_from_slice(project.as_bytes());
     let ctx = Ctx {
         project,
+        batches,
         device: DeviceId::derived(DeviceKind::Importer, &device_input),
         cause: Cause::Import(ImportSource::Burrito {
             file_name: folder.name.as_str().into(),
@@ -998,10 +1028,11 @@ fn sha256(parts: &[&[u8]]) -> [u8; 32] {
     out
 }
 
-/// sha256("tc4-seed-batch\0" ‖ projectId ‖ label)[..16].
-fn batch_id(project: ProjectId, label: BatchLabel) -> BatchId {
+/// sha256(tag ‖ "\0" ‖ projectId ‖ label)[..16].
+fn batch_id(batches: BatchTag, project: ProjectId, label: BatchLabel) -> BatchId {
     let hash = sha256(&[
-        b"tc4-seed-batch\0",
+        batches.0.as_bytes(),
+        b"\0",
         project.as_bytes(),
         label.text().as_bytes(),
     ]);
@@ -1028,7 +1059,7 @@ fn batch(label: BatchLabel, items: Vec<Item>, ctx: &Ctx) -> Result<SeedBatch, Se
     }
     let n = u32::try_from(keyed.len())
         .map_err(|_| SeedRefusal::Internal("a batch of more than 2³² records".into()))?;
-    let batch = BatchRef::new(batch_id(ctx.project, label), n)
+    let batch = BatchRef::new(batch_id(ctx.batches, ctx.project, label), n)
         .ok_or_else(|| SeedRefusal::Internal(format!("the batch {} is empty", label.text())))?;
     let mut changes = Vec::with_capacity(keyed.len());
     for (seq, (key, item)) in (0u64..).zip(keyed) {

@@ -25,7 +25,7 @@ use tc_api::event::Event;
 use tc_api::home::{Card, Languages, List};
 use tc_api::ids::ProjectRef;
 use tc_app::backend::memory::{MemoryBackend, MemoryProject};
-use tc_app::backend::seed::{Tc4Folder, fixture_project_id, tc4_state_seed};
+use tc_app::backend::seed::{BatchTag, Tc4Folder, fixture_project_id, tc4_state_seed};
 use tc_app::backend::{ProjectStore, SummaryWatch};
 use tc_app::config::{AppConfig, ProjectsFolder};
 use tc_app::events::Next;
@@ -65,7 +65,12 @@ fn report(name: &str, samples: &[f64], extra: serde_json::Value) {
 fn sample_bible() -> MemoryProject {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/tc4/sample-burrito");
     let folder = Tc4Folder::read(&root).expect("the sample reads");
-    let seed = tc4_state_seed(&folder, fixture_project_id("sample_burrito")).expect("it seeds");
+    let seed = tc4_state_seed(
+        &folder,
+        fixture_project_id("sample_burrito"),
+        BatchTag::FIXTURE,
+    )
+    .expect("it seeds");
     MemoryProject::from_seed(seed, None)
 }
 

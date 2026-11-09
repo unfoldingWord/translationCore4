@@ -18,9 +18,11 @@ use tempfile::TempDir;
 
 /// The words no release binary may hold: every endpoint name of the test service, the
 /// application's and the stand-in's alike, every flag only a test build has, and the batch
-/// tag of the fixture backend's seed (feature `fixture-backend`). Since B1b `tc4 serve
-/// --scenario` calls the seed in a build with the feature, so the tag and the flag guard the
-/// release binary as well as `release_build_resolves_no_fixture_backend_and_no_test_hook`.
+/// tag of the fixture backend's seed (`BatchTag::FIXTURE`, feature `fixture-backend`). Since B1b
+/// `tc4 serve --scenario` calls the seed in a build with the feature, so the tag and the flag
+/// guard the release binary as well as `release_build_resolves_no_fixture_backend_and_no_test_hook`.
+/// Since J9d New Bible from a Burrito reads the same seed in every build (#971): the seed names
+/// its batches by the tag its caller passes, and only the fixture backend's tag is a hook.
 const HOOK_TEXT: [&str; 17] = [
     "test/crash",
     "test/fieldStore",
