@@ -26,7 +26,8 @@ H3, H4, H10 and H16). The pipeline is `.github/workflows/release.yml`; its scrip
 - **BUILD-MANIFEST.json** (also inside each installed app): the commit, the version, the platform,
   Electronite's tag and archive sha256, and the sha256 and size of every shipped file. About shows
   the same commit (`app/hello`'s `build.commit`), and the smoke test checks they match. The
-  manifest records every shipped file as it ships, after signing, with two exceptions on macOS,
+  manifest records every shipped regular file as it ships, after signing (the symbolic links
+  inside Electron's frameworks are not files and are not recorded), with two exceptions on macOS,
   named in its `unrecorded` list: `Contents/MacOS/Electron` and
   `Contents/_CodeSignature/CodeResources`. They hold the bundle's own signature, which seals the
   manifest in, so they are written after it and cover it rather than the other way round

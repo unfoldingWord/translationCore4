@@ -82,7 +82,9 @@ export function mismatches(manifest, root, extra = []) {
   return faults;
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+// Node resolves the main module's symbolic links (on macOS /tmp is one) and argv[1] not, so a
+// plain comparison would make a run through a linked path a silent no-op.
+if (fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const { values } = parseArgs({
     options: {
       root: { type: 'string' },
