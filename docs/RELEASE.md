@@ -7,7 +7,7 @@ H3, H4, H10 and H16). The pipeline is `.github/workflows/release.yml`; its scrip
 ## What a release is
 
 - **Version:** semver, from `[workspace.package] version` in `Cargo.toml`. The first public
-  release is 4.1.0 (H16 part 1). Before it, `4.1.0-preview` (tag `v4.1.0-preview`) goes to named testers only: About says "preview", and format 1.0 is not frozen yet (H9, `rulings/2026-10-27-H9.md`). A patch fixes, a minor adds, a major breaks an older
+  release is 4.1.0 (H16 part 1). Before it, `4.1.0-preview` (tag `v4.1.0-preview`) goes to named testers only: About says "preview". `4.1.0-preview2` (tag `v4.1.0-preview2`) is the build at the format 1.0 freeze, for the same testers; it is the older reader CI's `format-older-reader` job drives (H9, `rulings/2026-10-27-H9.md` and `rulings/2026-11-09-H9-freeze.md`; STORAGE §12.3). A patch fixes, a minor adds, a major breaks an older
   project or sync peer.
 - **Names (H16 part 3):** the app shows itself as **translationCore**; it is installed as
   **translationCore 4** (install folder, Start menu, Applications). The download page is
