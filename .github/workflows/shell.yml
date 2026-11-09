@@ -20,7 +20,7 @@ concurrency:
   # As in ci.yml: a superseded track run is cancelled; main and gate/* runs always finish.
   cancel-in-progress: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && !startsWith(github.ref, 'refs/heads/gate/') }}
 env:
-  ELECTRONITE: v37.1.0-graphite
+  ELECTRONITE: v44.9.3-graphite
 jobs:
   # Whether the change can affect this workflow's tests: false when it is wholly prose
   # (scripts/ci-changes.sh). A skipped job reports success, so required checks still pass.
@@ -142,7 +142,7 @@ jobs:
         run: |
           zip="electronite-$ELECTRONITE-linux-x64.zip"
           curl -sSfL -o "$RUNNER_TEMP/$zip" "https://github.com/unfoldingWord/electronite/releases/download/$ELECTRONITE/$zip"
-          echo "41218aa3cd79f3449cfc360384ad4ef6064fe871e4c40a38ae859f2ddd8f8540  $RUNNER_TEMP/$zip" | sha256sum -c -
+          echo "b7f49557cbd1f7ccb5ff3689b2e025d3329a0dd1f19d71c7ad2963bbf2e2c507  $RUNNER_TEMP/$zip" | sha256sum -c -
           unzip -q "$RUNNER_TEMP/$zip" -d "$RUNNER_TEMP/electronite"
           # tC4 docs/PACKAGING.md "The Chromium sandbox": setuid root, so the renderer keeps it.
           sudo chown root:root "$RUNNER_TEMP/electronite/chrome-sandbox"
@@ -199,7 +199,7 @@ jobs:
           $file = Join-Path $env:RUNNER_TEMP $zip
           Invoke-WebRequest -Uri "https://github.com/unfoldingWord/electronite/releases/download/$env:ELECTRONITE/$zip" -OutFile $file
           $sum = (Get-FileHash -Algorithm SHA256 $file).Hash.ToLower()
-          if ($sum -ne '8146ca21fa090e12bca01a8af73d234d9a31d90f51da0da86bb0e1731c371b52') { throw "electronite sha256 $sum" }
+          if ($sum -ne '4a9b1e2161a1e197e08aa518b11419a96e864de36a4970dc53de861a559f69f4') { throw "electronite sha256 $sum" }
           Expand-Archive -Path $file -DestinationPath (Join-Path $env:RUNNER_TEMP 'electronite')
       - uses: actions/setup-node@v7
         with:
@@ -244,7 +244,7 @@ jobs:
         run: |
           zip="electronite-$ELECTRONITE-darwin-arm64.zip"
           curl -sSfL -o "$RUNNER_TEMP/$zip" "https://github.com/unfoldingWord/electronite/releases/download/$ELECTRONITE/$zip"
-          echo "a3dde44e03a076bc778f952f7a7a5ed6d8e5037d46ea6c1ba2deb6a11df59488  $RUNNER_TEMP/$zip" | shasum -a 256 -c -
+          echo "a019a033b0b067b9ef2aabcdbc54286b01e7f5137e1aa767b65e92e897a93a74  $RUNNER_TEMP/$zip" | shasum -a 256 -c -
           # ditto keeps the app bundle's symbolic links, which unzip may not.
           ditto -x -k "$RUNNER_TEMP/$zip" "$RUNNER_TEMP/electronite"
           ls "$RUNNER_TEMP/electronite"

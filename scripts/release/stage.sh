@@ -12,16 +12,16 @@
 # the translationCore icon into electron.exe (#871).
 set -euo pipefail
 
-ELECTRONITE=v37.1.0-graphite
+ELECTRONITE=v44.9.3-graphite
 platform=$1 tc4=$2 ui=$3 bundle=$4 zip=$5 out=$6
 repo=$(cd "$(dirname "$0")/../.." && pwd)
 # Node on Windows reads C:\ paths, not Git Bash's /c/ ones.
 np() { if command -v cygpath > /dev/null; then cygpath -w "$1"; else printf '%s' "$1"; fi; }
 
 case "$platform" in
-  linux-x64) want=41218aa3cd79f3449cfc360384ad4ef6064fe871e4c40a38ae859f2ddd8f8540 ;;
-  windows-x64) want=8146ca21fa090e12bca01a8af73d234d9a31d90f51da0da86bb0e1731c371b52 ;;
-  macos-arm64) want=a3dde44e03a076bc778f952f7a7a5ed6d8e5037d46ea6c1ba2deb6a11df59488 ;;
+  linux-x64) want=b7f49557cbd1f7ccb5ff3689b2e025d3329a0dd1f19d71c7ad2963bbf2e2c507 ;;
+  windows-x64) want=4a9b1e2161a1e197e08aa518b11419a96e864de36a4970dc53de861a559f69f4 ;;
+  macos-arm64) want=a019a033b0b067b9ef2aabcdbc54286b01e7f5137e1aa767b65e92e897a93a74 ;;
   *) echo "stage.sh: no platform $platform" >&2; exit 2 ;;
 esac
 # Read from stdin: given a path with backslashes (Windows), sha256sum puts a backslash before the hash.

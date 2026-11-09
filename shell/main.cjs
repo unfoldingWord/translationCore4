@@ -317,6 +317,8 @@ const ACTIONS = {
 
 // ---- The bridge ----
 
+const lastFolderFile = () => path.join(app.getPath('userData'), 'last-folder.txt');
+
 const ctx = {
   BrowserWindow,
   dialog,
@@ -328,6 +330,10 @@ const ctx = {
   window: () => win,
   windowOptions: (o) => lib.windowOptions({ platform: process.platform, ...o }),
   downloads: () => app.getPath('downloads'),
+  lastFolder: () => bridge.readLastFolder(lastFolderFile()),
+  rememberFolder: (folder) => {
+    fs.promises.writeFile(lastFolderFile(), folder).catch((error) => log('remember folder failed', { message: error.message }));
+  },
   writeFile: (file, bytes) => fs.promises.writeFile(file, bytes),
   openInApp: (url) => {
     const child = new BrowserWindow(lib.windowOptions({ platform: process.platform }));

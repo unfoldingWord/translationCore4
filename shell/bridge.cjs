@@ -77,15 +77,29 @@ async function printPdf(ctx, _event, url) {
   return { ok: true, file: path.basename(answer.filePath) };
 }
 
-async function chooseFolder(ctx) {
-  const answer = await ctx.dialog.showOpenDialog(ctx.window(), { properties: ['openDirectory', 'createDirectory'] });
-  return answer.canceled || answer.filePaths.length === 0 ? null : answer.filePaths[0];
+// The folder the last choose dialog ended in, from `file`; undefined before the first, and when
+// that folder is gone (a USB stick taken out), where Windows would type its name into the dialog.
+function readLastFolder(file) {
+  try {
+    const folder = fs.readFileSync(file, 'utf8');
+    return folder && fs.statSync(folder).isDirectory() ? folder : undefined;
+  } catch (_) {
+    return undefined;
+  }
 }
 
-async function chooseFile(ctx) {
-  const answer = await ctx.dialog.showOpenDialog(ctx.window(), { properties: ['openFile'] });
-  return answer.canceled || answer.filePaths.length === 0 ? null : answer.filePaths[0];
+// Since Electron 43 a dialog without a defaultPath opens in Downloads, and the system no longer
+// remembers where the translator went last time; the shell remembers it instead (#937).
+async function chooseIn(ctx, properties, folderOf) {
+  const answer = await ctx.dialog.showOpenDialog(ctx.window(), { properties, defaultPath: ctx.lastFolder() });
+  if (answer.canceled || answer.filePaths.length === 0) return null;
+  const chosen = answer.filePaths[0];
+  ctx.rememberFolder(folderOf(chosen));
+  return chosen;
 }
+
+const chooseFolder = (ctx) => chooseIn(ctx, ['openDirectory', 'createDirectory'], (folder) => folder);
+const chooseFile = (ctx) => chooseIn(ctx, ['openFile'], (file) => path.dirname(file));
 
 // http and https of another site go to the system browser. The app's own origin is refused
 // there, where it is a 401 page without the token (A-33); it opens in the app instead.
@@ -172,4 +186,4 @@ function register(ipcMain, ctx) {
   }
 }
 
-module.exports = { BRIDGE, HELP_DESK_KEY, SENDGRID_URL, feedbackBody, loadHelpDesk, pdfName, register, trusted };
+module.exports = { BRIDGE, HELP_DESK_KEY, SENDGRID_URL, feedbackBody, loadHelpDesk, pdfName, readLastFolder, register, trusted };

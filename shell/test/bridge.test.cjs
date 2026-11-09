@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const bridge = require('../bridge.cjs');
 const lib = require('../lib.cjs');
@@ -37,6 +38,8 @@ function fakeCtx(over = {}) {
     window: () => 'win',
     log: () => {},
     downloads: () => '/home/p/Downloads',
+    lastFolder: () => undefined,
+    rememberFolder: () => {},
     windowOptions: (o) => lib.windowOptions({ platform: 'linux', ...o }),
     shell: { openExternal: (url) => calls.push(['browser', url]) },
     openInApp: (url) => calls.push(['app', url]),
@@ -115,6 +118,53 @@ test('choose_folder_and_file_answer_a_path_or_null', async () => {
   const none = fakeCtx({ dialog: { showOpenDialog: async () => ({ canceled: true, filePaths: [] }) } });
   assert.equal(await call('chooseFolder', none), null);
   assert.equal(await call('chooseFile', none), null);
+});
+
+// Electron 43 opens a dialog without a defaultPath in Downloads and the system no longer
+// remembers the last folder, so the shell does: a translator who saves exchange files to a USB
+// stick finds it again next time, also after a restart (#937).
+test('choose_dialogs_start_in_the_last_folder', async () => {
+  let remembered;
+  const answers = [['/media/usb'], ['/media/usb/Titus.tcx'], []];
+  const ctx = fakeCtx({
+    lastFolder: () => remembered,
+    rememberFolder: (folder) => {
+      remembered = folder;
+    },
+    dialog: {
+      showOpenDialog: async (win, options) => {
+        ctx.calls.push(['open', options]);
+        const filePaths = answers.shift();
+        return { canceled: filePaths.length === 0, filePaths };
+      },
+    },
+  });
+  assert.equal(await call('chooseFolder', ctx), '/media/usb');
+  assert.equal(await call('chooseFile', ctx), '/media/usb/Titus.tcx');
+  assert.equal(await call('chooseFile', ctx), null);
+  assert.deepEqual(
+    ctx.calls.map(([, o]) => o.defaultPath),
+    [undefined, '/media/usb', '/media/usb'],
+  );
+  assert.equal(remembered, '/media/usb', 'a cancelled dialog keeps the folder');
+});
+
+// A remembered folder that is gone (the USB stick was taken out) is not offered: Windows would
+// open in Downloads with its name typed in the field, and choosing would fail (#937).
+test('choose_dialogs_fall_back_when_the_last_folder_is_gone', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tc4-last-folder-'));
+  try {
+    const file = path.join(dir, 'last-folder.txt');
+    assert.equal(bridge.readLastFolder(file), undefined, 'nothing remembered yet');
+    const usb = path.join(dir, 'Exchange');
+    fs.mkdirSync(usb);
+    fs.writeFileSync(file, usb);
+    assert.equal(bridge.readLastFolder(file), usb);
+    fs.rmdirSync(usb);
+    assert.equal(bridge.readLastFolder(file), undefined, 'the folder is gone');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('feedback_send_without_a_key_answers_not_configured', async () => {
