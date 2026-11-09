@@ -25,7 +25,15 @@ H3, H4, H10 and H16). The pipeline is `.github/workflows/release.yml`; its scrip
   launcher passes its path to `tc4 serve --notices` (#606).
 - **BUILD-MANIFEST.json** (also inside each installed app): the commit, the version, the platform,
   Electronite's tag and archive sha256, and the sha256 and size of every shipped file. About shows
-  the same commit (`app/hello`'s `build.commit`), and the smoke test checks they match.
+  the same commit (`app/hello`'s `build.commit`), and the smoke test checks they match. The
+  manifest records every shipped regular file as it ships, after signing (the symbolic links
+  inside Electron's frameworks are not files and are not recorded), with two exceptions on macOS,
+  named in its `unrecorded` list: `Contents/MacOS/Electron` and
+  `Contents/_CodeSignature/CodeResources`. They hold the bundle's own signature, which seals the
+  manifest in, so they are written after it and cover it rather than the other way round
+  (`scripts/release/seal-macos.sh`; #969). On Windows and Linux `unrecorded` is empty.
+  `node scripts/release/manifest.mjs --check <BUILD-MANIFEST.json> --root <app>` checks a
+  staged or installed app against its manifest; packaging and the smoke test run it.
 
 ## Where things live on the translator's computer
 
@@ -65,7 +73,16 @@ Yakob signs, as for tC4. Windows is signed with Azure Artifact Signing through G
 exactly as tC4's `package-desktop.yml` (#456): no password or key is stored in this repository.
 macOS stays unsigned and not notarized, as tC4 4.0 rc.2; the app is ad-hoc signed so Apple
 silicon runs it, and the pkg's README says how to open it (System Settings, Privacy & Security,
-Open Anyway).
+Open Anyway). The ad-hoc seal must still be valid on the translator's Mac: `seal-macos.sh` signs
+the staged bundle, writes the manifest inside it, re-signs the app over the manifest, and
+verifies the result; nothing writes into the bundle after that (#969: every bundle shipped
+before it had its manifest added after the seal, and failed verification). `package.sh` verifies
+the seal and the manifest again before it packages, and the smoke test once more on the
+installed app, so a release never carries an invalid seal. Check a bundle by hand:
+
+```sh
+codesign --verify --deep --strict "/Applications/translationCore 4.app"
+```
 
 What must be set up once in the GitHub repository, by someone with admin rights (owner action A4):
 
@@ -114,7 +131,11 @@ branch, it can also be run by hand from the Actions tab on any branch.
 | `fetch-pinned.mjs`, `, 0 skipped,` | common | every archive `bundle/en/fetched.lock` pins (the OBS pictures) is downloaded, matches the lock's size and sha256, and is installed in the bundle |
 | `notices.mjs` | build | the notices name every crate in `Cargo.lock` and every bundled resource |
 | the Windows installer is signed | publish | no release carries an `-unsigned` Windows installer |
-| `installed_manifest_is_the_build_s` | smoke | the installed files are the build's |
+| `seal-macos.test.mjs`, `seal-macos.sh` | build (macOS) | the staged bundle passes `codesign --verify --deep --strict` with its manifest inside, and the manifest is the record of its files (#969) |
+| `package.sh` | build | only a stage whose manifest matches its files, and on macOS whose seal is valid, is packaged; a failed build job skips `smoke` and `publish` |
+| `installed_manifest_is_the_build_s` | smoke | the installed manifest is the build's |
+| `installed_files_are_the_manifest_s` | smoke | every installed file has the size and sha256 the manifest records, and nothing else is there but Inno Setup's uninstaller |
+| `installed_app_seal_is_valid` | smoke (macOS) | the installed bundle passes `codesign --verify --deep --strict` (#969) |
 | `app_starts_and_starts_tc4` | smoke | the installed app starts with no arguments and brings up tc4 |
 | `smoke.mjs` steps | smoke | address line, About's commit, resources offline, a project made, a verse saved and read back after a restart, one server per app-data folder |
 | `uninstall_keeps_app_data`, `uninstall_keeps_the_projects_folder` | smoke | removing the app keeps the translator's work (tC4 #44) |

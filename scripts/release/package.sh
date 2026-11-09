@@ -13,6 +13,15 @@ version=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version *= *"\(.*\)"/\1/p' "$
 mkdir -p "$dist"
 # Absolute, since ISCC reads a relative path against the .iss file's folder.
 stage=$(cd "$stage" && pwd) dist=$(cd "$dist" && pwd)
+np() { if command -v cygpath > /dev/null; then cygpath -w "$1"; else printf '%s' "$1"; fi; }
+# Only a verified stage is packaged (#969): the manifest is the record of the files as they are
+# now, after any signing, and on macOS the bundle's seal is still valid.
+case "$platform" in
+  macos-arm64) root="$stage/translationCore 4.app" manifest="$stage/translationCore 4.app/Contents/Resources/BUILD-MANIFEST.json" ;;
+  *) root="$stage/translationCore 4" manifest="$stage/translationCore 4/BUILD-MANIFEST.json" ;;
+esac
+node "$(np "$repo/scripts/release/manifest.mjs")" --check "$(np "$manifest")" --root "$(np "$root")"
+[ "$platform" != macos-arm64 ] || codesign --verify --deep --strict "$root"
 case "$platform" in
   linux-x64)
     cp "$stage/translationCore 4/BUILD-MANIFEST.json" "$dist/BUILD-MANIFEST-$platform.json"
