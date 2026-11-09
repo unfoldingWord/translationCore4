@@ -1,0 +1,39 @@
+# The freeze of a format version (docs/STORAGE.md §12.3 step 5, #865): when a merge to main adds
+# `fixtures/capsules/<version>/FROZEN`, the tag `format-v<version>` is pushed at that commit. From
+# then on the pins guard (`pinned_bytes_need_a_new_version`) is live and the `format-older-reader`
+# job looks for the published release at this commit. A tag pushed with the workflow's own token
+# starts no other workflow, which is wanted: the release tag (`v*`) is the owner's to push.
+name: format-tag
+permissions:
+  contents: read
+on:
+  push:
+    branches: [main]
+    paths: ['fixtures/capsules/*/FROZEN']
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: fixtures/capsules
+          sparse-checkout-cone-mode: false
+      # Every frozen version without its tag gets one at this commit; a version tagged already
+      # is left alone, so a later edit beside a marker never moves a tag.
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for marker in fixtures/capsules/*/FROZEN; do
+            version=$(basename "$(dirname "$marker")")
+            tag="format-v$version"
+            if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" > /dev/null 2>&1; then
+              echo "$tag exists; left as it is"
+              continue
+            fi
+            gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$tag" -f sha="$GITHUB_SHA" > /dev/null
+            echo "pushed $tag at $GITHUB_SHA (format $version frozen: $(tr '\n' ' ' < "$marker"))"
+          done
