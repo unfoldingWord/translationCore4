@@ -1,15 +1,19 @@
 // The format-older-reader gate passes before the old build runs only in its two documented states,
 // and only after the lookups that justify them succeeded (#865 done-when 4): a failed GitHub call
 // is a red run, never "no published release there yet". A stub `gh` stands in for the API.
-import { test } from 'node:test';
-import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'older-reader.sh');
+const SCRIPT = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "older-reader.sh",
+);
 // FAIL names the call that fails with a 503; TAGS=0 means no format-v* tag; PEEL is the commit
 // the release's tag peels to (the frozen commit is aaaa).
 const GH = `#!/usr/bin/env bash
@@ -25,12 +29,20 @@ esac
 `;
 
 function run(env) {
-  const dir = mkdtempSync(join(tmpdir(), 'older-reader-test-'));
+  const dir = mkdtempSync(join(tmpdir(), "older-reader-test-"));
   try {
-    writeFileSync(join(dir, 'gh'), GH, { mode: 0o755 });
-    const r = spawnSync('bash', [SCRIPT], {
-      encoding: 'utf8',
-      env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, RUNNER_TEMP: dir, FAIL: '', TAGS: '1', PEEL: 'aaaa', ...env },
+    writeFileSync(join(dir, "gh"), GH, { mode: 0o755 });
+    const r = spawnSync("bash", [SCRIPT], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: `${dir}:${process.env.PATH}`,
+        RUNNER_TEMP: dir,
+        FAIL: "",
+        TAGS: "1",
+        PEEL: "aaaa",
+        ...env,
+      },
     });
     return { status: r.status, out: r.stdout + r.stderr };
   } finally {
@@ -38,22 +50,25 @@ function run(env) {
   }
 }
 
-test('no format-v* tag passes with its log line', () => {
-  const r = run({ TAGS: '0' });
+test("no format-v* tag passes with its log line", () => {
+  const r = run({ TAGS: "0" });
   assert.equal(r.status, 0, r.out);
   assert.match(r.out, /no format version is frozen yet/);
 });
 
-test('no release at the frozen commit passes with its log line', () => {
-  const r = run({ PEEL: 'bbbb' });
+test("no release at the frozen commit passes with its log line", () => {
+  const r = run({ PEEL: "bbbb" });
   assert.equal(r.status, 0, r.out);
   assert.match(r.out, /frozen 1\.0 at aaaa; no published release there yet/);
 });
 
-for (const call of ['tags', 'ref', 'list', 'candidate', 'peel']) {
+for (const call of ["tags", "ref", "list", "candidate", "peel"]) {
   test(`a failed ${call} lookup fails the gate`, () => {
     const r = run({ FAIL: call });
     assert.notEqual(r.status, 0, r.out);
-    assert.doesNotMatch(r.out, /no published release there yet|nothing to check/);
+    assert.doesNotMatch(
+      r.out,
+      /no published release there yet|nothing to check/,
+    );
   });
 }
