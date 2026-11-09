@@ -293,7 +293,10 @@ fn a_capsule_with_newer_minor_changes_opens_and_keeps_them() {
                 if verse["book"] != "TIT" || verse["chapter"] != 1 || verse["verse"] != 1 {
                     return None;
                 }
-                verse.pointer("/value/text/words")?.as_str().map(String::from)
+                verse
+                    .pointer("/value/text/words")?
+                    .as_str()
+                    .map(String::from)
             })
             .collect();
         assert_eq!(
@@ -303,8 +306,7 @@ fn a_capsule_with_newer_minor_changes_opens_and_keeps_them() {
         );
         let shown = words(&handle, 1, 1).unwrap();
         assert_eq!(
-            shown,
-            newer_words[0],
+            shown, newer_words[0],
             "{what}: the newer minor's verse is the version shown"
         );
         assert!(
