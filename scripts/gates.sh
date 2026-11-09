@@ -28,6 +28,10 @@ STEPS=(
   "wasm-ui-app|cargo clippy --locked -p tc-ui --target wasm32-unknown-unknown --all-targets --features app -- -D warnings"
   "wasm-ui-hooks|cargo clippy --locked -p tc-ui --target wasm32-unknown-unknown --all-targets --features test-hooks -- -D warnings"
   "wasm-api|cargo clippy --locked -p tc-api --target wasm32-unknown-unknown --all-targets -- -D warnings"
+  # The build of the last frozen format version meets folders the current build wrote (STORAGE
+  # §12.3 step 4). Passes with a log line while nothing is frozen or no release exists at the
+  # frozen commit; the Linux build runs only on Linux, so CI is where it drives the old build.
+  "format-older-reader|scripts/older-reader.sh"
   # --test-timeout bounds each file, which node runs as one test (CHK-8).
   "node|node --test --test-timeout=120000 parity/tc4-baseline/mock-server/server.test.mjs parity/app/state.test.mjs parity/app/observe.test.mjs parity/app/env-rust.test.mjs crates/tc-ui/app/recovery.test.mjs scripts/release/fetch-pinned.test.mjs parity/app/journeys/*.test.mjs scripts/tools/*.test.mjs"
 )

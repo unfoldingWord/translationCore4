@@ -17,6 +17,15 @@
 //! field) is assembled from tc-journal's encodings as a teammate's sealed pack, as
 //! `fixtures/journal/v0-every-kind.ndjson` pins every cause: the pin is on what every reader
 //! must keep reading.
+//!
+//! ```text
+//! cargo run -p tc-corpus --example capsule -- reader-folders <dir>
+//! ```
+//!
+//! writes the three folders the `format-older-reader` gate (§12.3 step 4,
+//! `scripts/older-reader.sh`) hands the build of the last frozen version: `plain`, a
+//! project this build wrote; `newer-minor`, the same with a `minReaderMinor` above this
+//! build's minor; `newer-major`, the same with the next major.
 
 #![allow(
     clippy::expect_used,
@@ -55,8 +64,14 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let (version, dir) = match args.as_slice() {
         [write, version, dir] if write == "write" => (version.as_str(), PathBuf::from(dir)),
+        [folders, dir] if folders == "reader-folders" => {
+            reader_folders(&PathBuf::from(dir));
+            return;
+        }
         _ => {
-            eprintln!("usage: cargo run -p tc-corpus --example capsule -- write <version> <dir>");
+            eprintln!(
+                "usage: cargo run -p tc-corpus --example capsule -- write <version> <dir> | reader-folders <dir>"
+            );
             std::process::exit(2);
         }
     };
@@ -131,6 +146,56 @@ fn verify(dir: &Path, work: &Path) {
         assert!(problems.is_empty(), "{name}: {problems:#?}");
         println!("verified {name}");
     }
+}
+
+/// The three folders of the `format-older-reader` gate: a Titus project this build wrote
+/// with a verse saved, then copies of it whose `format.json` carries a `minReaderMinor` this
+/// build's minor is below, and the next major (§12.2 rules 1 and 2). The copies keep `.git/`
+/// and `.tc/` as the folder has them after a close, as a project moved to another computer
+/// does.
+fn reader_folders(dir: &Path) {
+    if dir.exists() {
+        eprintln!("capsule: {} exists; choose a new folder", dir.display());
+        std::process::exit(2);
+    }
+    let work = tempfile::tempdir().unwrap();
+    let computer = Computer::new(work.path(), "current");
+    let folder = titus(&computer, "plain");
+    let handle = computer.open(&folder);
+    save_verse(
+        &handle,
+        1,
+        2,
+        "in hope of eternal life, saved by the current build",
+    );
+    leave_book(&handle);
+    checkpoint(&handle);
+    handle.close().unwrap();
+    let problems = computer.problems();
+    assert!(problems.is_empty(), "{problems:#?}");
+    std::fs::create_dir_all(dir).unwrap();
+    let keep = |name: &str| name != "lock";
+    for name in ["plain", "newer-minor", "newer-major"] {
+        copy_tree(&folder, &dir.join(name), &keep);
+    }
+    let mut newer_minor = tc_journal::FormatDoc::current();
+    newer_minor.minor = u64::from(FORMAT_MINOR + 1).into();
+    newer_minor.min_reader_minor = u64::from(FORMAT_MINOR + 1).into();
+    let mut newer_major = tc_journal::FormatDoc::current();
+    newer_major.major = u64::from(tc_journal::FORMAT_MAJOR + 1).into();
+    for (name, doc) in [("newer-minor", newer_minor), ("newer-major", newer_major)] {
+        std::fs::write(
+            dir.join(name).join(tc_journal::format::FORMAT_PATH),
+            doc.to_bytes(),
+        )
+        .unwrap();
+    }
+    println!(
+        "reader folders written to {}: plain, newer-minor (minReaderMinor {}), newer-major (major {})",
+        dir.display(),
+        FORMAT_MINOR + 1,
+        tc_journal::FORMAT_MAJOR + 1
+    );
 }
 
 // ---------------------------------------------------------------------------------------
