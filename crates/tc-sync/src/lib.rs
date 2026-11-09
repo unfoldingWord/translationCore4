@@ -4,6 +4,7 @@
 //! with the store and the Door43 client, so what a step may do after a failure is decided in
 //! one place.
 
+mod checkpoint;
 pub mod connect;
 pub mod exchange;
 pub mod join;
