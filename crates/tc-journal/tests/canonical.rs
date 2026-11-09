@@ -273,6 +273,7 @@ fn the_example_of_section_2_5_has_these_bytes() {
 fn every_kind_has_the_pinned_wire_form() {
     let path = fixtures().join("v0-every-kind.ndjson");
     if std::env::var_os("TC_JOURNAL_BLESS").is_some() {
+        refuse_bless_if_frozen("TC_JOURNAL_BLESS");
         let mut runner = proptest::test_runner::TestRunner::deterministic();
         let mut kinds = std::collections::BTreeSet::new();
         let mut written = Vec::new();

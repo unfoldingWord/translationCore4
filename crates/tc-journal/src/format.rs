@@ -15,6 +15,109 @@ pub const FORMAT_MINOR: u16 = 0;
 /// Where `format.json` lives.
 pub const FORMAT_PATH: &str = "ingredients/tc/format.json";
 
+/// The exchange file's framing version, the start of its zip comment (§10.1, §12.1): a
+/// pinned byte form, defined here beside the other versions the format carries.
+pub const EXCHANGE_FORMAT: u64 = 1;
+
+/// The zip comment of an exchange file starts with this, then a space and the export's
+/// record.
+pub const EXCHANGE_COMMENT: &str = "tc-exchange 1";
+
+/// The pinned samples of one frozen format version (§12.3, INV-PINNED-BYTES-NEED-A-VERSION):
+/// the SHA-256 of each byte form two builds must agree on, computed as
+/// `pinned_bytes_need_a_new_version` (`tests/versioning.rs`) computes it. The row is checked
+/// once `fixtures/capsules/<major>.<minor>/FROZEN` exists; a pin that differs then needs a
+/// new version, with a row and a capsule set of its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FormatPins {
+    pub major: u16,
+    pub minor: u16,
+    /// (what is pinned, SHA-256 in lowercase hex), sorted by name.
+    pub pins: &'static [(&'static str, &'static str)],
+}
+
+impl FormatPins {
+    /// The row of `major.minor`, when that version is pinned.
+    pub fn of(major: u16, minor: u16) -> Option<&'static FormatPins> {
+        FORMAT_PINS
+            .iter()
+            .find(|row| row.major == major && row.minor == minor)
+    }
+}
+
+/// One row per frozen version, oldest first. 1.0: frozen 2026-11-09
+/// (`docs/rulings/2026-11-09-H9-freeze.md`).
+pub const FORMAT_PINS: &[FormatPins] = &[FormatPins {
+    major: 1,
+    minor: 0,
+    pins: &[
+        (
+            "capsule lock 1.0/bible-titus",
+            "d15f55048c917e0750eb739b80c5ed25bb7f3e3688da75a5d4164c5569da41b0",
+        ),
+        (
+            "capsule lock 1.0/carried",
+            "d1c8f1bb8b2ce97b0d816747c3f103adc48d576ba95bc5a560a6cf8d62795069",
+        ),
+        (
+            "capsule lock 1.0/exchanged",
+            "4bf0e7e154791c1247adaf1bc1d64c15821b157db58bb954791ab01234ca534f",
+        ),
+        (
+            "capsule lock 1.0/held-outside",
+            "07da56d85f502a97460dfd7908ff12fa31ac512261432d90816d9bb4e2df413e",
+        ),
+        (
+            "capsule lock 1.0/imported-tc4",
+            "a7f18e824da4e8c73979c91822471e0cb999eade6fbc22c62d01b07c54c17bba",
+        ),
+        (
+            "capsule lock 1.0/imported-usfm",
+            "f9f9d400eaaec96f6e2e3d54b6af8bee693c43f95a191320d86b4bdbec62cc2a",
+        ),
+        (
+            "capsule lock 1.0/mixed-minor",
+            "cd78f557ab54b22b4c4f33a819e9e9a95ed1913ecc82a0f9e63bc900c14f1c9a",
+        ),
+        (
+            "capsule lock 1.0/stories",
+            "5c23e2587f5a6e6e67343599c1183c9fd7b8349db8c7004aaee4d43986b94dbd",
+        ),
+        (
+            "capsule lock 1.0/updated-book",
+            "50db3053df39ff2dc778466913e3f172f5505563126befce78cbd0128a8cef72",
+        ),
+        (
+            "exchange comment",
+            "31293f962c47cdde918bae88ebcb3146420001fefae59e90708bf9b24a6c1704",
+        ),
+        (
+            "fixtures/journal/format-1.0.json",
+            "9b19f7a862b37e9573a615cc86f1a4bbf361bcda8875bbae2914213645411d89",
+        ),
+        (
+            "fixtures/journal/newer-minor.ndjson",
+            "3f8b649516dbb74f736771349821453710f8d4d863fc98bc8cfd8109694a9ba5",
+        ),
+        (
+            "fixtures/journal/v0-every-kind.ndjson",
+            "63e12e353a0472c9403d9d5b4f7407c48cd82d1a413c9a2b97d5b88c182b7f5f",
+        ),
+        (
+            "pack header",
+            "333e5081b0e3b31cbb3f9a4b736f9d6cd4b3f985c9474f55c1cee812cf6d3d40",
+        ),
+        (
+            "pending header",
+            "3ac75d2ec8727e3557c7c4221fdf0e977ec20f79beb30389ecbf92cb8c19a2d8",
+        ),
+        (
+            "token byte form",
+            "41f9f39e7691bd049f8ec51e910cd7dfe7b3c79e431f90183fc2c643c0d55d65",
+        ),
+    ],
+}];
+
 /// A path pattern of `derivedPaths`: `/`-separated segments where `*` matches any run of
 /// characters inside one segment and a `**` segment matches one or more whole segments.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]

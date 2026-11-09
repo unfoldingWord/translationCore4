@@ -16,7 +16,7 @@
 mod common;
 mod support;
 
-use common::{arb_body, fixtures, local, project, verse_change};
+use common::{arb_body, fixtures, local, project, refuse_bless_if_frozen, verse_change};
 use proptest::prelude::*;
 use std::sync::Arc;
 use tc_corpus::{Corpus, Spec};
@@ -795,6 +795,7 @@ fn the_probe_is_what_the_generator_gives() {
     )
     .unwrap();
     if std::env::var_os("TC_WRITE_PROBE").is_some() {
+        refuse_bless_if_frozen("TC_WRITE_PROBE");
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/index_probe.batch");
         std::fs::write(path, &encoded.bytes).unwrap();
         return;

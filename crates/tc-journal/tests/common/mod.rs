@@ -32,6 +32,30 @@ pub fn fixtures() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/journal")
 }
 
+/// The capsule sets, `fixtures/capsules/`.
+pub fn capsules() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/capsules")
+}
+
+/// Whether format `major.minor` is frozen: its capsule set carries the `FROZEN` marker
+/// (`docs/STORAGE.md` §12.3).
+pub fn frozen(major: u16, minor: u16) -> bool {
+    capsules().join(format!("{major}.{minor}/FROZEN")).is_file()
+}
+
+/// INV-PINNED-BYTES-NEED-A-VERSION: a switch that rewrites a pinned sample
+/// (`TC_JOURNAL_BLESS`, `TC_WRITE_PROBE`) refuses while the current format version is
+/// frozen, and says which version to raise.
+pub fn refuse_bless_if_frozen(switch: &str) {
+    use tc_journal::{FORMAT_MAJOR, FORMAT_MINOR};
+    assert!(
+        !frozen(FORMAT_MAJOR, FORMAT_MINOR),
+        "INV-PINNED-BYTES-NEED-A-VERSION: {switch} refused: format {FORMAT_MAJOR}.{FORMAT_MINOR} is frozen (fixtures/capsules/{FORMAT_MAJOR}.{FORMAT_MINOR}/FROZEN). Raise FORMAT_MINOR to {} (or FORMAT_MAJOR to {}) in crates/tc-journal/src/format.rs, add its FORMAT_PINS row and its capsule set (docs/STORAGE.md §12.3), then bless",
+        FORMAT_MINOR + 1,
+        FORMAT_MAJOR + 1
+    );
+}
+
 pub fn project() -> ProjectId {
     ProjectId::parse("6f1c0e9a-2b7d-4c3e-8a5f-0b1d2c3e4f50").unwrap()
 }

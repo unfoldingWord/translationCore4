@@ -182,7 +182,8 @@ fn write_export(
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_millis());
         zip.set_comment(format!(
-            "tc-exchange 1 {}",
+            "{} {}",
+            tc_journal::EXCHANGE_COMMENT,
             serde_json::json!({
                 "project": project,
                 "exporter": { "device": device, "name": person },
