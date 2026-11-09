@@ -112,11 +112,12 @@ fi
 if [ "$platform" = macos-arm64 ]; then
   # Apple silicon runs no unsigned code, and renaming the app and adding files broke
   # Electronite's signature: an ad-hoc signature, as tC4 rc.2 (unsigned, not notarized; H4).
+  # tc4 is under Resources, where a deep sign does not look. seal-macos.sh signs the app, writes
+  # the manifest inside it and seals it in; the manifest is the last file written (#969).
   codesign --force --sign - "$resources/tc4/tc4"
-  codesign --force --deep --sign - "$root"
-  codesign --verify --deep --strict "$root"
+  "$repo/scripts/release/seal-macos.sh" "$root" --platform "$platform" --electronite "$ELECTRONITE" --electronite-sha256 "$want"
+else
+  node "$(np "$repo/scripts/release/manifest.mjs")" --root "$(np "$root")" --into "$(np "$docs")" --platform "$platform" \
+    --electronite "$ELECTRONITE" --electronite-sha256 "$want"
 fi
-
-node "$(np "$repo/scripts/release/manifest.mjs")" --root "$(np "$root")" --into "$(np "$docs")" --platform "$platform" \
-  --electronite "$ELECTRONITE" --electronite-sha256 "$want"
 echo "staged $platform in $root"
