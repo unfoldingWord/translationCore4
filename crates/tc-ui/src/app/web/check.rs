@@ -39,7 +39,7 @@ use super::saves::{FieldWriter, GateHookId, LocalBoxFuture, WriteCap};
 use super::{Api, ListenerId};
 use crate::app::check::CheckView;
 use crate::app::check_item::{
-    self, DecisionWrites, MarkFailure, SelectionCommand, SelectionEvent, SelectionSave,
+    self, DecisionWrites, MarkFailure, ReadOf, SelectionCommand, SelectionEvent, SelectionSave,
 };
 use crate::app::client::{CallError, Transport};
 use crate::app::fix::{Fix, FixScreen};
@@ -170,6 +170,15 @@ thread_local! {
     static SELECTION_WAIT: Cell<Option<TimeoutHandle>> = const { Cell::new(None) };
     /// The gate hook that saves a waiting selection before the person leaves.
     static SELECTION_HOOK: Cell<Option<GateHookId>> = const { Cell::new(None) };
+}
+
+/// How a mark's write ended, for the check shown when it was sent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MarkOutcome {
+    Saved,
+    NotSaved,
+    /// The person moved to another check before the reply came.
+    Left,
 }
 
 /// Writes a decision: a mark or a comment of one check, after the write before it, over the
@@ -779,7 +788,11 @@ impl Actions {
             )
         });
         self.selection_event(SelectionEvent::Read {
-            new_item,
+            of: if new_item {
+                ReadOf::AnotherCheck
+            } else {
+                ReadOf::SameCheck
+            },
             valid: view.decision.value.status == Some(DecisionStatus::Valid),
         });
         if selection != local {
@@ -818,7 +831,9 @@ impl Actions {
     /// the check now shown, so it changes the rail's rows and nothing on screen.
     pub fn mark(&self, cap: WriteCap, edit: DecideEdit) {
         if let Some(write) = self.mark_task(cap, edit) {
-            spawn_local(write);
+            spawn_local(async move {
+                write.await;
+            });
         }
     }
 
@@ -827,7 +842,7 @@ impl Actions {
         &self,
         _cap: WriteCap,
         edit: DecideEdit,
-    ) -> Option<impl Future<Output = ()> + use<>> {
+    ) -> Option<impl Future<Output = MarkOutcome> + use<>> {
         let c = self.s().c.clone();
         let (Some((at, list)), Some(Detail::Ready(view))) =
             (self.detail_target(), c.detail.get_untracked())
@@ -874,7 +889,7 @@ impl Actions {
                 matches!(d, Some(Detail::Ready(v)) if v.place == place && v.check_id == check_id)
             });
             if !shown {
-                return;
+                return MarkOutcome::Left;
             }
             if judged.is_some() {
                 this.selection_event(SelectionEvent::Acked);
@@ -883,6 +898,7 @@ impl Actions {
                 Ok(_) => {
                     c.marking.try_set(Marking::Idle);
                     this.refresh_item();
+                    MarkOutcome::Saved
                 }
                 Err(error) => {
                     let failure = MarkFailure::of(&error);
@@ -891,6 +907,7 @@ impl Actions {
                     if look_again {
                         this.refresh_item();
                     }
+                    MarkOutcome::NotSaved
                 }
             }
         })
@@ -910,20 +927,31 @@ impl Actions {
 
     fn selection_event(&self, event: SelectionEvent) {
         if let Some(write) = self.selection_step(event) {
-            spawn_local(write);
+            spawn_local(async move {
+                write.await;
+            });
         }
     }
 
-    /// The selection machine's executor: the wait, and the write when the machine saves.
-    fn selection_step(&self, event: SelectionEvent) -> Option<impl Future<Output = ()> + use<>> {
+    /// The selection machine's executor: the wait, and the write when the machine saves. Only
+    /// the machine's commands touch the wait, so a reply or a read that lands meanwhile leaves it
+    /// running.
+    fn selection_step(&self, event: SelectionEvent) -> Option<impl Future<Output = bool> + use<>> {
         let (next, command) = SELECTION.get().step(event);
         SELECTION.set(next);
-        if let Some(wait) = SELECTION_WAIT.take() {
-            wait.clear();
-        }
+        let stop_wait = || {
+            if let Some(wait) = SELECTION_WAIT.take() {
+                wait.clear();
+            }
+        };
         match command {
-            SelectionCommand::None | SelectionCommand::Cancel => None,
+            SelectionCommand::None => None,
+            SelectionCommand::Cancel => {
+                stop_wait();
+                None
+            }
             SelectionCommand::Wait => {
+                stop_wait();
                 let this = self.clone();
                 let wait = set_timeout_with_handle(
                     move || this.selection_event(SelectionEvent::Idle),
@@ -932,21 +960,34 @@ impl Actions {
                 SELECTION_WAIT.set(wait.ok());
                 None
             }
-            SelectionCommand::Save => self.selection_write(),
+            SelectionCommand::Save => {
+                stop_wait();
+                self.selection_write()
+            }
         }
     }
 
-    /// Mark valid with the selection shown, while the open is writable.
-    fn selection_write(&self) -> Option<impl Future<Output = ()> + use<>> {
+    /// Mark valid with the selection shown, while the open is writable. False when the write
+    /// failed while its check is still shown: the save waits again for the next leave.
+    fn selection_write(&self) -> Option<impl Future<Output = bool> + use<>> {
         let at = self.s().project.get_untracked()?.at;
         let cap = self.runtime().saves().write_cap(&at)?;
         let edit = check_item::valid_edit(&self.s().c.selection.get_untracked());
-        self.mark_task(cap, edit)
+        let write = self.mark_task(cap, edit)?;
+        let this = self.clone();
+        Some(async move {
+            let outcome = write.await;
+            if outcome == MarkOutcome::NotSaved {
+                this.selection_event(SelectionEvent::SaveFailed);
+            }
+            outcome != MarkOutcome::NotSaved
+        })
     }
 
     /// Leaving through the navigation gate (Home, another mode, another project) waits for a
-    /// selection still waiting to be written; a write that fails shows as a mark's failure, as
-    /// a click's does, and does not keep the person there.
+    /// selection still waiting to be written. A write that fails keeps the person on the check,
+    /// with the mark's failure notice, as a text field's failed save does (FR-32); leaving again
+    /// tries it again.
     fn start_selection_hook(&self) {
         if SELECTION_HOOK.get().is_some() {
             return;
@@ -955,10 +996,10 @@ impl Actions {
         let hook = std::rc::Rc::new(move || {
             let this = this.clone();
             let flush: LocalBoxFuture<bool> = Box::pin(async move {
-                if let Some(write) = this.selection_step(SelectionEvent::Leaving) {
-                    write.await;
+                match this.selection_step(SelectionEvent::Leaving) {
+                    Some(write) => write.await,
+                    None => true,
                 }
-                true
             });
             flush
         });

@@ -399,10 +399,12 @@ async function openFirstCheck(page) {
 browserTest('selection_853_words_selected_after_mark_valid_are_kept', async () => {
   await withApp(async ({ page, env }) => {
     await openFirstCheck(page);
+    const words = [await wordAt(page, 1)];
     await page.getByTestId('mark-valid').click();
-    const words = [await wordAt(page, 1), await wordAt(page, 2)];
     await page.getByTestId('tw-1').click();
-    await page.getByTestId('tw-2').click();
+    // The mark's reply and read land meanwhile: the save still comes 1 s after the last click.
+    await until('the words are saved with no navigation', async () =>
+      (await storedWords(env, 0)).words.join() === words.join(), 5000);
     await nextThenPrevious(page);
     assert.deepEqual(await pressedWords(page), words, 'the words selected after Mark valid show again');
     assert.deepEqual(await storedWords(env, 0), { status: 'valid', words });

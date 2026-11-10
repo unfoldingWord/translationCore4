@@ -78,28 +78,52 @@ pub fn valid_edit(selection: &BTreeSet<u32>) -> DecideEdit {
 /// How long the selection waits after its last change before it saves (STORAGE §5.4).
 pub const SELECTION_IDLE: std::time::Duration = std::time::Duration::from_secs(1);
 
-/// Whether the shown check counts as valid for saving the selection, and whether a save waits
-/// (#853, STORAGE §5.4: 1 s after the last change, and on leaving the check). Only a valid
-/// check's selection saves by itself: on any other, saving the words would mark it valid, so
-/// they wait for Mark valid as before.
+/// Whether the shown check's selection saves by itself (#853, STORAGE §5.4: 1 s after the last
+/// change, and on leaving the check). Only a valid check's does: on any other, saving the words
+/// would mark it valid, so they wait for Mark valid as before.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct SelectionSave {
-    /// The person's last mark, else the last read, says Valid.
-    valid: bool,
-    /// A mark is on its way: a read that lands meanwhile may predate it.
-    marking: bool,
-    /// The person changed the selection since the last save.
-    pending: bool,
+    judgement: Judgement,
+    mark: MarkWrite,
+}
+
+/// The shown check as the selection sees it: the person's last mark, else the last read.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+enum Judgement {
+    /// Not valid: the words wait for Mark valid.
+    #[default]
+    NotValid,
+    /// Valid, and the words shown are stored or on their way.
+    Valid,
+    /// Valid, and the person changed the words since: a save waits.
+    Changed,
+}
+
+/// Whether a mark of the shown check is on its way: a read that lands meanwhile may predate it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+enum MarkWrite {
+    #[default]
+    Settled,
+    Sending,
+}
+
+/// Which check a read shows, against the one shown before it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReadOf {
+    /// The check and the words already shown.
+    SameCheck,
+    /// Another check, or the same check with other words.
+    AnotherCheck,
 }
 
 /// What happened to the shown check.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SelectionEvent {
-    /// A read of the shown check landed; `new_item` when it shows another check than before.
-    Read { new_item: bool, valid: bool },
+    /// A read landed; `valid` when it shows the status Valid.
+    Read { of: ReadOf, valid: bool },
     /// A mark was sent; `valid` for Mark valid.
     Marked { valid: bool },
-    /// The mark's reply came.
+    /// The mark's reply came, saved or not.
     Acked,
     /// The person changed the selection.
     Changed,
@@ -107,9 +131,12 @@ pub enum SelectionEvent {
     Idle,
     /// The person moves to another check or leaves Check.
     Leaving,
+    /// A save of the selection was not written: it waits for the next leave.
+    SaveFailed,
 }
 
-/// What the executor does next.
+/// What the executor does next. The wait is the executor's only on these commands: any other
+/// event leaves it running.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SelectionCommand {
     None,
@@ -117,60 +144,56 @@ pub enum SelectionCommand {
     Wait,
     /// Stop the wait: nothing is left to save.
     Cancel,
-    /// Send Mark valid with the selection now.
+    /// Stop the wait and send Mark valid with the selection now.
     Save,
 }
 
 impl SelectionSave {
     #[must_use]
     pub fn step(self, event: SelectionEvent) -> (Self, SelectionCommand) {
+        use Judgement::{Changed, NotValid, Valid};
         use SelectionCommand as C;
         use SelectionEvent as E;
-        match event {
-            E::Read {
-                new_item: true,
-                valid,
-            } => (
-                Self {
+        let judged = |valid: bool| if valid { Valid } else { NotValid };
+        let with = |judgement| Self { judgement, ..self };
+        match (event, self.judgement) {
+            (
+                E::Read {
+                    of: ReadOf::AnotherCheck,
                     valid,
-                    ..Self::default()
+                },
+                _,
+            ) => (
+                Self {
+                    judgement: judged(valid),
+                    mark: MarkWrite::Settled,
                 },
                 C::Cancel,
             ),
-            E::Read { valid, .. } if !self.marking => (Self { valid, ..self }, C::None),
-            E::Read { .. } => (self, C::None),
+            (E::Read { .. }, _) if self.mark == MarkWrite::Sending => (self, C::None),
+            // A teammate's change shows the open check not valid: the words wait again.
+            (E::Read { valid: false, .. }, _) => (with(NotValid), C::Cancel),
+            (E::Read { valid: true, .. }, NotValid) => (with(Valid), C::None),
+            (E::Read { valid: true, .. }, Valid | Changed) => (self, C::None),
             // A mark carries the selection or ends the judgement: nothing may save after it.
-            E::Marked { valid } => (
+            (E::Marked { valid }, _) => (
                 Self {
-                    valid,
-                    marking: true,
-                    pending: false,
+                    judgement: judged(valid),
+                    mark: MarkWrite::Sending,
                 },
                 C::Cancel,
             ),
-            E::Acked => (
+            (E::Acked, _) => (
                 Self {
-                    marking: false,
+                    mark: MarkWrite::Settled,
                     ..self
                 },
                 C::None,
             ),
-            E::Changed if self.valid => (
-                Self {
-                    pending: true,
-                    ..self
-                },
-                C::Wait,
-            ),
-            E::Changed => (self, C::None),
-            E::Idle | E::Leaving if self.pending => (
-                Self {
-                    pending: false,
-                    ..self
-                },
-                C::Save,
-            ),
-            E::Idle | E::Leaving => (self, C::None),
+            (E::Changed, Valid | Changed) => (with(Changed), C::Wait),
+            (E::Idle | E::Leaving, Changed) => (with(Valid), C::Save),
+            (E::SaveFailed, Valid) => (with(Changed), C::None),
+            (E::Changed | E::Idle | E::Leaving | E::SaveFailed, _) => (self, C::None),
         }
     }
 }
@@ -829,26 +852,45 @@ mod tests {
             .collect()
     }
 
+    const SHOWN_NOT_VALID: SelectionEvent = SelectionEvent::Read {
+        of: ReadOf::AnotherCheck,
+        valid: false,
+    };
+    const SHOWN_VALID: SelectionEvent = SelectionEvent::Read {
+        of: ReadOf::AnotherCheck,
+        valid: true,
+    };
+
     /// #853: words selected right after Mark valid save, before the read that shows the mark.
+    /// The mark's reply and the reads that follow leave the waiting save alone.
     #[test]
     fn selection_on_a_check_just_marked_valid_saves_when_idle_and_on_leaving() {
         use SelectionCommand::{Cancel, None, Save, Wait};
         use SelectionEvent::{Acked, Changed, Idle, Leaving, Marked, Read};
-        let shown = Read {
-            new_item: true,
+        let stale = Read {
+            of: ReadOf::SameCheck,
             valid: false,
         };
-        let stale = Read {
-            new_item: false,
-            valid: false,
+        let fresh = Read {
+            of: ReadOf::SameCheck,
+            valid: true,
         };
         assert_eq!(
-            run(&[shown, Marked { valid: true }, stale, Changed, Idle, Idle]),
-            [Cancel, Cancel, None, Wait, Save, None]
+            run(&[
+                SHOWN_NOT_VALID,
+                Marked { valid: true },
+                Changed,
+                stale,
+                Acked,
+                fresh,
+                Idle,
+                Idle
+            ]),
+            [Cancel, Cancel, Wait, None, None, None, Save, None]
         );
         assert_eq!(
             run(&[
-                shown,
+                SHOWN_NOT_VALID,
                 Marked { valid: true },
                 Acked,
                 Changed,
@@ -861,13 +903,9 @@ mod tests {
 
     #[test]
     fn selection_on_a_check_read_as_valid_saves() {
-        use SelectionEvent::{Changed, Idle, Read};
-        let valid = Read {
-            new_item: true,
-            valid: true,
-        };
+        use SelectionEvent::{Changed, Idle};
         assert_eq!(
-            run(&[valid, Changed, Idle]).last(),
+            run(&[SHOWN_VALID, Changed, Idle]).last(),
             Some(&SelectionCommand::Save)
         );
     }
@@ -876,26 +914,22 @@ mod tests {
     #[test]
     fn selection_on_a_check_not_valid_never_saves_by_itself() {
         use SelectionEvent::{Acked, Changed, Idle, Leaving, Marked, Read};
-        let undecided = Read {
-            new_item: true,
+        let shown_invalid = Read {
+            of: ReadOf::SameCheck,
             valid: false,
         };
         for events in [
-            vec![undecided, Changed, Idle, Leaving],
-            vec![undecided, Marked { valid: false }, Acked, Changed, Idle],
-            // A teammate's sync shows the open check invalid.
+            vec![SHOWN_NOT_VALID, Changed, Idle, Leaving],
             vec![
-                Read {
-                    new_item: true,
-                    valid: true,
-                },
-                Read {
-                    new_item: false,
-                    valid: false,
-                },
+                SHOWN_NOT_VALID,
+                Marked { valid: false },
+                Acked,
                 Changed,
-                Leaving,
+                Idle,
             ],
+            // A teammate's sync shows the open check invalid, before or after the change.
+            vec![SHOWN_VALID, shown_invalid, Changed, Leaving],
+            vec![SHOWN_VALID, Changed, shown_invalid, Idle, Leaving],
         ] {
             assert!(
                 !run(&events).contains(&SelectionCommand::Save),
@@ -908,26 +942,34 @@ mod tests {
     /// again; and another check starts with nothing waiting.
     #[test]
     fn a_mark_or_another_check_cancels_the_waiting_save() {
-        use SelectionEvent::{Changed, Idle, Leaving, Marked, Read};
-        let valid = Read {
-            new_item: true,
-            valid: true,
-        };
-        for cut in [
-            Marked { valid: false },
-            Marked { valid: true },
-            Read {
-                new_item: true,
-                valid: true,
-            },
-        ] {
-            use SelectionCommand as C;
+        use SelectionCommand as C;
+        use SelectionEvent::{Changed, Idle, Leaving, Marked};
+        for cut in [Marked { valid: false }, Marked { valid: true }, SHOWN_VALID] {
             assert_eq!(
-                run(&[valid, Changed, cut, Idle, Leaving]),
+                run(&[SHOWN_VALID, Changed, cut, Idle, Leaving]),
                 [C::Cancel, C::Wait, C::Cancel, C::None, C::None],
                 "{cut:?}"
             );
         }
+    }
+
+    /// A save that was not written waits for the next leave, which tries it again.
+    #[test]
+    fn a_failed_save_is_tried_again_on_leaving() {
+        use SelectionEvent::{Acked, Changed, Idle, Leaving, Marked, SaveFailed};
+        assert_eq!(
+            run(&[
+                SHOWN_VALID,
+                Changed,
+                Idle,
+                Marked { valid: true },
+                Acked,
+                SaveFailed,
+                Leaving
+            ])
+            .last(),
+            Some(&SelectionCommand::Save)
+        );
     }
 
     #[test]
