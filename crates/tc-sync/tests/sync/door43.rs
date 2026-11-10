@@ -2305,7 +2305,7 @@ async fn loss_door43_case_alias_never_recorded() {
 ///
 /// No computer joins here: a join refuses a tree whose folders differ only in letter case
 /// (`JoinError::CollidingPaths`, the "carry, skip on disk" ruling), which is the gap the rule
-/// for such folders has to close.
+/// for such folders has to close (#994).
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn carried_files_in_folders_that_differ_only_in_case_stay_two_paths() {
     let name = "titus-folder-case";
