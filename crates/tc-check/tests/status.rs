@@ -368,7 +368,11 @@ fn unmark_of_an_invalidated_mark_with_no_words_leaves_no_decision() {
         let mut imported = marked.clone();
         imported.imported_invalid = true;
         for (before, now) in [(&marked, &upgraded), (&imported, &resource())] {
-            assert!(assess(before, Some(now), Some(&t(VERSE))).invalidation.is_some());
+            assert!(
+                assess(before, Some(now), Some(&t(VERSE)))
+                    .invalidation
+                    .is_some()
+            );
             let unmarked = apply(Some(before), Edit::Unmark, VERSE, now);
             let state = assess(&unmarked, Some(now), Some(&t(VERSE)));
             assert_eq!(state.invalidation, None, "{mark:?}");
