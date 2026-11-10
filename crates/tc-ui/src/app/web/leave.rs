@@ -11,6 +11,7 @@ use wasm_bindgen_futures::spawn_local;
 
 use super::app_ctx::Actions;
 use super::js;
+use crate::app::check_item::WordsEvent;
 use crate::app::shell::View;
 
 /// Where a person is going when they leave what they are on. D1's checkpoint reads it.
@@ -59,7 +60,7 @@ impl Actions {
             return false;
         }
         if discard {
-            self.discard_words();
+            self.words(WordsEvent::Dropped);
         }
         self.checkpoint(&to);
         true

@@ -39,9 +39,7 @@ use super::question::{self, Question};
 use super::saves::{FieldWriter, LocalBoxFuture, WriteCap};
 use super::{Api, ListenerId};
 use crate::app::check::CheckView;
-use crate::app::check_item::{
-    self, DecisionWrites, MarkFailure, RestoreEvent, RestoredWords, SentWords,
-};
+use crate::app::check_item::{self, CheckWords, DecisionWrites, MarkFailure, WordsEvent, WriteId};
 use crate::app::client::{CallError, Transport};
 use crate::app::fix::{Fix, FixScreen};
 use crate::app::latest::{Attempt, Latest};
@@ -108,11 +106,11 @@ pub struct CheckState {
     pub focused_for: ArcRwSignal<Option<Tool>>,
     /// The active check's detail.
     pub detail: ArcRwSignal<Option<Detail>>,
-    /// The words tapped in the draft, one local value until a mark saves it (#757). A change
-    /// of it takes the check's mark away (#853).
-    pub selection: ArcRwSignal<BTreeSet<u32>>,
-    /// The words the page's writes of the active check leave, while one is on its way (#853).
-    pub sent: ArcRwSignal<SentWords>,
+    /// The words the line shows: read from `words`, so nothing can write them (#853).
+    pub selection: ArcMemo<BTreeSet<u32>>,
+    /// The shown check's words: the ones it has stored, or the person's unsaved change of them.
+    /// [`Actions::words`] is its one writer.
+    pub words: ArcRwSignal<CheckWords>,
     /// The question before a move that drops selected words no mark saved (#853).
     pub leave_ask: ArcRwSignal<bool>,
     /// The Academy drawer, closed or on the active check's article.
@@ -130,6 +128,11 @@ pub struct CheckState {
 
 impl CheckState {
     pub fn new() -> Self {
+        let words = ArcRwSignal::new(CheckWords::default());
+        let selection = ArcMemo::new({
+            let words = words.clone();
+            move |_| words.with(CheckWords::shown)
+        });
         Self {
             view: ArcRwSignal::new(CheckView::Picker),
             session: ArcRwSignal::new(None),
@@ -140,8 +143,8 @@ impl CheckState {
             return_to: ArcRwSignal::new(None),
             focused_for: ArcRwSignal::new(None),
             detail: ArcRwSignal::new(None),
-            selection: ArcRwSignal::new(BTreeSet::new()),
-            sent: ArcRwSignal::new(SentWords::default()),
+            selection,
+            words,
             leave_ask: ArcRwSignal::new(false),
             academy: ArcRwSignal::new(None),
             marking: ArcRwSignal::new(Marking::Idle),
@@ -166,8 +169,9 @@ thread_local! {
     static ARTICLES: Latest = const { Latest::new() };
     /// Every write of a decision, a mark or a comment, goes through here.
     static WRITES: DecisionWrites = DecisionWrites::default();
-    /// The restore from History of the shown check, as its words see it.
-    static RESTORE: Cell<RestoredWords> = const { Cell::new(RestoredWords::None) };
+    /// The check and the verse words the page's [`CheckWords`] are of.
+    static WORDS_OF: RefCell<Option<(tc_api::check::CheckPlace, String, Vec<String>)>> =
+        const { RefCell::new(None) };
     /// The answer a move waits for while it asks Stay or Leave without them (#853).
     static WORDS_ANSWER: Question = const { Question::new() };
     /// The detail a write's Ack tells, when the Ack is for the check it shows.
@@ -176,16 +180,6 @@ thread_local! {
     static OPENS: Latest = const { Latest::new() };
     /// The listener that patches the open rail.
     static LISTENER: Cell<Option<ListenerId>> = const { Cell::new(None) };
-}
-
-/// Takes one event of the shown check's restore; true when a read that landed shows the stored
-/// words.
-fn restore_step(event: RestoreEvent) -> bool {
-    RESTORE.with(|restore| {
-        let (next, stored) = restore.get().step(event);
-        restore.set(next);
-        stored
-    })
 }
 
 /// Writes a decision: a mark or a comment of one check, after the write before it, over the
@@ -472,7 +466,7 @@ impl Actions {
         let this = self.clone();
         spawn_local(async move {
             if this.words_may_go().await {
-                this.discard_words();
+                this.words(WordsEvent::Dropped);
                 go(&this);
             }
         });
@@ -747,9 +741,8 @@ impl Actions {
         c.comment_open.try_set(false);
         c.history_open.try_set(false);
         c.detail.try_set(None);
-        c.selection.try_set(BTreeSet::new());
-        c.sent.try_set(SentWords::default());
-        restore_step(RestoreEvent::Left);
+        WORDS_OF.with(|shown| shown.replace(None));
+        self.words(WordsEvent::Shown(BTreeSet::new()));
         // A question about words that are gone with the detail: its move does not run.
         self.answer_words_leave(false);
         c.leave_ask.try_set(false);
@@ -766,8 +759,8 @@ impl Actions {
         c.restore_failed.try_set(false);
         c.academy.try_set(None);
         c.marking.try_set(Marking::Idle);
-        c.sent.try_set(SentWords::default());
-        restore_step(RestoreEvent::Left);
+        WORDS_OF.with(|shown| shown.replace(None));
+        self.words(WordsEvent::Shown(BTreeSet::new()));
     }
 
     /// Whether words are selected on the shown check that no mark saved (#853), tracked:
@@ -777,21 +770,30 @@ impl Actions {
         if s.view.get() != shell::View::Check || !matches!(s.c.view.get(), CheckView::Tool(_)) {
             return false;
         }
-        let writable = self.write_cap().is_some();
-        let selection = s.c.selection.get();
-        let sent = s.c.sent.get();
-        s.c.detail.with(|detail| match detail {
-            Some(Detail::Ready(read)) => {
-                check_item::words_unsaved(writable, read, sent.words(), &selection)
-            }
-            _ => false,
-        })
+        // A read-only project saves nothing, so its words never hold the person back.
+        self.write_cap().is_some() && s.c.words.with(CheckWords::unsaved)
+    }
+
+    /// The one place the shown check's words change: every act of the person and every answer
+    /// of the server is an event of [`CheckWords`], and the line shows what it says. A write
+    /// that leaves gets its name back, for its reply.
+    pub(crate) fn words(&self, event: WordsEvent<'_>) -> Option<WriteId> {
+        let mut sent = None;
+        self.s()
+            .c
+            .words
+            .try_update(|words| sent = words.step(event));
+        sent
+    }
+
+    /// The person's words on the line, during a gesture and at its end.
+    pub fn select_words(&self, words: BTreeSet<u32>) {
+        self.words(WordsEvent::Selected(words));
     }
 
     /// Before a move away from the shown check: with words no mark saved, the person is asked,
     /// Stay or Leave without them. Answers whether the move may go on; the words stay on screen
-    /// until the move does go ([`Actions::discard_words`]), since a refused save gate keeps the
-    /// person on this check.
+    /// until the move does go, since a refused save gate keeps the person on this check.
     pub(super) async fn words_may_go(&self) -> bool {
         if !untrack(|| self.words_unsaved()) {
             return true;
@@ -802,16 +804,6 @@ impl Actions {
         let go = question::answered(answer).await;
         c.leave_ask.try_set(WORDS_ANSWER.with(Question::is_open));
         go
-    }
-
-    /// Leave without them, once the move goes: the stored words come back on screen.
-    pub(super) fn discard_words(&self) {
-        let c = &self.s().c;
-        let stored = c.detail.with_untracked(|detail| match detail {
-            Some(Detail::Ready(read)) => read.target.selected.iter().copied().collect(),
-            _ => BTreeSet::new(),
-        });
-        c.selection.try_set(stored);
     }
 
     /// The person's answer to the question about selected words: Leave without them, or Stay.
@@ -874,35 +866,35 @@ impl Actions {
         });
     }
 
-    /// A read of the active check lands: the selection follows the stored one only when the
-    /// check or its words changed (tC4's effect on `activeIndex` and `targetText`), and the
-    /// comment's field takes the decision the read shows (AD37). The first read after a restore
-    /// from History shows the restored words.
+    /// A read of the active check lands: its stored words are an event of the check's words,
+    /// and the comment's field takes the decision the read shows (AD37).
     fn apply_item(&self, view: CheckItemView) {
         let c = &self.s().c;
         WRITES.with(|w| w.learn(&view.place, &view.check_id, &view.decision.token));
-        let local = c.selection.get_untracked();
-        let selection = c.detail.with_untracked(|shown| {
-            let shown = match shown {
-                Some(Detail::Ready(shown)) => Some(&**shown),
-                _ => None,
-            };
-            let restored = restore_step(RestoreEvent::Read);
-            let shown = shown.filter(|_| !restored);
-            check_item::selection_after_read(shown, &view, &local)
+        let stored: BTreeSet<u32> = view.target.selected.iter().copied().collect();
+        // The check the words belong to is kept apart from the detail, which a failed read
+        // replaces: the person's words outlive that failure.
+        let of = (
+            view.place.clone(),
+            view.check_id.clone(),
+            view.target.words.clone(),
+        );
+        let same_text = WORDS_OF.with(|shown| {
+            let before = shown.replace(Some(of.clone()));
+            before
+                .filter(|(place, check_id, _)| *place == of.0 && *check_id == of.1)
+                .map(|(_, _, text)| text == of.2)
         });
-        if selection != local {
-            c.selection.try_set(selection);
-        }
+        self.words(match same_text {
+            Some(same_text) => WordsEvent::Read { stored, same_text },
+            None => WordsEvent::Shown(stored),
+        });
         let same = c
             .detail
             .with_untracked(|d| matches!(d, Some(Detail::Ready(shown)) if **shown == view));
         if !same {
             self.refresh_comment(&view);
             c.detail.try_set(Some(Detail::Ready(Box::new(view))));
-        }
-        if c.sent.with_untracked(|sent| sent.words().is_some()) {
-            c.sent.try_update(SentWords::read);
         }
     }
 
@@ -930,7 +922,6 @@ impl Actions {
     /// again. The server decides, since only it knows the mark a save still on its way made;
     /// for a check with no mark it records nothing.
     pub fn words_changed(&self) {
-        restore_step(RestoreEvent::WordsChanged);
         if let Some(cap) = self.write_cap() {
             self.mark(cap, DecideEdit::Unmark);
         }
@@ -946,7 +937,7 @@ impl Actions {
         else {
             return;
         };
-        let (place, check_id, index) = (view.place.clone(), view.check_id.clone(), view.index);
+        let (place, check_id) = (view.place.clone(), view.check_id.clone());
         let comment = self
             .s()
             .project
@@ -963,22 +954,7 @@ impl Actions {
             edit,
         };
         c.marking.try_set(Marking::Idle);
-        let stored = c
-            .sent
-            .with_untracked(|sent| check_item::stored_words(&view, sent.words()));
-        let words = check_item::words_after(&request.edit, &stored, &c.selection.get_untracked());
-        if check_item::is_mark(&request.edit) {
-            // A mark is the person's newer act: a restore's read that lands after it must not
-            // put the restored words over the ones this mark stores (#989 review).
-            restore_step(RestoreEvent::WordsChanged);
-            if let Some(words) = &words {
-                c.selection.try_set(words.clone());
-            }
-        }
-        let tracked = words.is_some();
-        if let Some(words) = words {
-            c.sent.try_update(|sent| sent.sent(words));
-        }
+        let write = self.words(WordsEvent::Sent(&request.edit));
         let this = self.clone();
         spawn_local(async move {
             // A write's reply is never dropped: its Ack carries the next token (AD2).
@@ -993,9 +969,11 @@ impl Actions {
             let shown = c.detail.with_untracked(|d| {
                 matches!(d, Some(Detail::Ready(v)) if v.place == place && v.check_id == check_id)
             });
-            // The count is the active check's: a reply for a check since left has none to end.
-            if tracked && c.active.get_untracked() == Some(index) {
-                c.sent.try_update(|sent| sent.replied(result.is_ok()));
+            if let Some(id) = write {
+                this.words(WordsEvent::Replied {
+                    id,
+                    saved: result.is_ok(),
+                });
             }
             if !shown {
                 return;
@@ -1032,7 +1010,12 @@ impl Actions {
             .get_untracked()
             .and_then(|project| comment_key(list.tool, &project, &view));
         let (place, check_id) = (view.place.clone(), view.check_id.clone());
-        restore_step(RestoreEvent::Asked);
+        let write = self.words(WordsEvent::Restore);
+        let answered = move |this: &Self, saved: bool| {
+            if let Some(id) = write {
+                this.words(WordsEvent::Replied { id, saved });
+            }
+        };
         c.restoring.try_set(true);
         c.restore_failed.try_set(false);
         let this = self.clone();
@@ -1041,7 +1024,7 @@ impl Actions {
             // (loss lens M2); a save that cannot be made leaves the restore undone.
             if !this.runtime().saves().gate().await {
                 let c = &this.s().c;
-                restore_step(RestoreEvent::Answered { saved: false });
+                answered(&this, false);
                 c.restoring.try_set(false);
                 c.restore_failed.try_set(true);
                 return;
@@ -1065,6 +1048,7 @@ impl Actions {
             };
             let c = &this.s().c;
             c.restoring.try_set(false);
+            answered(&this, result.is_ok());
             if let Ok(ack) = &result {
                 this.patch_rail(ack);
                 if let Some(key) = &comment {
@@ -1078,9 +1062,6 @@ impl Actions {
                 return;
             }
             c.restore_failed.try_set(result.is_err());
-            restore_step(RestoreEvent::Answered {
-                saved: result.is_ok(),
-            });
             this.refresh_item();
         });
     }

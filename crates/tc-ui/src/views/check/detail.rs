@@ -10,6 +10,8 @@
 //! part rebuilt when a read changes them (the draft was edited): the caret starts before the
 //! first word again.
 
+use std::collections::BTreeSet;
+
 use leptos::html;
 use leptos::prelude::*;
 use tc_api::check::{
@@ -383,6 +385,12 @@ fn target_words(
         let actions = send_wrapper::SendWrapper::new(actions.clone());
         move || actions.words_changed()
     };
+    // The line never writes the words it shows: it tells the check's words what the person
+    // selected, and shows what they answer.
+    let select = {
+        let actions = send_wrapper::SendWrapper::new(actions.clone());
+        move |words: BTreeSet<u32>| actions.select_words(words)
+    };
     let nav = StoredValue::new_local(WordNav::default());
     let root: NodeRef<html::P> = NodeRef::new();
     let len = words.len();
@@ -395,12 +403,12 @@ fn target_words(
     };
     let rtl = direction == TextDir::Rtl;
     let apply = {
-        let (selection, changed) = (selection.clone(), changed.clone());
+        let (selection, changed, select) = (selection.clone(), changed.clone(), select.clone());
         move |step: WordStep| {
             if let Some(next) = step.selection
                 && next != selection.get_untracked()
             {
-                selection.try_set(next);
+                select(next);
                 changed();
             }
             if let Some(at) = step.focus {
@@ -503,21 +511,22 @@ fn target_words(
                 }
             };
             let on_enter = {
-                let selection = selection.clone();
+                let select = select.clone();
                 move |_: web_sys::MouseEvent| {
                     if let Some(next) = nav.try_update_value(|nav| nav.enter(i)).flatten() {
-                        selection.try_set(next);
+                        select(next);
                     }
                 }
             };
             let on_click = {
-                let (selection, changed) = (selection.clone(), changed.clone());
+                let (selection, changed, select) =
+                    (selection.clone(), changed.clone(), select.clone());
                 move |_: web_sys::MouseEvent| {
                     let next = nav
                         .try_update_value(|nav| nav.click(i, &selection.get_untracked()))
                         .flatten();
                     if let Some(next) = next {
-                        selection.try_set(next);
+                        select(next);
                         changed();
                     }
                     sync_stop();

@@ -6,8 +6,9 @@
 //!   arrow selects as a word processor does, Space or Enter toggles the word alone, and a press
 //!   and a drag selects whole words as the pointer passes. [`WordNav`] holds the caret, the
 //!   Shift run and the drag, and answers each event with the selection it makes.
-//! - **The selection** is one local value until a mark saves it (#757). It follows the stored
-//!   selection when the item or its words change, and is left alone by any other re-read.
+//! - **The selected words** are one state, [`CheckWords`] (#853): the words the check has
+//!   stored, which the screen shows and follows on every read, or the person's unsaved change
+//!   of them, which no read or reply touches. A mark is the save.
 //! - **The comment** is a save-machine field of its own kind: it saves on Done and on leaving
 //!   the item while its editor is open (A-10); its place names the check, so the writer can
 //!   rebuild the request from the buffer entry alone.
@@ -43,22 +44,7 @@ pub fn item_nav(active: u32, total: u32) -> ItemNav {
     }
 }
 
-// ---- The selection ------------------------------------------------------------------------
-
-/// The selection after a read of the active check. tC4 resets it only when the check or its
-/// verse text changes, so a read that follows the person's own mark leaves what they tapped.
-pub fn selection_after_read(
-    shown: Option<&CheckItemView>,
-    read: &CheckItemView,
-    local: &BTreeSet<u32>,
-) -> BTreeSet<u32> {
-    match shown {
-        Some(shown) if shown.index == read.index && shown.target.words == read.target.words => {
-            local.clone()
-        }
-        _ => read.target.selected.iter().copied().collect(),
-    }
-}
+// ---- The selected words -------------------------------------------------------------------
 
 /// Mark valid: the tapped words, or "nothing to select" when there are none (tC4's `markValid`).
 pub fn valid_edit(selection: &BTreeSet<u32>) -> DecideEdit {
@@ -67,137 +53,208 @@ pub fn valid_edit(selection: &BTreeSet<u32>) -> DecideEdit {
     }
 }
 
-/// The words the shown check has stored, as the page knows them: what its newest write still
-/// on its way leaves (`sent`), else what the last read shows.
-pub fn stored_words(read: &CheckItemView, sent: Option<&BTreeSet<u32>>) -> BTreeSet<u32> {
-    sent.cloned()
-        .unwrap_or_else(|| read.target.selected.iter().copied().collect())
-}
-
-/// The words a decision write of the page leaves stored on the shown check, or `None` for a
-/// write that leaves them alone (a bookmark, a comment). `stored` is what the check holds
-/// before it. Mark valid stores the words on screen. Mark invalid says the translation fails
-/// this check, so no words translate it (owner, 2026-11-10), and an unmark also leaves none.
-/// To do changes only the status.
-pub fn words_after(
-    edit: &DecideEdit,
-    stored: &BTreeSet<u32>,
-    selection: &BTreeSet<u32>,
-) -> Option<BTreeSet<u32>> {
-    match edit {
-        DecideEdit::Valid { .. } => Some(selection.clone()),
-        DecideEdit::Invalid | DecideEdit::Unmark => Some(BTreeSet::new()),
-        DecideEdit::Todo => Some(stored.clone()),
-        DecideEdit::Bookmark { .. } | DecideEdit::Comment { .. } => None,
-    }
-}
-
-/// Whether the write is a mark. A mark is the save (#853): once it is pressed, the screen
-/// shows the words it leaves stored ([`words_after`]). An unmark leaves the person's words on
-/// screen for the next mark.
-pub fn is_mark(edit: &DecideEdit) -> bool {
-    matches!(
-        edit,
-        DecideEdit::Valid { .. } | DecideEdit::Invalid | DecideEdit::Todo
-    )
-}
-
-/// The page's decision writes of the shown check that have no reply yet, and the words the
-/// newest of them leaves (#853). While one is on its way the stored check the page shows is
-/// behind the person, so [`words_unsaved`] reads this instead.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct SentWords {
-    writes: u32,
-    words: Option<BTreeSet<u32>>,
-}
-
-impl SentWords {
-    /// A write of the words leaves for the server.
-    pub fn sent(&mut self, words: BTreeSet<u32>) {
-        self.writes += 1;
-        self.words = Some(words);
-    }
-
-    /// A reply came. A failed write that was the last on its way stored nothing, so the stored
-    /// check speaks again at once; after a saved one it speaks at the next read.
-    pub fn replied(&mut self, saved: bool) {
-        self.writes = self.writes.saturating_sub(1);
-        if !saved && self.writes == 0 {
-            self.words = None;
-        }
-    }
-
-    /// A read of the check landed: with no write on its way, it shows what every write stored.
-    pub fn read(&mut self) {
-        if self.writes == 0 {
-            self.words = None;
-        }
-    }
-
-    /// The words the newest write leaves, until a read shows them.
-    pub fn words(&self) -> Option<&BTreeSet<u32>> {
-        self.words.as_ref()
-    }
-}
-
-/// A *Restore this version* of the shown check, as its words see it (#853). The first read
-/// after a saved restore shows the restored words, unless the person changed the selection
-/// after asking for the restore: then the words on screen are their newer act and stay.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum RestoredWords {
-    /// No restore is on its way, or the person changed the words since.
-    #[default]
-    None,
-    /// Asked for, not yet answered.
-    Asked,
-    /// Saved; no read has shown it yet.
-    Saved,
-}
-
-/// What happens to a restore's words.
+/// The name of one write of the page, so its reply ends that write and no other.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RestoreEvent {
-    /// The person pressed *Restore this version*.
-    Asked,
-    /// The restore was answered: saved, or not.
-    Answered { saved: bool },
-    /// The person finished a change of the selected words, or a mark set them.
-    WordsChanged,
-    /// A read of the check landed.
-    Read,
-    /// Another check shows, or none.
-    Left,
+pub struct WriteId(u32);
+
+/// What a write of the page does to the words the check has stored.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Effect {
+    /// Mark valid stores the words on screen. Mark invalid says the translation fails this
+    /// check, so no words translate it (owner, 2026-11-10), and an unmark also stores none.
+    Sets(BTreeSet<u32>),
+    /// To do, a bookmark and a comment leave the words alone. A restore from History changes
+    /// them to words only a read can tell.
+    Leaves,
 }
 
-impl RestoredWords {
-    /// The one transition: the next state, and whether a read that landed shows the stored
-    /// words in place of the ones on screen.
-    pub fn step(self, event: RestoreEvent) -> (Self, bool) {
-        match (self, event) {
-            (_, RestoreEvent::Asked) => (Self::Asked, false),
-            (Self::Asked, RestoreEvent::Answered { saved: true }) => (Self::Saved, false),
-            (Self::Saved, RestoreEvent::Read) => (Self::None, true),
-            // A read before the answer is of the check before the restore.
-            (Self::Asked, RestoreEvent::Read) => (Self::Asked, false),
-            (
-                _,
-                RestoreEvent::Answered { .. } | RestoreEvent::WordsChanged | RestoreEvent::Left,
-            )
-            | (Self::None, RestoreEvent::Read) => (Self::None, false),
+/// A write of the page that has no reply yet.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Pending {
+    id: WriteId,
+    effect: Effect,
+}
+
+/// What happens to the shown check's words.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WordsEvent<'a> {
+    /// Another check shows, with the words it has stored; or none shows, with none.
+    Shown(BTreeSet<u32>),
+    /// A read of the shown check landed. `same_text` is false when the verse's words changed:
+    /// the person's unsaved words pointed into the old text, so they go.
+    Read {
+        stored: BTreeSet<u32>,
+        same_text: bool,
+    },
+    /// The person's words on the line now, during a gesture and at its end.
+    Selected(BTreeSet<u32>),
+    /// A decision write leaves for the server.
+    Sent(&'a DecideEdit),
+    /// *Restore this version* was pressed.
+    Restore,
+    /// A write was answered: saved, or not.
+    Replied { id: WriteId, saved: bool },
+    /// The person chose Leave without them.
+    Dropped,
+}
+
+/// The person's unsaved change of the words.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Change {
+    words: BTreeSet<u32>,
+    /// The marks and restores pressed since that have no reply yet: they answer for these
+    /// words. While one is on its way the screen shows the stored words. The first one saved
+    /// ends the change. When every one has failed, the words are the person's again.
+    answered_by: Vec<WriteId>,
+}
+
+/// The words of the shown check (#853): the ones it has stored, and the person's unsaved
+/// change of them when there is one. The screen shows the stored words and follows every read,
+/// until the person changes them; then it shows theirs, and no read or reply touches them. A
+/// mark, a restore or Leave without them ends the change. The check is held while a change
+/// with words in it stands.
+///
+/// Two values of the same words cannot disagree here, because there is only one: a change
+/// that no mark answers for is never equal to the stored words.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct CheckWords {
+    /// The stored words the last read showed.
+    read: BTreeSet<u32>,
+    /// The page's writes of this showing of the check that have no reply yet, oldest first.
+    pending: Vec<Pending>,
+    change: Option<Change>,
+    next: u32,
+}
+
+impl CheckWords {
+    /// The words the check has stored, as the page knows them: what its newest write that sets
+    /// words leaves, else what the last read showed.
+    pub fn stored(&self) -> BTreeSet<u32> {
+        self.pending
+            .iter()
+            .rev()
+            .find_map(|write| match &write.effect {
+                Effect::Sets(words) => Some(words.clone()),
+                Effect::Leaves => None,
+            })
+            .unwrap_or_else(|| self.read.clone())
+    }
+
+    /// The person's change, while no mark answers for it.
+    fn open_change(&self) -> Option<&BTreeSet<u32>> {
+        self.change
+            .as_ref()
+            .filter(|change| change.answered_by.is_empty())
+            .map(|change| &change.words)
+    }
+
+    /// The words the screen shows.
+    pub fn shown(&self) -> BTreeSet<u32> {
+        self.open_change().cloned().unwrap_or_else(|| self.stored())
+    }
+
+    /// Whether the person selected words that no mark has saved: Previous and Next are off,
+    /// and every other way out asks first.
+    pub fn unsaved(&self) -> bool {
+        self.open_change().is_some_and(|words| !words.is_empty())
+    }
+
+    /// The one transition. A write that leaves gets its name back, for its reply.
+    pub fn step(&mut self, event: WordsEvent<'_>) -> Option<WriteId> {
+        let mut sent = None;
+        match event {
+            WordsEvent::Shown(stored) => {
+                self.read = stored;
+                self.pending.clear();
+                self.change = None;
+            }
+            WordsEvent::Read { stored, same_text } => {
+                self.read = stored;
+                if !same_text {
+                    self.change = None;
+                }
+            }
+            // The words already on screen are no change: a drag over them keeps the change a
+            // mark is answering for.
+            WordsEvent::Selected(words) => {
+                if words != self.shown() {
+                    self.change = Some(Change::open(words));
+                }
+            }
+            WordsEvent::Sent(edit) => {
+                let effect = match edit {
+                    DecideEdit::Valid { words } => Effect::Sets(words.iter().copied().collect()),
+                    DecideEdit::Invalid | DecideEdit::Unmark => Effect::Sets(BTreeSet::new()),
+                    DecideEdit::Todo | DecideEdit::Bookmark { .. } | DecideEdit::Comment { .. } => {
+                        Effect::Leaves
+                    }
+                };
+                // An unmark leaves the words on screen as the person's, for the next mark.
+                let on_screen = matches!(edit, DecideEdit::Unmark).then(|| self.shown());
+                let id = self.push(effect);
+                match edit {
+                    DecideEdit::Valid { .. } | DecideEdit::Invalid | DecideEdit::Todo => {
+                        self.answer_with(id);
+                    }
+                    DecideEdit::Unmark => self.change = on_screen.map(Change::open),
+                    DecideEdit::Bookmark { .. } | DecideEdit::Comment { .. } => {}
+                }
+                sent = Some(id);
+            }
+            WordsEvent::Restore => {
+                let id = self.push(Effect::Leaves);
+                self.answer_with(id);
+                sent = Some(id);
+            }
+            WordsEvent::Replied { id, saved } => {
+                // A reply for an earlier showing of the check names no write here.
+                if let Some(at) = self.pending.iter().position(|write| write.id == id) {
+                    let write = self.pending.remove(at);
+                    // The page knows what its own saved write stored, before any read.
+                    if let (true, Effect::Sets(words)) = (saved, write.effect) {
+                        self.read = words;
+                    }
+                    if let Some(change) = &mut self.change
+                        && change.answered_by.contains(&id)
+                    {
+                        if saved {
+                            self.change = None;
+                        } else {
+                            change.answered_by.retain(|answer| *answer != id);
+                        }
+                    }
+                }
+            }
+            WordsEvent::Dropped => self.change = None,
         }
+        if self.open_change() == Some(&self.stored()) {
+            self.change = None;
+        }
+        sent
+    }
+
+    /// A mark or a restore answers for the person's change.
+    fn answer_with(&mut self, id: WriteId) {
+        if let Some(change) = &mut self.change {
+            change.answered_by.push(id);
+        }
+    }
+
+    fn push(&mut self, effect: Effect) -> WriteId {
+        let id = WriteId(self.next);
+        self.next = self.next.wrapping_add(1);
+        self.pending.push(Pending { id, effect });
+        id
     }
 }
 
-/// Whether words are selected that no mark has saved (#853): Previous and Next are off, and
-/// every other way out asks first. A read-only project saves nothing, so it never holds words
-/// back. `sent` is the words the page's newest write leaves, while one is on its way.
-pub fn words_unsaved(
-    writable: bool,
-    read: &CheckItemView,
-    sent: Option<&BTreeSet<u32>>,
-    selection: &BTreeSet<u32>,
-) -> bool {
-    writable && !selection.is_empty() && stored_words(read, sent) != *selection
+impl Change {
+    fn open(words: BTreeSet<u32>) -> Self {
+        Self {
+            words,
+            answered_by: Vec::new(),
+        }
+    }
 }
 
 // ---- The target words ---------------------------------------------------------------------
@@ -574,8 +631,8 @@ mod tests {
     use super::*;
     use std::future::Future;
     use tc_api::check::{
-        Category, CheckArticle, CheckSources, DecisionStatus, DecisionView, GatewayView,
-        NoteCategory, OriginalView, TargetWords, Testament,
+        Category, CheckArticle, CheckSources, DecisionView, GatewayView, NoteCategory,
+        OriginalView, TargetWords, Testament,
     };
     use tc_api::helps::ArticleLink;
     use tc_api::shown::Shown;
@@ -801,146 +858,232 @@ mod tests {
         }
     }
 
-    /// tC4 #532 and #737: the selection follows the stored one when the check or its draft
-    /// changes, and a read that follows the person's own mark leaves what they tapped.
+    /// A page's words at a check that has `stored` stored.
+    fn words(stored: &[u32]) -> CheckWords {
+        let mut words = CheckWords::default();
+        words.step(WordsEvent::Shown(set(stored)));
+        words
+    }
+
+    /// A tap as the screen makes it: the words on the line, then the unmark it sends.
+    fn tap(words: &mut CheckWords, to: &[u32]) -> WriteId {
+        words.step(WordsEvent::Selected(set(to)));
+        words.step(WordsEvent::Sent(&DecideEdit::Unmark)).unwrap()
+    }
+
+    fn mark(words: &mut CheckWords, edit: &DecideEdit) -> WriteId {
+        words.step(WordsEvent::Sent(edit)).unwrap()
+    }
+
+    fn reply(words: &mut CheckWords, id: WriteId, saved: bool) {
+        words.step(WordsEvent::Replied { id, saved });
+    }
+
+    fn read(words: &mut CheckWords, stored: &[u32]) {
+        words.step(WordsEvent::Read {
+            stored: set(stored),
+            same_text: true,
+        });
+    }
+
+    /// tC4 #532 and #737: the screen shows the stored words of the check it opens; a read of
+    /// the same check never touches words the person holds; a changed verse text drops them,
+    /// because they pointed into the old text.
     #[test]
     fn check_shows_new_draft_after_switching_back() {
-        let shown = view(3, &["Pablo", "siervo"], &[0]);
-        let local = set(&[0, 1]);
-        // The same check and the same words: the person's taps stay (a re-read after a mark).
-        assert_eq!(selection_after_read(Some(&shown), &shown, &local), local);
-        // The draft changed while the person was away: the new words, and the stored selection.
-        let drafted = view(3, &["Pablo", "esclavo", "de"], &[1]);
-        assert_eq!(
-            selection_after_read(Some(&shown), &drafted, &local),
-            set(&[1])
-        );
-        // Another check: its own stored selection.
-        let other = view(4, &["Pablo", "siervo"], &[]);
-        assert_eq!(selection_after_read(Some(&shown), &other, &local), set(&[]));
-        // The first read.
-        assert_eq!(selection_after_read(None, &shown, &local), set(&[0]));
+        let mut w = words(&[0]);
+        assert_eq!(w.shown(), set(&[0]));
+        let unmark = tap(&mut w, &[0, 1]);
+        reply(&mut w, unmark, true);
+        read(&mut w, &[]);
+        assert_eq!(w.shown(), set(&[0, 1]));
+        // The draft changed while the person was away: the new text's stored words.
+        w.step(WordsEvent::Read {
+            stored: set(&[1]),
+            same_text: false,
+        });
+        assert_eq!(w.shown(), set(&[1]));
+        assert!(!w.unsaved());
+        // Another check: its own stored words.
+        w.step(WordsEvent::Shown(set(&[])));
+        assert_eq!(w.shown(), set(&[]));
     }
 
-    fn marked(status: Option<DecisionStatus>, selected: &[u32]) -> CheckItemView {
-        let mut read = view(3, &["Pablo", "siervo", "de"], selected);
-        read.decision.value.status = status;
-        read
-    }
-
-    /// #853: words are unsaved when they are selected and no mark holds them.
+    /// #853: words the person selected hold the check until a mark, until they are unselected,
+    /// or until Leave without them. Stored words never hold it.
     #[test]
-    fn selected_words_are_unsaved_until_a_mark_holds_them() {
-        let none = marked(None, &[]);
-        assert!(!words_unsaved(true, &none, None, &set(&[])));
-        assert!(words_unsaved(true, &none, None, &set(&[0, 1])));
-        // A read-only project saves nothing: its words never hold the person back.
-        assert!(!words_unsaved(false, &none, None, &set(&[0, 1])));
-        // Mark valid stored these words.
-        let valid = marked(Some(DecisionStatus::Valid), &[0, 1]);
-        assert!(!words_unsaved(true, &valid, None, &set(&[0, 1])));
-        // Other words than the stored ones, whose unmark was not saved.
-        assert!(words_unsaved(true, &valid, None, &set(&[0, 2])));
-        // The status makes no exception. Words on an Invalid or To do check that it has not
-        // stored are a tap whose unmark was not saved, or a tap on a check shown Invalid
-        // because its helps changed.
-        for status in [DecisionStatus::Invalid, DecisionStatus::Todo] {
-            let bare = marked(Some(status), &[]);
-            assert!(!words_unsaved(true, &bare, None, &set(&[])));
-            assert!(words_unsaved(true, &bare, None, &set(&[1])));
+    fn selected_words_hold_the_check_until_a_mark_or_none_are_left() {
+        let mut w = words(&[]);
+        assert!(!w.unsaved());
+        tap(&mut w, &[0, 1]);
+        assert!(w.unsaved());
+        tap(&mut w, &[]);
+        assert!(!w.unsaved());
+        tap(&mut w, &[2]);
+        w.step(WordsEvent::Dropped);
+        assert!(!w.unsaved());
+        assert_eq!(w.shown(), set(&[]));
+        // Arriving at a check with stored words, whatever its status, holds nothing.
+        assert!(!words(&[2]).unsaved());
+        // Back to the stored words within one gesture: nothing was changed.
+        let mut w = words(&[1]);
+        w.step(WordsEvent::Selected(set(&[1, 2])));
+        w.step(WordsEvent::Selected(set(&[1])));
+        assert!(!w.unsaved());
+    }
+
+    /// #853: a mark is the save. At its press the screen shows what it leaves stored, with no
+    /// wait for the reply: Mark valid the words on screen, Mark invalid none, and To do the
+    /// words the check had.
+    #[test]
+    fn a_mark_shows_the_words_it_leaves_stored_at_its_press() {
+        let mut w = words(&[]);
+        tap(&mut w, &[0, 1]);
+        mark(&mut w, &valid_edit(&set(&[0, 1])));
+        assert!(!w.unsaved());
+        assert_eq!(w.shown(), set(&[0, 1]));
+        tap(&mut w, &[0, 1, 2]);
+        assert!(w.unsaved());
+        mark(&mut w, &DecideEdit::Invalid);
+        assert_eq!((w.shown(), w.unsaved()), (set(&[]), false));
+        // To do on a valid check keeps its words; words never stored leave the screen.
+        let mut w = words(&[1]);
+        mark(&mut w, &DecideEdit::Todo);
+        assert_eq!(w.shown(), set(&[1]));
+        tap(&mut w, &[1, 2]);
+        mark(&mut w, &DecideEdit::Todo);
+        assert_eq!((w.shown(), w.unsaved()), (set(&[]), false));
+        // A bookmark changes nothing of the words.
+        tap(&mut w, &[3]);
+        mark(&mut w, &DecideEdit::Bookmark { on: true });
+        assert_eq!((w.shown(), w.unsaved()), (set(&[3]), true));
+    }
+
+    /// A mark that was not saved gives the person's words back, and they hold the check again.
+    /// An unmark that was not saved leaves the mark, so words equal to its own hold nothing.
+    #[test]
+    fn a_write_that_was_not_saved_gives_the_words_back() {
+        let mut w = words(&[]);
+        let unmark = tap(&mut w, &[0, 1]);
+        reply(&mut w, unmark, true);
+        let invalid = mark(&mut w, &DecideEdit::Invalid);
+        assert_eq!(w.shown(), set(&[]));
+        reply(&mut w, invalid, false);
+        assert_eq!((w.shown(), w.unsaved()), (set(&[0, 1]), true));
+        // A valid check with word 0; a tap adds 1 and takes it off again; the unmarks fail.
+        let mut w = words(&[0]);
+        let first = tap(&mut w, &[0, 1]);
+        let second = tap(&mut w, &[0]);
+        assert!(w.unsaved());
+        reply(&mut w, first, false);
+        reply(&mut w, second, false);
+        assert_eq!((w.shown(), w.unsaved()), (set(&[0]), false));
+        // Mark valid pressed twice, and neither is saved: the words are the person's again.
+        let mut w = words(&[]);
+        let unmark = tap(&mut w, &[0, 1]);
+        reply(&mut w, unmark, true);
+        let first = mark(&mut w, &valid_edit(&set(&[0, 1])));
+        let second = mark(&mut w, &valid_edit(&set(&[0, 1])));
+        reply(&mut w, first, false);
+        assert!(!w.unsaved());
+        reply(&mut w, second, false);
+        assert_eq!((w.shown(), w.unsaved()), (set(&[0, 1]), true));
+        // An earlier mark fails and a later one is saved: the later one ended the change.
+        let mut w = words(&[]);
+        let unmark = tap(&mut w, &[1]);
+        reply(&mut w, unmark, true);
+        let valid = mark(&mut w, &valid_edit(&set(&[1])));
+        let invalid = mark(&mut w, &DecideEdit::Invalid);
+        reply(&mut w, valid, false);
+        reply(&mut w, invalid, true);
+        assert_eq!((w.shown(), w.unsaved()), (set(&[]), false));
+        // The first of two marks is saved and the second is not: the first ended the change.
+        let mut w = words(&[]);
+        let unmark = tap(&mut w, &[1, 2]);
+        reply(&mut w, unmark, true);
+        let first = mark(&mut w, &DecideEdit::Invalid);
+        let second = mark(&mut w, &DecideEdit::Invalid);
+        reply(&mut w, first, true);
+        reply(&mut w, second, false);
+        assert_eq!((w.shown(), w.unsaved()), (set(&[]), false));
+        // A drag over the words a mark is saving changes nothing: if the mark fails, they are
+        // still the person's.
+        let mut w = words(&[]);
+        let unmark = tap(&mut w, &[1, 2]);
+        reply(&mut w, unmark, true);
+        let valid = mark(&mut w, &valid_edit(&set(&[1, 2])));
+        w.step(WordsEvent::Selected(set(&[1, 2])));
+        reply(&mut w, valid, false);
+        assert_eq!((w.shown(), w.unsaved()), (set(&[1, 2]), true));
+        // A saved write's words are the stored ones at once, with no read in between.
+        let mut w = words(&[0]);
+        let unmark = tap(&mut w, &[]);
+        reply(&mut w, unmark, true);
+        assert_eq!((w.shown(), w.stored()), (set(&[]), set(&[])));
+        // A reply for an earlier showing of the check names no write of this one.
+        let mut w = words(&[]);
+        let old = tap(&mut w, &[1]);
+        w.step(WordsEvent::Shown(set(&[])));
+        let new = tap(&mut w, &[2]);
+        reply(&mut w, old, false);
+        assert_eq!(w.shown(), set(&[2]));
+        reply(&mut w, new, true);
+        assert!(w.unsaved());
+    }
+
+    /// The review rounds of #989, each an order of events that showed the wrong words while
+    /// the page kept a second copy of them.
+    #[test]
+    fn the_orders_of_events_the_reviews_found_show_the_right_words() {
+        // Round 2: unselect, leave and come back before the unmark is answered. The new
+        // showing follows the read that shows the unmark.
+        let mut w = words(&[1]);
+        tap(&mut w, &[]);
+        w.step(WordsEvent::Shown(set(&[1])));
+        read(&mut w, &[]);
+        assert_eq!((w.shown(), w.unsaved()), (set(&[]), false));
+        // Round 3: a tap while a restore is on its way stays, whichever read lands.
+        for tap_first in [true, false] {
+            let mut w = words(&[1, 2]);
+            let restore = w.step(WordsEvent::Restore).unwrap();
+            if tap_first {
+                tap(&mut w, &[1, 2, 3]);
+            }
+            reply(&mut w, restore, true);
+            if !tap_first {
+                tap(&mut w, &[1, 2, 3]);
+            }
+            read(&mut w, &[1]);
+            read(&mut w, &[]);
+            assert_eq!((w.shown(), w.unsaved()), (set(&[1, 2, 3]), true));
         }
-        // A To do keeps the words a Mark valid stored before it.
-        let todo = marked(Some(DecisionStatus::Todo), &[1]);
-        assert!(!words_unsaved(true, &todo, None, &set(&[1])));
-        // Stored words with no status (a teammate's unfinished check): nobody touched them.
-        assert!(!words_unsaved(true, &marked(None, &[2]), None, &set(&[2])));
-    }
-
-    /// #853: while a write is on its way, the page answers from what it sent, so Next is back
-    /// at the press of a mark and off at the tap of a word, with no wait for the save.
-    #[test]
-    fn a_write_on_its_way_speaks_before_the_stored_check() {
-        let none = marked(None, &[]);
-        let words = set(&[0, 1]);
-        let mut sent = SentWords::default();
-        assert_eq!(sent.words(), None);
-        // Mark valid is pressed: the words are on their way.
-        sent.sent(words_after(&valid_edit(&words), &set(&[]), &words).unwrap());
-        assert!(!words_unsaved(true, &none, sent.words(), &words));
-        // A word is tapped before the reply: the unmark leaves no words stored.
-        let more = set(&[0, 1, 2]);
-        sent.sent(words_after(&DecideEdit::Unmark, &words, &more).unwrap());
-        assert!(words_unsaved(true, &none, sent.words(), &more));
-        // A read between the replies does not speak yet.
-        sent.replied(true);
-        sent.read();
-        assert!(words_unsaved(true, &none, sent.words(), &more));
-        sent.replied(true);
-        sent.read();
-        assert_eq!(sent.words(), None);
-        // A mark that was not saved: the stored check speaks at once.
-        sent.sent(more.clone());
-        assert!(!words_unsaved(true, &none, sent.words(), &more));
-        sent.replied(false);
-        assert!(words_unsaved(true, &none, sent.words(), &more));
-        // A mark is the save: the screen takes the words it leaves stored. Mark invalid leaves
-        // none, and To do leaves the ones the check already had.
-        let kept = set(&[2]);
-        assert_eq!(
-            words_after(&DecideEdit::Invalid, &kept, &more),
-            Some(set(&[]))
-        );
-        assert_eq!(
-            words_after(&DecideEdit::Todo, &kept, &more),
-            Some(kept.clone())
-        );
-        assert_eq!(
-            words_after(&DecideEdit::Todo, &set(&[]), &more),
-            Some(set(&[]))
-        );
-        for mark in [valid_edit(&more), DecideEdit::Invalid, DecideEdit::Todo] {
-            assert!(is_mark(&mark));
-        }
-        // An unmark leaves the person's words on screen, and a bookmark and a comment leave
-        // the stored ones alone.
-        let bookmark = DecideEdit::Bookmark { on: true };
-        assert!(!is_mark(&DecideEdit::Unmark) && !is_mark(&bookmark));
-        assert_eq!(words_after(&bookmark, &kept, &more), None);
-        // What the check has stored: the newest write on its way, else the last read.
-        assert_eq!(stored_words(&marked(None, &[2]), None), kept);
-        assert_eq!(stored_words(&marked(None, &[2]), Some(&more)), more);
-        // A late reply for a check already left changes nothing.
-        SentWords::default().replied(true);
-    }
-
-    /// #853: the first read after a saved restore shows the restored words; a tap at any time
-    /// after the restore was asked for keeps the person's words.
-    #[test]
-    fn a_restore_shows_its_words_unless_the_person_changed_them_since() {
-        use RestoreEvent as E;
-        let run = |events: &[E]| {
-            events
-                .iter()
-                .fold((RestoredWords::None, false), |(state, _), e| state.step(*e))
-        };
-        let saved = E::Answered { saved: true };
-        assert_eq!(
-            run(&[E::Asked, saved, E::Read]),
-            (RestoredWords::None, true)
-        );
-        // Once: the read after it keeps what is on screen.
-        assert!(!run(&[E::Asked, saved, E::Read, E::Read]).1);
-        // A read before the answer is of the check before the restore, and waits.
-        assert_eq!(run(&[E::Asked, E::Read]), (RestoredWords::Asked, false));
-        assert!(run(&[E::Asked, E::Read, saved, E::Read]).1);
-        // A tap before the answer, and one after it but before the read.
-        assert!(!run(&[E::Asked, E::WordsChanged, saved, E::Read]).1);
-        assert!(!run(&[E::Asked, saved, E::WordsChanged, E::Read]).1);
-        // A restore that was not saved, and a check left, show nothing of it.
-        assert!(!run(&[E::Asked, E::Answered { saved: false }, E::Read]).1);
-        assert!(!run(&[E::Asked, saved, E::Left, E::Read]).1);
-        // No restore: a read keeps the words.
-        assert_eq!(run(&[E::Read]), (RestoredWords::None, false));
+        // Round 4: Mark valid after a restore and before its read keeps the words it stored.
+        let mut w = words(&[1, 2]);
+        let restore = w.step(WordsEvent::Restore).unwrap();
+        reply(&mut w, restore, true);
+        let on_screen = w.shown();
+        let valid = mark(&mut w, &valid_edit(&on_screen));
+        read(&mut w, &[1]);
+        assert_eq!(w.shown(), set(&[1, 2]));
+        reply(&mut w, valid, true);
+        read(&mut w, &[1, 2]);
+        assert_eq!((w.shown(), w.unsaved()), (set(&[1, 2]), false));
+        // Round 5: To do in that window leaves the restored words stored, and shows them.
+        let mut w = words(&[1, 2]);
+        let restore = w.step(WordsEvent::Restore).unwrap();
+        reply(&mut w, restore, true);
+        let todo = mark(&mut w, &DecideEdit::Todo);
+        read(&mut w, &[1]);
+        reply(&mut w, todo, true);
+        assert_eq!((w.shown(), w.unsaved()), (set(&[1]), false));
+        // With no tap and no mark, a restore shows its words; one that failed gives back the
+        // words it took off the screen.
+        let mut w = words(&[]);
+        tap(&mut w, &[3]);
+        let restore = w.step(WordsEvent::Restore).unwrap();
+        assert!(!w.unsaved());
+        reply(&mut w, restore, false);
+        assert_eq!((w.shown(), w.unsaved()), (set(&[3]), true));
     }
 
     #[test]

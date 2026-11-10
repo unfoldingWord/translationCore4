@@ -634,6 +634,39 @@ const tappedDuringRestore = (slow) => async () => {
 browserTest('words_tapped_before_a_restore_is_answered_stay_on_screen', tappedDuringRestore('**/api/v1/conflicts/restore'));
 browserTest('words_tapped_after_a_restore_and_before_its_read_stay_on_screen', tappedDuringRestore('**/api/v1/check/item'));
 
+// Mark To do changes only the status, so after a restore it leaves the restored words stored.
+// Found by review of #989: pressed before the restore's read landed, it kept the words from
+// before the restore on screen, which the check no longer had stored.
+browserTest('mark_to_do_after_a_restore_and_before_its_read_shows_the_restored_words', async () => {
+  await withApp(async ({ page, env }) => {
+    await openTool(page, 'translationNotes');
+    await page.getByTestId('tw-4').waitFor();
+    const index = Number(await shownIndex(page));
+    await page.getByTestId('tw-1').click();
+    await page.getByTestId('mark-valid').click();
+    await storedAs(env, index, 'valid', [1]);
+    await page.getByTestId('tw-2').click();
+    await storedAs(env, index, null, []);
+    await page.getByTestId('mark-valid').click();
+    await storedAs(env, index, 'valid', [1, 2]);
+    await page.getByTestId('check-history').getByTestId('history-toggle').click();
+    const versions = page.getByTestId('check-history').getByTestId('history-version');
+    await until('History lists the three versions', async () => (await versions.count()) >= 3);
+    await page.route('**/api/v1/check/item', async (route) => {
+      const response = await route.fetch();
+      await sleep(2000);
+      await route.fulfill({ response });
+    });
+    await versions.nth(2).getByTestId('history-restore').click();
+    await storedAs(env, index, 'valid', [1]);
+    await page.getByTestId('mark-todo').click();
+    await storedAs(env, index, 'todo', [1]);
+    await sleep(5000);
+    assert.deepEqual(await pressedWords(page), ['tw-1'], 'the screen shows the words the check has stored');
+    assert.deepEqual(await navOff(page).then((off) => off[1]), false, 'Next is on: nothing waits for a mark');
+  }, { scenario: 'en-pins' });
+});
+
 // A mark after a restore and before its read is the person's newer act too. Found by review of
 // #989: the restore's read put the restored words over the ones the mark stored, and held Next.
 browserTest('a_mark_after_a_restore_and_before_its_read_keeps_the_words_it_stored', async () => {

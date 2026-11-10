@@ -249,6 +249,11 @@ Under the same rule, tC4 4.0 bugs the rebuild fixes on purpose (FIX-R, 2026-10-2
   words").
 - In Check, *Restore this version* from a check's History shows the restored words. Before, the
   words tapped before the restore stayed on screen (#853).
+- In Check, the line shows the words the check has stored and follows them: a teammate's
+  mark that arrives by sync shows its words on the open check. Words the translator selected
+  and no mark has saved are theirs: no read and no reply changes them. A mark or a restore
+  that was not saved gives them back. tC4 keeps the words on screen until the check or its
+  verse text changes, whatever is stored (#853).
 
 Owner rulings in the issues, made before 4.1.0:
 
