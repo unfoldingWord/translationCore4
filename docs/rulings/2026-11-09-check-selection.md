@@ -62,6 +62,24 @@ shows none. Mark To do changes only the status: it shows the words a Mark valid 
 before it, and no word that was never stored. No status is an exception to rule 4: words on
 screen that the check has not stored hold it.
 
+## Nothing crosses a save (owner, 2026-11-10)
+
+- Asked: 2026-11-10, after five review rounds each found another order of a tap, a mark or a
+  restore inside a save that showed the wrong words. The owner asked: "why can the user tap
+  while restoring?" Then: should the words and marks be off while a mark or restore is being
+  saved?
+- Answer: the owner, 2026-11-10: "Yes, turn them off while saving".
+
+While a mark is being saved, the words, the three marks, Previous and Next are off, and every
+other way out waits for the answer. After *Restore this version* they stay off until the
+restored check is on screen. A tap's own unmark holds nothing off. So a save that fails finds
+the translator still on the check, with the notice and their words (#995).
+
+A teammate's work that arrives by sync follows ruling H5
+(`docs/rulings/2026-10-24-H5.md`): the newest version of a check wins and the older one stays
+in History. Words on screen that no mark saved are not a stored decision, so a sync that
+rebuilds the check list drops them.
+
 ## Not decided
 
 - A decision that no longer holds also shows as Invalid. Whether it gets words of its own is

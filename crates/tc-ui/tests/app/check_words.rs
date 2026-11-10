@@ -14,6 +14,9 @@
 //! The model is of the words only. What a mark does to the status is the server's rule, tested
 //! in `tc-check` and `tc-app`.
 //!
+//! While a mark or a restore is being saved the screen has the words and the marks off. The
+//! generator sends those acts anyway: the machine must refuse each one and change nothing.
+//!
 //! The server model assumes only what the page guarantees. Its decision writes go one at a
 //! time. A restore waits for the save gate before it takes its turn, so later writes and reads
 //! can go before it, and the gate can refuse it. A read goes out only when no write holds a
@@ -25,7 +28,7 @@ use std::collections::{BTreeSet, VecDeque};
 
 use proptest::prelude::*;
 use tc_api::check::DecideEdit;
-use tc_ui::app::check_item::{CheckWords, WordsEvent, WriteId, valid_edit};
+use tc_ui::app::check_item::{CheckWords, Stepped, WordsEvent, WriteId, valid_edit};
 
 type Words = BTreeSet<u32>;
 
@@ -155,11 +158,29 @@ impl World {
         }
     }
 
-    fn sent(id: Option<WriteId>, wire: Wire) -> Sent {
+    fn sent(id: WriteId, wire: Wire) -> Sent {
         Sent {
-            id: id.expect("a write that leaves has a name"),
+            id,
             wire,
             stored: false,
+        }
+    }
+
+    /// Steps the page with an act of the person. The page obeys the machine: a refused act
+    /// changes nothing and sends nothing. Answers the write to send, if one leaves.
+    fn act(&mut self, event: WordsEvent<'_>) -> Result<Option<WriteId>, TestCaseError> {
+        let before = self.page.clone();
+        match self.page.step(event) {
+            Stepped::Send(id) => Ok(Some(id)),
+            Stepped::Done => Ok(None),
+            Stepped::Refused => {
+                prop_assert!(
+                    before.saving(),
+                    "an act was refused with nothing being saved"
+                );
+                prop_assert_eq!(&self.page, &before, "a refused act changed the words");
+                Ok(None)
+            }
         }
     }
 
@@ -194,20 +215,22 @@ impl World {
     }
 
     /// The pointer goes up: a gesture that changed the words sends one unmark.
-    fn release(&mut self) {
+    fn release(&mut self) -> Result<(), TestCaseError> {
         if let Some(before) = self.dragging.take()
             && before != self.page.shown()
+            && let Some(id) = self.act(WordsEvent::Sent(&DecideEdit::Unmark))?
         {
             self.answers = None;
-            let id = self.page.step(WordsEvent::Sent(&DecideEdit::Unmark));
             self.wire
                 .push_back(Self::sent(id, Wire::Sets(Words::new())));
         }
+        Ok(())
     }
 
     /// A mark or a restore was pressed: it answers for the words the person held.
-    fn answers_for(&mut self, id: Option<WriteId>, held: bool, shown: &Words) {
-        let id = id.expect("a write that leaves has a name");
+    fn answers_for(&mut self, id: WriteId, held: bool, shown: &Words) {
+        // The page forgets a press of the pointer once a mark or a restore leaves.
+        self.dragging = None;
         match &mut self.answers {
             Some(answers) => answers.ids.push(id),
             None if held => {
@@ -277,8 +300,11 @@ impl World {
         if self.away && person {
             return Ok(());
         }
-        if !matches!(act, Act::Drag(_) | Act::DragOver) && person {
-            self.release();
+        if matches!(
+            act,
+            Act::Tap(_) | Act::TextChange(_) | Act::LeaveWithoutThem
+        ) {
+            self.release()?;
         }
         let (shown, held) = (self.page.shown(), self.page.unsaved());
         match act {
@@ -286,26 +312,37 @@ impl World {
                 if *to == shown {
                     return Ok(());
                 }
+                if self.page.saving() {
+                    self.act(WordsEvent::Selected(to.clone()))?;
+                    self.act(WordsEvent::Sent(&DecideEdit::Unmark))?;
+                    return Ok(());
+                }
                 self.answers = None;
-                self.page.step(WordsEvent::Selected(to.clone()));
-                let id = self.page.step(WordsEvent::Sent(&DecideEdit::Unmark));
-                self.wire
-                    .push_back(Self::sent(id, Wire::Sets(Words::new())));
+                self.act(WordsEvent::Selected(to.clone()))?;
+                if let Some(id) = self.act(WordsEvent::Sent(&DecideEdit::Unmark))? {
+                    self.wire
+                        .push_back(Self::sent(id, Wire::Sets(Words::new())));
+                }
                 prop_assert_eq!(&self.page.shown(), to, "a tap shows at once");
                 prop_assert_eq!(self.page.unsaved(), !to.is_empty());
             }
             Act::Drag(to) => {
+                if self.page.saving() {
+                    self.act(WordsEvent::Selected(to.clone()))?;
+                    return Ok(());
+                }
                 self.dragging.get_or_insert(shown.clone());
-                // A drag over the words already on screen is no change of the person's.
                 if *to != shown {
                     self.answers = None;
                 }
-                self.page.step(WordsEvent::Selected(to.clone()));
+                self.act(WordsEvent::Selected(to.clone()))?;
                 prop_assert_eq!(&self.page.shown(), to, "a drag shows at once");
             }
             Act::DragOver => {
-                self.dragging.get_or_insert(shown.clone());
-                self.page.step(WordsEvent::Selected(shown.clone()));
+                if !self.page.saving() {
+                    self.dragging.get_or_insert(shown.clone());
+                }
+                self.act(WordsEvent::Selected(shown.clone()))?;
                 prop_assert_eq!(&self.page.shown(), &shown);
                 prop_assert_eq!(
                     self.page.unsaved(),
@@ -313,39 +350,43 @@ impl World {
                     "a drag over the same words changed the hold"
                 );
             }
-            Act::Release => {}
+            Act::Release => self.release()?,
             Act::Valid => {
-                let id = self.page.step(WordsEvent::Sent(&valid_edit(&shown)));
-                self.answers_for(id, held, &shown);
-                self.wire
-                    .push_back(Self::sent(id, Wire::Sets(shown.clone())));
-                prop_assert_eq!(
-                    &self.page.shown(),
-                    &shown,
-                    "Mark valid keeps the words on screen"
-                );
-                prop_assert!(!self.page.unsaved(), "a mark is the save");
+                if let Some(id) = self.act(WordsEvent::Sent(&valid_edit(&shown)))? {
+                    self.answers_for(id, held, &shown);
+                    self.wire
+                        .push_back(Self::sent(id, Wire::Sets(shown.clone())));
+                    prop_assert_eq!(
+                        &self.page.shown(),
+                        &shown,
+                        "Mark valid keeps the words on screen"
+                    );
+                    prop_assert!(self.page.saving() && !self.page.unsaved());
+                }
             }
             Act::Invalid => {
-                let id = self.page.step(WordsEvent::Sent(&DecideEdit::Invalid));
-                self.answers_for(id, held, &shown);
-                self.wire
-                    .push_back(Self::sent(id, Wire::Sets(Words::new())));
-                prop_assert!(self.page.shown().is_empty(), "Mark invalid shows no words");
-                prop_assert!(!self.page.unsaved());
+                if let Some(id) = self.act(WordsEvent::Sent(&DecideEdit::Invalid))? {
+                    self.answers_for(id, held, &shown);
+                    self.wire
+                        .push_back(Self::sent(id, Wire::Sets(Words::new())));
+                    prop_assert!(self.page.shown().is_empty(), "Mark invalid shows no words");
+                    prop_assert!(self.page.saving() && !self.page.unsaved());
+                }
             }
             Act::Todo => {
-                let id = self.page.step(WordsEvent::Sent(&DecideEdit::Todo));
-                self.answers_for(id, held, &shown);
-                self.wire.push_back(Self::sent(id, Wire::Leaves));
-                prop_assert!(!self.page.unsaved(), "a mark is the save");
+                if let Some(id) = self.act(WordsEvent::Sent(&DecideEdit::Todo))? {
+                    self.answers_for(id, held, &shown);
+                    self.wire.push_back(Self::sent(id, Wire::Leaves));
+                    prop_assert!(self.page.saving() && !self.page.unsaved());
+                }
             }
             Act::Restore(to) => {
-                let id = self.page.step(WordsEvent::Restore);
-                self.answers_for(id, held, &shown);
-                self.gate
-                    .push_back(Self::sent(id, Wire::Restores(to.clone())));
-                prop_assert!(!self.page.unsaved());
+                if let Some(id) = self.act(WordsEvent::Restore)? {
+                    self.answers_for(id, held, &shown);
+                    self.gate
+                        .push_back(Self::sent(id, Wire::Restores(to.clone())));
+                    prop_assert!(self.page.saving() && !self.page.unsaved());
+                }
             }
             Act::Gate { passes } => {
                 if let Some(restore) = self.gate.pop_front() {
@@ -415,14 +456,17 @@ impl World {
                     prop_assert_eq!(&self.page.shown(), to);
                 }
             }
+            // Leave without them waits for a save, so it never reaches the words under one.
             Act::LeaveWithoutThem => {
-                self.answers = None;
-                self.page.step(WordsEvent::Dropped);
-                prop_assert!(!self.page.unsaved());
+                if !self.page.saving() {
+                    self.answers = None;
+                    self.act(WordsEvent::Dropped)?;
+                    prop_assert!(!self.page.unsaved());
+                }
             }
             Act::Leave => {
                 if !self.away {
-                    self.release();
+                    self.release()?;
                     self.away = true;
                     self.answers = None;
                     self.read = None;
@@ -463,6 +507,10 @@ impl World {
                 );
             }
         }
+        prop_assert!(
+            !(self.page.saving() && self.page.unsaved()),
+            "a mark being saved answers for the words"
+        );
         if self.page.unsaved() {
             prop_assert!(!self.page.shown().is_empty(), "no words hold no check");
             prop_assert_ne!(
@@ -478,7 +526,7 @@ impl World {
     /// a fresh read lands.
     fn settle(&mut self) -> Result<(), TestCaseError> {
         if !self.away {
-            self.release();
+            self.release()?;
         }
         while let Some(restore) = self.gate.pop_front() {
             self.wire.push_back(restore);
@@ -495,6 +543,10 @@ impl World {
         }
         self.read = Some(None);
         self.land();
+        prop_assert!(
+            !self.page.saving(),
+            "nothing is on its way, and the screen is still off"
+        );
         Ok(())
     }
 }

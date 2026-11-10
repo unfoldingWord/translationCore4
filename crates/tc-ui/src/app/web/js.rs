@@ -230,3 +230,13 @@ impl crate::app::buffer::Store for LocalStore {
             .map_err(|error| crate::app::buffer::StoreError::Refused(describe(&error)))
     }
 }
+
+/// Waits `ms` milliseconds.
+pub(super) async fn pause(ms: i32) {
+    let timer = js_sys::Promise::new(&mut |resolve, _| {
+        if let Ok(window) = window() {
+            let _ = window.set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, ms);
+        }
+    });
+    let _ = wasm_bindgen_futures::JsFuture::from(timer).await;
+}

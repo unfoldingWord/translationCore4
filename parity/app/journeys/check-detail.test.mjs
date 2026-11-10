@@ -373,31 +373,93 @@ browserTest('a_changed_selection_is_told_once_per_gesture', async () => {
   }, { scenario: 'en-pins' });
 });
 
-// The page hears of a save late on a slow disk. A word tapped before it hears of the Mark valid
-// still takes that mark away: the server applies the two in the order the person made them.
-browserTest('a_word_tapped_while_mark_valid_is_still_being_saved_takes_the_mark_away', async () => {
+// While a mark is being saved, nothing of the person's can cross it: the words, the three
+// marks, Previous and Next are off until the answer is on screen. The reviews of #989 found an
+// order of taps, marks and replies that showed the wrong words in every round; none can happen.
+const lineSaving = (page) => page.getByTestId('check-target').getAttribute('data-saving');
+const marksOff = (page) => Promise.all(['mark-valid', 'mark-invalid', 'mark-todo'].map((id) => page.getByTestId(id).isDisabled()));
+
+browserTest('the_words_and_marks_are_off_while_a_mark_is_being_saved', async () => {
+  await withApp(async ({ page, env }) => {
+    await openTool(page, 'translationNotes');
+    await page.getByTestId('check-next').click();
+    await page.getByTestId('tw-4').waitFor();
+    const index = Number(await shownIndex(page));
+    const sent = decides(page);
+    await page.getByTestId('tw-1').click();
+    await storedAs(env, index, null, []);
+    await until('the tap was answered', async () => sent.length === 1);
+    await sleep(300);
+    await slowDecides(page, 1500);
+    await page.getByTestId('mark-valid').click();
+    await until('the line is off', async () => (await lineSaving(page)) === '1');
+    assert.deepEqual(await marksOff(page), [true, true, true]);
+    assert.deepEqual(await navOff(page), [true, true]);
+    // A tap on the line does nothing while the mark is on its way. (Forced: the line says it
+    // is disabled, and an unforced click would wait for the save to end.)
+    await page.getByTestId('tw-2').click({ force: true });
+    assert.equal(await lineSaving(page), '1');
+    assert.deepEqual(await pressedWords(page), ['tw-1']);
+    await storedAs(env, index, 'valid', [1]);
+    await until('the line is on again', async () => (await lineSaving(page)) === '0');
+    assert.deepEqual(await marksOff(page), [false, false, false]);
+    assert.deepEqual(await navOff(page), [false, false]);
+    assert.equal(sent.length, 2, 'the tap during the save sent nothing');
+    // Taps follow each other freely: an unmark on its way holds nothing off.
+    await page.getByTestId('tw-2').click();
+    assert.equal(await lineSaving(page), '0');
+    await page.getByTestId('tw-3').click();
+    assert.deepEqual(await pressedWords(page), ['tw-1', 'tw-2', 'tw-3']);
+    await storedAs(env, index, null, []);
+  }, { scenario: 'en-pins' });
+});
+
+// #995: a mark that is not saved finds the person still on the check, with the notice and
+// their words. Before, Next could be pressed while the save was on its way, and a failure
+// after it showed nothing.
+browserTest('a_mark_that_is_not_saved_keeps_the_person_on_the_check', async () => {
   await withApp(async ({ page, env }) => {
     await openTool(page, 'translationNotes');
     await page.getByTestId('tw-4').waitFor();
     const index = Number(await shownIndex(page));
-    const nextBefore = await stored(env, index + 1);
-    await slowDecides(page, 300);
     const sent = decides(page);
-    await page.getByTestId('mark-valid').click();
     await page.getByTestId('tw-1').click();
-    // On to the next check before any of it is heard of: Next is off, so by the rail.
-    await page.locator(`[data-testid="check-list"] [data-rail-index="${index + 1}"]`).click();
-    await page.getByRole('alertdialog').getByRole('button', { name: 'Leave without them', exact: true }).click();
-    await until('the next check shows', async () => Number(await shownIndex(page)) !== index);
-    await until('both were sent', async () => sent.length === 2);
-    await sleep(300 * 4);
-    const last = await stored(env, index);
-    assert.equal(last.decision.value.status, null, 'the mark made before the tap is gone');
-    assert.deepEqual(last.target.selected, []);
-    assert.equal(last.decision.marker, null, 'no conflict with the person themselves');
-    const next = await stored(env, index + 1);
-    assert.equal(next.decision.value.status, null, 'the next check took nothing');
-    assert.equal(next.decision.token, nextBefore.decision.token, 'no new version of the next check');
+    await storedAs(env, index, null, []);
+    await until('the tap was answered', async () => sent.length === 1);
+    await sleep(300);
+    // The disk is full: the server refuses the save, and the page hears it a second later.
+    const DISK_FULL = '{"type":"err","value":{"type":"notSaved","value":{"type":"disk","value":"full"}}}';
+    await page.route('**/api/v1/check/decide', async (route) => {
+      await sleep(1000);
+      await route.fulfill({ status: 200, contentType: 'application/json', body: DISK_FULL });
+    });
+    await page.getByTestId('mark-valid').click();
+    await until('Next is off while the mark is being saved', () => page.getByTestId('check-next').isDisabled());
+    assert.equal(await lineSaving(page), '1');
+    await page.getByText(/not saved/i).first().waitFor();
+    assert.equal(Number(await shownIndex(page)), index, 'the person is still on the check');
+    assert.equal(await lineSaving(page), '0');
+    assert.deepEqual(await pressedWords(page), ['tw-1'], 'with the words they selected');
+    assert.equal(await page.getByTestId('check-next').isDisabled(), true, 'and they hold the check again');
+    assert.equal((await stored(env, index)).decision.value.status, null);
+    // Marking again saves them.
+    await page.unroute('**/api/v1/check/decide');
+    await page.getByTestId('mark-valid').click();
+    await storedAs(env, index, 'valid', [1]);
+    await until('Next is on', async () => !(await page.getByTestId('check-next').isDisabled()));
+    // A way out pressed while a mark is being saved waits for it, and stays when it fails,
+    // also with no words of the person's on screen.
+    await page.route('**/api/v1/check/decide', async (route) => {
+      await sleep(1000);
+      await route.fulfill({ status: 200, contentType: 'application/json', body: DISK_FULL });
+    });
+    await page.getByTestId('mark-invalid').click();
+    await railRow(page, index + 1).click();
+    await page.getByText(/not saved/i).first().waitFor();
+    await sleep(500);
+    assert.equal(Number(await shownIndex(page)), index, 'the row pressed during the save did not take the person away');
+    assert.equal((await stored(env, index)).decision.value.status, 'valid');
+    await page.unroute('**/api/v1/check/decide');
   }, { scenario: 'en-pins' });
 });
 
@@ -443,14 +505,13 @@ browserTest('previous_and_next_are_off_while_selected_words_are_not_saved', asyn
     // Unselecting the words frees them.
     await page.getByTestId('tw-1').click();
     await until('both are on', async () => String(await navOff(page)) === 'false,false');
-    // A mark frees them at its press, and a tapped word holds them at the tap: neither waits
-    // for a slow save.
+    // A mark frees them once it is saved, and a tapped word holds them at the tap, with no
+    // wait for the unmark's answer.
     await page.getByTestId('tw-1').click();
-    await slowDecides(page, 600);
-    const sent = decides(page);
     await page.getByTestId('mark-valid').click();
-    await until('Mark valid was sent', async () => sent.length === 1);
-    assert.deepEqual(await navOff(page), [false, false], 'on before the save is answered');
+    await storedAs(env, index, 'valid', [1]);
+    await until('both are on', async () => String(await navOff(page)) === 'false,false');
+    await slowDecides(page, 600);
     await page.getByTestId('tw-2').click();
     assert.deepEqual(await navOff(page), [true, true], 'off before the unmark is answered');
     await storedAs(env, index, null, []);
@@ -460,8 +521,8 @@ browserTest('previous_and_next_are_off_while_selected_words_are_not_saved', asyn
     // selected words leave the screen at the click, as the record stores none.
     await page.getByTestId('mark-invalid').click();
     await until('the words are off the screen', async () => String(await pressedWords(page)) === '');
-    assert.deepEqual(await navOff(page), [false, false], 'and nothing holds the check');
     const invalid = await storedAs(env, index, 'invalid', []);
+    await until('nothing holds the check once the mark is saved', async () => String(await navOff(page)) === 'false,false');
     assert.equal(invalid.decision.value.nothingToSelect, false);
     // A word tapped on the Invalid check takes that mark away and holds the check again.
     await page.getByTestId('tw-2').click();
@@ -597,10 +658,10 @@ browserTest('a_check_restored_from_history_shows_its_restored_words', async () =
   }, { scenario: 'en-pins' });
 });
 
-// A tap while a restore is on its way is the person's newer act: the words on screen stay
-// theirs. Found by review of #989: the read after the restore replaced them with the stored
-// ones. Both halves: before the restore is answered, and after it but before its read.
-const tappedDuringRestore = (slow) => async () => {
+// After *Restore this version* the words and the marks are off until the restored check is on
+// screen: its answer, then its read. Reviews of #989 found four orders of a tap or a mark
+// inside that wait that showed the wrong words; none can happen.
+const offUntilARestoreShows = (slow) => async () => {
   await withApp(async ({ page, env }) => {
     await openTool(page, 'translationNotes');
     await page.getByTestId('tw-4').waitFor();
@@ -612,6 +673,7 @@ const tappedDuringRestore = (slow) => async () => {
     await storedAs(env, index, null, []);
     await page.getByTestId('mark-valid').click();
     await storedAs(env, index, 'valid', [1, 2]);
+    await until('the line is on', async () => (await lineSaving(page)) === '0');
     await page.getByTestId('check-history').getByTestId('history-toggle').click();
     const versions = page.getByTestId('check-history').getByTestId('history-version');
     await until('History lists the three versions', async () => (await versions.count()) >= 3);
@@ -621,105 +683,40 @@ const tappedDuringRestore = (slow) => async () => {
       await sleep(2000);
       await route.fulfill({ response });
     });
+    const sent = decides(page);
     await versions.nth(2).getByTestId('history-restore').click();
+    await until('the line is off', async () => (await lineSaving(page)) === '1');
     await storedAs(env, index, 'valid', [1]);
-    await page.getByTestId('tw-3').click();
-    // The tap is a changed selection: it takes the restored mark away, after the restore.
-    await storedAs(env, index, null, []);
-    await sleep(5000);
-    assert.deepEqual(await pressedWords(page), ['tw-1', 'tw-2', 'tw-3'], 'the words the person saw and tapped stay');
-    assert.deepEqual(await navOff(page).then((off) => off[1]), true, 'and they hold the check until a mark');
+    assert.deepEqual(await marksOff(page), [true, true, true]);
+    assert.equal(await page.getByTestId('check-next').isDisabled(), true);
+    // A tap and a mark inside the wait do nothing.
+    await page.getByTestId('tw-3').click({ force: true });
+    await page.getByTestId('mark-todo').click({ force: true });
+    assert.equal(await lineSaving(page), '1');
+    await until('the restored word shows alone, and the line is on', async () => (await lineSaving(page)) === '0' && String(await pressedWords(page)) === 'tw-1');
+    assert.deepEqual(await marksOff(page), [false, false, false]);
+    assert.equal(await page.getByTestId('check-next').isDisabled(), false);
+    assert.deepEqual(sent, [], 'nothing was sent inside the wait');
+    await storedAs(env, index, 'valid', [1]);
   }, { scenario: 'en-pins' });
 };
-browserTest('words_tapped_before_a_restore_is_answered_stay_on_screen', tappedDuringRestore('**/api/v1/conflicts/restore'));
-browserTest('words_tapped_after_a_restore_and_before_its_read_stay_on_screen', tappedDuringRestore('**/api/v1/check/item'));
+browserTest('the_words_and_marks_are_off_until_a_restore_is_answered', offUntilARestoreShows('**/api/v1/conflicts/restore'));
+browserTest('the_words_and_marks_are_off_until_a_restores_read_lands', offUntilARestoreShows('**/api/v1/check/item'));
 
-// Mark To do changes only the status, so after a restore it leaves the restored words stored.
-// Found by review of #989: pressed before the restore's read landed, it kept the words from
-// before the restore on screen, which the check no longer had stored.
-browserTest('mark_to_do_after_a_restore_and_before_its_read_shows_the_restored_words', async () => {
-  await withApp(async ({ page, env }) => {
-    await openTool(page, 'translationNotes');
-    await page.getByTestId('tw-4').waitFor();
-    const index = Number(await shownIndex(page));
-    await page.getByTestId('tw-1').click();
-    await page.getByTestId('mark-valid').click();
-    await storedAs(env, index, 'valid', [1]);
-    await page.getByTestId('tw-2').click();
-    await storedAs(env, index, null, []);
-    await page.getByTestId('mark-valid').click();
-    await storedAs(env, index, 'valid', [1, 2]);
-    await page.getByTestId('check-history').getByTestId('history-toggle').click();
-    const versions = page.getByTestId('check-history').getByTestId('history-version');
-    await until('History lists the three versions', async () => (await versions.count()) >= 3);
-    await page.route('**/api/v1/check/item', async (route) => {
-      const response = await route.fetch();
-      await sleep(2000);
-      await route.fulfill({ response });
-    });
-    await versions.nth(2).getByTestId('history-restore').click();
-    await storedAs(env, index, 'valid', [1]);
-    await page.getByTestId('mark-todo').click();
-    await storedAs(env, index, 'todo', [1]);
-    await sleep(5000);
-    assert.deepEqual(await pressedWords(page), ['tw-1'], 'the screen shows the words the check has stored');
-    assert.deepEqual(await navOff(page).then((off) => off[1]), false, 'Next is on: nothing waits for a mark');
-  }, { scenario: 'en-pins' });
-});
-
-// A mark after a restore and before its read is the person's newer act too. Found by review of
-// #989: the restore's read put the restored words over the ones the mark stored, and held Next.
-browserTest('a_mark_after_a_restore_and_before_its_read_keeps_the_words_it_stored', async () => {
-  await withApp(async ({ page, env }) => {
-    await openTool(page, 'translationNotes');
-    await page.getByTestId('tw-4').waitFor();
-    const index = Number(await shownIndex(page));
-    await page.getByTestId('tw-1').click();
-    await page.getByTestId('mark-valid').click();
-    await storedAs(env, index, 'valid', [1]);
-    await page.getByTestId('tw-2').click();
-    await storedAs(env, index, null, []);
-    await page.getByTestId('mark-valid').click();
-    await storedAs(env, index, 'valid', [1, 2]);
-    await page.getByTestId('check-history').getByTestId('history-toggle').click();
-    const versions = page.getByTestId('check-history').getByTestId('history-version');
-    await until('History lists the three versions', async () => (await versions.count()) >= 3);
-    // The server answers at once; the page hears a read 2 s later.
-    await page.route('**/api/v1/check/item', async (route) => {
-      const response = await route.fetch();
-      await sleep(2000);
-      await route.fulfill({ response });
-    });
-    await versions.nth(2).getByTestId('history-restore').click();
-    await storedAs(env, index, 'valid', [1]);
-    // The restore's read has not landed: the screen still shows two words, and Mark valid
-    // stores them.
-    await page.getByTestId('mark-valid').click();
-    await storedAs(env, index, 'valid', [1, 2]);
-    await sleep(5000);
-    assert.deepEqual(await pressedWords(page), ['tw-1', 'tw-2'], 'the words the mark stored stay');
-    assert.deepEqual(await navOff(page).then((off) => off[1]), false, 'Next is on: the words are the stored ones');
-  }, { scenario: 'en-pins' });
-});
-
-// Found by review of #989: a read that went out ahead of the page's own queued unmark showed
-// the words the person had just unselected, and no later read took them off. A read now waits
-// for the writes already on their way.
+// Found by review of #989: a read that went out ahead of the page's own unmark showed the
+// words the person had just unselected, and no later read took them off. A read waits for the
+// writes already on their way.
 browserTest('coming_back_before_a_queued_unmark_is_sent_shows_the_words_unselected', async () => {
   await withApp(async ({ page, env }) => {
     await openTool(page, 'translationNotes');
     await page.getByTestId('tw-4').waitFor();
     const index = Number(await shownIndex(page));
-    const sent = decides(page);
     await page.getByTestId('tw-1').click();
-    await storedAs(env, index, null, []);
-    await until('the first tap was sent', async () => sent.length === 1);
-    await sleep(300);
-    // One write on its way and one queued behind it: the server stores Mark valid at once,
-    // the page hears 1.5 s later, and only then sends the unmark.
-    await slowDecides(page, 1500);
     await page.getByTestId('mark-valid').click();
     await storedAs(env, index, 'valid', [1]);
+    await until('the line is on', async () => (await lineSaving(page)) === '0');
+    // The unmark of the tap is answered 1.5 s late, and the person moves on before it.
+    await slowDecides(page, 1500);
     await page.getByTestId('tw-1').click();
     await page.getByTestId('check-next').click();
     await until('the next check shows', async () => Number(await shownIndex(page)) !== index);

@@ -385,6 +385,21 @@ fn target_words(
         let actions = send_wrapper::SendWrapper::new(actions.clone());
         move || actions.words_changed()
     };
+    // While a mark or a restore is being saved the line takes no act: nothing of the person's
+    // can cross a save that may still fail.
+    let saving = {
+        let actions = send_wrapper::SendWrapper::new(actions.clone());
+        Memo::new(move |_| actions.words_saving())
+    };
+    // The pointer changed the words during this press. A read that lands under a press changes
+    // the line too, and is no act of the person's.
+    let dragged_words = StoredValue::new_local(false);
+    // A mark or a restore that leaves ends the press: its release is no change of the words.
+    Effect::new(move |_| {
+        if saving.get() {
+            dragged_words.try_set_value(false);
+        }
+    });
     // The line never writes the words it shows: it tells the check's words what the person
     // selected, and shows what they answer.
     let select = {
@@ -425,7 +440,9 @@ fn target_words(
     let released = window_event_listener(leptos::ev::mouseup, move |_| {
         if nav.try_update_value(WordNav::release).unwrap_or(false) {
             let (selection, changed) = &dragged;
-            if before_drag.try_get_value() != selection.try_get_untracked() {
+            if dragged_words.try_get_value() == Some(true)
+                && before_drag.try_get_value() != selection.try_get_untracked()
+            {
                 changed();
             }
             set_timeout(
@@ -440,6 +457,9 @@ fn target_words(
     let on_keydown = {
         let (selection, apply) = (selection.clone(), apply.clone());
         move |e: web_sys::KeyboardEvent| {
+            if saving.get_untracked() {
+                return;
+            }
             let key = WordKey::of(&e.key(), e.shift_key());
             let step = nav
                 .try_update_value(|nav| nav.key(key, len, rtl, &selection.get_untracked()))
@@ -498,9 +518,10 @@ fn target_words(
             let on_down = {
                 let selection = selection.clone();
                 move |e: web_sys::MouseEvent| {
-                    if e.button() != 0 {
+                    if e.button() != 0 || saving.get_untracked() {
                         return;
                     }
+                    dragged_words.try_set_value(false);
                     // A press on a word starts a word drag, never a text selection; the browser
                     // no longer focuses the word, so it is focused here.
                     e.prevent_default();
@@ -513,7 +534,11 @@ fn target_words(
             let on_enter = {
                 let select = select.clone();
                 move |_: web_sys::MouseEvent| {
+                    if saving.get_untracked() {
+                        return;
+                    }
                     if let Some(next) = nav.try_update_value(|nav| nav.enter(i)).flatten() {
+                        dragged_words.try_set_value(true);
                         select(next);
                     }
                 }
@@ -522,6 +547,9 @@ fn target_words(
                 let (selection, changed, select) =
                     (selection.clone(), changed.clone(), select.clone());
                 move |_: web_sys::MouseEvent| {
+                    if saving.get_untracked() {
+                        return;
+                    }
                     let next = nav
                         .try_update_value(|nav| nav.click(i, &selection.get_untracked()))
                         .flatten();
@@ -556,6 +584,8 @@ fn target_words(
             data-testid="check-target"
             data-words="target"
             data-drafted="1"
+            data-saving=move || if saving.get() { "1" } else { "0" }
+            aria-disabled=move || if saving.get() { "true" } else { "false" }
             role="group"
             aria-label=t(keys::check::TARGET_WORDS_LABEL, &[])
             on:keydown=on_keydown
@@ -907,6 +937,10 @@ fn item_detail(s: &AppState, actions: &Actions, unit: CheckUnit) -> AnyView {
     });
     let nav = Memo::new(move |_| check_item::item_nav(index.get(), total.get()));
     let cap = write_cap(actions);
+    let saving = {
+        let actions = send_wrapper::SendWrapper::new(actions.clone());
+        Memo::new(move |_| actions.words_saving())
+    };
     let read_only = {
         let actions = send_wrapper::SendWrapper::new(actions.clone());
         Memo::new(move |_| actions.read_only_words())
@@ -929,10 +963,17 @@ fn item_detail(s: &AppState, actions: &Actions, unit: CheckUnit) -> AnyView {
                     type="button"
                     data-testid=testid
                     disabled=move || cap.get().is_none()
-                    on:click=move |_| on.run(())
+                    // Off while a mark is being saved, but still the focus's place: a disabled
+                    // button would drop the keyboard focus the mark was pressed with.
+                    aria-disabled=move || if saving.get() { "true" } else { "false" }
+                    on:click=move |_| {
+                        if !saving.get_untracked() {
+                            on.run(());
+                        }
+                    }
                     style=move || {
                         let mut css = triage_style(status.get() == Some(which), tone);
-                        if cap.get().is_none() {
+                        if cap.get().is_none() || saving.get() {
                             css.extend(&off_look());
                         }
                         css.to_style()
@@ -968,6 +1009,18 @@ fn item_detail(s: &AppState, actions: &Actions, unit: CheckUnit) -> AnyView {
             let actions = send_wrapper::SendWrapper::new(actions.clone());
             Memo::new(move |_| actions.words_unsaved())
         };
+        // Previous and Next wait for a mark being saved, so one that fails finds the person
+        // still on the check (#995).
+        let nav = Memo::new(move |_| {
+            if saving.get() {
+                check_item::ItemNav {
+                    prev: None,
+                    next: None,
+                }
+            } else {
+                nav.get()
+            }
+        });
         view! {
             <div style=row.to_style()>
                 {move || item_nav_button(true, nav.get().prev, held.get(), &prev_actions, "check-prev")}

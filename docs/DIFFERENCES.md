@@ -249,6 +249,12 @@ Under the same rule, tC4 4.0 bugs the rebuild fixes on purpose (FIX-R, 2026-10-2
   words").
 - In Check, *Restore this version* from a check's History shows the restored words. Before, the
   words tapped before the restore stayed on screen (#853).
+- In Check, while a mark is being saved the words, the three marks, Previous and Next are
+  off, and every other way out waits for its answer; after *Restore this version* they stay
+  off until the restored check is on screen. A mark that is not saved finds the translator
+  still on the check, with the notice and their words. tC4 lets the translator tap, mark and
+  move on while a save is on its way, and a save that fails after Next shows nothing (#853,
+  #995, ruling of 2026-11-09, "Nothing crosses a save").
 - In Check, the line shows the words the check has stored and follows them: a teammate's
   mark that arrives by sync shows its words on the open check. Words the translator selected
   and no mark has saved are theirs: no read and no reply changes them. A mark or a restore

@@ -39,7 +39,7 @@ use super::question::{self, Question};
 use super::saves::{FieldWriter, LocalBoxFuture, WriteCap};
 use super::{Api, ListenerId};
 use crate::app::check::CheckView;
-use crate::app::check_item::{self, CheckWords, DecisionWrites, MarkFailure, WordsEvent, WriteId};
+use crate::app::check_item::{self, CheckWords, DecisionWrites, MarkFailure, Stepped, WordsEvent};
 use crate::app::client::{CallError, Transport};
 use crate::app::fix::{Fix, FixScreen};
 use crate::app::latest::{Attempt, Latest};
@@ -85,6 +85,16 @@ pub enum Academy {
 pub enum Marking {
     Idle,
     Failed(MarkFailure),
+}
+
+/// The answer to a move away from the shown check.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum MayGo {
+    /// The person stays: they chose Stay, or the save the move waited for was not saved.
+    Stay,
+    Go,
+    /// The person chose Leave without them: the words go once the move does.
+    WithoutWords,
 }
 
 /// The Check screen's view state.
@@ -459,15 +469,19 @@ impl Actions {
     /// Runs a move away from the shown check: at once, or after the person's Leave without them
     /// when words wait for a mark. Answers whether it ran at once.
     fn after_words(&self, go: impl FnOnce(&Self) + 'static) -> bool {
-        if !untrack(|| self.words_unsaved()) {
+        if !untrack(|| self.words_unsaved() || self.words_saving()) {
             go(self);
             return true;
         }
         let this = self.clone();
         spawn_local(async move {
-            if this.words_may_go().await {
-                this.words(WordsEvent::Dropped);
-                go(&this);
+            match this.words_may_go().await {
+                MayGo::Stay => {}
+                MayGo::Go => go(&this),
+                MayGo::WithoutWords => {
+                    this.words(WordsEvent::Dropped);
+                    go(&this);
+                }
             }
         });
         false
@@ -774,16 +788,22 @@ impl Actions {
         self.write_cap().is_some() && s.c.words.with(CheckWords::unsaved)
     }
 
+    /// Whether a mark or a restore of the shown check is being saved, tracked: the words, the
+    /// marks, Previous and Next are off until its answer is on screen.
+    pub fn words_saving(&self) -> bool {
+        self.s().c.words.with(CheckWords::saving)
+    }
+
     /// The one place the shown check's words change: every act of the person and every answer
     /// of the server is an event of [`CheckWords`], and the line shows what it says. A write
     /// that leaves gets its name back, for its reply.
-    pub(crate) fn words(&self, event: WordsEvent<'_>) -> Option<WriteId> {
-        let mut sent = None;
+    pub(crate) fn words(&self, event: WordsEvent<'_>) -> Stepped {
+        let mut stepped = Stepped::Refused;
         self.s()
             .c
             .words
-            .try_update(|words| sent = words.step(event));
-        sent
+            .try_update(|words| stepped = words.step(event));
+        stepped
     }
 
     /// The person's words on the line, during a gesture and at its end.
@@ -791,19 +811,30 @@ impl Actions {
         self.words(WordsEvent::Selected(words));
     }
 
-    /// Before a move away from the shown check: with words no mark saved, the person is asked,
-    /// Stay or Leave without them. Answers whether the move may go on; the words stay on screen
-    /// until the move does go, since a refused save gate keeps the person on this check.
-    pub(super) async fn words_may_go(&self) -> bool {
-        if !untrack(|| self.words_unsaved()) {
-            return true;
-        }
+    /// Before a move away from the shown check. A mark or a restore being saved is answered
+    /// first: if it was not saved the person stays, with its notice on screen (#995). With
+    /// words no mark saved, the person is asked, Stay or Leave without them; the words stay on
+    /// screen until the move does go, since a refused save gate keeps the person on this check.
+    pub(super) async fn words_may_go(&self) -> MayGo {
         let c = &self.s().c;
+        if c.words.with_untracked(CheckWords::saving) {
+            while c.words.with_untracked(CheckWords::saving) {
+                js::pause(40).await;
+            }
+            let failed = matches!(c.marking.get_untracked(), Marking::Failed(_))
+                || c.restore_failed.get_untracked();
+            if failed {
+                return MayGo::Stay;
+            }
+        }
+        if !untrack(|| self.words_unsaved()) {
+            return MayGo::Go;
+        }
         let answer = WORDS_ANSWER.with(Question::open);
         c.leave_ask.try_set(true);
         let go = question::answered(answer).await;
         c.leave_ask.try_set(WORDS_ANSWER.with(Question::is_open));
-        go
+        if go { MayGo::WithoutWords } else { MayGo::Stay }
     }
 
     /// The person's answer to the question about selected words: Leave without them, or Stay.
@@ -854,9 +885,12 @@ impl Actions {
             }
             match result {
                 Ok(view) => this.apply_item(view),
-                Err(CallError::Dropped) => {}
+                Err(CallError::Dropped) => {
+                    this.words(WordsEvent::ReadFailed);
+                }
                 Err(CallError::Api(ApiError::ToolNotReady)) => this.reset_check(),
                 Err(error) => {
+                    this.words(WordsEvent::ReadFailed);
                     this.s()
                         .c
                         .detail
@@ -953,8 +987,14 @@ impl Actions {
             verse: view.target.verse.clone(),
             edit,
         };
+        // The check's words decide whether this act is taken: a mark or a tap's unmark while
+        // one is being saved is refused, and nothing is sent for it.
+        let write = match self.words(WordsEvent::Sent(&request.edit)) {
+            Stepped::Refused => return,
+            Stepped::Send(id) => Some(id),
+            Stepped::Done => None,
+        };
         c.marking.try_set(Marking::Idle);
-        let write = self.words(WordsEvent::Sent(&request.edit));
         let this = self.clone();
         spawn_local(async move {
             // A write's reply is never dropped: its Ack carries the next token (AD2).
@@ -1010,11 +1050,11 @@ impl Actions {
             .get_untracked()
             .and_then(|project| comment_key(list.tool, &project, &view));
         let (place, check_id) = (view.place.clone(), view.check_id.clone());
-        let write = self.words(WordsEvent::Restore);
+        let Stepped::Send(write) = self.words(WordsEvent::Restore) else {
+            return;
+        };
         let answered = move |this: &Self, saved: bool| {
-            if let Some(id) = write {
-                this.words(WordsEvent::Replied { id, saved });
-            }
+            this.words(WordsEvent::Replied { id: write, saved });
         };
         c.restoring.try_set(true);
         c.restore_failed.try_set(false);
@@ -1059,6 +1099,9 @@ impl Actions {
                 matches!(d, Some(Detail::Ready(v)) if v.place == place && v.check_id == check_id)
             });
             if !shown {
+                // No read of this check will land (its detail failed meanwhile, or the person
+                // is elsewhere): the wait for the restored words ends.
+                this.words(WordsEvent::ReadFailed);
                 return;
             }
             c.restore_failed.try_set(result.is_err());

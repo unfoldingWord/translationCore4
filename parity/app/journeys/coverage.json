@@ -140,17 +140,16 @@
         "tests": [
           "a_changed_selection_takes_the_mark_away_until_the_check_is_marked_again",
           "a_changed_selection_is_told_once_per_gesture",
-          "a_word_tapped_while_mark_valid_is_still_being_saved_takes_the_mark_away",
+          "the_words_and_marks_are_off_while_a_mark_is_being_saved",
+          "a_mark_that_is_not_saved_keeps_the_person_on_the_check",
           "words_tapped_on_a_check_with_no_decision_record_nothing",
           "previous_and_next_are_off_while_selected_words_are_not_saved",
           "leaving_a_check_with_selected_words_not_saved_asks_first",
           "a_check_restored_from_history_shows_its_restored_words",
-          "words_tapped_before_a_restore_is_answered_stay_on_screen",
-          "words_tapped_after_a_restore_and_before_its_read_stay_on_screen",
-          "a_mark_after_a_restore_and_before_its_read_keeps_the_words_it_stored",
+          "the_words_and_marks_are_off_until_a_restore_is_answered",
+          "the_words_and_marks_are_off_until_a_restores_read_lands",
           "coming_back_before_a_queued_unmark_is_sent_shows_the_words_unselected",
-          "mark_to_do_shows_the_words_the_check_has_stored",
-          "mark_to_do_after_a_restore_and_before_its_read_shows_the_restored_words"
+          "mark_to_do_shows_the_words_the_check_has_stored"
         ]
       }
     ],

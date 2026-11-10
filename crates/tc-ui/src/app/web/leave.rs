@@ -10,6 +10,7 @@ use tc_core::BookId;
 use wasm_bindgen_futures::spawn_local;
 
 use super::app_ctx::Actions;
+use super::check::MayGo;
 use super::js;
 use crate::app::check_item::WordsEvent;
 use crate::app::shell::View;
@@ -40,9 +41,12 @@ impl Actions {
         // Words selected in Check that no mark saved: the person is asked before anything is
         // done, so Stay changes nothing (#853).
         let same_tab = matches!(&to, LeaveTo::Tab(view) if *view == self.s().view.get_untracked());
-        // Discard waits for the gate: a refused gate keeps the person here, words and all.
-        let discard = !same_tab && untrack(|| self.words_unsaved());
-        if !same_tab && !self.words_may_go().await {
+        let words = if same_tab {
+            MayGo::Go
+        } else {
+            self.words_may_go().await
+        };
+        if words == MayGo::Stay {
             return false;
         }
         if to == LeaveTo::Home {
@@ -59,7 +63,9 @@ impl Actions {
         if !self.runtime().saves().gate().await {
             return false;
         }
-        if discard {
+        // Leave without them waits for the gate: a refused gate keeps the person here, words
+        // and all.
+        if words == MayGo::WithoutWords {
             self.words(WordsEvent::Dropped);
         }
         self.checkpoint(&to);
