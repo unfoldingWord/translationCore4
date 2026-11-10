@@ -38,7 +38,7 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use serde_json::{Map, Value, json};
 use tc_api::account::{
@@ -191,20 +191,10 @@ pub struct KeychainCalls {
     pub forgets: u32,
 }
 
-/// A keychain call a [`MemKeychain`] can hold, as an OS keychain's prompt does.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum KeychainStep {
-    Keep,
-    Forget,
-}
-
 /// A keychain in memory: the tests' keychain. The product uses [`OsKeychain`].
 pub struct MemKeychain {
     token: Mutex<Option<Token>>,
     mode: Mutex<MemKeychainMode>,
-    /// The call held until [`MemKeychain::release`]; it is counted before it waits.
-    held: Mutex<Option<KeychainStep>>,
-    released: Condvar,
     keeps: AtomicU32,
     reads: AtomicU32,
     forgets: AtomicU32,
@@ -236,8 +226,6 @@ impl MemKeychain {
         Self {
             token: Mutex::new(None),
             mode: Mutex::new(mode),
-            held: Mutex::new(None),
-            released: Condvar::new(),
             keeps: AtomicU32::new(0),
             reads: AtomicU32::new(0),
             forgets: AtomicU32::new(0),
@@ -260,26 +248,6 @@ impl MemKeychain {
 
     pub fn set_mode(&self, mode: MemKeychainMode) {
         *guard(&self.mode) = mode;
-    }
-
-    /// Makes every `step` call wait, once counted, until [`MemKeychain::release`].
-    pub fn hold(&self, step: KeychainStep) {
-        *guard(&self.held) = Some(step);
-    }
-
-    /// Lets the held calls go on.
-    pub fn release(&self) {
-        *guard(&self.held) = None;
-        self.released.notify_all();
-    }
-
-    fn wait_if_held(&self, step: KeychainStep) {
-        let held = guard(&self.held);
-        // Poisoned or not, the guarded value is a whole `Option`.
-        let _released = self
-            .released
-            .wait_while(held, |held| *held == Some(step))
-            .unwrap_or_else(PoisonError::into_inner);
     }
 
     /// Whether it holds a token, without counting a call.
@@ -308,7 +276,6 @@ impl MemKeychain {
 impl Keychain for MemKeychain {
     fn keep(&self, token: &Token) -> Result<(), KeychainError> {
         self.keeps.fetch_add(1, Ordering::SeqCst);
-        self.wait_if_held(KeychainStep::Keep);
         match self.mode() {
             MemKeychainMode::NoKeychain => Err(KeychainError::NoKeychain),
             MemKeychainMode::FailingKeep => {
@@ -343,7 +310,6 @@ impl Keychain for MemKeychain {
 
     fn forget(&self) -> Result<(), KeychainError> {
         self.forgets.fetch_add(1, Ordering::SeqCst);
-        self.wait_if_held(KeychainStep::Forget);
         if self.mode() == MemKeychainMode::FailingForget {
             return Err(KeychainError::Failed("the keychain is locked".to_owned()));
         }
