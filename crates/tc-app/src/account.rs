@@ -29,6 +29,9 @@
 //!   answers the token calls (it stops and signs out, as tC4's cancel does, because those calls
 //!   may have replaced the token an earlier sign-in kept), and after it ended (the session it
 //!   made is signed out, the token it kept forgotten).
+//! - **Sign out ends every sign-in already running** (INV-SIGN-OUT-INVALIDATES-INFLIGHT): it
+//!   cancels them as Cancel does, before it signs out, so none signs the account back in or
+//!   keeps a token after Sign out answered. A sign-in that arrives after it is not touched.
 //! - **`kept` says what the keychain holds**: every keychain write and the state change after it
 //!   happen one at a time (the keys lane), so a sign-out cannot forget a token between a
 //!   sign-in's keep and its commit.
@@ -508,14 +511,19 @@ impl Account {
         token
     }
 
+    /// Cancels every sign-in in flight. A cancel that came before its sign-in stays: that
+    /// sign-in is not running yet.
+    fn cancel_running(&self) {
+        for token in lock(&self.sign_ins).running.values() {
+            token.cancel();
+        }
+    }
+
     /// Cancels every sign-in in flight and forgets the early cancels: a launch has none.
     #[cfg(feature = "test-hooks")]
     fn cancel_all(&self) {
-        let mut sign_ins = lock(&self.sign_ins);
-        for token in sign_ins.running.values() {
-            token.cancel();
-        }
-        sign_ins.early.clear();
+        self.cancel_running();
+        lock(&self.sign_ins).early.clear();
     }
 }
 
@@ -1098,7 +1106,11 @@ impl Handle<Resume> for App {
 }
 
 impl Handle<SignOut> for App {
+    /// The running sign-ins are cancelled before the sign-out waits for the keychain, so one
+    /// holding the keychain finds its cancel at its commit (INV-SIGN-OUT-INVALIDATES-INFLIGHT).
+    /// Only here: a cancelled sign-in also ends with `sign_out`, and must not cancel a newer one.
     async fn handle(&self, _req: SignOut) -> Result<AccountView, ApiError> {
+        self.account().cancel_running();
         Ok(self.sign_out().await)
     }
 }

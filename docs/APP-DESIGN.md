@@ -1921,7 +1921,11 @@ in Chromium against the real `tc4`, with the request filter of AD11
    sees the same "not signed in", sooner. A cancel once the token calls started signs out as
    tC4's does, because Door43 may already have replaced that token, and keeping it would show a
    saved sign-in that the next check finds refused (the A8 lane run, minor 6 of A8's
-   verification).)*
+   verification). Sign out cancels every sign-in already running, as Cancel does, before it
+   signs out, so a sign-in waiting on Door43 or on the keychain never signs the account back in
+   or keeps a token after Sign out answered (INV-SIGN-OUT-INVALIDATES-INFLIGHT, #981); the
+   abandoned sign-in answers "not signed in" with no error, and a sign-in that arrives after Sign
+   out is not touched.)*
 7. Private repositories (Q3, PLAN:51-54): `door43/open` fetches without credentials first; on 401
    or 404 with no session the job ends with `NeedsSignIn(PrivateRepository)`, the UI shows M12 and
    runs the open again.
