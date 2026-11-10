@@ -290,9 +290,12 @@ fn triage_style(active: bool, tone: &'static str) -> Css {
 fn item_nav_button(
     prev: bool,
     target: Option<u32>,
+    held: bool,
     actions: &Actions,
     testid: &'static str,
 ) -> AnyView {
+    // Words no mark saved hold the person on the check, and the button says what frees it (#853).
+    let target = if held { None } else { target };
     let rtl = interface_is_rtl();
     let arrow = if prev == rtl { "→" } else { "←" };
     let label = t(
@@ -325,7 +328,16 @@ fn item_nav_button(
         <Button
             variant=ButtonVariant::Secondary
             size=Size::Sm
-            title=t(if prev { keys::check::PREV_ITEM } else { keys::check::NEXT_ITEM }, &[])
+            title=t(
+                if held {
+                    keys::check::leave::MARK_FIRST
+                } else if prev {
+                    keys::check::PREV_ITEM
+                } else {
+                    keys::check::NEXT_ITEM
+                },
+                &[],
+            )
             disabled=target.is_none()
             style=style
             attrs=Attrs::from([("data-testid", testid)])
@@ -943,13 +955,17 @@ fn item_detail(s: &AppState, actions: &Actions, unit: CheckUnit) -> AnyView {
             )
         };
         let (prev_actions, next_actions) = (actions.clone(), actions.clone());
+        let held = {
+            let actions = send_wrapper::SendWrapper::new(actions.clone());
+            Memo::new(move |_| actions.words_unsaved())
+        };
         view! {
             <div style=row.to_style()>
-                {move || item_nav_button(true, nav.get().prev, &prev_actions, "check-prev")}
+                {move || item_nav_button(true, nav.get().prev, held.get(), &prev_actions, "check-prev")}
                 {triage("mark-valid", "valid", DecisionStatus::Valid, t(keys::check::MARK_VALID, &[]), valid)}
                 {triage("mark-invalid", "invalid", DecisionStatus::Invalid, t(keys::check::MARK_INVALID, &[]), invalid)}
                 {triage("mark-todo", "todo", DecisionStatus::Todo, t(keys::check::MARK_TODO, &[]), todo)}
-                {move || item_nav_button(false, nav.get().next, &next_actions, "check-next")}
+                {move || item_nav_button(false, nav.get().next, held.get(), &next_actions, "check-next")}
             </div>
         }
     };

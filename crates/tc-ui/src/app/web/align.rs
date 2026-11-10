@@ -27,6 +27,7 @@ use wasm_bindgen_futures::{JsFuture, spawn_local};
 use super::ListenerId;
 use super::app_ctx::Actions;
 use super::js;
+use super::question::{self, Question};
 use super::saves::{GateHookId, WriteCap};
 use crate::app::align::{
     Closed, EditFailure, EditQueue, LeaveWait, Lens, RailFilter, SentEdit, closed, refresh_for,
@@ -193,7 +194,7 @@ thread_local! {
     /// Only the newest press of Home waits and asks; an older one gives way.
     static SETTLES: Latest = const { Latest::new() };
     /// The answer Home waits for while it asks Stay or Leave without it.
-    static LEAVE_ANSWER: RefCell<Option<Function>> = const { RefCell::new(None) };
+    static LEAVE_ANSWER: Question = const { Question::new() };
     /// The gate hook that asks the server to save the links, while the tool is open.
     static HOOK: Cell<Option<GateHookId>> = const { Cell::new(None) };
     /// The listener that keeps the rail and the view true to the server's events.
@@ -658,19 +659,13 @@ impl Actions {
     }
 
     async fn ask_leave_without_clicks(&self) -> bool {
-        let answer = Promise::new(&mut |resolve, _| {
-            // An older question still open gives way: its wait ends as Stay.
-            if let Some(older) = LEAVE_ANSWER.with(|a| a.borrow_mut().replace(resolve)) {
-                let _ = older.call1(&JsValue::NULL, &JsValue::FALSE);
-            }
-        });
+        let answer = LEAVE_ANSWER.with(Question::open);
         self.s().a.leave_ask.try_set(true);
-        let leave = JsFuture::from(answer)
-            .await
-            .ok()
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        self.s().a.leave_ask.try_set(false);
+        let leave = question::answered(answer).await;
+        self.s()
+            .a
+            .leave_ask
+            .try_set(LEAVE_ANSWER.with(Question::is_open));
         if leave {
             QUEUE.with(|q| q.borrow_mut().drop_waiting());
             self.align_edits_changed();
@@ -680,9 +675,7 @@ impl Actions {
 
     /// The person's answer to Home's question: Leave without it, or Stay.
     pub fn answer_align_leave(&self, leave: bool) {
-        if let Some(resolve) = LEAVE_ANSWER.with(|a| a.borrow_mut().take()) {
-            let _ = resolve.call1(&JsValue::NULL, &JsValue::from_bool(leave));
-        }
+        LEAVE_ANSWER.with(|a| a.answer(leave));
     }
 
     fn send_align_edit(&self, edit: AlignEdit) {

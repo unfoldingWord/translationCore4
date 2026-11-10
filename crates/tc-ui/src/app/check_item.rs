@@ -18,7 +18,9 @@ use std::collections::{BTreeSet, HashMap};
 use std::rc::Rc;
 use std::task::{Poll, Waker};
 
-use tc_api::check::{CheckItemView, CheckListRef, CheckPlace, CheckUnit, DecideEdit, Tool};
+use tc_api::check::{
+    CheckItemView, CheckListRef, CheckPlace, CheckUnit, DecideEdit, DecisionStatus, Tool,
+};
 use tc_api::model::selection::{drag_range, toggle};
 use tc_api::token::ShownToken;
 use tc_api::write::ReadOnlyReason;
@@ -64,6 +66,88 @@ pub fn selection_after_read(
 pub fn valid_edit(selection: &BTreeSet<u32>) -> DecideEdit {
     DecideEdit::Valid {
         words: selection.iter().copied().collect(),
+    }
+}
+
+/// The words a decision write of the page leaves on the shown check, or `None` for a write that
+/// leaves them alone (a bookmark, a comment). A mark answers for the words on screen: Mark
+/// valid stores them, and the other two marks are the person's decision about them. An unmark
+/// leaves none stored.
+pub fn words_after(edit: &DecideEdit, selection: &BTreeSet<u32>) -> Option<BTreeSet<u32>> {
+    match edit {
+        DecideEdit::Valid { .. } | DecideEdit::Invalid | DecideEdit::Todo => {
+            Some(selection.clone())
+        }
+        DecideEdit::Unmark => Some(BTreeSet::new()),
+        DecideEdit::Bookmark { .. } | DecideEdit::Comment { .. } => None,
+    }
+}
+
+/// The page's decision writes of the shown check that have no reply yet, and the words the
+/// newest of them leaves (#853). While one is on its way the stored check the page shows is
+/// behind the person, so [`words_unsaved`] reads this instead.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct SentWords {
+    writes: u32,
+    words: Option<BTreeSet<u32>>,
+}
+
+impl SentWords {
+    /// A write of the words leaves for the server.
+    pub fn sent(&mut self, words: BTreeSet<u32>) {
+        self.writes += 1;
+        self.words = Some(words);
+    }
+
+    /// A reply came. A failed write that was the last on its way stored nothing, so the stored
+    /// check speaks again at once; after a saved one it speaks at the next read.
+    pub fn replied(&mut self, saved: bool) {
+        self.writes = self.writes.saturating_sub(1);
+        if !saved && self.writes == 0 {
+            self.words = None;
+        }
+    }
+
+    /// A read of the check landed: with no write on its way, it shows what every write stored.
+    pub fn read(&mut self) {
+        if self.writes == 0 {
+            self.words = None;
+        }
+    }
+
+    /// The words the newest write leaves, until a read shows them.
+    pub fn words(&self) -> Option<&BTreeSet<u32>> {
+        self.words.as_ref()
+    }
+}
+
+/// Whether words are selected that no mark has saved (#853): Previous and Next are off, and
+/// every other way out asks first. A read-only project saves nothing, so it never holds words
+/// back. `sent` is the words the page's newest write leaves, while one is on its way.
+pub fn words_unsaved(
+    writable: bool,
+    read: &CheckItemView,
+    sent: Option<&BTreeSet<u32>>,
+    selection: &BTreeSet<u32>,
+) -> bool {
+    if !writable || selection.is_empty() {
+        return false;
+    }
+    match sent {
+        Some(sent) => selection != sent,
+        // Invalid and To do are the person's decision with these words on screen.
+        None => {
+            !matches!(
+                read.decision.value.status,
+                Some(DecisionStatus::Invalid | DecisionStatus::Todo)
+            ) && read
+                .target
+                .selected
+                .iter()
+                .copied()
+                .collect::<BTreeSet<u32>>()
+                != *selection
+        }
     }
 }
 
@@ -681,6 +765,71 @@ mod tests {
         assert_eq!(selection_after_read(Some(&shown), &other, &local), set(&[]));
         // The first read.
         assert_eq!(selection_after_read(None, &shown, &local), set(&[0]));
+    }
+
+    fn marked(status: Option<DecisionStatus>, selected: &[u32]) -> CheckItemView {
+        let mut read = view(3, &["Pablo", "siervo", "de"], selected);
+        read.decision.value.status = status;
+        read
+    }
+
+    /// #853: words are unsaved when they are selected and no mark holds them.
+    #[test]
+    fn selected_words_are_unsaved_until_a_mark_holds_them() {
+        let none = marked(None, &[]);
+        assert!(!words_unsaved(true, &none, None, &set(&[])));
+        assert!(words_unsaved(true, &none, None, &set(&[0, 1])));
+        // A read-only project saves nothing: its words never hold the person back.
+        assert!(!words_unsaved(false, &none, None, &set(&[0, 1])));
+        // Mark valid stored these words.
+        let valid = marked(Some(DecisionStatus::Valid), &[0, 1]);
+        assert!(!words_unsaved(true, &valid, None, &set(&[0, 1])));
+        // Other words than the stored ones, whose unmark was not saved.
+        assert!(words_unsaved(true, &valid, None, &set(&[0, 2])));
+        // Invalid and To do are the person's decision, with the words left on screen.
+        for status in [DecisionStatus::Invalid, DecisionStatus::Todo] {
+            assert!(!words_unsaved(
+                true,
+                &marked(Some(status), &[]),
+                None,
+                &set(&[1])
+            ));
+        }
+        // Stored words with no status (a teammate's unfinished check): nobody touched them.
+        assert!(!words_unsaved(true, &marked(None, &[2]), None, &set(&[2])));
+    }
+
+    /// #853: while a write is on its way, the page answers from what it sent, so Next is back
+    /// at the press of a mark and off at the tap of a word, with no wait for the save.
+    #[test]
+    fn a_write_on_its_way_speaks_before_the_stored_check() {
+        let none = marked(None, &[]);
+        let words = set(&[0, 1]);
+        let mut sent = SentWords::default();
+        assert_eq!(sent.words(), None);
+        // Mark valid is pressed: the words are on their way.
+        sent.sent(words_after(&valid_edit(&words), &words).unwrap());
+        assert!(!words_unsaved(true, &none, sent.words(), &words));
+        // A word is tapped before the reply: the unmark leaves no words stored.
+        let more = set(&[0, 1, 2]);
+        sent.sent(words_after(&DecideEdit::Unmark, &more).unwrap());
+        assert!(words_unsaved(true, &none, sent.words(), &more));
+        // A read between the replies does not speak yet.
+        sent.replied(true);
+        sent.read();
+        assert!(words_unsaved(true, &none, sent.words(), &more));
+        sent.replied(true);
+        sent.read();
+        assert_eq!(sent.words(), None);
+        // A mark that was not saved: the stored check speaks at once.
+        sent.sent(more.clone());
+        assert!(!words_unsaved(true, &none, sent.words(), &more));
+        sent.replied(false);
+        assert!(words_unsaved(true, &none, sent.words(), &more));
+        // A bookmark and a comment leave the words alone.
+        assert_eq!(words_after(&DecideEdit::Bookmark { on: true }, &more), None);
+        // A late reply for a check already left changes nothing.
+        SentWords::default().replied(true);
     }
 
     #[test]

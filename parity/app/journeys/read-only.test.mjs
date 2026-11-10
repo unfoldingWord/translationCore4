@@ -112,6 +112,10 @@ browserTest('read_only_check_marks_are_disabled_and_send_no_decision', async () 
     await page.getByTestId('tw-1').click();
     assert.equal(await page.getByTestId('tw-1').getAttribute('aria-pressed'), 'true');
     await sleep(500);
+    assert.equal(await page.getByTestId('check-next').isDisabled(), false, 'words that cannot be saved never hold Next off');
+    await page.getByTestId('check-next').click();
+    await sleep(300);
+    assert.equal(await page.getByRole('alertdialog').count(), 0, 'and nothing is asked');
     assert.deepEqual(sent, [], 'INV-READ-ONLY-HAS-NO-WRITE-CONTROLS: no check decision leaves the page');
   });
 });

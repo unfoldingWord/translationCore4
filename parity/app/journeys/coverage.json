@@ -141,7 +141,10 @@
           "a_changed_selection_takes_the_mark_away_until_the_check_is_marked_again",
           "a_changed_selection_is_told_once_per_gesture",
           "a_word_tapped_while_mark_valid_is_still_being_saved_takes_the_mark_away",
-          "words_tapped_on_a_check_with_no_decision_record_nothing"
+          "words_tapped_on_a_check_with_no_decision_record_nothing",
+          "previous_and_next_are_off_while_selected_words_are_not_saved",
+          "leaving_a_check_with_selected_words_not_saved_asks_first",
+          "a_check_restored_from_history_shows_its_restored_words"
         ]
       }
     ],

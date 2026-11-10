@@ -1,7 +1,7 @@
 //! INV-ONE-LEAVE-PATH (UI-3): every move away from a screen or a project goes through
-//! [`Actions::leave`]: the save gate first, then the checkpoint, then the caller's switch. A
-//! source scan (`tests/app/lint.rs`, `only_leave_calls_the_gate`) keeps every other product
-//! call of the gate out.
+//! [`Actions::leave`]: the question about selected words in Check (#853), the save gate, then
+//! the checkpoint, then the caller's switch. A source scan (`tests/app/lint.rs`,
+//! `only_leave_calls_the_gate`) keeps every other product call of the gate out.
 
 use leptos::prelude::*;
 use tc_api::ids::StoryNo;
@@ -36,6 +36,12 @@ impl Actions {
     /// Drains every field, then takes the checkpoint of `to`; answers whether the caller may
     /// switch. A standing failure keeps the person where they are (FR-32).
     pub(crate) async fn leave(&self, to: LeaveTo) -> bool {
+        // Words selected in Check that no mark saved: the person is asked before anything is
+        // done, so Stay changes nothing (#853).
+        let same_tab = matches!(&to, LeaveTo::Tab(view) if *view == self.s().view.get_untracked());
+        if !same_tab && !self.words_may_go().await {
+            return false;
+        }
         if to == LeaveTo::Home {
             let open = || self.s().project.with_untracked(Option::is_some);
             let was_open = open();

@@ -234,6 +234,14 @@ Under the same rule, tC4 4.0 bugs the rebuild fixes on purpose (FIX-R, 2026-10-2
   once: it is counted as not done, and the words stay on screen until the next mark stores
   them. The earlier mark stays in History. tC4 keeps the mark with the words it was made with
   and drops the new words on Next without a word (#853).
+- In Check, words selected on a check with no decision hold the translator on the check.
+  Previous and Next are off until the check is marked or the words are unselected. A row of the rail,
+  All checking tools, a mode tab and the project switch ask first: Stay, or Discard
+  selection. Closing the app drops the words; the stored check has no decision, so
+  nothing untrue is kept. In a read-only project nothing can be saved, so nothing is held and
+  nothing is asked. tC4 drops the words on any of these without a word (#853).
+- In Check, *Restore this version* from a check's History shows the restored words. Before, the
+  words tapped before the restore stayed on screen (#853).
 
 Owner rulings in the issues, made before 4.1.0:
 

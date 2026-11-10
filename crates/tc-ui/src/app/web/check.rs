@@ -35,15 +35,16 @@ use wasm_bindgen_futures::spawn_local;
 
 use super::app_ctx::{Actions, Dialog};
 use super::js;
+use super::question::{self, Question};
 use super::saves::{FieldWriter, LocalBoxFuture, WriteCap};
 use super::{Api, ListenerId};
 use crate::app::check::CheckView;
-use crate::app::check_item::{self, DecisionWrites, MarkFailure};
+use crate::app::check_item::{self, DecisionWrites, MarkFailure, SentWords};
 use crate::app::client::{CallError, Transport};
 use crate::app::fix::{Fix, FixScreen};
 use crate::app::latest::{Attempt, Latest};
 use crate::app::save::{FieldScope, Pair, Source, View};
-use crate::app::shell::ProjectFlavor;
+use crate::app::shell::{self, ProjectFlavor};
 
 /// An open tool's rail.
 #[derive(Debug, Clone, PartialEq)]
@@ -108,6 +109,10 @@ pub struct CheckState {
     /// The words tapped in the draft, one local value until a mark saves it (#757). A change
     /// of it takes the check's mark away (#853).
     pub selection: ArcRwSignal<BTreeSet<u32>>,
+    /// The words the page's writes of the active check leave, while one is on its way (#853).
+    pub sent: ArcRwSignal<SentWords>,
+    /// The question before a move that drops selected words no mark saved (#853).
+    pub leave_ask: ArcRwSignal<bool>,
     /// The Academy drawer, closed or on the active check's article.
     pub academy: ArcRwSignal<Option<Academy>>,
     pub marking: ArcRwSignal<Marking>,
@@ -134,6 +139,8 @@ impl CheckState {
             focused_for: ArcRwSignal::new(None),
             detail: ArcRwSignal::new(None),
             selection: ArcRwSignal::new(BTreeSet::new()),
+            sent: ArcRwSignal::new(SentWords::default()),
+            leave_ask: ArcRwSignal::new(false),
             academy: ArcRwSignal::new(None),
             marking: ArcRwSignal::new(Marking::Idle),
             comment_open: ArcRwSignal::new(false),
@@ -157,6 +164,10 @@ thread_local! {
     static ARTICLES: Latest = const { Latest::new() };
     /// Every write of a decision, a mark or a comment, goes through here.
     static WRITES: DecisionWrites = DecisionWrites::default();
+    /// A restore from History of the shown check was saved, and no read has shown it yet.
+    static RESTORED: Cell<bool> = const { Cell::new(false) };
+    /// The answer a move waits for while it asks Stay or Discard selection (#853).
+    static WORDS_ANSWER: Question = const { Question::new() };
     /// The detail a write's Ack tells, when the Ack is for the check it shows.
     static DETAIL: RefCell<Option<ArcRwSignal<Option<Detail>>>> = const { RefCell::new(None) };
     /// Counts the opens asked for: only the newest may land (tC4's `checkSessionSeq`).
@@ -425,6 +436,37 @@ impl Actions {
     /// "← All checking tools" (tC4 `closeCheckTool`): the picker, whose card of this tool gets
     /// the focus back.
     pub fn close_check_tool(&self) {
+        self.close_check_tool_to(None);
+    }
+
+    /// "← All checking tools", then a mode tab when `then` names one. Words no mark saved are
+    /// asked about once, before the tool closes (#853).
+    pub fn close_check_tool_to(&self, then: Option<shell::View>) {
+        self.after_words(move |this| {
+            this.close_tool();
+            if let Some(view) = then {
+                this.go(view);
+            }
+        });
+    }
+
+    /// Runs a move away from the shown check: at once, or after the person's Discard selection
+    /// when words wait for a mark. Answers whether it ran at once.
+    fn after_words(&self, go: impl FnOnce(&Self) + 'static) -> bool {
+        if !untrack(|| self.words_unsaved()) {
+            go(self);
+            return true;
+        }
+        let this = self.clone();
+        spawn_local(async move {
+            if this.words_may_go().await {
+                go(&this);
+            }
+        });
+        false
+    }
+
+    fn close_tool(&self) {
         OPENS.with(Latest::begin);
         self.stop_rail_listener();
         self.forget_detail();
@@ -456,8 +498,17 @@ impl Actions {
 
     /// A row of the rail, the arrow keys, or Previous and Next (tC4 `setCheckIndex`): the
     /// comment of the check left is saved if its editor is open (A-10), and the new check's
-    /// detail is read.
-    pub fn select_check(&self, index: u32) {
+    /// detail is read. Words no mark saved are asked about first (#853): the answer is whether
+    /// the check is shown now, so a key that also moves the focus leaves it while the person
+    /// is asked.
+    pub fn select_check(&self, index: u32) -> bool {
+        if self.s().c.active.get_untracked() == Some(index) {
+            return true;
+        }
+        self.after_words(move |this| this.show_check(index))
+    }
+
+    fn show_check(&self, index: u32) {
         let c = &self.s().c;
         if c.active.get_untracked() == Some(index) {
             return;
@@ -684,6 +735,11 @@ impl Actions {
         c.history_open.try_set(false);
         c.detail.try_set(None);
         c.selection.try_set(BTreeSet::new());
+        c.sent.try_set(SentWords::default());
+        RESTORED.with(|r| r.set(false));
+        // A question about words that are gone with the detail: its move does not run.
+        self.answer_words_leave(false);
+        c.leave_ask.try_set(false);
         c.academy.try_set(None);
         c.marking.try_set(Marking::Idle);
     }
@@ -697,6 +753,53 @@ impl Actions {
         c.restore_failed.try_set(false);
         c.academy.try_set(None);
         c.marking.try_set(Marking::Idle);
+        c.sent.try_set(SentWords::default());
+        RESTORED.with(|r| r.set(false));
+    }
+
+    /// Whether words are selected on the shown check that no mark saved (#853), tracked:
+    /// Previous and Next are off while it holds, and every other way out asks first.
+    pub fn words_unsaved(&self) -> bool {
+        let s = self.s();
+        if s.view.get() != shell::View::Check || !matches!(s.c.view.get(), CheckView::Tool(_)) {
+            return false;
+        }
+        let writable = self.write_cap().is_some();
+        let selection = s.c.selection.get();
+        let sent = s.c.sent.get();
+        s.c.detail.with(|detail| match detail {
+            Some(Detail::Ready(read)) => {
+                check_item::words_unsaved(writable, read, sent.words(), &selection)
+            }
+            _ => false,
+        })
+    }
+
+    /// Before a move away from the shown check: with words no mark saved, the person is asked,
+    /// Stay or Discard selection. Discard puts the stored words back on screen. Answers whether
+    /// the move may go on.
+    pub(super) async fn words_may_go(&self) -> bool {
+        if !untrack(|| self.words_unsaved()) {
+            return true;
+        }
+        let c = &self.s().c;
+        let answer = WORDS_ANSWER.with(Question::open);
+        c.leave_ask.try_set(true);
+        let go = question::answered(answer).await;
+        c.leave_ask.try_set(WORDS_ANSWER.with(Question::is_open));
+        if go {
+            let stored = c.detail.with_untracked(|detail| match detail {
+                Some(Detail::Ready(read)) => read.target.selected.iter().copied().collect(),
+                _ => BTreeSet::new(),
+            });
+            c.selection.try_set(stored);
+        }
+        go
+    }
+
+    /// The person's answer to the question about selected words: Discard selection, or Stay.
+    pub fn answer_words_leave(&self, discard: bool) {
+        WORDS_ANSWER.with(|a| a.answer(discard));
     }
 
     /// Reads check `index` for the detail (tC4 shows it from the list it holds; the server
@@ -749,7 +852,8 @@ impl Actions {
 
     /// A read of the active check lands: the selection follows the stored one only when the
     /// check or its words changed (tC4's effect on `activeIndex` and `targetText`), and the
-    /// comment's field takes the decision the read shows (AD37).
+    /// comment's field takes the decision the read shows (AD37). The first read after a restore
+    /// from History shows the restored words.
     fn apply_item(&self, view: CheckItemView) {
         let c = &self.s().c;
         WRITES.with(|w| w.learn(&view.place, &view.check_id, &view.decision.token));
@@ -759,6 +863,8 @@ impl Actions {
                 Some(Detail::Ready(shown)) => Some(&**shown),
                 _ => None,
             };
+            let restored = RESTORED.with(Cell::take);
+            let shown = shown.filter(|_| !restored);
             check_item::selection_after_read(shown, &view, &local)
         });
         if selection != local {
@@ -770,6 +876,9 @@ impl Actions {
         if !same {
             self.refresh_comment(&view);
             c.detail.try_set(Some(Detail::Ready(Box::new(view))));
+        }
+        if c.sent.with_untracked(|sent| sent.words().is_some()) {
+            c.sent.try_update(SentWords::read);
         }
     }
 
@@ -812,7 +921,7 @@ impl Actions {
         else {
             return;
         };
-        let (place, check_id) = (view.place.clone(), view.check_id.clone());
+        let (place, check_id, index) = (view.place.clone(), view.check_id.clone(), view.index);
         let comment = self
             .s()
             .project
@@ -829,6 +938,11 @@ impl Actions {
             edit,
         };
         c.marking.try_set(Marking::Idle);
+        let words = check_item::words_after(&request.edit, &c.selection.get_untracked());
+        let tracked = words.is_some();
+        if let Some(words) = words {
+            c.sent.try_update(|sent| sent.sent(words));
+        }
         let this = self.clone();
         spawn_local(async move {
             // A write's reply is never dropped: its Ack carries the next token (AD2).
@@ -843,6 +957,10 @@ impl Actions {
             let shown = c.detail.with_untracked(|d| {
                 matches!(d, Some(Detail::Ready(v)) if v.place == place && v.check_id == check_id)
             });
+            // The count is the active check's: a reply for a check since left has none to end.
+            if tracked && c.active.get_untracked() == Some(index) {
+                c.sent.try_update(|sent| sent.replied(result.is_ok()));
+            }
             if !shown {
                 return;
             }
@@ -922,6 +1040,8 @@ impl Actions {
                 return;
             }
             c.restore_failed.try_set(result.is_err());
+            // Whichever read lands next was asked after the restore's reply.
+            RESTORED.with(|r| r.set(result.is_ok()));
             this.refresh_item();
         });
     }
