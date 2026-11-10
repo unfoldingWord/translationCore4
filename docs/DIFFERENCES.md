@@ -236,8 +236,8 @@ Under the same rule, tC4 4.0 bugs the rebuild fixes on purpose (FIX-R, 2026-10-2
   and drops the new words on Next without a word (#853).
 - In Check, words selected on a check with no decision hold the translator on the check.
   Previous and Next are off until the check is marked or the words are unselected. A row of the rail,
-  All checking tools, a mode tab and the project switch ask first: Stay, or Discard
-  selection. Closing the app drops the words; the stored check has no decision, so
+  All checking tools, a mode tab and the project switch ask first: Stay, or Leave
+  without them. Closing the app drops the words; the stored check has no decision, so
   nothing untrue is kept. In a read-only project nothing can be saved, so nothing is held and
   nothing is asked. tC4 drops the words on any of these without a word (#853).
 - In Check, *Restore this version* from a check's History shows the restored words. Before, the

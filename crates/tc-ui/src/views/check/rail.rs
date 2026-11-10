@@ -985,7 +985,7 @@ fn leave_question(s: &AppState, actions: &Actions) -> impl IntoView + use<> {
         title: t(keys::check::leave::TITLE, &[]),
         description: Some(t(keys::check::leave::BODY, &[])),
         consequence: None,
-        confirm_label: Some(t(keys::check::leave::DISCARD, &[])),
+        confirm_label: Some(t(keys::check::leave::LEAVE, &[])),
         cancel_label: Some(t(keys::check::leave::STAY, &[])),
         destructive: true,
         on_confirm: Some(Callback::new(move |()| go.answer_words_leave(true))),

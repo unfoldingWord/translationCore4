@@ -387,7 +387,7 @@ browserTest('a_word_tapped_while_mark_valid_is_still_being_saved_takes_the_mark_
     await page.getByTestId('tw-1').click();
     // On to the next check before any of it is heard of: Next is off, so by the rail.
     await page.locator(`[data-testid="check-list"] [data-rail-index="${index + 1}"]`).click();
-    await page.getByRole('alertdialog').getByRole('button', { name: 'Discard selection', exact: true }).click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Leave without them', exact: true }).click();
     await until('the next check shows', async () => Number(await shownIndex(page)) !== index);
     await until('both were sent', async () => sent.length === 2);
     await sleep(300 * 4);
@@ -497,10 +497,10 @@ browserTest('leaving_a_check_with_selected_words_not_saved_asks_first', async ()
     await page.getByTitle(/Switch project/).click();
     await stays('the project switch');
     assert.equal((await stored(env, index)).decision.value.status, null);
-    // Discard selection goes on, and the words are gone when the check shows again.
+    // Leave without them goes on, and the words are gone when the check shows again.
     await railRow(page, index + 1).click();
     await question(page).waitFor();
-    await answer(page, 'check.leave.discard');
+    await answer(page, 'check.leave.leave');
     await until('the next check shows', async () => Number(await shownIndex(page)) === index + 1);
     await page.getByTestId('check-quote').waitFor();
     await railRow(page, index).click();
@@ -512,7 +512,7 @@ browserTest('leaving_a_check_with_selected_words_not_saved_asks_first', async ()
     await page.getByTestId('tw-2').click();
     await page.getByTestId('check-back').click();
     await question(page).waitFor();
-    await answer(page, 'check.leave.discard');
+    await answer(page, 'check.leave.leave');
     await page.getByTestId('open-translationNotes').waitFor();
     // Discard on the way to a mode tab goes to that mode.
     await page.getByTestId('open-translationNotes').click();
@@ -521,7 +521,7 @@ browserTest('leaving_a_check_with_selected_words_not_saved_asks_first', async ()
     const translate = page.getByRole('tab', { name: catalog('en')['nav.draft'], exact: true });
     await translate.click();
     await question(page).waitFor();
-    await answer(page, 'check.leave.discard');
+    await answer(page, 'check.leave.leave');
     await until('Translate shows', async () => (await translate.getAttribute('aria-selected')) === 'true');
     assert.equal(await page.getByTestId('check-quote').count(), 0);
   }, { scenario: 'en-pins' });

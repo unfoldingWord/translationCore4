@@ -24,7 +24,7 @@
   "align.unavailable.alignedInText.body": "Este versículo veio de um arquivo que mantém seu alinhamento dentro do texto, e alinhá-lo aqui sobrescreveria isso. Nada foi perdido. O restante de {book} se alinha normalmente.",
   "align.unavailable.alignedInText.title": "Este versículo já contém seu alinhamento",
   "check.leave.body": "As palavras que você selecionou só são salvas quando a verificação é marcada. Se você sair desta verificação agora, a seleção será desfeita.",
-  "check.leave.discard": "Descartar seleção",
+  "check.leave.leave": "Sair sem salvar",
   "check.leave.markFirst": "Marque esta verificação ou desmarque as palavras para continuar",
   "check.leave.stay": "Permanecer",
   "check.leave.title": "As palavras selecionadas não estão salvas",

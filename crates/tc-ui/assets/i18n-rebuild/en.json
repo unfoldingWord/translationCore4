@@ -20,7 +20,7 @@
   "align.unavailable.alignedInText.body": "This verse came from a file that holds its alignment inside the text, and aligning it here would write over that. Nothing is lost. The rest of {book} aligns normally.",
   "align.unavailable.alignedInText.title": "This verse already holds its alignment",
   "check.leave.body": "Only a mark saves the words you selected. If you leave this check now, they are unselected.",
-  "check.leave.discard": "Discard selection",
+  "check.leave.leave": "Leave without them",
   "check.leave.markFirst": "Mark this check or unselect the words to move on",
   "check.leave.stay": "Stay",
   "check.leave.title": "The selected words are not saved",

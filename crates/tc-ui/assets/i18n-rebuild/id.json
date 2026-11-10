@@ -24,7 +24,7 @@
   "align.unavailable.alignedInText.body": "Ayat ini berasal dari berkas yang menyimpan penyelarasan di dalam teks, dan menyelaraskannya di sini akan menimpanya. Tidak ada yang hilang. Sisa dari {book} diselaraskan secara normal.",
   "align.unavailable.alignedInText.title": "Ayat ini sudah memuat penyelarasannya",
   "check.leave.body": "Kata-kata yang Anda pilih hanya disimpan saat pemeriksaan ditandai. Jika Anda meninggalkan pemeriksaan ini sekarang, pilihannya dibatalkan.",
-  "check.leave.discard": "Buang pilihan",
+  "check.leave.leave": "Keluar tanpa menyimpan",
   "check.leave.markFirst": "Tandai pemeriksaan ini atau batalkan pilihan kata untuk melanjutkan",
   "check.leave.stay": "Tetap di sini",
   "check.leave.title": "Kata-kata yang dipilih belum disimpan",

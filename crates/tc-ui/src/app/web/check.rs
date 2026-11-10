@@ -168,7 +168,7 @@ thread_local! {
     static WRITES: DecisionWrites = DecisionWrites::default();
     /// The restore from History of the shown check, as its words see it.
     static RESTORE: Cell<RestoredWords> = const { Cell::new(RestoredWords::None) };
-    /// The answer a move waits for while it asks Stay or Discard selection (#853).
+    /// The answer a move waits for while it asks Stay or Leave without them (#853).
     static WORDS_ANSWER: Question = const { Question::new() };
     /// The detail a write's Ack tells, when the Ack is for the check it shows.
     static DETAIL: RefCell<Option<ArcRwSignal<Option<Detail>>>> = const { RefCell::new(None) };
@@ -462,7 +462,7 @@ impl Actions {
         });
     }
 
-    /// Runs a move away from the shown check: at once, or after the person's Discard selection
+    /// Runs a move away from the shown check: at once, or after the person's Leave without them
     /// when words wait for a mark. Answers whether it ran at once.
     fn after_words(&self, go: impl FnOnce(&Self) + 'static) -> bool {
         if !untrack(|| self.words_unsaved()) {
@@ -789,7 +789,7 @@ impl Actions {
     }
 
     /// Before a move away from the shown check: with words no mark saved, the person is asked,
-    /// Stay or Discard selection. Answers whether the move may go on; the words stay on screen
+    /// Stay or Leave without them. Answers whether the move may go on; the words stay on screen
     /// until the move does go ([`Actions::discard_words`]), since a refused save gate keeps the
     /// person on this check.
     pub(super) async fn words_may_go(&self) -> bool {
@@ -804,7 +804,7 @@ impl Actions {
         go
     }
 
-    /// Discard selection, once the move goes: the stored words come back on screen.
+    /// Leave without them, once the move goes: the stored words come back on screen.
     pub(super) fn discard_words(&self) {
         let c = &self.s().c;
         let stored = c.detail.with_untracked(|detail| match detail {
@@ -814,7 +814,7 @@ impl Actions {
         c.selection.try_set(stored);
     }
 
-    /// The person's answer to the question about selected words: Discard selection, or Stay.
+    /// The person's answer to the question about selected words: Leave without them, or Stay.
     pub fn answer_words_leave(&self, discard: bool) {
         WORDS_ANSWER.with(|a| a.answer(discard));
     }

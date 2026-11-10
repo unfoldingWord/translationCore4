@@ -40,6 +40,12 @@ asked first.
 ## Not decided
 
 - Mark invalid and Mark To do with words on screen: the mark turns Previous and Next back on
-  (rule 4), but only Mark valid stores words, so the words are dropped on Next.
-- The words of the question (its title, its body, "Stay", "Discard selection") and of the
-  tooltip on Previous and Next.
+  (rule 4), but only Mark valid stores words, so the words are dropped on Next. This waits on
+  what Invalid means. The app shows two things as Invalid: the person's own mark, and a
+  decision that no longer holds because the text or the resource changed.
+
+## The words (owner, 2026-11-10)
+
+The question reads "The selected words are not saved", with the buttons "Stay" and "Leave
+without them", as Align's question does. The owner agreed to the words on 2026-11-10; the
+translations in the nine other languages have not been read by a speaker.
