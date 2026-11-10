@@ -953,7 +953,14 @@ fn target_cell(
                         disabled=off
                         style=style
                         on_pointer_down_capture=hold
-                        on_click=Callback::new(move |_| actions.start_section(chapter, &keys))
+                        on_click=Callback::new(move |_| {
+                            // It picks the section also when the open is read-only and no card
+                            // opens (#991).
+                            if let Some(first) = keys.first() {
+                                picked.set(Some(PickedUnit::Section(first.clone())));
+                            }
+                            actions.start_section(chapter, &keys);
+                        })
                     >
                         {t(keys::draft::DRAFT_SECTION, &[("span", &span)])}
                     </Button>
@@ -978,8 +985,8 @@ fn target_cell(
         })
     };
     // A click on a section's translation filters the helps to it without opening its card
-    // (#991). Verse mode's click opens the verse's card, which picks it; a click while a card is
-    // open leaves the filter on that card.
+    // (#991); a click while a card is open leaves the filter on that card. In Verse mode the
+    // verse's own click picks it (`target_verse`).
     let pick = {
         let first = keys.first().cloned();
         move |_| {
@@ -1012,7 +1019,7 @@ fn target_cell(
                         let body = verses
                             .into_iter()
                             .map(|v| {
-                                target_verse(&actions, book, chapter, v, mode, open_verse, off)
+                                target_verse(&actions, book, chapter, v, mode, open_verse, off, picked)
                             })
                             .collect_view();
                         view! { <p data-testid="draft-target-text" style=p.to_style() on:click=pick.clone()>{body}</p> }
@@ -1068,7 +1075,12 @@ fn target_cell(
 
 /// tC4's `TargetVerse` with its number: the drafted words (a click revises the verse in Verse
 /// mode), "Draft verse N", or "Editing below" while its card is open; a verse in conflict
-/// carries the marker.
+/// carries the marker. A click picks the verse for the helps, also when the open is read-only
+/// and no card opens (#991).
+#[expect(
+    clippy::too_many_arguments,
+    reason = "a view's inputs: the state, handles and signals it reads"
+)]
 fn target_verse(
     actions: &Actions,
     book: BookId,
@@ -1077,8 +1089,16 @@ fn target_verse(
     mode: Memo<UnitMode>,
     open_verse: Memo<Option<String>>,
     off: Signal<bool>,
+    picked: RwSignal<Option<PickedUnit>>,
 ) -> AnyView {
     let key = v.key.as_str().to_owned();
+    let start = {
+        let (actions, key) = (actions.clone(), key.clone());
+        move || {
+            picked.set(Some(PickedUnit::Verse(key.clone())));
+            actions.start_verse(chapter, &key);
+        }
+    };
     let number = view! { <sup style=sup()>{key.clone()}</sup> }.into_any();
     // One memo per verse: a keystroke redraws only the verse whose unsaved text it changes.
     let unsaved = {
@@ -1086,7 +1106,7 @@ fn target_verse(
         Memo::new(move |_| actions.unsaved_verse(book, chapter, &key))
     };
     let verse = {
-        let (actions, v, key) = (actions.clone(), v.clone(), key.clone());
+        let (v, key) = (v.clone(), key.clone());
         move || {
             if open_verse.get().as_deref() == Some(key.as_str()) {
                 let style = crate::css! {
@@ -1124,13 +1144,11 @@ fn target_verse(
                     .map(|w| view! { <span data-i="quiet" style=word.clone()>{w.to_owned()}</span>" " })
                     .collect_view();
                 let span = if verse_mode {
-                    let (actions, key) = (actions.clone(), key.clone());
+                    let start = start.clone();
                     leptos::html::span()
                         .attr("title", t(keys::draft::EDIT_VERSE, &[]))
                         .attr("style", "cursor: text;")
-                        .on(leptos::ev::click, move |_| {
-                            actions.start_verse(chapter, &key)
-                        })
+                        .on(leptos::ev::click, move |_| start())
                         .child(words)
                         .into_any()
                 } else {
@@ -1141,12 +1159,12 @@ fn target_verse(
             if !verse_mode {
                 return None;
             }
-            let (actions, key) = (actions.clone(), key.clone());
+            let start = start.clone();
             Some(draft_pill(
                 t(keys::draft::DRAFT_VERSE, &[("n", &key)]),
                 t(keys::draft::START_VERSE, &[]),
                 crate::css! { "margin-inline-end": ".3em" },
-                Callback::new(move |()| actions.start_verse(chapter, &key)),
+                Callback::new(move |()| start()),
             ))
         }
     };

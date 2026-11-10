@@ -8,6 +8,7 @@
 //   TC4_BIN=target/debug/tc4 TC4_UI=target/tc-ui-app TC4_UI_HOOKS=target/tc-ui-app-hooks \
 //     node --test parity/app/journeys/helps-focus.test.mjs
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import path from 'node:path';
 import { browserTest, until, withApp } from './kit.mjs';
 
@@ -89,6 +90,25 @@ browserTest('a_verse_saved_in_verse_mode_keeps_the_helps_on_that_verse', async (
     await saved(page);
     await notesOnlyAt(page, ['4'], 'after Save the helps stay on verse 4, not its section');
     await shot(page, '2-translate-verse-after-save');
+  }, SCENARIO);
+});
+
+// A project open on another computer opens read-only (read-only.test.mjs): no card opens, and a
+// click on a verse, or Draft section, still filters the helps to it.
+browserTest('a_verse_or_section_picked_in_a_read_only_project_filters_the_helps', async () => {
+  await withApp(async ({ page, env }) => {
+    const tc = path.join(env.projectsDir, BIBLE, '.tc');
+    fs.mkdirSync(tc, { recursive: true });
+    fs.writeFileSync(path.join(tc, 'lock'), JSON.stringify({ host: 'other-computer', pid: 4242, device: 'Other', at: '2026-10-25T09:00:00Z' }));
+    await openTranslate(page);
+    await page.getByRole('tab', { name: 'Verse', exact: true }).click();
+    await page.getByTitle('Edit this verse').nth(3).click();
+    await notesOnlyAt(page, ['4'], 'a click on verse 4 filters the helps to it');
+    assert.equal(await page.getByLabel('Verse 4', { exact: true }).count(), 0, 'a read-only open opens no card');
+    // Draft section, the keyboard's way to a section, picks it too.
+    await page.getByRole('tab', { name: 'Section', exact: true }).click();
+    await page.getByRole('button', { name: 'Draft section 6–7' }).press('Enter');
+    await notesOnlyAt(page, ['6', '7'], 'Draft section filters the helps to 6–7');
   }, SCENARIO);
 });
 

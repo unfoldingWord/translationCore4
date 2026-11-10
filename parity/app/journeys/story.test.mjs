@@ -5,7 +5,7 @@
 //
 //   TC4_BIN=target/debug/tc4 TC4_UI=target/tc-ui-app node --test parity/app/journeys/story.test.mjs
 import assert from 'node:assert/strict';
-import { browserTest, recordRequests, until, withApp } from './kit.mjs';
+import { browserTest, recordRequests, settled, until, withApp } from './kit.mjs';
 
 const OBS = 'sample_burrito_obs';
 const SCENARIO = { scenario: 'en-pins' };
@@ -55,9 +55,9 @@ browserTest('j25_the_rail_moves_the_frame_and_the_helps_panel_follows_it', async
   }, SCENARIO);
 });
 
-// A click on a card lights it and leaves the list as it was: a note the person expanded stays
-// expanded, as tC4 keeps each keyed card. Since #991 the panel lists only the frame in focus, so
-// a frame move replaces the list instead of lighting another frame's cards in it.
+// A click on a card leaves the list as it was: a note the person expanded stays expanded, as tC4
+// keeps each keyed card. Since #991 the panel lists only the frame in focus, whose cards are all
+// lit already, so a frame move replaces the list and a click shows no change of its own.
 browserTest('an_expanded_note_stays_expanded_when_a_card_is_clicked', async () => {
   await withApp(async ({ page, env }) => {
     await openStory1(page, env);
@@ -73,9 +73,8 @@ browserTest('an_expanded_note_stays_expanded_when_a_card_is_clicked', async () =
     const expand = notes.filter({ has: page.getByTestId('note-expand') }).first().getByTestId('note-expand');
     await expand.click();
     assert.equal(await expand.getAttribute('aria-expanded'), 'true');
-    const card = notes.last();
-    await card.click({ position: { x: 8, y: 8 } });
-    await until('the clicked card is lit', async () => (await card.getAttribute('data-focused')) === 'true');
+    await notes.last().click({ position: { x: 8, y: 8 } });
+    await settled(page);
     assert.equal(await expand.getAttribute('aria-expanded'), 'true', 'the click keeps the note expanded');
   }, SCENARIO);
 });

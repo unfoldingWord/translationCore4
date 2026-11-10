@@ -114,7 +114,8 @@
         "file": "parity/app/journeys/helps-focus.test.mjs",
         "tests": [
           "a_section_clicked_in_translate_filters_the_helps_and_keeps_them_after_save",
-          "a_verse_saved_in_verse_mode_keeps_the_helps_on_that_verse"
+          "a_verse_saved_in_verse_mode_keeps_the_helps_on_that_verse",
+          "a_verse_or_section_picked_in_a_read_only_project_filters_the_helps"
         ]
       }
     ],
