@@ -967,8 +967,13 @@ impl Actions {
             .sent
             .with_untracked(|sent| check_item::stored_words(&view, sent.words()));
         let words = check_item::words_after(&request.edit, &stored, &c.selection.get_untracked());
-        if let (true, Some(words)) = (check_item::is_mark(&request.edit), &words) {
-            c.selection.try_set(words.clone());
+        if check_item::is_mark(&request.edit) {
+            // A mark is the person's newer act: a restore's read that lands after it must not
+            // put the restored words over the ones this mark stores (#989 review).
+            restore_step(RestoreEvent::WordsChanged);
+            if let Some(words) = &words {
+                c.selection.try_set(words.clone());
+            }
         }
         let tracked = words.is_some();
         if let Some(words) = words {

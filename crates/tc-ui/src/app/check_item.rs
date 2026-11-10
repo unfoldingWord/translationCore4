@@ -161,7 +161,7 @@ pub enum RestoreEvent {
     Asked,
     /// The restore was answered: saved, or not.
     Answered { saved: bool },
-    /// The person finished a change of the selected words.
+    /// The person finished a change of the selected words, or a mark set them.
     WordsChanged,
     /// A read of the check landed.
     Read,
