@@ -2223,6 +2223,74 @@ async fn loss_door43_case_alias_never_recorded() {
     b.close().unwrap();
 }
 
+/// §3.3: a teammate's recording under `Audio/` arrives on a computer whose folder is `audio/`.
+/// On Windows or macOS the disk puts it inside `audio/`; it is still that recording's own
+/// file, so the teammate's next version of it reaches the folder.
+///
+/// The versions arrive, but `metadata.json` lists `Audio/Intro.mp3` where the disk says
+/// `audio/Intro.mp3`, which the burrito probe reports as an unlisted file. §3.3 has no rule
+/// for folders that differ only in letter case, so the test waits for one.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "needs a storage rule for folders that differ only in letter case"]
+async fn a_carried_file_in_a_folder_the_disk_spells_otherwise_takes_its_next_version() {
+    let door43 = door43("titus-folder-case").await;
+    let dir = tempfile::tempdir().unwrap();
+    let ana = computer(dir.path(), "ana");
+    let folder_a = titus(&ana);
+    let a = open(&ana, &folder_a);
+    connect(&a, &door43, "titus-folder-case");
+    synced(&sync(&a, &door43).await);
+    a.close().unwrap();
+    let juan = computer(dir.path(), "juan");
+    let folder_b = copy_to(&folder_a, &juan);
+    let b = open(&juan, &folder_b);
+    let a = open(&ana, &folder_a);
+    let put = |handle: &ProjectHandle, folder: &Path, rel: &str, bytes: &[u8]| {
+        std::fs::create_dir_all(folder.join(rel).parent().unwrap()).unwrap();
+        std::fs::write(folder.join(rel), bytes).unwrap();
+        blocking(|| handle.focus().wait().unwrap());
+        handle.wait_idle();
+    };
+    let intro = "ingredients/Audio/Intro.mp3";
+    put(
+        &b,
+        &folder_b,
+        "ingredients/audio/notes.mp3",
+        b"Juan's notes",
+    );
+    put(&a, &folder_a, intro, b"Ana's intro");
+    synced(&sync(&b, &door43).await);
+    synced(&sync(&a, &door43).await);
+    synced(&sync(&b, &door43).await);
+    b.wait_idle();
+    assert_eq!(std::fs::read(folder_b.join(intro)).unwrap(), b"Ana's intro");
+    put(&a, &folder_a, intro, b"Ana's second take");
+    synced(&sync(&a, &door43).await);
+    synced(&sync(&b, &door43).await);
+    b.wait_idle();
+    assert_eq!(
+        std::fs::read(folder_b.join(intro)).unwrap(),
+        b"Ana's second take",
+        "the next version reached the folder"
+    );
+    assert_eq!(
+        std::fs::read(folder_b.join("ingredients/audio/notes.mp3")).unwrap(),
+        b"Juan's notes"
+    );
+    let placed = |handle: &ProjectHandle| -> Vec<String> {
+        handle
+            .snapshot()
+            .fold()
+            .carried_files()
+            .into_iter()
+            .map(|p| p.path)
+            .collect()
+    };
+    assert_eq!(placed(&b), [intro, "ingredients/audio/notes.mp3"]);
+    a.close().unwrap();
+    b.close().unwrap();
+}
+
 /// Days of work made without a connection, one commit a day, on top of what Door43 holds.
 async fn offline_days(handle: &ProjectHandle, days: u16) {
     for day in 1..=days {

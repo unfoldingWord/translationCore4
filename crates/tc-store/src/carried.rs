@@ -91,23 +91,54 @@ impl Writer {
         Ok((stream.finish(), len))
     }
 
-    /// The path the disk holds the file found at `rel` under, when it is another spelling of
-    /// `rel` (§3.3): a disk that ignores letter case answers for `Intro.mp3` with the file
-    /// `intro.mp3`, which is that path's file and none of this one's. A name the disk stores
-    /// in another normalization form (HFS+ decomposes) is the same spelling.
-    pub(crate) fn other_spelling(&self, rel: &str) -> Option<String> {
+    /// The path the disk spells the file found at `rel` with, from the project folder.
+    fn disk_spelling(&self, rel: &str) -> Option<String> {
         let root = self.vfs.canonicalize(self.folder.root()).ok()?;
         let real = self.vfs.canonicalize(&self.folder.path(rel)).ok()?;
-        let real = real
+        let parts: Option<Vec<&str>> = real
             .strip_prefix(&root)
             .ok()?
             .iter()
             .map(|part| part.to_str())
-            .collect::<Option<Vec<_>>>()?
-            .join("/");
-        (!real.nfc().eq(rel.nfc())
-            && tc_burrito::collision_form(&real) == tc_burrito::collision_form(rel))
-        .then_some(real)
+            .collect();
+        Some(parts?.join("/"))
+    }
+
+    /// The path the disk holds the file found at `rel` under, when it is another spelling of
+    /// `rel` (§3.3): a disk that ignores letter case answers for `Intro.mp3` with the file
+    /// `intro.mp3`, which is that path's file and none of this one's. A name the disk stores
+    /// in another normalization form (HFS+ decomposes) is the same spelling. So is the app's
+    /// own file under a folder the disk spells otherwise (`Audio/Intro.mp3` written into an
+    /// existing `audio/`): the app placed it, and the project knows no file at the disk's
+    /// spelling.
+    pub(crate) fn other_spelling(&self, rel: &str) -> Option<String> {
+        let real = self.disk_spelling(rel)?;
+        if real.nfc().eq(rel.nfc())
+            || tc_burrito::collision_form(&real) != tc_burrito::collision_form(rel)
+        {
+            return None;
+        }
+        let own = self.manifest.paths.contains_key(rel)
+            && !self.manifest.paths.contains_key(&real)
+            && self.placement_at(&real).is_none();
+        (!own).then_some(real)
+    }
+
+    /// The carried file the app placed whose file the disk spells `rel` (§3.3): the folder
+    /// lists `audio/Intro.mp3` for the `Audio/Intro.mp3` the app wrote into `audio/`. A look
+    /// at the disk's spelling is a look at that file, never at a new one.
+    fn placed_as(&self, rel: &str) -> Option<String> {
+        let form = tc_burrito::collision_form(rel);
+        self.fold
+            .carried_files()
+            .into_iter()
+            .map(|p| p.path)
+            .find(|path| {
+                path != rel
+                    && self.manifest.paths.contains_key(path)
+                    && tc_burrito::collision_form(path) == form
+                    && self.disk_spelling(path).as_deref() == Some(rel)
+            })
     }
 
     /// A carried file due at a path whose name the disk gives to another spelling's file
@@ -138,6 +169,12 @@ impl Writer {
         }
         let entry = self.manifest.paths.get(rel).cloned();
         let placement = self.placement_at(rel);
+        if entry.is_none()
+            && placement.is_none()
+            && let Some(placed) = self.placed_as(rel)
+        {
+            return self.look_at_carried_file(&placed, report);
+        }
         let path = self.folder.path(rel);
         let meta = match self.vfs.metadata(&path) {
             Ok(meta) if meta.kind == EntryKind::File => meta,
