@@ -29,13 +29,16 @@
 //!   answers the token calls (it stops and signs out, as tC4's cancel does, because those calls
 //!   may have replaced the token an earlier sign-in kept), and after it ended (the session it
 //!   made is signed out, the token it kept forgotten).
+//! - **Sign out ends every sign-in already running** (INV-SIGN-OUT-INVALIDATES-INFLIGHT): it
+//!   cancels them as Cancel does, before it signs out, so none signs the account back in or
+//!   keeps a token after Sign out answered. A sign-in that arrives after it is not touched.
 //! - **`kept` says what the keychain holds**: every keychain write and the state change after it
 //!   happen one at a time (the keys lane), so a sign-out cannot forget a token between a
 //!   sign-in's keep and its commit.
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 
 use serde_json::{Map, Value, json};
 use tc_api::account::{
@@ -188,10 +191,20 @@ pub struct KeychainCalls {
     pub forgets: u32,
 }
 
+/// A keychain call a [`MemKeychain`] can hold, as an OS keychain's prompt does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeychainStep {
+    Keep,
+    Forget,
+}
+
 /// A keychain in memory: the tests' keychain. The product uses [`OsKeychain`].
 pub struct MemKeychain {
     token: Mutex<Option<Token>>,
     mode: Mutex<MemKeychainMode>,
+    /// The call held until [`MemKeychain::release`]; it is counted before it waits.
+    held: Mutex<Option<KeychainStep>>,
+    released: Condvar,
     keeps: AtomicU32,
     reads: AtomicU32,
     forgets: AtomicU32,
@@ -223,6 +236,8 @@ impl MemKeychain {
         Self {
             token: Mutex::new(None),
             mode: Mutex::new(mode),
+            held: Mutex::new(None),
+            released: Condvar::new(),
             keeps: AtomicU32::new(0),
             reads: AtomicU32::new(0),
             forgets: AtomicU32::new(0),
@@ -245,6 +260,26 @@ impl MemKeychain {
 
     pub fn set_mode(&self, mode: MemKeychainMode) {
         *guard(&self.mode) = mode;
+    }
+
+    /// Makes every `step` call wait, once counted, until [`MemKeychain::release`].
+    pub fn hold(&self, step: KeychainStep) {
+        *guard(&self.held) = Some(step);
+    }
+
+    /// Lets the held calls go on.
+    pub fn release(&self) {
+        *guard(&self.held) = None;
+        self.released.notify_all();
+    }
+
+    fn wait_if_held(&self, step: KeychainStep) {
+        let held = guard(&self.held);
+        // Poisoned or not, the guarded value is a whole `Option`.
+        let _released = self
+            .released
+            .wait_while(held, |held| *held == Some(step))
+            .unwrap_or_else(PoisonError::into_inner);
     }
 
     /// Whether it holds a token, without counting a call.
@@ -273,6 +308,7 @@ impl MemKeychain {
 impl Keychain for MemKeychain {
     fn keep(&self, token: &Token) -> Result<(), KeychainError> {
         self.keeps.fetch_add(1, Ordering::SeqCst);
+        self.wait_if_held(KeychainStep::Keep);
         match self.mode() {
             MemKeychainMode::NoKeychain => Err(KeychainError::NoKeychain),
             MemKeychainMode::FailingKeep => {
@@ -307,6 +343,7 @@ impl Keychain for MemKeychain {
 
     fn forget(&self) -> Result<(), KeychainError> {
         self.forgets.fetch_add(1, Ordering::SeqCst);
+        self.wait_if_held(KeychainStep::Forget);
         if self.mode() == MemKeychainMode::FailingForget {
             return Err(KeychainError::Failed("the keychain is locked".to_owned()));
         }
@@ -508,14 +545,19 @@ impl Account {
         token
     }
 
+    /// Cancels every sign-in in flight. A cancel that came before its sign-in stays: that
+    /// sign-in is not running yet.
+    fn cancel_running(&self) {
+        for token in lock(&self.sign_ins).running.values() {
+            token.cancel();
+        }
+    }
+
     /// Cancels every sign-in in flight and forgets the early cancels: a launch has none.
     #[cfg(feature = "test-hooks")]
     fn cancel_all(&self) {
-        let mut sign_ins = lock(&self.sign_ins);
-        for token in sign_ins.running.values() {
-            token.cancel();
-        }
-        sign_ins.early.clear();
+        self.cancel_running();
+        lock(&self.sign_ins).early.clear();
     }
 }
 
@@ -1098,7 +1140,11 @@ impl Handle<Resume> for App {
 }
 
 impl Handle<SignOut> for App {
+    /// The running sign-ins are cancelled before the sign-out waits for the keychain, so one
+    /// holding the keychain finds its cancel at its commit (INV-SIGN-OUT-INVALIDATES-INFLIGHT).
+    /// Only here: a cancelled sign-in also ends with `sign_out`, and must not cancel a newer one.
     async fn handle(&self, _req: SignOut) -> Result<AccountView, ApiError> {
+        self.account().cancel_running();
         Ok(self.sign_out().await)
     }
 }

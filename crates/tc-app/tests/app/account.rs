@@ -17,7 +17,7 @@ use tc_api::net::Set;
 use tc_api::refusal::SignInRefusal;
 use tc_api::test::{Keychain as KeychainHook, KeychainHolds, KeychainMode, KeychainView, Reset};
 use tc_api::{ApiError, Endpoint, Refusal, Reply};
-use tc_app::account::{Keychain, MemKeychainMode};
+use tc_app::account::{Keychain, KeychainStep, MemKeychainMode};
 use tc_app::events::{Next, Subscription};
 use tc_app::prefs::AppDataPath;
 use tc_app::reports::{OperationReport, ReportOp, ReportOutcome};
@@ -926,6 +926,169 @@ async fn a_keychain_that_cannot_forget_says_so_and_the_sign_in_stays_saved() {
     assert_eq!(out.notice, Some(AccountNotice::SignOutFailed));
     assert_eq!(reports_of(&t.app, ReportOp::Keychain).len(), 1);
     assert_eq!(kept_secret(&t).as_deref(), Some("kept-token-1"));
+}
+
+/// INV-SIGN-OUT-INVALIDATES-INFLIGHT: a sign-in waiting on Door43 when Sign out is answered
+/// signs nobody in when Door43's answer comes, and keeps no token.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn sign_out_invalidates_a_pending_sign_in() {
+    let dir = tempfile::tempdir().unwrap();
+    let fake = fake().await;
+    fake.inject(FaultRule::once("GET", "/api/v1/user", Fault::Hold));
+    let t = app_on(dir.path(), &fake, &Parts::new()).await;
+    let app = t.app.clone();
+    let signing = tokio::spawn(async move { sign_in(&app, 241, true).await });
+    until_recorded(&fake, 1).await;
+    let out = sign_out(&t.app, 242).await;
+    assert!(out.user.is_none());
+    fake.release_held();
+    let _ = signing.await.unwrap();
+    let view = state(&t.app).await;
+    assert_eq!(
+        (view.user, view.kept),
+        (None, KeepState::NotKept),
+        "INV-SIGN-OUT-INVALIDATES-INFLIGHT: the sign-in signed the account back in"
+    );
+    assert_eq!(the_keychain(&t), None);
+}
+
+/// INV-SIGN-OUT-INVALIDATES-INFLIGHT: Door43 answers while Sign out is still forgetting, so
+/// the sign-in waits for the keychain behind it; it then signs nobody in and keeps nothing.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_sign_out_while_a_sign_in_waits_for_the_keychain_signs_nothing_in() {
+    let dir = tempfile::tempdir().unwrap();
+    let fake = fake().await;
+    fake.inject(FaultRule::once("GET", "/api/v1/user", Fault::Hold));
+    let t = app_on(dir.path(), &fake, &Parts::new()).await;
+    let signing = tokio::spawn({
+        let app = t.app.clone();
+        async move { sign_in(&app, 1, true).await }
+    });
+    until_recorded(&fake, 1).await;
+
+    t.keychain.hold(KeychainStep::Forget);
+    let signing_out = tokio::spawn({
+        let app = t.app.clone();
+        async move { sign_out(&app, 2).await }
+    });
+    until("sign-out is forgetting", || t.keychain.calls().forgets >= 1).await;
+    fake.release_held();
+    t.keychain.release();
+
+    assert_eq!(signing_out.await.unwrap().user, None);
+    let reply = signing.await.unwrap().unwrap();
+    assert_eq!(
+        reply.user, None,
+        "INV-SIGN-OUT-INVALIDATES-INFLIGHT: the sign-in answered someone signed in"
+    );
+    assert_eq!(t.keychain.calls().keeps, 0, "the sign-in kept its token");
+    let view = state(&t.app).await;
+    assert_eq!((view.user, view.kept), (None, KeepState::NotKept));
+    assert_eq!(the_keychain(&t), None);
+}
+
+/// INV-SIGN-OUT-INVALIDATES-INFLIGHT: Sign out pressed while the keychain keeps the sign-in's
+/// token: no frame or reply ever says someone is signed in, and the token is forgotten.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_sign_out_while_a_sign_in_keeps_its_token_keeps_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let fake = fake().await;
+    let t = app_on(dir.path(), &fake, &Parts::new()).await;
+    let mut events = t.app.events().subscribe(t.app.events().head());
+    t.keychain.hold(KeychainStep::Keep);
+    let signing = tokio::spawn({
+        let app = t.app.clone();
+        async move { sign_in(&app, 1, true).await }
+    });
+    until("the keychain is keeping", || t.keychain.calls().keeps >= 1).await;
+
+    let signing_out = tokio::spawn({
+        let app = t.app.clone();
+        async move { sign_out(&app, 2).await }
+    });
+    // Sign out cannot be awaited here: it waits for the keychain step the test holds.
+    settle_a_while().await;
+    t.keychain.release();
+
+    assert_eq!(signing_out.await.unwrap().user, None);
+    assert_eq!(
+        signing.await.unwrap().unwrap().user,
+        None,
+        "INV-SIGN-OUT-INVALIDATES-INFLIGHT: the sign-in answered someone signed in"
+    );
+    let (_, accounts) = frames(&mut events);
+    assert!(
+        accounts.iter().all(|view| view.user.is_none()),
+        "INV-SIGN-OUT-INVALIDATES-INFLIGHT: a frame showed someone signed in: {accounts:?}"
+    );
+    let view = state(&t.app).await;
+    assert_eq!((view.user, view.kept), (None, KeepState::NotKept));
+    assert_eq!(the_keychain(&t), None);
+}
+
+/// Sign in, Sign out, Sign in again: the sign-in Sign out abandoned ends with nobody signed in,
+/// and the newest one keeps its session and its token.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn sign_in_sign_out_sign_in_the_newest_wins() {
+    let dir = tempfile::tempdir().unwrap();
+    let fake = fake().await;
+    fake.inject(FaultRule::once("GET", "/api/v1/user", Fault::Hold));
+    let t = app_on(dir.path(), &fake, &Parts::new()).await;
+    let first = tokio::spawn({
+        let app = t.app.clone();
+        async move { sign_in(&app, 1, true).await }
+    });
+    until_recorded(&fake, 1).await;
+    sign_out(&t.app, 2).await;
+    let second = tokio::spawn({
+        let app = t.app.clone();
+        async move { sign_in(&app, 3, true).await }
+    });
+    fake.release_held();
+
+    assert_eq!(
+        first.await.unwrap().unwrap().user,
+        None,
+        "INV-SIGN-OUT-INVALIDATES-INFLIGHT: the abandoned sign-in answered someone signed in"
+    );
+    assert_eq!(second.await.unwrap().unwrap().user.as_deref(), Some(USER));
+    let view = state(&t.app).await;
+    assert_eq!(
+        (view.user.as_deref(), view.kept),
+        (Some(USER), KeepState::Kept)
+    );
+    assert_eq!(kept_secret(&t), fake.token_secret(USER, "translationCore"));
+}
+
+/// The reply cache answers a resent sign-out with its first reply, and the sign-in it abandoned
+/// still signs nobody in.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_same_sign_out_id_replays_and_the_account_stays_signed_out() {
+    let dir = tempfile::tempdir().unwrap();
+    let fake = fake().await;
+    fake.inject(FaultRule::once("GET", "/api/v1/user", Fault::Hold));
+    let t = app_on(dir.path(), &fake, &Parts::new()).await;
+    let signing = tokio::spawn({
+        let app = t.app.clone();
+        async move { sign_in(&app, 1, true).await }
+    });
+    until_recorded(&fake, 1).await;
+    let out = sign_out(&t.app, 2).await;
+    fake.release_held();
+    let _ = signing.await.unwrap();
+
+    assert_eq!(
+        sign_out(&t.app, 2).await,
+        out,
+        "the resent sign-out replays"
+    );
+    let view = state(&t.app).await;
+    assert_eq!(
+        (view.user, view.kept),
+        (None, KeepState::NotKept),
+        "INV-SIGN-OUT-INVALIDATES-INFLIGHT: the account is signed in after the replay"
+    );
+    assert_eq!(the_keychain(&t), None);
 }
 
 // ---- the profile link and the session of later flows ----------------------------------------
