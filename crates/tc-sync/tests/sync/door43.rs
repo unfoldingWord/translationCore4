@@ -2182,8 +2182,25 @@ async fn loss_door43_case_alias_never_recorded() {
     assert!(on_tip.values().any(|b| b == b"Ana's intro"), "{on_tip:?}");
     assert!(on_tip.values().any(|b| b == b"Juan's intro"), "{on_tip:?}");
     for (handle, folder) in [(&a, &folder_a), (&b, &folder_b)] {
+        handle.wait_idle();
         let before: Vec<_> = handle.snapshot().fold().carried_files();
+        // Neither recording is a version of the other's path: the project places the two
+        // files Door43 holds, and the folder holds them before any look at it.
+        let placed: Vec<&str> = before.iter().map(|p| p.path.as_str()).collect();
+        assert_eq!(
+            placed,
+            on_tip.keys().map(String::as_str).collect::<Vec<_>>(),
+            "the project places what Door43 holds"
+        );
         let paths = ingredient_paths(folder);
+        let audio: std::collections::BTreeMap<String, Vec<u8>> = project_files(folder)
+            .into_iter()
+            .filter(|(p, _)| p.starts_with("ingredients/audio/"))
+            .collect();
+        assert_eq!(
+            audio, on_tip,
+            "the folder holds the files Door43 holds, each with its bytes, and no other"
+        );
         let folded: std::collections::BTreeSet<String> =
             paths.iter().map(|p| p.to_lowercase()).collect();
         assert_eq!(folded.len(), paths.len(), "two paths alias: {paths:?}");

@@ -644,6 +644,7 @@ fn open_inner(
         seq: 0,
         written_seq: BTreeMap::new(),
         unattempted: std::collections::BTreeSet::new(),
+        spelling_waits: false,
         packs: project.pack_facts(),
         complete: project.journal.complete(),
         packs_missing: project.journal.blocked_packs(),

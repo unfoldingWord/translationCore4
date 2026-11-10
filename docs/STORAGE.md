@@ -1053,7 +1053,10 @@ the working tree that collides with another path it writes or keeps there:
   path the app writes stays in the object database and the commit tree only; the person is told.
 - Detection never reads a collision as an outside edit: a projected path is compared with the
   bytes the app wrote at that exact path, and the materializer writes colliding paths only at
-  their projected, non-colliding names.
+  their projected, non-colliding names. A disk that ignores case answers for a path with the
+  file of another spelling. Such a file is that spelling's and is never read as this path's
+  bytes: a carried file due at the path waits until the other has moved to its own place, and
+  the same job then writes it.
 
 **The exact-set rule.** The ingredients listed in `metadata.json` are exactly the files under
 `ingredients/` whose path has no segment starting with `.`. Temporary files are named

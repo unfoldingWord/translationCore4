@@ -221,6 +221,9 @@ pub(crate) struct Writer {
     /// certainly not happened yet (not tried, or refused with the target unchanged): when the
     /// group stops with an error, the ledger learns the bytes before it are still there.
     pub unattempted: BTreeSet<String>,
+    /// A carried file was not placed in this job because the disk holds another spelling's
+    /// file under its name (§3.3).
+    pub spelling_waits: bool,
     pub packs: BTreeMap<String, PackFacts>,
     pub complete: bool,
     /// The expected packs that are missing or unreadable, which is why `complete` is false.
@@ -842,6 +845,7 @@ mod tests {
             seq: 1,
             written_seq: BTreeMap::new(),
             unattempted: BTreeSet::new(),
+            spelling_waits: false,
             packs: BTreeMap::new(),
             complete: true,
             packs_missing: Vec::new(),

@@ -432,6 +432,23 @@ impl Writer {
     /// fold cannot be read on this computer (§2.6), and removes nothing while an expected
     /// pack is missing or a journal file unreadable (§4.4).
     pub(crate) fn materialize(&mut self) -> Result<MaterializeReport, StoreError> {
+        self.spelling_waits = false;
+        let mut report = self.materialize_pass()?;
+        // §3.3: a carried file waited for the file of another spelling to leave its name,
+        // and this job removed one. The job places it too, so `metadata.json` never lists
+        // the project without it for longer than the group that moved the other.
+        if std::mem::take(&mut self.spelling_waits) && !report.removed.is_empty() {
+            let more = self.materialize_pass()?;
+            report.written.extend(more.written);
+            report.removed.extend(more.removed);
+            report.held.extend(more.held);
+            report.recorded.extend(more.recorded);
+            report.blocked.extend(more.blocked);
+        }
+        Ok(report)
+    }
+
+    fn materialize_pass(&mut self) -> Result<MaterializeReport, StoreError> {
         let mut report = MaterializeReport::default();
         // Every group ends in `metadata.json`: while bytes found there wait for the actor, the
         // marks wait too, for a job after its answer (§11.1 D7).
@@ -822,7 +839,19 @@ impl Writer {
             if self.written_from_newer_fold(&path) {
                 continue;
             }
-            let disk = match self.read_disk(&path) {
+            // §3.3: the file a disk that ignores case shows under a carried path that has
+            // left may be another spelling's. It is not this path's file, and is not removed.
+            let carried = self
+                .manifest
+                .paths
+                .get(&path)
+                .is_some_and(|entry| entry.oid.is_some());
+            let read = if carried && self.other_spelling(&path).is_some() {
+                Disk::Missing
+            } else {
+                self.read_disk(&path)
+            };
+            let disk = match read {
                 Disk::Unreadable => {
                     // R19: the state stays, and the path waits.
                     self.note(&path, Event::Read(ledger::Disk::Unreadable));

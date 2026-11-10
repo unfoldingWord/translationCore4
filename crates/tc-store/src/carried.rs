@@ -31,6 +31,7 @@ use tc_journal::fold::{CarriedPlacement, Notice};
 use tc_journal::outside::OutsidePlan;
 use tc_journal::record::CarriedValue;
 use tc_journal::{Cause, ChangeId, GitOid, Md5, Record, RecordKey, RepoPath};
+use unicode_normalization::UnicodeNormalization;
 
 const CHUNK: usize = 64 * 1024;
 
@@ -90,6 +91,32 @@ impl Writer {
         Ok((stream.finish(), len))
     }
 
+    /// The path the disk holds the file found at `rel` under, when it is another spelling of
+    /// `rel` (§3.3): a disk that ignores letter case answers for `Intro.mp3` with the file
+    /// `intro.mp3`, which is that path's file and none of this one's. A name the disk stores
+    /// in another normalization form (HFS+ decomposes) is the same spelling.
+    pub(crate) fn other_spelling(&self, rel: &str) -> Option<String> {
+        let root = self.vfs.canonicalize(self.folder.root()).ok()?;
+        let real = self.vfs.canonicalize(&self.folder.path(rel)).ok()?;
+        let real = real
+            .strip_prefix(&root)
+            .ok()?
+            .iter()
+            .map(|part| part.to_str())
+            .collect::<Option<Vec<_>>>()?
+            .join("/");
+        (!real.nfc().eq(rel.nfc())
+            && tc_burrito::collision_form(&real) == tc_burrito::collision_form(rel))
+        .then_some(real)
+    }
+
+    /// A carried file due at a path whose name the disk gives to another spelling's file
+    /// (§3.3, L79) waits until that file has moved to its own place; the job then places it.
+    fn wait_for_other_spelling(&mut self) {
+        self.dirty.carried = true;
+        self.spelling_waits = true;
+    }
+
     /// The placement of the fold whose bytes go at `rel`.
     fn placement_at(&self, rel: &str) -> Option<CarriedPlacement> {
         self.fold
@@ -133,6 +160,19 @@ impl Writer {
         };
         let held = entry.as_ref().and_then(|e| e.held().cloned());
         if held.is_none() && self.clean_by_stat(rel) {
+            return Ok(());
+        }
+        if self.other_spelling(rel).is_some() {
+            // The file is another spelling's (§3.3, L79), so this path holds none: its bytes
+            // are never read as an edit of this path, and an entry left for a file that has
+            // gone from this name (the app stopped before saving its ledger) is forgotten.
+            if placement.is_some() {
+                self.wait_for_other_spelling();
+            } else if entry.is_some() {
+                self.end_hold(rel);
+                self.manifest.paths.remove(rel);
+                self.manifest_changed = true;
+            }
             return Ok(());
         }
         if meta.len > TOO_LARGE {
@@ -570,6 +610,10 @@ impl Writer {
         let path = self.folder.path(&p.path);
         let seen = match self.vfs.metadata(&path) {
             Ok(meta) if meta.kind == EntryKind::File => {
+                if self.other_spelling(&p.path).is_some() {
+                    self.wait_for_other_spelling();
+                    return Ok(None);
+                }
                 let (md5, size) = match self.hash_file(&p.path) {
                     Ok(read) => read,
                     Err(_) => {
