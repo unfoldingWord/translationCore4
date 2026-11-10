@@ -49,30 +49,35 @@ write product code; a reviewer reads it first.
 
 ## 2. How a bug goes through the funnel
 
-1. **Reproduce it through a reachable scenario.** Write a test through the public API that fails
-   today. Name it after the invariant it breaks
-   (`a_save_never_erases_a_newer_draft_of_its_field`, not `test_bug_123`). A scenario a translator
-   cannot reach (`AGENTS.md`) is not a bug for this project: drop it.
+1. **Trace it from a screen.** If a screen can send the sequence, write a test through the public
+   API that fails today, named after the invariant it breaks
+   (`a_save_never_erases_a_newer_draft_of_its_field`, not `test_bug_123`). The test drives the
+   API, but reach is decided at the screens. If no screen can send it (a modal covers the button,
+   the button is disabled, leaving the step cancels it), it is a dormant fault: do steps 2 and 3
+   for it once, then stop. Write no test for it, add no guard for each pair of calls, and ask the
+   owner nothing. Work on a journey a translator can walk comes first.
 2. **Ask what structure allowed it.** Was a state representable that should not be? Did a second
    path skip the rule? Did a flag stand in for a state? Was an error matched with a wildcard?
-3. **Fix the structure first.** Reuse the working code that does the same job, change the type,
-   remove the second path, or turn flags into an enum, so the bug cannot be written again
-   (`CONTRIBUTING.md` "Fix a bug").
-4. **Prove the test can fail.** Put the bug back (a mutation, or a revert of the fix) and show the
-   test fails with a message that names the invariant. Put the fix back. Paste the failure into the
-   pull request.
-5. **Look for its siblings.** Search for the same pattern elsewhere. Fix them in the same pull
-   request when they are the same defect in the same files; otherwise file an issue for each.
+3. **Fix the structure first**, so the bug cannot be written again: reuse the working code that
+   does the same job, change the type (a state machine, a reducer, a type that cannot hold the
+   state), remove the second path, or turn flags into an enum (`CONTRIBUTING.md` "Fix a bug").
+   For a dormant fault, build the structure only when it is small and local. When it is large,
+   file one issue in a later milestone, and say in one line, where the code relies on it, what
+   protects the state today.
+4. **Prove the test can fail.** Put the bug back (a mutation, or a revert of the fix), show the
+   test fails with a message that names the invariant, and paste the failure into the pull
+   request.
+5. **Look for its siblings.** Fix the same defect in the same files in this pull request; file an
+   issue for each of the others.
 
 ## 3. How a feature goes through the funnel
 
 1. **Name its journey and invariants** before any code (`docs/JOURNEYS.md`).
 2. **Find the structure it should use.** If you are about to write a loop, a flag or a parser
    that already exists, stop and reuse it (`graft ask`, `grep`).
-3. **Model decisions about a translator's work as a typed state machine**: a `State` enum, an
-   `Event` enum, one pure exhaustive `next(state, event) -> (state, actions)`, and an executor
-   that does the I/O. Prove it with a model-based property test that includes crashes and
-   restarts. `crates/tc-store/src/ledger.rs` is the example to copy.
+3. **Model decisions about a translator's work as a typed state machine** (§4), proved by a
+   model-based property test that includes crashes and restarts.
+   `crates/tc-store/src/ledger.rs` is the example to copy.
 4. **Write the checks** that prove the invariants, and make sure they run in CI.
 5. **Port tC4's behavior and its known bugs' tests.** `docs/TC4-ISSUES.md` lists the tC4 issues
    an area carries. Each becomes a test that fails first.
@@ -172,12 +177,13 @@ Resource parsers get tests against real fixtures from tC4, Door43 and Aquifer.
 
 A reviewer reads the funnel section first and asks, in order:
 
-1. **Code.** Is there a type, an enum, a single entry point or a deletion that would make the
-   defect impossible? If the change fixed it only with a test, does it say why no structure can
-   carry the rule? A missing structural fix where one was possible is a major finding.
-2. **Checks.** Does a test named after each invariant exist? Was it shown to fail without the
-   fix? Does it run in CI? Is it deterministic and inside the time limits?
-3. **Reach.** Is every scenario reachable? Drop the rest.
+1. **Code.** Would a type, an enum, a single entry point or a deletion make the defect
+   impossible? A fix that is only a test says why no structure can carry the rule. A missing
+   structural fix where one was possible is a major finding.
+2. **Checks.** Is there a test named after each invariant, shown to fail without the fix, run in
+   CI, deterministic and inside the time limits?
+3. **Reach.** Can a screen send every scenario? A dormant fault gets §2 steps 2 and 3 once, and
+   nothing more.
 4. **Siblings.** Was the same pattern searched for elsewhere?
 5. **No loss.** For a change that touches a translator's saved work: the three verification
    lenses (`docs/GLOSSARY.md`) and a model test with crashes and restarts.
