@@ -460,6 +460,7 @@ impl Actions {
         let this = self.clone();
         spawn_local(async move {
             if this.words_may_go().await {
+                this.discard_words();
                 go(&this);
             }
         });
@@ -776,8 +777,9 @@ impl Actions {
     }
 
     /// Before a move away from the shown check: with words no mark saved, the person is asked,
-    /// Stay or Discard selection. Discard puts the stored words back on screen. Answers whether
-    /// the move may go on.
+    /// Stay or Discard selection. Answers whether the move may go on; the words stay on screen
+    /// until the move does go ([`Actions::discard_words`]), since a refused save gate keeps the
+    /// person on this check.
     pub(super) async fn words_may_go(&self) -> bool {
         if !untrack(|| self.words_unsaved()) {
             return true;
@@ -787,14 +789,17 @@ impl Actions {
         c.leave_ask.try_set(true);
         let go = question::answered(answer).await;
         c.leave_ask.try_set(WORDS_ANSWER.with(Question::is_open));
-        if go {
-            let stored = c.detail.with_untracked(|detail| match detail {
-                Some(Detail::Ready(read)) => read.target.selected.iter().copied().collect(),
-                _ => BTreeSet::new(),
-            });
-            c.selection.try_set(stored);
-        }
         go
+    }
+
+    /// Discard selection, once the move goes: the stored words come back on screen.
+    pub(super) fn discard_words(&self) {
+        let c = &self.s().c;
+        let stored = c.detail.with_untracked(|detail| match detail {
+            Some(Detail::Ready(read)) => read.target.selected.iter().copied().collect(),
+            _ => BTreeSet::new(),
+        });
+        c.selection.try_set(stored);
     }
 
     /// The person's answer to the question about selected words: Discard selection, or Stay.

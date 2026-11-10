@@ -357,6 +357,26 @@ fn unmark_takes_any_mark_away_and_leaves_no_decision() {
     assert_eq!(tapped, commented);
 }
 
+/// #853: a mark judged under a resource since updated, or invalidated before import, holds no
+/// words (Invalid and To do store none). Its unmark still leaves no decision, not a check that
+/// shows Invalid while the person's words are on screen.
+#[test]
+fn unmark_of_an_invalidated_mark_with_no_words_leaves_no_decision() {
+    let upgraded = pin("Es-419_gl/es-419_tn", "v67", &[]).resource;
+    for mark in [Edit::Triage(Triage::Invalid), Edit::Triage(Triage::Todo)] {
+        let marked = apply(None, mark.clone(), VERSE, &resource());
+        let mut imported = marked.clone();
+        imported.imported_invalid = true;
+        for (before, now) in [(&marked, &upgraded), (&imported, &resource())] {
+            assert!(assess(before, Some(now), Some(&t(VERSE))).invalidation.is_some());
+            let unmarked = apply(Some(before), Edit::Unmark, VERSE, now);
+            let state = assess(&unmarked, Some(now), Some(&t(VERSE)));
+            assert_eq!(state.invalidation, None, "{mark:?}");
+            assert_eq!(state.status, None, "{mark:?}");
+        }
+    }
+}
+
 // ---- the sample project ------------------------------------------------------------
 
 #[test]

@@ -39,6 +39,8 @@ impl Actions {
         // Words selected in Check that no mark saved: the person is asked before anything is
         // done, so Stay changes nothing (#853).
         let same_tab = matches!(&to, LeaveTo::Tab(view) if *view == self.s().view.get_untracked());
+        // Discard waits for the gate: a refused gate keeps the person here, words and all.
+        let discard = !same_tab && untrack(|| self.words_unsaved());
         if !same_tab && !self.words_may_go().await {
             return false;
         }
@@ -55,6 +57,9 @@ impl Actions {
         }
         if !self.runtime().saves().gate().await {
             return false;
+        }
+        if discard {
+            self.discard_words();
         }
         self.checkpoint(&to);
         true
