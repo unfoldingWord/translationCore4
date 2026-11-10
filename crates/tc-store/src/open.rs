@@ -622,6 +622,7 @@ fn open_inner(
         writer: None,
         git: git.as_ref().and_then(|g| g.another().ok()),
     };
+    let disk_names = manifest.disk_names();
     let mut writer = Writer {
         // Its flushes and renames wait for the saves in flight, a little (PERFORMANCE.md).
         vfs: Arc::new(crate::pace::PacedVfs::new(
@@ -645,6 +646,7 @@ fn open_inner(
         written_seq: BTreeMap::new(),
         unattempted: std::collections::BTreeSet::new(),
         spelling_waits: false,
+        disk_names,
         packs: project.pack_facts(),
         complete: project.journal.complete(),
         packs_missing: project.journal.blocked_packs(),
