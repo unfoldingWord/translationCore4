@@ -1061,9 +1061,10 @@ the working tree that collides with another path it writes or keeps there:
   into an existing `audio/`) is that path's own file. The ledger keeps the disk's spelling
   (`spelled`, §3.6): a look at that spelling is a look at the file, and `metadata.json` in the
   folder lists the file where the disk holds it, so the folder's list names its files. An
-  entry that has lost the spelling (an older build rewrote the ledger, or a person changed the
-  folder's letter case) learns it again at the next look. The commit's tree and
-  `metadata.json` name the project's paths.
+  entry whose spelling no longer matches the disk (an older build rewrote the ledger without
+  it, or a person changed the folder's letter case, to another spelling or back to the
+  project's) takes the disk's spelling the next time the folder is listed (at open, or when
+  the window gets focus). The commit's tree and `metadata.json` name the project's paths.
 
 **The exact-set rule.** The ingredients listed in `metadata.json` are exactly the files under
 `ingredients/` whose path has no segment starting with `.`. Temporary files are named

@@ -59,6 +59,9 @@ impl Writer {
             true,
             &mut found,
         );
+        for rel in &found {
+            self.recheck_spelling(rel);
+        }
         self.consider_new(found)
     }
 

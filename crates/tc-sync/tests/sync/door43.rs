@@ -2412,6 +2412,64 @@ async fn carried_files_in_folders_that_differ_only_in_case_stay_two_paths() {
     settled(&b);
     synced(&sync(&b, &door43).await);
 
+    // A person changes the folder's letter case by hand, to the other spelling and back. A
+    // disk that keeps both folders has nothing to rename. After each look the folder's list
+    // names every recording as the disk now holds it, and nothing is recorded.
+    let audio = |paths: Vec<String>| -> std::collections::BTreeSet<String> {
+        paths
+            .into_iter()
+            .filter(|p| p.to_lowercase().starts_with("ingredients/audio/"))
+            .collect()
+    };
+    let listed = |folder: &Path| {
+        let bytes = std::fs::read(folder.join("metadata.json")).unwrap();
+        let doc: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        audio(
+            doc["ingredients"]
+                .as_object()
+                .unwrap()
+                .keys()
+                .cloned()
+                .collect(),
+        )
+    };
+    let one_folder = std::fs::canonicalize(folder_b.join("ingredients/Audio")).unwrap()
+        == std::fs::canonicalize(folder_b.join("ingredients/audio")).unwrap();
+    if one_folder {
+        let spelled = std::fs::read_dir(folder_b.join("ingredients"))
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .find(|name| name.to_lowercase() == "audio")
+            .unwrap();
+        let other = if spelled == "audio" { "Audio" } else { "audio" };
+        for (from, to) in [(spelled.as_str(), other), (other, spelled.as_str())] {
+            let renamed = std::fs::rename(
+                folder_b.join("ingredients").join(from),
+                folder_b.join("ingredients").join(to),
+            );
+            // Windows may refuse to rename a folder of an open project; a person then cannot
+            // make this state either.
+            if cfg!(windows) && renamed.is_err() {
+                break;
+            }
+            renamed.unwrap();
+            settled(&b);
+            let on_disk = audio(ingredient_paths(&folder_b));
+            assert_eq!(on_disk.len(), 2, "{on_disk:?}");
+            assert!(
+                on_disk
+                    .iter()
+                    .all(|p| p.starts_with(&format!("ingredients/{to}/")))
+            );
+            assert_eq!(
+                listed(&folder_b),
+                on_disk,
+                "the list names the files as the disk does"
+            );
+        }
+        synced(&sync(&b, &door43).await);
+    }
+
     assert_eq!(
         files_on_tip(&door43, name, "ingredients/tc/changes/"),
         packs,

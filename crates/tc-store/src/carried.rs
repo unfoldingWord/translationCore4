@@ -149,20 +149,28 @@ impl Writer {
 
     /// The carried file the app placed that the disk spells `rel`, where its entry has not
     /// kept that spelling: an older build rewrote the ledger without it, or a person changed
-    /// a folder's letter case. The entry learns it, so the file is never taken for a new one.
+    /// a folder's letter case. The entry learns it, so the file is not taken for a new one.
     fn learn_spelling_of(&mut self, rel: &str) -> Option<String> {
         let form = tc_burrito::collision_form(rel);
-        let placed = self
-            .fold
-            .carried_files()
-            .into_iter()
-            .map(|p| p.path)
-            .find(|path| {
-                path != rel
-                    && self.manifest.paths.contains_key(path)
-                    && tc_burrito::collision_form(path) == form
-                    && self.disk_spelling(path).as_deref() == Some(rel)
-            })?;
+        let placed = {
+            let mut placed = self
+                .fold
+                .carried_files()
+                .into_iter()
+                .map(|p| p.path)
+                .filter(|path| {
+                    path != rel
+                        && self.manifest.paths.contains_key(path)
+                        && tc_burrito::collision_form(path) == form
+                        && self.disk_spelling(path).as_deref() == Some(rel)
+                });
+            let first = placed.next()?;
+            // Two paths the disk gives one file: the spelling says nothing about whose it is.
+            if placed.next().is_some() {
+                return None;
+            }
+            first
+        };
         let entry = self.manifest.paths.get_mut(&placed)?;
         if let Some(old) = entry.spelled.replace(rel.to_owned()) {
             self.disk_names.remove(&old);
@@ -171,6 +179,28 @@ impl Writer {
         self.manifest_changed = true;
         self.dirty.carried = true;
         Some(placed)
+    }
+
+    /// The folder lists a carried file at its own path: a spelling its entry kept from before
+    /// (a person changed a folder's letter case back) is dropped, so `metadata.json` names the
+    /// file as the disk does.
+    pub(crate) fn recheck_spelling(&mut self, rel: &str) {
+        let Some(kept) = self.manifest.paths.get(rel).and_then(|e| e.spelled.clone()) else {
+            return;
+        };
+        let now = self.spelled_otherwise(rel);
+        if now.as_deref() == Some(kept.as_str()) {
+            return;
+        }
+        self.disk_names.remove(&kept);
+        if let Some(disk) = &now {
+            self.disk_names.insert(disk.clone(), rel.to_owned());
+        }
+        if let Some(entry) = self.manifest.paths.get_mut(rel) {
+            entry.spelled = now;
+        }
+        self.manifest_changed = true;
+        self.dirty.carried = true;
     }
 
     /// Drops the ledger's entry of a carried path.
