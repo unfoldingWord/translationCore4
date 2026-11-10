@@ -395,6 +395,9 @@ browserTest('the_words_and_marks_are_off_while_a_mark_is_being_saved', async () 
     await until('the line is off', async () => (await lineSaving(page)) === '1');
     assert.deepEqual(await marksOff(page), [true, true, true]);
     assert.deepEqual(await navOff(page), [true, true]);
+    // The bookmark is off too: the check's words refuse it while a mark is being saved, so a
+    // press must not look taken.
+    assert.equal(await page.getByTestId('bookmark').isDisabled(), true);
     // A tap on the line does nothing while the mark is on its way. (Forced: the line says it
     // is disabled, and an unforced click would wait for the save to end.)
     await page.getByTestId('tw-2').click({ force: true });
@@ -404,6 +407,7 @@ browserTest('the_words_and_marks_are_off_while_a_mark_is_being_saved', async () 
     await until('the line is on again', async () => (await lineSaving(page)) === '0');
     assert.deepEqual(await marksOff(page), [false, false, false]);
     assert.deepEqual(await navOff(page), [false, false]);
+    assert.equal(await page.getByTestId('bookmark').isDisabled(), false);
     assert.equal(sent.length, 2, 'the tap during the save sent nothing');
     // Taps follow each other freely: an unmark on its way holds nothing off.
     await page.getByTestId('tw-2').click();
@@ -693,6 +697,13 @@ const offUntilARestoreShows = (slow) => async () => {
     await page.getByTestId('tw-3').click({ force: true });
     await page.getByTestId('mark-todo').click({ force: true });
     assert.equal(await lineSaving(page), '1');
+    // The bookmark and every Restore are off too: the check's words refuse them inside the
+    // wait, so a press must not look taken.
+    assert.equal(await page.getByTestId('bookmark').isDisabled(), true);
+    const restores = page.getByTestId('check-history').getByTestId('history-restore');
+    for (let i = 0; i < await restores.count(); i++) {
+      assert.equal(await restores.nth(i).isDisabled(), true, `Restore ${i} is off inside the wait`);
+    }
     await until('the restored word shows alone, and the line is on', async () => (await lineSaving(page)) === '0' && String(await pressedWords(page)) === 'tw-1');
     assert.deepEqual(await marksOff(page), [false, false, false]);
     assert.equal(await page.getByTestId('check-next').isDisabled(), false);

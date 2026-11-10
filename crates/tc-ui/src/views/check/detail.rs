@@ -1106,6 +1106,13 @@ fn check_marks(s: &AppState, actions: &Actions) -> AnyView {
     });
     let toggle: NodeRef<html::Button> = NodeRef::new();
     let cap = write_cap(actions);
+    // The check's words refuse a bookmark while a mark or a restore is being saved, so the
+    // button is off then: a press it would drop must not look taken (#853).
+    let saving = {
+        let actions = send_wrapper::SendWrapper::new(actions.clone());
+        Memo::new(move |_| actions.words_saving())
+    };
+    let off = Signal::derive(move || cap.get().is_none() || saving.get());
     let wrap = crate::css! { "margin-top": 16 };
     let row =
         crate::css! { "display": "flex", "align-items": "center", "gap": 10, "flex-wrap": "wrap" };
@@ -1118,7 +1125,7 @@ fn check_marks(s: &AppState, actions: &Actions) -> AnyView {
                 data-testid="bookmark"
                 data-active=move || if bookmarked.get() { "1" } else { "0" }
                 title=move || t(if bookmarked.get() { keys::check::bookmark::REMOVE_HINT } else { keys::check::bookmark::HINT }, &[])
-                disabled=move || cap.get().is_none()
+                disabled=move || off.get()
                 on:click=move |_| {
                     if let Some(cap) = cap.get_untracked() {
                         actions.mark(cap, DecideEdit::Bookmark { on: !bookmarked.get_untracked() });
@@ -1126,7 +1133,7 @@ fn check_marks(s: &AppState, actions: &Actions) -> AnyView {
                 }
                 style=move || {
                     let mut css = mark_chip(bookmarked.get());
-                    if cap.get().is_none() {
+                    if off.get() {
                         css.extend(&off_look());
                     }
                     css.to_style()
@@ -1488,13 +1495,19 @@ fn check_history(s: &AppState, actions: &Actions, reference: String) -> AnyView 
         })
     });
     let (restoring, failed) = (c.restoring.clone(), c.restore_failed.clone());
+    // The check's words refuse a restore while a mark or a restore is being saved, until the
+    // restored check is on screen: Restore is off then, not pressed for nothing (#853).
+    let saving = {
+        let actions = send_wrapper::SendWrapper::new(actions.clone());
+        Memo::new(move |_| actions.words_saving())
+    };
     let actions = actions.clone();
     crate::views::history::record_history(crate::views::history::RecordHistory {
         test_id: "check-history",
         at,
         shown: shown.into(),
         open: c.history_open.clone(),
-        busy: Signal::derive(move || restoring.get()),
+        busy: Signal::derive(move || restoring.get() || saving.get()),
         failed: Signal::derive(move || failed.get()),
         reference,
         restore: Callback::new(move |from| actions.restore_check(from)),
