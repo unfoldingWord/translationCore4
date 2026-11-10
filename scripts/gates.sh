@@ -49,6 +49,10 @@ NIGHTLY=(
   "store-nightly|cargo test --locked -p tc-store --test store _nightly -- --ignored"
   # tc-api's round-trip property tests at 128 values per type; pushes and gates run 16.
   "roundtrip-long|TC_ROUNDTRIP_CASES=128 cargo test --locked -p tc-api --test roundtrip"
+  # The store and sync tests on macOS, whose disk ignores letter case, which no Linux job sees
+  # (#964). CI's nightly-macos job runs this command as it stands: the runner's bash is 3.2,
+  # which cannot run this script.
+  "test-macos|cargo nextest run --locked --no-fail-fast -p tc-store -p tc-sync"
 )
 
 # A gate checks; it never blesses a snapshot or rewrites a file (INV-GATES-NEVER-BLESS).

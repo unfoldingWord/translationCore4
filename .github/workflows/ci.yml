@@ -361,8 +361,9 @@ jobs:
         run: scripts/nightly-issue.sh nightly-windows nightly.log
 
   # The store and sync tests on macOS, nightly or on request: APFS ignores letter case, which
-  # no Linux job sees (#964). The runner's bash is 3.2, so the step does not go through
-  # scripts/gates.sh.
+  # no Linux job sees (#964). The runner's bash is 3.2, which cannot run scripts/gates.sh, so
+  # the job runs the gate list's `test-macos` command as it stands (gates-sync.test.mjs holds
+  # the two equal), with no tee: the issue names the run, whose log has the failure.
   nightly-macos:
     runs-on: macos-15
     timeout-minutes: 120
@@ -382,11 +383,11 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-nextest@0.9.149
-      - run: cargo nextest run --locked --no-fail-fast -p tc-store -p tc-sync 2>&1 | tee nightly.log
+      - run: cargo nextest run --locked --no-fail-fast -p tc-store -p tc-sync
       - if: failure() && inputs.nightly
         env:
           GH_TOKEN: ${{ github.token }}
-        run: scripts/nightly-issue.sh nightly-macos nightly.log
+        run: touch nightly.log && scripts/nightly-issue.sh nightly-macos nightly.log
 
   # The long variant of the project store's model-based property test (docs/STORAGE.md §16.1):
   # 5,000 random histories of saves, kills, damaged journal files, held files and outside
