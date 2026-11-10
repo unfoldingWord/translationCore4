@@ -963,10 +963,13 @@ impl Actions {
             edit,
         };
         c.marking.try_set(Marking::Idle);
-        if let Some(shown) = check_item::selection_after_mark(&request.edit) {
-            c.selection.try_set(shown);
+        let stored = c
+            .sent
+            .with_untracked(|sent| check_item::stored_words(&view, sent.words()));
+        let words = check_item::words_after(&request.edit, &stored, &c.selection.get_untracked());
+        if let (true, Some(words)) = (check_item::is_mark(&request.edit), &words) {
+            c.selection.try_set(words.clone());
         }
-        let words = check_item::words_after(&request.edit, &c.selection.get_untracked());
         let tracked = words.is_some();
         if let Some(words) = words {
             c.sent.try_update(|sent| sent.sent(words));

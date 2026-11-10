@@ -467,12 +467,46 @@ browserTest('previous_and_next_are_off_while_selected_words_are_not_saved', asyn
     await page.getByTestId('tw-2').click();
     await storedAs(env, index, null, []);
     await until('both are off', async () => String(await navOff(page)) === 'true,true');
-    // To do is the person's decision with the words on screen.
+    // Mark To do changes only the status. The check has no words stored, so the screen shows
+    // none after the click.
     await page.getByTestId('mark-todo').click();
+    await until('the words are off the screen', async () => String(await pressedWords(page)) === '');
     await until('both are on', async () => String(await navOff(page)) === 'false,false');
-    await until('stored To do', async () => (await stored(env, index)).decision.value.status === 'todo');
+    await storedAs(env, index, 'todo', []);
     await sleep(700);
     assert.deepEqual(await navOff(page), [false, false]);
+    assert.deepEqual(await pressedWords(page), []);
+  }, { scenario: 'en-pins' });
+});
+
+// A mark is the save: after it the screen shows the words the check has stored. Mark To do
+// keeps the words a Mark valid stored, and shows no word that was never stored. tC4 4.0 left
+// such words highlighted and dropped them on Next.
+browserTest('mark_to_do_shows_the_words_the_check_has_stored', async () => {
+  await withApp(async ({ page, env }) => {
+    await openTool(page, 'translationNotes');
+    await page.getByTestId('tw-4').waitFor();
+    const index = Number(await shownIndex(page));
+    await page.getByTestId('tw-1').click();
+    await page.getByTestId('mark-valid').click();
+    await storedAs(env, index, 'valid', [1]);
+    // To do on a valid check keeps its stored word, on disk and on screen.
+    await page.getByTestId('mark-todo').click();
+    await storedAs(env, index, 'todo', [1]);
+    assert.deepEqual(await pressedWords(page), ['tw-1']);
+    assert.equal((await navOff(page))[1], false);
+    // A second word takes the mark away, and the words with it: nothing is stored now.
+    await page.getByTestId('tw-2').click();
+    await storedAs(env, index, null, []);
+    assert.deepEqual(await pressedWords(page), ['tw-1', 'tw-2']);
+    await until('Next is off', async () => (await navOff(page))[1] === true);
+    // To do now has no stored words to show.
+    await page.getByTestId('mark-todo').click();
+    await until('the words are off the screen', async () => String(await pressedWords(page)) === '');
+    await storedAs(env, index, 'todo', []);
+    assert.equal((await navOff(page))[1], false);
+    await awayAndBack(page, index);
+    assert.deepEqual(await pressedWords(page), []);
   }, { scenario: 'en-pins' });
 });
 

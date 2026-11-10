@@ -18,9 +18,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::rc::Rc;
 use std::task::{Poll, Waker};
 
-use tc_api::check::{
-    CheckItemView, CheckListRef, CheckPlace, CheckUnit, DecideEdit, DecisionStatus, Tool,
-};
+use tc_api::check::{CheckItemView, CheckListRef, CheckPlace, CheckUnit, DecideEdit, Tool};
 use tc_api::model::selection::{drag_range, toggle};
 use tc_api::token::ShownToken;
 use tc_api::write::ReadOnlyReason;
@@ -69,22 +67,39 @@ pub fn valid_edit(selection: &BTreeSet<u32>) -> DecideEdit {
     }
 }
 
-/// The words on screen once a mark is pressed, when the mark changes them. Mark invalid says
-/// the translation fails this check (owner, 2026-11-10), so no words translate it: the screen
-/// shows none, as the record stores none.
-pub fn selection_after_mark(edit: &DecideEdit) -> Option<BTreeSet<u32>> {
-    matches!(edit, DecideEdit::Invalid).then(BTreeSet::new)
+/// The words the shown check has stored, as the page knows them: what its newest write still
+/// on its way leaves (`sent`), else what the last read shows.
+pub fn stored_words(read: &CheckItemView, sent: Option<&BTreeSet<u32>>) -> BTreeSet<u32> {
+    sent.cloned()
+        .unwrap_or_else(|| read.target.selected.iter().copied().collect())
 }
 
-/// The words a decision write of the page leaves on the shown check, or `None` for a write that
-/// leaves them alone (a bookmark, a comment). Mark valid stores the words on screen. Mark
-/// invalid and an unmark leave none. To do is the person's decision with the words on screen.
-pub fn words_after(edit: &DecideEdit, selection: &BTreeSet<u32>) -> Option<BTreeSet<u32>> {
+/// The words a decision write of the page leaves stored on the shown check, or `None` for a
+/// write that leaves them alone (a bookmark, a comment). `stored` is what the check holds
+/// before it. Mark valid stores the words on screen. Mark invalid says the translation fails
+/// this check, so no words translate it (owner, 2026-11-10), and an unmark also leaves none.
+/// To do changes only the status.
+pub fn words_after(
+    edit: &DecideEdit,
+    stored: &BTreeSet<u32>,
+    selection: &BTreeSet<u32>,
+) -> Option<BTreeSet<u32>> {
     match edit {
-        DecideEdit::Valid { .. } | DecideEdit::Todo => Some(selection.clone()),
+        DecideEdit::Valid { .. } => Some(selection.clone()),
         DecideEdit::Invalid | DecideEdit::Unmark => Some(BTreeSet::new()),
+        DecideEdit::Todo => Some(stored.clone()),
         DecideEdit::Bookmark { .. } | DecideEdit::Comment { .. } => None,
     }
+}
+
+/// Whether the write is a mark. A mark is the save (#853): once it is pressed, the screen
+/// shows the words it leaves stored ([`words_after`]). An unmark leaves the person's words on
+/// screen for the next mark.
+pub fn is_mark(edit: &DecideEdit) -> bool {
+    matches!(
+        edit,
+        DecideEdit::Valid { .. } | DecideEdit::Invalid | DecideEdit::Todo
+    )
 }
 
 /// The page's decision writes of the shown check that have no reply yet, and the words the
@@ -182,23 +197,7 @@ pub fn words_unsaved(
     sent: Option<&BTreeSet<u32>>,
     selection: &BTreeSet<u32>,
 ) -> bool {
-    if !writable || selection.is_empty() {
-        return false;
-    }
-    match sent {
-        Some(sent) => selection != sent,
-        // To do is the person's decision with these words on screen.
-        None => {
-            read.decision.value.status != Some(DecisionStatus::Todo)
-                && read
-                    .target
-                    .selected
-                    .iter()
-                    .copied()
-                    .collect::<BTreeSet<u32>>()
-                    != *selection
-        }
-    }
+    writable && !selection.is_empty() && stored_words(read, sent) != *selection
 }
 
 // ---- The target words ---------------------------------------------------------------------
@@ -575,8 +574,8 @@ mod tests {
     use super::*;
     use std::future::Future;
     use tc_api::check::{
-        Category, CheckArticle, CheckSources, DecisionView, GatewayView, NoteCategory,
-        OriginalView, TargetWords, Testament,
+        Category, CheckArticle, CheckSources, DecisionStatus, DecisionView, GatewayView,
+        NoteCategory, OriginalView, TargetWords, Testament,
     };
     use tc_api::helps::ArticleLink;
     use tc_api::shown::Shown;
@@ -842,14 +841,17 @@ mod tests {
         assert!(!words_unsaved(true, &valid, None, &set(&[0, 1])));
         // Other words than the stored ones, whose unmark was not saved.
         assert!(words_unsaved(true, &valid, None, &set(&[0, 2])));
-        // To do is the person's decision, with the words left on screen.
-        let todo = marked(Some(DecisionStatus::Todo), &[]);
+        // The status makes no exception. Words on an Invalid or To do check that it has not
+        // stored are a tap whose unmark was not saved, or a tap on a check shown Invalid
+        // because its helps changed.
+        for status in [DecisionStatus::Invalid, DecisionStatus::Todo] {
+            let bare = marked(Some(status), &[]);
+            assert!(!words_unsaved(true, &bare, None, &set(&[])));
+            assert!(words_unsaved(true, &bare, None, &set(&[1])));
+        }
+        // A To do keeps the words a Mark valid stored before it.
+        let todo = marked(Some(DecisionStatus::Todo), &[1]);
         assert!(!words_unsaved(true, &todo, None, &set(&[1])));
-        // Invalid stores no words and shows none. Words on an Invalid check are a tap whose
-        // unmark was not saved, or a tap on a check shown Invalid because its helps changed.
-        let invalid = marked(Some(DecisionStatus::Invalid), &[]);
-        assert!(!words_unsaved(true, &invalid, None, &set(&[])));
-        assert!(words_unsaved(true, &invalid, None, &set(&[1])));
         // Stored words with no status (a teammate's unfinished check): nobody touched them.
         assert!(!words_unsaved(true, &marked(None, &[2]), None, &set(&[2])));
     }
@@ -863,11 +865,11 @@ mod tests {
         let mut sent = SentWords::default();
         assert_eq!(sent.words(), None);
         // Mark valid is pressed: the words are on their way.
-        sent.sent(words_after(&valid_edit(&words), &words).unwrap());
+        sent.sent(words_after(&valid_edit(&words), &set(&[]), &words).unwrap());
         assert!(!words_unsaved(true, &none, sent.words(), &words));
         // A word is tapped before the reply: the unmark leaves no words stored.
         let more = set(&[0, 1, 2]);
-        sent.sent(words_after(&DecideEdit::Unmark, &more).unwrap());
+        sent.sent(words_after(&DecideEdit::Unmark, &words, &more).unwrap());
         assert!(words_unsaved(true, &none, sent.words(), &more));
         // A read between the replies does not speak yet.
         sent.replied(true);
@@ -881,14 +883,32 @@ mod tests {
         assert!(!words_unsaved(true, &none, sent.words(), &more));
         sent.replied(false);
         assert!(words_unsaved(true, &none, sent.words(), &more));
-        // Mark invalid takes the words off the screen and stores none.
-        assert_eq!(selection_after_mark(&DecideEdit::Invalid), Some(set(&[])));
-        assert_eq!(words_after(&DecideEdit::Invalid, &more), Some(set(&[])));
-        for edit in [valid_edit(&more), DecideEdit::Todo, DecideEdit::Unmark] {
-            assert_eq!(selection_after_mark(&edit), None);
+        // A mark is the save: the screen takes the words it leaves stored. Mark invalid leaves
+        // none, and To do leaves the ones the check already had.
+        let kept = set(&[2]);
+        assert_eq!(
+            words_after(&DecideEdit::Invalid, &kept, &more),
+            Some(set(&[]))
+        );
+        assert_eq!(
+            words_after(&DecideEdit::Todo, &kept, &more),
+            Some(kept.clone())
+        );
+        assert_eq!(
+            words_after(&DecideEdit::Todo, &set(&[]), &more),
+            Some(set(&[]))
+        );
+        for mark in [valid_edit(&more), DecideEdit::Invalid, DecideEdit::Todo] {
+            assert!(is_mark(&mark));
         }
-        // A bookmark and a comment leave the words alone.
-        assert_eq!(words_after(&DecideEdit::Bookmark { on: true }, &more), None);
+        // An unmark leaves the person's words on screen, and a bookmark and a comment leave
+        // the stored ones alone.
+        let bookmark = DecideEdit::Bookmark { on: true };
+        assert!(!is_mark(&DecideEdit::Unmark) && !is_mark(&bookmark));
+        assert_eq!(words_after(&bookmark, &kept, &more), None);
+        // What the check has stored: the newest write on its way, else the last read.
+        assert_eq!(stored_words(&marked(None, &[2]), None), kept);
+        assert_eq!(stored_words(&marked(None, &[2]), Some(&more)), more);
         // A late reply for a check already left changes nothing.
         SentWords::default().replied(true);
     }

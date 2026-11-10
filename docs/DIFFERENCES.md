@@ -240,10 +240,13 @@ Under the same rule, tC4 4.0 bugs the rebuild fixes on purpose (FIX-R, 2026-10-2
   without them. Closing the app drops the words; the stored check has no decision, so
   nothing untrue is kept. In a read-only project nothing can be saved, so nothing is held and
   nothing is asked. tC4 drops the words on any of these without a word (#853).
-- In Check, Mark invalid takes the selected words off the screen at the click. Invalid means
-  the translation fails the check, so no words translate it, and its record stores none. tC4
-  leaves the words highlighted and drops them on Next (#853, ruling of 2026-11-09, "What
-  Invalid means").
+- In Check, after a mark the screen shows the words the check has stored. Only Mark valid
+  stores the selected words. Mark invalid takes them off the screen at the click: Invalid
+  means the translation fails the check, so no words translate it. Mark To do changes only
+  the status: it keeps the words a Mark valid stored before it, and takes off the screen any
+  word that was never stored. tC4 leaves the words highlighted and drops them on Next (#853,
+  ruling of 2026-11-09, "What Invalid means" and "Only Mark valid saves the selected
+  words").
 - In Check, *Restore this version* from a check's History shows the restored words. Before, the
   words tapped before the restore stayed on screen (#853).
 

@@ -49,10 +49,21 @@ So no words translate the check, and Mark invalid takes the selected words off t
 the click, as its record stores none. Words tapped on a check that shows Invalid hold the
 check like any others, until a mark or until they are unselected.
 
+## Only Mark valid saves the selected words (owner, 2026-11-10)
+
+- Asked: 2026-11-10: should every mark save the selected words, so that Invalid says which
+  words fail and To do keeps the words so far?
+- Options: every mark saves them; or only Mark valid does, and after any mark the screen
+  shows the words the check has stored.
+- Answer: the owner, 2026-11-10: only Mark valid.
+
+So after a mark the screen shows what the check has stored. Mark invalid stores no words and
+shows none. Mark To do changes only the status: it shows the words a Mark valid stored
+before it, and no word that was never stored. No status is an exception to rule 4: words on
+screen that the check has not stored hold it.
+
 ## Not decided
 
-- Mark To do with words on screen: the mark turns Previous and Next back on (rule 4), but
-  only Mark valid stores words, so the words are dropped on Next.
 - A decision that no longer holds also shows as Invalid. Whether it gets words of its own is
   open.
 

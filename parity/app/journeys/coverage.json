@@ -147,7 +147,8 @@
           "a_check_restored_from_history_shows_its_restored_words",
           "words_tapped_before_a_restore_is_answered_stay_on_screen",
           "words_tapped_after_a_restore_and_before_its_read_stay_on_screen",
-          "coming_back_before_a_queued_unmark_is_sent_shows_the_words_unselected"
+          "coming_back_before_a_queued_unmark_is_sent_shows_the_words_unselected",
+          "mark_to_do_shows_the_words_the_check_has_stored"
         ]
       }
     ],
