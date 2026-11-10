@@ -196,23 +196,22 @@ fn flow_block(out: &mut String, block: &FlowBlock<'_>, d: &str, words: Words<'_>
                 None => {}
             }
             for verse in &chapter.verses {
-                match verse {
-                    VerseLine::Text { number, text } => {
-                        out.push_str("<span>");
-                        if let Some(n) = number {
-                            out.push_str(&format!(
-                                "<sup class=\"print-verse-number\">{}</sup>",
-                                escape(n)
-                            ));
-                        }
-                        out.push_str(&format!("{} </span>", escape(text)));
-                    }
-                    VerseLine::NotDrafted { number } => out.push_str(&format!(
-                        "<span class=\"print-undrafted\"><sup class=\"print-verse-number\">{}</sup>{} </span>",
-                        escape(number),
-                        escape(&words(PrintText::VerseNotDrafted))
-                    )),
+                let (open, number, text) = match verse {
+                    VerseLine::Text { number, text } => ("<span>", number, escape(text)),
+                    VerseLine::NotDrafted { number } => (
+                        "<span class=\"print-undrafted\">",
+                        number,
+                        escape(&words(PrintText::VerseNotDrafted)),
+                    ),
+                };
+                out.push_str(open);
+                if let Some(n) = number {
+                    out.push_str(&format!(
+                        "<sup class=\"print-verse-number\">{}</sup>",
+                        escape(n)
+                    ));
                 }
+                out.push_str(&format!("{text} </span>"));
             }
             out.push_str("</section>");
         }

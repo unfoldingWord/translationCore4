@@ -8,6 +8,7 @@
 )]
 
 pub mod markup;
+pub mod tc4_differences;
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;

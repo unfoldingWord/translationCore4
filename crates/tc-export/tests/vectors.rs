@@ -16,6 +16,7 @@ mod common;
 
 use std::collections::BTreeMap;
 
+use common::tc4_differences::tc4_with_differences;
 use common::{
     chapters_of, direction, fixture, markup, picture_sources, setup_of, story_of, vectors,
 };
@@ -221,7 +222,7 @@ fn the_book_print_is_tc4s() {
             );
             assert_eq!(
                 markup::book(&view),
-                variant["html"].as_str().unwrap(),
+                tc4_with_differences(variant["html"].as_str().unwrap()),
                 "{name} {variant}"
             );
             compared += 1;
@@ -303,7 +304,7 @@ fn the_preview_pages_are_tc4s() {
                 let blocks = print_parts(&parts, &setup, page["continues"].as_bool().unwrap());
                 assert_eq!(
                     markup::flow(&blocks, Direction::Ltr),
-                    page["html"].as_str().unwrap(),
+                    tc4_with_differences(page["html"].as_str().unwrap()),
                     "{} {page}",
                     case["name"]
                 );
@@ -356,6 +357,14 @@ fn the_samples_print_as_in_tc4() {
     assert_eq!(items.len(), 1);
     let view = print_book("Titus", &items, &PageSetup::default(), Direction::Ltr);
     let html = markup::book(&view);
+    // The drop cap stands for verse 1's number (#992); verse 2 keeps its own.
+    assert!(html.contains("<span class=\"print-dropcap\">1</span><span>Pablo, siervo de Dios"));
+    assert!(html.contains("<sup class=\"print-verse-number\">2</sup>"));
+    let heading = PageSetup {
+        chapter_opening: ChapterOpening::Heading,
+        ..PageSetup::default()
+    };
+    let html = markup::book(&print_book("Titus", &items, &heading, Direction::Ltr));
     assert!(html.contains("<span><sup class=\"print-verse-number\">1</sup>Pablo, siervo de Dios"));
     assert_eq!(html.matches("[ verse not yet drafted ]").count(), 11);
     let jonah = cases("books")

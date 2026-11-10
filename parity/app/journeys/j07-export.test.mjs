@@ -265,6 +265,9 @@ browserTest('J7: the PDF prints the print page of its job and leaves the project
     assert.equal((pdf.html.match(/<section class="print-chapter"/g) ?? []).length, 1);
     assert.ok(pdf.html.includes('[ verse not yet drafted ]'), 'verses 6 to 16');
     assert.ok(pdf.html.includes('>Titus</h1>'), 'the heading is the book\'s name');
+    // As in the preview, the drop cap stands for verse 1's number and verse 2 keeps its own (#992).
+    assert.ok(pdf.html.includes('<span class="print-dropcap">1</span><span>Pablo'), 'verse 1 has no number');
+    assert.ok(pdf.html.includes('<sup class="print-verse-number">2</sup>'), 'verse 2 has its number');
     assertPdf(pdf.pdf, 1);
   }, { init: async (context, env) => { await downloads(context, env); printed = await stubPrintPdf(context, env); } });
 });

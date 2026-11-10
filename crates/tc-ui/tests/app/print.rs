@@ -26,6 +26,10 @@ use tc_ui::app::print::{
 };
 use tc_ui::i18n::{keys, t, t_dyn};
 
+#[path = "../../../tc-export/tests/common/tc4_differences.rs"]
+mod tc4_differences;
+use tc4_differences::tc4_with_differences;
+
 fn vectors() -> Value {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../fixtures/export/print-vectors.json");
@@ -124,7 +128,7 @@ fn each_preview_page_is_the_markup_tc4_renders() {
                 let blocks = print_parts(&parts, &setup, page["continues"].as_bool().unwrap());
                 assert_eq!(
                     flow_markup(&blocks, Direction::Ltr, Sheet::Measure),
-                    page["html"].as_str().unwrap(),
+                    tc4_with_differences(page["html"].as_str().unwrap()),
                     "{} {page}",
                     case["name"]
                 );
@@ -168,6 +172,35 @@ fn the_preview_pages_carry_tc4s_test_ids_and_escape_the_translators_text() {
          <h2 class=\"print-chapter-heading\" data-testid=\"cc-chapter-heading\">Chapter 4</h2>\
          <span><sup class=\"print-verse-number\">1</sup>a &lt;b&gt; &amp; &quot;c&quot;<!-- --> </span>\
          <span class=\"print-undrafted\"><sup class=\"print-verse-number\">2</sup>[ verse not yet drafted ]<!-- --> </span>\
+         </section>"
+    );
+}
+
+#[test]
+fn an_undrafted_verse_one_beside_a_drop_cap_shows_no_number() {
+    let first = PrintVerse {
+        label: RefPart::parse("1").unwrap(),
+        text: None,
+    };
+    let second = PrintVerse {
+        label: RefPart::parse("2").unwrap(),
+        text: Some("a".to_owned()),
+    };
+    let parts = [PrintPart::Chapter(ChapterPart {
+        chapter: 2,
+        head: true,
+        verses: vec![(&first, Piece::Whole), (&second, Piece::Whole)],
+    })];
+    assert_eq!(
+        flow_markup(
+            &print_parts(&parts, &PageSetup::default(), false),
+            Direction::Ltr,
+            Sheet::Page
+        ),
+        "<section class=\"print-chapter\" dir=\"ltr\" data-testid=\"cc-chapter\">\
+         <span class=\"print-dropcap\">2</span>\
+         <span class=\"print-undrafted\">[ verse not yet drafted ]<!-- --> </span>\
+         <span><sup class=\"print-verse-number\">2</sup>a<!-- --> </span>\
          </section>"
     );
 }

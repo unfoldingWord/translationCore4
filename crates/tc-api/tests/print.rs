@@ -16,7 +16,10 @@ use std::sync::OnceLock;
 use serde_json::Value;
 use tc_api::export::{PrintChapter, PrintItem, PrintVerse, Run};
 use tc_api::ids::RefPart;
-use tc_api::model::print::{Atom, Piece, PrintPart, atoms_of, continues, paginate, parts_of};
+use tc_api::model::print::{
+    Atom, ChapterOpening, ChapterPart, FlowBlock, PageSetup, Piece, PrintPart, VerseLine,
+    VerseNumbers, atoms_of, continues, paginate, parts_of, print_parts,
+};
 
 fn vectors() -> &'static Value {
     static V: OnceLock<Value> = OnceLock::new();
@@ -227,5 +230,123 @@ fn paginate_makes_tc4s_preview_pages() {
     assert!(
         compared > 40 && split > 10,
         "{compared} pages, {split} split verses"
+    );
+}
+
+fn print_verse(label: &str, text: Option<&str>) -> PrintVerse {
+    PrintVerse {
+        label: RefPart::parse(label).unwrap(),
+        text: text.map(str::to_owned),
+    }
+}
+
+/// The verse numbers a chapter's head part shows under `opening` and `numbers`, line by line.
+fn numbers_shown(
+    chapter: u16,
+    verses: &[PrintVerse],
+    opening: ChapterOpening,
+    numbers: VerseNumbers,
+) -> Vec<Option<String>> {
+    let part = PrintPart::Chapter(ChapterPart {
+        chapter,
+        head: true,
+        verses: verses.iter().map(|v| (v, Piece::Whole)).collect(),
+    });
+    let setup = PageSetup {
+        chapter_opening: opening,
+        verse_numbers: numbers,
+        ..PageSetup::default()
+    };
+    let blocks = print_parts(&[part], &setup, false);
+    let [FlowBlock::Chapter(block)] = blocks.as_slice() else {
+        panic!("one chapter block, got {blocks:?}");
+    };
+    block
+        .verses
+        .iter()
+        .map(|line| match line {
+            VerseLine::Text { number, .. } | VerseLine::NotDrafted { number } => {
+                number.map(str::to_owned)
+            }
+        })
+        .collect()
+}
+
+fn shown(labels: &[Option<&str>]) -> Vec<Option<String>> {
+    labels.iter().map(|l| l.map(str::to_owned)).collect()
+}
+
+#[test]
+fn a_drop_cap_stands_for_verse_ones_number_drafted_or_not() {
+    let drafted = [
+        print_verse("1", Some("Pablo")),
+        print_verse("2", Some("en")),
+    ];
+    let undrafted = [print_verse("1", None), print_verse("2", Some("en"))];
+    let span = [print_verse("1-2", Some("Pablo")), print_verse("3", None)];
+    for chapter in [1, 2] {
+        let drop_cap = |verses| {
+            numbers_shown(
+                chapter,
+                verses,
+                ChapterOpening::DropCap,
+                VerseNumbers::Shown,
+            )
+        };
+        assert_eq!(
+            drop_cap(&drafted),
+            shown(&[None, Some("2")]),
+            "chapter {chapter}"
+        );
+        assert_eq!(
+            drop_cap(&undrafted),
+            shown(&[None, Some("2")]),
+            "chapter {chapter}"
+        );
+        assert_eq!(
+            drop_cap(&span),
+            shown(&[None, Some("3")]),
+            "chapter {chapter}"
+        );
+    }
+}
+
+#[test]
+fn only_a_verse_labeled_one_or_a_span_from_one_loses_its_number() {
+    let verses = [
+        print_verse("2", Some("a")),
+        print_verse("10", Some("b")),
+        print_verse("11-12", Some("c")),
+        print_verse("13", None),
+    ];
+    assert_eq!(
+        numbers_shown(1, &verses, ChapterOpening::DropCap, VerseNumbers::Shown),
+        shown(&[Some("2"), Some("10"), Some("11-12"), Some("13")])
+    );
+}
+
+#[test]
+fn a_chapter_heading_keeps_verse_ones_number() {
+    let verses = [print_verse("1", Some("a")), print_verse("2", None)];
+    let span = [print_verse("1-2", None)];
+    let heading = |verses| numbers_shown(1, verses, ChapterOpening::Heading, VerseNumbers::Shown);
+    assert_eq!(heading(&verses), shown(&[Some("1"), Some("2")]));
+    assert_eq!(heading(&span), shown(&[Some("1-2")]));
+}
+
+#[test]
+fn verse_numbers_off_leave_only_undrafted_numbers_and_never_verse_one_beside_a_drop_cap() {
+    let verses = [
+        print_verse("1", None),
+        print_verse("2", Some("a")),
+        print_verse("3", None),
+    ];
+    assert_eq!(
+        numbers_shown(1, &verses, ChapterOpening::DropCap, VerseNumbers::Hidden),
+        shown(&[None, None, Some("3")])
+    );
+    assert_eq!(
+        numbers_shown(1, &verses, ChapterOpening::Heading, VerseNumbers::Hidden),
+        shown(&[Some("1"), None, Some("3")])
     );
 }

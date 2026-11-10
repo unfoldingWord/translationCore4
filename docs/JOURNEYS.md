@@ -154,7 +154,8 @@ budget in `docs/PERFORMANCE.md`). Their tC4 tests stay mapped under `specs` in `
 - Must not: write anything else into the project.
 - Differs from tC4: aligned USFM weaves a verse's alignment only when the verse needs no review
   and its words match; any other verse keeps its stored text, and the export names it. An export
-  of a book with verses in conflict asks first.
+  of a book with verses in conflict asks first. Beside a drop-cap chapter number, verse 1 (or a
+  span from 1) shows no verse number in the preview or the PDF (#992).
 
 ### J8 Resume work
 
