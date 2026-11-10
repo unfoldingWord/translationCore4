@@ -310,8 +310,72 @@ async fn a_first_sync_pushes_the_project_and_confirms_it() {
     handle.close().unwrap();
 }
 
-/// #961: an external history change can prevent the prerequisite checkpoint from moving
-/// HEAD. That is a failed sync, even though the old tree could still be pushed and confirmed.
+/// Another program commits to the project's history while the checkpoint `handle` takes is
+/// stopped before it moves HEAD, `times` times running.
+async fn history_moves_under_the_checkpoint(
+    hooks: &tc_store::Hooks,
+    handle: &ProjectHandle,
+    times: u64,
+) {
+    let point = tc_store::Point::BeforeHeadUpdate;
+    let reached = hooks.reached(point);
+    hooks.hold(point);
+    let git_dir = handle.facts().git_dir.unwrap();
+    for n in 1..=times {
+        held_at(hooks, point, reached + n).await;
+        let repo = git2::Repository::open(&git_dir).unwrap();
+        let old = repo.head().unwrap().peel_to_commit().unwrap();
+        let author = git2::Signature::now("another program", "audit@example.invalid").unwrap();
+        repo.commit(
+            Some("HEAD"),
+            &author,
+            &author,
+            "another program moved history",
+            &old.tree().unwrap(),
+            &[&old],
+        )
+        .unwrap();
+        hooks.release(point);
+        if n < times {
+            hooks.hold(point);
+        }
+    }
+}
+
+/// A checkpoint that finds the history moved once is taken again, and the sync goes on with
+/// that checkpoint: a save that lands while a sync starts never makes the sync fail.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_sync_takes_its_checkpoint_again_when_the_history_moved_once() {
+    let door43 = door43("titus-checkpoint-again").await;
+    let dir = tempfile::tempdir().unwrap();
+    let ana = computer(dir.path(), "ana");
+    let folder = titus(&ana);
+    let a = open(&ana, &folder);
+    connect(&a, &door43, "titus-checkpoint-again");
+    synced(&sync(&a, &door43).await);
+    let remote_before = branch_on_door43(&door43, "titus-checkpoint-again");
+    let saved = "the verse saved before the checkpoint that is taken twice";
+    save(&a, 1, 1, saved);
+    a.wait_idle();
+
+    let (report, ()) = tokio::join!(
+        sync(&a, &door43),
+        history_moves_under_the_checkpoint(ana.store.hooks(), &a, 1)
+    );
+    synced(&report);
+    assert!(report.confirmed.is_some(), "{report:?}");
+    assert_ne!(
+        branch_on_door43(&door43, "titus-checkpoint-again"),
+        remote_before,
+        "the checkpoint with the save reached Door43"
+    );
+    assert_eq!(words(&a, 1, 1).as_deref(), Some(saved));
+    a.close().unwrap();
+}
+
+/// #961: a history that moves under every try of the prerequisite checkpoint keeps it from
+/// moving HEAD. That is a failed sync, even though the old tree could still be pushed and
+/// confirmed.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn sync_confirms_only_a_made_checkpoint() {
     let door43 = door43("titus-checkpoint-race").await;
@@ -328,31 +392,11 @@ async fn sync_confirms_only_a_made_checkpoint() {
     save(&a, 1, 1, saved);
     a.wait_idle();
 
-    let hooks = ana.store.hooks();
-    let point = tc_store::Point::BeforeHeadUpdate;
-    let reached = hooks.reached(point) + 1;
-    hooks.hold(point);
-    let git_dir = a.facts().git_dir.unwrap();
-    let other_program = async {
-        held_at(hooks, point, reached).await;
-        let moved = (|| -> Result<git2::Oid, git2::Error> {
-            let repo = git2::Repository::open(git_dir)?;
-            let old = repo.head()?.peel_to_commit()?;
-            let tree = old.tree()?;
-            let author = git2::Signature::now("another program", "audit@example.invalid")?;
-            repo.commit(
-                Some("HEAD"),
-                &author,
-                &author,
-                "another program moved history",
-                &tree,
-                &[&old],
-            )
-        })();
-        hooks.release(point);
-        moved.unwrap()
-    };
-    let (report, _) = tokio::join!(sync(&a, &door43), other_program);
+    // Three: every try the sync makes (`tc_sync`'s `checkpoint::TRIES`).
+    let (report, ()) = tokio::join!(
+        sync(&a, &door43),
+        history_moves_under_the_checkpoint(ana.store.hooks(), &a, 3)
+    );
 
     assert_eq!(words(&a, 1, 1).as_deref(), Some(saved));
     assert!(

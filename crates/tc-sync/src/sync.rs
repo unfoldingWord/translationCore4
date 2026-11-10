@@ -292,12 +292,11 @@ impl Run<'_> {
         match action {
             SyncAction::Gate => self.gate().await,
             SyncAction::Checkpoint => {
-                match self.project.checkpoint(CheckpointReason::BeforeSync).await {
-                    Ok(report) => match crate::checkpoint::require_committed(&report) {
-                        Ok(()) => SyncEvent::CheckpointMade,
-                        Err(why) => SyncEvent::CheckpointFailed {
-                            reason: crate::checkpoint::skip_words(why),
-                        },
+                match crate::checkpoint::committed(self.project, CheckpointReason::BeforeSync).await
+                {
+                    Ok(Ok(())) => SyncEvent::CheckpointMade,
+                    Ok(Err(why)) => SyncEvent::CheckpointFailed {
+                        reason: crate::checkpoint::skip_words(why),
                     },
                     Err(e) => SyncEvent::CheckpointFailed {
                         reason: e.to_string(),
