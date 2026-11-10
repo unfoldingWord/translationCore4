@@ -33,6 +33,11 @@ pub struct Entry {
     /// A new entry has none: a changed file is stored at the next checkpoint.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub blob: Option<String>,
+    /// The path the disk holds a carried file at, when the disk spells it otherwise than the
+    /// project does (§3.3): a disk that ignores letter case keeps `Audio/Intro.mp3` inside an
+    /// existing `audio/`. `metadata.json` in the folder lists the file there.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spelled: Option<String>,
 }
 
 impl Entry {
@@ -43,6 +48,7 @@ impl Entry {
             oid: None,
             nfc: None,
             blob: None,
+            spelled: None,
         }
     }
 
@@ -144,6 +150,14 @@ impl Manifest {
         serde_json::to_vec(self).unwrap_or_default()
     }
 
+    /// The carried paths whose file the disk holds under another spelling, by that spelling.
+    pub fn disk_names(&self) -> BTreeMap<String, String> {
+        self.paths
+            .iter()
+            .filter_map(|(path, entry)| Some((entry.spelled.clone()?, path.clone())))
+            .collect()
+    }
+
     /// The projection versions in the manifest are this app's.
     pub fn versions_current(&self) -> bool {
         self.minor == FORMAT_MINOR && self.derivations == current_derivations()
@@ -237,5 +251,65 @@ impl HeadsFile {
         let rest = bytes.strip_prefix(HEADS_MAGIC.as_slice())?;
         let placements = postcard::from_bytes(rest).ok()?;
         Some(Self { placements })
+    }
+}
+
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    reason = "test code: a failed unwrap is a failed test"
+)]
+mod tests {
+    use super::*;
+
+    fn ledger_with(entry: Entry) -> Manifest {
+        let mut manifest = Manifest::default();
+        manifest
+            .paths
+            .insert("ingredients/Audio/Intro.mp3".into(), entry);
+        manifest
+    }
+
+    /// `.tc/materialized.json` is outside the format (STORAGE §12.3), so a build reads the
+    /// ledger another build wrote: a field it does not know is passed over, never a reason to
+    /// drop the ledger.
+    #[test]
+    fn a_ledger_with_a_field_this_build_does_not_know_still_parses() {
+        let manifest = ledger_with(Entry::placed(
+            "d41d8cd98f00b204e9800998ecf8427e".into(),
+            0,
+            None,
+            true,
+        ));
+        let mut doc: serde_json::Value = serde_json::from_slice(&manifest.to_bytes()).unwrap();
+        doc["paths"]["ingredients/Audio/Intro.mp3"]["aLaterBuildsField"] = "x".into();
+        doc["aLaterBuildsField"] = 1.into();
+        let read = Manifest::parse(&serde_json::to_vec(&doc).unwrap()).unwrap();
+        assert_eq!(read, manifest);
+    }
+
+    /// §3.3: the disk's spelling is kept only where it differs, so the ledger of a project
+    /// with no such file has the bytes it had before the field existed.
+    #[test]
+    fn the_disk_spelling_is_written_only_where_it_differs() {
+        let mut entry = Entry::placed("d41d8cd98f00b204e9800998ecf8427e".into(), 0, None, true);
+        let plain = ledger_with(entry.clone());
+        assert!(
+            !String::from_utf8(plain.to_bytes())
+                .unwrap()
+                .contains("spelled")
+        );
+        assert!(plain.disk_names().is_empty());
+
+        entry.spelled = Some("ingredients/audio/Intro.mp3".into());
+        let spelled = ledger_with(entry);
+        assert_eq!(Manifest::parse(&spelled.to_bytes()).unwrap(), spelled);
+        assert_eq!(
+            spelled.disk_names(),
+            BTreeMap::from([(
+                "ingredients/audio/Intro.mp3".to_owned(),
+                "ingredients/Audio/Intro.mp3".to_owned()
+            )])
+        );
     }
 }

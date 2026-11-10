@@ -29,6 +29,34 @@ fn p5_probe_names_a_planted_bad_md5() {
     world.watch.stop("this test planted a wrong md5 itself");
 }
 
+/// Two computers that write one folder each list their own journal packs, so one store's
+/// writer can look while the other's pack is on disk and not listed yet. The watch sets aside
+/// exactly that: with one computer nothing, and with two a pack only once the folder's list
+/// has caught up.
+#[test]
+fn p5_watch_sets_aside_only_a_pack_another_computer_was_still_listing() {
+    let mut world = store_world();
+    let folder = Path::new(PROJECTS).join(world.bible.as_str());
+    let pack = folder.join("ingredients/tc/changes/dother/2026-10/0123456789abcdef.ndjson");
+    world.fs.put(&pack, b"{}\n", None);
+    let seen = world.watch.look(&folder);
+    assert!(seen.iter().any(|p| p.contains("UnlistedFile")), "{seen:#?}");
+    // One computer: the look counts, even after the file has gone.
+    world.fs.delete(&pack).unwrap();
+    assert_eq!(world.watch.settled(seen.clone()), seen);
+    // Two computers, and the pack is still not listed once both are idle: it counts.
+    let _theirs = world.fs.other_machine();
+    world.fs.put(&pack, b"{}\n", None);
+    assert_eq!(world.watch.settled(seen.clone()), seen);
+    // Two computers, and the folder no longer shows the problem: the look saw the other
+    // computer's write under way.
+    world.fs.delete(&pack).unwrap();
+    assert_eq!(world.watch.settled(seen), Vec::<String>::new());
+    world
+        .watch
+        .stop("this test put a stray pack in the folder itself");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[should_panic(expected = "P5/INV-VALID-BURRITO")]
 async fn p5_watch_fails_a_test_whose_store_reported_a_problem() {

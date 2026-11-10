@@ -28,13 +28,17 @@ browserTest('j15_the_overlay_shows_at_300_ms_of_a_held_open_with_no_event', asyn
     await page.route('**/api/v1/session/open', async (route) => { await held; await route.continue(); });
     await page.evaluate(() => {
       window.__overlayAt = null;
+      // The click is timed in the page, where the overlay's timer starts: the time Playwright
+      // takes to deliver it on a busy runner is no part of the 300 ms.
+      window.__clickedAt = null;
+      document.addEventListener('click', () => { window.__clickedAt ??= performance.now(); }, { capture: true });
       new MutationObserver(() => {
         const shown = document.querySelector('[data-testid="open-progress"]');
         if (shown && !window.__overlayAt) window.__overlayAt = { at: performance.now(), stage: shown.dataset.stage };
       }).observe(document.body, { childList: true, subtree: true, attributes: true });
     });
-    const clicked = await page.evaluate(() => performance.now());
     await titus(page).click();
+    const clicked = await page.evaluate(() => window.__clickedAt);
     await sleep(150);
     assert.equal(await overlay(page).count(), 0, 'nothing for the first 300 ms');
     await overlay(page).waitFor({ timeout: 2_000 });

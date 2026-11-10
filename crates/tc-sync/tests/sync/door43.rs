@@ -310,8 +310,72 @@ async fn a_first_sync_pushes_the_project_and_confirms_it() {
     handle.close().unwrap();
 }
 
-/// #961: an external history change can prevent the prerequisite checkpoint from moving
-/// HEAD. That is a failed sync, even though the old tree could still be pushed and confirmed.
+/// Another program commits to the project's history while the checkpoint `handle` takes is
+/// stopped before it moves HEAD, `times` times running.
+async fn history_moves_under_the_checkpoint(
+    hooks: &tc_store::Hooks,
+    handle: &ProjectHandle,
+    times: u64,
+) {
+    let point = tc_store::Point::BeforeHeadUpdate;
+    let reached = hooks.reached(point);
+    hooks.hold(point);
+    let git_dir = handle.facts().git_dir.unwrap();
+    for n in 1..=times {
+        held_at(hooks, point, reached + n).await;
+        let repo = git2::Repository::open(&git_dir).unwrap();
+        let old = repo.head().unwrap().peel_to_commit().unwrap();
+        let author = git2::Signature::now("another program", "audit@example.invalid").unwrap();
+        repo.commit(
+            Some("HEAD"),
+            &author,
+            &author,
+            "another program moved history",
+            &old.tree().unwrap(),
+            &[&old],
+        )
+        .unwrap();
+        hooks.release(point);
+        if n < times {
+            hooks.hold(point);
+        }
+    }
+}
+
+/// A checkpoint that finds the history moved once is taken again, and the sync goes on with
+/// that checkpoint: a save that lands while a sync starts never makes the sync fail.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_sync_takes_its_checkpoint_again_when_the_history_moved_once() {
+    let door43 = door43("titus-checkpoint-again").await;
+    let dir = tempfile::tempdir().unwrap();
+    let ana = computer(dir.path(), "ana");
+    let folder = titus(&ana);
+    let a = open(&ana, &folder);
+    connect(&a, &door43, "titus-checkpoint-again");
+    synced(&sync(&a, &door43).await);
+    let remote_before = branch_on_door43(&door43, "titus-checkpoint-again");
+    let saved = "the verse saved before the checkpoint that is taken twice";
+    save(&a, 1, 1, saved);
+    a.wait_idle();
+
+    let (report, ()) = tokio::join!(
+        sync(&a, &door43),
+        history_moves_under_the_checkpoint(ana.store.hooks(), &a, 1)
+    );
+    synced(&report);
+    assert!(report.confirmed.is_some(), "{report:?}");
+    assert_ne!(
+        branch_on_door43(&door43, "titus-checkpoint-again"),
+        remote_before,
+        "the checkpoint with the save reached Door43"
+    );
+    assert_eq!(words(&a, 1, 1).as_deref(), Some(saved));
+    a.close().unwrap();
+}
+
+/// #961: a history that moves under every try of the prerequisite checkpoint keeps it from
+/// moving HEAD. That is a failed sync, even though the old tree could still be pushed and
+/// confirmed.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn sync_confirms_only_a_made_checkpoint() {
     let door43 = door43("titus-checkpoint-race").await;
@@ -328,31 +392,11 @@ async fn sync_confirms_only_a_made_checkpoint() {
     save(&a, 1, 1, saved);
     a.wait_idle();
 
-    let hooks = ana.store.hooks();
-    let point = tc_store::Point::BeforeHeadUpdate;
-    let reached = hooks.reached(point) + 1;
-    hooks.hold(point);
-    let git_dir = a.facts().git_dir.unwrap();
-    let other_program = async {
-        held_at(hooks, point, reached).await;
-        let moved = (|| -> Result<git2::Oid, git2::Error> {
-            let repo = git2::Repository::open(git_dir)?;
-            let old = repo.head()?.peel_to_commit()?;
-            let tree = old.tree()?;
-            let author = git2::Signature::now("another program", "audit@example.invalid")?;
-            repo.commit(
-                Some("HEAD"),
-                &author,
-                &author,
-                "another program moved history",
-                &tree,
-                &[&old],
-            )
-        })();
-        hooks.release(point);
-        moved.unwrap()
-    };
-    let (report, _) = tokio::join!(sync(&a, &door43), other_program);
+    // Three: every try the sync makes (`tc_sync`'s `checkpoint::TRIES`).
+    let (report, ()) = tokio::join!(
+        sync(&a, &door43),
+        history_moves_under_the_checkpoint(ana.store.hooks(), &a, 3)
+    );
 
     assert_eq!(words(&a, 1, 1).as_deref(), Some(saved));
     assert!(
@@ -2181,6 +2225,36 @@ fn ingredient_paths(folder: &Path) -> Vec<String> {
         .collect()
 }
 
+/// The files of the tip on Door43 under `ingredients/audio/`, whatever the folder's letter
+/// case, by path.
+fn audio_on_tip(door43: &Door43, name: &str) -> std::collections::BTreeMap<String, Vec<u8>> {
+    files_on_tip(door43, name, "ingredients/audio/")
+}
+
+/// The files of the tip on Door43 whose path, in lower case, starts with `prefix`.
+fn files_on_tip(
+    door43: &Door43,
+    name: &str,
+    prefix: &str,
+) -> std::collections::BTreeMap<String, Vec<u8>> {
+    let bare = git2::Repository::open(door43.fake.git_dir(seeded::USER, name)).unwrap();
+    let tree = bare
+        .find_reference("refs/heads/main")
+        .unwrap()
+        .peel_to_tree()
+        .unwrap();
+    let mut out = std::collections::BTreeMap::new();
+    tree.walk(git2::TreeWalkMode::PreOrder, |dir, entry| {
+        let path = format!("{dir}{}", entry.name().unwrap_or_default());
+        if entry.kind() == Some(git2::ObjectType::Blob) && path.to_lowercase().starts_with(prefix) {
+            out.insert(path, bare.find_blob(entry.id()).unwrap().content().to_vec());
+        }
+        git2::TreeWalkResult::Ok
+    })
+    .unwrap();
+    out
+}
+
 /// L79 (§3.3, §7.7): two teammates add a recording whose paths differ only in letter case.
 /// Both are kept: on Door43 and on each computer one of them is at a `.case-` path, so on
 /// Windows or macOS neither file is written over the other, and the look at the folder
@@ -2215,24 +2289,7 @@ async fn loss_door43_case_alias_never_recorded() {
     synced(&sync(&a, &door43).await);
     synced(&sync(&b, &door43).await);
     synced(&sync(&a, &door43).await);
-    let on_tip: std::collections::BTreeMap<String, Vec<u8>> = {
-        let bare = git2::Repository::open(door43.fake.git_dir(seeded::USER, "titus-case")).unwrap();
-        let tree = bare
-            .find_reference("refs/heads/main")
-            .unwrap()
-            .peel_to_tree()
-            .unwrap();
-        let mut out = std::collections::BTreeMap::new();
-        tree.walk(git2::TreeWalkMode::PreOrder, |dir, entry| {
-            let path = format!("{dir}{}", entry.name().unwrap_or_default());
-            if path.starts_with("ingredients/audio/") {
-                out.insert(path, bare.find_blob(entry.id()).unwrap().content().to_vec());
-            }
-            git2::TreeWalkResult::Ok
-        })
-        .unwrap();
-        out
-    };
+    let on_tip = audio_on_tip(&door43, "titus-case");
     let folded: std::collections::BTreeSet<String> =
         on_tip.keys().map(|p| p.to_lowercase()).collect();
     assert_eq!(
@@ -2243,8 +2300,25 @@ async fn loss_door43_case_alias_never_recorded() {
     assert!(on_tip.values().any(|b| b == b"Ana's intro"), "{on_tip:?}");
     assert!(on_tip.values().any(|b| b == b"Juan's intro"), "{on_tip:?}");
     for (handle, folder) in [(&a, &folder_a), (&b, &folder_b)] {
+        handle.wait_idle();
         let before: Vec<_> = handle.snapshot().fold().carried_files();
+        // Neither recording is a version of the other's path: the project places the two
+        // files Door43 holds, and the folder holds them before any look at it.
+        let placed: Vec<&str> = before.iter().map(|p| p.path.as_str()).collect();
+        assert_eq!(
+            placed,
+            on_tip.keys().map(String::as_str).collect::<Vec<_>>(),
+            "the project places what Door43 holds"
+        );
         let paths = ingredient_paths(folder);
+        let audio: std::collections::BTreeMap<String, Vec<u8>> = project_files(folder)
+            .into_iter()
+            .filter(|(p, _)| p.starts_with("ingredients/audio/"))
+            .collect();
+        assert_eq!(
+            audio, on_tip,
+            "the folder holds the files Door43 holds, each with its bytes, and no other"
+        );
         let folded: std::collections::BTreeSet<String> =
             paths.iter().map(|p| p.to_lowercase()).collect();
         assert_eq!(folded.len(), paths.len(), "two paths alias: {paths:?}");
@@ -2263,6 +2337,189 @@ async fn loss_door43_case_alias_never_recorded() {
             "the look at the folder recorded nothing"
         );
     }
+    a.close().unwrap();
+    b.close().unwrap();
+}
+
+/// §3.3: a teammate's recording under `Audio/` arrives on a computer whose folder is `audio/`.
+/// The project keeps two paths, and so does Door43. On Windows or macOS the disk holds both
+/// files in one folder: each is still its own path's file, takes its next version, gives its
+/// edits to its own record, and `metadata.json` in the folder lists it where the disk holds it
+/// (the burrito probe of each computer checks that).
+///
+/// No computer joins here: a join refuses a tree whose folders differ only in letter case
+/// (`JoinError::CollidingPaths`, the "carry, skip on disk" ruling), which is the gap the rule
+/// for such folders has to close (#994).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn carried_files_in_folders_that_differ_only_in_case_stay_two_paths() {
+    let name = "titus-folder-case";
+    let door43 = door43(name).await;
+    let dir = tempfile::tempdir().unwrap();
+    let ana = computer(dir.path(), "ana");
+    let folder_a = titus(&ana);
+    let a = open(&ana, &folder_a);
+    connect(&a, &door43, name);
+    synced(&sync(&a, &door43).await);
+    a.close().unwrap();
+    let juan = computer(dir.path(), "juan");
+    let folder_b = copy_to(&folder_a, &juan);
+    let b = open(&juan, &folder_b);
+    let a = open(&ana, &folder_a);
+    let put = |handle: &ProjectHandle, folder: &Path, rel: &str, bytes: &[u8]| {
+        std::fs::create_dir_all(folder.join(rel).parent().unwrap()).unwrap();
+        std::fs::write(folder.join(rel), bytes).unwrap();
+        blocking(|| handle.focus().wait().unwrap());
+        handle.wait_idle();
+    };
+    let read = |folder: &Path, rel: &str| std::fs::read(folder.join(rel)).unwrap();
+    let placed = |handle: &ProjectHandle| -> Vec<String> {
+        handle
+            .snapshot()
+            .fold()
+            .carried_files()
+            .into_iter()
+            .map(|p| p.path)
+            .collect()
+    };
+    let intro = "ingredients/Audio/Intro.mp3";
+    let notes = "ingredients/audio/notes.mp3";
+    put(&b, &folder_b, notes, b"Juan's notes");
+    put(&a, &folder_a, intro, b"Ana's intro");
+    synced(&sync(&b, &door43).await);
+    synced(&sync(&a, &door43).await);
+    synced(&sync(&b, &door43).await);
+    b.wait_idle();
+    assert_eq!(read(&folder_b, intro), b"Ana's intro");
+
+    // The teammate's next version reaches the folder.
+    put(&a, &folder_a, intro, b"Ana's second take");
+    synced(&sync(&a, &door43).await);
+    synced(&sync(&b, &door43).await);
+    b.wait_idle();
+    assert_eq!(read(&folder_b, intro), b"Ana's second take");
+    assert_eq!(read(&folder_b, notes), b"Juan's notes");
+
+    // An edit of the file on this computer is a version of the same record.
+    put(&b, &folder_b, intro, b"Juan's retake");
+    synced(&sync(&b, &door43).await);
+    synced(&sync(&a, &door43).await);
+    a.wait_idle();
+    assert_eq!(read(&folder_a, intro), b"Juan's retake");
+    assert_eq!(read(&folder_a, notes), b"Juan's notes");
+    for handle in [&a, &b] {
+        assert_eq!(
+            placed(handle),
+            [intro, notes],
+            "two files, each at its path"
+        );
+    }
+
+    // Door43 holds the project's two paths, whatever the disks of the computers do.
+    let on_tip = audio_on_tip(&door43, name);
+    assert_eq!(
+        on_tip,
+        std::collections::BTreeMap::from([
+            (intro.to_owned(), b"Juan's retake".to_vec()),
+            (notes.to_owned(), b"Juan's notes".to_vec()),
+        ])
+    );
+
+    // Settled: once every computer has what the others sent, a look at the folders and a
+    // sync record nothing, so `metadata.json` as each folder lists it is no outside edit.
+    for handle in [&b, &a, &b] {
+        synced(&sync(handle, &door43).await);
+    }
+    let packs = files_on_tip(&door43, name, "ingredients/tc/changes/");
+    let settled = |handle: &ProjectHandle| {
+        let look = blocking(|| handle.focus().wait().unwrap());
+        handle.wait_idle();
+        assert_eq!((look.found, look.moved), (Vec::new(), Vec::new()));
+        assert_eq!(placed(handle), [intro, notes]);
+    };
+    for handle in [&a, &b] {
+        settled(handle);
+        synced(&sync(handle, &door43).await);
+    }
+
+    // A build that does not know the ledger's `spelled` field rewrites the ledger without
+    // it (`.tc/materialized.json` is outside the format). The next look still takes the file
+    // the disk spells otherwise for the one the app placed, not for a new one.
+    b.close().unwrap();
+    let ledger = folder_b.join(".tc/materialized.json");
+    let mut doc: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&ledger).unwrap()).unwrap();
+    for entry in doc["paths"].as_object_mut().unwrap().values_mut() {
+        entry.as_object_mut().unwrap().remove("spelled");
+    }
+    std::fs::write(&ledger, serde_json::to_vec(&doc).unwrap()).unwrap();
+    let b = open(&juan, &folder_b);
+    settled(&b);
+    synced(&sync(&b, &door43).await);
+
+    // A person changes the folder's letter case by hand, to the other spelling and back. A
+    // disk that keeps both folders has nothing to rename. After each look the folder's list
+    // names every recording as the disk now holds it, and nothing is recorded.
+    let audio = |paths: Vec<String>| -> std::collections::BTreeSet<String> {
+        paths
+            .into_iter()
+            .filter(|p| p.to_lowercase().starts_with("ingredients/audio/"))
+            .collect()
+    };
+    let listed = |folder: &Path| {
+        let bytes = std::fs::read(folder.join("metadata.json")).unwrap();
+        let doc: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        audio(
+            doc["ingredients"]
+                .as_object()
+                .unwrap()
+                .keys()
+                .cloned()
+                .collect(),
+        )
+    };
+    let one_folder = std::fs::canonicalize(folder_b.join("ingredients/Audio")).unwrap()
+        == std::fs::canonicalize(folder_b.join("ingredients/audio")).unwrap();
+    if one_folder {
+        let spelled = std::fs::read_dir(folder_b.join("ingredients"))
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .find(|name| name.to_lowercase() == "audio")
+            .unwrap();
+        let other = if spelled == "audio" { "Audio" } else { "audio" };
+        for (from, to) in [(spelled.as_str(), other), (other, spelled.as_str())] {
+            let renamed = std::fs::rename(
+                folder_b.join("ingredients").join(from),
+                folder_b.join("ingredients").join(to),
+            );
+            // Windows may refuse to rename a folder of an open project; a person then cannot
+            // make this state either.
+            if cfg!(windows) && renamed.is_err() {
+                break;
+            }
+            renamed.unwrap();
+            settled(&b);
+            let on_disk = audio(ingredient_paths(&folder_b));
+            assert_eq!(on_disk.len(), 2, "{on_disk:?}");
+            assert!(
+                on_disk
+                    .iter()
+                    .all(|p| p.starts_with(&format!("ingredients/{to}/")))
+            );
+            assert_eq!(
+                listed(&folder_b),
+                on_disk,
+                "the list names the files as the disk does"
+            );
+        }
+        synced(&sync(&b, &door43).await);
+    }
+
+    assert_eq!(
+        files_on_tip(&door43, name, "ingredients/tc/changes/"),
+        packs,
+        "no change was recorded"
+    );
+    assert_eq!(audio_on_tip(&door43, name), on_tip);
     a.close().unwrap();
     b.close().unwrap();
 }

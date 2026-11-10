@@ -31,6 +31,7 @@ use tc_journal::fold::{CarriedPlacement, Notice};
 use tc_journal::outside::OutsidePlan;
 use tc_journal::record::CarriedValue;
 use tc_journal::{Cause, ChangeId, GitOid, Md5, Record, RecordKey, RepoPath};
+use unicode_normalization::UnicodeNormalization;
 
 const CHUNK: usize = 64 * 1024;
 
@@ -90,6 +91,135 @@ impl Writer {
         Ok((stream.finish(), len))
     }
 
+    /// The path the disk spells the file found at `rel` with, from the project folder.
+    fn disk_spelling(&self, rel: &str) -> Option<String> {
+        let root = self.vfs.canonicalize(self.folder.root()).ok()?;
+        let real = self.vfs.canonicalize(&self.folder.path(rel)).ok()?;
+        let parts: Option<Vec<&str>> = real
+            .strip_prefix(&root)
+            .ok()?
+            .iter()
+            .map(|part| part.to_str())
+            .collect();
+        Some(parts?.join("/"))
+    }
+
+    /// The disk's spelling of the file found at `rel`, when it is another spelling of `rel`
+    /// (§3.3). A name the disk stores in another normalization form (HFS+ decomposes) is the
+    /// same spelling.
+    fn spelled_otherwise(&self, rel: &str) -> Option<String> {
+        let real = self.disk_spelling(rel)?;
+        (!real.nfc().eq(rel.nfc())
+            && tc_burrito::collision_form(&real) == tc_burrito::collision_form(rel))
+        .then_some(real)
+    }
+
+    /// Whether the file the disk shows for `rel` is another path's (§3.3): a disk that
+    /// ignores letter case answers for `Intro.mp3` with the file `intro.mp3`. The app's own
+    /// file under a folder the disk spells otherwise (`Audio/Intro.mp3` written into an
+    /// existing `audio/`) is this path's: the app placed it, and the project knows no file
+    /// at the disk's spelling.
+    pub(crate) fn is_anothers(&self, rel: &str) -> bool {
+        let Some(real) = self.spelled_otherwise(rel) else {
+            return false;
+        };
+        let own = self.manifest.paths.contains_key(rel)
+            && !self.manifest.paths.contains_key(&real)
+            && self.placement_at(&real).is_none();
+        !own
+    }
+
+    /// Whether the folder holds no file of the carried path `rel`: none at all, or only
+    /// another path's under its name.
+    pub(crate) fn not_in_folder(&self, rel: &str) -> bool {
+        match self.vfs.metadata(&self.folder.path(rel)) {
+            Ok(_) => self.is_anothers(rel),
+            Err(e) => is_not_found(&e),
+        }
+    }
+
+    /// The carried path whose file the disk spells `rel` (§3.3): the folder lists
+    /// `audio/Intro.mp3` for the `Audio/Intro.mp3` the app wrote into `audio/`. A look at the
+    /// disk's spelling is a look at that file, never at a new one.
+    pub(crate) fn known_as(&self, rel: &str) -> Option<&str> {
+        let path = self.disk_names.get(rel)?;
+        let entry = self.manifest.paths.get(path)?;
+        (entry.spelled.as_deref() == Some(rel)).then_some(path.as_str())
+    }
+
+    /// The carried file the app placed that the disk spells `rel`, where its entry has not
+    /// kept that spelling: an older build rewrote the ledger without it, or a person changed
+    /// a folder's letter case. The entry learns it, so the file is not taken for a new one.
+    fn learn_spelling_of(&mut self, rel: &str) -> Option<String> {
+        let form = tc_burrito::collision_form(rel);
+        let placed = {
+            let mut placed = self
+                .fold
+                .carried_files()
+                .into_iter()
+                .map(|p| p.path)
+                .filter(|path| {
+                    path != rel
+                        && self.manifest.paths.contains_key(path)
+                        && tc_burrito::collision_form(path) == form
+                        && self.disk_spelling(path).as_deref() == Some(rel)
+                });
+            let first = placed.next()?;
+            // Two paths the disk gives one file: the spelling says nothing about whose it is.
+            if placed.next().is_some() {
+                return None;
+            }
+            first
+        };
+        let entry = self.manifest.paths.get_mut(&placed)?;
+        if let Some(old) = entry.spelled.replace(rel.to_owned()) {
+            self.disk_names.remove(&old);
+        }
+        self.disk_names.insert(rel.to_owned(), placed.clone());
+        self.manifest_changed = true;
+        self.dirty.carried = true;
+        Some(placed)
+    }
+
+    /// The folder lists a carried file at its own path: a spelling its entry kept from before
+    /// (a person changed a folder's letter case back) is dropped, so `metadata.json` names the
+    /// file as the disk does.
+    pub(crate) fn recheck_spelling(&mut self, rel: &str) {
+        let Some(kept) = self.manifest.paths.get(rel).and_then(|e| e.spelled.clone()) else {
+            return;
+        };
+        let now = self.spelled_otherwise(rel);
+        if now.as_deref() == Some(kept.as_str()) {
+            return;
+        }
+        self.disk_names.remove(&kept);
+        if let Some(disk) = &now {
+            self.disk_names.insert(disk.clone(), rel.to_owned());
+        }
+        if let Some(entry) = self.manifest.paths.get_mut(rel) {
+            entry.spelled = now;
+        }
+        self.manifest_changed = true;
+        self.dirty.carried = true;
+    }
+
+    /// Drops the ledger's entry of a carried path.
+    fn forget_carried(&mut self, rel: &str) {
+        if let Some(entry) = self.manifest.paths.remove(rel)
+            && let Some(disk) = entry.spelled
+        {
+            self.disk_names.remove(&disk);
+        }
+        self.manifest_changed = true;
+    }
+
+    /// A carried file due at a path whose name the disk gives to another spelling's file
+    /// (§3.3, L79) waits until that file has moved to its own place; the job then places it.
+    fn wait_for_other_spelling(&mut self) {
+        self.dirty.carried = true;
+        self.spelling_waits = true;
+    }
+
     /// The placement of the fold whose bytes go at `rel`.
     fn placement_at(&self, rel: &str) -> Option<CarriedPlacement> {
         self.fold
@@ -106,6 +236,13 @@ impl Writer {
         rel: &str,
         report: &mut FocusReport,
     ) -> Result<(), StoreError> {
+        let known = self.known_as(rel).map(str::to_owned);
+        let mut rel = known.as_deref().unwrap_or(rel);
+        let learned;
+        if !self.manifest.paths.contains_key(rel) && self.placement_at(rel).is_none() {
+            learned = self.learn_spelling_of(rel);
+            rel = learned.as_deref().unwrap_or(rel);
+        }
         if self.pending_record.contains_key(rel) || self.busy.contains_key(rel) {
             return Ok(());
         }
@@ -124,8 +261,7 @@ impl Writer {
                     self.notice_missing(rel, entry.is_some());
                 } else if entry.is_some() {
                     self.end_hold(rel);
-                    self.manifest.paths.remove(rel);
-                    self.manifest_changed = true;
+                    self.forget_carried(rel);
                 }
                 return Ok(());
             }
@@ -133,6 +269,18 @@ impl Writer {
         };
         let held = entry.as_ref().and_then(|e| e.held().cloned());
         if held.is_none() && self.clean_by_stat(rel) {
+            return Ok(());
+        }
+        if self.is_anothers(rel) {
+            // The file is another spelling's (§3.3, L79), so this path holds none: its bytes
+            // are never read as an edit of this path, and an entry left for a file that has
+            // gone from this name (the app stopped before saving its ledger) is forgotten.
+            if placement.is_some() {
+                self.wait_for_other_spelling();
+            } else if entry.is_some() {
+                self.end_hold(rel);
+                self.forget_carried(rel);
+            }
             return Ok(());
         }
         if meta.len > TOO_LARGE {
@@ -298,12 +446,19 @@ impl Writer {
         let settled = meta.is_some() && self.settles(mtime);
         let mut entry = Entry::placed(md5.to_hex(), size, meta.map(|m| m.mtime_ns), settled);
         entry.oid = Some(oid.to_hex());
-        let listed_differently = self
-            .manifest
-            .paths
-            .get(rel)
-            .is_none_or(|e| e.listed() != entry.listed() || e.oid != entry.oid);
-        self.manifest.paths.insert(rel.to_owned(), entry);
+        entry.spelled = self.spelled_otherwise(rel);
+        let listed_differently = self.manifest.paths.get(rel).is_none_or(|e| {
+            e.listed() != entry.listed() || e.oid != entry.oid || e.spelled != entry.spelled
+        });
+        if let Some(disk) = &entry.spelled {
+            self.disk_names.insert(disk.clone(), rel.to_owned());
+        }
+        if let Some(old) = self.manifest.paths.insert(rel.to_owned(), entry.clone())
+            && let Some(disk) = old.spelled
+            && entry.spelled.as_deref() != Some(disk.as_str())
+        {
+            self.disk_names.remove(&disk);
+        }
         self.manifest_changed = true;
         self.shared.remove_notices_of(rel);
         self.busy.remove(rel);
@@ -570,6 +725,10 @@ impl Writer {
         let path = self.folder.path(&p.path);
         let seen = match self.vfs.metadata(&path) {
             Ok(meta) if meta.kind == EntryKind::File => {
+                if self.is_anothers(&p.path) {
+                    self.wait_for_other_spelling();
+                    return Ok(None);
+                }
                 let (md5, size) = match self.hash_file(&p.path) {
                     Ok(read) => read,
                     Err(_) => {

@@ -59,6 +59,9 @@ impl Writer {
             true,
             &mut found,
         );
+        for rel in &found {
+            self.recheck_spelling(rel);
+        }
         self.consider_new(found)
     }
 
@@ -85,6 +88,7 @@ impl Writer {
                 continue;
             }
             if self.manifest.paths.contains_key(&rel)
+                || self.known_as(&rel).is_some()
                 || self.packs.contains_key(&rel)
                 || DerivedFile::from_path(&rel).is_some_and(|f| self.fold.projects_file(&f))
                 || self.found.iter().any(|f| f.rel == rel)

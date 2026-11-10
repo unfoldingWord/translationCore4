@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use tc_journal::fold::{ConflictId, DerivedFile, PersonLabel};
 use tc_store::{CheckpointReason, IntakeReport, ProjectHandle, ReceivedPack};
 
-use crate::checkpoint::{require_committed, skip_words};
+use crate::checkpoint::{committed, skip_words};
 
 const PACKS: &str = "ingredients/tc/changes/";
 const PROJECT_JSON: &str = "ingredients/tc/project.json";
@@ -90,8 +90,9 @@ pub async fn export(
 ) -> Result<PathBuf, ExchangeError> {
     // The file holds the last commit: a checkpoint that could not commit the latest saves
     // stops the export, so a teammate never gets less than the person sees.
-    let checkpoint = project.checkpoint(CheckpointReason::BeforeExport).await?;
-    require_committed(&checkpoint).map_err(|why| ExchangeError::NotCommitted(skip_words(why)))?;
+    committed(project, CheckpointReason::BeforeExport)
+        .await?
+        .map_err(|why| ExchangeError::NotCommitted(skip_words(why)))?;
     let facts = project.facts();
     let git_dir = facts.git_dir.ok_or(ExchangeError::NoHistory)?;
     let destination = destination.to_owned();

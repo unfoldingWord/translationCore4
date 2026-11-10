@@ -66,7 +66,10 @@ impl Writer {
         let mut report = FocusReport::default();
         let mut new: Vec<String> = Vec::new();
         for rel in rels {
-            if self.manifest.paths.contains_key(&rel) || kind_of(&rel) != Kind::Other {
+            if self.manifest.paths.contains_key(&rel)
+                || self.known_as(&rel).is_some()
+                || kind_of(&rel) != Kind::Other
+            {
                 if let Err(e) = self.look_at(&rel, &mut report) {
                     self.job_failed(&e);
                 }

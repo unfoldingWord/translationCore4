@@ -1,10 +1,33 @@
 //! The prerequisite for sending a committed project to Door43 or an exchange file.
 
-use tc_store::{CheckpointReport, CheckpointSkip};
+use tc_store::{CheckpointReason, CheckpointReport, CheckpointSkip, ProjectHandle, StoreError};
+
+/// How many times a checkpoint whose history moved under it is taken.
+const TRIES: u8 = 3;
+
+/// Takes the checkpoint a sync or an export stands on. One that finds the history moved lost
+/// a race with another checkpoint (the one a save makes when a person leaves the book) or
+/// with another program: the project is sound, so it is taken again on the new history and
+/// not reported as a failure. What is sent is still a checkpoint this app made (#961); a
+/// history that moves under every try is the failure.
+pub(crate) async fn committed(
+    project: &ProjectHandle,
+    reason: CheckpointReason,
+) -> Result<Result<(), CheckpointSkip>, StoreError> {
+    let mut left = TRIES;
+    loop {
+        let report = project.checkpoint(reason.clone()).await?;
+        left -= 1;
+        match require_committed(&report) {
+            Err(CheckpointSkip::HeadMoved) if left > 0 => {}
+            outcome => return Ok(outcome),
+        }
+    }
+}
 
 /// A skipped checkpoint leaves local work safe, but only NoChanges proves that the
 /// existing commit already holds the captured work.
-pub(crate) fn require_committed(report: &CheckpointReport) -> Result<(), CheckpointSkip> {
+fn require_committed(report: &CheckpointReport) -> Result<(), CheckpointSkip> {
     match report.skipped {
         None | Some(CheckpointSkip::NoChanges) => Ok(()),
         Some(

@@ -432,6 +432,23 @@ impl Writer {
     /// fold cannot be read on this computer (§2.6), and removes nothing while an expected
     /// pack is missing or a journal file unreadable (§4.4).
     pub(crate) fn materialize(&mut self) -> Result<MaterializeReport, StoreError> {
+        self.spelling_waits = false;
+        let mut report = self.materialize_pass()?;
+        // §3.3: a carried file waited for the file of another spelling to leave its name,
+        // and this job removed one. The job places it too, so the file is not missing from
+        // the folder until the next look at it.
+        if std::mem::take(&mut self.spelling_waits) && !report.removed.is_empty() {
+            let more = self.materialize_pass()?;
+            report.written.extend(more.written);
+            report.removed.extend(more.removed);
+            report.held.extend(more.held);
+            report.recorded.extend(more.recorded);
+            report.blocked.extend(more.blocked);
+        }
+        Ok(report)
+    }
+
+    fn materialize_pass(&mut self) -> Result<MaterializeReport, StoreError> {
         let mut report = MaterializeReport::default();
         // Every group ends in `metadata.json`: while bytes found there wait for the actor, the
         // marks wait too, for a job after its answer (§11.1 D7).
@@ -822,7 +839,19 @@ impl Writer {
             if self.written_from_newer_fold(&path) {
                 continue;
             }
-            let disk = match self.read_disk(&path) {
+            // §3.3: the file a disk that ignores case shows under a carried path that has
+            // left may be another spelling's. It is not this path's file, and is not removed.
+            let carried = self
+                .manifest
+                .paths
+                .get(&path)
+                .is_some_and(|entry| entry.oid.is_some());
+            let read = if carried && self.is_anothers(&path) {
+                Disk::Missing
+            } else {
+                self.read_disk(&path)
+            };
+            let disk = match read {
                 Disk::Unreadable => {
                     // R19: the state stays, and the path waits.
                     self.note(&path, Event::Read(ledger::Disk::Unreadable));
@@ -1973,6 +2002,7 @@ impl Writer {
                 continue;
             }
             let entry = self.manifest.paths.get(&path).cloned();
+            let spelled = entry.as_ref().and_then(|e| e.spelled.clone());
             if entry
                 .as_ref()
                 .is_some_and(|e| e.oid.is_some() && e.held().is_none())
@@ -2061,7 +2091,10 @@ impl Writer {
                 }
                 None => (None, None),
             };
-            push(&mut entries, &path, md5, size, role, scope);
+            // §3.3: a held carried file is listed where the disk holds it, as the rest are.
+            let name = spelled.unwrap_or_else(|| path.clone());
+            push(&mut entries, &name, md5, size, role, scope);
+            listed.insert(name);
             listed.insert(path);
         }
         for fixed in FIXED {
@@ -2111,10 +2144,25 @@ impl Writer {
             }
             let bytes = match planned.get(&path) {
                 Some((md5, size, _)) => Some((*md5, *size)),
+                // A file due here that is not in the folder yet is not listed: the bytes the
+                // disk shows under its name may be another path's (§3.3).
+                None if !self.manifest.paths.contains_key(&path) && self.not_in_folder(&path) => {
+                    None
+                }
                 None => self.listing_of_file(&path, oid)?,
             };
-            if let Some((md5, size)) = bytes {
-                push(&mut entries, &path, md5, size, None, None);
+            // §3.3: a file the disk holds under another spelling is listed where it is, so
+            // the folder's list names its files. The commit's list names the project's paths.
+            let name = self
+                .manifest
+                .paths
+                .get(&path)
+                .and_then(|e| e.spelled.clone())
+                .unwrap_or(path);
+            if let Some((md5, size)) = bytes
+                && listed.insert(name.clone())
+            {
+                push(&mut entries, &name, md5, size, None, None);
             }
         }
         Ok((entries, nfc))

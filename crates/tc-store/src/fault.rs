@@ -156,6 +156,8 @@ struct Model {
     /// nothing.
     watchers: Vec<Watcher>,
     next_watcher: u64,
+    /// The computers besides the first that see these files ([`FaultFs::other_machine`]).
+    other_machines: u32,
 }
 
 #[derive(Clone)]
@@ -391,6 +393,7 @@ impl Model {
             mirror: Mirror::None,
             watchers: Vec::new(),
             next_watcher: 0,
+            other_machines: 0,
         }
     }
 
@@ -612,6 +615,7 @@ impl FaultFs {
 
     /// The same files seen from another computer: a lock taken here is not seen there.
     pub fn other_machine(&self) -> Self {
+        self.model().other_machines += 1;
         Self {
             model: self.model.clone(),
             locks: Arc::new(Mutex::new(BTreeSet::new())),
@@ -626,6 +630,7 @@ impl FaultFs {
         model.watchers.clear();
         model.log.clear();
         model.opened.clear();
+        model.other_machines = 0;
         Self {
             model: Arc::new(Mutex::new(model)),
             locks: Arc::new(Mutex::new(BTreeSet::new())),
@@ -702,6 +707,12 @@ impl FaultFs {
         let mut model = self.model();
         model.faults.kill_before = None;
         model.faults.kill_after_rename = None;
+    }
+
+    /// Whether another computer sees these files too ([`FaultFs::other_machine`]): then what
+    /// one store finds in a folder may be the other's write under way.
+    pub fn has_other_machine(&self) -> bool {
+        self.model().other_machines > 0
     }
 
     /// Whether the writer was stopped.

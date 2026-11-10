@@ -456,9 +456,10 @@ macro_rules! sync_port_contract {
                 const DURING: &str = "Pablo, siervo de Dios, escrito mientras se sincroniza";
                 save_titus_1_1(app, &sample, 11, DURING).await;
                 <$fixture>::release_sync(&w);
+                let state = ended(app, job).await;
                 assert!(
-                    matches!(ended(app, job).await, JobState::Done(_)),
-                    "the sync ends"
+                    matches!(state, JobState::Done(_)),
+                    "the sync ends: {state:?}"
                 );
                 assert_eq!(
                     titus_1_1(app, &sample).await.as_deref(),

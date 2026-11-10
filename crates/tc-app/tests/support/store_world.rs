@@ -13,7 +13,7 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use tc_api::ids::ProjectRef;
 use tc_app::backend::store::StoreBackend;
@@ -380,8 +380,17 @@ pub fn assert_valid_burrito_files(files: &BTreeMap<String, Vec<u8>>) {
 /// What `tc_burrito` finds wrong with a project's files as a Scripture Burrito (`.tc/` is the
 /// store's own and left out).
 pub fn burrito_problems_of(files: &BTreeMap<String, Vec<u8>>) -> Vec<String> {
+    burrito_findings(files)
+        .into_iter()
+        .map(|(problem, _)| problem)
+        .collect()
+}
+
+/// [`burrito_problems_of`], each problem with whether it is a pack of the journal that
+/// `metadata.json` does not list.
+fn burrito_findings(files: &BTreeMap<String, Vec<u8>>) -> Vec<(String, bool)> {
     let Some(metadata) = files.get("metadata.json") else {
-        return vec!["no metadata.json".to_owned()];
+        return vec![("no metadata.json".to_owned(), false)];
     };
     let mut project = tc_burrito::MemProject::new();
     for (rel, bytes) in files {
@@ -391,7 +400,14 @@ pub fn burrito_problems_of(files: &BTreeMap<String, Vec<u8>>) -> Vec<String> {
     }
     tc_burrito::validate_project(metadata, &project)
         .into_iter()
-        .map(|p| format!("{p:?}"))
+        .map(|p| {
+            let unlisted_pack = matches!(
+                &p,
+                tc_burrito::Problem::UnlistedFile { path }
+                    if path.starts_with("ingredients/tc/changes/")
+            );
+            (format!("{p:?}"), unlisted_pack)
+        })
         .collect()
 }
 
@@ -412,24 +428,47 @@ fn burrito_files(fs: &FaultFs, folder: &Path) -> BTreeMap<String, Vec<u8>> {
 /// outside a write group (STORAGE §16.6, I7). Each problem names its folder.
 pub fn burrito_probe(fs: &FaultFs) -> impl Fn(&Path) -> Vec<String> + Send + Sync + 'static {
     let fs = fs.clone();
-    move |folder: &Path| {
-        burrito_problems_of(&burrito_files(&fs, folder))
-            .into_iter()
-            .map(|p| format!("{} is not a valid Scripture Burrito: {p}", folder.display()))
-            .collect()
-    }
+    move |folder: &Path| look_at(&fs, folder, &Mutex::default())
+}
+
+/// One look at `folder` as a Scripture Burrito. Each problem names the folder; one that is an
+/// unlisted pack of the journal is also kept in `unlisted_packs`, with the folder.
+fn look_at(
+    fs: &FaultFs,
+    folder: &Path,
+    unlisted_packs: &Mutex<BTreeMap<String, PathBuf>>,
+) -> Vec<String> {
+    burrito_findings(&burrito_files(fs, folder))
+        .into_iter()
+        .map(|(problem, unlisted_pack)| {
+            let line = format!(
+                "{} is not a valid Scripture Burrito: {problem}",
+                folder.display()
+            );
+            if unlisted_pack {
+                unlisted_packs
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .insert(line.clone(), folder.to_owned());
+            }
+            line
+        })
+        .collect()
 }
 
 /// Has the writer of the store that `hooks` go to look at every state it leaves on `fs`, for a
 /// test that starts its store itself (a hold before the start, a counting filesystem, another
 /// platform); [`backend_over`] calls it for every other store.
 pub fn watch_over(fs: &FaultFs, hooks: Arc<Hooks>) -> BurritoWatch {
-    hooks.check_burrito(burrito_probe(fs));
+    let unlisted_packs = Arc::new(Mutex::default());
+    let (probe_fs, seen) = (fs.clone(), Arc::clone(&unlisted_packs));
+    hooks.check_burrito(move |folder: &Path| look_at(&probe_fs, folder, &seen));
     BurritoWatch {
         hooks,
         fs: fs.clone(),
         stopped: false,
         open_projects: None,
+        unlisted_packs,
     }
 }
 
@@ -444,9 +483,40 @@ pub struct BurritoWatch {
     /// Waits until each project the store still has open has written all it was asked to,
     /// and answers how many are open.
     open_projects: Option<Arc<dyn Fn() -> usize + Send + Sync>>,
+    /// The looks' problems that name a pack of the journal `metadata.json` did not list, each
+    /// with the folder it was seen in.
+    unlisted_packs: Arc<Mutex<BTreeMap<String, PathBuf>>>,
 }
 
 impl BurritoWatch {
+    /// One look at `folder`, as the store's writer has after a job that wrote files.
+    pub fn look(&self, folder: &Path) -> Vec<String> {
+        look_at(&self.fs, folder, &self.unlisted_packs)
+    }
+
+    /// Of the problems the looks saw, the ones that count once every store is idle. Two
+    /// computers that write one folder each list their own packs, and a store's writer looks
+    /// outside its own write group only: it can look inside the other computer's, where that
+    /// one's pack is on disk and not listed yet. That is no state this store left, so such a
+    /// pack counts only if the folder still does not list it now. With one computer nothing
+    /// is set aside: a store lists its own pack in the group that writes it (I7).
+    pub fn settled(&self, seen: Vec<String>) -> Vec<String> {
+        if !self.fs.has_other_machine() {
+            return seen;
+        }
+        let packs = self
+            .unlisted_packs
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        seen.into_iter()
+            .filter(|line| {
+                packs
+                    .get(line)
+                    .is_none_or(|folder| burrito_probe(&self.fs)(folder).contains(line))
+            })
+            .collect()
+    }
+
     /// Has the watch wait for the projects `backend` opens before it reads what the writer saw.
     pub fn follow(&mut self, backend: &StoreBackend) {
         self.open_projects = Some(Arc::new(backend.idle_waiter()));
@@ -497,7 +567,7 @@ impl Drop for BurritoWatch {
             );
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
-        let problems = self.hooks.burrito_problems();
+        let problems = self.settled(self.hooks.burrito_problems());
         if !problems.is_empty() {
             let test = std::thread::current()
                 .name()
