@@ -135,7 +135,11 @@
         "selection_853_words_selected_after_mark_valid_are_kept",
         "selection_853_a_valid_checks_changed_selection_is_kept",
         "selection_853_mark_valid_twice_stores_the_second_selection",
-        "selection_853_mark_invalid_then_valid_then_select_is_kept"
+        "selection_853_mark_invalid_then_valid_then_select_is_kept",
+        "selection_853_a_failed_save_on_next_keeps_the_person_on_the_check",
+        "selection_853_a_failed_save_on_leaving_check_keeps_the_person_on_the_check",
+        "selection_853_words_selected_while_next_saves_are_kept",
+        "selection_853_a_failed_save_on_all_checking_tools_keeps_the_person_on_the_check"
       ]
     },
     "J5": {

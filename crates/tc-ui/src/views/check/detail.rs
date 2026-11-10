@@ -416,8 +416,11 @@ fn target_words(
         }
     };
     let on_blur = move |e: web_sys::FocusEvent| {
+        // A word that has the focus when the next check replaces this line blurs after the
+        // line is gone: its reference is read without panicking.
         let stays = root
-            .get_untracked()
+            .try_get_untracked()
+            .flatten()
             .zip(
                 e.related_target()
                     .and_then(|t| t.dyn_into::<web_sys::Node>().ok()),

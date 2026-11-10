@@ -448,8 +448,12 @@ impl Actions {
     }
 
     /// "← All checking tools" (tC4 `closeCheckTool`): the picker, whose card of this tool gets
-    /// the focus back.
+    /// the focus back. A selection still waiting is written first, as on Next.
     pub fn close_check_tool(&self) {
+        self.leave_check(Self::show_picker);
+    }
+
+    fn show_picker(&self) {
         OPENS.with(Latest::begin);
         self.stop_rail_listener();
         self.forget_detail();
@@ -483,31 +487,43 @@ impl Actions {
     /// comment of the check left is saved if its editor is open (A-10), and the new check's
     /// detail is read.
     pub fn select_check(&self, index: u32) {
-        let from = self.s().c.active.get_untracked();
-        if from == Some(index) {
+        if self.s().c.active.get_untracked() == Some(index) {
             return;
         }
+        self.leave_check(move |this| this.show_check(index));
+    }
+
+    /// Leaves the shown check by `then` once its waiting selection is written; a write that
+    /// fails, or another move made meanwhile, keeps the person where they are.
+    fn leave_check(&self, then: impl FnOnce(&Self) + 'static) {
+        let shown = |c: &CheckState| (c.view.get_untracked(), c.active.get_untracked());
+        let from = shown(&self.s().c);
         let this = self.clone();
         spawn_local(async move {
-            if this.flush_selection().await && this.s().c.active.get_untracked() == from {
-                this.show_check(index);
+            if this.flush_selection().await && shown(&this.s().c) == from {
+                then(&this);
             }
         });
     }
 
-    /// Before the person leaves a check (Next, Previous, the list, or the navigation gate): a
-    /// selection still waiting is written. False when that write failed: the person stays on
-    /// the check, with the mark's failure notice, and the next leave tries it again (#853).
+    /// Before the person leaves a check, a selection still waiting is written. False when that
+    /// write failed: the person stays on the check, with the mark's failure notice, and the
+    /// next leave tries it again (#853).
     async fn flush_selection(&self) -> bool {
-        // A save the wait already sent may still be on its way: its reply lands first, while
-        // the check is shown, so a failure is known before the leave decides.
-        WRITES.with(DecisionWrites::clone).settled().await;
-        match self.selection_step(SelectionEvent::Leaving) {
-            Some(write) => write.await,
-            // Nothing waits, or the open is read-only (the screen says so): holding the person
-            // would trap them (INV-A-REFUSED-SAVE-NEVER-TRAPS-THE-TRANSLATOR); the words wait
-            // for the next leave once the open is writable.
-            None => true,
+        loop {
+            // A save the wait already sent may still be on its way: its reply lands first,
+            // while the check is shown, so a failure is known before the leave decides.
+            WRITES.with(DecisionWrites::clone).settled().await;
+            // Nothing waits, or the open is read-only (the refused write that made it so already
+            // said why): holding the person would trap them
+            // (INV-A-REFUSED-SAVE-NEVER-TRAPS-THE-TRANSLATOR).
+            let Some(write) = self.selection_step(SelectionEvent::Leaving) else {
+                return true;
+            };
+            // Words selected while this write was on its way go round again.
+            if !write.await {
+                return false;
+            }
         }
     }
 

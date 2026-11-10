@@ -469,18 +469,28 @@ browserTest('selection_853_mark_invalid_then_valid_then_select_is_kept', async (
 
 const DISK_REFUSED = { type: 'err', value: { type: 'notSaved', value: { type: 'disk', value: 'fixture disk refused the selection' } } };
 
-/** A valid check with word 1 stored, and word 2 selected since, not saved yet; `refuse(on)`
- * makes every `check/decide` fail as a full disk while on. */
+/** A valid check with word 1 stored, and word 2 selected since, not saved yet. `refuse(on)`
+ * makes every `check/decide` fail as a full disk while on; `hold()` keeps the next ones from
+ * going out, as a slow disk does, until the function it returns is called. */
 async function aValidCheckWithAChange(page, env) {
   let refusing = false;
-  await page.route('**/api/v1/check/decide', (route) => (refusing ? route.fulfill({ json: DISK_REFUSED }) : route.continue()));
+  let held = null;
+  await page.route('**/api/v1/check/decide', async (route) => {
+    await held;
+    return refusing ? route.fulfill({ json: DISK_REFUSED }) : route.continue();
+  });
   await openFirstCheck(page);
   await page.getByTestId('tw-1').click();
   await page.getByTestId('mark-valid').click();
   await until('the mark is stored', async () => (await storedWords(env, 0)).words.length === 1);
   const words = [await wordAt(page, 1), await wordAt(page, 2)];
   await page.getByTestId('tw-2').click();
-  return { words, refuse: (on) => { refusing = on; } };
+  const hold = () => {
+    let release;
+    held = new Promise((resolve) => { release = resolve; });
+    return () => { held = null; release(); };
+  };
+  return { words, refuse: (on) => { refusing = on; }, hold };
 }
 
 // A selection save that fails when the person leaves the check keeps them on it, with the
@@ -511,6 +521,36 @@ browserTest('selection_853_a_failed_save_on_leaving_check_keeps_the_person_on_th
     refuse(false);
     await leaveAndReturn(page, env);
     assert.deepEqual(await pressedWords(page), words);
+    assert.deepEqual(await storedWords(env, 0), { status: 'valid', words });
+  }, SCENARIO);
+});
+
+// Words selected while Next waits for the save of the words before them are saved too.
+browserTest('selection_853_words_selected_while_next_saves_are_kept', async () => {
+  await withApp(async ({ page, env }) => {
+    const { words, hold } = await aValidCheckWithAChange(page, env);
+    const release = hold();
+    await page.getByTestId('check-next').click();
+    await page.getByTestId('tw-3').click();
+    const all = [...words, await wordAt(page, 3)];
+    release();
+    await until('check 1 shows', async () => (await shownIndex(page)) === 1);
+    assert.deepEqual(await storedWords(env, 0), { status: 'valid', words: all });
+  }, SCENARIO);
+});
+
+// "All checking tools" is a leave too: a failed save keeps the person in the tool.
+browserTest('selection_853_a_failed_save_on_all_checking_tools_keeps_the_person_on_the_check', async () => {
+  await withApp(async ({ page, env }) => {
+    const { words, refuse } = await aValidCheckWithAChange(page, env);
+    refuse(true);
+    await allTools(page).click();
+    await page.getByTestId('save-error').waitFor();
+    assert.equal(await page.getByTestId('open-translationNotes').count(), 0, 'the picker waits for the words');
+    assert.deepEqual(await pressedWords(page), words);
+    refuse(false);
+    await allTools(page).click();
+    await page.getByTestId('open-translationNotes').waitFor();
     assert.deepEqual(await storedWords(env, 0), { status: 'valid', words });
   }, SCENARIO);
 });
