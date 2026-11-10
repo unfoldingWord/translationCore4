@@ -48,6 +48,12 @@ test checks it.
 
 ## Cutting a release
 
+Each release has one GitHub issue, opened from the **Release** issue template
+(`.github/ISSUE_TEMPLATE/release.md`), titled `Release v<version>`. It is the checklist for the
+steps below and for what the pipeline does not check: the translations handed to the owner, the
+help pages re-vendored from tc-website, the download page, the installed check by a person, and
+the evidence written afterwards. A box is ticked only with a link to its evidence.
+
 1. On the default branch, when the release is ready, the owner (or someone the owner names)
    pushes the tag: `git tag v4.1.0-preview2 && git push origin v4.1.0-preview2`. Nobody else pushes release tags.
 2. The tag runs `release`. It builds nothing for a tag while any interface string is untranslated
@@ -128,7 +134,7 @@ branch, it can also be run by hand from the Actions tab on any branch.
 | `release_has_no_test_hooks` | build | the shipped `tc4` has no test flag, route or text |
 | `tc4_exe_imports_no_vcruntime` | build (Windows) | `tc4.exe` needs no Visual C++ runtime (tC4 #284) |
 | Electronite sha256 | build | the shell is the pinned Electronite v44.9.3-graphite |
-| `fetch-pinned.mjs`, `, 0 skipped,` | common | every archive `bundle/en/fetched.lock` pins (the OBS pictures) is downloaded, matches the lock's size and sha256, and is installed in the bundle |
+| `fetch-pinned.mjs`, then `bundle_store` ends `, 0 skipped,` | common | every archive `bundle/en/fetched.lock` pins (the OBS pictures) is downloaded, matches the lock's size and sha256, and is installed in the bundle |
 | `notices.mjs` | build | the notices name every crate in `Cargo.lock` and every bundled resource |
 | the Windows installer is signed | publish | no release carries an `-unsigned` Windows installer |
 | `seal-macos.test.mjs`, `seal-macos.sh` | build (macOS) | the staged bundle passes `codesign --verify --deep --strict` with its manifest inside, and the manifest is the record of its files (#969) |

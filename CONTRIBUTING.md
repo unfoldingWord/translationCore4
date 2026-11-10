@@ -37,6 +37,8 @@ add to it instead of filing another.
     scenario (`AGENTS.md`);
   - what done looks like: the end state, as a test could check it;
   - for planned work, the `## Funnel` section (`docs/FUNNEL.md` §1) and the interruptions (below).
+- **A release** gets its own issue from the **Release** template (`docs/RELEASE.md` "Cutting a
+  release").
 - **Labels:** `bug` or `enhancement`; a `Priority/…` label; `epic` for an issue that groups
   sub-issues; `needs definition` while the scope or the end state is open; `cheap` when a cheaper
   model can do it.
