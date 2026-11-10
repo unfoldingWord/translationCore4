@@ -131,7 +131,11 @@
     "J4": {
       "file": "parity/app/journeys/check-writes.test.mjs",
       "tests": [
-        "j4_a_mark_on_dragged_words_a_comment_and_a_bookmark_are_one_decision_record_on_disk"
+        "j4_a_mark_on_dragged_words_a_comment_and_a_bookmark_are_one_decision_record_on_disk",
+        "selection_853_words_selected_after_mark_valid_are_kept",
+        "selection_853_a_valid_checks_changed_selection_is_kept",
+        "selection_853_mark_valid_twice_stores_the_second_selection",
+        "selection_853_mark_invalid_then_valid_then_select_is_kept"
       ]
     },
     "J5": {

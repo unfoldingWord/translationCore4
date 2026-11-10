@@ -359,7 +359,12 @@ fn focus_word(root: NodeRef<html::P>, at: usize) {
 /// The line of draft words (tC4's `TargetWords`): one Tab stop, Left and Right between the
 /// words in the order drawn, Shift selects as a word processor does, a press and a drag selects
 /// whole words (#737), and the text stays selectable for copying.
-fn target_words(s: &AppState, words: Vec<String>, direction: TextDir) -> AnyView {
+fn target_words(
+    s: &AppState,
+    actions: &Actions,
+    words: Vec<String>,
+    direction: TextDir,
+) -> AnyView {
     let selection = s.c.selection.clone();
     let nav = StoredValue::new_local(WordNav::default());
     let root: NodeRef<html::P> = NodeRef::new();
@@ -373,10 +378,10 @@ fn target_words(s: &AppState, words: Vec<String>, direction: TextDir) -> AnyView
     };
     let rtl = direction == TextDir::Rtl;
     let apply = {
-        let selection = selection.clone();
+        let actions = actions.clone();
         move |step: WordStep| {
             if let Some(next) = step.selection {
-                selection.try_set(next);
+                actions.select_words(next);
             }
             if let Some(at) = step.focus {
                 focus_word(root, at);
@@ -469,21 +474,21 @@ fn target_words(s: &AppState, words: Vec<String>, direction: TextDir) -> AnyView
                 }
             };
             let on_enter = {
-                let selection = selection.clone();
+                let actions = actions.clone();
                 move |_: web_sys::MouseEvent| {
                     if let Some(next) = nav.try_update_value(|nav| nav.enter(i)).flatten() {
-                        selection.try_set(next);
+                        actions.select_words(next);
                     }
                 }
             };
             let on_click = {
-                let selection = selection.clone();
+                let (selection, actions) = (selection.clone(), actions.clone());
                 move |_: web_sys::MouseEvent| {
                     let next = nav
                         .try_update_value(|nav| nav.click(i, &selection.get_untracked()))
                         .flatten();
                     if let Some(next) = next {
-                        selection.try_set(next);
+                        actions.select_words(next);
                     }
                     sync_stop();
                 }
@@ -785,7 +790,7 @@ fn item_detail(s: &AppState, actions: &Actions, unit: CheckUnit) -> AnyView {
         }
     });
     let translation = {
-        let s = s.clone();
+        let (s, actions) = (s.clone(), actions.clone());
         move || {
             let words = words.get();
             if words.is_empty() {
@@ -815,7 +820,7 @@ fn item_detail(s: &AppState, actions: &Actions, unit: CheckUnit) -> AnyView {
                 "margin": "8px 0 0",
             };
             view! {
-                {target_words(&s, words, direction)}
+                {target_words(&s, &actions, words, direction)}
                 <p style=hint.to_style()>{t(keys::check::SELECT_HINT, &[])}</p>
             }
             .into_any()

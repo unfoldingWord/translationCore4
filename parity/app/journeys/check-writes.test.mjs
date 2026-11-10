@@ -362,3 +362,108 @@ browserTest('a_mode_tab_pressed_before_the_story_is_read_leaves_no_open_overlay'
     await page.getByTestId('check-quote').waitFor();
   }, SCENARIO);
 });
+
+// #853: on a valid check, the words the person selects are saved whatever the order of the
+// clicks: 1 s after the last change and on leaving the check (STORAGE §5.4), and they are
+// still there after Next and Previous, and after leaving Check for Home and coming back.
+const wordAt = (page, i) => page.getByTestId(`tw-${i}`).textContent().then((t) => t.trim());
+const storedWords = async (env, index) => {
+  const view = await item(env, bookList('translationNotes'), index);
+  return { status: view.decision.value.status, words: view.target.selected.map((i) => view.target.words[i]) };
+};
+
+async function nextThenPrevious(page) {
+  await page.getByTestId('check-next').click();
+  await until('check 1 shows', async () => (await shownIndex(page)) === 1);
+  await page.getByTestId('check-prev').click();
+  await until('check 0 shows', async () => (await shownIndex(page)) === 0);
+  await page.getByTestId('tw-0').waitFor();
+}
+
+/** Home, then the same check again. */
+async function leaveAndReturn(page, env) {
+  await leave(page, env, BIBLE);
+  await openTitus(page);
+  await openTool(page, 'translationNotes');
+  await select(page, 0);
+  await page.getByTestId('tw-0').waitFor();
+}
+
+async function openFirstCheck(page) {
+  await openTitus(page);
+  await openTool(page, 'translationNotes');
+  await select(page, 0);
+  await page.getByTestId('tw-3').waitFor();
+}
+
+browserTest('selection_853_words_selected_after_mark_valid_are_kept', async () => {
+  await withApp(async ({ page, env }) => {
+    await openFirstCheck(page);
+    await page.getByTestId('mark-valid').click();
+    const words = [await wordAt(page, 1), await wordAt(page, 2)];
+    await page.getByTestId('tw-1').click();
+    await page.getByTestId('tw-2').click();
+    await nextThenPrevious(page);
+    assert.deepEqual(await pressedWords(page), words, 'the words selected after Mark valid show again');
+    assert.deepEqual(await storedWords(env, 0), { status: 'valid', words });
+    await leaveAndReturn(page, env);
+    assert.deepEqual(await pressedWords(page), words, 'and after leaving Check');
+  }, SCENARIO);
+});
+
+browserTest('selection_853_a_valid_checks_changed_selection_is_kept', async () => {
+  await withApp(async ({ page, env }) => {
+    await openFirstCheck(page);
+    await page.getByTestId('tw-1').click();
+    await page.getByTestId('mark-valid').click();
+    await until('the mark is stored', async () => (await storedWords(env, 0)).status === 'valid');
+    const word = await wordAt(page, 3);
+    await page.getByTestId('tw-1').click();
+    await page.getByTestId('tw-3').click();
+    await until('the change is saved 1 s after the last click, with no navigation', async () =>
+      (await storedWords(env, 0)).words.join() === word);
+    await nextThenPrevious(page);
+    assert.deepEqual(await pressedWords(page), [word]);
+    await page.getByTestId('tw-3').click();
+    await page.getByTestId('tw-2').click();
+    const changed = [await wordAt(page, 2)];
+    await leaveAndReturn(page, env);
+    assert.deepEqual(await pressedWords(page), changed, 'a change made just before leaving is saved');
+    assert.deepEqual(await storedWords(env, 0), { status: 'valid', words: changed });
+  }, SCENARIO);
+});
+
+browserTest('selection_853_mark_valid_twice_stores_the_second_selection', async () => {
+  await withApp(async ({ page, env }) => {
+    await openFirstCheck(page);
+    await page.getByTestId('tw-1').click();
+    await page.getByTestId('mark-valid').click();
+    await until('the first mark is stored', async () => (await storedWords(env, 0)).words.length === 1);
+    await page.getByTestId('tw-1').click();
+    await page.getByTestId('tw-2').click();
+    await page.getByTestId('mark-valid').click();
+    const words = [await wordAt(page, 2)];
+    await until('the second selection is stored', async () => (await storedWords(env, 0)).words.join() === words.join());
+    await nextThenPrevious(page);
+    assert.deepEqual(await pressedWords(page), words);
+  }, SCENARIO);
+});
+
+browserTest('selection_853_mark_invalid_then_valid_then_select_is_kept', async () => {
+  await withApp(async ({ page, env }) => {
+    await openFirstCheck(page);
+    await page.getByTestId('mark-invalid').click();
+    await until('the invalid mark is stored', async () => (await storedWords(env, 0)).status === 'invalid');
+    await page.getByTestId('tw-1').click();
+    await sleep(1500);
+    assert.deepEqual(await storedWords(env, 0), { status: 'invalid', words: [] }, 'a selection on an invalid check does not mark it valid');
+    await page.getByTestId('mark-valid').click();
+    await page.getByTestId('tw-2').click();
+    const words = [await wordAt(page, 1), await wordAt(page, 2)];
+    await nextThenPrevious(page);
+    assert.deepEqual(await pressedWords(page), words);
+    await leaveAndReturn(page, env);
+    assert.deepEqual(await pressedWords(page), words, 'and after leaving Check');
+    assert.deepEqual(await storedWords(env, 0), { status: 'valid', words });
+  }, SCENARIO);
+});

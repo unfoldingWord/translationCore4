@@ -19,7 +19,7 @@ use tc_api::buffer::{
 };
 use tc_api::check::{
     CheckArticleRead, CheckItemView, CheckListRef, CheckSessionView, CheckUnit, Decide, DecideEdit,
-    Item, Open, RailRow, RailRows, RailSince, Rows, RowsView, Tool,
+    DecisionStatus, Item, Open, RailRow, RailRows, RailSince, Rows, RowsView, Tool,
 };
 use tc_api::conflicts::Restore;
 use tc_api::editor::{Draft, DraftField};
@@ -35,10 +35,12 @@ use wasm_bindgen_futures::spawn_local;
 
 use super::app_ctx::{Actions, Dialog};
 use super::js;
-use super::saves::{FieldWriter, LocalBoxFuture, WriteCap};
+use super::saves::{FieldWriter, GateHookId, LocalBoxFuture, WriteCap};
 use super::{Api, ListenerId};
 use crate::app::check::CheckView;
-use crate::app::check_item::{self, DecisionWrites, MarkFailure};
+use crate::app::check_item::{
+    self, DecisionWrites, MarkFailure, SelectionCommand, SelectionEvent, SelectionSave,
+};
 use crate::app::client::{CallError, Transport};
 use crate::app::fix::{Fix, FixScreen};
 use crate::app::latest::{Attempt, Latest};
@@ -105,7 +107,7 @@ pub struct CheckState {
     pub focused_for: ArcRwSignal<Option<Tool>>,
     /// The active check's detail.
     pub detail: ArcRwSignal<Option<Detail>>,
-    /// The words tapped in the draft, one local value until a mark saves it (#757).
+    /// The words tapped in the draft (#757); on a valid check they save by themselves (#853).
     pub selection: ArcRwSignal<BTreeSet<u32>>,
     /// The Academy drawer, closed or on the active check's article.
     pub academy: ArcRwSignal<Option<Academy>>,
@@ -162,6 +164,12 @@ thread_local! {
     static OPENS: Latest = const { Latest::new() };
     /// The listener that patches the open rail.
     static LISTENER: Cell<Option<ListenerId>> = const { Cell::new(None) };
+    /// Whether the active check's selection saves by itself (#853).
+    static SELECTION: Cell<SelectionSave> = Cell::new(SelectionSave::default());
+    /// The wait after the selection's last change.
+    static SELECTION_WAIT: Cell<Option<TimeoutHandle>> = const { Cell::new(None) };
+    /// The gate hook that saves a waiting selection before the person leaves.
+    static SELECTION_HOOK: Cell<Option<GateHookId>> = const { Cell::new(None) };
 }
 
 /// Writes a decision: a mark or a comment of one check, after the write before it, over the
@@ -674,9 +682,11 @@ impl Actions {
     }
 
     /// The detail and everything that belongs to it goes: another tool, the picker, or no
-    /// project. A comment still being typed is saved by its editor leaving.
+    /// project. A comment still being typed is saved by its editor leaving, and a selection
+    /// still waiting is saved now.
     fn forget_detail(&self) {
         let c = &self.s().c;
+        self.selection_event(SelectionEvent::Leaving);
         ITEMS.with(Latest::begin);
         ARTICLES.with(Latest::begin);
         c.comment_open.try_set(false);
@@ -688,9 +698,11 @@ impl Actions {
     }
 
     /// Before another check shows: its editor closes (which saves the comment typed in it,
-    /// A-10), the drawer and the last mark's failure go, and the selection is the new check's.
+    /// A-10), a selection still waiting is saved, the drawer and the last mark's failure go, and
+    /// the selection is the new check's.
     fn leave_item(&self) {
         let c = &self.s().c;
+        self.selection_event(SelectionEvent::Leaving);
         c.comment_open.try_set(false);
         c.history_open.try_set(false);
         c.restore_failed.try_set(false);
@@ -728,6 +740,9 @@ impl Actions {
     fn read_item(&self, at: tc_api::ids::Scope, list: CheckListRef, index: u32, attempt: Attempt) {
         let this = self.clone();
         spawn_local(async move {
+            // A read waits for the decision writes already on their way, so a selection saved on
+            // leaving a check shows when the person comes straight back to it.
+            drop(WRITES.with(DecisionWrites::clone).turn().await);
             let result = this.runtime().read_once(&Item { at, list, index }).await;
             if !ITEMS.with(|l| l.is_current(attempt)) {
                 return;
@@ -753,12 +768,19 @@ impl Actions {
         let c = &self.s().c;
         WRITES.with(|w| w.learn(&view.place, &view.check_id, &view.decision.token));
         let local = c.selection.get_untracked();
-        let selection = c.detail.with_untracked(|shown| {
+        let (selection, new_item) = c.detail.with_untracked(|shown| {
             let shown = match shown {
                 Some(Detail::Ready(shown)) => Some(&**shown),
                 _ => None,
             };
-            check_item::selection_after_read(shown, &view, &local)
+            (
+                check_item::selection_after_read(shown, &view, &local),
+                !check_item::same_item(shown, &view),
+            )
+        });
+        self.selection_event(SelectionEvent::Read {
+            new_item,
+            valid: view.decision.value.status == Some(DecisionStatus::Valid),
         });
         if selection != local {
             c.selection.try_set(selection);
@@ -794,13 +816,32 @@ impl Actions {
     /// One act on the shown check, saved at once (AD20). The writes of decisions go one at a time
     /// (`write_decision`); a reply that comes after the person moved to another check is not for
     /// the check now shown, so it changes the rail's rows and nothing on screen.
-    pub fn mark(&self, _cap: WriteCap, edit: DecideEdit) {
+    pub fn mark(&self, cap: WriteCap, edit: DecideEdit) {
+        if let Some(write) = self.mark_task(cap, edit) {
+            spawn_local(write);
+        }
+    }
+
+    /// The write of a mark, its request taken from the check shown now.
+    fn mark_task(
+        &self,
+        _cap: WriteCap,
+        edit: DecideEdit,
+    ) -> Option<impl Future<Output = ()> + use<>> {
         let c = self.s().c.clone();
         let (Some((at, list)), Some(Detail::Ready(view))) =
             (self.detail_target(), c.detail.get_untracked())
         else {
-            return;
+            return None;
         };
+        let judged = match edit {
+            DecideEdit::Valid { .. } => Some(true),
+            DecideEdit::Invalid | DecideEdit::Todo => Some(false),
+            DecideEdit::Bookmark { .. } | DecideEdit::Comment { .. } => None,
+        };
+        if let Some(valid) = judged {
+            self.selection_event(SelectionEvent::Marked { valid });
+        }
         let (place, check_id) = (view.place.clone(), view.check_id.clone());
         let comment = self
             .s()
@@ -819,7 +860,7 @@ impl Actions {
         };
         c.marking.try_set(Marking::Idle);
         let this = self.clone();
-        spawn_local(async move {
+        Some(async move {
             // A write's reply is never dropped: its Ack carries the next token (AD2).
             let result = write_decision(this.runtime().api(), request).await;
             if let Ok(ack) = &result {
@@ -835,6 +876,9 @@ impl Actions {
             if !shown {
                 return;
             }
+            if judged.is_some() {
+                this.selection_event(SelectionEvent::Acked);
+            }
             match result {
                 Ok(_) => {
                     c.marking.try_set(Marking::Idle);
@@ -849,7 +893,76 @@ impl Actions {
                     }
                 }
             }
+        })
+    }
+
+    /// The person changed the words selected in the draft (#853): on a valid check the new
+    /// selection saves 1 s after the last change, or on leaving the check.
+    pub fn select_words(&self, words: BTreeSet<u32>) {
+        let c = &self.s().c;
+        if c.selection.with_untracked(|shown| *shown == words) {
+            return;
+        }
+        c.selection.try_set(words);
+        self.start_selection_hook();
+        self.selection_event(SelectionEvent::Changed);
+    }
+
+    fn selection_event(&self, event: SelectionEvent) {
+        if let Some(write) = self.selection_step(event) {
+            spawn_local(write);
+        }
+    }
+
+    /// The selection machine's executor: the wait, and the write when the machine saves.
+    fn selection_step(&self, event: SelectionEvent) -> Option<impl Future<Output = ()> + use<>> {
+        let (next, command) = SELECTION.get().step(event);
+        SELECTION.set(next);
+        if let Some(wait) = SELECTION_WAIT.take() {
+            wait.clear();
+        }
+        match command {
+            SelectionCommand::None | SelectionCommand::Cancel => None,
+            SelectionCommand::Wait => {
+                let this = self.clone();
+                let wait = set_timeout_with_handle(
+                    move || this.selection_event(SelectionEvent::Idle),
+                    check_item::SELECTION_IDLE,
+                );
+                SELECTION_WAIT.set(wait.ok());
+                None
+            }
+            SelectionCommand::Save => self.selection_write(),
+        }
+    }
+
+    /// Mark valid with the selection shown, while the open is writable.
+    fn selection_write(&self) -> Option<impl Future<Output = ()> + use<>> {
+        let at = self.s().project.get_untracked()?.at;
+        let cap = self.runtime().saves().write_cap(&at)?;
+        let edit = check_item::valid_edit(&self.s().c.selection.get_untracked());
+        self.mark_task(cap, edit)
+    }
+
+    /// Leaving through the navigation gate (Home, another mode, another project) waits for a
+    /// selection still waiting to be written; a write that fails shows as a mark's failure, as
+    /// a click's does, and does not keep the person there.
+    fn start_selection_hook(&self) {
+        if SELECTION_HOOK.get().is_some() {
+            return;
+        }
+        let this = self.clone();
+        let hook = std::rc::Rc::new(move || {
+            let this = this.clone();
+            let flush: LocalBoxFuture<bool> = Box::pin(async move {
+                if let Some(write) = this.selection_step(SelectionEvent::Leaving) {
+                    write.await;
+                }
+                true
+            });
+            flush
         });
+        SELECTION_HOOK.set(Some(self.runtime().saves().add_gate_hook(hook)));
     }
 
     /// *Restore this version* from the active check's History (owner ruling H5): written like a

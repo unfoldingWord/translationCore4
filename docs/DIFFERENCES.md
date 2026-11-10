@@ -496,6 +496,15 @@ And this (#965):
   the repository read "Other". About and the License dialog show the repository's own `LICENSE`,
   not a copy of tC4's, and `crates/tc-ui/tests/license.rs` keeps the file in that shape (#965).
 
+And this (#853):
+
+- In Check, the words selected on a valid check are saved by themselves, 1 s after the last
+  change and on leaving the check, as `docs/STORAGE.md` §5.4 describes. A translator who clicks
+  Mark valid first and selects the words second keeps them. tC4 saves the words only when Mark
+  valid is clicked, so words selected after the click are lost without a sign. On a check that
+  is not valid, the words still wait for Mark valid: saving them would mark the check valid
+  (#853).
+
 The rebuild does not port tC4's sync mechanism: the scratch copy, the apply marker, the
 ops log, `recoverySettled`, `unreadableSettings` and the sync generation. STORAGE §6 and §9
 give the same outcomes, and STORAGE §9.9 keeps saves flowing while a sync runs. tC4 can

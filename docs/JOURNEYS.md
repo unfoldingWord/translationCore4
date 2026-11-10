@@ -123,6 +123,7 @@ budget in `docs/PERFORMANCE.md`). Their tC4 tests stay mapped under `specs` in `
   unchanged.
 - Must not: store a check comment anywhere but its decision; count a bookmarked or commented check
   differently from a plain one.
+- Differs from tC4: on a valid check, the words selected after Mark valid are saved too (#853).
 
 ### J5 Align a verse
 
