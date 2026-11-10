@@ -145,23 +145,22 @@ pub fn flow_markup(blocks: &[FlowBlock<'_>], dir: Direction, sheet: Sheet) -> St
                     None => {}
                 }
                 for verse in &chapter.verses {
-                    match verse {
-                        VerseLine::Text { number, text } => {
-                            out.push_str("<span>");
-                            if let Some(n) = number {
-                                out.push_str(&format!(
-                                    "<sup class=\"print-verse-number\">{}</sup>",
-                                    escape(n)
-                                ));
-                            }
-                            out.push_str(&format!("{}{space}</span>", escape(text)));
-                        }
-                        VerseLine::NotDrafted { number } => out.push_str(&format!(
-                            "<span class=\"print-undrafted\"><sup class=\"print-verse-number\">{}</sup>{}{space}</span>",
-                            escape(number),
-                            escape(&t(keys::cc::NOT_YET_DRAFTED, &[]))
-                        )),
+                    let (open, number, text) = match verse {
+                        VerseLine::Text { number, text } => ("<span>", number, escape(text)),
+                        VerseLine::NotDrafted { number } => (
+                            "<span class=\"print-undrafted\">",
+                            number,
+                            escape(&t(keys::cc::NOT_YET_DRAFTED, &[])),
+                        ),
+                    };
+                    out.push_str(open);
+                    if let Some(n) = number {
+                        out.push_str(&format!(
+                            "<sup class=\"print-verse-number\">{}</sup>",
+                            escape(n)
+                        ));
                     }
+                    out.push_str(&format!("{text}{space}</span>"));
                 }
                 out.push_str("</section>");
             }

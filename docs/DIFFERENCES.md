@@ -410,6 +410,11 @@ And these (unit D2):
 - The PDF's print page is titled with the export's file name without `.pdf`, because the
   shell names the saved PDF from the title (`tc4Shell.printPdf`). tC4's print document is
   titled with the book's or the project's name. The printed heading is the same.
+- When chapters open with a drop cap, verse 1, or a span that starts at 1 such as `1-2`, shows
+  no verse number beside it, in the Community Checking preview and in the PDF, drafted or not:
+  the drop cap already marks where the chapter starts. Later verses keep their numbers, and
+  under a "Chapter N" heading verse 1 keeps its number. tC4 prints a superscript 1 beside the
+  drop cap (#992).
 - An export of a book or the stories with verses in conflict first asks, under the menu,
   whether to review them, with Review and Export anyway (STORAGE §8.5). tC4 exports the
   version shown without a word, so the person cannot know the file holds only one of two

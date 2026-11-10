@@ -14,6 +14,7 @@
 //! measures; tc-export's `page` adds what only the PDF reads.
 
 use serde::{Deserialize, Serialize};
+use tc_core::VerseSpan;
 
 use crate::export::{PrintItem, PrintVerse, Run};
 
@@ -80,7 +81,8 @@ pub enum ChapterOpening {
     Heading,
 }
 
-/// Whether a drafted verse shows its number. An undrafted verse always does.
+/// Whether a drafted verse shows its number. An undrafted verse always does, except verse 1
+/// beside a drop cap, which never shows one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "proptest", derive(proptest_derive::Arbitrary))]
 #[serde(rename_all = "camelCase")]
@@ -375,8 +377,8 @@ pub enum VerseLine<'a> {
         number: Option<&'a str>,
         text: &'a str,
     },
-    /// The verse's number, then "[ verse not yet drafted ]".
-    NotDrafted { number: &'a str },
+    /// The verse's number when `number` is set, then "[ verse not yet drafted ]".
+    NotDrafted { number: Option<&'a str> },
 }
 
 /// A chapter as the print shows it. `continues` is true when the chapter goes on to the next
@@ -419,7 +421,7 @@ pub fn print_parts<'a>(
                 verses: part
                     .verses
                     .iter()
-                    .map(|(verse, piece)| verse_line(verse, *piece, setup.verse_numbers))
+                    .map(|(verse, piece)| verse_line(verse, *piece, setup))
                     .collect(),
                 continues: continues && Some(i) == last,
             }),
@@ -427,15 +429,22 @@ pub fn print_parts<'a>(
         .collect()
 }
 
-fn verse_line<'a>(verse: &'a PrintVerse, piece: Piece<'a>, numbers: VerseNumbers) -> VerseLine<'a> {
-    let number = verse.label.as_str();
+fn verse_line<'a>(verse: &'a PrintVerse, piece: Piece<'a>, setup: &PageSetup) -> VerseLine<'a> {
+    let label = verse.label.as_str();
+    // The drop cap already marks where the chapter starts, so verse 1, or a span from it,
+    // shows no number beside it, drafted or not (#992).
+    let beside_drop_cap = setup.chapter_opening == ChapterOpening::DropCap
+        && label
+            .parse::<VerseSpan>()
+            .is_ok_and(|span| span.start() == 1);
+    let number = (!beside_drop_cap).then_some(label);
     let Some(text) = verse.text.as_deref().filter(|t| !t.is_empty()) else {
         return VerseLine::NotDrafted { number };
     };
-    let numbered = numbers == VerseNumbers::Shown;
+    let shown = number.filter(|_| setup.verse_numbers == VerseNumbers::Shown);
     let (number, text) = match piece {
-        Piece::Whole => (numbered.then_some(number), text),
-        Piece::Start(part) => (numbered.then_some(number), part),
+        Piece::Whole => (shown, text),
+        Piece::Start(part) => (shown, part),
         Piece::Continued(part) => (None, part),
     };
     VerseLine::Text { number, text }

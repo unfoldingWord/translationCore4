@@ -129,12 +129,16 @@ proptest! {
                     // One line per verse, in order: every verse prints, and only once.
                     prop_assert_eq!(block.verses.len(), chapter.verses.len());
                     for (line, verse) in block.verses.iter().zip(&chapter.verses) {
+                        // The drop cap stands for verse 1's number, drafted or not (#992); `books` labels
+                        // single verses, so verse 1 is the label "1".
+                        let beside_drop_cap = setup.chapter_opening == ChapterOpening::DropCap && verse.label == "1";
+                        let label = (!beside_drop_cap).then_some(verse.label.as_str());
                         let expected = match shown(verse) {
                             Some(text) => VerseLine::Text {
-                                number: (setup.verse_numbers == VerseNumbers::Shown).then_some(verse.label.as_str()),
+                                number: label.filter(|_| setup.verse_numbers == VerseNumbers::Shown),
                                 text,
                             },
-                            None => VerseLine::NotDrafted { number: &verse.label },
+                            None => VerseLine::NotDrafted { number: label },
                         };
                         prop_assert_eq!(*line, expected);
                     }

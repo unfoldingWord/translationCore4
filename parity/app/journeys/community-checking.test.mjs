@@ -60,7 +60,10 @@ browserTest('cc_titus_prints_its_drafted_chapter_and_reading_it_writes_nothing',
     assert.equal(await page.getByTestId('cc-chapter-gap').count(), 0);
     assert.equal(await page.locator('.print-dropcap').textContent(), '1');
     assert.equal(await page.locator('.print-undrafted').count(), 11, 'verses 6 to 16');
-    assert.equal(await page.locator('[data-testid="cc-chapter"] .print-verse-number').count(), 16);
+    // The drop cap stands for verse 1's number (#992): verses 2 to 16 keep theirs.
+    assert.equal(await page.locator('[data-testid="cc-chapter"] .print-verse-number').count(), 15);
+    assert.equal(await page.locator('.print-dropcap + span .print-verse-number').count(), 0, 'verse 1 has no number');
+    assert.equal(await page.locator('[data-testid="cc-chapter"] .print-verse-number').first().textContent(), '2');
     assert.ok((await printedText(page)).startsWith('Pablo, siervo de Dios'));
     assert.equal(await page.getByText('Incomplete draft.').count(), 1, 'the notice explains the undrafted lines');
     // Opening the preview is a mode switch, which tC4 checkpoints too (state.jsx MODE_NAME.publish,
@@ -95,12 +98,15 @@ browserTest('cc_the_page_setup_resets_the_sheets_and_keeps_every_word', async ()
     await page.getByTestId('cc-chapter-heading').waitFor();
     assert.equal(await page.getByTestId('cc-chapter-heading').textContent(), 'Chapter 1');
     assert.equal(await page.locator('.print-dropcap').count(), 0);
+    // Under the heading, verse 1 shows its number again (#992).
+    assert.equal(await page.locator('.print-chapter-heading + span .print-verse-number').textContent(), '1');
     // Verse numbers off: no drafted verse prints its number.
     await page.getByLabel('Verse numbers').click();
     await until('the numbers go', async () => (await page.locator('[data-testid="cc-chapter"] .print-verse-number').count()) === 0);
     await page.getByLabel('Verse numbers').click();
     await page.getByLabel('Drop-cap chapters').click();
     await until('back to drop caps', async () => (await page.locator('.print-dropcap').count()) === 1);
+    assert.equal(await page.locator('.print-dropcap + span .print-verse-number').count(), 0, 'verse 1 has no number beside the drop cap');
     // Double spacing doubles the leading and takes more sheets; the chosen chip keeps the focus.
     await chip(page, 'Spacing', 'Double').click();
     assert.equal(await chip(page, 'Spacing', 'Double').getAttribute('aria-pressed'), 'true');
