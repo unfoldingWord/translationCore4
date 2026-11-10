@@ -39,7 +39,9 @@ use super::question::{self, Question};
 use super::saves::{FieldWriter, LocalBoxFuture, WriteCap};
 use super::{Api, ListenerId};
 use crate::app::check::CheckView;
-use crate::app::check_item::{self, DecisionWrites, MarkFailure, SentWords};
+use crate::app::check_item::{
+    self, DecisionWrites, MarkFailure, RestoreEvent, RestoredWords, SentWords,
+};
 use crate::app::client::{CallError, Transport};
 use crate::app::fix::{Fix, FixScreen};
 use crate::app::latest::{Attempt, Latest};
@@ -164,8 +166,8 @@ thread_local! {
     static ARTICLES: Latest = const { Latest::new() };
     /// Every write of a decision, a mark or a comment, goes through here.
     static WRITES: DecisionWrites = DecisionWrites::default();
-    /// A restore from History of the shown check was saved, and no read has shown it yet.
-    static RESTORED: Cell<bool> = const { Cell::new(false) };
+    /// The restore from History of the shown check, as its words see it.
+    static RESTORE: Cell<RestoredWords> = const { Cell::new(RestoredWords::None) };
     /// The answer a move waits for while it asks Stay or Discard selection (#853).
     static WORDS_ANSWER: Question = const { Question::new() };
     /// The detail a write's Ack tells, when the Ack is for the check it shows.
@@ -174,6 +176,16 @@ thread_local! {
     static OPENS: Latest = const { Latest::new() };
     /// The listener that patches the open rail.
     static LISTENER: Cell<Option<ListenerId>> = const { Cell::new(None) };
+}
+
+/// Takes one event of the shown check's restore; true when a read that landed shows the stored
+/// words.
+fn restore_step(event: RestoreEvent) -> bool {
+    RESTORE.with(|restore| {
+        let (next, stored) = restore.get().step(event);
+        restore.set(next);
+        stored
+    })
 }
 
 /// Writes a decision: a mark or a comment of one check, after the write before it, over the
@@ -737,7 +749,7 @@ impl Actions {
         c.detail.try_set(None);
         c.selection.try_set(BTreeSet::new());
         c.sent.try_set(SentWords::default());
-        RESTORED.with(|r| r.set(false));
+        restore_step(RestoreEvent::Left);
         // A question about words that are gone with the detail: its move does not run.
         self.answer_words_leave(false);
         c.leave_ask.try_set(false);
@@ -755,7 +767,7 @@ impl Actions {
         c.academy.try_set(None);
         c.marking.try_set(Marking::Idle);
         c.sent.try_set(SentWords::default());
-        RESTORED.with(|r| r.set(false));
+        restore_step(RestoreEvent::Left);
     }
 
     /// Whether words are selected on the shown check that no mark saved (#853), tracked:
@@ -837,6 +849,13 @@ impl Actions {
     fn read_item(&self, at: tc_api::ids::Scope, list: CheckListRef, index: u32, attempt: Attempt) {
         let this = self.clone();
         spawn_local(async move {
+            // A read never goes out ahead of the page's own writes still on their way: it would
+            // show the check from before them, and the words it shows are kept (#853, from
+            // #986). A read superseded while it waited does not go out.
+            WRITES.with(DecisionWrites::clone).settled().await;
+            if !ITEMS.with(|l| l.is_current(attempt)) {
+                return;
+            }
             let result = this.runtime().read_once(&Item { at, list, index }).await;
             if !ITEMS.with(|l| l.is_current(attempt)) {
                 return;
@@ -868,7 +887,7 @@ impl Actions {
                 Some(Detail::Ready(shown)) => Some(&**shown),
                 _ => None,
             };
-            let restored = RESTORED.with(Cell::take);
+            let restored = restore_step(RestoreEvent::Read);
             let shown = shown.filter(|_| !restored);
             check_item::selection_after_read(shown, &view, &local)
         });
@@ -911,6 +930,7 @@ impl Actions {
     /// again. The server decides, since only it knows the mark a save still on its way made;
     /// for a check with no mark it records nothing.
     pub fn words_changed(&self) {
+        restore_step(RestoreEvent::WordsChanged);
         if let Some(cap) = self.write_cap() {
             self.mark(cap, DecideEdit::Unmark);
         }
@@ -1001,6 +1021,7 @@ impl Actions {
             .get_untracked()
             .and_then(|project| comment_key(list.tool, &project, &view));
         let (place, check_id) = (view.place.clone(), view.check_id.clone());
+        restore_step(RestoreEvent::Asked);
         c.restoring.try_set(true);
         c.restore_failed.try_set(false);
         let this = self.clone();
@@ -1009,6 +1030,7 @@ impl Actions {
             // (loss lens M2); a save that cannot be made leaves the restore undone.
             if !this.runtime().saves().gate().await {
                 let c = &this.s().c;
+                restore_step(RestoreEvent::Answered { saved: false });
                 c.restoring.try_set(false);
                 c.restore_failed.try_set(true);
                 return;
@@ -1045,8 +1067,9 @@ impl Actions {
                 return;
             }
             c.restore_failed.try_set(result.is_err());
-            // Whichever read lands next was asked after the restore's reply.
-            RESTORED.with(|r| r.set(result.is_ok()));
+            restore_step(RestoreEvent::Answered {
+                saved: result.is_ok(),
+            });
             this.refresh_item();
         });
     }

@@ -121,6 +121,54 @@ impl SentWords {
     }
 }
 
+/// A *Restore this version* of the shown check, as its words see it (#853). The first read
+/// after a saved restore shows the restored words, unless the person changed the selection
+/// after asking for the restore: then the words on screen are their newer act and stay.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RestoredWords {
+    /// No restore is on its way, or the person changed the words since.
+    #[default]
+    None,
+    /// Asked for, not yet answered.
+    Asked,
+    /// Saved; no read has shown it yet.
+    Saved,
+}
+
+/// What happens to a restore's words.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RestoreEvent {
+    /// The person pressed *Restore this version*.
+    Asked,
+    /// The restore was answered: saved, or not.
+    Answered { saved: bool },
+    /// The person finished a change of the selected words.
+    WordsChanged,
+    /// A read of the check landed.
+    Read,
+    /// Another check shows, or none.
+    Left,
+}
+
+impl RestoredWords {
+    /// The one transition: the next state, and whether a read that landed shows the stored
+    /// words in place of the ones on screen.
+    pub fn step(self, event: RestoreEvent) -> (Self, bool) {
+        match (self, event) {
+            (_, RestoreEvent::Asked) => (Self::Asked, false),
+            (Self::Asked, RestoreEvent::Answered { saved: true }) => (Self::Saved, false),
+            (Self::Saved, RestoreEvent::Read) => (Self::None, true),
+            // A read before the answer is of the check before the restore.
+            (Self::Asked, RestoreEvent::Read) => (Self::Asked, false),
+            (
+                _,
+                RestoreEvent::Answered { .. } | RestoreEvent::WordsChanged | RestoreEvent::Left,
+            )
+            | (Self::None, RestoreEvent::Read) => (Self::None, false),
+        }
+    }
+}
+
 /// Whether words are selected that no mark has saved (#853): Previous and Next are off, and
 /// every other way out asks first. A read-only project saves nothing, so it never holds words
 /// back. `sent` is the words the page's newest write leaves, while one is on its way.
@@ -415,6 +463,12 @@ pub struct DecisionWrites(Rc<RefCell<Writes>>);
 pub struct Turn(DecisionWrites);
 
 impl DecisionWrites {
+    /// Waits until the writes already on their way are done, so a read that follows sees them
+    /// (from #986).
+    pub async fn settled(&self) {
+        drop(self.turn().await);
+    }
+
     pub async fn turn(&self) -> Turn {
         std::future::poll_fn(|cx| {
             let mut writes = self.0.borrow_mut();
@@ -830,6 +884,36 @@ mod tests {
         assert_eq!(words_after(&DecideEdit::Bookmark { on: true }, &more), None);
         // A late reply for a check already left changes nothing.
         SentWords::default().replied(true);
+    }
+
+    /// #853: the first read after a saved restore shows the restored words; a tap at any time
+    /// after the restore was asked for keeps the person's words.
+    #[test]
+    fn a_restore_shows_its_words_unless_the_person_changed_them_since() {
+        use RestoreEvent as E;
+        let run = |events: &[E]| {
+            events
+                .iter()
+                .fold((RestoredWords::None, false), |(state, _), e| state.step(*e))
+        };
+        let saved = E::Answered { saved: true };
+        assert_eq!(
+            run(&[E::Asked, saved, E::Read]),
+            (RestoredWords::None, true)
+        );
+        // Once: the read after it keeps what is on screen.
+        assert!(!run(&[E::Asked, saved, E::Read, E::Read]).1);
+        // A read before the answer is of the check before the restore, and waits.
+        assert_eq!(run(&[E::Asked, E::Read]), (RestoredWords::Asked, false));
+        assert!(run(&[E::Asked, E::Read, saved, E::Read]).1);
+        // A tap before the answer, and one after it but before the read.
+        assert!(!run(&[E::Asked, E::WordsChanged, saved, E::Read]).1);
+        assert!(!run(&[E::Asked, saved, E::WordsChanged, E::Read]).1);
+        // A restore that was not saved, and a check left, show nothing of it.
+        assert!(!run(&[E::Asked, E::Answered { saved: false }, E::Read]).1);
+        assert!(!run(&[E::Asked, saved, E::Left, E::Read]).1);
+        // No restore: a read keeps the words.
+        assert_eq!(run(&[E::Read]), (RestoredWords::None, false));
     }
 
     #[test]

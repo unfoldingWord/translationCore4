@@ -552,6 +552,74 @@ browserTest('a_check_restored_from_history_shows_its_restored_words', async () =
   }, { scenario: 'en-pins' });
 });
 
+// A tap while a restore is on its way is the person's newer act: the words on screen stay
+// theirs. Found by review of #989: the read after the restore replaced them with the stored
+// ones. Both halves: before the restore is answered, and after it but before its read.
+const tappedDuringRestore = (slow) => async () => {
+  await withApp(async ({ page, env }) => {
+    await openTool(page, 'translationNotes');
+    await page.getByTestId('tw-4').waitFor();
+    const index = Number(await shownIndex(page));
+    await page.getByTestId('tw-1').click();
+    await page.getByTestId('mark-valid').click();
+    await storedAs(env, index, 'valid', [1]);
+    await page.getByTestId('tw-2').click();
+    await storedAs(env, index, null, []);
+    await page.getByTestId('mark-valid').click();
+    await storedAs(env, index, 'valid', [1, 2]);
+    await page.getByTestId('check-history').getByTestId('history-toggle').click();
+    const versions = page.getByTestId('check-history').getByTestId('history-version');
+    await until('History lists the three versions', async () => (await versions.count()) >= 3);
+    // The server answers at once; the page hears it 2 s later.
+    await page.route(slow, async (route) => {
+      const response = await route.fetch();
+      await sleep(2000);
+      await route.fulfill({ response });
+    });
+    await versions.nth(2).getByTestId('history-restore').click();
+    await storedAs(env, index, 'valid', [1]);
+    await page.getByTestId('tw-3').click();
+    // The tap is a changed selection: it takes the restored mark away, after the restore.
+    await storedAs(env, index, null, []);
+    await sleep(5000);
+    assert.deepEqual(await pressedWords(page), ['tw-1', 'tw-2', 'tw-3'], 'the words the person saw and tapped stay');
+    assert.deepEqual(await navOff(page).then((off) => off[1]), true, 'and they hold the check until a mark');
+  }, { scenario: 'en-pins' });
+};
+browserTest('words_tapped_before_a_restore_is_answered_stay_on_screen', tappedDuringRestore('**/api/v1/conflicts/restore'));
+browserTest('words_tapped_after_a_restore_and_before_its_read_stay_on_screen', tappedDuringRestore('**/api/v1/check/item'));
+
+// Found by review of #989: a read that went out ahead of the page's own queued unmark showed
+// the words the person had just unselected, and no later read took them off. A read now waits
+// for the writes already on their way.
+browserTest('coming_back_before_a_queued_unmark_is_sent_shows_the_words_unselected', async () => {
+  await withApp(async ({ page, env }) => {
+    await openTool(page, 'translationNotes');
+    await page.getByTestId('tw-4').waitFor();
+    const index = Number(await shownIndex(page));
+    const sent = decides(page);
+    await page.getByTestId('tw-1').click();
+    await storedAs(env, index, null, []);
+    await until('the first tap was sent', async () => sent.length === 1);
+    await sleep(300);
+    // One write on its way and one queued behind it: the server stores Mark valid at once,
+    // the page hears 1.5 s later, and only then sends the unmark.
+    await slowDecides(page, 1500);
+    await page.getByTestId('mark-valid').click();
+    await storedAs(env, index, 'valid', [1]);
+    await page.getByTestId('tw-1').click();
+    await page.getByTestId('check-next').click();
+    await until('the next check shows', async () => Number(await shownIndex(page)) !== index);
+    await page.getByTestId('check-prev').click();
+    await until('the check shows again', async () => Number(await shownIndex(page)) === index);
+    await storedAs(env, index, null, []);
+    await page.getByTestId('tw-4').waitFor();
+    await sleep(2500);
+    assert.deepEqual(await pressedWords(page), [], 'the word stays unselected');
+    assert.equal((await navOff(page))[1], false, 'and Next is on: nothing waits for a mark');
+  }, { scenario: 'en-pins' });
+});
+
 // A-10, Q-25: a comment being typed when the checker moves on is saved with the check it was
 // typed on, never dropped (tC4 drops it) and never put on the next check.
 browserTest('check_comment_saved_on_leaving_the_item', async () => {
