@@ -52,7 +52,8 @@ write product code; a reviewer reads it first.
 1. **Reproduce it through a reachable scenario.** Write a test through the public API that fails
    today. Name it after the invariant it breaks
    (`a_save_never_erases_a_newer_draft_of_its_field`, not `test_bug_123`). A scenario a translator
-   cannot reach (`AGENTS.md`) is not a bug for this project: drop it.
+   cannot reach (`AGENTS.md`) is not a bug for this project: handle it as "A wrong state no screen
+   can reach" below says.
 2. **Ask what structure allowed it.** Was a state representable that should not be? Did a second
    path skip the rule? Did a flag stand in for a state? Was an error matched with a wildcard?
 3. **Fix the structure first.** Reuse the working code that does the same job, change the type,
@@ -63,6 +64,24 @@ write product code; a reviewer reads it first.
    pull request.
 5. **Look for its siblings.** Search for the same pattern elsewhere. Fix them in the same pull
    request when they are the same defect in the same files; otherwise file an issue for each.
+
+### A wrong state no screen can reach
+
+An audit or a test that calls the API directly can produce a wrong state that no screen can
+send: a modal covers the button, the button is disabled, or leaving the step cancels it. That is
+a dormant fault, not a bug. A test drives the API, but reach is decided at the screens. Journey
+work comes first; a dormant fault never outranks work on a journey a translator can walk.
+
+1. **Trace the screens.** Ask whether any screen can send the sequence. If one can, it is a bug:
+   go back to step 1 above.
+2. **Look once for the structure.** Ask whether a state machine, a reducer or a type that cannot
+   hold the state would make it impossible. Look once for each finding, not once for each review
+   round.
+3. **Build it if it is small; file it if it is large.** A small, local structure goes in the same
+   pull request. A large one gets one issue in a later milestone.
+4. **Then stop.** Say in one line, where the server code relies on it, what protects the state
+   (the modal, the disabled button). Write no test for the overlap no screen can send, add no
+   guard for each pair of calls, and ask the owner nothing about it.
 
 ## 3. How a feature goes through the funnel
 
@@ -177,7 +196,8 @@ A reviewer reads the funnel section first and asks, in order:
    carry the rule? A missing structural fix where one was possible is a major finding.
 2. **Checks.** Does a test named after each invariant exist? Was it shown to fail without the
    fix? Does it run in CI? Is it deterministic and inside the time limits?
-3. **Reach.** Is every scenario reachable? Drop the rest.
+3. **Reach.** Is every scenario reachable from a screen? Handle the rest as §2 "A wrong state no
+   screen can reach" says.
 4. **Siblings.** Was the same pattern searched for elsewhere?
 5. **No loss.** For a change that touches a translator's saved work: the three verification
    lenses (`docs/GLOSSARY.md`) and a model test with crashes and restarts.
