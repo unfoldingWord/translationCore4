@@ -972,6 +972,17 @@ mod tests {
         );
     }
 
+    /// A save that could not be sent at all (read-only, no check shown) is not stored: the next
+    /// leave sends it again.
+    #[test]
+    fn a_save_never_sent_is_tried_again_on_leaving() {
+        use SelectionEvent::{Changed, Idle, Leaving, SaveFailed};
+        assert_eq!(
+            run(&[SHOWN_VALID, Changed, Idle, SaveFailed, Leaving]).last(),
+            Some(&SelectionCommand::Save)
+        );
+    }
+
     #[test]
     fn a_comments_place_names_its_check_and_reads_back() {
         for (tool, at, id) in [

@@ -962,7 +962,13 @@ impl Actions {
             }
             SelectionCommand::Save => {
                 stop_wait();
-                self.selection_write()
+                let write = self.selection_write();
+                if write.is_none() {
+                    // Nothing was sent (no open, read-only, no check shown): the words still
+                    // wait, so the next leave tries again instead of counting them as stored.
+                    SELECTION.set(SELECTION.get().step(SelectionEvent::SaveFailed).0);
+                }
+                write
             }
         }
     }
@@ -996,6 +1002,9 @@ impl Actions {
         let hook = std::rc::Rc::new(move || {
             let this = this.clone();
             let flush: LocalBoxFuture<bool> = Box::pin(async move {
+                // A save the wait already sent may still be on its way: its reply lands first,
+                // while the check is shown, so a failure is known before the leave decides.
+                drop(WRITES.with(DecisionWrites::clone).turn().await);
                 match this.selection_step(SelectionEvent::Leaving) {
                     Some(write) => write.await,
                     None => true,
