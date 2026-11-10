@@ -27,7 +27,7 @@
 
 ## Changes
 
-`docs/DIFFERENCES.md` (three entries), J4 in `docs/JOURNEYS.md`, `docs/STORAGE.md` §5.4, and the
+`docs/DIFFERENCES.md` (four entries), J4 in `docs/JOURNEYS.md`, `docs/STORAGE.md` §5.4, and the
 journeys mapped under J4 in `parity/app/journeys/coverage.json`.
 
 ## Effect for translators
@@ -37,12 +37,24 @@ who changes the words sees the mark go, marks the check again, and the words are
 that no mark saved are never dropped without a sign: the translator is held on the check or
 asked first.
 
+## What Invalid means (owner, 2026-11-10)
+
+- Asked: 2026-11-10, about Mark invalid with words selected on screen: "Is the check invalid
+  or the text?" The app shows two things as Invalid: the translator's own mark, and a decision
+  that no longer holds because the text or the helps changed.
+- Answer: the owner, 2026-11-10: the text. The Invalid button means the translation fails
+  this check.
+
+So no words translate the check, and Mark invalid takes the selected words off the screen at
+the click, as its record stores none. Words tapped on a check that shows Invalid hold the
+check like any others, until a mark or until they are unselected.
+
 ## Not decided
 
-- Mark invalid and Mark To do with words on screen: the mark turns Previous and Next back on
-  (rule 4), but only Mark valid stores words, so the words are dropped on Next. This waits on
-  what Invalid means. The app shows two things as Invalid: the person's own mark, and a
-  decision that no longer holds because the text or the resource changed.
+- Mark To do with words on screen: the mark turns Previous and Next back on (rule 4), but
+  only Mark valid stores words, so the words are dropped on Next.
+- A decision that no longer holds also shows as Invalid. Whether it gets words of its own is
+  open.
 
 ## The words (owner, 2026-11-10)
 

@@ -310,16 +310,16 @@ browserTest('a_changed_selection_takes_the_mark_away_until_the_check_is_marked_a
     await storedAs(env, index, 'valid', [1, 2]);
     await awayAndBack(page, index);
     assert.deepEqual(await pressedWords(page), ['tw-1', 'tw-2']);
-    // The same after Invalid, To do and "nothing to select".
+    // The same after Invalid, To do and "nothing to select". Mark invalid says the translation
+    // fails the check, so it takes the selected words off the screen.
     for (const [button, status] of [['mark-invalid', 'invalid'], ['mark-todo', 'todo']]) {
       await page.getByTestId(button).click();
       await until(`stored ${status}`, async () => (await stored(env, index)).decision.value.status === status);
+      assert.deepEqual(await pressedWords(page), []);
       await page.getByTestId('tw-3').click();
       await storedAs(env, index, null, []);
       await page.getByTestId('tw-3').click();
     }
-    await page.getByTestId('tw-1').click();
-    await page.getByTestId('tw-2').click();
     await page.getByTestId('mark-valid').click();
     await until('stored with nothing to select', async () => (await stored(env, index)).decision.value.nothingToSelect);
     await page.getByTestId('tw-3').click();
@@ -456,6 +456,17 @@ browserTest('previous_and_next_are_off_while_selected_words_are_not_saved', asyn
     await storedAs(env, index, null, []);
     await sleep(700);
     assert.deepEqual(await navOff(page), [true, true], 'still off once the check has no decision');
+    // Mark invalid says the translation fails this check: no words translate it, so the
+    // selected words leave the screen at the click, as the record stores none.
+    await page.getByTestId('mark-invalid').click();
+    await until('the words are off the screen', async () => String(await pressedWords(page)) === '');
+    assert.deepEqual(await navOff(page), [false, false], 'and nothing holds the check');
+    const invalid = await storedAs(env, index, 'invalid', []);
+    assert.equal(invalid.decision.value.nothingToSelect, false);
+    // A word tapped on the Invalid check takes that mark away and holds the check again.
+    await page.getByTestId('tw-2').click();
+    await storedAs(env, index, null, []);
+    await until('both are off', async () => String(await navOff(page)) === 'true,true');
     // To do is the person's decision with the words on screen.
     await page.getByTestId('mark-todo').click();
     await until('both are on', async () => String(await navOff(page)) === 'false,false');

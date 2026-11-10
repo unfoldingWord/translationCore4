@@ -963,6 +963,9 @@ impl Actions {
             edit,
         };
         c.marking.try_set(Marking::Idle);
+        if let Some(shown) = check_item::selection_after_mark(&request.edit) {
+            c.selection.try_set(shown);
+        }
         let words = check_item::words_after(&request.edit, &c.selection.get_untracked());
         let tracked = words.is_some();
         if let Some(words) = words {

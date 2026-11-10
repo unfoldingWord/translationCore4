@@ -23,6 +23,7 @@ detail, it is named. **Wins over:** nothing.
 | ULT, UST | unfoldingWord's literal and simplified English texts, used as source texts |
 | Pin | The exact version of a resource a project uses. Upgrades move pins (J12) |
 | Check | One item of a checking tool (a note or a word) for one verse; a decision is the translator's mark on it |
+| Invalid (a mark) | The translator's mark that the translation fails this check. It stores no selected words and counts as resolved (owner, 2026-11-10, `docs/rulings/2026-11-09-check-selection.md`). The app also shows a decision that no longer holds as Invalid: that one is computed, says nothing about the text and needs review |
 | Alignment | The links between the translation's words and the original-language words of a verse |
 | Translate, Check, Align, Understand | The four tools (modes) of a project |
 | Journey | A goal one person reaches, with its end state on screen and on disk: `docs/JOURNEYS.md`. J1 to J26 are tC4's, J27 and later the rebuild's. P1 needs each live one tested end to end |

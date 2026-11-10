@@ -69,16 +69,20 @@ pub fn valid_edit(selection: &BTreeSet<u32>) -> DecideEdit {
     }
 }
 
+/// The words on screen once a mark is pressed, when the mark changes them. Mark invalid says
+/// the translation fails this check (owner, 2026-11-10), so no words translate it: the screen
+/// shows none, as the record stores none.
+pub fn selection_after_mark(edit: &DecideEdit) -> Option<BTreeSet<u32>> {
+    matches!(edit, DecideEdit::Invalid).then(BTreeSet::new)
+}
+
 /// The words a decision write of the page leaves on the shown check, or `None` for a write that
-/// leaves them alone (a bookmark, a comment). A mark answers for the words on screen: Mark
-/// valid stores them, and the other two marks are the person's decision about them. An unmark
-/// leaves none stored.
+/// leaves them alone (a bookmark, a comment). Mark valid stores the words on screen. Mark
+/// invalid and an unmark leave none. To do is the person's decision with the words on screen.
 pub fn words_after(edit: &DecideEdit, selection: &BTreeSet<u32>) -> Option<BTreeSet<u32>> {
     match edit {
-        DecideEdit::Valid { .. } | DecideEdit::Invalid | DecideEdit::Todo => {
-            Some(selection.clone())
-        }
-        DecideEdit::Unmark => Some(BTreeSet::new()),
+        DecideEdit::Valid { .. } | DecideEdit::Todo => Some(selection.clone()),
+        DecideEdit::Invalid | DecideEdit::Unmark => Some(BTreeSet::new()),
         DecideEdit::Bookmark { .. } | DecideEdit::Comment { .. } => None,
     }
 }
@@ -183,18 +187,16 @@ pub fn words_unsaved(
     }
     match sent {
         Some(sent) => selection != sent,
-        // Invalid and To do are the person's decision with these words on screen.
+        // To do is the person's decision with these words on screen.
         None => {
-            !matches!(
-                read.decision.value.status,
-                Some(DecisionStatus::Invalid | DecisionStatus::Todo)
-            ) && read
-                .target
-                .selected
-                .iter()
-                .copied()
-                .collect::<BTreeSet<u32>>()
-                != *selection
+            read.decision.value.status != Some(DecisionStatus::Todo)
+                && read
+                    .target
+                    .selected
+                    .iter()
+                    .copied()
+                    .collect::<BTreeSet<u32>>()
+                    != *selection
         }
     }
 }
@@ -840,15 +842,14 @@ mod tests {
         assert!(!words_unsaved(true, &valid, None, &set(&[0, 1])));
         // Other words than the stored ones, whose unmark was not saved.
         assert!(words_unsaved(true, &valid, None, &set(&[0, 2])));
-        // Invalid and To do are the person's decision, with the words left on screen.
-        for status in [DecisionStatus::Invalid, DecisionStatus::Todo] {
-            assert!(!words_unsaved(
-                true,
-                &marked(Some(status), &[]),
-                None,
-                &set(&[1])
-            ));
-        }
+        // To do is the person's decision, with the words left on screen.
+        let todo = marked(Some(DecisionStatus::Todo), &[]);
+        assert!(!words_unsaved(true, &todo, None, &set(&[1])));
+        // Invalid stores no words and shows none. Words on an Invalid check are a tap whose
+        // unmark was not saved, or a tap on a check shown Invalid because its helps changed.
+        let invalid = marked(Some(DecisionStatus::Invalid), &[]);
+        assert!(!words_unsaved(true, &invalid, None, &set(&[])));
+        assert!(words_unsaved(true, &invalid, None, &set(&[1])));
         // Stored words with no status (a teammate's unfinished check): nobody touched them.
         assert!(!words_unsaved(true, &marked(None, &[2]), None, &set(&[2])));
     }
@@ -880,6 +881,12 @@ mod tests {
         assert!(!words_unsaved(true, &none, sent.words(), &more));
         sent.replied(false);
         assert!(words_unsaved(true, &none, sent.words(), &more));
+        // Mark invalid takes the words off the screen and stores none.
+        assert_eq!(selection_after_mark(&DecideEdit::Invalid), Some(set(&[])));
+        assert_eq!(words_after(&DecideEdit::Invalid, &more), Some(set(&[])));
+        for edit in [valid_edit(&more), DecideEdit::Todo, DecideEdit::Unmark] {
+            assert_eq!(selection_after_mark(&edit), None);
+        }
         // A bookmark and a comment leave the words alone.
         assert_eq!(words_after(&DecideEdit::Bookmark { on: true }, &more), None);
         // A late reply for a check already left changes nothing.
