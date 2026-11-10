@@ -792,6 +792,16 @@ impl FakeDoor43 {
         }
     }
 
+    /// How many requests and downloads wait for a release now. A test that waits for this to
+    /// rise before it releases cannot send a release the request has not reached yet.
+    pub fn held(&self) -> usize {
+        self.shared
+            .held()
+            .iter()
+            .filter(|release| !release.is_closed())
+            .count()
+    }
+
     pub fn requests(&self) -> Vec<RecordedRequest> {
         self.shared.state().requests.clone()
     }

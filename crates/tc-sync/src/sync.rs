@@ -117,9 +117,7 @@ pub async fn sync(
         client,
         session: session.cloned(),
         target: None,
-        fetched: None,
-        branch_gone: false,
-        restore_format: false,
+        door43: Door43Branch::Unread,
         packs: Vec::new(),
         merged: None,
         report: SyncReport {
@@ -175,18 +173,56 @@ struct Target {
     empty: bool,
 }
 
+/// What one read of Door43 found of the project's branch. Each read replaces it whole, so a
+/// round acts only on what its own read found (INV-RECREATED-IS-THIS-SYNC-S): a teammate who
+/// made the branch again while this sync raced is not reported as this copy put back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Door43Branch {
+    /// This sync has not read Door43 yet.
+    Unread,
+    /// The branch is not there. `deleted`: its owner deleted it, and the push that makes it
+    /// again is said; else it is the first push to an empty repository.
+    Missing { deleted: bool },
+    /// The branch is at `commit`. `restore_format`: its tree, once read, had no `format.json`
+    /// this app could read (§9.2 N1), so the merge commit puts the local one back and the push
+    /// makes that so on Door43.
+    At {
+        commit: git2::Oid,
+        restore_format: bool,
+    },
+}
+
+impl Door43Branch {
+    fn commit(self) -> Option<git2::Oid> {
+        match self {
+            Self::At { commit, .. } => Some(commit),
+            Self::Unread | Self::Missing { .. } => None,
+        }
+    }
+
+    fn deleted(self) -> bool {
+        matches!(self, Self::Missing { deleted: true })
+    }
+
+    fn restore_format(self) -> bool {
+        matches!(
+            self,
+            Self::At {
+                restore_format: true,
+                ..
+            }
+        )
+    }
+}
+
 struct Run<'a> {
     project: &'a ProjectHandle,
     client: &'a Door43Client,
     session: Option<Session>,
     target: Option<Target>,
-    /// The commit the last fetch found on Door43.
-    fetched: Option<git2::Oid>,
-    /// The last fetch found the branch deleted on Door43: the push makes it again.
-    branch_gone: bool,
-    /// The last fetched tree had no `format.json` this app could read (§9.2 N1): the merge
-    /// commit puts the local one back, and the push makes that so on Door43.
-    restore_format: bool,
+    /// What the last read of Door43 found. What must last across rounds (the report, the
+    /// received counts) is in the fields below, which no read resets.
+    door43: Door43Branch,
     packs: Vec<ReceivedPack>,
     /// The merge's answer: the take-in and the commit come back together.
     merged: Option<Result<CheckpointReport, String>>,
@@ -377,15 +413,15 @@ impl Run<'_> {
         })
         .await;
         match fetched {
-            Ok(Ok(Ok((remote, new)))) => {
-                self.fetched = Some(remote);
+            Ok(Ok(Ok((commit, new)))) => {
+                self.door43 = Door43Branch::At {
+                    commit,
+                    restore_format: false,
+                };
                 SyncEvent::Fetched(if new { Remote::New } else { Remote::NothingNew })
             }
             Ok(Ok(Err(deleted))) => {
-                self.fetched = None;
-                // Each round reads Door43 afresh: a teammate who made the branch again
-                // while this round raced is not reported as this copy put back.
-                self.branch_gone = deleted;
+                self.door43 = Door43Branch::Missing { deleted };
                 SyncEvent::Fetched(Remote::NothingNew)
             }
             Ok(Err(refusal)) => SyncEvent::FetchFailed(refusal),
@@ -398,7 +434,7 @@ impl Run<'_> {
     /// §9.2: the format and the project of the fetched tree, and the packs this project's
     /// HEAD does not hold. It reads the object database only.
     async fn read_remote(&mut self) -> SyncEvent {
-        let (Some(target), Some(remote)) = (self.target.clone(), self.fetched) else {
+        let (Some(target), Some(remote)) = (self.target.clone(), self.door43.commit()) else {
             return SyncEvent::RemoteUnreadable {
                 reason: "nothing was fetched".into(),
             };
@@ -412,8 +448,10 @@ impl Run<'_> {
             })) => {
                 self.count_received(&packs);
                 self.packs = packs;
-                // Each round reads Door43 afresh, as `branch_gone`.
-                self.restore_format = restore_format;
+                self.door43 = Door43Branch::At {
+                    commit: remote,
+                    restore_format,
+                };
                 for commit in other_tools {
                     if !self.report.other_tools.contains(&commit) {
                         self.report.other_tools.push(commit);
@@ -432,7 +470,7 @@ impl Run<'_> {
     /// §9.3 and S7: the store takes the packs in and makes the merge commit in one job, so
     /// the received work and the saves made since S1 are in it.
     async fn take_in(&mut self) -> SyncEvent {
-        let Some(remote) = self.fetched else {
+        let Some(remote) = self.door43.commit() else {
             return SyncEvent::TakeInFailed {
                 reason: "nothing was fetched".into(),
             };
@@ -490,7 +528,7 @@ impl Run<'_> {
             return SyncEvent::PushFailed(SyncRefusal::NotSignedIn);
         };
         let http = self.client.http().clone();
-        let remote = self.fetched;
+        let remote = self.door43.commit();
         let bound = self.project.chain_bytes();
         let facts = self.project.facts();
         let (device, project) = (facts.device, facts.id);
@@ -511,22 +549,30 @@ impl Run<'_> {
         if let Some(link) = chain.confirmed {
             self.report.confirmed = Some(link.to_string());
         }
+        // A link made the branch again, and the push did not end well: the mark keeps it for
+        // the push that does, in a later round or a later sync, whose read finds the branch.
+        let made_again = self.door43.deleted() && chain.confirmed.is_some();
         match result {
             Ok(restored) => {
-                // Said only once the push made the branch again (tC4 reports it after the push).
-                self.report.recreated = self.branch_gone || self.put_back(None).await;
-                self.report.format_restored = self.restore_format;
+                // Said only once the push made the branch again (tC4 reports it after the
+                // push): by this push, or by a link of an earlier sync that failed after it.
+                // The mark is read first, so a branch deleted again does not leave it behind.
+                let unsaid = self.put_back(None).await;
+                self.report.recreated = self.door43.deleted() || unsaid;
+                self.report.format_restored = self.door43.restore_format();
                 self.report.restored += restored;
                 SyncEvent::Pushed
             }
-            Err(Pushed::Nothing) => {
-                self.report.recreated = self.branch_gone;
-                SyncEvent::Pushed
+            // Nothing was pushed, so nothing was put back.
+            Err(Pushed::Nothing) => SyncEvent::Pushed,
+            Err(Pushed::Raced) => {
+                if made_again {
+                    self.put_back(Some(true)).await;
+                }
+                SyncEvent::PushRaced
             }
-            Err(Pushed::Raced) => SyncEvent::PushRaced,
             Err(Pushed::Failed(refusal)) => {
-                if self.branch_gone && chain.confirmed.is_some() {
-                    // A link made the branch again; this failed sync cannot say so.
+                if made_again {
                     self.put_back(Some(true)).await;
                 }
                 if refusal == SyncRefusal::Unreachable
