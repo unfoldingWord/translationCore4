@@ -134,6 +134,9 @@ pub enum Triage {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Edit {
     Triage(Triage),
+    /// The tapped words changed after a mark: the mark no longer says what the screen shows,
+    /// so the check goes back to no decision until it is marked again (#853).
+    Unmark,
     Bookmark(bool),
     /// The check comment; an empty comment removes it.
     Comment(String),
@@ -142,7 +145,7 @@ pub enum Edit {
 impl Edit {
     /// What the button changes, as tC4's buttons change it (tC4 `recordDecision`): Mark
     /// valid sets the words or nothing-to-select, Invalid clears the words, To do sets only
-    /// the status.
+    /// the status. Unmark, which tC4 has not, clears the words and the status.
     pub fn changes(self) -> Vec<DecisionChange> {
         match self {
             Self::Triage(Triage::Valid(words)) if words.is_empty() => vec![
@@ -161,6 +164,11 @@ impl Edit {
                 DecisionChange::Status(Some(UserStatus::Invalid)),
             ],
             Self::Triage(Triage::Todo) => vec![DecisionChange::Status(Some(UserStatus::Todo))],
+            Self::Unmark => vec![
+                DecisionChange::Selections(None),
+                DecisionChange::NothingToSelect(false),
+                DecisionChange::Status(None),
+            ],
             Self::Bookmark(on) => vec![DecisionChange::Bookmarked(on)],
             Self::Comment(text) => vec![DecisionChange::Comment(Some(text))],
         }

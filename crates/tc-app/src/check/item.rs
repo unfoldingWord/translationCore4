@@ -646,6 +646,7 @@ fn edit_of(
         }
         DecideEdit::Invalid => Edit::Triage(Triage::Invalid),
         DecideEdit::Todo => Edit::Triage(Triage::Todo),
+        DecideEdit::Unmark => Edit::Unmark,
         DecideEdit::Bookmark { on } => Edit::Bookmark(*on),
         DecideEdit::Comment { text } => Edit::Comment(text.clone()),
     })

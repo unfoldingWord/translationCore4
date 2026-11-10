@@ -261,6 +261,164 @@ browserTest('a_drag_selects_whole_words_and_mark_valid_saves_them', async () => 
   }, { scenario: 'en-pins' });
 });
 
+const pressedWords = (page) => page.locator('[data-testid^="tw-"][aria-pressed="true"]').evaluateAll((spans) => spans.map((s) => s.getAttribute('data-testid')));
+const stored = (env, index) => item(env, 'translationNotes', index);
+const storedAs = (env, index, status, selected) => until(`check ${index} is stored ${status} with words ${selected}`, async () => {
+  const view = await stored(env, index);
+  return view.decision.value.status === status && String(view.target.selected) === String(selected) ? view : null;
+});
+/** Next, then Previous: the check is read again from what is stored. */
+async function awayAndBack(page, index) {
+  await page.getByTestId('check-next').click();
+  await until('the next check shows', async () => Number(await shownIndex(page)) !== index);
+  await page.getByTestId('check-quote').waitFor();
+  await page.getByTestId('check-prev').click();
+  await until('the check shows again', async () => Number(await shownIndex(page)) === index);
+  await page.getByTestId('tw-4').waitFor();
+}
+/** The `check/decide` requests the page sends from now on. */
+function decides(page) {
+  const sent = [];
+  page.on('request', (r) => { if (r.url().endsWith('/api/v1/check/decide')) sent.push(r.postDataJSON()); });
+  return sent;
+}
+
+// #853: a mark stores the words on screen, as a save does. Changing the words afterwards makes
+// the mark untrue, so the check goes back to no decision at once and the words stay on screen
+// for the next mark. tC4 4.0 kept the mark with its old words and dropped the new ones on Next.
+browserTest('a_changed_selection_takes_the_mark_away_until_the_check_is_marked_again', async () => {
+  await withApp(async ({ page, env }) => {
+    await openTool(page, 'translationNotes');
+    await page.getByTestId('tw-4').waitFor();
+    const index = Number(await shownIndex(page));
+    const row = page.locator(`[data-testid="check-list"] [data-rail-index="${index}"]`);
+    await page.getByTestId('tw-1').click();
+    await page.getByTestId('mark-valid').click();
+    await storedAs(env, index, 'valid', [1]);
+    await until('the rail counts it', async () => (await row.getAttribute('data-decided')) === '1');
+    await page.getByTestId('tw-2').click();
+    const unmarked = await storedAs(env, index, null, []);
+    assert.equal(unmarked.decision.value.nothingToSelect, false);
+    assert.equal(unmarked.decision.marker, null, 'the person\'s own writes are no conflict');
+    await until('the rail no longer counts it', async () => (await row.getAttribute('data-decided')) === '0');
+    assert.deepEqual(await pressedWords(page), ['tw-1', 'tw-2'], 'the words stay on screen');
+    // Marking again stores the words now on screen, and they come back after going away.
+    await page.getByTestId('mark-valid').click();
+    await storedAs(env, index, 'valid', [1, 2]);
+    await awayAndBack(page, index);
+    assert.deepEqual(await pressedWords(page), ['tw-1', 'tw-2']);
+    // The same after Invalid, To do and "nothing to select".
+    for (const [button, status] of [['mark-invalid', 'invalid'], ['mark-todo', 'todo']]) {
+      await page.getByTestId(button).click();
+      await until(`stored ${status}`, async () => (await stored(env, index)).decision.value.status === status);
+      await page.getByTestId('tw-3').click();
+      await storedAs(env, index, null, []);
+      await page.getByTestId('tw-3').click();
+    }
+    await page.getByTestId('tw-1').click();
+    await page.getByTestId('tw-2').click();
+    await page.getByTestId('mark-valid').click();
+    await until('stored with nothing to select', async () => (await stored(env, index)).decision.value.nothingToSelect);
+    await page.getByTestId('tw-3').click();
+    await storedAs(env, index, null, []);
+  }, { scenario: 'en-pins' });
+});
+
+browserTest('a_changed_selection_is_told_once_per_gesture', async () => {
+  await withApp(async ({ page, env }) => {
+    await openTool(page, 'translationNotes');
+    await page.getByTestId('tw-4').waitFor();
+    const index = Number(await shownIndex(page));
+    await page.getByTestId('mark-valid').click();
+    await storedAs(env, index, 'valid', []);
+    // A drag is one gesture: nothing is sent while the button is down, one unmark when it goes up.
+    const sent = decides(page);
+    const box = async (i) => page.getByTestId(`tw-${i}`).boundingBox();
+    const from = await box(5);
+    const to = await box(8);
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 8 });
+    await sleep(200);
+    assert.equal(sent.length, 0, 'nothing is sent while the button is down');
+    await page.mouse.up();
+    await storedAs(env, index, null, []);
+    await sleep(200);
+    assert.deepEqual(sent.map((d) => d.edit.type), ['unmark'], 'the drag is one unmark');
+    assert.deepEqual(await pressedWords(page), ['tw-5', 'tw-6', 'tw-7', 'tw-8']);
+    await page.getByTestId('mark-valid').click();
+    await storedAs(env, index, 'valid', [5, 6, 7, 8]);
+    // A drag over the same words, and a key that selects nothing new, change nothing: the
+    // mark stays.
+    const again = sent.length;
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 8 });
+    await page.mouse.up();
+    await page.keyboard.press('Shift+ArrowRight');
+    assert.deepEqual(await pressedWords(page), ['tw-5', 'tw-6', 'tw-7', 'tw-8']);
+    await sleep(300);
+    assert.equal(sent.length, again, 'nothing is sent for the same words');
+    assert.equal((await stored(env, index)).decision.value.status, 'valid');
+    // The keyboard acts from the word the drag began on.
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.press('Shift+ArrowLeft');
+    await storedAs(env, index, null, []);
+    await sleep(300);
+    assert.equal(sent.length, again + 1, 'the key that selected a word is one unmark');
+    assert.deepEqual(await pressedWords(page), ['tw-4', 'tw-5', 'tw-6', 'tw-7', 'tw-8']);
+  }, { scenario: 'en-pins' });
+});
+
+// The page hears of a save late on a slow disk. A word tapped before it hears of the Mark valid
+// still takes that mark away: the server applies the two in the order the person made them.
+browserTest('a_word_tapped_while_mark_valid_is_still_being_saved_takes_the_mark_away', async () => {
+  await withApp(async ({ page, env }) => {
+    await openTool(page, 'translationNotes');
+    await page.getByTestId('tw-4').waitFor();
+    const index = Number(await shownIndex(page));
+    const nextBefore = await stored(env, index + 1);
+    await slowDecides(page, 300);
+    const sent = decides(page);
+    await page.getByTestId('mark-valid').click();
+    await page.getByTestId('tw-1').click();
+    // Next before any of it is heard of.
+    await page.getByTestId('check-next').click();
+    await until('the next check shows', async () => Number(await shownIndex(page)) !== index);
+    await until('both were sent', async () => sent.length === 2);
+    await sleep(300 * 4);
+    const last = await stored(env, index);
+    assert.equal(last.decision.value.status, null, 'the mark made before the tap is gone');
+    assert.deepEqual(last.target.selected, []);
+    assert.equal(last.decision.marker, null, 'no conflict with the person themselves');
+    const next = await stored(env, index + 1);
+    assert.equal(next.decision.value.status, null, 'the next check took nothing');
+    assert.equal(next.decision.token, nextBefore.decision.token, 'no new version of the next check');
+  }, { scenario: 'en-pins' });
+});
+
+// Words tapped on a check nobody decided are not a change of the project: nothing is recorded
+// until a mark, and going on drops them (tC4's Q2).
+browserTest('words_tapped_on_a_check_with_no_decision_record_nothing', async () => {
+  await withApp(async ({ page, env }) => {
+    await openTool(page, 'translationNotes');
+    await page.getByTestId('tw-4').waitFor();
+    const index = Number(await shownIndex(page));
+    const before = await stored(env, index);
+    const sent = decides(page);
+    await page.getByTestId('tw-1').click();
+    await page.getByTestId('tw-2').click();
+    await until('both taps were told', async () => sent.length === 2);
+    await sleep(300);
+    const after = await stored(env, index);
+    assert.equal(after.decision.token, before.decision.token, 'no new version of the decision');
+    assert.equal(after.decision.value.status, null);
+    assert.deepEqual(await pressedWords(page), ['tw-1', 'tw-2']);
+    await awayAndBack(page, index);
+    assert.deepEqual(await pressedWords(page), []);
+  }, { scenario: 'en-pins' });
+});
+
 // A-10, Q-25: a comment being typed when the checker moves on is saved with the check it was
 // typed on, never dropped (tC4 drops it) and never put on the next check.
 browserTest('check_comment_saved_on_leaving_the_item', async () => {

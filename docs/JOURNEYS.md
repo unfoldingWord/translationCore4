@@ -121,6 +121,8 @@ budget in `docs/PERFORMANCE.md`). Their tC4 tests stay mapped under `specs` in `
 - End state: one decision record per check, holding the marked words, the comment and the
   bookmark; they survive reopening; clearing a comment clears that field. The book text is
   unchanged.
+- Changed from tC4: a change of the selected words after a mark takes the mark away until the
+  check is marked again (#853, `docs/DIFFERENCES.md`).
 - Must not: store a check comment anywhere but its decision; count a bookmarked or commented check
   differently from a plain one.
 

@@ -128,12 +128,23 @@
         ]
       }
     ],
-    "J4": {
-      "file": "parity/app/journeys/check-writes.test.mjs",
-      "tests": [
-        "j4_a_mark_on_dragged_words_a_comment_and_a_bookmark_are_one_decision_record_on_disk"
-      ]
-    },
+    "J4": [
+      {
+        "file": "parity/app/journeys/check-writes.test.mjs",
+        "tests": [
+          "j4_a_mark_on_dragged_words_a_comment_and_a_bookmark_are_one_decision_record_on_disk"
+        ]
+      },
+      {
+        "file": "parity/app/journeys/check-detail.test.mjs",
+        "tests": [
+          "a_changed_selection_takes_the_mark_away_until_the_check_is_marked_again",
+          "a_changed_selection_is_told_once_per_gesture",
+          "a_word_tapped_while_mark_valid_is_still_being_saved_takes_the_mark_away",
+          "words_tapped_on_a_check_with_no_decision_record_nothing"
+        ]
+      }
+    ],
     "J5": {
       "file": "parity/app/journeys/align.test.mjs",
       "tests": [

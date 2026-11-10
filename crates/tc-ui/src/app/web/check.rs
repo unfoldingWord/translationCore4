@@ -105,7 +105,8 @@ pub struct CheckState {
     pub focused_for: ArcRwSignal<Option<Tool>>,
     /// The active check's detail.
     pub detail: ArcRwSignal<Option<Detail>>,
-    /// The words tapped in the draft, one local value until a mark saves it (#757).
+    /// The words tapped in the draft, one local value until a mark saves it (#757). A change
+    /// of it takes the check's mark away (#853).
     pub selection: ArcRwSignal<BTreeSet<u32>>,
     /// The Academy drawer, closed or on the active check's article.
     pub academy: ArcRwSignal<Option<Academy>>,
@@ -789,6 +790,16 @@ impl Actions {
             view: Some(View::of(Some(&project.at), view.view)),
         };
         self.runtime().saves().refresh(&key, pair, None);
+    }
+
+    /// The person finished changing the tapped words. A mark stored the words that were on
+    /// screen, so it no longer holds: the check goes back to no decision until it is marked
+    /// again. The server decides, since only it knows the mark a save still on its way made;
+    /// for a check with no mark it records nothing.
+    pub fn words_changed(&self) {
+        if let Some(cap) = self.write_cap() {
+            self.mark(cap, DecideEdit::Unmark);
+        }
     }
 
     /// One act on the shown check, saved at once (AD20). The writes of decisions go one at a time

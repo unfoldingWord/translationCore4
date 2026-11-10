@@ -229,6 +229,11 @@ Under the same rule, tC4 4.0 bugs the rebuild fixes on purpose (FIX-R, 2026-10-2
   packages of one language (French from Xenizo and from MVHS), the buttons also name each
   package's owner; tC4 reads "Keep Français" and "Change to Français". The language in use is
   never asked, also from a Get source texts step left open after the change (#855).
+- In Check, changing the selected words takes the check's mark away. Mark valid stores the words
+  on screen, as a save does. A change of them afterwards puts the check back to no decision at
+  once: it is counted as not done, and the words stay on screen until the next mark stores
+  them. The earlier mark stays in History. tC4 keeps the mark with the words it was made with
+  and drops the new words on Next without a word (#853).
 
 Owner rulings in the issues, made before 4.1.0:
 

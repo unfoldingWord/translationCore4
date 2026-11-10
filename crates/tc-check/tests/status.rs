@@ -311,6 +311,52 @@ fn triage_buttons_record_what_tc4_records() {
     assert_eq!(cleared.comment, None);
 }
 
+/// #853: the words changed after a mark. Whatever the mark was, the check is back to no
+/// decision; an invalidated one stops being invalidated, since nothing is left to invalidate.
+#[test]
+fn unmark_takes_any_mark_away_and_leaves_no_decision() {
+    let marks = [
+        Edit::Triage(Triage::Valid(dios())),
+        Edit::Triage(Triage::Valid(Vec::new())),
+        Edit::Triage(Triage::Invalid),
+        Edit::Triage(Triage::Todo),
+    ];
+    for mark in marks {
+        let marked = apply(None, mark.clone(), VERSE, &resource());
+        let commented = apply(
+            Some(&marked),
+            Edit::Comment("ask".into()),
+            VERSE,
+            &resource(),
+        );
+        let kept = apply(Some(&commented), Edit::Bookmark(true), VERSE, &resource());
+        let edited = "otro texto sin la palabra";
+        let unmarked = apply(Some(&kept), Edit::Unmark, edited, &resource());
+        assert_eq!(unmarked.judgement.selections, None, "{mark:?}");
+        assert!(!unmarked.judgement.nothing_to_select, "{mark:?}");
+        assert_eq!(unmarked.judgement.status, None, "{mark:?}");
+        assert_eq!(unmarked.comment.as_deref(), Some("ask"));
+        assert!(unmarked.bookmarked);
+        let state = CheckState::of(Some(&unmarked), Some(&resource()), Some(&t(edited)));
+        assert!(!state.is_decided(), "{mark:?}");
+        assert_eq!(state.status(), None, "{mark:?}");
+        assert_eq!(state.invalidation(), None, "{mark:?}");
+        assert_eq!(state.dot(), Dot::Todo, "{mark:?}");
+        // With no mark left, another unmark changes nothing, even after the text changed again.
+        let again = apply(
+            Some(&unmarked),
+            Edit::Unmark,
+            "un tercer texto",
+            &resource(),
+        );
+        assert_eq!(again, unmarked, "{mark:?}");
+    }
+    // A check that holds only a comment has no mark: a tap after its verse changed leaves it.
+    let commented = apply(None, Edit::Comment("ask".into()), VERSE, &resource());
+    let tapped = apply(Some(&commented), Edit::Unmark, "otro texto", &resource());
+    assert_eq!(tapped, commented);
+}
+
 // ---- the sample project ------------------------------------------------------------
 
 #[test]

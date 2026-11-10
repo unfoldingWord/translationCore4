@@ -358,9 +358,19 @@ fn focus_word(root: NodeRef<html::P>, at: usize) {
 
 /// The line of draft words (tC4's `TargetWords`): one Tab stop, Left and Right between the
 /// words in the order drawn, Shift selects as a word processor does, a press and a drag selects
-/// whole words (#737), and the text stays selectable for copying.
-fn target_words(s: &AppState, words: Vec<String>, direction: TextDir) -> AnyView {
+/// whole words (#737), and the text stays selectable for copying. Each finished change of the
+/// selection (a click, a key, a drag's release) tells the server the words changed (#853).
+fn target_words(
+    s: &AppState,
+    actions: &Actions,
+    words: Vec<String>,
+    direction: TextDir,
+) -> AnyView {
     let selection = s.c.selection.clone();
+    let changed = {
+        let actions = send_wrapper::SendWrapper::new(actions.clone());
+        move || actions.words_changed()
+    };
     let nav = StoredValue::new_local(WordNav::default());
     let root: NodeRef<html::P> = NodeRef::new();
     let len = words.len();
@@ -373,20 +383,31 @@ fn target_words(s: &AppState, words: Vec<String>, direction: TextDir) -> AnyView
     };
     let rtl = direction == TextDir::Rtl;
     let apply = {
-        let selection = selection.clone();
+        let (selection, changed) = (selection.clone(), changed.clone());
         move |step: WordStep| {
-            if let Some(next) = step.selection {
+            if let Some(next) = step.selection
+                && next != selection.get_untracked()
+            {
                 selection.try_set(next);
+                changed();
             }
             if let Some(at) = step.focus {
                 focus_word(root, at);
             }
         }
     };
+    // The words selected when the button went down: a drag that ends on the same words changed
+    // nothing.
+    let before_drag = StoredValue::new_local(std::collections::BTreeSet::<u32>::new());
+    let dragged = (selection.clone(), changed.clone());
     // The release can land anywhere, so the window hears it; the click that follows a drag must
     // not toggle the last word back, and is over by the next task.
     let released = window_event_listener(leptos::ev::mouseup, move |_| {
         if nav.try_update_value(WordNav::release).unwrap_or(false) {
+            let (selection, changed) = &dragged;
+            if before_drag.try_get_value() != selection.try_get_untracked() {
+                changed();
+            }
             set_timeout(
                 move || {
                     nav.try_update_value(WordNav::clear_dragged);
@@ -464,6 +485,7 @@ fn target_words(s: &AppState, words: Vec<String>, direction: TextDir) -> AnyView
                     // no longer focuses the word, so it is focused here.
                     e.prevent_default();
                     focus_word(root, i);
+                    before_drag.try_set_value(selection.get_untracked());
                     nav.try_update_value(|nav| nav.press(i, &selection.get_untracked()));
                     sync_stop();
                 }
@@ -477,13 +499,14 @@ fn target_words(s: &AppState, words: Vec<String>, direction: TextDir) -> AnyView
                 }
             };
             let on_click = {
-                let selection = selection.clone();
+                let (selection, changed) = (selection.clone(), changed.clone());
                 move |_: web_sys::MouseEvent| {
                     let next = nav
                         .try_update_value(|nav| nav.click(i, &selection.get_untracked()))
                         .flatten();
                     if let Some(next) = next {
                         selection.try_set(next);
+                        changed();
                     }
                     sync_stop();
                 }
@@ -786,6 +809,7 @@ fn item_detail(s: &AppState, actions: &Actions, unit: CheckUnit) -> AnyView {
     });
     let translation = {
         let s = s.clone();
+        let actions = send_wrapper::SendWrapper::new(actions.clone());
         move || {
             let words = words.get();
             if words.is_empty() {
@@ -815,7 +839,7 @@ fn item_detail(s: &AppState, actions: &Actions, unit: CheckUnit) -> AnyView {
                 "margin": "8px 0 0",
             };
             view! {
-                {target_words(&s, words, direction)}
+                {target_words(&s, &actions, words, direction)}
                 <p style=hint.to_style()>{t(keys::check::SELECT_HINT, &[])}</p>
             }
             .into_any()

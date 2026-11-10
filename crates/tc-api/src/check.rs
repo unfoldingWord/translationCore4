@@ -857,6 +857,9 @@ pub enum DecideEdit {
     },
     Invalid,
     Todo,
+    /// The tapped words changed: a marked check goes back to no decision, and a check with no
+    /// mark stays as it is (#853). The words stay on the page until a mark stores them.
+    Unmark,
     Bookmark {
         on: bool,
     },
