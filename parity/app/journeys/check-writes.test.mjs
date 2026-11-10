@@ -380,20 +380,17 @@ async function nextThenPrevious(page) {
   await page.getByTestId('tw-0').waitFor();
 }
 
-/** Home, then the same check again. */
-async function leaveAndReturn(page, env) {
-  await leave(page, env, BIBLE);
-  await openTitus(page);
-  await openTool(page, 'translationNotes');
-  await select(page, 0);
-  await page.getByTestId('tw-0').waitFor();
-}
-
 async function openFirstCheck(page) {
   await openTitus(page);
   await openTool(page, 'translationNotes');
   await select(page, 0);
   await page.getByTestId('tw-3').waitFor();
+}
+
+/** Home, then the same check again. */
+async function leaveAndReturn(page, env) {
+  await leave(page, env, BIBLE);
+  await openFirstCheck(page);
 }
 
 browserTest('selection_853_words_selected_after_mark_valid_are_kept', async () => {
@@ -466,6 +463,54 @@ browserTest('selection_853_mark_invalid_then_valid_then_select_is_kept', async (
     assert.deepEqual(await pressedWords(page), words);
     await leaveAndReturn(page, env);
     assert.deepEqual(await pressedWords(page), words, 'and after leaving Check');
+    assert.deepEqual(await storedWords(env, 0), { status: 'valid', words });
+  }, SCENARIO);
+});
+
+const DISK_REFUSED = { type: 'err', value: { type: 'notSaved', value: { type: 'disk', value: 'fixture disk refused the selection' } } };
+
+/** A valid check with word 1 stored, and word 2 selected since, not saved yet; `refuse(on)`
+ * makes every `check/decide` fail as a full disk while on. */
+async function aValidCheckWithAChange(page, env) {
+  let refusing = false;
+  await page.route('**/api/v1/check/decide', (route) => (refusing ? route.fulfill({ json: DISK_REFUSED }) : route.continue()));
+  await openFirstCheck(page);
+  await page.getByTestId('tw-1').click();
+  await page.getByTestId('mark-valid').click();
+  await until('the mark is stored', async () => (await storedWords(env, 0)).words.length === 1);
+  const words = [await wordAt(page, 1), await wordAt(page, 2)];
+  await page.getByTestId('tw-2').click();
+  return { words, refuse: (on) => { refusing = on; } };
+}
+
+// A selection save that fails when the person leaves the check keeps them on it, with the
+// failure said, and the words they selected; leaving again saves them.
+browserTest('selection_853_a_failed_save_on_next_keeps_the_person_on_the_check', async () => {
+  await withApp(async ({ page, env }) => {
+    const { words, refuse } = await aValidCheckWithAChange(page, env);
+    refuse(true);
+    await page.getByTestId('check-next').click();
+    await page.getByTestId('save-error').waitFor();
+    assert.equal(await shownIndex(page), 0, 'Next stays on the check whose words were not saved');
+    assert.deepEqual(await pressedWords(page), words);
+    refuse(false);
+    await page.getByTestId('check-next').click();
+    await until('check 1 shows', async () => (await shownIndex(page)) === 1);
+    assert.deepEqual(await storedWords(env, 0), { status: 'valid', words });
+  }, SCENARIO);
+});
+
+browserTest('selection_853_a_failed_save_on_leaving_check_keeps_the_person_on_the_check', async () => {
+  await withApp(async ({ page, env }) => {
+    const { words, refuse } = await aValidCheckWithAChange(page, env);
+    refuse(true);
+    await page.getByTitle(/Switch project/).click();
+    await page.getByTestId('save-error').waitFor();
+    assert.equal(await page.getByTestId(`project-${BIBLE}`).count(), 0, 'Home waits for the words');
+    assert.deepEqual(await pressedWords(page), words);
+    refuse(false);
+    await leaveAndReturn(page, env);
+    assert.deepEqual(await pressedWords(page), words);
     assert.deepEqual(await storedWords(env, 0), { status: 'valid', words });
   }, SCENARIO);
 });

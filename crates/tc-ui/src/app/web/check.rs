@@ -172,6 +172,15 @@ thread_local! {
     static SELECTION_HOOK: Cell<Option<GateHookId>> = const { Cell::new(None) };
 }
 
+/// Runs a write on its own, its outcome unread.
+fn detach(write: Option<impl Future + 'static>) {
+    if let Some(write) = write {
+        spawn_local(async move {
+            write.await;
+        });
+    }
+}
+
 /// How a mark's write ended, for the check shown when it was sent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MarkOutcome {
@@ -474,10 +483,36 @@ impl Actions {
     /// comment of the check left is saved if its editor is open (A-10), and the new check's
     /// detail is read.
     pub fn select_check(&self, index: u32) {
-        let c = &self.s().c;
-        if c.active.get_untracked() == Some(index) {
+        let from = self.s().c.active.get_untracked();
+        if from == Some(index) {
             return;
         }
+        let this = self.clone();
+        spawn_local(async move {
+            if this.flush_selection().await && this.s().c.active.get_untracked() == from {
+                this.show_check(index);
+            }
+        });
+    }
+
+    /// Before the person leaves a check (Next, Previous, the list, or the navigation gate): a
+    /// selection still waiting is written. False when that write failed: the person stays on
+    /// the check, with the mark's failure notice, and the next leave tries it again (#853).
+    async fn flush_selection(&self) -> bool {
+        // A save the wait already sent may still be on its way: its reply lands first, while
+        // the check is shown, so a failure is known before the leave decides.
+        WRITES.with(DecisionWrites::clone).settled().await;
+        match self.selection_step(SelectionEvent::Leaving) {
+            Some(write) => write.await,
+            // Nothing waits, or the open is read-only (the screen says so): holding the person
+            // would trap them (INV-A-REFUSED-SAVE-NEVER-TRAPS-THE-TRANSLATOR); the words wait
+            // for the next leave once the open is writable.
+            None => true,
+        }
+    }
+
+    fn show_check(&self, index: u32) {
+        let c = &self.s().c;
         // Moving into a folded group unfolds it, under a sort that folds (tC4 #769).
         if let Some((tool, id)) = self.folded_group_of(index) {
             self.set_rail_folded(tool, vec![id], false);
@@ -696,6 +731,9 @@ impl Actions {
     fn forget_detail(&self) {
         let c = &self.s().c;
         self.selection_event(SelectionEvent::Leaving);
+        if let Some(hook) = SELECTION_HOOK.take() {
+            self.runtime().saves().remove_gate_hook(hook);
+        }
         ITEMS.with(Latest::begin);
         ARTICLES.with(Latest::begin);
         c.comment_open.try_set(false);
@@ -707,11 +745,9 @@ impl Actions {
     }
 
     /// Before another check shows: its editor closes (which saves the comment typed in it,
-    /// A-10), a selection still waiting is saved, the drawer and the last mark's failure go, and
-    /// the selection is the new check's.
+    /// A-10), the drawer and the last mark's failure go, and the selection is the new check's.
     fn leave_item(&self) {
         let c = &self.s().c;
-        self.selection_event(SelectionEvent::Leaving);
         c.comment_open.try_set(false);
         c.history_open.try_set(false);
         c.restore_failed.try_set(false);
@@ -751,7 +787,10 @@ impl Actions {
         spawn_local(async move {
             // A read waits for the decision writes already on their way, so a selection saved on
             // leaving a check shows when the person comes straight back to it.
-            drop(WRITES.with(DecisionWrites::clone).turn().await);
+            WRITES.with(DecisionWrites::clone).settled().await;
+            if !ITEMS.with(|l| l.is_current(attempt)) {
+                return;
+            }
             let result = this.runtime().read_once(&Item { at, list, index }).await;
             if !ITEMS.with(|l| l.is_current(attempt)) {
                 return;
@@ -777,22 +816,18 @@ impl Actions {
         let c = &self.s().c;
         WRITES.with(|w| w.learn(&view.place, &view.check_id, &view.decision.token));
         let local = c.selection.get_untracked();
-        let (selection, new_item) = c.detail.with_untracked(|shown| {
+        let (selection, of) = c.detail.with_untracked(|shown| {
             let shown = match shown {
                 Some(Detail::Ready(shown)) => Some(&**shown),
                 _ => None,
             };
             (
                 check_item::selection_after_read(shown, &view, &local),
-                !check_item::same_item(shown, &view),
+                ReadOf::of(shown, &view),
             )
         });
         self.selection_event(SelectionEvent::Read {
-            of: if new_item {
-                ReadOf::AnotherCheck
-            } else {
-                ReadOf::SameCheck
-            },
+            of,
             valid: view.decision.value.status == Some(DecisionStatus::Valid),
         });
         if selection != local {
@@ -830,11 +865,7 @@ impl Actions {
     /// (`write_decision`); a reply that comes after the person moved to another check is not for
     /// the check now shown, so it changes the rail's rows and nothing on screen.
     pub fn mark(&self, cap: WriteCap, edit: DecideEdit) {
-        if let Some(write) = self.mark_task(cap, edit) {
-            spawn_local(async move {
-                write.await;
-            });
-        }
+        detach(self.mark_task(cap, edit));
     }
 
     /// The write of a mark, its request taken from the check shown now.
@@ -926,11 +957,7 @@ impl Actions {
     }
 
     fn selection_event(&self, event: SelectionEvent) {
-        if let Some(write) = self.selection_step(event) {
-            spawn_local(async move {
-                write.await;
-            });
-        }
+        detach(self.selection_step(event));
     }
 
     /// The selection machine's executor: the wait, and the write when the machine saves. Only
@@ -990,10 +1017,8 @@ impl Actions {
         })
     }
 
-    /// Leaving through the navigation gate (Home, another mode, another project) waits for a
-    /// selection still waiting to be written. A write that fails keeps the person on the check,
-    /// with the mark's failure notice, as a text field's failed save does (FR-32); leaving again
-    /// tries it again.
+    /// Leaving through the navigation gate (Home, another mode, another project) flushes the
+    /// selection first, as a text field's failed save holds the gate (FR-32).
     fn start_selection_hook(&self) {
         if SELECTION_HOOK.get().is_some() {
             return;
@@ -1001,15 +1026,7 @@ impl Actions {
         let this = self.clone();
         let hook = std::rc::Rc::new(move || {
             let this = this.clone();
-            let flush: LocalBoxFuture<bool> = Box::pin(async move {
-                // A save the wait already sent may still be on its way: its reply lands first,
-                // while the check is shown, so a failure is known before the leave decides.
-                drop(WRITES.with(DecisionWrites::clone).turn().await);
-                match this.selection_step(SelectionEvent::Leaving) {
-                    Some(write) => write.await,
-                    None => true,
-                }
-            });
+            let flush: LocalBoxFuture<bool> = Box::pin(async move { this.flush_selection().await });
             flush
         });
         SELECTION_HOOK.set(Some(self.runtime().saves().add_gate_hook(hook)));

@@ -54,16 +54,10 @@ pub fn selection_after_read(
     read: &CheckItemView,
     local: &BTreeSet<u32>,
 ) -> BTreeSet<u32> {
-    if same_item(shown, read) {
-        local.clone()
-    } else {
-        read.target.selected.iter().copied().collect()
+    match ReadOf::of(shown, read) {
+        ReadOf::SameCheck => local.clone(),
+        ReadOf::AnotherCheck => read.target.selected.iter().copied().collect(),
     }
-}
-
-/// The read shows the check and the words already shown.
-pub fn same_item(shown: Option<&CheckItemView>, read: &CheckItemView) -> bool {
-    shown.is_some_and(|shown| shown.index == read.index && shown.target.words == read.target.words)
 }
 
 /// Mark valid: the tapped words, or "nothing to select" when there are none (tC4's `markValid`).
@@ -114,6 +108,20 @@ pub enum ReadOf {
     SameCheck,
     /// Another check, or the same check with other words.
     AnotherCheck,
+}
+
+impl ReadOf {
+    /// Which check `read` shows, against the one `shown` before it.
+    pub fn of(shown: Option<&CheckItemView>, read: &CheckItemView) -> Self {
+        let same = shown.is_some_and(|shown| {
+            shown.index == read.index && shown.target.words == read.target.words
+        });
+        if same {
+            Self::SameCheck
+        } else {
+            Self::AnotherCheck
+        }
+    }
 }
 
 /// What happened to the shown check.
@@ -462,6 +470,11 @@ pub struct DecisionWrites(Rc<RefCell<Writes>>);
 pub struct Turn(DecisionWrites);
 
 impl DecisionWrites {
+    /// Waits until the writes already on their way are done, so a read that follows sees them.
+    pub async fn settled(&self) {
+        drop(self.turn().await);
+    }
+
     pub async fn turn(&self) -> Turn {
         std::future::poll_fn(|cx| {
             let mut writes = self.0.borrow_mut();
@@ -860,29 +873,29 @@ mod tests {
         of: ReadOf::AnotherCheck,
         valid: true,
     };
+    const READ_NOT_VALID: SelectionEvent = SelectionEvent::Read {
+        of: ReadOf::SameCheck,
+        valid: false,
+    };
+    const READ_VALID: SelectionEvent = SelectionEvent::Read {
+        of: ReadOf::SameCheck,
+        valid: true,
+    };
 
     /// #853: words selected right after Mark valid save, before the read that shows the mark.
     /// The mark's reply and the reads that follow leave the waiting save alone.
     #[test]
     fn selection_on_a_check_just_marked_valid_saves_when_idle_and_on_leaving() {
         use SelectionCommand::{Cancel, None, Save, Wait};
-        use SelectionEvent::{Acked, Changed, Idle, Leaving, Marked, Read};
-        let stale = Read {
-            of: ReadOf::SameCheck,
-            valid: false,
-        };
-        let fresh = Read {
-            of: ReadOf::SameCheck,
-            valid: true,
-        };
+        use SelectionEvent::{Acked, Changed, Idle, Leaving, Marked};
         assert_eq!(
             run(&[
                 SHOWN_NOT_VALID,
                 Marked { valid: true },
                 Changed,
-                stale,
+                READ_NOT_VALID,
                 Acked,
-                fresh,
+                READ_VALID,
                 Idle,
                 Idle
             ]),
@@ -913,11 +926,7 @@ mod tests {
     /// Saving the words would mark the check valid: on any other check they wait for Mark valid.
     #[test]
     fn selection_on_a_check_not_valid_never_saves_by_itself() {
-        use SelectionEvent::{Acked, Changed, Idle, Leaving, Marked, Read};
-        let shown_invalid = Read {
-            of: ReadOf::SameCheck,
-            valid: false,
-        };
+        use SelectionEvent::{Acked, Changed, Idle, Leaving, Marked};
         for events in [
             vec![SHOWN_NOT_VALID, Changed, Idle, Leaving],
             vec![
@@ -928,8 +937,8 @@ mod tests {
                 Idle,
             ],
             // A teammate's sync shows the open check invalid, before or after the change.
-            vec![SHOWN_VALID, shown_invalid, Changed, Leaving],
-            vec![SHOWN_VALID, Changed, shown_invalid, Idle, Leaving],
+            vec![SHOWN_VALID, READ_NOT_VALID, Changed, Leaving],
+            vec![SHOWN_VALID, Changed, READ_NOT_VALID, Idle, Leaving],
         ] {
             assert!(
                 !run(&events).contains(&SelectionCommand::Save),
