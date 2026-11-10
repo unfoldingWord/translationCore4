@@ -739,7 +739,7 @@ async fn a_push_that_loses_a_race_fetches_again_and_keeps_both() {
 /// branch was deleted by its owner. The sync pushes this copy as the branch again, as tC4
 /// does, and the report says so, so the person can tell the team to sync.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_sync_against_a_repository_with_no_main_branch_recreates_it_and_says_so() {
+async fn a_branch_this_sync_recreated_is_reported() {
     let door43 = door43("titus-gone").await;
     let dir = tempfile::tempdir().unwrap();
     let ana = computer(dir.path(), "ana");
@@ -765,6 +765,67 @@ async fn a_sync_against_a_repository_with_no_main_branch_recreates_it_and_says_s
     assert_eq!(branch_on_door43(&door43, "titus-gone"), Some(local));
     assert!(!sync(&a, &door43).await.recreated, "said once");
     a.close().unwrap();
+}
+
+/// INV-RECREATED-IS-THIS-SYNC-S (#983): Door43's branch is gone when Ana's sync reads it, and
+/// Juan's sync makes it again before her push lands. Her push loses the race, her next read
+/// finds his branch, and her report does not say her copy put the branch back: his does.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_teammate_s_recreated_branch_is_not_reported_as_ours() {
+    let door43 = door43("titus-theirs").await;
+    let dir = tempfile::tempdir().unwrap();
+    let ana = computer(dir.path(), "ana");
+    let folder_a = titus(&ana);
+    let a = open(&ana, &folder_a);
+    connect(&a, &door43, "titus-theirs");
+    synced(&sync(&a, &door43).await);
+    a.close().unwrap();
+    let juan = computer(dir.path(), "juan");
+    let folder_b = copy_to(&folder_a, &juan);
+    let b = open(&juan, &folder_b);
+    let a = open(&ana, &folder_a);
+    save(&a, 1, 1, "Paul, as Ana has it");
+    save(&b, 1, 2, "in hope, as Juan has it");
+    let bare = git2::Repository::open(door43.fake.git_dir(seeded::USER, "titus-theirs")).unwrap();
+    bare.find_reference("refs/heads/main")
+        .unwrap()
+        .delete()
+        .unwrap();
+    // A sync that finds no branch goes from its read straight to its push, with no step of
+    // the store between, so Door43 holds the push's first request: Ana has read by then.
+    door43.fake.inject(
+        tc_door43_fake::FaultRule::once(
+            "GET",
+            &format!("/{}/titus-theirs.git/info/refs", seeded::USER),
+            tc_door43_fake::Fault::Hold,
+        )
+        .with_query("git-receive-pack"),
+    );
+    let teammate = async {
+        let start = std::time::Instant::now();
+        while door43.fake.held() == 0 {
+            assert!(
+                start.elapsed() < std::time::Duration::from_secs(60),
+                "Ana's push never reached Door43"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        let report = sync(&b, &door43).await;
+        door43.fake.release_held();
+        report
+    };
+    let (ana_report, juan_report) = tokio::join!(sync(&a, &door43), teammate);
+    synced(&juan_report);
+    assert!(juan_report.recreated, "{juan_report:?}");
+    synced(&ana_report);
+    assert!(ana_report.raced >= 1, "{ana_report:?}");
+    assert!(
+        !ana_report.recreated,
+        "INV-RECREATED-IS-THIS-SYNC-S: {ana_report:?}"
+    );
+    assert_eq!(words(&a, 1, 2).as_deref(), Some("in hope, as Juan has it"));
+    a.close().unwrap();
+    b.close().unwrap();
 }
 
 /// §9.6 Join: a teammate gets the project from Door43. It opens with Ana's text and the same
@@ -2585,6 +2646,110 @@ async fn a_branch_put_back_by_a_broken_chain_is_said_by_the_next_sync() {
     assert!(again.recreated, "{again:?}");
     assert!(!sync(&a, &door43).await.recreated, "said once");
     a.close().unwrap();
+}
+
+/// The branch on Door43 for `name` is deleted, as its owner does.
+fn delete_branch(door43: &Door43, name: &str) {
+    let bare = git2::Repository::open(door43.fake.git_dir(seeded::USER, name)).unwrap();
+    bare.find_reference("refs/heads/main")
+        .unwrap()
+        .delete()
+        .unwrap();
+}
+
+/// INV-RECREATED-IS-THIS-SYNC-S (#983): a broken chain put the branch back and left its mark.
+/// The branch is deleted again, and the next sync makes it again and says so. That sync takes
+/// the mark with it: the one after has put nothing back and says nothing.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_put_back_mark_does_not_outlive_the_sync_that_says_it() {
+    let door43 = door43("titus-twice").await;
+    let dir = tempfile::tempdir().unwrap();
+    let ana = computer(dir.path(), "ana");
+    let folder = titus(&ana);
+    let a = open(&ana, &folder);
+    connect(&a, &door43, "titus-twice");
+    synced(&sync(&a, &door43).await);
+    ana.store.hooks().chain_after(1);
+    offline_days(&a, 2).await;
+    delete_branch(&door43, "titus-twice");
+    door43.fake.inject(tc_door43_fake::FaultRule::nth(
+        "POST",
+        &format!("/{}/titus-twice.git/git-receive-pack", seeded::USER),
+        2,
+        tc_door43_fake::Fault::BreakOff { after: 0 },
+    ));
+    let report = sync(&a, &door43).await;
+    assert!(matches!(report.ended, Ended::Failed(_)), "{report:?}");
+    assert!(report.confirmed.is_some(), "{report:?}");
+    delete_branch(&door43, "titus-twice");
+    let again = sync(&a, &door43).await;
+    synced(&again);
+    assert!(again.recreated, "{again:?}");
+    assert!(
+        !sync(&a, &door43).await.recreated,
+        "INV-RECREATED-IS-THIS-SYNC-S: the mark was left behind"
+    );
+    a.close().unwrap();
+}
+
+/// INV-RECREATED-IS-THIS-SYNC-S (#983), the true case across rounds: the first link of Ana's
+/// large push makes the deleted branch again, and Juan pushes before her next link, so her
+/// push loses the race. Her next read finds the branch, and her report still says her copy
+/// put it back, because it did. Juan's does not.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_branch_our_first_link_recreated_is_reported_after_a_race() {
+    let door43 = door43("titus-link").await;
+    let dir = tempfile::tempdir().unwrap();
+    let ana = computer(dir.path(), "ana");
+    let folder_a = titus(&ana);
+    let a = open(&ana, &folder_a);
+    connect(&a, &door43, "titus-link");
+    synced(&sync(&a, &door43).await);
+    a.close().unwrap();
+    let juan = computer(dir.path(), "juan");
+    let folder_b = copy_to(&folder_a, &juan);
+    let b = open(&juan, &folder_b);
+    let a = open(&ana, &folder_a);
+    save(&b, 2, 1, "sound doctrine, as Juan has it");
+    ana.store.hooks().chain_after(1);
+    offline_days(&a, 2).await;
+    delete_branch(&door43, "titus-link");
+    // Door43 holds Ana's second push: her first link is on Door43 by then.
+    door43.fake.inject(tc_door43_fake::FaultRule::nth(
+        "POST",
+        &format!("/{}/titus-link.git/git-receive-pack", seeded::USER),
+        2,
+        tc_door43_fake::Fault::Hold,
+    ));
+    let teammate = async {
+        let start = std::time::Instant::now();
+        while door43.fake.held() == 0 {
+            assert!(
+                start.elapsed() < std::time::Duration::from_secs(60),
+                "Ana's second push never reached Door43"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        let report = sync(&b, &door43).await;
+        door43.fake.release_held();
+        report
+    };
+    let (ana_report, juan_report) = tokio::join!(sync(&a, &door43), teammate);
+    synced(&juan_report);
+    assert!(!juan_report.recreated, "{juan_report:?}");
+    synced(&ana_report);
+    assert!(ana_report.raced >= 1, "{ana_report:?}");
+    assert!(
+        ana_report.recreated,
+        "INV-RECREATED-IS-THIS-SYNC-S: {ana_report:?}"
+    );
+    assert_eq!(
+        words(&a, 2, 1).as_deref(),
+        Some("sound doctrine, as Juan has it")
+    );
+    assert!(!sync(&a, &door43).await.recreated, "said once");
+    a.close().unwrap();
+    b.close().unwrap();
 }
 
 /// Ana syncs once, a teammate's newer app then commits `format` as the project's format on
