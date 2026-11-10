@@ -12,7 +12,7 @@ use tc_api::token::ShownToken;
 use tc_core::BookId;
 
 use crate::app::shell::{Editing, js_trim};
-use crate::app::understand::{Unit, key_carries, leading_num};
+use crate::app::understand::{Unit, key_carries, leading_num, section_of};
 use crate::i18n::{keys, t};
 
 /// Comments keep their durable target when a source section or tab groups verses differently.
@@ -306,6 +306,44 @@ pub fn editing_focus(editing: &Editing, book: BookId, chapter: u16) -> Option<Ve
     editing_section(editing, book, chapter)
         .map(<[String]>::to_vec)
         .or_else(|| editing_verse(editing, book, chapter).map(|v| vec![v]))
+}
+
+/// The unit the helps stay filtered to when no card is open: the last one a card opened on or a
+/// click picked in this chapter (#991). Closing the card leaves it, so a Save, a Cancel or a held
+/// save keeps the filter where it was.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PickedUnit {
+    /// A section, by its first verse key: a join that regroups the chapter still finds it.
+    Section(String),
+    /// One verse, as Verse mode edits it.
+    Verse(String),
+}
+
+impl PickedUnit {
+    /// The unit of the card open in `book` and `chapter`.
+    pub fn of_editing(editing: &Editing, book: BookId, chapter: u16) -> Option<Self> {
+        match editing_section(editing, book, chapter) {
+            Some(keys) => keys.first().cloned().map(Self::Section),
+            None => editing_verse(editing, book, chapter).map(Self::Verse),
+        }
+    }
+
+    /// The verse keys the helps filter to among the chapter's `sections` as they are now: a
+    /// section's, the section that carries its first verse; a verse's, the key that carries it.
+    pub fn verses(&self, sections: &[Vec<String>]) -> Vec<String> {
+        let (Self::Section(verse) | Self::Verse(verse)) = self;
+        let Some(section) = section_of(sections, verse).and_then(|at| sections.get(at)) else {
+            return vec![verse.clone()];
+        };
+        match self {
+            Self::Section(_) => section.clone(),
+            Self::Verse(_) => section
+                .iter()
+                .filter(|k| key_carries(k, verse))
+                .cloned()
+                .collect(),
+        }
+    }
 }
 
 /// A section field's place in the draft buffer: `TIT 2:9-10`, from the first verse to the last

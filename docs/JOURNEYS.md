@@ -101,7 +101,9 @@ budget in `docs/PERFORMANCE.md`). Their tC4 tests stay mapped under `specs` in `
 - Must not: write to another project; save a section before Save; rewrite or drop an alignment or
   decision.
 - Differs from tC4: a section draft not yet saved survives a reload; its card opens again with
-  the typed text. The section card fills the row its source sets (#915).
+  the typed text. The section card fills the row its source sets (#915). A click on a section's
+  translation filters the helps to it, and after Save they stay on that section, or on the verse
+  in Verse mode (#991, DIFFERENCES).
 
 ### J3 Get pinned resources
 
@@ -250,7 +252,8 @@ budget in `docs/PERFORMANCE.md`). Their tC4 tests stay mapped under `specs` in `
   heading for each verse, a note's link names its article, and a key word shows its article's
   first paragraph and lights every instance of its article in the section (owner, 2026-11-05);
   a note on one verse of a gateway verse span lights and titles only the gateway words whose
-  `x-ref` names that verse, where tC4 reads the whole span (#409, DIFFERENCES).
+  `x-ref` names that verse, where tC4 reads the whole span (#409, DIFFERENCES); the helps stay
+  filtered to the unit clicked, also after a comment is saved (#991, DIFFERENCES).
 
 ### J17 Open a shared project on another computer
 
@@ -338,6 +341,8 @@ budget in `docs/PERFORMANCE.md`). Their tC4 tests stay mapped under `specs` in `
 - End state: one comment per frame commented; the story file is unchanged; Resume returns to the
   same story in Understand.
 - Must not: change progress.
+- Differs from tC4: the helps list only the frame in focus, also after Save (#991,
+  DIFFERENCES).
 
 ### J26 Sync one project with two teammates through Door43
 

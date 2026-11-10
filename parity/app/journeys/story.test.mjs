@@ -55,24 +55,25 @@ browserTest('j25_the_rail_moves_the_frame_and_the_helps_panel_follows_it', async
   }, SCENARIO);
 });
 
-// A frame move or a click on a card lights cards and leaves the list as it was: a note the
-// person expanded stays expanded, as tC4 keeps each keyed card.
-browserTest('an_expanded_note_stays_expanded_when_the_frame_moves_and_a_card_is_clicked', async () => {
+// A click on a card lights it and leaves the list as it was: a note the person expanded stays
+// expanded, as tC4 keeps each keyed card. Since #991 the panel lists only the frame in focus, so
+// a frame move replaces the list instead of lighting another frame's cards in it.
+browserTest('an_expanded_note_stays_expanded_when_a_card_is_clicked', async () => {
   await withApp(async ({ page, env }) => {
     await openStory1(page, env);
     // Story 17's real note at frame 7 exceeds the preview; story 1's notes are all short.
     await page.getByTestId('story-17').click();
     await until('story 17 is current', async () => (await page.getByTestId('story-17').getAttribute('aria-current')) === 'page');
+    await page.getByTestId('frame-marker-7').click();
     const notes = page.getByTestId('helps-note');
-    await notes.first().waitFor();
+    await until('only frame 7’s notes are listed', async () => {
+      const frames = await notes.evaluateAll((cards) => cards.map((c) => c.getAttribute('data-frame')));
+      return frames.length > 0 && frames.every((f) => f === '7');
+    });
     const expand = notes.filter({ has: page.getByTestId('note-expand') }).first().getByTestId('note-expand');
     await expand.click();
     assert.equal(await expand.getAttribute('aria-expanded'), 'true');
-    await page.getByTestId('frame-marker-2').click();
-    await until('frame 2\'s notes are lit', async () => (await notes.and(page.locator('[data-frame="2"]')).first().getAttribute('data-focused')) === 'true');
-    assert.equal(await notes.and(page.locator('[data-frame="1"]')).first().getAttribute('data-focused'), null, 'frame 1\'s are not');
-    assert.equal(await expand.getAttribute('aria-expanded'), 'true', 'the frame move keeps the note expanded');
-    const card = notes.and(page.locator('[data-frame="3"]')).first();
+    const card = notes.last();
     await card.click({ position: { x: 8, y: 8 } });
     await until('the clicked card is lit', async () => (await card.getAttribute('data-focused')) === 'true');
     assert.equal(await expand.getAttribute('aria-expanded'), 'true', 'the click keeps the note expanded');

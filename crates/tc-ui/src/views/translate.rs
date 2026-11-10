@@ -40,8 +40,8 @@ use super::source_verse::source_verse;
 use crate::app::save::{FieldScope, Pair, Source, View};
 use crate::app::shell::Editing;
 use crate::app::translate::{
-    SourcePlace, box_text, changed_while_typing, editing_focus, editing_section, editing_verse,
-    range_span, sections, shown_words, source_place, source_unit, target_paragraphs,
+    PickedUnit, SourcePlace, box_text, changed_while_typing, editing_focus, editing_section,
+    editing_verse, range_span, sections, shown_words, source_place, source_unit, target_paragraphs,
 };
 use crate::app::understand::{HelpFocus, UnitMode, literal_pane};
 use crate::app::web::{Actions, AppCtx, AppState, use_app, use_runtime};
@@ -352,9 +352,24 @@ fn chapter_view(
         let editing = editing.clone();
         Signal::derive(move || editing.with(Editing::is_open))
     };
+    // #991: the helps follow the open card, and once it closes, the unit it was opened on or the
+    // section clicked last, until another is picked or the person leaves the chapter.
+    let picked: RwSignal<Option<PickedUnit>> = RwSignal::new(None);
+    {
+        let editing = editing.clone();
+        Effect::new(move |_| {
+            if let Some(unit) = editing.with(|e| PickedUnit::of_editing(e, book_id, chapter)) {
+                picked.set(Some(unit));
+            }
+        });
+    }
     let focus_verses = {
         let editing = editing.clone();
-        Memo::new(move |_| editing.with(|e| editing_focus(e, book_id, chapter)))
+        Memo::new(move |_| {
+            editing
+                .with(|e| editing_focus(e, book_id, chapter))
+                .or_else(|| picked.with(|p| p.as_ref().map(|p| all.with(|all| p.verses(all)))))
+        })
     };
     // tC4's `crossFrameSafeFocus`: in another numbering no help lights the pane.
     let pane_focus = {
@@ -427,7 +442,7 @@ fn chapter_view(
                         };
                         view! {
                             {source}
-                            {target_cell(&s, &actions, book_id, chapter, text, keys, &span, mode, off, &open)}
+                            {target_cell(&s, &actions, book_id, chapter, text, keys, &span, mode, off, &open, picked)}
                         }
                     })
                     .collect_view()
@@ -878,6 +893,7 @@ fn target_cell(
     mode: Memo<UnitMode>,
     off: Signal<bool>,
     open: &Open,
+    picked: RwSignal<Option<PickedUnit>>,
 ) -> AnyView {
     let mut style = cell();
     style.set("position", "relative");
@@ -961,6 +977,20 @@ fn target_cell(
             })
         })
     };
+    // A click on a section's translation filters the helps to it without opening its card
+    // (#991). Verse mode's click opens the verse's card, which picks it; a click while a card is
+    // open leaves the filter on that card.
+    let pick = {
+        let first = keys.first().cloned();
+        move |_| {
+            if let Some(first) = first.clone()
+                && mode.get_untracked() == UnitMode::Section
+                && !off.get_untracked()
+            {
+                picked.set(Some(PickedUnit::Section(first)));
+            }
+        }
+    };
     let paras = {
         let actions = actions.clone();
         move || {
@@ -985,7 +1015,7 @@ fn target_cell(
                                 target_verse(&actions, book, chapter, v, mode, open_verse, off)
                             })
                             .collect_view();
-                        view! { <p data-testid="draft-target-text" style=p.to_style()>{body}</p> }
+                        view! { <p data-testid="draft-target-text" style=p.to_style() on:click=pick.clone()>{body}</p> }
                     })
                     .collect_view()
             })

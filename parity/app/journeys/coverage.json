@@ -109,6 +109,13 @@
           "a_section_card_refits_its_row_when_the_window_is_resized",
           "the_verse_card_keeps_its_own_height_and_a_closed_section_row_its_height"
         ]
+      },
+      {
+        "file": "parity/app/journeys/helps-focus.test.mjs",
+        "tests": [
+          "a_section_clicked_in_translate_filters_the_helps_and_keeps_them_after_save",
+          "a_verse_saved_in_verse_mode_keeps_the_helps_on_that_verse"
+        ]
       }
     ],
     "J3": [
@@ -258,12 +265,20 @@
         ]
       }
     ],
-    "J16": {
-      "file": "parity/app/journeys/comments.test.mjs",
-      "tests": [
-        "j16_three_help_steps_then_three_pauses_and_a_blur_add_one_comment"
-      ]
-    },
+    "J16": [
+      {
+        "file": "parity/app/journeys/comments.test.mjs",
+        "tests": [
+          "j16_three_help_steps_then_three_pauses_and_a_blur_add_one_comment"
+        ]
+      },
+      {
+        "file": "parity/app/journeys/helps-focus.test.mjs",
+        "tests": [
+          "a_unit_clicked_in_understand_keeps_the_helps_filtered_after_its_comment_is_saved"
+        ]
+      }
+    ],
     "J17": [
       {
         "file": "parity/app/journeys/share-open.test.mjs",
@@ -351,6 +366,12 @@
         "file": "parity/app/journeys/comments.test.mjs",
         "tests": [
           "j25_a_frame_comment_uses_its_help_tabs_and_leaves_the_story_unchanged"
+        ]
+      },
+      {
+        "file": "parity/app/journeys/helps-focus.test.mjs",
+        "tests": [
+          "a_frame_clicked_in_a_story_filters_the_helps_to_it_also_after_save"
         ]
       }
     ],

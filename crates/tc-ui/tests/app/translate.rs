@@ -12,10 +12,10 @@ use tc_api::shown::{PersonLabel, Shown, Who};
 use tc_core::BookId;
 use tc_ui::app::shell::Editing;
 use tc_ui::app::translate::{
-    SourcePlace, box_text, card_tokens, card_verses, changed_while_typing, comments_in_focus,
-    editing_focus, editing_section, parse_verse_place, range_span, section_key, section_place,
-    section_ranges, sections, source_keys_for, source_place, target_paragraphs, verse_key,
-    verse_place,
+    PickedUnit, SourcePlace, box_text, card_tokens, card_verses, changed_while_typing,
+    comments_in_focus, editing_focus, editing_section, parse_verse_place, range_span, section_key,
+    section_place, section_ranges, sections, source_keys_for, source_place, target_paragraphs,
+    verse_key, verse_place,
 };
 
 fn keys(list: &[&str]) -> Vec<String> {
@@ -342,6 +342,50 @@ fn the_helps_follow_the_whole_open_section_in_its_chapter_only() {
     assert_eq!(editing_section(&open, BookId::Genesis, 2), None);
     assert_eq!(editing_section(&Editing::None, BookId::Titus, 2), None);
     assert!(open.is_open(), "an open card keeps the exits off");
+}
+
+// #991: the unit a card opened on, or a click picked, keeps the helps filtered once the card
+// closes, and a join that regroups the chapter keeps the verses it held.
+#[test]
+fn the_helps_stay_on_the_unit_picked_after_its_card_closes() {
+    let open = section_open(2, &["9", "10-11", "12"]);
+    assert_eq!(
+        PickedUnit::of_editing(&open, BookId::Titus, 2),
+        Some(PickedUnit::Section("9".to_owned()))
+    );
+    assert_eq!(PickedUnit::of_editing(&open, BookId::Titus, 1), None);
+    assert_eq!(
+        PickedUnit::of_editing(&Editing::None, BookId::Titus, 2),
+        None
+    );
+    let project = ProjectRef::parse("sample_burrito").unwrap();
+    let id = ProjectId::parse("6f1c0e9a-2b7d-4c3e-8a5f-0b1d2c3e4f50").unwrap();
+    let verse = Editing::Verse(verse_key(&project, &id, BookId::Titus, 2, "12").unwrap());
+    assert_eq!(
+        PickedUnit::of_editing(&verse, BookId::Titus, 2),
+        Some(PickedUnit::Verse("12".to_owned()))
+    );
+
+    let chapter = vec![keys(&["1", "2", "3"]), keys(&["9", "10-11", "12"])];
+    let section = PickedUnit::Section("9".to_owned());
+    assert_eq!(section.verses(&chapter), keys(&["9", "10-11", "12"]));
+    assert_eq!(
+        PickedUnit::Verse("12".to_owned()).verses(&chapter),
+        keys(&["12"]),
+        "a verse saved in Verse mode keeps the helps on that verse, not its section"
+    );
+    // A join folds the section into the one before it: the helps follow its verses there.
+    let joined = vec![keys(&["1", "2", "3", "9", "10-11", "12"])];
+    assert_eq!(
+        section.verses(&joined),
+        keys(&["1", "2", "3", "9", "10-11", "12"])
+    );
+    // A bridge joins verse 12 with 13: the verse's helps are the bridge's.
+    let bridged = vec![keys(&["9", "10-11", "12-13"])];
+    assert_eq!(
+        PickedUnit::Verse("12".to_owned()).verses(&bridged),
+        keys(&["12-13"])
+    );
 }
 
 #[test]

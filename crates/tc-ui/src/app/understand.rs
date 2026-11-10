@@ -210,20 +210,23 @@ impl HelpFocus {
     }
 }
 
+/// The index of the first of `sections` whose verse keys carry `verse`.
+pub fn section_of(sections: &[Vec<String>], verse: &str) -> Option<usize> {
+    sections
+        .iter()
+        .position(|s| s.iter().any(|k| key_carries(k, verse)))
+}
+
 /// Where each word card lights the panes, in the order of `cards`: every instance of its
 /// article in its section, each at its own occurrence, so a word reads as one across the verses
 /// of the section (owner, 2026-11-05). A card outside every section lights only its own.
 pub fn word_panes(cards: &[WordCard], sections: &[Vec<String>]) -> Vec<Vec<PaneFocus>> {
-    let section_of = |w: &WordCard| {
-        sections
-            .iter()
-            .position(|s| s.iter().any(|k| key_carries(k, w.verse.as_str())))
-    };
     let mut groups: BTreeMap<(Option<&str>, &str, usize), Vec<&WordCard>> = BTreeMap::new();
     let keys: Vec<_> = cards
         .iter()
         .map(|w| {
-            let key = section_of(w).map(|at| (w.category.as_deref(), w.slug.as_str(), at));
+            let key = section_of(sections, w.verse.as_str())
+                .map(|at| (w.category.as_deref(), w.slug.as_str(), at));
             if let Some(key) = key {
                 groups.entry(key).or_default().push(w);
             }
