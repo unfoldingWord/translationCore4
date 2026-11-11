@@ -268,7 +268,10 @@
       {
         "file": "parity/app/journeys/upgrades.test.mjs",
         "tests": [
-          "j12_an_upgrade_through_the_screens_moves_the_pin_on_disk"
+          "j12_an_upgrade_through_the_screens_moves_the_pin_on_disk",
+          "j12_a_check_answered_after_its_project_closed_leaves_check_for_updates_ready",
+          "j12_a_check_from_an_earlier_open_never_holds_or_fills_the_reopened_project",
+          "j12_a_failed_check_is_said_only_in_the_open_it_was_made_for"
         ]
       }
     ],

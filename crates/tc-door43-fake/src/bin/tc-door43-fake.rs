@@ -120,6 +120,7 @@ fn control_router(fake: Arc<FakeDoor43>) -> Router {
         .route("/requests/clear", post(clear_requests))
         .route("/faults", post(add_fault))
         .route("/release", post(release))
+        .route("/held", get(held))
         .route("/tokens", post(issue_token))
         .route("/repos", post(add_repo))
         .route("/users", post(add_user))
@@ -219,6 +220,10 @@ async fn add_fault(State(fake): Fake, body: axum::body::Bytes) -> Response {
 async fn release(State(fake): Fake) -> Response {
     fake.release_held();
     axum::Json(json!({})).into_response()
+}
+
+async fn held(State(fake): Fake) -> Response {
+    axum::Json(json!({ "held": fake.held() })).into_response()
 }
 
 #[derive(Deserialize)]

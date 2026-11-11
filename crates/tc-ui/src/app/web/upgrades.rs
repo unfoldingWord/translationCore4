@@ -28,7 +28,7 @@ use super::sources::{said, said_call};
 use crate::app::client::CallError;
 use crate::app::internet::Pending;
 use crate::app::jobs::JobEnd;
-use crate::app::upgrades::Installing;
+use crate::app::upgrades::{CheckEnd, Installing};
 use crate::i18n::{keys, t};
 
 /// How a plan job ended.
@@ -59,6 +59,13 @@ impl Actions {
             .with_untracked(|p| p.as_ref().map(|p| p.at.clone()))
     }
 
+    /// Whether `at` is the open on screen (INV-RESOURCE-ANSWER-HAS-AN-OWNER): the one question
+    /// every late answer about resources asks before it shows anything. An open has its own
+    /// epoch, so the same project opened again is another owner.
+    fn shows(&self, at: &tc_api::Scope) -> bool {
+        self.project_scope().as_ref() == Some(at)
+    }
+
     // ---- J12: the release upgrades of Get source texts ---------------------------------------
 
     /// "Check for updates" (tC4 `checkForUpdates`): asks first while the internet is off.
@@ -70,32 +77,22 @@ impl Actions {
         let Some(at) = self.project_scope() else {
             return;
         };
-        self.s().up.try_update(|up| up.check_started());
+        let started = self.s().up.try_update(|up| up.check_started(at.clone()));
+        if started != Some(true) {
+            return;
+        }
         let this = self.clone();
         spawn_local(async move {
-            let project = at.project.clone();
-            let answer = this
-                .run_net(Pending::Updates, &CheckUpdates { at })
-                .await
-                .said();
-            let current = this
-                .s()
-                .project
-                .with_untracked(|p| p.as_ref().map(|p| p.at.project.clone()));
-            match answer {
-                Ok(view) => {
-                    if let Some(current) = current {
-                        this.s()
-                            .up
-                            .try_update(|up| up.offers_read(&project, &current, view));
-                    }
+            let request = CheckUpdates { at: at.clone() };
+            let answer = this.run_net(Pending::Updates, &request).await.said();
+            let end = match answer {
+                Ok(view) if this.shows(&at) => CheckEnd::Offers(view),
+                Err(Some(said)) if this.shows(&at) => {
+                    CheckEnd::Failed(t(keys::upgrade::CHECK_FAILED, &[("reason", &said)]))
                 }
-                Err(None) => {}
-                Err(Some(said)) => {
-                    let reason = t(keys::upgrade::CHECK_FAILED, &[("reason", &said)]);
-                    this.s().up.try_update(|up| up.check_failed(reason));
-                }
-            }
+                Ok(_) | Err(_) => CheckEnd::Nothing,
+            };
+            this.s().up.try_update(|up| up.check_ended(&at, end));
         });
     }
 
@@ -279,9 +276,8 @@ impl Actions {
             };
             // The person left the project while the plan was made: it would describe one project
             // over another, so nothing is shown (tC4 #580, interruption 4).
-            let same_project = |this: &Actions| this.project_scope().is_some_and(|now| now == at);
             let planned = this.follow_plan::<PlanGateway>(job, |_| {}).await;
-            if !same_project(&this) {
+            if !this.shows(&at) {
                 this.s().gw.try_update(|gw| {
                     gw.busy = false;
                 });

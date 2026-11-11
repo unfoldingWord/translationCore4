@@ -9,7 +9,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { LOCALES, browserTest, catalog, sleep, until, withApp } from './kit.mjs';
+import { LOCALES, browserTest, catalog, settled, sleep, until, withApp } from './kit.mjs';
 
 const en = catalog('en');
 const BIBLE = 'sample_burrito';
@@ -228,5 +228,88 @@ browserTest('j12_an_upgrade_through_the_screens_moves_the_pin_on_disk', async ()
     const moved = () => pinFile(env).extraScripture.find((p) => p.repoPath.endsWith('unfoldingWord/en_ult'));
     await until('the pin moved on disk', () => moved().sha === ult.commit_sha, 30_000);
     assert.equal(moved().version, ult.branch_or_tag_name);
+  }, { door43: true });
+});
+
+// #982 A. Door43's catalog answer is held, so the check for updates is still out when the
+// person leaves the project. `answered` resolves when the app's own call ends.
+const getSourceTexts = async (page) => {
+  await settings(page).click();
+  await page.getByTestId('settings-manage-sources').click();
+  await page.getByTestId('sources-modal').waitFor();
+};
+const closeSourceTexts = async (page) => {
+  await page.getByTestId('sources-modal').getByRole('button', { name: en['common.close'], exact: true }).first().click();
+  await page.getByTestId('sources-modal').waitFor({ state: 'detached' });
+};
+const toHome = async (page) => {
+  await page.getByTestId('project-switch').click();
+  await until('Home shows the project card', () => page.getByTestId(`project-${BIBLE}`).count());
+};
+async function checkWithDoor43Held(page, env) {
+  await getSourceTexts(page);
+  await env.door43.fault({ method: 'GET', path: '/api/v1/catalog/search', times: 1, fault: { type: 'hold' } });
+  // Caught here: a journey that fails before it awaits the answer must show its own failure.
+  const answered = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/v1/resources/checkUpdates', { timeout: 60_000 }).catch(() => null);
+  const check = page.getByTestId('check-updates');
+  await check.click();
+  await page.getByTestId('net-confirm').click();
+  await until('Check for updates waits for Door43', () => check.isDisabled());
+  assert.equal(await check.textContent(), en['upgrade.checking']);
+  await until('Door43 holds the catalog request', async () => (await env.door43.held()) > 0);
+  // In an object: an async function that returned the promise itself would wait for it.
+  return { answered };
+}
+const assertCheckIsReady = async (page, when) => {
+  const check = page.getByTestId('check-updates');
+  assert.equal(await check.isDisabled(), false, `INV-BUSY-ENDS-WITH-ITS-WORK: Check for updates is disabled ${when}`);
+  assert.equal(await check.textContent(), en['upgrade.check'], `INV-BUSY-ENDS-WITH-ITS-WORK: the button says it is checking ${when}`);
+};
+
+browserTest('j12_a_check_answered_after_its_project_closed_leaves_check_for_updates_ready', async () => {
+  await withApp(async ({ page, env }) => {
+    const { answered } = await checkWithDoor43Held(page, env);
+    await closeSourceTexts(page);
+    await toHome(page);
+    await env.door43.release();
+    assert.ok(await answered, 'the app got its answer to the held check');
+    await settled(page);
+    await getSourceTexts(page);
+    await assertCheckIsReady(page, 'with no check running for this open of the project');
+    assert.equal(await page.getByTestId('upgrade-texts').count(), 0, 'INV-RESOURCE-ANSWER-HAS-AN-OWNER: an answer from before the reopening is shown');
+  }, { door43: true });
+});
+
+browserTest('j12_a_check_from_an_earlier_open_never_holds_or_fills_the_reopened_project', async () => {
+  await withApp(async ({ page, env }) => {
+    const { answered } = await checkWithDoor43Held(page, env);
+    await closeSourceTexts(page);
+    await toHome(page);
+    await getSourceTexts(page);
+    await assertCheckIsReady(page, 'while the earlier open\'s check is still out');
+    await env.door43.release();
+    assert.ok(await answered, 'the app got its answer to the held check');
+    await settled(page);
+    await assertCheckIsReady(page, 'after the earlier open\'s answer came');
+    assert.equal(await page.getByTestId('upgrade-texts').count(), 0, 'INV-RESOURCE-ANSWER-HAS-AN-OWNER: an answer from before the reopening is shown');
+    // The reopened project's own check still works.
+    await page.getByTestId('check-updates').click();
+    await page.getByTestId('upgrade-texts').waitFor();
+  }, { door43: true });
+});
+
+browserTest('j12_a_failed_check_is_said_only_in_the_open_it_was_made_for', async () => {
+  await withApp(async ({ page, env, allow }) => {
+    await getSourceTexts(page);
+    await env.door43.fault({ method: 'GET', path: '/api/v1/catalog/search', fault: { type: 'status', status: 503, message: 'down for maintenance' } });
+    allow(/503|Failed to load resource/);
+    await page.getByTestId('check-updates').click();
+    await page.getByTestId('net-confirm').click();
+    await page.getByTestId('upgrade-error').waitFor();
+    await closeSourceTexts(page);
+    await toHome(page);
+    await getSourceTexts(page);
+    await assertCheckIsReady(page, 'after the earlier open\'s check failed');
+    assert.equal(await page.getByTestId('upgrade-error').count(), 0, 'INV-RESOURCE-ANSWER-HAS-AN-OWNER: the earlier open\'s failed check is said in this open');
   }, { door43: true });
 });
