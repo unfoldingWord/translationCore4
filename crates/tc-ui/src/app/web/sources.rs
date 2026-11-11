@@ -19,7 +19,7 @@ use super::js;
 use crate::app::client::CallError;
 use crate::app::internet::Pending;
 use crate::app::jobs::JobEnd;
-use crate::app::sources::{Dl, SettingsForm, SourcesForm};
+use crate::app::sources::{Dl, DlEnd, SettingsForm, SourcesForm};
 
 /// What a refusal says, in tC4's words; any other error as the server gave it.
 pub(super) fn said(error: &ApiError) -> String {
@@ -226,93 +226,107 @@ impl Actions {
         });
     }
 
-    /// "Download package" (tC4 `downloadPackage`): asks first while the internet is off.
+    /// "Download package" (tC4 `downloadPackage`): the press is taken here, before the internet
+    /// question and before the server answers, so a second press starts nothing.
     pub fn download_package(&self) {
-        let ready = self
+        let Some(at) = self.project_scope() else {
+            return;
+        };
+        let pressed = self
             .s()
             .src
-            .with_untracked(|src| src.can_download() && !src.chosen().is_empty());
-        if ready {
+            .try_update(|src| src.download_pressed(&at, js::random_request_id()))
+            .flatten();
+        if pressed.is_some() {
             self.internet_task(Pending::Download);
         }
     }
 
+    /// The internet question was Not now: the download was not sent.
+    pub(super) fn download_dropped(&self) {
+        self.patch_src(SourcesForm::download_not_sent);
+    }
+
+    /// Sends the press that waits, and follows its job to the end.
     pub(super) fn download_now(&self) {
-        let s = self.s();
-        let Some(at) = s
-            .project
-            .with_untracked(|p| p.as_ref().map(|p| p.at.clone()))
-        else {
-            return;
-        };
-        let Some((gateway, book, repos)) = s.src.with_untracked(|src| {
-            src.gateway
-                .clone()
-                .filter(|_| src.dl.is_none())
-                .map(|g| (g, src.book, src.chosen()))
-        }) else {
+        let Some((request, what)) = self.s().src.with_untracked(SourcesForm::starting) else {
             return;
         };
         let this = self.clone();
         spawn_local(async move {
-            let request = Download {
-                request: js::random_request_id(),
-                at: at.clone(),
-                gateway: gateway.gateway.clone(),
-                book,
-                repos,
+            let start = Download {
+                request,
+                at: what.at.clone(),
+                gateway: what.gateway.gateway.clone(),
+                book: what.book,
+                repos: what.repos.clone(),
             };
-            let job = match this.run_net(Pending::Download, &request).await.said() {
-                Ok(job) => job,
-                Err(None) => return,
-                Err(Some(reason)) => return this.patch_src(|src| src.error = Some(reason)),
+            // A reason is said only in the open the press was made in.
+            let said_here = |this: &Self, reason: String| this.shows(&what.at).then_some(reason);
+            let job = match this.run_net(Pending::Download, &start).await {
+                NetEnd::Ok(job) => job,
+                // The question is up again: Turn on internet sends this press, Not now drops it.
+                NetEnd::Asked => {
+                    let next = js::random_request_id();
+                    return this.patch_src(|src| src.download_asked_again(request, next));
+                }
+                NetEnd::Dropped => return this.download_dropped(),
+                NetEnd::Failed(error) => {
+                    let reason = said_here(&this, said(&error));
+                    return this.patch_src(|src| src.download_refused(request, reason));
+                }
+                NetEnd::Transport(error) => {
+                    let reason = said_here(&this, error.to_string());
+                    return this.patch_src(|src| src.download_unanswered(request, reason));
+                }
             };
-            this.patch_src(|src| {
-                src.error = None;
-                src.dl = Some(Dl::Run { job, repo: None });
-            });
+            this.patch_src(|src| src.download_started(request, job));
             let ended = this
                 .follow::<Download>(
                     job,
                     |progress| {
                         if let Phase::Install { repo } = &progress.phase {
-                            this.patch_src(|src| {
-                                if let Some(Dl::Run {
-                                    job: running,
-                                    repo: shown,
-                                }) = &mut src.dl
-                                    && *running == job
-                                {
-                                    *shown = Some(repo.clone());
-                                }
-                            });
+                            this.patch_src(|src| src.download_progress(job, repo.clone()));
                         }
                     },
                     || true,
                 )
                 .await;
-            // Whatever the end, a repository may have installed before it: what a pane or a
-            // help lacked may be here now, so Understand reads again (tC4 bumps
-            // `installEpoch`), and step 1 counts the package.
-            let installed = ChangeScope::Parts(ChangeParts {
-                aspects: vec![Aspect::Pins],
-                ..ChangeParts::default()
-            });
-            this.runtime().cache().changed(&at, &installed);
-            if let Ok(view) = this.runtime().api().call(&Sources { at }).await {
-                this.patch_src(|src| src.packages = Some(view));
-            }
+            // The state first: Cancel is not offered for a job that has ended.
             match ended {
-                JobEnd::Done(done) => this.patch_src(|src| src.dl = Some(Dl::Done(done))),
+                JobEnd::Done(done) => {
+                    this.patch_src(|src| src.download_ended(job, DlEnd::Done(done)));
+                }
                 JobEnd::Cancelled | JobEnd::Lost | JobEnd::Left => {
-                    this.patch_src(|src| src.dl = None);
+                    this.patch_src(|src| src.download_ended(job, DlEnd::Stopped));
                 }
                 JobEnd::Failed(error) => {
-                    this.patch_src(|src| src.dl = None);
+                    // The selection waits before the refusal is sorted, so each way the
+                    // sorting can go finds it: the question sends it again, a dropped
+                    // question drops it, any other failure refuses it.
+                    let retry = js::random_request_id();
+                    this.patch_src(|src| src.download_failed(job, retry));
                     if let Some(error) = this.net_refusal(Pending::Download, error) {
-                        let reason = said(&error);
-                        this.patch_src(|src| src.error = Some(reason));
+                        let reason = said_here(&this, said(&error));
+                        this.patch_src(|src| src.download_refused(retry, reason));
                     }
+                }
+            }
+            // Whatever the end, a repository may have installed before it: what a pane or a
+            // help lacked may be here now, so Understand reads again (tC4 bumps
+            // `installEpoch`), and step 1 counts the package. Installs are the computer's, so
+            // the open on screen now reads again, which may not be the one that pressed.
+            if let Some(now) = this.project_scope() {
+                let installed = ChangeScope::Parts(ChangeParts {
+                    aspects: vec![Aspect::Pins],
+                    ..ChangeParts::default()
+                });
+                this.runtime().cache().changed(&now, &installed);
+                let read = Sources { at: now.clone() };
+                if let Ok(view) = this.runtime().api().call(&read).await
+                    && this.shows(&now)
+                {
+                    this.patch_src(|src| src.packages = Some(view));
                 }
             }
         });
@@ -321,9 +335,9 @@ impl Actions {
     /// Cancel while a download runs: a declared difference, since tC4 has none (B9a). What was
     /// not finished is not installed.
     pub fn cancel_download(&self) {
-        let Some(job) = self.s().src.with_untracked(|src| match src.dl {
-            Some(Dl::Run { job, .. }) => Some(job),
-            _ => None,
+        let Some(job) = self.s().src.with_untracked(|src| match src.dl() {
+            Dl::Running { job, .. } => Some(*job),
+            Dl::Idle | Dl::Starting { .. } | Dl::Finished { .. } | Dl::Unanswered { .. } => None,
         }) else {
             return;
         };

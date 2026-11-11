@@ -53,7 +53,7 @@ fn apply_error(error: &CallError) -> String {
 }
 
 impl Actions {
-    fn project_scope(&self) -> Option<tc_api::Scope> {
+    pub(super) fn project_scope(&self) -> Option<tc_api::Scope> {
         self.s()
             .project
             .with_untracked(|p| p.as_ref().map(|p| p.at.clone()))
@@ -62,7 +62,7 @@ impl Actions {
     /// Whether `at` is the open on screen (INV-RESOURCE-ANSWER-HAS-AN-OWNER): the one question
     /// every late answer about resources asks before it shows anything. An open has its own
     /// epoch, so the same project opened again is another owner.
-    fn shows(&self, at: &tc_api::Scope) -> bool {
+    pub(super) fn shows(&self, at: &tc_api::Scope) -> bool {
         self.project_scope().as_ref() == Some(at)
     }
 

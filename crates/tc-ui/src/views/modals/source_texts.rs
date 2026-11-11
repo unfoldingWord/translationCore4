@@ -59,9 +59,13 @@ pub fn SourceTexts() -> impl IntoView {
         Memo::new(move |_| src.with(|src| src.gateway.clone()))
     };
     // tC4 gives step 1 no footer at all (`footer={g ? … : null}`), so a change of step draws
-    // the dialog again.
-    let step2 = Memo::new(move |_| gateway.with(Option::is_some));
-    (move || sources_modal(&actions, &src, &up, &project, gateway, step2.get())).into_any()
+    // the dialog again. A download keeps its line and its Cancel on step 1 too, and its
+    // finished line until the next choice (#982, a declared difference).
+    let footed = {
+        let src = src.clone();
+        Memo::new(move |_| gateway.with(Option::is_some) || src.with(SourcesForm::has_line))
+    };
+    (move || sources_modal(&actions, &src, &up, &project, gateway, footed.get())).into_any()
 }
 
 fn sources_modal(
@@ -70,16 +74,11 @@ fn sources_modal(
     up: &ArcRwSignal<UpgradeState>,
     project: &ArcRwSignal<Option<CurrentProject>>,
     gateway: Memo<Option<GatewayPackage>>,
-    step2: bool,
+    footed: bool,
 ) -> AnyView {
-    let footer: Option<ChildrenFn> = step2.then(|| {
-        let (actions, src) = (actions.clone(), src.clone());
-        Arc::new(move || {
-            gateway.with_untracked(|g| {
-                g.as_ref()
-                    .map_or_else(|| ().into_any(), |g| footer(&actions, &src, g).into_any())
-            })
-        }) as ChildrenFn
+    let footer: Option<ChildrenFn> = footed.then(|| {
+        let (actions, src, project) = (actions.clone(), src.clone(), project.clone());
+        Arc::new(move || footer(&actions, &src, &project).into_any()) as ChildrenFn
     });
     let children: ChildrenFn = {
         let (actions, src) = (actions.clone(), src.clone());
@@ -640,45 +639,59 @@ fn package_row(actions: &Actions, src: &ArcRwSignal<SourcesForm>, row: PackageRo
     }
 }
 
-/// tC4's `SourcesFooter`, with Cancel while a download runs.
+/// tC4's `SourcesFooter`, with Cancel while a download runs. The line is the download's own:
+/// it names the book and language that were downloaded, whatever the dialog shows now.
 fn footer(
     actions: &Actions,
     src: &ArcRwSignal<SourcesForm>,
-    g: &GatewayPackage,
+    project: &ArcRwSignal<Option<CurrentProject>>,
 ) -> impl IntoView + use<> {
     let state = {
-        let src = src.clone();
-        Memo::new(move |_| src.with(|src| (src.dl.clone(), src.can_download(), src.book)))
+        let (src, project) = (src.clone(), project.clone());
+        Memo::new(move |_| {
+            let here = project.with(|p| p.as_ref().map(|p| p.at.clone()));
+            src.with(|src| (src.dl().clone(), src.can_download(here.as_ref())))
+        })
     };
-    let lang = g.autonym.clone();
-    let status = move || {
-        match state.get() {
-        (Some(Dl::Done(done)), _, book) => Some(view! {
-            <span data-testid="sources-done" style="font-size: var(--fs-caption-lg); letter-spacing: var(--track-12-5); font-weight: var(--fw-heavy); color: var(--tc-valid-strong);">
-                {t(
-                    match done {
-                        Downloaded::Fetched => keys::sources::READY,
-                        Downloaded::AlreadyHere => keys::sources::ALREADY_HERE,
-                    },
-                    &[("book", &book.english_name()), ("lang", &lang)],
-                )}
-            </span>
-        }
-        .into_any()),
-        (Some(Dl::Run { repo, .. }), _, _) => Some(view! {
-            <span data-testid="sources-progress" style="font-size: var(--fs-caption-lg); letter-spacing: var(--track-12-5); font-weight: var(--fw-bold); color: var(--text-secondary);">
-                {match repo {
-                    Some(repo) => t(keys::sources::PROGRESS, &[("repo", &repo)]),
-                    None => t(keys::sources::DOWNLOADING, &[]),
-                }}
-            </span>
-        }
-        .into_any()),
-        (None, _, _) => None,
-    }
+    let line = |testid: &'static str, style: &'static str, text: String| {
+        view! { <span data-testid=testid style=style>{text}</span> }.into_any()
+    };
+    const DONE: &str = "font-size: var(--fs-caption-lg); letter-spacing: var(--track-12-5); font-weight: var(--fw-heavy); color: var(--tc-valid-strong);";
+    const PROGRESS: &str = "font-size: var(--fs-caption-lg); letter-spacing: var(--track-12-5); font-weight: var(--fw-bold); color: var(--text-secondary);";
+    let status = move || match state.get() {
+        (Dl::Finished { what, outcome }, _) => Some(line(
+            "sources-done",
+            DONE,
+            t(
+                match outcome {
+                    Downloaded::Fetched => keys::sources::READY,
+                    Downloaded::AlreadyHere => keys::sources::ALREADY_HERE,
+                },
+                &[
+                    ("book", &what.book.english_name()),
+                    ("lang", &what.gateway.autonym),
+                ],
+            ),
+        )),
+        (
+            Dl::Running {
+                repo: Some(repo), ..
+            },
+            _,
+        ) => Some(line(
+            "sources-progress",
+            PROGRESS,
+            t(keys::sources::PROGRESS, &[("repo", &repo)]),
+        )),
+        (Dl::Starting { .. } | Dl::Running { repo: None, .. }, _) => Some(line(
+            "sources-progress",
+            PROGRESS,
+            t(keys::sources::DOWNLOADING, &[]),
+        )),
+        (Dl::Idle | Dl::Unanswered { .. }, _) => None,
     };
     let (close, download, cancel) = (actions.clone(), actions.clone(), actions.clone());
-    let run = move || matches!(state.get().0, Some(Dl::Run { .. }));
+    let run = move || matches!(state.get().0, Dl::Running { .. });
     let can = move || state.get().1;
     view! {
         {status}
