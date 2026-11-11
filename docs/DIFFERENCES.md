@@ -234,12 +234,12 @@ Under the same rule, tC4 4.0 bugs the rebuild fixes on purpose (FIX-R, 2026-10-2
   once: it is counted as not done, and the words stay on screen until the next mark stores
   them. The earlier mark stays in History. tC4 keeps the mark with the words it was made with
   and drops the new words on Next without a word (#853).
-- In Check, the compare card shows the simplified Bible of the project's language sets (the
+- In Check, the compare card shows the simplified Bible of the project's checking package (the
   UST, or a package's GST such as `id_gst`) as a source text of its own, after the original
-  language and the literal Bible, whenever that Bible is on the computer and holds the verse.
-  It needs no `ust` or `gst` source pane. When the package's own simplified Bible is not on
-  the computer, the fallback set's is shown, named after the text on screen.
-  tC4 shows the original language and one gateway text only (#996).
+  language and the literal Bible, whenever that Bible is on the computer and holds the verse,
+  by itself or inside a verse span. It needs no `ust` or `gst` source pane. Another package's
+  simplified Bible is not shown: when the package's own has no text for the book, the card is
+  the original language and the literal Bible, as in tC4, which shows those two only (#996).
 - In Check, words selected on a check with no decision hold the translator on the check.
   Previous and Next are off until the check is marked or the words are unselected. A row of the rail,
   All checking tools, a mode tab and the project switch ask first: Stay, or Leave

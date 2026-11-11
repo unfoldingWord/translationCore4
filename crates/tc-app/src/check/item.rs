@@ -341,8 +341,11 @@ fn gateway(loaded: &LoadedBook, place: &CheckPlace, item: &CheckItem) -> Gateway
         return GatewayView::NoPane;
     };
     let text = match loaded.pane(&pane) {
-        Some(LoadedText::Ready(book)) => match lit_verse(book, place, item) {
-            Some((tokens, lit)) => GatewayText::Verse { tokens, lit },
+        Some(LoadedText::Ready(book)) => match pane_verse(book, place) {
+            Some(model) => {
+                let (tokens, lit) = lit_verse(model, &model.aligned, item);
+                GatewayText::Verse { tokens, lit }
+            }
             None => GatewayText::Absent,
         },
         Some(LoadedText::NotInstalled) => GatewayText::NotInstalled,
@@ -354,31 +357,37 @@ fn gateway(loaded: &LoadedBook, place: &CheckPlace, item: &CheckItem) -> Gateway
     GatewayView::Pane { pane, text }
 }
 
-/// The verse at the check's place in a gateway text, as its card shows it: the tokens, and
-/// the ones that render the check's quote.
+/// A gateway text's verse as its card shows it: the tokens, and the ones that render the
+/// check's quote by the alignments in `aligned`.
 fn lit_verse(
-    book: &crate::sources::PaneBook,
-    place: &CheckPlace,
+    model: &crate::sources::VerseModel,
+    aligned: &tc_helps::highlight::AlignedVerse,
     item: &CheckItem,
-) -> Option<(Vec<String>, Vec<u32>)> {
-    let model = pane_verse(book, place)?;
+) -> (Vec<String>, Vec<u32>) {
     let occurrence = Occurrence::nth(item.key.occurrence).unwrap_or(Occurrence::NotTied);
-    let lit = tc_helps::highlight::highlight_quote(&model.aligned, &item.quote, occurrence)
+    let lit = tc_helps::highlight::highlight_quote(aligned, &item.quote, occurrence)
         .tokens
         .into_iter()
         .filter_map(|i| u32::try_from(i).ok())
         .collect();
-    Some((one_space_tokens(&model.view.tokens), lit))
+    (one_space_tokens(&model.view.tokens), lit)
 }
 
-/// The simplified Bible's verse at the check's place. None when the text is not on this
-/// computer, numbers its verses otherwise than the project, or has no such verse.
+/// The verse of the package's simplified Bible at the check's place: the verse itself, or
+/// the verse span it is in, with the words of the check's verse lit. None when the package
+/// has no simplified text for the book on this computer, when the text numbers its verses
+/// otherwise than the project, or when it has no such verse.
 fn simplified(loaded: &LoadedBook, place: &CheckPlace, item: &CheckItem) -> Option<SimplifiedPane> {
     if !matches!(loaded.numbering, Numbering::Same) {
         return None;
     }
-    let (repo, book) = loaded.simplified()?;
-    let (tokens, lit) = lit_verse(book, place, item)?;
+    let CheckPlace::Verse { chapter, verse, .. } = place else {
+        return None;
+    };
+    let (repo, book) = loaded.package_simplified()?;
+    let chapter = book.chapters.get(&chapter.as_str().parse::<u16>().ok()?)?;
+    let (model, aligned) = chapter.holding(verse.as_str())?;
+    let (tokens, lit) = lit_verse(model, &aligned, item);
     Some(SimplifiedPane {
         repo: repo.to_owned(),
         tokens,

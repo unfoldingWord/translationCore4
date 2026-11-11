@@ -80,6 +80,29 @@ fn a_word_in_both_verses_of_a_gateway_span_lights_in_the_helps_verse() {
     assert_eq!(lit(&book, "7", "τοῦ").1, ["Jesus"]);
 }
 
+/// #996: the check card of the simplified Bible shows the span a check's verse is in, and
+/// lights only the words of that verse.
+#[test]
+fn a_verse_inside_a_gateway_span_is_held_by_the_span() {
+    let book = ust_3jn();
+    let chapter = &book.chapters[&1];
+    let (model, aligned) = chapter.holding("7").expect("1:7 is in the span 6-7");
+    assert_eq!(model.key.as_str(), "6-7");
+    let lit = tc_helps::highlight::highlight_quote(
+        &aligned,
+        &Quote::new("τοῦ"),
+        Occurrence::nth(1).unwrap(),
+    );
+    let words: Vec<&str> = lit
+        .tokens
+        .iter()
+        .map(|&t| model.view.tokens[t].as_str())
+        .collect();
+    assert_eq!(words, ["Jesus"]);
+    assert_eq!(chapter.holding("5").unwrap().0.key.as_str(), "5");
+    assert!(chapter.holding("99").is_none());
+}
+
 /// A help on the whole span reads every word of it: no word is left out. tc-helps counts a
 /// word's occurrence with no verse, so τοῦ 1 lights in both verses; that predates #409.
 #[test]

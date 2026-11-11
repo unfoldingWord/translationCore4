@@ -127,7 +127,7 @@ budget in `docs/PERFORMANCE.md`). Their tC4 tests stay mapped under `specs` in `
   check is marked again; words selected on a check with no decision turn Previous and Next
   off, and every other way out of the check asks before it drops them (#853,
   `docs/DIFFERENCES.md`). The compare card also shows the simplified Bible (UST or GST) of
-  the language sets as a source text of its own (#996, `docs/DIFFERENCES.md`).
+  the checking package as a source text of its own (#996, `docs/DIFFERENCES.md`).
 - Must not: store a check comment anywhere but its decision; count a bookmarked or commented check
   differently from a plain one.
 

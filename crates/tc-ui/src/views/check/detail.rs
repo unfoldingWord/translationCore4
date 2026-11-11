@@ -240,8 +240,8 @@ fn gateway_pane(gateway: &GatewayView) -> AnyView {
     .into_any()
 }
 
-/// The simplified card (#996): the verse in the simplified Bible of the project's language
-/// sets, named after the text it shows (`id_gst` → GST), with the quote's words lit.
+/// The simplified card (#996): the verse in the simplified Bible of the project's checking
+/// package, named after the text it shows (`id_gst` → GST), with the quote's words lit.
 fn simplified_pane(simplified: &SimplifiedPane) -> AnyView {
     let name = simplified_label(Some(&simplified.repo));
     view! {

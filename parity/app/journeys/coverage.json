@@ -160,7 +160,7 @@
           "mark_to_do_shows_the_words_the_check_has_stored",
           "compare_card_columns_fit_the_width",
           "a_check_shows_the_packages_simplified_bible_beside_the_literal_one",
-          "a_check_without_a_simplified_bible_shows_no_card_for_it"
+          "a_check_shows_no_simplified_bible_of_another_package"
         ]
       }
     ],

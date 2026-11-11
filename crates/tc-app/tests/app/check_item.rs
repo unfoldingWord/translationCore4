@@ -204,17 +204,11 @@ enum Gst {
     NotInstalled,
 }
 
-/// Whether the English fallback set keeps its simplified Bible (the UST).
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum FallbackUst {
-    Pinned,
-    NotPinned,
-}
-
 /// `en-pins` with the Bible project's checking language on the Indonesian package (bahtraku):
 /// its only source pane is the literal Bible (`id_glt` v105), and its primary set pins the
-/// simplified Bible (`id_gst` v16). No `ust` or `gst` pane is pinned.
-fn indonesian(gst: Gst, fallback: FallbackUst) -> ScenarioState {
+/// simplified Bible (`id_gst` v16). No `ust` or `gst` pane is pinned. The fallback set stays
+/// the English suite, whose simplified Bible (`en_ust`) is on the computer.
+fn indonesian(gst: Gst) -> ScenarioState {
     let (glt_pin, glt_files) = bahtraku("id_glt", "v105");
     let (gst_pin, gst_files) = bahtraku("id_gst", "v16");
     let mut files = scenario("en-pins").files().clone();
@@ -224,12 +218,6 @@ fn indonesian(gst: Gst, fallback: FallbackUst) -> ScenarioState {
     let primary = &mut pins["languageSets"]["primary"];
     primary["gatewayLanguage"] = serde_json::json!({ "languageId": "id", "owner": "bahtraku" });
     primary["simplifiedText"] = gst_pin.clone();
-    if fallback == FallbackUst::NotPinned {
-        pins["languageSets"]["fallback"]
-            .as_object_mut()
-            .unwrap()
-            .remove("simplifiedText");
-    }
     let mut pane = glt_pin.clone();
     pane["id"] = "glt".into();
     pins["extraScripture"] = serde_json::json!([pane]);
@@ -288,8 +276,7 @@ async fn first_note_sources(state: &ScenarioState) -> (Vec<String>, Option<Simpl
 /// beside the Greek and the literal Bible (GLT), though the project pins no `gst` pane.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_check_shows_the_packages_simplified_bible_without_a_pane_for_it() {
-    let (glt, simplified) =
-        first_note_sources(&indonesian(Gst::Installed, FallbackUst::Pinned)).await;
+    let (glt, simplified) = first_note_sources(&indonesian(Gst::Installed)).await;
     assert!(glt.concat().starts_with("Paulus, pelayan Allah"), "{glt:?}");
     let gst = simplified.expect("the GST verse");
     assert_eq!(gst.repo, "id_gst");
@@ -302,21 +289,13 @@ async fn a_check_shows_the_packages_simplified_bible_without_a_pane_for_it() {
     assert!(!gst.lit.is_empty(), "the quote's words are lit: {gst:?}");
 }
 
-/// #996: with the package's simplified Bible not on this computer, the check shows the
-/// simplified Bible of the fallback set, named as what it is.
+/// #996: when the package's simplified Bible has no text for the book (it is not on this
+/// computer, or does not hold the book), the language sets answer with the fallback set's,
+/// the English UST. That is another package's text: the compare card stays as it was, the
+/// Greek and the literal Bible, with no simplified card.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_check_shows_the_fallback_sets_simplified_bible_when_the_packages_is_absent() {
-    let (_, simplified) =
-        first_note_sources(&indonesian(Gst::NotInstalled, FallbackUst::Pinned)).await;
-    assert_eq!(simplified.expect("the UST verse").repo, "en_ust");
-}
-
-/// #996: no simplified Bible on this computer leaves the compare card as it was, the Greek
-/// and the literal Bible, with no card for the absent text.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_check_without_a_simplified_bible_shows_no_card_for_it() {
-    let (_, simplified) =
-        first_note_sources(&indonesian(Gst::NotInstalled, FallbackUst::NotPinned)).await;
+async fn a_check_shows_no_simplified_bible_of_another_package() {
+    let (_, simplified) = first_note_sources(&indonesian(Gst::NotInstalled)).await;
     assert_eq!(simplified, None);
 }
 

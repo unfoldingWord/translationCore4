@@ -108,6 +108,14 @@ impl ChapterModel {
         }
     }
 
+    /// The pane's verse that holds all of `verse` (`7` or `6-7`), by itself or inside a verse
+    /// span, with the alignments a help on `verse` reads there (#409).
+    pub fn holding(&self, verse: &str) -> Option<(&VerseModel, Cow<'_, AlignedVerse>)> {
+        let (from, to) = verse_range(verse)?;
+        let model = self.verses.iter().find(|m| m.from <= from && to <= m.to)?;
+        Some((model, model.aligned_at(from, to)))
+    }
+
     /// The pane's rendering of a quote at `verse` (a help's verse part, `1` or `1-3`), and the
     /// tokens of each verse that renders it: tC4's `glTitleFor` and `SourceVerse`. The title
     /// comes from the first verse that carries the help and renders the quote.

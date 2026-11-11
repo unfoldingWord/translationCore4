@@ -98,12 +98,22 @@ impl LoadedBook {
             .map_or(&LoadedText::Missing, |pane| &pane.text)
     }
 
-    /// The simplified Bible's book and the repository it was read from (`en_ust`), when it
-    /// loaded: a fallback set's when the primary set's is not on this computer.
-    pub(crate) fn simplified(&self) -> Option<(&str, &PaneBook)> {
+    /// The book in the simplified Bible of the project's checking package (the primary set's
+    /// gateway), and its repository (`id_gst`), when that is the text that loaded. The
+    /// language sets answer with the fallback set's simplified Bible when the package's has
+    /// no text for the book: that one is another package's, and is none here.
+    pub(crate) fn package_simplified(&self) -> Option<(&str, &PaneBook)> {
         let TextStatus::Loaded { pin, .. } = self.resources.text(&TextRole::Simplified)? else {
             return None;
         };
+        let package = tc_resources::gateways::of_set(self.pins()?.set(Rung::Primary)?)?;
+        if !package
+            .simplified_candidates()
+            .iter()
+            .any(|repo| pin.is_repo(repo))
+        {
+            return None;
+        }
         let Slot::Ready(ready) = &self.simplified else {
             return None;
         };

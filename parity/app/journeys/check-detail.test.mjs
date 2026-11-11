@@ -1046,9 +1046,9 @@ const writeJson = (file, value) => fs.writeFileSync(file, JSON.stringify(value, 
 
 /** Puts the Bible project of a built `en-pins` state on the Indonesian package (bahtraku): its
  * only source pane is the literal Bible (`id_glt` v105), and its primary set pins the simplified
- * Bible (`id_gst` v16), which is on the computer with `gst`. No `ust` or `gst` pane is pinned, and
- * without `fallbackUst` the English set pins no simplified Bible either. */
-const indonesianPackage = ({ gst, fallbackUst }) => (state) => {
+ * Bible (`id_gst` v16), which is on the computer with `gst`. No `ust` or `gst` pane is pinned. The
+ * fallback set stays the English suite, whose simplified Bible (`en_ust`) is on the computer. */
+const indonesianPackage = ({ gst }) => (state) => {
   const records = path.join(state, 'client_settings', 'uw-tc4.json');
   const installed = readJson(records);
   /** The pin of a release slice; with `install`, the slice as a sideloaded burrito of Titus. */
@@ -1075,7 +1075,6 @@ const indonesianPackage = ({ gst, fallbackUst }) => (state) => {
   const pins = readJson(file);
   pins.languageSets.primary.gatewayLanguage = { languageId: 'id', owner: 'bahtraku' };
   pins.languageSets.primary.simplifiedText = slice('id_gst', 'v16', gst);
-  if (!fallbackUst) delete pins.languageSets.fallback.simplifiedText;
   pins.extraScripture = [{ id: 'glt', ...slice('id_glt', 'v105', true) }];
   writeJson(file, pins);
   writeJson(records, installed);
@@ -1093,18 +1092,19 @@ browserTest('a_check_shows_the_packages_simplified_bible_beside_the_literal_one'
     assert.equal(await cardLabel(page, 'simplified-pane'), gatewayLabel('GST'));
     assert.match(await page.getByTestId('simplified-pane-text').textContent(), /^Aku, Paulus, menulis surat ini kepadamu, Titus\./);
     await evidence(page, 'compare-card-id-gst');
-  }, { scenario: 'en-pins', editState: indonesianPackage({ gst: true, fallbackUst: true }) });
+  }, { scenario: 'en-pins', editState: indonesianPackage({ gst: true }) });
 });
 
-// #996: with no simplified Bible on the computer the compare card is as it was, the Greek and
-// the literal Bible, with no card for the absent text.
-browserTest('a_check_without_a_simplified_bible_shows_no_card_for_it', async () => {
+// #996: when the package's simplified Bible has no text for the book, the compare card is as
+// it was, the Greek and the literal Bible: the English UST of the fallback set, which is on the
+// computer, is another package's text and gets no card.
+browserTest('a_check_shows_no_simplified_bible_of_another_package', async () => {
   await withApp(async ({ page }) => {
     await openTool(page, 'translationNotes');
     await page.setViewportSize({ width: 1280, height: 800 });
     assert.deepEqual(await assertCompareFits(page, 'at 1280px'), ['orig-pane', 'ult-pane']);
     await evidence(page, 'compare-card-no-simplified');
-  }, { scenario: 'en-pins', editState: indonesianPackage({ gst: false, fallbackUst: false }) });
+  }, { scenario: 'en-pins', editState: indonesianPackage({ gst: false }) });
 });
 
 // tC4 #614 (`ds-labels`): the drawer's close button, eyebrow and title come from the shown
