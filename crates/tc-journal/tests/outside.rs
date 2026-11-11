@@ -995,3 +995,39 @@ fn shown_value_is_what_the_file_showed() {
         ShownValue::Unreadable
     ));
 }
+
+/// V5: an edit of a file made from two heads of one value names both as its parents in id
+/// order, whatever order the base lists them in (the heads file, or the packs HEAD holds).
+/// Parents out of order are a change the journal refuses, and the edit would not be recorded.
+#[test]
+fn an_edit_over_two_heads_of_one_value_names_them_in_id_order() {
+    let mut world = World::new(&[5]);
+    let key = verse_key(1, 2);
+    let first = on(&world.changes, &key).id();
+    for n in [2, 3] {
+        let same = Dev::new(n).one(verse(1, 2, text("the same words", 2)), vec![first]);
+        world.changes.push(same);
+    }
+    let state = world.state();
+    let mut sorted = state.heads(&key);
+    sorted.sort();
+    assert_eq!(sorted.len(), 2, "two heads of one value");
+    let (bytes, base) = world.written(&DerivedFile::Usfm(BOOK));
+    let file = edited(&bytes, "the same words", "words of the file");
+    let Base::Heads(records) = base else {
+        panic!("unexpected")
+    };
+    for descending in [false, true] {
+        let mut records = records.clone();
+        for record in &mut records {
+            record.heads.sort();
+            if descending {
+                record.heads.reverse();
+            }
+        }
+        let plan = plan_of(&state, &file, &Base::Heads(records), false);
+        assert_eq!(plan.changes.len(), 1, "{plan:?}");
+        assert!(!plan.unknown_base, "{plan:?}");
+        assert_eq!(plan.changes[0].parents, sorted, "descending: {descending}");
+    }
+}

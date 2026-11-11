@@ -294,6 +294,22 @@ pub struct PlannedChange {
     pub cause: Cause,
 }
 
+impl PlannedChange {
+    /// A change whose parents come from somewhere that keeps no order (a token, a heads file,
+    /// History): they are written in id order, each once, which is the only form the journal
+    /// takes (V5).
+    #[must_use]
+    pub fn new(record: Record, mut parents: Vec<ChangeId>, cause: Cause) -> Self {
+        parents.sort();
+        parents.dedup();
+        Self {
+            record,
+            parents,
+            cause,
+        }
+    }
+}
+
 /// A person's choice in a conflict (§8.3). The batch writes one change per record the
 /// choice decides, with every current head of that record as parents.
 #[derive(Debug, Clone, PartialEq, Eq)]
