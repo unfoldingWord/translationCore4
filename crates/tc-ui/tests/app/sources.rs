@@ -2,15 +2,17 @@
 //! cases that one server read leaves (#641: a reply lands only on its own project's form, a
 //! failed read keeps Save disabled), and the rows of a package.
 
+use proptest::prelude::*;
 use tc_api::home::{BookTileView, Door43Card, HomeCard, ProjectKind};
-use tc_api::ids::{ProjectRef, RequestId};
+use tc_api::ids::{Epoch, JobId, ProjectRef, RequestId, Scope};
 use tc_api::resources::{
-    FromInstalls, GatewayPackage, GatewayRef, PackageRole, PackageRow, Seen, SourcesView,
+    Downloaded, FromInstalls, GatewayPackage, GatewayRef, PackageRole, PackageRow, Seen,
+    SourcesView,
 };
 use tc_api::settings::{CurrentGateway, GatewayCard, SettingsView};
 use tc_api::shown::{Direction, Known};
 use tc_core::BookId;
-use tc_ui::app::sources::{GatewayState, SettingsForm, SourcesForm};
+use tc_ui::app::sources::{Dl, DlEnd, GatewayState, SettingsForm, SourcesForm};
 
 fn card(project: &str, books: &[BookId]) -> HomeCard {
     HomeCard {
@@ -133,7 +135,8 @@ fn the_text_is_always_included_and_helps_can_be_left_out() {
         row(PackageRole::Notes, "en_tn"),
     ];
     src.rows_read(&en, BookId::Titus, rows.clone());
-    assert!(src.can_download());
+    assert!(src.can_download(Some(&open(1))));
+    assert!(!src.can_download(None), "no project, no download");
     src.toggle(&rows[0]);
     src.toggle(&rows[1]);
     assert_eq!(src.chosen(), ["en_ult"]);
@@ -169,15 +172,13 @@ fn rows_for_a_package_or_book_left_meanwhile_are_not_shown() {
 
 #[test]
 fn the_current_package_compares_its_owner_without_letter_case() {
-    let mut src = SourcesForm {
-        packages: Some(SourcesView {
-            gateways: Vec::new(),
-            current: Some(gateway("es-419", "ES-419_GL")),
-            checkable: FromInstalls::Listed(vec![gateway("en", "unfoldingWord")]),
-            pinned: true,
-        }),
-        ..SourcesForm::default()
-    };
+    let mut src = SourcesForm::default();
+    src.packages = Some(SourcesView {
+        gateways: Vec::new(),
+        current: Some(gateway("es-419", "ES-419_GL")),
+        checkable: FromInstalls::Listed(vec![gateway("en", "unfoldingWord")]),
+        pinned: true,
+    });
     assert!(src.is_current(&package("es-419", "es-419_gl")));
     assert!(!src.is_current(&package("en", "unfoldingWord")));
     assert!(src.is_checkable(&package("en", "unfoldingWord")));
@@ -187,6 +188,312 @@ fn the_current_package_compares_its_owner_without_letter_case() {
 
 fn rid(n: u8) -> RequestId {
     RequestId::from_bytes([n; 16])
+}
+
+/// One open of the project: the same project opened again has another epoch.
+fn open(epoch: u64) -> Scope {
+    Scope {
+        project: ProjectRef::parse("alef").unwrap(),
+        epoch: Epoch::new(epoch),
+    }
+}
+
+/// Step 2 on English with the rows of `book` read.
+fn on_book(src: &mut SourcesForm, book: BookId) {
+    let en = package("en", "unfoldingWord");
+    if src.gateway.as_ref() != Some(&en) {
+        src.pick(en.clone());
+    }
+    src.set_book(book);
+    src.rows_read(
+        &en,
+        book,
+        vec![
+            row(PackageRole::Text, "en_ult"),
+            row(PackageRole::Notes, "en_tn"),
+        ],
+    );
+}
+
+#[test]
+fn a_download_keeps_its_cancel_and_names_what_it_fetched_whatever_is_chosen_meanwhile() {
+    let here = open(1);
+    let mut src = SourcesForm::default();
+    on_book(&mut src, BookId::Hebrews);
+    let (request, what) = src.download_pressed(&here, rid(1)).unwrap();
+    assert!(
+        src.download_pressed(&here, rid(2)).is_none() && !src.can_download(Some(&here)),
+        "INV-BUSY-ENDS-WITH-ITS-WORK: a second press before the job starts another download"
+    );
+    src.download_started(request, JobId::new(7));
+    // Another book, a row left out, back to step 1, another open of the project.
+    on_book(&mut src, BookId::Titus);
+    src.toggle(&row(PackageRole::Notes, "en_tn"));
+    src.change_gateway();
+    for at in [Some(&here), Some(&open(2)), None] {
+        assert!(
+            src.downloading() && !src.can_download(at),
+            "INV-BUSY-ENDS-WITH-ITS-WORK: a running download lost its Cancel or offers Download"
+        );
+    }
+    assert!(matches!(src.dl(), Dl::Running { job, .. } if *job == JobId::new(7)));
+    on_book(&mut src, BookId::Titus);
+    src.download_ended(JobId::new(7), DlEnd::Done(Downloaded::Fetched));
+    assert_eq!(
+        *src.dl(),
+        Dl::Finished {
+            what: what.clone(),
+            outcome: Downloaded::Fetched
+        },
+        "INV-DOWNLOAD-NAMES-WHAT-IT-FETCHED"
+    );
+    assert_eq!(what.book, BookId::Hebrews);
+    assert!(
+        src.can_download(Some(&here)),
+        "Titus was not downloaded: it is offered"
+    );
+    on_book(&mut src, BookId::Hebrews);
+    assert!(
+        src.can_download(Some(&here)),
+        "Hebrews without its notes was not downloaded: it is offered"
+    );
+    src.toggle(&row(PackageRole::Notes, "en_tn"));
+    assert!(
+        !src.can_download(Some(&here)) && !src.can_download(Some(&open(2))),
+        "what just finished is not offered again"
+    );
+}
+
+#[test]
+fn a_lost_answer_is_asked_again_as_the_same_request_only_for_the_same_selection() {
+    let here = open(1);
+    let mut src = SourcesForm::default();
+    on_book(&mut src, BookId::Titus);
+    let (request, _) = src.download_pressed(&here, rid(1)).unwrap();
+    src.download_unanswered(request, Some("no answer".into()));
+    assert!(!src.downloading());
+    assert_eq!(src.error.as_deref(), Some("no answer"));
+    let (again, _) = src.download_pressed(&here, rid(2)).unwrap();
+    assert_eq!(
+        again,
+        rid(1),
+        "INV-ONE-REQUEST-PER-ATTEMPT: the retry is another request"
+    );
+    src.download_unanswered(again, None);
+    on_book(&mut src, BookId::Hebrews);
+    let (other, _) = src.download_pressed(&here, rid(3)).unwrap();
+    assert_eq!(other, rid(3), "another selection is another request");
+    // A refusal ends the attempt: the next press is a new request.
+    src.download_refused(other, Some("refused".into()));
+    assert_eq!(src.error.as_deref(), Some("refused"));
+    assert_eq!(src.download_pressed(&here, rid(4)).unwrap().0, rid(4));
+}
+
+#[test]
+fn a_download_that_is_not_sent_or_fails_is_under_way_no_more() {
+    let here = open(1);
+    let mut src = SourcesForm::default();
+    on_book(&mut src, BookId::Titus);
+    src.download_pressed(&here, rid(1)).unwrap();
+    src.download_not_sent();
+    assert!(!src.downloading() && src.can_download(Some(&here)));
+    let (request, _) = src.download_pressed(&here, rid(2)).unwrap();
+    src.download_asked_again(request, rid(3));
+    assert_eq!(src.starting().unwrap().0, rid(3));
+    src.download_started(rid(3), JobId::new(1));
+    // The person moved to another book: the failure of the Titus download is not said there.
+    on_book(&mut src, BookId::Hebrews);
+    src.download_ended(JobId::new(1), DlEnd::Failed(Some("no route".into())));
+    assert!(
+        !src.downloading() && src.error.is_none(),
+        "INV-RESOURCE-ANSWER-HAS-AN-OWNER: a failure is said for another book"
+    );
+    let (request, _) = src.download_pressed(&here, rid(4)).unwrap();
+    src.download_started(request, JobId::new(2));
+    src.download_ended(JobId::new(9), DlEnd::Stopped);
+    assert!(src.downloading(), "another job's end changes nothing");
+    src.download_ended(JobId::new(2), DlEnd::AskedAgain { request: rid(5) });
+    assert_eq!(src.starting().unwrap().0, rid(5));
+    src.download_not_sent();
+    assert_eq!(*src.dl(), Dl::Idle);
+}
+
+/// What a person and the server can do to the download.
+#[derive(Debug, Clone)]
+enum DlStep {
+    /// A project opens: a new open is on screen.
+    Open,
+    Home,
+    Book(bool),
+    Toggle,
+    StepOne,
+    Press,
+    Start(StartKind),
+    End(EndKind),
+}
+
+#[derive(Debug, Clone, Copy)]
+enum StartKind {
+    Job,
+    Refused,
+    Unanswered,
+    AskedAgain,
+    NotNow,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum EndKind {
+    Done,
+    Stopped,
+    Failed,
+    AskedAgain,
+}
+
+fn arb_dl_step() -> impl Strategy<Value = DlStep> {
+    let start = prop_oneof![
+        Just(StartKind::Job),
+        Just(StartKind::Refused),
+        Just(StartKind::Unanswered),
+        Just(StartKind::AskedAgain),
+        Just(StartKind::NotNow)
+    ];
+    let end = prop_oneof![
+        Just(EndKind::Done),
+        Just(EndKind::Stopped),
+        Just(EndKind::Failed),
+        Just(EndKind::AskedAgain)
+    ];
+    prop_oneof![
+        Just(DlStep::Open),
+        Just(DlStep::Home),
+        any::<bool>().prop_map(DlStep::Book),
+        Just(DlStep::Toggle),
+        Just(DlStep::StepOne),
+        Just(DlStep::Press),
+        start.prop_map(DlStep::Start),
+        end.prop_map(DlStep::End),
+    ]
+}
+
+proptest! {
+    /// INV-BUSY-ENDS-WITH-ITS-WORK and INV-DOWNLOAD-NAMES-WHAT-IT-FETCHED over any order of
+    /// opens, leaves, choices, presses and answers: the download is under way exactly from an
+    /// accepted press to its end, one at most, nothing the person chooses meanwhile changes
+    /// it, and what finished is named by the selection of its own press.
+    #[test]
+    fn a_download_is_under_way_from_its_press_to_its_end_on_every_sequence(
+        steps in proptest::collection::vec(arb_dl_step(), 0..80),
+    ) {
+        let mut src = SourcesForm::default();
+        let mut epoch = 0;
+        let mut here: Option<Scope> = None;
+        let mut next = 0u8;
+        // The model: the selection of the accepted press, and the job once the server gave one.
+        let mut pressed: Option<tc_ui::app::sources::Selection> = None;
+        let mut request: Option<RequestId> = None;
+        let mut job: Option<JobId> = None;
+        for step in steps {
+            match step {
+                DlStep::Open => {
+                    epoch += 1;
+                    here = Some(open(epoch));
+                }
+                DlStep::Home => here = None,
+                DlStep::Book(titus) => on_book(&mut src, if titus { BookId::Titus } else { BookId::Hebrews }),
+                DlStep::Toggle => src.toggle(&row(PackageRole::Notes, "en_tn")),
+                DlStep::StepOne => src.change_gateway(),
+                DlStep::Press => {
+                    if let Some(at) = &here {
+                        next += 1;
+                        let taken = src.download_pressed(at, rid(next));
+                        if pressed.is_some() {
+                            prop_assert!(taken.is_none(), "INV-BUSY-ENDS-WITH-ITS-WORK: a second download started");
+                        }
+                        if let Some((sent, what)) = taken {
+                            prop_assert_eq!(&what.at, at);
+                            prop_assert_eq!(what.book, src.book);
+                            prop_assert_eq!(&what.repos, &src.chosen());
+                            pressed = Some(what);
+                            request = Some(sent);
+                        }
+                    }
+                }
+                DlStep::Start(kind) => {
+                    if let (Some(sent), None) = (request, job) {
+                        match kind {
+                            StartKind::Job => {
+                                job = Some(JobId::new(u64::from(next)));
+                                src.download_started(sent, JobId::new(u64::from(next)));
+                            }
+                            StartKind::Refused => {
+                                src.download_refused(sent, Some("refused".into()));
+                                (pressed, request) = (None, None);
+                            }
+                            StartKind::Unanswered => {
+                                src.download_unanswered(sent, Some("lost".into()));
+                                (pressed, request) = (None, None);
+                            }
+                            StartKind::AskedAgain => {
+                                next += 1;
+                                src.download_asked_again(sent, rid(next));
+                                request = Some(rid(next));
+                            }
+                            StartKind::NotNow => {
+                                src.download_not_sent();
+                                (pressed, request) = (None, None);
+                            }
+                        }
+                    }
+                }
+                DlStep::End(kind) => {
+                    if let Some(running) = job.take() {
+                        let what = pressed.take().unwrap();
+                        request = None;
+                        match kind {
+                            EndKind::Done => {
+                                src.download_ended(running, DlEnd::Done(Downloaded::Fetched));
+                                prop_assert_eq!(
+                                    src.dl(),
+                                    &Dl::Finished { what, outcome: Downloaded::Fetched },
+                                    "INV-DOWNLOAD-NAMES-WHAT-IT-FETCHED: the finished download names another selection"
+                                );
+                            }
+                            EndKind::Stopped => src.download_ended(running, DlEnd::Stopped),
+                            EndKind::Failed => src.download_ended(running, DlEnd::Failed(Some("no".into()))),
+                            EndKind::AskedAgain => {
+                                next += 1;
+                                src.download_ended(running, DlEnd::AskedAgain { request: rid(next) });
+                                pressed = Some(what);
+                                request = Some(rid(next));
+                            }
+                        }
+                    }
+                }
+            }
+            prop_assert_eq!(
+                src.downloading(), pressed.is_some(),
+                "INV-BUSY-ENDS-WITH-ITS-WORK: under way {} with a download pressed and not ended {}",
+                src.downloading(), pressed.is_some()
+            );
+            prop_assert_eq!(
+                matches!(src.dl(), Dl::Running { .. }), job.is_some(),
+                "INV-BUSY-ENDS-WITH-ITS-WORK: Cancel is offered {} with a job running {}",
+                matches!(src.dl(), Dl::Running { .. }), job.is_some()
+            );
+            if pressed.is_some() {
+                prop_assert!(
+                    !src.can_download(here.as_ref()),
+                    "INV-BUSY-ENDS-WITH-ITS-WORK: Download is offered while one is under way"
+                );
+            }
+            match src.dl() {
+                Dl::Starting { what, .. } | Dl::Running { what, .. } => {
+                    prop_assert_eq!(Some(what), pressed.as_ref(), "INV-DOWNLOAD-NAMES-WHAT-IT-FETCHED: the download under way changed its selection");
+                }
+                Dl::Idle | Dl::Finished { .. } | Dl::Unanswered { .. } => {}
+            }
+        }
+    }
 }
 
 /// tC4 `saveSettings` and AD14: Save is for the values the dialog showed, sends the direction

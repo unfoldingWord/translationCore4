@@ -806,11 +806,11 @@ impl Actions {
             }
             Pending::ShareRun => self.patch_sh(ShareForm::not_sent),
             Pending::Catalog => self.catalog_dropped(),
+            Pending::Download => self.download_dropped(),
             Pending::ImportVersions => self.patch_im(|im| im.versions_not_looked_up()),
             // The sign-in step stays open and sends nothing (tC4: "Not now keeps the dialog").
-            // Not now: the download never started, and the guided fix is as it was.
-            Pending::Download
-            | Pending::Fix(_)
+            // Not now: the guided fix is as it was.
+            Pending::Fix(_)
             | Pending::Updates
             | Pending::UpgradeSet(_)
             | Pending::UpgradeText(_)

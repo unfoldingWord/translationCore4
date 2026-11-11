@@ -124,7 +124,11 @@
         "file": "parity/app/journeys/source-texts.test.mjs",
         "tests": [
           "Get source texts reads a package only after the internet question, and Not now reads nothing",
-          "j3_a_download_from_the_seeded_fake_installs_the_pinned_version"
+          "j3_a_download_from_the_seeded_fake_installs_the_pinned_version",
+          "j3_a_download_keeps_its_cancel_and_names_its_own_book_whatever_is_chosen_meanwhile",
+          "j3_cancel_stops_the_download_it_belongs_to_after_another_book_was_chosen",
+          "j3_two_quick_presses_of_download_start_one_download",
+          "j3_a_download_whose_first_answer_was_lost_is_asked_again_as_the_same_request"
         ]
       }
     ],

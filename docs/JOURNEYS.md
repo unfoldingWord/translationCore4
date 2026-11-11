@@ -109,8 +109,10 @@ budget in `docs/PERFORMANCE.md`). Their tC4 tests stay mapped under `specs` in `
 - Steps: choose the gateway language · pick the resource set · download.
 - End state: the project's pins name each resource's exact release; the resources are installed
   and match their pins; the helps open with the internet off; a missing resource shows that it is
-  missing. Download is always offered. While the internet is off it asks "Turn on the internet?"
-  first, and Not now sends nothing.
+  missing. Download is always offered, except while a download runs. While the internet is off
+  it asks "Turn on the internet?" first, and Not now sends nothing. A download keeps its progress
+  line and its Cancel until it ends, whatever is chosen meanwhile, and its finished line names
+  the book and language it downloaded (#982, `docs/DIFFERENCES.md`).
 - Must not: install a file of another release than the pin; change the book text.
 
 ### J4 Check a book
