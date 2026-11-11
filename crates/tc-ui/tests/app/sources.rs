@@ -213,7 +213,8 @@ fn alef() -> ProjectRef {
 
 /// A read of the chosen package's rows, started for `project`.
 fn started(src: &mut SourcesForm, project: &ProjectRef) -> CatalogRead {
-    src.catalog_started(project.clone()).expect("a package is chosen")
+    src.catalog_started(project.clone())
+        .expect("a package is chosen")
 }
 
 #[test]
@@ -294,7 +295,7 @@ fn on_book(src: &mut SourcesForm, book: BookId) {
         src.pick(en.clone());
     }
     src.set_book(book);
-    let read = started(&mut src, &alef());
+    let read = started(src, &alef());
     src.rows_read(
         &read,
         vec![
