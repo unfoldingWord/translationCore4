@@ -9,7 +9,7 @@
 //! leaves the plan on screen with the reason, and Confirm tries again (tC4 #580).
 
 use tc_api::check::{CheckCollection, Tool};
-use tc_api::ids::ProjectRef;
+use tc_api::ids::Scope;
 use tc_api::resources::{
     BlockReason, BlockedUnit, GatewayPackage, PlanRow, PlanView, PlanWhat, RepoMove, SetRung,
     TextKind, UpdatesView,
@@ -23,10 +23,33 @@ pub enum Installing {
     Text(String),
 }
 
-/// What Check for updates found, for the project it was asked for (tC4 `offersFor`).
+/// Check for updates (INV-BUSY-ENDS-WITH-ITS-WORK): idle, or out for one open of a project.
+/// Busy is read from here against the open on screen, so a check that another open started
+/// never holds this one's button.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+enum Check {
+    #[default]
+    Idle,
+    Running {
+        at: Scope,
+    },
+}
+
+/// How a check for updates ended.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CheckEnd {
+    Offers(UpdatesView),
+    /// `reason` is already tC4's sentence.
+    Failed(String),
+    /// Nothing to show: the internet question took over, or the open it was for is not on
+    /// screen any more.
+    Nothing,
+}
+
+/// What Check for updates found, for the open it was asked for (tC4 `offersFor`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Offers {
-    pub project: ProjectRef,
+    pub at: Scope,
     pub view: UpdatesView,
 }
 
@@ -41,7 +64,7 @@ pub struct Preview {
 /// tC4's `s.upgrade`.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct UpgradeState {
-    pub checking: bool,
+    check: Check,
     pub installing: Option<Installing>,
     /// The repository being downloaded (`sources.progress`).
     pub progress: Option<String>,
@@ -52,31 +75,47 @@ pub struct UpgradeState {
 }
 
 impl UpgradeState {
-    /// "Check for updates" was pressed for `project`.
-    pub fn check_started(&mut self) {
-        self.checking = true;
+    /// Whether a check for updates is out for `here`, the open on screen.
+    pub fn checking(&self, here: Option<&Scope>) -> bool {
+        matches!(&self.check, Check::Running { at } if Some(at) == here)
+    }
+
+    /// What the last check found, when it was made for `here`.
+    pub fn offers_for(&self, here: Option<&Scope>) -> Option<&Offers> {
+        self.offers.as_ref().filter(|o| Some(&o.at) == here)
+    }
+
+    /// "Check for updates" was pressed for `at`. `false` while a check for `at` is out: a
+    /// second one is not sent. A check another open left behind is replaced; its answer finds
+    /// no owner.
+    pub fn check_started(&mut self, at: Scope) -> bool {
+        if self.checking(Some(&at)) {
+            return false;
+        }
+        self.check = Check::Running { at };
         self.error = None;
         self.offers = None;
+        true
     }
 
-    /// Door43 answered. An answer for a project the person has left is dropped (tC4 binds the
-    /// answer to the project it was made for).
-    pub fn offers_read(&mut self, project: &ProjectRef, current: &ProjectRef, view: UpdatesView) {
-        if project != current {
+    /// The check for `at` ended (INV-RESOURCE-ANSWER-HAS-AN-OWNER): only the check that is out
+    /// for `at` takes the end, and it is busy no more whatever the end was.
+    pub fn check_ended(&mut self, at: &Scope, end: CheckEnd) {
+        if !self.checking(Some(at)) {
             return;
         }
-        self.checking = false;
-        self.error = view.texts_error.map(check_failed);
-        self.offers = Some(Offers {
-            project: project.clone(),
-            view,
-        });
-    }
-
-    /// The check failed; `reason` is already tC4's sentence.
-    pub fn check_failed(&mut self, reason: String) {
-        self.checking = false;
-        self.error = Some(reason);
+        self.check = Check::Idle;
+        match end {
+            CheckEnd::Offers(view) => {
+                self.error = view.texts_error.map(check_failed);
+                self.offers = Some(Offers {
+                    at: at.clone(),
+                    view,
+                });
+            }
+            CheckEnd::Failed(reason) => self.error = Some(reason),
+            CheckEnd::Nothing => {}
+        }
     }
 
     /// An offer's Upgrade was pressed: nothing else can start while it downloads.

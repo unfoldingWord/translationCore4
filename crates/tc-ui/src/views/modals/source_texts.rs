@@ -155,9 +155,16 @@ fn resource_updates(
     let (actions, up, project) = (actions.clone(), up.clone(), project.clone());
     pinned.then(|| {
         let check = actions.clone();
+        let here = {
+            let project = project.clone();
+            move || project.with(|p| p.as_ref().map(|p| p.at.clone()))
+        };
         let checking = {
-            let up = up.clone();
-            Signal::derive(move || up.with(|up| up.checking))
+            let (up, here) = (up.clone(), here.clone());
+            Signal::derive(move || {
+                let here = here();
+                up.with(|up| up.checking(here.as_ref()))
+            })
         };
         let progress = {
             let up = up.clone();
@@ -187,13 +194,15 @@ fn resource_updates(
                 })
             }
         };
-        // Offers show only for the project they were asked for.
+        // Offers show only for the open they were asked for.
         let offers = {
-            let (actions, up, project) = (actions.clone(), up.clone(), project.clone());
+            let (actions, up) = (actions.clone(), up.clone());
             move || {
-                let here = project.with(|p| p.as_ref().map(|p| p.at.project.clone()));
-                let (offers, installing) = up.with(|up| (up.offers.clone(), up.installing.clone()));
-                let offers = offers.filter(|o| Some(&o.project) == here.as_ref())?;
+                let here = here();
+                let (offers, installing) = up.with(|up| {
+                    (up.offers_for(here.as_ref()).cloned(), up.installing.clone())
+                });
+                let offers = offers?;
                 let sets = offers
                     .view
                     .sets

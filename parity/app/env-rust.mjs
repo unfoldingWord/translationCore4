@@ -121,8 +121,11 @@ export async function startDoor43Fake(bin) {
     clear: () => control('POST', '/requests/clear'),
     /** `{ method?, path, times?, fault: { type: 'status', status, message } | { type: 'delay', ms } | { type: 'hold' } }` */
     fault: (rule) => control('POST', '/faults', { method: null, times: null, ...rule }),
-    /** The oldest held request goes on. */
+    /** The oldest held request goes on. A release sent before the request is held frees nothing:
+     * wait for `held()` to rise first. */
     release: () => control('POST', '/release'),
+    /** How many requests wait for a release now. */
+    held: async () => (await control('GET', '/held')).held,
     issueToken: async (login, name, scopes) => (await control('POST', '/tokens', { login, name, scopes })).secret,
     tokens: (login) => control('GET', `/tokens/${encodeURIComponent(login)}`),
     secret: async (login, name) => (await control('GET', `/secret/${encodeURIComponent(login)}/${encodeURIComponent(name)}`)).secret,

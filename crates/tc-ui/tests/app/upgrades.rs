@@ -2,8 +2,9 @@
 //! dialogs hold while a plan is made, shown, confirmed again after the project moved, or refused
 //! by the disk, and the words they say. tC4's `UpgradeSet.jsx` and `GatewayChange.jsx`.
 
+use proptest::prelude::*;
 use tc_api::check::{CheckCollection, Tool};
-use tc_api::ids::{PlanId, ProjectRef};
+use tc_api::ids::{Epoch, PlanId, ProjectRef, Scope};
 use tc_api::resources::{
     BlockReason, BlockedUnit, Carry, GatewayChange, GatewayPackage, GatewayRef, PlanRow, PlanView,
     PlanWhat, RepoMove, Seen, SetOffer, SetRung, TextKind, TextOffer, UpdatesView,
@@ -11,8 +12,8 @@ use tc_api::resources::{
 use tc_api::shown::Direction;
 use tc_core::BookId;
 use tc_ui::app::upgrades::{
-    GatewayPreview, GatewayState, Installing, UpgradeState, blocked_text, gateway_buttons,
-    gateway_headline, row_text, text_headline,
+    CheckEnd, GatewayPreview, GatewayState, Installing, UpgradeState, blocked_text,
+    gateway_buttons, gateway_headline, row_text, text_headline,
 };
 
 fn package() -> GatewayPackage {
@@ -82,28 +83,178 @@ fn project(name: &str) -> ProjectRef {
     ProjectRef::parse(name).unwrap()
 }
 
-#[test]
-fn an_answer_for_a_project_the_person_has_left_is_dropped() {
-    let mut up = UpgradeState::default();
-    up.check_started();
-    let view = UpdatesView {
+/// One open of `name`: the same project opened again has another epoch.
+fn open(name: &str, epoch: u64) -> Scope {
+    Scope {
+        project: project(name),
+        epoch: Epoch::new(epoch),
+    }
+}
+
+fn no_offers() -> UpdatesView {
+    UpdatesView {
         sets: Vec::new(),
         texts: Vec::new(),
         texts_error: None,
-    };
-    up.offers_read(&project("alef"), &project("bet"), view.clone());
+    }
+}
+
+#[test]
+fn an_answer_for_a_project_the_person_has_left_is_dropped() {
+    let (alef, bet) = (open("alef", 1), open("bet", 2));
+    let mut up = UpgradeState::default();
+    assert!(up.check_started(alef.clone()));
     assert!(
-        up.offers.is_none() && up.checking,
-        "still waiting for the right answer"
+        !up.checking(Some(&bet)) && !up.checking(None),
+        "INV-BUSY-ENDS-WITH-ITS-WORK: alef's check holds the button of bet or of Home"
     );
-    up.offers_read(&project("bet"), &project("bet"), view);
-    assert!(up.offers.is_some() && !up.checking);
+    assert!(up.check_started(bet.clone()), "bet's own check starts");
+    up.check_ended(&alef, CheckEnd::Offers(no_offers()));
+    assert!(
+        up.offers.is_none() && up.checking(Some(&bet)),
+        "INV-RESOURCE-ANSWER-HAS-AN-OWNER: alef's answer ended or filled bet's check"
+    );
+    up.check_ended(&bet, CheckEnd::Offers(no_offers()));
+    assert!(up.offers_for(Some(&bet)).is_some() && !up.checking(Some(&bet)));
+    assert!(
+        up.offers_for(Some(&open("bet", 3))).is_none(),
+        "INV-RESOURCE-ANSWER-HAS-AN-OWNER: an answer from before the reopening is shown"
+    );
+}
+
+#[test]
+fn a_second_check_is_not_sent_while_one_is_out_for_this_open() {
+    let alef = open("alef", 1);
+    let mut up = UpgradeState::default();
+    assert!(up.check_started(alef.clone()));
+    assert!(!up.check_started(alef.clone()), "one press, one check");
+    up.check_ended(&alef, CheckEnd::Nothing);
+    assert!(
+        !up.checking(Some(&alef)) && up.offers.is_none() && up.error.is_none(),
+        "INV-BUSY-ENDS-WITH-ITS-WORK: a check with nothing to show stays busy or shows something"
+    );
+    assert!(
+        up.check_started(alef.clone()),
+        "the next press checks again"
+    );
+    up.check_ended(&alef, CheckEnd::Failed("no".into()));
+    assert!(!up.checking(Some(&alef)));
+    assert_eq!(up.error.as_deref(), Some("no"));
+}
+
+/// What a person and Door43 can do to Check for updates.
+#[derive(Debug, Clone)]
+enum CheckStep {
+    /// A project opens: a new open is on screen.
+    Open,
+    /// Home: no open is on screen.
+    Home,
+    Press,
+    /// The `n`th call still out is answered.
+    Answer(usize, AnswerKind),
+}
+
+#[derive(Debug, Clone, Copy)]
+enum AnswerKind {
+    Offers,
+    Failed,
+    Nothing,
+}
+
+fn arb_check_step() -> impl Strategy<Value = CheckStep> {
+    let kind = prop_oneof![
+        Just(AnswerKind::Offers),
+        Just(AnswerKind::Failed),
+        Just(AnswerKind::Nothing)
+    ];
+    prop_oneof![
+        Just(CheckStep::Open),
+        Just(CheckStep::Home),
+        Just(CheckStep::Press),
+        (0..4usize, kind).prop_map(|(n, kind)| CheckStep::Answer(n, kind)),
+    ]
+}
+
+/// A view that names the call it answers, in its one set's language.
+fn offers_of(call: usize) -> UpdatesView {
+    UpdatesView {
+        sets: vec![SetOffer {
+            rung: SetRung::Primary,
+            language: call.to_string(),
+            moves: Vec::new(),
+        }],
+        texts: Vec::new(),
+        texts_error: None,
+    }
+}
+
+proptest! {
+    /// INV-BUSY-ENDS-WITH-ITS-WORK and INV-RESOURCE-ANSWER-HAS-AN-OWNER over any order of
+    /// opens, leaves, presses and answers: the button is busy exactly while a check for the
+    /// open on screen is out, one check at most is out per open, and the offers on screen came
+    /// from a call made for the open on screen.
+    #[test]
+    fn check_for_updates_is_busy_only_for_its_own_open_on_every_sequence(
+        steps in proptest::collection::vec(arb_check_step(), 0..60),
+    ) {
+        let mut up = UpgradeState::default();
+        let mut epoch = 0;
+        let mut here: Option<Scope> = None;
+        // Every call sent, by number, and the numbers still out.
+        let mut calls: Vec<Scope> = Vec::new();
+        let mut out: Vec<usize> = Vec::new();
+        for step in steps {
+            match step {
+                CheckStep::Open => {
+                    epoch += 1;
+                    here = Some(open("alef", epoch));
+                }
+                CheckStep::Home => here = None,
+                CheckStep::Press => {
+                    if let Some(at) = &here {
+                        let was_out = out.iter().any(|n| &calls[*n] == at);
+                        let sent = up.check_started(at.clone());
+                        prop_assert_eq!(sent, !was_out, "one check at most is out per open");
+                        if sent {
+                            out.push(calls.len());
+                            calls.push(at.clone());
+                        }
+                    }
+                }
+                CheckStep::Answer(n, kind) => {
+                    if !out.is_empty() {
+                        let call = out.remove(n % out.len());
+                        let end = match kind {
+                            AnswerKind::Offers => CheckEnd::Offers(offers_of(call)),
+                            AnswerKind::Failed => CheckEnd::Failed("no".into()),
+                            AnswerKind::Nothing => CheckEnd::Nothing,
+                        };
+                        up.check_ended(&calls[call], end);
+                    }
+                }
+            }
+            let busy = up.checking(here.as_ref());
+            let is_out = here.as_ref().is_some_and(|at| out.iter().any(|n| &calls[*n] == at));
+            prop_assert_eq!(
+                busy, is_out,
+                "INV-BUSY-ENDS-WITH-ITS-WORK: busy {} with a check out for this open {}", busy, is_out
+            );
+            if let Some(offers) = up.offers_for(here.as_ref()) {
+                let call: usize = offers.view.sets[0].language.parse().unwrap();
+                prop_assert_eq!(
+                    Some(&calls[call]), here.as_ref(),
+                    "INV-RESOURCE-ANSWER-HAS-AN-OWNER: the offers on screen answer another open's call"
+                );
+            }
+        }
+    }
 }
 
 #[test]
 fn a_text_that_door43_could_not_answer_for_is_said_beside_the_set_offers() {
+    let alef = open("alef", 1);
     let mut up = UpgradeState::default();
-    up.check_started();
+    up.check_started(alef.clone());
     let view = UpdatesView {
         sets: vec![SetOffer {
             rung: SetRung::Primary,
@@ -113,7 +264,7 @@ fn a_text_that_door43_could_not_answer_for_is_said_beside_the_set_offers() {
         texts: Vec::new(),
         texts_error: Some(tc_api::refusal::UpdateCheckFailure::Unreachable),
     };
-    up.offers_read(&project("alef"), &project("alef"), view);
+    up.check_ended(&alef, CheckEnd::Offers(view));
     assert_eq!(
         up.error.as_deref(),
         Some(
@@ -241,7 +392,9 @@ fn a_set_that_was_upgraded_is_current_and_a_text_that_was_upgraded_is_not_offere
         }],
         texts_error: None,
     };
-    up.offers_read(&project("alef"), &project("alef"), view);
+    let alef = open("alef", 1);
+    up.check_started(alef.clone());
+    up.check_ended(&alef, CheckEnd::Offers(view));
     up.plan_ready(set_plan(1, Vec::new()));
     up.applied();
     let offers = up.offers.as_ref().unwrap();
