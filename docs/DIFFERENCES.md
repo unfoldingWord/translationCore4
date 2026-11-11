@@ -218,7 +218,7 @@ Under the same rule, tC4 4.0 bugs the rebuild fixes on purpose (FIX-R, 2026-10-2
   registry's, so English said v89 while v91 was installed and pinned (#833.5).
 - A download in Get source texts keeps its progress line and its Cancel until it ends,
   whatever the person chooses meanwhile: another book, another row, step 1 (which then has a
-  footer), or another project. Download is not offered while one runs, and the finished line
+  footer, kept for the finished line until the next choice), or another project. Download is not offered while one runs, and the finished line
   names the book and language that were downloaded. tC4 drops the download's line when the book,
   a row or the language changes, offers Download again while the first still runs, and names
   the book on screen when it ends (`git show d25b7871:src/state.jsx`, `setSourceBook`,

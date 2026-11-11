@@ -59,11 +59,11 @@ pub fn SourceTexts() -> impl IntoView {
         Memo::new(move |_| src.with(|src| src.gateway.clone()))
     };
     // tC4 gives step 1 no footer at all (`footer={g ? … : null}`), so a change of step draws
-    // the dialog again. A download under way keeps its line and its Cancel on step 1 too
-    // (#982, a declared difference).
+    // the dialog again. A download keeps its line and its Cancel on step 1 too, and its
+    // finished line until the next choice (#982, a declared difference).
     let footed = {
         let src = src.clone();
-        Memo::new(move |_| gateway.with(Option::is_some) || src.with(SourcesForm::downloading))
+        Memo::new(move |_| gateway.with(Option::is_some) || src.with(SourcesForm::has_line))
     };
     (move || sources_modal(&actions, &src, &up, &project, gateway, footed.get())).into_any()
 }
@@ -650,13 +650,7 @@ fn footer(
         let (src, project) = (src.clone(), project.clone());
         Memo::new(move |_| {
             let here = project.with(|p| p.as_ref().map(|p| p.at.clone()));
-            src.with(|src| {
-                (
-                    src.dl().clone(),
-                    src.can_download(here.as_ref()),
-                    src.gateway.is_some(),
-                )
-            })
+            src.with(|src| (src.dl().clone(), src.can_download(here.as_ref())))
         })
     };
     let line = |testid: &'static str, style: &'static str, text: String| {
@@ -665,8 +659,7 @@ fn footer(
     const DONE: &str = "font-size: var(--fs-caption-lg); letter-spacing: var(--track-12-5); font-weight: var(--fw-heavy); color: var(--tc-valid-strong);";
     const PROGRESS: &str = "font-size: var(--fs-caption-lg); letter-spacing: var(--track-12-5); font-weight: var(--fw-bold); color: var(--text-secondary);";
     let status = move || match state.get() {
-        // Step 1 has a footer only for a download under way.
-        (Dl::Finished { what, outcome }, _, true) => Some(line(
+        (Dl::Finished { what, outcome }, _) => Some(line(
             "sources-done",
             DONE,
             t(
@@ -685,18 +678,17 @@ fn footer(
                 repo: Some(repo), ..
             },
             _,
-            _,
         ) => Some(line(
             "sources-progress",
             PROGRESS,
             t(keys::sources::PROGRESS, &[("repo", &repo)]),
         )),
-        (Dl::Starting { .. } | Dl::Running { repo: None, .. }, _, _) => Some(line(
+        (Dl::Starting { .. } | Dl::Running { repo: None, .. }, _) => Some(line(
             "sources-progress",
             PROGRESS,
             t(keys::sources::DOWNLOADING, &[]),
         )),
-        (Dl::Idle | Dl::Unanswered { .. } | Dl::Finished { .. }, _, _) => None,
+        (Dl::Idle | Dl::Unanswered { .. }, _) => None,
     };
     let (close, download, cancel) = (actions.clone(), actions.clone(), actions.clone());
     let run = move || matches!(state.get().0, Dl::Running { .. });

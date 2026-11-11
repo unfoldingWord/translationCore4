@@ -336,6 +336,13 @@ impl SourcesForm {
         matches!(self.dl, Dl::Starting { .. } | Dl::Running { .. })
     }
 
+    /// Whether the download has a line to show: under way, or finished and not yet followed
+    /// by a choice. Step 1 keeps its footer for it, so a download that ends there is still
+    /// named (#982 requirement 5).
+    pub fn has_line(&self) -> bool {
+        matches!(self.dl, Dl::Starting { .. } | Dl::Running { .. } | Dl::Finished { .. })
+    }
+
     /// Whether the footer offers Download in `here`: a package with rows, no download under
     /// way, and not the selection that just finished in this open. A download fetches at the
     /// open project's pins, so one that finished in another open says nothing about this one.
