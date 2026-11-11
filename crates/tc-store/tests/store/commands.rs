@@ -889,6 +889,51 @@ fn a_judgement_records_the_text_it_was_made_against_and_to_do_stamps_nothing() {
     handle.close().unwrap();
 }
 
+/// #853: the Check screen says "the words changed" after every tap. On a check nobody decided
+/// that clears nothing, so it must not put an empty decision into the project's history.
+#[test]
+fn an_edit_that_leaves_an_undecided_check_with_no_decision_writes_nothing() {
+    let (fs, folder) = rich();
+    let (_rig, handle) = open(&fs, &folder);
+    let key = RecordKey::Check(tn_key(1, 3, 1));
+    assert_eq!(projected(&handle, &key), None, "1:3 has no decision");
+    for changes in [
+        vec![
+            DecisionChange::Selections(None),
+            DecisionChange::NothingToSelect(false),
+            DecisionChange::Status(None),
+        ],
+        vec![DecisionChange::Bookmarked(false)],
+        vec![DecisionChange::Comment(Some(String::new()))],
+    ] {
+        let reply = submit(
+            &handle,
+            Command::SaveDecision {
+                shown: token(&handle, &key),
+                verse_shown: token(&handle, &verse(1, 3)),
+                value: decision_edit(changes.clone()),
+            },
+        )
+        .unwrap();
+        assert!(matches!(reply.stored, Stored::Unchanged), "{changes:?}");
+        assert_eq!(projected(&handle, &key), None, "{changes:?}");
+    }
+    // A bookmark is something to record, and taking it off again is a change of that record.
+    for on in [true, false] {
+        let reply = submit(
+            &handle,
+            Command::SaveDecision {
+                shown: token(&handle, &key),
+                verse_shown: token(&handle, &verse(1, 3)),
+                value: decision_edit(vec![DecisionChange::Bookmarked(on)]),
+            },
+        )
+        .unwrap();
+        assert!(!matches!(reply.stored, Stored::Unchanged), "{on}");
+    }
+    handle.close().unwrap();
+}
+
 #[test]
 fn a_project_detail_that_would_break_the_burrito_is_refused_in_words() {
     let (fs, folder) = rich();

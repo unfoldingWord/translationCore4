@@ -177,7 +177,10 @@ impl DecisionEdit {
     /// the person judged in. To do and clearing the status change only the status, as tC4's
     /// To do button does (`src/views/Check.jsx` `markTodo` at d310bf3): an invalidated check
     /// put back to do stays invalidated, and its stale words are not taken as a judgement of
-    /// the new text. A bookmark or a comment changes only itself.
+    /// the new text. A bookmark or a comment changes only itself. Clearing words or
+    /// nothing-to-select judges only when the check holds a mark (words, nothing-to-select or a
+    /// status), so an unmark of a check with no mark leaves its record as it is, and an unmark
+    /// of a marked one also lets go of the invalidation its old mark was judged under (#853).
     pub fn apply(
         &self,
         displayed: Option<&DecisionRecord>,
@@ -204,6 +207,8 @@ impl DecisionEdit {
             },
             (None, None) => return Err(DecisionEditError::NoBasis),
         };
+        let marked =
+            |j: &Judgement| j.selections.is_some() || j.nothing_to_select || j.status.is_some();
         let mut judged = false;
         for change in &self.changes {
             match change {
@@ -212,11 +217,11 @@ impl DecisionEdit {
                     next.judgement.status = *status;
                 }
                 DecisionChange::Selections(selections) => {
-                    judged = true;
+                    judged |= selections.is_some() || marked(&next.judgement);
                     next.judgement.selections = selections.clone();
                 }
                 DecisionChange::NothingToSelect(on) => {
-                    judged = true;
+                    judged |= *on || marked(&next.judgement);
                     next.judgement.nothing_to_select = *on;
                 }
                 DecisionChange::Comment(comment) => {

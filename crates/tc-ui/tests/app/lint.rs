@@ -160,6 +160,32 @@ fn only_leave_calls_the_gate() {
     );
 }
 
+/// INV-CHECK-WORDS-ONE-STATE (#853): the Check screen's words change in one place,
+/// `Actions::words` in web/check.rs, which steps `CheckWords`. The line, the marks, the reads
+/// and the restore send it events. The words the line shows are a memo of that state, which
+/// nothing can write. A second writer is a second copy of the words, and each order of events
+/// in which two copies disagreed was a review finding of #989.
+#[test]
+fn only_the_checks_words_write_the_words_on_screen() {
+    let writers = found(
+        &[
+            "words.try_set(",
+            "words.set(",
+            "words.try_update(",
+            "words.update(",
+            "words.write(",
+            "words.try_write(",
+            "words.update_untracked(",
+            "words.set_untracked(",
+        ],
+        |file, text, line| file == "app/web/check.rs" && fn_lines(text, "words").contains(&line),
+    );
+    assert!(
+        writers.is_empty(),
+        "INV-CHECK-WORDS-ONE-STATE: the Check screen's words are written outside Actions::words: {writers:#?}"
+    );
+}
+
 /// INV-NET-REFUSALS-HANDLED-ONCE (UI-3): the internet question and the sign-in step are asked
 /// for in one function, `Actions::net_refusal` in app_ctx.rs, which `run_net` and the job ends
 /// call; no screen matches those refusals itself.

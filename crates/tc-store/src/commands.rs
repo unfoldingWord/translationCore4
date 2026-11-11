@@ -18,8 +18,8 @@ use tc_journal::json::Json;
 use tc_journal::keys::{CheckKey, CheckTarget, PinGroup, RecordKey};
 use tc_journal::record::{
     AlignmentValue, BatchReleaseValue, BookPresence, CarriedValue, ChapterFront, ChapterVerse,
-    CheckValue, CommentTarget, CommentValue, LayoutItem, PresentHow, Record, ResourceRef, Scope,
-    UsfmBytes, VerseValue,
+    CheckValue, CommentTarget, CommentValue, DecisionRecord, LayoutItem, PresentHow, Record,
+    ResourceRef, Scope, UsfmBytes, VerseValue,
 };
 use tc_journal::token::{ShownToken, TokenKind};
 use tc_journal::{BatchId, BookId, Cause, ChangeId, ChapterNo, CommentId, TokenKey, VerseNo};
@@ -924,11 +924,27 @@ fn save_decision(
     let next = edit
         .apply(displayed.as_ref(), text.as_deref())
         .map_err(|e| refused(Refusal::Text(e.to_string())))?;
+    // A check with no decision that the edit leaves with none (an unmark, a bookmark taken
+    // off) has nothing to record.
+    if displayed.is_none() && says_nothing(&next) {
+        return Ok(Vec::new());
+    }
     let record = Record::Check {
         key: check,
         value: CheckValue::Decision(next),
     };
     unchanged_or(ctx, &shown, record, Cause::Edit)
+}
+
+/// A decision that holds no judgement, no comment and no bookmark: what a first decision
+/// starts from.
+fn says_nothing(decision: &DecisionRecord) -> bool {
+    let judgement = &decision.judgement;
+    judgement.selections.is_none()
+        && !judgement.nothing_to_select
+        && judgement.status.is_none()
+        && decision.comment.is_none()
+        && !decision.bookmarked
 }
 
 // ---------------------------------------------------------------------------------------

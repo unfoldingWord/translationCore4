@@ -1,7 +1,7 @@
 //! INV-ONE-LEAVE-PATH (UI-3): every move away from a screen or a project goes through
-//! [`Actions::leave`]: the save gate first, then the checkpoint, then the caller's switch. A
-//! source scan (`tests/app/lint.rs`, `only_leave_calls_the_gate`) keeps every other product
-//! call of the gate out.
+//! [`Actions::leave`]: the question about selected words in Check (#853), the save gate, then
+//! the checkpoint, then the caller's switch. A source scan (`tests/app/lint.rs`,
+//! `only_leave_calls_the_gate`) keeps every other product call of the gate out.
 
 use leptos::prelude::*;
 use tc_api::ids::StoryNo;
@@ -10,7 +10,9 @@ use tc_core::BookId;
 use wasm_bindgen_futures::spawn_local;
 
 use super::app_ctx::Actions;
+use super::check::MayGo;
 use super::js;
+use crate::app::check_item::WordsEvent;
 use crate::app::shell::View;
 
 /// Where a person is going when they leave what they are on. D1's checkpoint reads it.
@@ -36,6 +38,17 @@ impl Actions {
     /// Drains every field, then takes the checkpoint of `to`; answers whether the caller may
     /// switch. A standing failure keeps the person where they are (FR-32).
     pub(crate) async fn leave(&self, to: LeaveTo) -> bool {
+        // Words selected in Check that no mark saved: the person is asked before anything is
+        // done, so Stay changes nothing (#853).
+        let same_tab = matches!(&to, LeaveTo::Tab(view) if *view == self.s().view.get_untracked());
+        let words = if same_tab {
+            MayGo::Go
+        } else {
+            self.words_may_go().await
+        };
+        if words == MayGo::Stay {
+            return false;
+        }
         if to == LeaveTo::Home {
             let open = || self.s().project.with_untracked(Option::is_some);
             let was_open = open();
@@ -49,6 +62,11 @@ impl Actions {
         }
         if !self.runtime().saves().gate().await {
             return false;
+        }
+        // Leave without them waits for the gate: a refused gate keeps the person here, words
+        // and all.
+        if words == MayGo::WithoutWords {
+            self.words(WordsEvent::Dropped);
         }
         self.checkpoint(&to);
         true

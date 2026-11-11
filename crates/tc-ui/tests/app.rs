@@ -12,6 +12,7 @@ mod app {
     mod account;
     mod buffer;
     mod cache;
+    mod check_words;
     mod client;
     mod draft_machine;
     mod effects;

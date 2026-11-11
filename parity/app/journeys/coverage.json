@@ -128,12 +128,31 @@
         ]
       }
     ],
-    "J4": {
-      "file": "parity/app/journeys/check-writes.test.mjs",
-      "tests": [
-        "j4_a_mark_on_dragged_words_a_comment_and_a_bookmark_are_one_decision_record_on_disk"
-      ]
-    },
+    "J4": [
+      {
+        "file": "parity/app/journeys/check-writes.test.mjs",
+        "tests": [
+          "j4_a_mark_on_dragged_words_a_comment_and_a_bookmark_are_one_decision_record_on_disk"
+        ]
+      },
+      {
+        "file": "parity/app/journeys/check-detail.test.mjs",
+        "tests": [
+          "a_changed_selection_takes_the_mark_away_until_the_check_is_marked_again",
+          "a_changed_selection_is_told_once_per_gesture",
+          "the_words_and_marks_are_off_while_a_mark_is_being_saved",
+          "a_mark_that_is_not_saved_keeps_the_person_on_the_check",
+          "words_tapped_on_a_check_with_no_decision_record_nothing",
+          "previous_and_next_are_off_while_selected_words_are_not_saved",
+          "leaving_a_check_with_selected_words_not_saved_asks_first",
+          "a_check_restored_from_history_shows_its_restored_words",
+          "the_words_and_marks_are_off_until_a_restore_is_answered",
+          "the_words_and_marks_are_off_until_a_restores_read_lands",
+          "coming_back_before_a_queued_unmark_is_sent_shows_the_words_unselected",
+          "mark_to_do_shows_the_words_the_check_has_stored"
+        ]
+      }
+    ],
     "J5": {
       "file": "parity/app/journeys/align.test.mjs",
       "tests": [

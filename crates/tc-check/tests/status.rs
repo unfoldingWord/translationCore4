@@ -311,6 +311,76 @@ fn triage_buttons_record_what_tc4_records() {
     assert_eq!(cleared.comment, None);
 }
 
+/// #853: the words changed after a mark. Whatever the mark was, the check is back to no
+/// decision; an invalidated one stops being invalidated, since nothing is left to invalidate.
+#[test]
+fn unmark_takes_any_mark_away_and_leaves_no_decision() {
+    let marks = [
+        Edit::Triage(Triage::Valid(dios())),
+        Edit::Triage(Triage::Valid(Vec::new())),
+        Edit::Triage(Triage::Invalid),
+        Edit::Triage(Triage::Todo),
+    ];
+    for mark in marks {
+        let marked = apply(None, mark.clone(), VERSE, &resource());
+        let commented = apply(
+            Some(&marked),
+            Edit::Comment("ask".into()),
+            VERSE,
+            &resource(),
+        );
+        let kept = apply(Some(&commented), Edit::Bookmark(true), VERSE, &resource());
+        let edited = "otro texto sin la palabra";
+        let unmarked = apply(Some(&kept), Edit::Unmark, edited, &resource());
+        assert_eq!(unmarked.judgement.selections, None, "{mark:?}");
+        assert!(!unmarked.judgement.nothing_to_select, "{mark:?}");
+        assert_eq!(unmarked.judgement.status, None, "{mark:?}");
+        assert_eq!(unmarked.comment.as_deref(), Some("ask"));
+        assert!(unmarked.bookmarked);
+        let state = CheckState::of(Some(&unmarked), Some(&resource()), Some(&t(edited)));
+        assert!(!state.is_decided(), "{mark:?}");
+        assert_eq!(state.status(), None, "{mark:?}");
+        assert_eq!(state.invalidation(), None, "{mark:?}");
+        assert_eq!(state.dot(), Dot::Todo, "{mark:?}");
+        // With no mark left, another unmark changes nothing, even after the text changed again.
+        let again = apply(
+            Some(&unmarked),
+            Edit::Unmark,
+            "un tercer texto",
+            &resource(),
+        );
+        assert_eq!(again, unmarked, "{mark:?}");
+    }
+    // A check that holds only a comment has no mark: a tap after its verse changed leaves it.
+    let commented = apply(None, Edit::Comment("ask".into()), VERSE, &resource());
+    let tapped = apply(Some(&commented), Edit::Unmark, "otro texto", &resource());
+    assert_eq!(tapped, commented);
+}
+
+/// #853: a mark judged under a resource since updated, or invalidated before import, holds no
+/// words (Invalid and To do store none). Its unmark still leaves no decision, not a check that
+/// shows Invalid while the person's words are on screen.
+#[test]
+fn unmark_of_an_invalidated_mark_with_no_words_leaves_no_decision() {
+    let upgraded = pin("Es-419_gl/es-419_tn", "v67", &[]).resource;
+    for mark in [Edit::Triage(Triage::Invalid), Edit::Triage(Triage::Todo)] {
+        let marked = apply(None, mark.clone(), VERSE, &resource());
+        let mut imported = marked.clone();
+        imported.imported_invalid = true;
+        for (before, now) in [(&marked, &upgraded), (&imported, &resource())] {
+            assert!(
+                assess(before, Some(now), Some(&t(VERSE)))
+                    .invalidation
+                    .is_some()
+            );
+            let unmarked = apply(Some(before), Edit::Unmark, VERSE, now);
+            let state = assess(&unmarked, Some(now), Some(&t(VERSE)));
+            assert_eq!(state.invalidation, None, "{mark:?}");
+            assert_eq!(state.status, None, "{mark:?}");
+        }
+    }
+}
+
 // ---- the sample project ------------------------------------------------------------
 
 #[test]

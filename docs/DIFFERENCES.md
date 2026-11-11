@@ -229,6 +229,37 @@ Under the same rule, tC4 4.0 bugs the rebuild fixes on purpose (FIX-R, 2026-10-2
   packages of one language (French from Xenizo and from MVHS), the buttons also name each
   package's owner; tC4 reads "Keep Français" and "Change to Français". The language in use is
   never asked, also from a Get source texts step left open after the change (#855).
+- In Check, changing the selected words takes the check's mark away. Mark valid stores the words
+  on screen, as a save does. A change of them afterwards puts the check back to no decision at
+  once: it is counted as not done, and the words stay on screen until the next mark stores
+  them. The earlier mark stays in History. tC4 keeps the mark with the words it was made with
+  and drops the new words on Next without a word (#853).
+- In Check, words selected on a check with no decision hold the translator on the check.
+  Previous and Next are off until the check is marked or the words are unselected. A row of the rail,
+  All checking tools, a mode tab and the project switch ask first: Stay, or Leave
+  without them. Closing the app drops the words; the stored check has no decision, so
+  nothing untrue is kept. In a read-only project nothing can be saved, so nothing is held and
+  nothing is asked. tC4 drops the words on any of these without a word (#853).
+- In Check, after a mark the screen shows the words the check has stored. Only Mark valid
+  stores the selected words. Mark invalid takes them off the screen at the click: Invalid
+  means the translation fails the check, so no words translate it. Mark To do changes only
+  the status: it keeps the words a Mark valid stored before it, and takes off the screen any
+  word that was never stored. tC4 leaves the words highlighted and drops them on Next (#853,
+  ruling of 2026-11-09, "What Invalid means" and "Only Mark valid saves the selected
+  words").
+- In Check, *Restore this version* from a check's History shows the restored words. Before, the
+  words tapped before the restore stayed on screen (#853).
+- In Check, while a mark is being saved the words, the three marks, Previous and Next are
+  off, and every other way out waits for its answer; after *Restore this version* they stay
+  off until the restored check is on screen. A mark that is not saved finds the translator
+  still on the check, with the notice and their words. tC4 lets the translator tap, mark and
+  move on while a save is on its way, and a save that fails after Next shows nothing (#853,
+  #995, ruling of 2026-11-09, "Nothing crosses a save").
+- In Check, the line shows the words the check has stored and follows them: a teammate's
+  mark that arrives by sync shows its words on the open check. Words the translator selected
+  and no mark has saved are theirs: no read and no reply changes them. A mark or a restore
+  that was not saved gives them back. tC4 keeps the words on screen until the check or its
+  verse text changes, whatever is stored (#853).
 
 Owner rulings in the issues, made before 4.1.0:
 

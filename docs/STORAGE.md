@@ -1852,6 +1852,10 @@ it (tC4 J5).
 1. Clicking Valid, Invalid or To do, selecting words, writing a check comment or toggling the
    bookmark changes the item's record in the checking screen. On leaving the item or 1 s after
    the last change it sends `SaveDecision { shown, verse_shown, value }`.
+   The Check screen sends a mark at once. After a mark, a change of the selected words sends
+   an edit that clears the selections, nothing-to-select and the status (#853): the mark was
+   made with other words on screen. An edit that leaves a check with no decision as it
+   was (that unmark, a bookmark taken off) records nothing.
 2. Starting from the displayed value (or, for a first decision, from the derived check item:
    `context`, `category`, and `resource` = the tN or TWL pin the item list came from), the actor
    applies the edit with `DecisionEdit::apply` (`tc-journal`), the one implementation of this

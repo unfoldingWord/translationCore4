@@ -257,7 +257,9 @@ fn rail_row(
             data-commented=if flags.commented { "1" } else { "0" }
             data-save-error="0"
             style=style
-            on:click=move |_| actions.select_check(index)
+            on:click=move |_| {
+                actions.select_check(index);
+            }
         >
             <span style=dot_style.to_style()></span>
             <span style=title_style.to_style()>"“"{row.title.clone()}"”"</span>
@@ -367,12 +369,11 @@ fn heading_key(e: &web_sys::KeyboardEvent, list: NodeRef<leptos::html::Div>, act
     else {
         return;
     };
-    let _ = stop.focus();
-    if let Some(index) = stop
+    let index = stop
         .get_attribute("data-rail-index")
-        .and_then(|i| i.parse::<u32>().ok())
-    {
-        actions.select_check(index);
+        .and_then(|i| i.parse::<u32>().ok());
+    if index.is_none_or(|index| actions.select_check(index)) {
+        let _ = stop.focus();
     }
 }
 
@@ -475,8 +476,7 @@ fn check_rail(
     let to_draft = {
         let actions = actions.clone();
         Callback::new(move |_| {
-            actions.close_check_tool();
-            actions.go(View::Draft);
+            actions.close_check_tool_to(Some(View::Draft));
         })
     };
     let chips = {
@@ -594,8 +594,9 @@ fn check_rail(
             let order = layout.with_untracked(|(_, order, ..)| order.clone());
             if let Some(next) = rail_key(&order, c.active.get_untracked(), &e.key()) {
                 e.prevent_default();
-                actions.select_check(next);
-                request_animation_frame(move || focus_row(next));
+                if actions.select_check(next) {
+                    request_animation_frame(move || focus_row(next));
+                }
             }
         }
     };
@@ -975,6 +976,23 @@ enum Shown {
     Rail,
 }
 
+/// The question before a move that drops selected words no mark saved (#853). Escape stays.
+fn leave_question(s: &AppState, actions: &Actions) -> impl IntoView + use<> {
+    let asking = s.c.leave_ask.clone();
+    let (stay, go) = (actions.clone(), actions.clone());
+    crate::ds::ConfirmDialog(crate::ds::ConfirmDialogProps {
+        open: Signal::derive(move || asking.get()),
+        title: t(keys::check::leave::TITLE, &[]),
+        description: Some(t(keys::check::leave::BODY, &[])),
+        consequence: None,
+        confirm_label: Some(t(keys::check::leave::LEAVE, &[])),
+        cancel_label: Some(t(keys::check::leave::STAY, &[])),
+        destructive: true,
+        on_confirm: Some(Callback::new(move |()| go.answer_words_leave(true))),
+        on_cancel: Some(Callback::new(move |()| stay.answer_words_leave(false))),
+    })
+}
+
 /// tC4's `CheckSession`: deriving, an error, a designed empty state, or the rail and the detail.
 pub fn check_session(
     s: &AppState,
@@ -996,8 +1014,9 @@ pub fn check_session(
             })
         })
     };
+    let question = leave_question(s, actions);
     let (s, actions) = (s.clone(), actions.clone());
-    move || match shown.get() {
+    let screen = move || match shown.get() {
         Shown::Deriving => {
             let p = crate::css! { "font-size": "var(--fs-ui)", "color": "var(--text-tertiary)" };
             centered(view! { <p style=p.to_style()>{t(keys::check::DERIVING, &[])}</p> }.into_any())
@@ -1053,5 +1072,6 @@ pub fn check_session(
             }
             .into_any()
         }
-    }
+    };
+    (screen, question)
 }

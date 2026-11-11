@@ -390,6 +390,72 @@ async fn the_triage_buttons_follow_tc4s_rules() {
     );
 }
 
+/// #853: the words changed after a mark, so the mark no longer says what the screen shows. The
+/// check goes back to no decision and is counted as not done; its comment and bookmark stay.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn unmark_takes_a_marked_check_back_to_no_decision_and_keeps_its_comment_and_bookmark() {
+    let (_dir, t, _fs) = on_the_store().await;
+    let at = open_on_store(&t).await;
+    let open = session(&t.app, &at, Tool::TranslationNotes).await;
+    let first = the_first(rows(&open), "for the faith of the chosen people of God");
+    let read = || item(&t.app, &at, Tool::TranslationNotes, first);
+    let mut request = 100;
+    let mut act = async |edit: DecideEdit| {
+        request += 1;
+        post(&t.app, &decide(&at, request, &read().await, edit))
+            .await
+            .unwrap()
+    };
+    act(DecideEdit::Comment {
+        text: "ask Pablo".into(),
+    })
+    .await;
+    act(DecideEdit::Bookmark { on: true }).await;
+    for mark in [
+        DecideEdit::Valid {
+            words: vec![11, 12],
+        },
+        DecideEdit::Valid { words: vec![] },
+        DecideEdit::Invalid,
+        DecideEdit::Todo,
+    ] {
+        act(mark.clone()).await;
+        assert!(read().await.decision.value.status.is_some(), "{mark:?}");
+        let ack = act(DecideEdit::Unmark).await;
+        assert_eq!(ack.stored, Stored::Written, "{mark:?}");
+        assert!(!ack.rows[0].row.flags.decided, "{mark:?}");
+        let now = read().await;
+        assert_eq!(now.decision.value.status, None, "{mark:?}");
+        assert!(!now.decision.value.nothing_to_select, "{mark:?}");
+        assert!(now.target.selected.is_empty(), "{mark:?}");
+        assert_eq!(now.decision.value.comment.as_deref(), Some("ask Pablo"));
+        assert!(now.decision.value.bookmarked);
+        let after = session(&t.app, &at, Tool::TranslationNotes).await;
+        assert_eq!(after.progress.decided, open.progress.decided, "{mark:?}");
+        assert_eq!(act(DecideEdit::Unmark).await.stored, Stored::Unchanged);
+    }
+}
+
+/// Words tapped on a check nobody has decided send the same unmark: it records nothing, so a
+/// tap is never a change in the project's history.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn unmark_of_a_check_with_no_decision_records_nothing() {
+    let (_dir, t, _fs) = on_the_store().await;
+    let at = open_on_store(&t).await;
+    let open = session(&t.app, &at, Tool::TranslationNotes).await;
+    let first = the_first(rows(&open), "for the faith of the chosen people of God");
+    let view = item(&t.app, &at, Tool::TranslationNotes, first).await;
+    let ack = post(&t.app, &decide(&at, 120, &view, DecideEdit::Unmark))
+        .await
+        .unwrap();
+    assert_eq!(ack.stored, Stored::Unchanged);
+    let now = item(&t.app, &at, Tool::TranslationNotes, first).await;
+    assert_eq!(now.decision.token, view.decision.token, "no new version");
+    assert_eq!(now.decision.value, view.decision.value);
+    let after = session(&t.app, &at, Tool::TranslationNotes).await;
+    assert_eq!(after.progress.decided, open.progress.decided);
+}
+
 /// The server's half of `check_comment_saved_on_leaving_the_item` (the journey in
 /// `parity/app/journeys/check-detail.test.mjs` types a comment, goes to the next check and finds
 /// it stored on the first): a comment saved with the token of the item shown comes back with the

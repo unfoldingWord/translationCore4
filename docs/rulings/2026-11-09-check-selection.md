@@ -1,0 +1,92 @@
+# Check: a changed selection takes the mark away, and a mark is the save
+
+- Asked: 2026-11-09, while fixing #853 (words selected after Mark valid were not saved): what
+  happens to a check's mark when the translator changes the selected words after it? The first
+  reading of the issue saved the new words into the valid check.
+- Options: save the changed words into the valid check by themselves, a moment after the last
+  change and on leaving the check; or treat the selection as an editor treats unsaved changes,
+  so that a change takes the mark away and only a mark saves.
+- Answer: the owner, 2026-11-09, in the design session for #853: the second. The owner had the
+  rule written into the description of #853 on 2026-11-10. This file words the rule as that
+  description does; it does not quote the owner.
+
+## The rule
+
+1. A changed selection clears the mark. Any finished change of the selected words on a marked
+   check (Valid, Invalid or To do) saves an unmark at once. The stored check goes back to no
+   decision, not To do. It counts as not done in the progress and in the rail, and a teammate
+   receives no decision for it on sync. The words stay selected on screen.
+2. A mark is the save. Mark valid stores the words on screen.
+3. The unmark is stored, not kept on the screen only. The earlier mark stays in History (H5).
+4. Previous and Next are off while words are selected on a check with no decision. They come
+   back when the check is marked or the words are unselected.
+5. Every other way out asks first: a click in the rail, All checking tools, a mode tab, a
+   project switch.
+6. Closing the app, or a crash, drops the selected words. The stored check already has no
+   decision, so nothing untrue is kept.
+
+## Changes
+
+`docs/DIFFERENCES.md` (four entries), J4 in `docs/JOURNEYS.md`, `docs/STORAGE.md` §5.4, and the
+journeys mapped under J4 in `parity/app/journeys/coverage.json`.
+
+## Effect for translators
+
+A check never shows a mark that was made for other words than the ones on screen. A translator
+who changes the words sees the mark go, marks the check again, and the words are kept. Words
+that no mark saved are never dropped without a sign: the translator is held on the check or
+asked first.
+
+## What Invalid means (owner, 2026-11-10)
+
+- Asked: 2026-11-10, about Mark invalid with words selected on screen: "Is the check invalid
+  or the text?" The app shows two things as Invalid: the translator's own mark, and a decision
+  that no longer holds because the text or the helps changed.
+- Answer: the owner, 2026-11-10: the text. The Invalid button means the translation fails
+  this check.
+
+So no words translate the check, and Mark invalid takes the selected words off the screen at
+the click, as its record stores none. Words tapped on a check that shows Invalid hold the
+check like any others, until a mark or until they are unselected.
+
+## Only Mark valid saves the selected words (owner, 2026-11-10)
+
+- Asked: 2026-11-10: should every mark save the selected words, so that Invalid says which
+  words fail and To do keeps the words so far?
+- Options: every mark saves them; or only Mark valid does, and after any mark the screen
+  shows the words the check has stored.
+- Answer: the owner, 2026-11-10: only Mark valid.
+
+So after a mark the screen shows what the check has stored. Mark invalid stores no words and
+shows none. Mark To do changes only the status: it shows the words a Mark valid stored
+before it, and no word that was never stored. No status is an exception to rule 4: words on
+screen that the check has not stored hold it.
+
+## Nothing crosses a save (owner, 2026-11-10)
+
+- Asked: 2026-11-10, after five review rounds each found another order of a tap, a mark or a
+  restore inside a save that showed the wrong words. The owner asked: "why can the user tap
+  while restoring?" Then: should the words and marks be off while a mark or restore is being
+  saved?
+- Answer: the owner, 2026-11-10: "Yes, turn them off while saving".
+
+While a mark is being saved, the words, the three marks, Previous and Next are off, and every
+other way out waits for the answer. After *Restore this version* they stay off until the
+restored check is on screen. A tap's own unmark holds nothing off. So a save that fails finds
+the translator still on the check, with the notice and their words (#995).
+
+A teammate's work that arrives by sync follows ruling H5
+(`docs/rulings/2026-10-24-H5.md`): the newest version of a check wins and the older one stays
+in History. Words on screen that no mark saved are not a stored decision, so a sync that
+rebuilds the check list drops them.
+
+## Not decided
+
+- A decision that no longer holds also shows as Invalid. Whether it gets words of its own is
+  open.
+
+## The words (owner, 2026-11-10)
+
+The question reads "The selected words are not saved", with the buttons "Stay" and "Leave
+without them", as Align's question does. The owner agreed to the words on 2026-11-10; the
+translations in the nine other languages have not been read by a speaker.

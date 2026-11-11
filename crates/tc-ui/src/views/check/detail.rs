@@ -10,6 +10,8 @@
 //! part rebuilt when a read changes them (the draft was edited): the caret starts before the
 //! first word again.
 
+use std::collections::BTreeSet;
+
 use leptos::html;
 use leptos::prelude::*;
 use tc_api::check::{
@@ -290,9 +292,12 @@ fn triage_style(active: bool, tone: &'static str) -> Css {
 fn item_nav_button(
     prev: bool,
     target: Option<u32>,
+    held: bool,
     actions: &Actions,
     testid: &'static str,
 ) -> AnyView {
+    // Words no mark saved hold the person on the check, and the button says what frees it (#853).
+    let target = if held { None } else { target };
     let rtl = interface_is_rtl();
     let arrow = if prev == rtl { "→" } else { "←" };
     let label = t(
@@ -325,7 +330,16 @@ fn item_nav_button(
         <Button
             variant=ButtonVariant::Secondary
             size=Size::Sm
-            title=t(if prev { keys::check::PREV_ITEM } else { keys::check::NEXT_ITEM }, &[])
+            title=t(
+                if held {
+                    keys::check::leave::MARK_FIRST
+                } else if prev {
+                    keys::check::PREV_ITEM
+                } else {
+                    keys::check::NEXT_ITEM
+                },
+                &[],
+            )
             disabled=target.is_none()
             style=style
             attrs=Attrs::from([("data-testid", testid)])
@@ -358,9 +372,40 @@ fn focus_word(root: NodeRef<html::P>, at: usize) {
 
 /// The line of draft words (tC4's `TargetWords`): one Tab stop, Left and Right between the
 /// words in the order drawn, Shift selects as a word processor does, a press and a drag selects
-/// whole words (#737), and the text stays selectable for copying.
-fn target_words(s: &AppState, words: Vec<String>, direction: TextDir) -> AnyView {
+/// whole words (#737), and the text stays selectable for copying. Each finished change of the
+/// selection (a click, a key, a drag's release) tells the server the words changed (#853).
+fn target_words(
+    s: &AppState,
+    actions: &Actions,
+    words: Vec<String>,
+    direction: TextDir,
+) -> AnyView {
     let selection = s.c.selection.clone();
+    let changed = {
+        let actions = send_wrapper::SendWrapper::new(actions.clone());
+        move || actions.words_changed()
+    };
+    // While a mark or a restore is being saved the line takes no act: nothing of the person's
+    // can cross a save that may still fail.
+    let saving = {
+        let actions = send_wrapper::SendWrapper::new(actions.clone());
+        Memo::new(move |_| actions.words_saving())
+    };
+    // The pointer changed the words during this press. A read that lands under a press changes
+    // the line too, and is no act of the person's.
+    let dragged_words = StoredValue::new_local(false);
+    // A mark or a restore that leaves ends the press: its release is no change of the words.
+    Effect::new(move |_| {
+        if saving.get() {
+            dragged_words.try_set_value(false);
+        }
+    });
+    // The line never writes the words it shows: it tells the check's words what the person
+    // selected, and shows what they answer.
+    let select = {
+        let actions = send_wrapper::SendWrapper::new(actions.clone());
+        move |words: BTreeSet<u32>| actions.select_words(words)
+    };
     let nav = StoredValue::new_local(WordNav::default());
     let root: NodeRef<html::P> = NodeRef::new();
     let len = words.len();
@@ -373,20 +418,33 @@ fn target_words(s: &AppState, words: Vec<String>, direction: TextDir) -> AnyView
     };
     let rtl = direction == TextDir::Rtl;
     let apply = {
-        let selection = selection.clone();
+        let (selection, changed, select) = (selection.clone(), changed.clone(), select.clone());
         move |step: WordStep| {
-            if let Some(next) = step.selection {
-                selection.try_set(next);
+            if let Some(next) = step.selection
+                && next != selection.get_untracked()
+            {
+                select(next);
+                changed();
             }
             if let Some(at) = step.focus {
                 focus_word(root, at);
             }
         }
     };
+    // The words selected when the button went down: a drag that ends on the same words changed
+    // nothing.
+    let before_drag = StoredValue::new_local(std::collections::BTreeSet::<u32>::new());
+    let dragged = (selection.clone(), changed.clone());
     // The release can land anywhere, so the window hears it; the click that follows a drag must
     // not toggle the last word back, and is over by the next task.
     let released = window_event_listener(leptos::ev::mouseup, move |_| {
         if nav.try_update_value(WordNav::release).unwrap_or(false) {
+            let (selection, changed) = &dragged;
+            if dragged_words.try_get_value() == Some(true)
+                && before_drag.try_get_value() != selection.try_get_untracked()
+            {
+                changed();
+            }
             set_timeout(
                 move || {
                     nav.try_update_value(WordNav::clear_dragged);
@@ -399,6 +457,9 @@ fn target_words(s: &AppState, words: Vec<String>, direction: TextDir) -> AnyView
     let on_keydown = {
         let (selection, apply) = (selection.clone(), apply.clone());
         move |e: web_sys::KeyboardEvent| {
+            if saving.get_untracked() {
+                return;
+            }
             let key = WordKey::of(&e.key(), e.shift_key());
             let step = nav
                 .try_update_value(|nav| nav.key(key, len, rtl, &selection.get_untracked()))
@@ -457,33 +518,44 @@ fn target_words(s: &AppState, words: Vec<String>, direction: TextDir) -> AnyView
             let on_down = {
                 let selection = selection.clone();
                 move |e: web_sys::MouseEvent| {
-                    if e.button() != 0 {
+                    if e.button() != 0 || saving.get_untracked() {
                         return;
                     }
+                    dragged_words.try_set_value(false);
                     // A press on a word starts a word drag, never a text selection; the browser
                     // no longer focuses the word, so it is focused here.
                     e.prevent_default();
                     focus_word(root, i);
+                    before_drag.try_set_value(selection.get_untracked());
                     nav.try_update_value(|nav| nav.press(i, &selection.get_untracked()));
                     sync_stop();
                 }
             };
             let on_enter = {
-                let selection = selection.clone();
+                let select = select.clone();
                 move |_: web_sys::MouseEvent| {
+                    if saving.get_untracked() {
+                        return;
+                    }
                     if let Some(next) = nav.try_update_value(|nav| nav.enter(i)).flatten() {
-                        selection.try_set(next);
+                        dragged_words.try_set_value(true);
+                        select(next);
                     }
                 }
             };
             let on_click = {
-                let selection = selection.clone();
+                let (selection, changed, select) =
+                    (selection.clone(), changed.clone(), select.clone());
                 move |_: web_sys::MouseEvent| {
+                    if saving.get_untracked() {
+                        return;
+                    }
                     let next = nav
                         .try_update_value(|nav| nav.click(i, &selection.get_untracked()))
                         .flatten();
                     if let Some(next) = next {
-                        selection.try_set(next);
+                        select(next);
+                        changed();
                     }
                     sync_stop();
                 }
@@ -512,6 +584,8 @@ fn target_words(s: &AppState, words: Vec<String>, direction: TextDir) -> AnyView
             data-testid="check-target"
             data-words="target"
             data-drafted="1"
+            data-saving=move || if saving.get() { "1" } else { "0" }
+            aria-disabled=move || if saving.get() { "true" } else { "false" }
             role="group"
             aria-label=t(keys::check::TARGET_WORDS_LABEL, &[])
             on:keydown=on_keydown
@@ -786,6 +860,7 @@ fn item_detail(s: &AppState, actions: &Actions, unit: CheckUnit) -> AnyView {
     });
     let translation = {
         let s = s.clone();
+        let actions = send_wrapper::SendWrapper::new(actions.clone());
         move || {
             let words = words.get();
             if words.is_empty() {
@@ -815,7 +890,7 @@ fn item_detail(s: &AppState, actions: &Actions, unit: CheckUnit) -> AnyView {
                 "margin": "8px 0 0",
             };
             view! {
-                {target_words(&s, words, direction)}
+                {target_words(&s, &actions, words, direction)}
                 <p style=hint.to_style()>{t(keys::check::SELECT_HINT, &[])}</p>
             }
             .into_any()
@@ -862,6 +937,10 @@ fn item_detail(s: &AppState, actions: &Actions, unit: CheckUnit) -> AnyView {
     });
     let nav = Memo::new(move |_| check_item::item_nav(index.get(), total.get()));
     let cap = write_cap(actions);
+    let saving = {
+        let actions = send_wrapper::SendWrapper::new(actions.clone());
+        Memo::new(move |_| actions.words_saving())
+    };
     let read_only = {
         let actions = send_wrapper::SendWrapper::new(actions.clone());
         Memo::new(move |_| actions.read_only_words())
@@ -884,10 +963,17 @@ fn item_detail(s: &AppState, actions: &Actions, unit: CheckUnit) -> AnyView {
                     type="button"
                     data-testid=testid
                     disabled=move || cap.get().is_none()
-                    on:click=move |_| on.run(())
+                    // Off while a mark is being saved, but still the focus's place: a disabled
+                    // button would drop the keyboard focus the mark was pressed with.
+                    aria-disabled=move || if saving.get() { "true" } else { "false" }
+                    on:click=move |_| {
+                        if !saving.get_untracked() {
+                            on.run(());
+                        }
+                    }
                     style=move || {
                         let mut css = triage_style(status.get() == Some(which), tone);
-                        if cap.get().is_none() {
+                        if cap.get().is_none() || saving.get() {
                             css.extend(&off_look());
                         }
                         css.to_style()
@@ -919,13 +1005,29 @@ fn item_detail(s: &AppState, actions: &Actions, unit: CheckUnit) -> AnyView {
             )
         };
         let (prev_actions, next_actions) = (actions.clone(), actions.clone());
+        let held = {
+            let actions = send_wrapper::SendWrapper::new(actions.clone());
+            Memo::new(move |_| actions.words_unsaved())
+        };
+        // Previous and Next wait for a mark being saved, so one that fails finds the person
+        // still on the check (#995).
+        let nav = Memo::new(move |_| {
+            if saving.get() {
+                check_item::ItemNav {
+                    prev: None,
+                    next: None,
+                }
+            } else {
+                nav.get()
+            }
+        });
         view! {
             <div style=row.to_style()>
-                {move || item_nav_button(true, nav.get().prev, &prev_actions, "check-prev")}
+                {move || item_nav_button(true, nav.get().prev, held.get(), &prev_actions, "check-prev")}
                 {triage("mark-valid", "valid", DecisionStatus::Valid, t(keys::check::MARK_VALID, &[]), valid)}
                 {triage("mark-invalid", "invalid", DecisionStatus::Invalid, t(keys::check::MARK_INVALID, &[]), invalid)}
                 {triage("mark-todo", "todo", DecisionStatus::Todo, t(keys::check::MARK_TODO, &[]), todo)}
-                {move || item_nav_button(false, nav.get().next, &next_actions, "check-next")}
+                {move || item_nav_button(false, nav.get().next, held.get(), &next_actions, "check-next")}
             </div>
         }
     };
@@ -1004,6 +1106,13 @@ fn check_marks(s: &AppState, actions: &Actions) -> AnyView {
     });
     let toggle: NodeRef<html::Button> = NodeRef::new();
     let cap = write_cap(actions);
+    // The check's words refuse a bookmark while a mark or a restore is being saved, so the
+    // button is off then: a press it would drop must not look taken (#853).
+    let saving = {
+        let actions = send_wrapper::SendWrapper::new(actions.clone());
+        Memo::new(move |_| actions.words_saving())
+    };
+    let off = Signal::derive(move || cap.get().is_none() || saving.get());
     let wrap = crate::css! { "margin-top": 16 };
     let row =
         crate::css! { "display": "flex", "align-items": "center", "gap": 10, "flex-wrap": "wrap" };
@@ -1016,7 +1125,7 @@ fn check_marks(s: &AppState, actions: &Actions) -> AnyView {
                 data-testid="bookmark"
                 data-active=move || if bookmarked.get() { "1" } else { "0" }
                 title=move || t(if bookmarked.get() { keys::check::bookmark::REMOVE_HINT } else { keys::check::bookmark::HINT }, &[])
-                disabled=move || cap.get().is_none()
+                disabled=move || off.get()
                 on:click=move |_| {
                     if let Some(cap) = cap.get_untracked() {
                         actions.mark(cap, DecideEdit::Bookmark { on: !bookmarked.get_untracked() });
@@ -1024,7 +1133,7 @@ fn check_marks(s: &AppState, actions: &Actions) -> AnyView {
                 }
                 style=move || {
                     let mut css = mark_chip(bookmarked.get());
-                    if cap.get().is_none() {
+                    if off.get() {
                         css.extend(&off_look());
                     }
                     css.to_style()
@@ -1386,13 +1495,19 @@ fn check_history(s: &AppState, actions: &Actions, reference: String) -> AnyView 
         })
     });
     let (restoring, failed) = (c.restoring.clone(), c.restore_failed.clone());
+    // The check's words refuse a restore while a mark or a restore is being saved, until the
+    // restored check is on screen: Restore is off then, not pressed for nothing (#853).
+    let saving = {
+        let actions = send_wrapper::SendWrapper::new(actions.clone());
+        Memo::new(move |_| actions.words_saving())
+    };
     let actions = actions.clone();
     crate::views::history::record_history(crate::views::history::RecordHistory {
         test_id: "check-history",
         at,
         shown: shown.into(),
         open: c.history_open.clone(),
-        busy: Signal::derive(move || restoring.get()),
+        busy: Signal::derive(move || restoring.get() || saving.get()),
         failed: Signal::derive(move || failed.get()),
         reference,
         restore: Callback::new(move |from| actions.restore_check(from)),
