@@ -54,9 +54,9 @@ pub fn HelpsToggleButton() -> impl IntoView {
     .into_any()
 }
 
-/// What makes the panel a story's (tC4 `story`, #331): the whole story is listed in frame
-/// order with the frame in focus marked and scrolled into view, there is no simplified tab, and
-/// Translate adds the Comments tab.
+/// What makes the panel a story's (tC4 `story`, #331): the helps of the frame in focus only
+/// (#991), marked and scrolled into view, there is no simplified tab, and Translate adds the
+/// Comments tab.
 #[derive(Clone)]
 pub struct StoryPanel {
     /// The frame in focus (0 is the title).
@@ -66,7 +66,7 @@ pub struct StoryPanel {
 }
 
 /// tC4's `HelpsPanel` for a chapter: `focus_verses` are the focused unit's verses (none: the
-/// whole chapter), `pane` the source pane whose words title the cards, `comments` the book's
+/// whole chapter; a story's, its frame in focus, `frame_focus`), `pane` the source pane whose words title the cards, `comments` the book's
 /// user comments for Translate's Comments tab (none: no such tab). A story's panel is `story`.
 #[component]
 pub fn HelpsPanel(
@@ -350,15 +350,16 @@ fn helps_tab(
         HelpsTab::Questions => questions_tab(s, &view.questions, focus, frame),
         HelpsTab::Simplified => simplified_tab(&view.simplified, focus),
         HelpsTab::Comments => match story.and_then(|s| s.comments) {
-            Some(comments) => story_comments_tab(s, comments),
+            Some(comments) => story_comments_tab(s, comments, focus),
             None => ().into_any(),
         },
     }
 }
 
 /// Whether a card at `verse` is lit: it is the focused help (a click), or, in a story, a card of
-/// the frame in focus (tC4 `isActive`). Each card follows its own memo, so a click or a frame
-/// move never draws the tab again: that would collapse a note the person expanded.
+/// the frame in focus (tC4 `isActive`). Each card follows its own memo, so a click never draws
+/// the tab again: that would collapse a note the person expanded. A move to another unit or
+/// frame draws the tab for it.
 fn card_lit(
     active: &ArcRwSignal<Option<HelpFocus>>,
     id: &str,
@@ -372,21 +373,20 @@ fn card_lit(
     })
 }
 
-/// tC4's `CommentsTab` of a story: the newest comment of each frame, in frame order.
+/// tC4's `CommentsTab` of a story: the newest comment of the frame in focus (#991).
 fn story_comments_tab(
     s: &crate::app::web::AppState,
     comments: Memo<Arc<Vec<FrameComment>>>,
+    focus: Option<&[String]>,
 ) -> AnyView {
     let dir = match s.project.with_untracked(|p| p.as_ref().map(|p| p.dir)) {
         Some(TextDir::Rtl) => "rtl",
         _ => "ltr",
     };
     let list = comments.get();
-    let mut frames: Vec<u16> = list.iter().map(|c| c.frame).collect();
-    frames.sort_unstable();
-    frames.dedup();
+    let frames = crate::app::story::comment_frames(&list, focus);
     if frames.is_empty() {
-        return empty_tab(None);
+        return empty_tab(focus);
     }
     let boxed = crate::css! {
         "border": "var(--stroke) solid var(--border)",

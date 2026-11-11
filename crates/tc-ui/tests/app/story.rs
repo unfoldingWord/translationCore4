@@ -8,11 +8,11 @@ use tc_api::story::{
     StoryView,
 };
 use tc_ui::app::story::{
-    FrameMarker, card_in_focus, comment_label, draft_units, focus_key, frame_comment,
-    frame_markers, image_note, is_frame_drafted, offers_download, pack_sentence, row_name,
-    source_notice, story_label, story_of, understand_units,
+    FrameMarker, card_in_focus, comment_frames, comment_label, draft_units, focus_key,
+    frame_comment, frame_focus, frame_markers, image_note, is_frame_drafted, offers_download,
+    pack_sentence, row_name, source_notice, story_label, story_of, understand_units,
 };
-use tc_ui::app::understand::HelpsTab;
+use tc_ui::app::understand::{HelpsTab, in_focus};
 
 fn story(n: u8) -> StoryNo {
     StoryNo::new(n).unwrap()
@@ -330,4 +330,41 @@ fn a_stories_panel_shows_only_its_own_tabs() {
     ] {
         assert_eq!(HelpsTab::parse(tab.as_str()), Some(tab));
     }
+}
+
+// #991: a story's helps show only the frame in focus, as a chapter's show only its unit; the
+// story's introduction leads on frame 1, as a chapter's does on verse 1.
+#[test]
+fn a_storys_helps_show_only_the_frame_in_focus() {
+    let focus = frame_focus(Some(3));
+    assert!(in_focus("3", focus.as_deref()));
+    assert!(!in_focus("4", focus.as_deref()));
+    assert!(!in_focus("intro", focus.as_deref()));
+    assert!(in_focus("intro", frame_focus(Some(1)).as_deref()));
+    assert!(
+        in_focus("0", frame_focus(Some(0)).as_deref()),
+        "the title's own"
+    );
+    assert!(!in_focus("1", frame_focus(Some(0)).as_deref()));
+    assert!(
+        in_focus("4", frame_focus(None).as_deref()),
+        "no frame: the whole story"
+    );
+
+    let comment = |frame, at: i64| FrameComment {
+        token: super::save_kit::tok(at.unsigned_abs()),
+        frame,
+        text: format!("frame {frame}"),
+        at: WallMs(at),
+    };
+    let comments = [comment(4, 1), comment(2, 2), comment(4, 3)];
+    assert_eq!(
+        comment_frames(&comments, frame_focus(Some(4)).as_deref()),
+        vec![4]
+    );
+    assert_eq!(
+        comment_frames(&comments, frame_focus(Some(3)).as_deref()),
+        Vec::<u16>::new()
+    );
+    assert_eq!(comment_frames(&comments, None), vec![2, 4]);
 }

@@ -195,7 +195,7 @@ fn loaded_screen(
             </main>
             <HelpsPanel
                 chapter=u16::from(shown.story.get())
-                focus_verses=Memo::new(|_| None)
+                focus_verses=Memo::new(move |_| crate::app::story::frame_focus(focus_frame.get()))
                 helps=helps
                 pane=String::new()
                 story=panel

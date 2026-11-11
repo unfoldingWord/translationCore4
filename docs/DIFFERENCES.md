@@ -532,6 +532,17 @@ And this (#965):
   the repository read "Other". About and the License dialog show the repository's own `LICENSE`,
   not a copy of tC4's, and `crates/tc-ui/tests/license.rs` keeps the file in that shape (#965).
 
+And this (#991, owner 2026-11-10):
+
+- The helps stay filtered to the section or verse the translator picked. On Translate a click on
+  a section's translation filters them without opening its card, and after Save, Cancel or a
+  held save the helps stay on that section, or on that verse in Verse mode. tC4's `editingFocus`
+  follows only an open card, so the helps go back to the whole chapter when it closes. A join
+  keeps them on the section that now holds the verses.
+- A story's helps list only the frame in focus: Notes, Words, Questions and, on Translate,
+  Comments. tC4 lists the whole story and marks the frame in focus (#331's ruling of
+  2026-09-18).
+
 The rebuild does not port tC4's sync mechanism: the scratch copy, the apply marker, the
 ops log, `recoverySettled`, `unreadableSettings` and the sync generation. STORAGE §6 and §9
 give the same outcomes, and STORAGE §9.9 keeps saves flowing while a sync runs. tC4 can

@@ -40,8 +40,8 @@ use super::source_verse::source_verse;
 use crate::app::save::{FieldScope, Pair, Source, View};
 use crate::app::shell::Editing;
 use crate::app::translate::{
-    SourcePlace, box_text, changed_while_typing, editing_focus, editing_section, editing_verse,
-    range_span, sections, shown_words, source_place, source_unit, target_paragraphs,
+    PickedUnit, SourcePlace, box_text, changed_while_typing, editing_focus, editing_section,
+    editing_verse, range_span, sections, shown_words, source_place, source_unit, target_paragraphs,
 };
 use crate::app::understand::{HelpFocus, UnitMode, literal_pane};
 use crate::app::web::{Actions, AppCtx, AppState, use_app, use_runtime};
@@ -352,9 +352,24 @@ fn chapter_view(
         let editing = editing.clone();
         Signal::derive(move || editing.with(Editing::is_open))
     };
+    // #991: the helps follow the open card, and once it closes, the unit it was opened on or the
+    // section clicked last, until another is picked or the person leaves the chapter.
+    let picked: RwSignal<Option<PickedUnit>> = RwSignal::new(None);
+    {
+        let editing = editing.clone();
+        Effect::new(move |_| {
+            if let Some(unit) = editing.with(|e| PickedUnit::of_editing(e, book_id, chapter)) {
+                picked.set(Some(unit));
+            }
+        });
+    }
     let focus_verses = {
         let editing = editing.clone();
-        Memo::new(move |_| editing.with(|e| editing_focus(e, book_id, chapter)))
+        Memo::new(move |_| {
+            editing
+                .with(|e| editing_focus(e, book_id, chapter))
+                .or_else(|| picked.with(|p| p.as_ref().map(|p| all.with(|all| p.verses(all)))))
+        })
     };
     // tC4's `crossFrameSafeFocus`: in another numbering no help lights the pane.
     let pane_focus = {
@@ -427,7 +442,7 @@ fn chapter_view(
                         };
                         view! {
                             {source}
-                            {target_cell(&s, &actions, book_id, chapter, text, keys, &span, mode, off, &open)}
+                            {target_cell(&s, &actions, book_id, chapter, text, keys, &span, mode, off, &open, picked)}
                         }
                     })
                     .collect_view()
@@ -878,6 +893,7 @@ fn target_cell(
     mode: Memo<UnitMode>,
     off: Signal<bool>,
     open: &Open,
+    picked: RwSignal<Option<PickedUnit>>,
 ) -> AnyView {
     let mut style = cell();
     style.set("position", "relative");
@@ -937,7 +953,14 @@ fn target_cell(
                         disabled=off
                         style=style
                         on_pointer_down_capture=hold
-                        on_click=Callback::new(move |_| actions.start_section(chapter, &keys))
+                        on_click=Callback::new(move |_| {
+                            // It picks the section also when the open is read-only and no card
+                            // opens (#991).
+                            if let Some(first) = keys.first() {
+                                picked.set(Some(PickedUnit::Section(first.clone())));
+                            }
+                            actions.start_section(chapter, &keys);
+                        })
                     >
                         {t(keys::draft::DRAFT_SECTION, &[("span", &span)])}
                     </Button>
@@ -961,6 +984,20 @@ fn target_cell(
             })
         })
     };
+    // A click on a section's translation filters the helps to it without opening its card
+    // (#991); a click while a card is open leaves the filter on that card. In Verse mode the
+    // verse's own click picks it (`target_verse`).
+    let pick = {
+        let first = keys.first().cloned();
+        move |_| {
+            if let Some(first) = first.clone()
+                && mode.get_untracked() == UnitMode::Section
+                && !off.get_untracked()
+            {
+                picked.set(Some(PickedUnit::Section(first)));
+            }
+        }
+    };
     let paras = {
         let actions = actions.clone();
         move || {
@@ -982,10 +1019,10 @@ fn target_cell(
                         let body = verses
                             .into_iter()
                             .map(|v| {
-                                target_verse(&actions, book, chapter, v, mode, open_verse, off)
+                                target_verse(&actions, book, chapter, v, mode, open_verse, off, picked)
                             })
                             .collect_view();
-                        view! { <p data-testid="draft-target-text" style=p.to_style()>{body}</p> }
+                        view! { <p data-testid="draft-target-text" style=p.to_style() on:click=pick.clone()>{body}</p> }
                     })
                     .collect_view()
             })
@@ -1038,7 +1075,12 @@ fn target_cell(
 
 /// tC4's `TargetVerse` with its number: the drafted words (a click revises the verse in Verse
 /// mode), "Draft verse N", or "Editing below" while its card is open; a verse in conflict
-/// carries the marker.
+/// carries the marker. A click picks the verse for the helps, also when the open is read-only
+/// and no card opens (#991).
+#[expect(
+    clippy::too_many_arguments,
+    reason = "a view's inputs: the state, handles and signals it reads"
+)]
 fn target_verse(
     actions: &Actions,
     book: BookId,
@@ -1047,8 +1089,16 @@ fn target_verse(
     mode: Memo<UnitMode>,
     open_verse: Memo<Option<String>>,
     off: Signal<bool>,
+    picked: RwSignal<Option<PickedUnit>>,
 ) -> AnyView {
     let key = v.key.as_str().to_owned();
+    let start = {
+        let (actions, key) = (actions.clone(), key.clone());
+        move || {
+            picked.set(Some(PickedUnit::Verse(key.clone())));
+            actions.start_verse(chapter, &key);
+        }
+    };
     let number = view! { <sup style=sup()>{key.clone()}</sup> }.into_any();
     // One memo per verse: a keystroke redraws only the verse whose unsaved text it changes.
     let unsaved = {
@@ -1056,7 +1106,7 @@ fn target_verse(
         Memo::new(move |_| actions.unsaved_verse(book, chapter, &key))
     };
     let verse = {
-        let (actions, v, key) = (actions.clone(), v.clone(), key.clone());
+        let (v, key) = (v.clone(), key.clone());
         move || {
             if open_verse.get().as_deref() == Some(key.as_str()) {
                 let style = crate::css! {
@@ -1094,13 +1144,11 @@ fn target_verse(
                     .map(|w| view! { <span data-i="quiet" style=word.clone()>{w.to_owned()}</span>" " })
                     .collect_view();
                 let span = if verse_mode {
-                    let (actions, key) = (actions.clone(), key.clone());
+                    let start = start.clone();
                     leptos::html::span()
                         .attr("title", t(keys::draft::EDIT_VERSE, &[]))
                         .attr("style", "cursor: text;")
-                        .on(leptos::ev::click, move |_| {
-                            actions.start_verse(chapter, &key)
-                        })
+                        .on(leptos::ev::click, move |_| start())
                         .child(words)
                         .into_any()
                 } else {
@@ -1111,12 +1159,12 @@ fn target_verse(
             if !verse_mode {
                 return None;
             }
-            let (actions, key) = (actions.clone(), key.clone());
+            let start = start.clone();
             Some(draft_pill(
                 t(keys::draft::DRAFT_VERSE, &[("n", &key)]),
                 t(keys::draft::START_VERSE, &[]),
                 crate::css! { "margin-inline-end": ".3em" },
-                Callback::new(move |()| actions.start_verse(chapter, &key)),
+                Callback::new(move |()| start()),
             ))
         }
     };

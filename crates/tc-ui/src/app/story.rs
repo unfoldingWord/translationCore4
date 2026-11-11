@@ -262,6 +262,25 @@ pub fn frame_comment(comments: &[FrameComment], frame: u16) -> Option<&FrameComm
         .max_by_key(|c| c.at)
 }
 
+/// The frames whose comments the helps panel's Comments tab lists, in frame order: those in
+/// `focus` (#991, `frame_focus`), every commented frame while none is.
+pub fn comment_frames(comments: &[FrameComment], focus: Option<&[String]>) -> Vec<u16> {
+    let mut frames: Vec<u16> = comments
+        .iter()
+        .map(|c| c.frame)
+        .filter(|f| crate::app::understand::in_focus(&f.to_string(), focus))
+        .collect();
+    frames.sort_unstable();
+    frames.dedup();
+    frames
+}
+
+/// The verse keys a story's helps filter to: the frame in focus, which a help names as its verse
+/// (#991); none, the whole story.
+pub fn frame_focus(focus_frame: Option<u16>) -> Option<Vec<String>> {
+    focus_frame.map(|frame| vec![frame.to_string()])
+}
+
 /// Whether a help card at `verse` (its frame) is the focused frame's (tC4's `isActive` in story
 /// mode: the card of the frame in focus is marked).
 pub fn card_in_focus(verse: &str, focus_frame: Option<u16>) -> bool {
