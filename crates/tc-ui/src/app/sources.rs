@@ -165,13 +165,6 @@ pub struct Selection {
     pub repos: Vec<String>,
 }
 
-impl Selection {
-    /// Whether `other` fetches the same package for the same book, from whichever open.
-    fn fetches_what(&self, other: &Self) -> bool {
-        (&self.gateway, self.book, &self.repos) == (&other.gateway, other.book, &other.repos)
-    }
-}
-
 /// Where the computer's one download stands (tC4's `src.dl`). What it installs is for every
 /// project, so it belongs to no open: the dialog of any project shows it and can cancel it.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -196,19 +189,12 @@ pub enum Dl {
     Unanswered { request: RequestId, what: Selection },
 }
 
-/// How a download's job ended.
+/// How a download's job ended, when it did not fail.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DlEnd {
     Done(Downloaded),
     /// Cancelled, or the job is gone.
     Stopped,
-    /// `reason` in tC4's words, or `None` when the open it was pressed in is not on screen.
-    Failed(Option<String>),
-    /// The internet question was asked again: the same selection waits for its answer, to be
-    /// sent as `request`.
-    AskedAgain {
-        request: RequestId,
-    },
 }
 
 /// tC4's `src`: kept across the dialog's openings, as tC4 keeps it.
@@ -260,6 +246,7 @@ impl SourcesForm {
         if !self.exclude.remove(&key) {
             self.exclude.insert(key);
         }
+        self.chose();
     }
 
     /// The repositories a download fetches, in the rows' order.
@@ -274,6 +261,7 @@ impl SourcesForm {
     /// A package was chosen (tC4 `pickGateway`).
     pub fn pick(&mut self, gateway: GatewayPackage) {
         self.gateway = Some(gateway);
+        self.chose();
         self.reading();
     }
 
@@ -282,11 +270,13 @@ impl SourcesForm {
         self.gateway = None;
         self.rows.clear();
         self.error = None;
+        self.chose();
     }
 
     /// Another book (tC4 `setSourceBook`).
     pub fn set_book(&mut self, book: BookId) {
         self.book = book;
+        self.chose();
         self.reading();
     }
 
@@ -347,7 +337,8 @@ impl SourcesForm {
     }
 
     /// Whether the footer offers Download in `here`: a package with rows, no download under
-    /// way, and not the selection that just finished.
+    /// way, and not the selection that just finished in this open. A download fetches at the
+    /// open project's pins, so one that finished in another open says nothing about this one.
     pub fn can_download(&self, here: Option<&Scope>) -> bool {
         let Some(now) = here.and_then(|at| self.selection(at)) else {
             return false;
@@ -355,7 +346,7 @@ impl SourcesForm {
         match &self.dl {
             Dl::Idle | Dl::Unanswered { .. } => true,
             Dl::Starting { .. } | Dl::Running { .. } => false,
-            Dl::Finished { what, .. } => !what.fetches_what(&now),
+            Dl::Finished { what, .. } => *what != now,
         }
     }
 
@@ -483,8 +474,7 @@ impl SourcesForm {
         }
     }
 
-    /// `job` ended: the download is under way no more, whatever the end was. A failure is said
-    /// only while the dialog still shows the package and book it was for.
+    /// `job` ended without a failure: the download is under way no more.
     pub fn download_ended(&mut self, job: JobId, end: DlEnd) {
         let Dl::Running {
             what, job: running, ..
@@ -499,14 +489,32 @@ impl SourcesForm {
         self.dl = match end {
             DlEnd::Done(outcome) => Dl::Finished { what, outcome },
             DlEnd::Stopped => Dl::Idle,
-            DlEnd::Failed(reason) => {
-                if self.shows(&what) && reason.is_some() {
-                    self.error = reason;
-                }
-                Dl::Idle
-            }
-            DlEnd::AskedAgain { request } => Dl::Starting { request, what },
         };
+    }
+
+    /// `job` failed. Its selection waits as `retry` until the failure is sorted, which the
+    /// caller does at once: the internet question sends it again or drops it
+    /// (`download_not_sent`), and any other failure refuses it (`download_refused`). No path
+    /// leaves it waiting.
+    pub fn download_failed(&mut self, job: JobId, retry: RequestId) {
+        if let Dl::Running {
+            what, job: running, ..
+        } = &self.dl
+            && *running == job
+        {
+            self.dl = Dl::Starting {
+                request: retry,
+                what: what.clone(),
+            };
+        }
+    }
+
+    /// The person chose again: a finished download's line goes, and Download is offered for
+    /// what is chosen now. A download under way is not touched.
+    fn chose(&mut self) {
+        if matches!(self.dl, Dl::Finished { .. }) {
+            self.dl = Dl::Idle;
+        }
     }
 
     /// Whether `gateway` is the project's checking language.

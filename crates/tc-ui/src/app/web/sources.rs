@@ -292,6 +292,26 @@ impl Actions {
                     || true,
                 )
                 .await;
+            // The state first: Cancel is not offered for a job that has ended.
+            match ended {
+                JobEnd::Done(done) => {
+                    this.patch_src(|src| src.download_ended(job, DlEnd::Done(done)));
+                }
+                JobEnd::Cancelled | JobEnd::Lost | JobEnd::Left => {
+                    this.patch_src(|src| src.download_ended(job, DlEnd::Stopped));
+                }
+                JobEnd::Failed(error) => {
+                    // The selection waits before the refusal is sorted, so each way the
+                    // sorting can go finds it: the question sends it again, a dropped
+                    // question drops it, any other failure refuses it.
+                    let retry = js::random_request_id();
+                    this.patch_src(|src| src.download_failed(job, retry));
+                    if let Some(error) = this.net_refusal(Pending::Download, error) {
+                        let reason = said_here(&this, said(&error));
+                        this.patch_src(|src| src.download_refused(retry, reason));
+                    }
+                }
+            }
             // Whatever the end, a repository may have installed before it: what a pane or a
             // help lacked may be here now, so Understand reads again (tC4 bumps
             // `installEpoch`), and step 1 counts the package. Installs are the computer's, so
@@ -309,17 +329,6 @@ impl Actions {
                     this.patch_src(|src| src.packages = Some(view));
                 }
             }
-            let end = match ended {
-                JobEnd::Done(done) => DlEnd::Done(done),
-                JobEnd::Cancelled | JobEnd::Lost | JobEnd::Left => DlEnd::Stopped,
-                JobEnd::Failed(error) => match this.net_refusal(Pending::Download, error) {
-                    Some(error) => DlEnd::Failed(said_here(&this, said(&error))),
-                    None => DlEnd::AskedAgain {
-                        request: js::random_request_id(),
-                    },
-                },
-            };
-            this.patch_src(|src| src.download_ended(job, end));
         });
     }
 

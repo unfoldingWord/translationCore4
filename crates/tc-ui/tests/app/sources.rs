@@ -245,22 +245,32 @@ fn a_download_keeps_its_cancel_and_names_what_it_fetched_whatever_is_chosen_mean
             what: what.clone(),
             outcome: Downloaded::Fetched
         },
-        "INV-DOWNLOAD-NAMES-WHAT-IT-FETCHED"
+        "INV-DOWNLOAD-NAMES-WHAT-IT-FETCHED: the finished download names another selection"
     );
     assert_eq!(what.book, BookId::Hebrews);
     assert!(
         src.can_download(Some(&here)),
         "Titus was not downloaded: it is offered"
     );
-    on_book(&mut src, BookId::Hebrews);
+}
+
+#[test]
+fn what_just_finished_is_not_offered_again_in_its_open_until_the_person_chooses_again() {
+    let here = open(1);
+    let mut src = SourcesForm::default();
+    on_book(&mut src, BookId::Titus);
+    let (request, _) = src.download_pressed(&here, rid(1)).unwrap();
+    src.download_started(request, JobId::new(1));
+    src.download_ended(JobId::new(1), DlEnd::Done(Downloaded::AlreadyHere));
+    assert!(!src.can_download(Some(&here)));
     assert!(
-        src.can_download(Some(&here)),
-        "Hebrews without its notes was not downloaded: it is offered"
+        src.can_download(Some(&open(2))),
+        "a download fetches at its own project's pins: another open is offered it"
     );
     src.toggle(&row(PackageRole::Notes, "en_tn"));
     assert!(
-        !src.can_download(Some(&here)) && !src.can_download(Some(&open(2))),
-        "what just finished is not offered again"
+        *src.dl() == Dl::Idle && src.can_download(Some(&here)),
+        "a choice takes the finished line away and offers Download"
     );
 }
 
@@ -277,7 +287,7 @@ fn a_lost_answer_is_asked_again_as_the_same_request_only_for_the_same_selection(
     assert_eq!(
         again,
         rid(1),
-        "INV-ONE-REQUEST-PER-ATTEMPT: the retry is another request"
+        "INV-ONE-REQUEST-PER-ATTEMPT: the retry was sent as another request"
     );
     src.download_unanswered(again, None);
     on_book(&mut src, BookId::Hebrews);
@@ -303,7 +313,8 @@ fn a_download_that_is_not_sent_or_fails_is_under_way_no_more() {
     src.download_started(rid(3), JobId::new(1));
     // The person moved to another book: the failure of the Titus download is not said there.
     on_book(&mut src, BookId::Hebrews);
-    src.download_ended(JobId::new(1), DlEnd::Failed(Some("no route".into())));
+    src.download_failed(JobId::new(1), rid(9));
+    src.download_refused(rid(9), Some("no route".into()));
     assert!(
         !src.downloading() && src.error.is_none(),
         "INV-RESOURCE-ANSWER-HAS-AN-OWNER: a failure is said for another book"
@@ -312,10 +323,16 @@ fn a_download_that_is_not_sent_or_fails_is_under_way_no_more() {
     src.download_started(request, JobId::new(2));
     src.download_ended(JobId::new(9), DlEnd::Stopped);
     assert!(src.downloading(), "another job's end changes nothing");
-    src.download_ended(JobId::new(2), DlEnd::AskedAgain { request: rid(5) });
+    // The job failed for the internet: its selection waits for the question, and a question
+    // that is dropped leaves nothing waiting.
+    src.download_failed(JobId::new(2), rid(5));
     assert_eq!(src.starting().unwrap().0, rid(5));
     src.download_not_sent();
-    assert_eq!(*src.dl(), Dl::Idle);
+    assert_eq!(
+        *src.dl(),
+        Dl::Idle,
+        "INV-BUSY-ENDS-WITH-ITS-WORK: a dropped question leaves the download waiting"
+    );
 }
 
 /// What a person and the server can do to the download.
@@ -347,6 +364,7 @@ enum EndKind {
     Stopped,
     Failed,
     AskedAgain,
+    DroppedQuestion,
 }
 
 fn arb_dl_step() -> impl Strategy<Value = DlStep> {
@@ -361,7 +379,8 @@ fn arb_dl_step() -> impl Strategy<Value = DlStep> {
         Just(EndKind::Done),
         Just(EndKind::Stopped),
         Just(EndKind::Failed),
-        Just(EndKind::AskedAgain)
+        Just(EndKind::AskedAgain),
+        Just(EndKind::DroppedQuestion)
     ];
     prop_oneof![
         Just(DlStep::Open),
@@ -459,12 +478,22 @@ proptest! {
                                 );
                             }
                             EndKind::Stopped => src.download_ended(running, DlEnd::Stopped),
-                            EndKind::Failed => src.download_ended(running, DlEnd::Failed(Some("no".into()))),
+                            EndKind::Failed => {
+                                next += 1;
+                                src.download_failed(running, rid(next));
+                                src.download_refused(rid(next), Some("no".into()));
+                            }
+                            // The internet question: asked, so the selection waits, or dropped.
                             EndKind::AskedAgain => {
                                 next += 1;
-                                src.download_ended(running, DlEnd::AskedAgain { request: rid(next) });
+                                src.download_failed(running, rid(next));
                                 pressed = Some(what);
                                 request = Some(rid(next));
+                            }
+                            EndKind::DroppedQuestion => {
+                                next += 1;
+                                src.download_failed(running, rid(next));
+                                src.download_not_sent();
                             }
                         }
                     }
