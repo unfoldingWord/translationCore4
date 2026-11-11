@@ -211,9 +211,9 @@ pub struct CatalogRead {
 /// tC4's `src`: kept across the dialog's openings, as tC4 keeps it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourcesForm {
-    /// The project the dialog was last opened in. A package's rows depend on the project (a
+    /// The open the dialog was last opened in. A package's rows depend on the project (a
     /// Bible's differ from a story project's), so they are kept only for this one.
-    project: Option<ProjectRef>,
+    open: Option<Scope>,
     /// Step 1's packages, with the open they were read for
     /// (INV-RESOURCE-ANSWER-HAS-AN-OWNER): another open never reads them as its own.
     packages: Option<(Scope, SourcesView)>,
@@ -235,7 +235,7 @@ pub struct SourcesForm {
 impl Default for SourcesForm {
     fn default() -> Self {
         Self {
-            project: None,
+            open: None,
             packages: None,
             gateway: None,
             book: BookId::Titus,
@@ -251,14 +251,21 @@ impl Default for SourcesForm {
 }
 
 impl SourcesForm {
-    /// The dialog opens in `project` (INV-RESOURCE-ANSWER-HAS-AN-OWNER). In another project
-    /// than last time it starts at step 1: the package, its rows and what was left out were
-    /// read and chosen for the other one. A download under way is the computer's and stays.
-    pub fn opened(&mut self, project: &ProjectRef) {
-        if self.project.as_ref() == Some(project) {
-            return;
+    /// The dialog opens in `at` (INV-RESOURCE-ANSWER-HAS-AN-OWNER). In another project than
+    /// last time it starts at step 1: the package, its rows and what was left out were read and
+    /// chosen for the other one. In another open of the same project the choices stay, as tC4
+    /// keeps them, but no read started before is answered (#982 requirement 8): true when the
+    /// chosen package's rows were still being read, so this open reads them again. A download
+    /// under way is the computer's and stays.
+    pub fn opened(&mut self, at: &Scope) -> bool {
+        let before = self.open.replace(at.clone());
+        if before.as_ref() == Some(at) {
+            return false;
         }
-        self.project = Some(project.clone());
+        self.read += 1;
+        if before.is_some_and(|open| open.project == at.project) {
+            return self.loading && self.gateway.is_some();
+        }
         self.gateway = None;
         self.rows.clear();
         self.exclude.clear();
@@ -266,6 +273,7 @@ impl SourcesForm {
         self.error = None;
         self.needs_internet = false;
         self.chose();
+        false
     }
 
     /// Whether a row is in the download: a fixed row always is.
@@ -342,7 +350,7 @@ impl SourcesForm {
     /// Whether the answer to `read` is what the dialog waits for now: the project, package
     /// and book it shows, and its latest read of them.
     fn reads(&self, read: &CatalogRead) -> bool {
-        self.project.as_ref() == Some(&read.project)
+        self.open.as_ref().map(|open| &open.project) == Some(&read.project)
             && self.gateway.as_ref() == Some(&read.gateway)
             && self.book == read.book
             && self.read == read.attempt

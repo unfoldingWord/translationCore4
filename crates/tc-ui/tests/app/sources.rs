@@ -202,8 +202,16 @@ fn the_current_package_compares_its_owner_without_letter_case() {
 /// Get source texts, opened in `alef`.
 fn form() -> SourcesForm {
     let mut src = SourcesForm::default();
-    src.opened(&alef());
+    src.opened(&open(1));
     src
+}
+
+/// An open of `project`.
+fn open_of(project: &ProjectRef, epoch: u64) -> Scope {
+    Scope {
+        project: project.clone(),
+        epoch: Epoch::new(epoch),
+    }
 }
 
 /// The project the forms of these tests are opened in.
@@ -225,10 +233,10 @@ fn another_projects_dialog_starts_at_step_one_and_takes_no_rows_read_for_the_fir
     src.pick(en.clone());
     let first = started(&mut src, &alef());
     src.rows_read(&first, vec![row(PackageRole::Text, "en_ult")]);
-    // The same project opened again keeps its step.
-    src.opened(&alef());
+    // The same project opened again keeps its step, and its rows are not read again.
+    assert!(!src.opened(&open(2)));
     assert_eq!(src.chosen(), ["en_ult"]);
-    src.opened(&bet);
+    src.opened(&open_of(&bet, 3));
     assert!(
         src.gateway.is_none() && src.rows.is_empty(),
         "INV-RESOURCE-ANSWER-HAS-AN-OWNER: one project's package rows are shown in another's dialog"
@@ -255,8 +263,8 @@ fn an_earlier_opens_late_catalog_answer_never_replaces_the_rows_read_since() {
     let mut src = form();
     src.pick(en.clone());
     let before = started(&mut src, &alef());
-    src.opened(&bet);
-    src.opened(&alef());
+    src.opened(&open_of(&bet, 2));
+    src.opened(&open(3));
     src.pick(en.clone());
     let since = started(&mut src, &alef());
     src.rows_read(&since, vec![row(PackageRole::Text, "en_ult")]);
@@ -274,6 +282,33 @@ fn an_earlier_opens_late_catalog_answer_never_replaces_the_rows_read_since() {
     src.rows_read(&again, vec![row(PackageRole::Text, "en_ult")]);
     src.rows_failed(&since, "late".into());
     assert!(src.error.is_none() && src.chosen() == ["en_ult"]);
+}
+
+#[test]
+fn a_read_from_before_the_same_project_was_opened_again_is_dropped_and_read_again() {
+    // #982 requirement 8, with nothing read since: A, Home, A again, then A's first answer.
+    let en = package("en", "unfoldingWord");
+    let mut src = form();
+    src.pick(en.clone());
+    let before = started(&mut src, &alef());
+    assert!(
+        src.opened(&open(2)),
+        "INV-BUSY-ENDS-WITH-ITS-WORK: the new open does not read the rows it waits for"
+    );
+    src.rows_failed(&before, "late".into());
+    src.rows_read(&before, vec![row(PackageRole::Notes, "en_tn")]);
+    assert!(
+        src.error.is_none() && src.rows.is_empty() && src.loading,
+        "INV-RESOURCE-ANSWER-HAS-AN-OWNER: an answer from before the reopening is shown"
+    );
+    let again = started(&mut src, &alef());
+    src.rows_read(&again, vec![row(PackageRole::Text, "en_ult")]);
+    assert!(!src.loading && src.chosen() == ["en_ult"]);
+    // The dialog closed and opened again in the same open drops nothing.
+    let same = started(&mut src, &alef());
+    assert!(!src.opened(&open(2)));
+    src.rows_read(&same, vec![row(PackageRole::Text, "en_ult")]);
+    assert_eq!(src.chosen(), ["en_ult"]);
 }
 
 fn rid(n: u8) -> RequestId {

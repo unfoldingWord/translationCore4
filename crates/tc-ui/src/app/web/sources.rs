@@ -134,7 +134,10 @@ impl Actions {
         {
             s.sync_result.try_set(None);
         }
-        self.patch_src(|src| src.opened(&at.project));
+        let read_again = s.src.try_update(|src| src.opened(&at));
+        if read_again == Some(true) {
+            self.internet_task(Pending::Catalog);
+        }
         let this = self.clone();
         spawn_local(async move {
             this.read_packages(at).await;
