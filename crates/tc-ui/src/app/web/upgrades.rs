@@ -53,7 +53,7 @@ fn apply_error(error: &CallError) -> String {
 }
 
 impl Actions {
-    fn project_scope(&self) -> Option<tc_api::Scope> {
+    pub(super) fn project_scope(&self) -> Option<tc_api::Scope> {
         self.s()
             .project
             .with_untracked(|p| p.as_ref().map(|p| p.at.clone()))
@@ -62,8 +62,16 @@ impl Actions {
     /// Whether `at` is the open on screen (INV-RESOURCE-ANSWER-HAS-AN-OWNER): the one question
     /// every late answer about resources asks before it shows anything. An open has its own
     /// epoch, so the same project opened again is another owner.
-    fn shows(&self, at: &tc_api::Scope) -> bool {
+    pub(super) fn shows(&self, at: &tc_api::Scope) -> bool {
         self.project_scope().as_ref() == Some(at)
+    }
+
+    /// Whether the open on screen is installing an upgrade: one at a time there.
+    fn installing_here(&self) -> bool {
+        let here = self.project_scope();
+        self.s()
+            .up
+            .with_untracked(|up| up.installing(here.as_ref()).is_some())
     }
 
     // ---- J12: the release upgrades of Get source texts ---------------------------------------
@@ -98,7 +106,7 @@ impl Actions {
 
     /// A language set's Upgrade (tC4 `upgradeSet`).
     pub fn upgrade_set(&self, rung: SetRung) {
-        if self.s().up.with_untracked(|up| up.installing.is_some()) {
+        if self.installing_here() {
             return;
         }
         self.internet_task(Pending::UpgradeSet(rung));
@@ -106,7 +114,7 @@ impl Actions {
 
     /// A scripture text's Upgrade (tC4 `upgradeText`).
     pub fn upgrade_text(&self, repo: String) {
-        if self.s().up.with_untracked(|up| up.installing.is_some()) {
+        if self.installing_here() {
             return;
         }
         self.internet_task(Pending::UpgradeText(repo));
@@ -128,7 +136,9 @@ impl Actions {
             Installing::Set(rung) => Pending::UpgradeSet(*rung),
             Installing::Text(repo) => Pending::UpgradeText(repo.clone()),
         };
-        self.s().up.try_update(|up| up.install_started(what));
+        self.s()
+            .up
+            .try_update(|up| up.install_started(at.clone(), what));
         let this = self.clone();
         spawn_local(async move {
             // Saved first: the plan is read over work that is safe (A-26).
@@ -138,7 +148,9 @@ impl Actions {
                     keys::upgrade::FAILED,
                     &[("reason", &t(keys::upgrade::ALIGN_UNSAVED, &[]))],
                 );
-                this.s().up.try_update(|up| up.install_failed(Some(reason)));
+                this.s()
+                    .up
+                    .try_update(|up| up.install_failed(&at, Some(reason)));
                 return;
             }
             let request = PlanUpgrade {
@@ -149,25 +161,30 @@ impl Actions {
             let job = match this.run_net(pending.clone(), &request).await.said() {
                 Ok(job) => job,
                 Err(reason) => {
-                    this.s().up.try_update(|up| up.install_failed(reason));
+                    this.s().up.try_update(|up| up.install_failed(&at, reason));
                     return;
                 }
             };
             match this
                 .follow_plan::<PlanUpgrade>(job, |repo| {
-                    this.s().up.try_update(|up| up.install_progress(repo));
+                    this.s().up.try_update(|up| up.install_progress(&at, repo));
                 })
                 .await
             {
                 Planned::Ready(plan) => {
-                    this.s().up.try_update(|up| up.plan_ready(*plan));
+                    this.s().up.try_update(|up| up.plan_ready(&at, *plan));
                 }
                 Planned::Stopped => {
-                    this.s().up.try_update(|up| up.install_failed(None));
+                    this.s().up.try_update(|up| up.install_failed(&at, None));
                 }
-                Planned::Failed(error) => {
+                // The internet question would resume the step in the open on screen: it is
+                // asked only while that is still the open the upgrade was pressed in.
+                Planned::Failed(error) if this.shows(&at) => {
                     let reason = this.net_refusal(pending, error).map(|error| said(&error));
-                    this.s().up.try_update(|up| up.install_failed(reason));
+                    this.s().up.try_update(|up| up.install_failed(&at, reason));
+                }
+                Planned::Failed(_) => {
+                    this.s().up.try_update(|up| up.install_failed(&at, None));
                 }
             }
         });
@@ -175,7 +192,9 @@ impl Actions {
 
     /// "Keep the current release" and the ✕: nothing changes.
     pub fn cancel_upgrade(&self) {
-        self.s().up.try_update(|up| up.cancel());
+        if let Some(here) = self.project_scope() {
+            self.s().up.try_update(|up| up.cancel(&here));
+        }
     }
 
     /// "Upgrade" (tC4 `confirmUpgrade`): the plan the person read is confirmed by its id.
@@ -183,16 +202,11 @@ impl Actions {
         let Some(at) = self.project_scope() else {
             return;
         };
+        // The plan is of the open on screen, so it is sent with the open it was made for.
         let Some(plan) = self
             .s()
             .up
-            .try_update(|up| {
-                if up.confirm_started() {
-                    up.preview.as_ref().map(|p| p.plan.plan)
-                } else {
-                    None
-                }
-            })
+            .try_update(|up| up.confirm_started(&at))
             .flatten()
         else {
             return;
@@ -206,15 +220,15 @@ impl Actions {
             };
             match this.runtime().api().call(&request).await {
                 Ok(PlanApplied::Applied) => {
-                    this.s().up.try_update(|up| up.applied());
+                    this.s().up.try_update(|up| up.applied(&at));
                     this.pins_changed(&at);
                 }
                 Ok(PlanApplied::Replanned(view)) => {
-                    this.s().up.try_update(|up| up.replanned(*view));
+                    this.s().up.try_update(|up| up.replanned(&at, *view));
                 }
                 Err(error) => {
                     let reason = apply_error(&error);
-                    this.s().up.try_update(|up| up.apply_failed(reason));
+                    this.s().up.try_update(|up| up.apply_failed(&at, reason));
                 }
             }
         });
@@ -229,16 +243,7 @@ impl Actions {
         self.runtime().cache().changed(at, &scope);
         let this = self.clone();
         let at = at.clone();
-        spawn_local(async move {
-            if let Ok(view) = this
-                .runtime()
-                .api()
-                .call(&tc_api::resources::Sources { at })
-                .await
-            {
-                this.patch_src(|src| src.packages = Some(view));
-            }
-        });
+        spawn_local(async move { this.read_packages(at).await });
     }
 
     // ---- J13: a new checking language ------------------------------------------------------------
@@ -306,6 +311,10 @@ impl Actions {
 
     /// "Change to …" (tC4 `confirmGatewayChange`).
     pub fn confirm_gateway_change(&self) {
+        // The plan on screen is of this open: `ask_gateway_change` shows it only while its
+        // open is on screen, and its dialog covers every way a person can leave. After a
+        // server restart the page goes Home under it: there is no project then, so this
+        // returns and nothing is sent.
         let Some(at) = self.project_scope() else {
             return;
         };

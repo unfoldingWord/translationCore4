@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { REPO } from '../env-rust.mjs';
-import { browserTest, catalog, sleep, until, withApp } from './kit.mjs';
+import { browserTest, catalog, settled, sleep, until, withApp } from './kit.mjs';
 
 const en = catalog('en');
 const rebuild = JSON.parse(fs.readFileSync(path.join(REPO, 'crates', 'tc-ui', 'assets', 'i18n-rebuild', 'en.json'), 'utf8'));
@@ -55,28 +55,36 @@ const textPin = (env, repo) => JSON.parse(fs.readFileSync(
 // screen, as a translator's upgrade would, and its install removed: this computer lacks it.
 // shortcut: the fake has one en_ult release, so the pin is also the latest and this cannot tell
 // "the pinned version" from "the newest"; a fake control route that adds a release would.
+/** Get source texts on English, step 2, for Titus, with `en_ult` pinned at the fake's release
+ * and its install removed, so Download has a text to fetch from the fake. Answers the pin. */
+async function aTextToFetch(page, env) {
+  await settings(page).click();
+  await page.getByTestId('settings-manage-sources').click();
+  await page.getByTestId('sources-modal').waitFor();
+  await page.getByTestId('understand').waitFor();
+  await page.getByTestId('check-updates').click();
+  await page.getByTestId('net-ask').waitFor();
+  await page.getByTestId('net-confirm').click();
+  await page.getByTestId('upgrade-text-apply-en_ult').click();
+  const confirm = page.getByTestId('upgrade-confirm');
+  await confirm.waitFor();
+  await confirm.getByTestId('upgrade-apply').click();
+  await confirm.waitFor({ state: 'detached', timeout: 60_000 });
+  const ult = (await (await fetch(`${env.door43.url}/api/v1/catalog/search?owner=unfoldingWord`)).json())
+    .data.find((entry) => entry.name === 'en_ult');
+  await until('the text is pinned at the fake\'s release', () => textPin(env, 'en_ult').sha === ult.commit_sha, 30_000);
+  const pinned = textPin(env, 'en_ult');
+  fs.rmSync(path.join(env.appData, 'resources', 'dcs', 'unfoldingword', 'en_ult'), { recursive: true, force: true });
+  assert.deepEqual(installs(env, 'unfoldingWord', 'en_ult'), []);
+  await env.door43.clear();
+  await page.getByTestId('sources-modal').getByText('English', { exact: true }).first().click();
+  await page.getByTestId('sources-download').waitFor();
+  return pinned;
+}
+
 browserTest('j3_a_download_from_the_seeded_fake_installs_the_pinned_version', async () => {
   await withApp(async ({ page, env }) => {
-    await settings(page).click();
-    await page.getByTestId('settings-manage-sources').click();
-    await page.getByTestId('sources-modal').waitFor();
-    await page.getByTestId('understand').waitFor();
-    await page.getByTestId('check-updates').click();
-    await page.getByTestId('net-ask').waitFor();
-    await page.getByTestId('net-confirm').click();
-    await page.getByTestId('upgrade-text-apply-en_ult').click();
-    const confirm = page.getByTestId('upgrade-confirm');
-    await confirm.waitFor();
-    await confirm.getByTestId('upgrade-apply').click();
-    await confirm.waitFor({ state: 'detached', timeout: 60_000 });
-    const ult = (await (await fetch(`${env.door43.url}/api/v1/catalog/search?owner=unfoldingWord`)).json())
-      .data.find((entry) => entry.name === 'en_ult');
-    await until('the text is pinned at the fake\'s release', () => textPin(env, 'en_ult').sha === ult.commit_sha, 30_000);
-    const pinned = textPin(env, 'en_ult');
-    fs.rmSync(path.join(env.appData, 'resources', 'dcs', 'unfoldingword', 'en_ult'), { recursive: true, force: true });
-    assert.deepEqual(installs(env, 'unfoldingWord', 'en_ult'), []);
-    await env.door43.clear();
-    await page.getByTestId('sources-modal').getByText('English', { exact: true }).first().click();
+    const pinned = await aTextToFetch(page, env);
     const download = page.getByTestId('sources-download');
     await download.waitFor();
     await download.click();
@@ -177,5 +185,146 @@ browserTest('a package with nothing for the book says so and offers no download'
     const none = en['sources.noneForBook'].replace('{book}', 'Titus').replace('{lang}', 'Español (Latinoamérica)');
     await page.getByText(none).waitFor();
     assert.equal(await page.getByTestId('sources-download').count(), 0, 'nothing to download');
+  }, { door43: true });
+});
+
+// #982 B. The download of Titus is held at Door43 while the person chooses another book and goes
+// back to step 1: it keeps its line and its Cancel, Download is not offered beside it, and its
+// end names what it fetched.
+const heldDownload = async (page, env) => {
+  await aTextToFetch(page, env);
+  await env.door43.fault({ method: 'GET', path: '/unfoldingWord/en_ult/', times: 1, fault: { type: 'hold' } });
+  await page.getByTestId('sources-download').click();
+  await page.getByTestId('sources-cancel').waitFor();
+  await until('Door43 holds the download of the text', async () => (await env.door43.held()) > 0);
+};
+const chooseBook = async (page, name) => {
+  await page.getByRole('combobox', { name: en['sources.book'], exact: true }).click();
+  await page.getByPlaceholder(en['addBook.findBook']).fill(name);
+  await page.keyboard.press('Enter');
+  await until(`${name} is chosen and its package is read`, async () =>
+    (await page.getByRole('combobox', { name: en['sources.book'], exact: true }).textContent()).includes(name)
+    && (await page.getByText(en['sources.loadingCatalog']).count()) === 0);
+};
+const assertUnderWay = async (page, when) => {
+  assert.equal(await page.getByTestId('sources-cancel').count(), 1, `INV-BUSY-ENDS-WITH-ITS-WORK: the running download has no Cancel ${when}`);
+  assert.equal(await page.getByTestId('sources-download').count(), 0, `INV-BUSY-ENDS-WITH-ITS-WORK: Download is offered ${when}, while one runs`);
+};
+
+browserTest('j3_a_download_keeps_its_cancel_and_names_its_own_book_whatever_is_chosen_meanwhile', async () => {
+  await withApp(async ({ page, env }) => {
+    await heldDownload(page, env);
+    await chooseBook(page, 'Hebrews');
+    await assertUnderWay(page, 'after another book was chosen');
+    await page.getByRole('button', { name: en['sources.changeLanguage'] }).click();
+    await page.getByText(en['sources.chooseGateway']).waitFor();
+    await assertUnderWay(page, 'on step 1');
+    await page.getByTestId('sources-modal').getByText('English', { exact: true }).first().click();
+    await page.getByRole('combobox', { name: en['sources.book'], exact: true }).waitFor();
+    await env.door43.release();
+    const done = page.getByTestId('sources-done');
+    await done.waitFor({ timeout: 60_000 });
+    assert.equal(await done.textContent(), doneLine(en['sources.ready']), 'INV-DOWNLOAD-NAMES-WHAT-IT-FETCHED: the finished line names Titus, the book that was downloaded');
+    assert.equal(installs(env, 'unfoldingWord', 'en_ult').length, 1, 'the text is installed');
+    // Hebrews was not downloaded: once its package is read again, it is offered.
+    await page.getByTestId('sources-download').waitFor({ timeout: 30_000 });
+  }, { door43: true });
+});
+
+browserTest('j3_cancel_stops_the_download_it_belongs_to_after_another_book_was_chosen', async () => {
+  await withApp(async ({ page, env }) => {
+    await heldDownload(page, env);
+    await chooseBook(page, 'Hebrews');
+    await assertUnderWay(page, 'after another book was chosen');
+    await page.getByTestId('sources-cancel').click();
+    await page.getByTestId('sources-cancel').waitFor({ state: 'detached', timeout: 60_000 });
+    assert.equal(await page.getByTestId('sources-done').count(), 0, 'a cancelled download says nothing is ready');
+    assert.deepEqual(installs(env, 'unfoldingWord', 'en_ult'), [], 'what was not finished is not installed');
+    await page.getByTestId('sources-download').waitFor();
+  }, { door43: true });
+});
+
+// Owner, 2026-11-10: what a download installs is for every project on this computer, so the
+// dialog of another project shows the download that still runs, and can cancel it.
+browserTest('j3_a_running_download_shows_with_its_cancel_in_another_projects_source_texts', async () => {
+  await withApp(async ({ page, env }) => {
+    await heldDownload(page, env);
+    await page.getByTestId('sources-modal').getByRole('button', { name: en['common.close'], exact: true }).first().click();
+    await page.getByTestId('project-switch').click();
+    const stories = page.getByTestId('project-sample_burrito_obs');
+    await stories.waitFor();
+    await stories.getByRole('button', { name: en['home.settings'], exact: true }).click();
+    await page.getByTestId('settings-manage-sources').click();
+    await page.getByTestId('sources-modal').waitFor();
+    await assertUnderWay(page, 'in another project\'s dialog');
+    await page.getByTestId('sources-cancel').click();
+    await page.getByTestId('sources-cancel').waitFor({ state: 'detached', timeout: 60_000 });
+    assert.deepEqual(installs(env, 'unfoldingWord', 'en_ult'), [], 'what was not finished is not installed');
+  }, { door43: true });
+});
+
+/** Step 2 on English for Titus, whose package is already on this computer. */
+const englishStepTwo = async (page) => {
+  await settings(page).click();
+  await page.getByTestId('settings-manage-sources').click();
+  await page.getByTestId('sources-modal').waitFor();
+  await page.getByTestId('understand').waitFor();
+  await page.getByTestId('sources-modal').getByText('English', { exact: true }).first().click();
+  await page.getByTestId('net-ask').waitFor();
+  await page.getByTestId('net-confirm').click();
+  await page.getByTestId('sources-download').waitFor();
+};
+const START = '**/api/v1/resources/download';
+
+browserTest('j3_two_quick_presses_of_download_start_one_download', async () => {
+  await withApp(async ({ page }) => {
+    await englishStepTwo(page);
+    const sent = [];
+    let release;
+    let reached;
+    const held = new Promise((resolve) => { release = resolve; });
+    const entered = new Promise((resolve) => { reached = resolve; });
+    await page.route(START, async (route) => {
+      sent.push(route.request().postDataJSON());
+      if (sent.length === 1) {
+        reached();
+        await held;
+      }
+      await route.continue();
+    });
+    const download = page.getByTestId('sources-download');
+    await download.click();
+    await entered;
+    await settled(page);
+    // The second press, before the server gave a job.
+    if (await download.count()) await download.click();
+    release();
+    await page.getByTestId('sources-done').waitFor({ timeout: 60_000 });
+    assert.equal(sent.length, 1, 'INV-BUSY-ENDS-WITH-ITS-WORK: a second press before the job started another download');
+  }, { door43: true });
+});
+
+browserTest('j3_a_download_whose_first_answer_was_lost_is_asked_again_as_the_same_request', async () => {
+  await withApp(async ({ page, allow }) => {
+    await englishStepTwo(page);
+    allow(/Failed to load resource|net::ERR_FAILED/);
+    const sent = [];
+    await page.route(START, async (route) => {
+      sent.push(route.request().postDataJSON());
+      if (sent.length === 1) {
+        // The server gets the request and starts its job; its answer never reaches the page.
+        await route.fetch();
+        await route.abort('failed');
+      } else {
+        await route.continue();
+      }
+    });
+    const download = page.getByTestId('sources-download');
+    await download.click();
+    await page.getByTestId('sources-error').waitFor();
+    await download.click();
+    await page.getByTestId('sources-done').waitFor({ timeout: 60_000 });
+    assert.equal(sent.length, 2);
+    assert.equal(sent[1].request, sent[0].request, 'INV-ONE-REQUEST-PER-ATTEMPT: the retry is another request, which could start a second download');
   }, { door43: true });
 });

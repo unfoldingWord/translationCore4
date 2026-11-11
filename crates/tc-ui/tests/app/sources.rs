@@ -2,15 +2,17 @@
 //! cases that one server read leaves (#641: a reply lands only on its own project's form, a
 //! failed read keeps Save disabled), and the rows of a package.
 
+use proptest::prelude::*;
 use tc_api::home::{BookTileView, Door43Card, HomeCard, ProjectKind};
-use tc_api::ids::{ProjectRef, RequestId};
+use tc_api::ids::{Epoch, JobId, ProjectRef, RequestId, Scope};
 use tc_api::resources::{
-    FromInstalls, GatewayPackage, GatewayRef, PackageRole, PackageRow, Seen, SourcesView,
+    Downloaded, FromInstalls, GatewayPackage, GatewayRef, PackageRole, PackageRow, Seen,
+    SourcesView,
 };
 use tc_api::settings::{CurrentGateway, GatewayCard, SettingsView};
 use tc_api::shown::{Direction, Known};
 use tc_core::BookId;
-use tc_ui::app::sources::{GatewayState, SettingsForm, SourcesForm};
+use tc_ui::app::sources::{CatalogRead, Dl, DlEnd, GatewayState, SettingsForm, SourcesForm};
 
 fn card(project: &str, books: &[BookId]) -> HomeCard {
     HomeCard {
@@ -125,15 +127,17 @@ fn row(role: PackageRole, repo: &str) -> PackageRow {
 
 #[test]
 fn the_text_is_always_included_and_helps_can_be_left_out() {
-    let mut src = SourcesForm::default();
+    let mut src = form();
     let en = package("en", "unfoldingWord");
     src.pick(en.clone());
     let rows = vec![
         row(PackageRole::Text, "en_ult"),
         row(PackageRole::Notes, "en_tn"),
     ];
-    src.rows_read(&en, BookId::Titus, rows.clone());
-    assert!(src.can_download());
+    let read = started(&mut src, &alef());
+    src.rows_read(&read, rows.clone());
+    assert!(src.can_download(Some(&open(1))));
+    assert!(!src.can_download(None), "no project, no download");
     src.toggle(&rows[0]);
     src.toggle(&rows[1]);
     assert_eq!(src.chosen(), ["en_ult"]);
@@ -143,23 +147,22 @@ fn the_text_is_always_included_and_helps_can_be_left_out() {
 
 #[test]
 fn rows_for_a_package_or_book_left_meanwhile_are_not_shown() {
-    let mut src = SourcesForm::default();
+    let mut src = form();
     let (en, es) = (
         package("en", "unfoldingWord"),
         package("es-419", "es-419_gl"),
     );
     src.pick(en.clone());
+    let en_titus = started(&mut src, &alef());
     src.pick(es.clone());
-    src.rows_read(&en, BookId::Titus, vec![row(PackageRole::Notes, "en_tn")]);
+    let es_titus = started(&mut src, &alef());
+    src.rows_read(&en_titus, vec![row(PackageRole::Notes, "en_tn")]);
     assert!(src.loading && src.rows.is_empty());
     src.set_book(BookId::Jonah);
-    src.rows_failed(&es, BookId::Titus, "late".into());
+    let es_jonah = started(&mut src, &alef());
+    src.rows_failed(&es_titus, "late".into());
     assert_eq!(src.error, None);
-    src.rows_read(
-        &es,
-        BookId::Jonah,
-        vec![row(PackageRole::Notes, "es-419_tn")],
-    );
+    src.rows_read(&es_jonah, vec![row(PackageRole::Notes, "es-419_tn")]);
     assert!(!src.loading);
     assert_eq!(src.chosen(), ["es-419_tn"]);
     src.change_gateway();
@@ -169,24 +172,505 @@ fn rows_for_a_package_or_book_left_meanwhile_are_not_shown() {
 
 #[test]
 fn the_current_package_compares_its_owner_without_letter_case() {
-    let mut src = SourcesForm {
-        packages: Some(SourcesView {
+    let (alef, bet) = (open(1), open(2));
+    let mut src = form();
+    src.packages_read(
+        alef.clone(),
+        SourcesView {
             gateways: Vec::new(),
             current: Some(gateway("es-419", "ES-419_GL")),
             checkable: FromInstalls::Listed(vec![gateway("en", "unfoldingWord")]),
             pinned: true,
-        }),
-        ..SourcesForm::default()
-    };
-    assert!(src.is_current(&package("es-419", "es-419_gl")));
-    assert!(!src.is_current(&package("en", "unfoldingWord")));
-    assert!(src.is_checkable(&package("en", "unfoldingWord")));
+        },
+    );
+    assert!(src.is_current(Some(&alef), &package("es-419", "es-419_gl")));
+    assert!(!src.is_current(Some(&alef), &package("en", "unfoldingWord")));
+    assert!(src.is_checkable(Some(&alef), &package("en", "unfoldingWord")));
+    // Another open, and Home, never read alef's packages as their own.
+    for other in [Some(&bet), None] {
+        assert!(
+            src.packages(other).is_none()
+                && !src.is_current(other, &package("es-419", "es-419_gl"))
+                && !src.is_checkable(other, &package("en", "unfoldingWord")),
+            "INV-RESOURCE-ANSWER-HAS-AN-OWNER: one open's packages are shown for another"
+        );
+    }
     src.not_read();
     assert!(src.needs_internet);
 }
 
+/// Get source texts, opened in `alef`.
+fn form() -> SourcesForm {
+    let mut src = SourcesForm::default();
+    src.opened(&open(1));
+    src
+}
+
+/// An open of `project`.
+fn open_of(project: &ProjectRef, epoch: u64) -> Scope {
+    Scope {
+        project: project.clone(),
+        epoch: Epoch::new(epoch),
+    }
+}
+
+/// The project the forms of these tests are opened in.
+fn alef() -> ProjectRef {
+    ProjectRef::parse("alef").unwrap()
+}
+
+/// A read of the chosen package's rows, started for `project`.
+fn started(src: &mut SourcesForm, project: &ProjectRef) -> CatalogRead {
+    src.catalog_started(project.clone())
+        .expect("a package is chosen")
+}
+
+#[test]
+fn another_projects_dialog_starts_at_step_one_and_takes_no_rows_read_for_the_first() {
+    let bet = ProjectRef::parse("bet").unwrap();
+    let en = package("en", "unfoldingWord");
+    let mut src = form();
+    src.pick(en.clone());
+    let first = started(&mut src, &alef());
+    src.rows_read(&first, vec![row(PackageRole::Text, "en_ult")]);
+    // The same project opened again keeps its step, and its rows are not read again.
+    assert!(!src.opened(&open(2)));
+    assert_eq!(src.chosen(), ["en_ult"]);
+    src.opened(&open_of(&bet, 3));
+    assert!(
+        src.gateway.is_none() && src.rows.is_empty(),
+        "INV-RESOURCE-ANSWER-HAS-AN-OWNER: one project's package rows are shown in another's dialog"
+    );
+    // A late answer for the first project, for the same package and book, is not bet's.
+    src.pick(en.clone());
+    let mine = started(&mut src, &bet);
+    src.rows_read(&first, vec![row(PackageRole::Notes, "en_tn")]);
+    src.rows_failed(&first, "late".into());
+    assert!(
+        src.rows.is_empty() && src.error.is_none() && src.loading,
+        "INV-RESOURCE-ANSWER-HAS-AN-OWNER: rows read for one project are shown for another"
+    );
+    src.rows_read(&mine, vec![row(PackageRole::ObsText, "en_obs")]);
+    assert_eq!(src.chosen(), ["en_obs"]);
+}
+
+#[test]
+fn an_earlier_opens_late_catalog_answer_never_replaces_the_rows_read_since() {
+    // #982 requirement 8: the same project, package and book, read before the project was
+    // opened again, answer after the read made since.
+    let bet = ProjectRef::parse("bet").unwrap();
+    let en = package("en", "unfoldingWord");
+    let mut src = form();
+    src.pick(en.clone());
+    let before = started(&mut src, &alef());
+    src.opened(&open_of(&bet, 2));
+    src.opened(&open(3));
+    src.pick(en.clone());
+    let since = started(&mut src, &alef());
+    src.rows_read(&since, vec![row(PackageRole::Text, "en_ult")]);
+    src.rows_failed(&before, "late".into());
+    src.rows_read(&before, vec![row(PackageRole::Notes, "en_tn")]);
+    assert!(
+        src.error.is_none() && !src.loading && src.chosen() == ["en_ult"],
+        "INV-RESOURCE-ANSWER-HAS-AN-OWNER: an earlier read's answer replaced the rows read since"
+    );
+    // Within one open too: a package left and chosen again reads again, and the first read's
+    // failure is not shown over the second's rows.
+    src.change_gateway();
+    src.pick(en.clone());
+    let again = started(&mut src, &alef());
+    src.rows_read(&again, vec![row(PackageRole::Text, "en_ult")]);
+    src.rows_failed(&since, "late".into());
+    assert!(src.error.is_none() && src.chosen() == ["en_ult"]);
+}
+
+#[test]
+fn a_read_from_before_the_same_project_was_opened_again_is_dropped_and_read_again() {
+    // #982 requirement 8, with nothing read since: A, Home, A again, then A's first answer.
+    let en = package("en", "unfoldingWord");
+    let mut src = form();
+    src.pick(en.clone());
+    let before = started(&mut src, &alef());
+    assert!(
+        src.opened(&open(2)),
+        "INV-BUSY-ENDS-WITH-ITS-WORK: the new open does not read the rows it waits for"
+    );
+    src.rows_failed(&before, "late".into());
+    src.rows_read(&before, vec![row(PackageRole::Notes, "en_tn")]);
+    assert!(
+        src.error.is_none() && src.rows.is_empty() && src.loading,
+        "INV-RESOURCE-ANSWER-HAS-AN-OWNER: an answer from before the reopening is shown"
+    );
+    let again = started(&mut src, &alef());
+    src.rows_read(&again, vec![row(PackageRole::Text, "en_ult")]);
+    assert!(!src.loading && src.chosen() == ["en_ult"]);
+    // The dialog closed and opened again in the same open drops nothing.
+    let same = started(&mut src, &alef());
+    assert!(!src.opened(&open(2)));
+    src.rows_read(&same, vec![row(PackageRole::Text, "en_ult")]);
+    assert_eq!(src.chosen(), ["en_ult"]);
+}
+
 fn rid(n: u8) -> RequestId {
     RequestId::from_bytes([n; 16])
+}
+
+/// One open of the project: the same project opened again has another epoch.
+fn open(epoch: u64) -> Scope {
+    Scope {
+        project: ProjectRef::parse("alef").unwrap(),
+        epoch: Epoch::new(epoch),
+    }
+}
+
+/// Step 2 on English with the rows of `book` read.
+fn on_book(src: &mut SourcesForm, book: BookId) {
+    let en = package("en", "unfoldingWord");
+    if src.gateway.as_ref() != Some(&en) {
+        src.pick(en.clone());
+    }
+    src.set_book(book);
+    let read = started(src, &alef());
+    src.rows_read(
+        &read,
+        vec![
+            row(PackageRole::Text, "en_ult"),
+            row(PackageRole::Notes, "en_tn"),
+        ],
+    );
+}
+
+#[test]
+fn a_download_keeps_its_cancel_and_names_what_it_fetched_whatever_is_chosen_meanwhile() {
+    let here = open(1);
+    let mut src = form();
+    on_book(&mut src, BookId::Hebrews);
+    let (request, what) = src.download_pressed(&here, rid(1)).unwrap();
+    assert!(
+        src.download_pressed(&here, rid(2)).is_none() && !src.can_download(Some(&here)),
+        "INV-BUSY-ENDS-WITH-ITS-WORK: a second press before the job starts another download"
+    );
+    src.download_started(request, JobId::new(7));
+    // Another book, a row left out, back to step 1, another open of the project.
+    on_book(&mut src, BookId::Titus);
+    src.toggle(&row(PackageRole::Notes, "en_tn"));
+    src.change_gateway();
+    for at in [Some(&here), Some(&open(2)), None] {
+        assert!(
+            src.downloading() && !src.can_download(at),
+            "INV-BUSY-ENDS-WITH-ITS-WORK: a running download lost its Cancel or offers Download"
+        );
+    }
+    assert!(matches!(src.dl(), Dl::Running { job, .. } if *job == JobId::new(7)));
+    on_book(&mut src, BookId::Titus);
+    src.download_ended(JobId::new(7), DlEnd::Done(Downloaded::Fetched));
+    assert_eq!(
+        *src.dl(),
+        Dl::Finished {
+            what: what.clone(),
+            outcome: Downloaded::Fetched
+        },
+        "INV-DOWNLOAD-NAMES-WHAT-IT-FETCHED: the finished download names another selection"
+    );
+    assert_eq!(what.book, BookId::Hebrews);
+    assert!(
+        src.can_download(Some(&here)),
+        "Titus was not downloaded: it is offered"
+    );
+}
+
+#[test]
+fn a_download_that_ends_on_step_one_keeps_its_named_line_until_the_next_choice() {
+    let here = open(1);
+    let mut src = form();
+    on_book(&mut src, BookId::Hebrews);
+    let (request, what) = src.download_pressed(&here, rid(1)).unwrap();
+    src.download_started(request, JobId::new(3));
+    src.change_gateway();
+    assert!(src.gateway.is_none() && src.has_line());
+    src.download_ended(JobId::new(3), DlEnd::Done(Downloaded::Fetched));
+    assert!(src.has_line(), "the finished line went on step 1");
+    assert_eq!(
+        *src.dl(),
+        Dl::Finished {
+            what,
+            outcome: Downloaded::Fetched
+        },
+        "INV-DOWNLOAD-NAMES-WHAT-IT-FETCHED: the line on step 1 names another selection"
+    );
+    src.pick(package("en", "unfoldingWord"));
+    assert!(!src.has_line(), "a choice takes the finished line away");
+}
+
+#[test]
+fn what_just_finished_is_not_offered_again_in_its_open_until_the_person_chooses_again() {
+    let here = open(1);
+    let mut src = form();
+    on_book(&mut src, BookId::Titus);
+    let (request, _) = src.download_pressed(&here, rid(1)).unwrap();
+    src.download_started(request, JobId::new(1));
+    src.download_ended(JobId::new(1), DlEnd::Done(Downloaded::AlreadyHere));
+    assert!(!src.can_download(Some(&here)));
+    assert!(
+        src.can_download(Some(&open(2))),
+        "a download fetches at its own project's pins: another open is offered it"
+    );
+    src.toggle(&row(PackageRole::Notes, "en_tn"));
+    assert!(
+        *src.dl() == Dl::Idle && src.can_download(Some(&here)),
+        "a choice takes the finished line away and offers Download"
+    );
+}
+
+#[test]
+fn a_lost_answer_is_asked_again_as_the_same_request_only_for_the_same_selection() {
+    let here = open(1);
+    let mut src = form();
+    on_book(&mut src, BookId::Titus);
+    let (request, _) = src.download_pressed(&here, rid(1)).unwrap();
+    src.download_unanswered(request, Some("no answer".into()));
+    assert!(!src.downloading());
+    assert_eq!(src.error.as_deref(), Some("no answer"));
+    let (again, _) = src.download_pressed(&here, rid(2)).unwrap();
+    assert_eq!(
+        again,
+        rid(1),
+        "INV-ONE-REQUEST-PER-ATTEMPT: the retry was sent as another request"
+    );
+    src.download_unanswered(again, None);
+    on_book(&mut src, BookId::Hebrews);
+    let (other, _) = src.download_pressed(&here, rid(3)).unwrap();
+    assert_eq!(other, rid(3), "another selection is another request");
+    // A refusal ends the attempt: the next press is a new request.
+    src.download_refused(other, Some("refused".into()));
+    assert_eq!(src.error.as_deref(), Some("refused"));
+    assert_eq!(src.download_pressed(&here, rid(4)).unwrap().0, rid(4));
+}
+
+#[test]
+fn a_download_that_is_not_sent_or_fails_is_under_way_no_more() {
+    let here = open(1);
+    let mut src = form();
+    on_book(&mut src, BookId::Titus);
+    src.download_pressed(&here, rid(1)).unwrap();
+    src.download_not_sent();
+    assert!(!src.downloading() && src.can_download(Some(&here)));
+    let (request, _) = src.download_pressed(&here, rid(2)).unwrap();
+    src.download_asked_again(request, rid(3));
+    assert_eq!(src.starting().unwrap().0, rid(3));
+    src.download_started(rid(3), JobId::new(1));
+    // The person moved to another book: the failure of the Titus download is not said there.
+    on_book(&mut src, BookId::Hebrews);
+    src.download_failed(JobId::new(1), rid(9));
+    src.download_refused(rid(9), Some("no route".into()));
+    assert!(
+        !src.downloading() && src.error.is_none(),
+        "INV-RESOURCE-ANSWER-HAS-AN-OWNER: a failure is said for another book"
+    );
+    let (request, _) = src.download_pressed(&here, rid(4)).unwrap();
+    src.download_started(request, JobId::new(2));
+    src.download_ended(JobId::new(9), DlEnd::Stopped);
+    assert!(src.downloading(), "another job's end changes nothing");
+    // The job failed for the internet: its selection waits for the question, and a question
+    // that is dropped leaves nothing waiting.
+    src.download_failed(JobId::new(2), rid(5));
+    assert_eq!(src.starting().unwrap().0, rid(5));
+    src.download_not_sent();
+    assert_eq!(
+        *src.dl(),
+        Dl::Idle,
+        "INV-BUSY-ENDS-WITH-ITS-WORK: a dropped question leaves the download waiting"
+    );
+}
+
+/// What a person and the server can do to the download.
+#[derive(Debug, Clone)]
+enum DlStep {
+    /// A project opens: a new open is on screen.
+    Open,
+    Home,
+    Book(bool),
+    Toggle,
+    StepOne,
+    Press,
+    Start(StartKind),
+    End(EndKind),
+}
+
+#[derive(Debug, Clone, Copy)]
+enum StartKind {
+    Job,
+    Refused,
+    Unanswered,
+    AskedAgain,
+    NotNow,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum EndKind {
+    Done,
+    Stopped,
+    Failed,
+    AskedAgain,
+    DroppedQuestion,
+}
+
+fn arb_dl_step() -> impl Strategy<Value = DlStep> {
+    let start = prop_oneof![
+        Just(StartKind::Job),
+        Just(StartKind::Refused),
+        Just(StartKind::Unanswered),
+        Just(StartKind::AskedAgain),
+        Just(StartKind::NotNow)
+    ];
+    let end = prop_oneof![
+        Just(EndKind::Done),
+        Just(EndKind::Stopped),
+        Just(EndKind::Failed),
+        Just(EndKind::AskedAgain),
+        Just(EndKind::DroppedQuestion)
+    ];
+    prop_oneof![
+        Just(DlStep::Open),
+        Just(DlStep::Home),
+        any::<bool>().prop_map(DlStep::Book),
+        Just(DlStep::Toggle),
+        Just(DlStep::StepOne),
+        Just(DlStep::Press),
+        start.prop_map(DlStep::Start),
+        end.prop_map(DlStep::End),
+    ]
+}
+
+proptest! {
+    /// INV-BUSY-ENDS-WITH-ITS-WORK and INV-DOWNLOAD-NAMES-WHAT-IT-FETCHED over any order of
+    /// opens, leaves, choices, presses and answers: the download is under way exactly from an
+    /// accepted press to its end, one at most, nothing the person chooses meanwhile changes
+    /// it, and what finished is named by the selection of its own press.
+    #[test]
+    fn a_download_is_under_way_from_its_press_to_its_end_on_every_sequence(
+        steps in proptest::collection::vec(arb_dl_step(), 0..80),
+    ) {
+        let mut src = form();
+        let mut epoch = 0;
+        let mut here: Option<Scope> = None;
+        let mut next = 0u8;
+        // The model: the selection of the accepted press, and the job once the server gave one.
+        let mut pressed: Option<tc_ui::app::sources::Selection> = None;
+        let mut request: Option<RequestId> = None;
+        let mut job: Option<JobId> = None;
+        for step in steps {
+            match step {
+                DlStep::Open => {
+                    epoch += 1;
+                    here = Some(open(epoch));
+                }
+                DlStep::Home => here = None,
+                DlStep::Book(titus) => on_book(&mut src, if titus { BookId::Titus } else { BookId::Hebrews }),
+                DlStep::Toggle => src.toggle(&row(PackageRole::Notes, "en_tn")),
+                DlStep::StepOne => src.change_gateway(),
+                DlStep::Press => {
+                    if let Some(at) = &here {
+                        next += 1;
+                        let taken = src.download_pressed(at, rid(next));
+                        if pressed.is_some() {
+                            prop_assert!(taken.is_none(), "INV-BUSY-ENDS-WITH-ITS-WORK: a second download started");
+                        }
+                        if let Some((sent, what)) = taken {
+                            prop_assert_eq!(&what.at, at);
+                            prop_assert_eq!(what.book, src.book);
+                            prop_assert_eq!(&what.repos, &src.chosen());
+                            pressed = Some(what);
+                            request = Some(sent);
+                        }
+                    }
+                }
+                DlStep::Start(kind) => {
+                    if let (Some(sent), None) = (request, job) {
+                        match kind {
+                            StartKind::Job => {
+                                job = Some(JobId::new(u64::from(next)));
+                                src.download_started(sent, JobId::new(u64::from(next)));
+                            }
+                            StartKind::Refused => {
+                                src.download_refused(sent, Some("refused".into()));
+                                (pressed, request) = (None, None);
+                            }
+                            StartKind::Unanswered => {
+                                src.download_unanswered(sent, Some("lost".into()));
+                                (pressed, request) = (None, None);
+                            }
+                            StartKind::AskedAgain => {
+                                next += 1;
+                                src.download_asked_again(sent, rid(next));
+                                request = Some(rid(next));
+                            }
+                            StartKind::NotNow => {
+                                src.download_not_sent();
+                                (pressed, request) = (None, None);
+                            }
+                        }
+                    }
+                }
+                DlStep::End(kind) => {
+                    if let Some(running) = job.take() {
+                        let what = pressed.take().unwrap();
+                        request = None;
+                        match kind {
+                            EndKind::Done => {
+                                src.download_ended(running, DlEnd::Done(Downloaded::Fetched));
+                                prop_assert_eq!(
+                                    src.dl(),
+                                    &Dl::Finished { what, outcome: Downloaded::Fetched },
+                                    "INV-DOWNLOAD-NAMES-WHAT-IT-FETCHED: the finished download names another selection"
+                                );
+                            }
+                            EndKind::Stopped => src.download_ended(running, DlEnd::Stopped),
+                            EndKind::Failed => {
+                                next += 1;
+                                src.download_failed(running, rid(next));
+                                src.download_refused(rid(next), Some("no".into()));
+                            }
+                            // The internet question: asked, so the selection waits, or dropped.
+                            EndKind::AskedAgain => {
+                                next += 1;
+                                src.download_failed(running, rid(next));
+                                pressed = Some(what);
+                                request = Some(rid(next));
+                            }
+                            EndKind::DroppedQuestion => {
+                                next += 1;
+                                src.download_failed(running, rid(next));
+                                src.download_not_sent();
+                            }
+                        }
+                    }
+                }
+            }
+            prop_assert_eq!(
+                src.downloading(), pressed.is_some(),
+                "INV-BUSY-ENDS-WITH-ITS-WORK: under way {} with a download pressed and not ended {}",
+                src.downloading(), pressed.is_some()
+            );
+            prop_assert_eq!(
+                matches!(src.dl(), Dl::Running { .. }), job.is_some(),
+                "INV-BUSY-ENDS-WITH-ITS-WORK: Cancel is offered {} with a job running {}",
+                matches!(src.dl(), Dl::Running { .. }), job.is_some()
+            );
+            if pressed.is_some() {
+                prop_assert!(
+                    !src.can_download(here.as_ref()),
+                    "INV-BUSY-ENDS-WITH-ITS-WORK: Download is offered while one is under way"
+                );
+            }
+            match src.dl() {
+                Dl::Starting { what, .. } | Dl::Running { what, .. } => {
+                    prop_assert_eq!(Some(what), pressed.as_ref(), "INV-DOWNLOAD-NAMES-WHAT-IT-FETCHED: the download under way changed its selection");
+                }
+                Dl::Idle | Dl::Finished { .. } | Dl::Unanswered { .. } => {}
+            }
+        }
+    }
 }
 
 /// tC4 `saveSettings` and AD14: Save is for the values the dialog showed, sends the direction

@@ -3,8 +3,8 @@
 //! and the download are the server's.
 
 use tc_api::home::{HomeCard, ProjectKind};
-use tc_api::ids::{JobId, ProjectRef, RequestId};
-use tc_api::resources::{GatewayPackage, PackageRow, SourcesView};
+use tc_api::ids::{JobId, ProjectRef, RequestId, Scope};
+use tc_api::resources::{Downloaded, GatewayPackage, PackageRow, SourcesView};
 use tc_api::settings::{GatewayCard, Save, SettingsView, ShownValues};
 use tc_api::shown::{Direction, Known};
 use tc_core::BookId;
@@ -154,23 +154,69 @@ impl SettingsForm {
     }
 }
 
-/// Where a download stands (tC4's `src.dl`).
+/// What one download fetches, fixed at the press of Download
+/// (INV-DOWNLOAD-NAMES-WHAT-IT-FETCHED): what the dialog shows afterwards never changes it.
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Selection {
+    /// The open the press was made in.
+    pub at: Scope,
+    pub gateway: GatewayPackage,
+    pub book: BookId,
+    pub repos: Vec<String>,
+}
+
+/// Where the computer's one download stands (tC4's `src.dl`). What it installs is for every
+/// project, so it belongs to no open: the dialog of any project shows it and can cancel it.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum Dl {
+    #[default]
+    Idle,
+    /// Download was pressed; the server has given no job yet.
+    Starting { request: RequestId, what: Selection },
     /// `sources.progress` names the repository being fetched; before the first report,
     /// `sources.downloading`.
-    Run {
+    Running {
+        what: Selection,
         job: JobId,
         repo: Option<String>,
     },
-    Done(tc_api::resources::Downloaded),
+    Finished {
+        what: Selection,
+        outcome: Downloaded,
+    },
+    /// The server's answer to the start was lost. The next press of the same selection sends
+    /// `request` again, which the server's reply cache answers, so one job starts at most.
+    Unanswered { request: RequestId, what: Selection },
+}
+
+/// How a download's job ended, when it did not fail.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DlEnd {
+    Done(Downloaded),
+    /// Cancelled, or the job is gone.
+    Stopped,
+}
+
+/// One read of a package's rows: what it was started for, and its attempt
+/// (INV-RESOURCE-ANSWER-HAS-AN-OWNER). Only the latest attempt's answer is shown, so an
+/// earlier read of the same project, package and book never replaces a later one's.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CatalogRead {
+    pub project: ProjectRef,
+    pub gateway: GatewayPackage,
+    pub book: BookId,
+    attempt: u64,
 }
 
 /// tC4's `src`: kept across the dialog's openings, as tC4 keeps it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourcesForm {
-    /// Step 1's packages for the open project.
-    pub packages: Option<SourcesView>,
+    /// The open the dialog was last opened in. A package's rows depend on the project (a
+    /// Bible's differ from a story project's), so they are kept only for this one.
+    open: Option<Scope>,
+    /// Step 1's packages, with the open they were read for
+    /// (INV-RESOURCE-ANSWER-HAS-AN-OWNER): another open never reads them as its own.
+    packages: Option<(Scope, SourcesView)>,
     /// Step 2's package, once one is chosen.
     pub gateway: Option<GatewayPackage>,
     pub book: BookId,
@@ -181,12 +227,15 @@ pub struct SourcesForm {
     pub error: Option<String>,
     /// The person answered Not now to the internet question: the catalog was not read.
     pub needs_internet: bool,
-    pub dl: Option<Dl>,
+    /// The attempt of the latest read of the rows (`CatalogRead`).
+    read: u64,
+    dl: Dl,
 }
 
 impl Default for SourcesForm {
     fn default() -> Self {
         Self {
+            open: None,
             packages: None,
             gateway: None,
             book: BookId::Titus,
@@ -195,12 +244,38 @@ impl Default for SourcesForm {
             loading: false,
             error: None,
             needs_internet: false,
-            dl: None,
+            read: 0,
+            dl: Dl::Idle,
         }
     }
 }
 
 impl SourcesForm {
+    /// The dialog opens in `at` (INV-RESOURCE-ANSWER-HAS-AN-OWNER). In another project than
+    /// last time it starts at step 1: the package, its rows and what was left out were read and
+    /// chosen for the other one. In another open of the same project the choices stay, as tC4
+    /// keeps them, but no read started before is answered (#982 requirement 8): true when the
+    /// chosen package's rows were still being read, so this open reads them again. A download
+    /// under way is the computer's and stays.
+    pub fn opened(&mut self, at: &Scope) -> bool {
+        let before = self.open.replace(at.clone());
+        if before.as_ref() == Some(at) {
+            return false;
+        }
+        self.read += 1;
+        if before.is_some_and(|open| open.project == at.project) {
+            return self.loading && self.gateway.is_some();
+        }
+        self.gateway = None;
+        self.rows.clear();
+        self.exclude.clear();
+        self.loading = false;
+        self.error = None;
+        self.needs_internet = false;
+        self.chose();
+        false
+    }
+
     /// Whether a row is in the download: a fixed row always is.
     pub fn on(&self, row: &PackageRow) -> bool {
         row.role.fixed() || !self.exclude.contains(&row.key())
@@ -215,7 +290,7 @@ impl SourcesForm {
         if !self.exclude.remove(&key) {
             self.exclude.insert(key);
         }
-        self.dl = None;
+        self.chose();
     }
 
     /// The repositories a download fetches, in the rows' order.
@@ -230,7 +305,7 @@ impl SourcesForm {
     /// A package was chosen (tC4 `pickGateway`).
     pub fn pick(&mut self, gateway: GatewayPackage) {
         self.gateway = Some(gateway);
-        self.dl = None;
+        self.chose();
         self.reading();
     }
 
@@ -239,13 +314,13 @@ impl SourcesForm {
         self.gateway = None;
         self.rows.clear();
         self.error = None;
-        self.dl = None;
+        self.chose();
     }
 
     /// Another book (tC4 `setSourceBook`).
     pub fn set_book(&mut self, book: BookId) {
         self.book = book;
-        self.dl = None;
+        self.chose();
         self.reading();
     }
 
@@ -256,19 +331,44 @@ impl SourcesForm {
         self.needs_internet = false;
     }
 
-    /// The rows of `gateway` and `book` came. Rows for a package or book the person has left
-    /// meanwhile are not shown.
-    pub fn rows_read(&mut self, gateway: &GatewayPackage, book: BookId, rows: Vec<PackageRow>) {
-        if self.gateway.as_ref() != Some(gateway) || self.book != book {
+    /// The rows of the chosen package and book are read now, for `project`: the read to answer
+    /// with, or `None` when no package is chosen. Every earlier read's answer is dropped from
+    /// here on.
+    pub fn catalog_started(&mut self, project: ProjectRef) -> Option<CatalogRead> {
+        let gateway = self.gateway.clone()?;
+        self.read += 1;
+        self.loading = true;
+        self.needs_internet = false;
+        Some(CatalogRead {
+            project,
+            gateway,
+            book: self.book,
+            attempt: self.read,
+        })
+    }
+
+    /// Whether the answer to `read` is what the dialog waits for now: the project, package
+    /// and book it shows, and its latest read of them.
+    fn reads(&self, read: &CatalogRead) -> bool {
+        self.open.as_ref().map(|open| &open.project) == Some(&read.project)
+            && self.gateway.as_ref() == Some(&read.gateway)
+            && self.book == read.book
+            && self.read == read.attempt
+    }
+
+    /// The rows of `read` came. Rows for a project, a package or a book the person has left
+    /// meanwhile, or for a read a later one has replaced, are not shown.
+    pub fn rows_read(&mut self, read: &CatalogRead, rows: Vec<PackageRow>) {
+        if !self.reads(read) {
             return;
         }
         self.loading = false;
         self.rows = rows;
     }
 
-    /// The catalog could not be read: `sources.catalogError`'s reason.
-    pub fn rows_failed(&mut self, gateway: &GatewayPackage, book: BookId, reason: String) {
-        if self.gateway.as_ref() != Some(gateway) || self.book != book {
+    /// The catalog could not be read for `read`: `sources.catalogError`'s reason.
+    pub fn rows_failed(&mut self, read: &CatalogRead, reason: String) {
+        if !self.reads(read) {
             return;
         }
         self.loading = false;
@@ -282,23 +382,244 @@ impl SourcesForm {
         self.needs_internet = true;
     }
 
-    /// Whether the footer offers Download: a package with rows and no download under way or
-    /// finished.
-    pub fn can_download(&self) -> bool {
-        self.dl.is_none() && !self.rows.is_empty()
+    /// What Download would fetch now, pressed in `at`: nothing without a package or a row.
+    fn selection(&self, at: &Scope) -> Option<Selection> {
+        let repos = self.chosen();
+        let gateway = self.gateway.clone().filter(|_| !repos.is_empty())?;
+        Some(Selection {
+            at: at.clone(),
+            gateway,
+            book: self.book,
+            repos,
+        })
     }
 
-    /// Whether `gateway` is the project's checking language.
-    pub fn is_current(&self, gateway: &GatewayPackage) -> bool {
+    /// Where the download stands.
+    pub fn dl(&self) -> &Dl {
+        &self.dl
+    }
+
+    /// Whether a download is under way (INV-BUSY-ENDS-WITH-ITS-WORK): from the press until its
+    /// job ends, whatever the dialog shows meanwhile.
+    pub fn downloading(&self) -> bool {
+        matches!(self.dl, Dl::Starting { .. } | Dl::Running { .. })
+    }
+
+    /// Whether the download has a line to show: under way, or finished and not yet followed
+    /// by a choice. Step 1 keeps its footer for it, so a download that ends there is still
+    /// named (#982 requirement 5).
+    pub fn has_line(&self) -> bool {
+        matches!(
+            self.dl,
+            Dl::Starting { .. } | Dl::Running { .. } | Dl::Finished { .. }
+        )
+    }
+
+    /// Whether the footer offers Download in `here`: a package with rows, no download under
+    /// way, and not the selection that just finished in this open. A download fetches at the
+    /// open project's pins, so one that finished in another open says nothing about this one.
+    pub fn can_download(&self, here: Option<&Scope>) -> bool {
+        let Some(now) = here.and_then(|at| self.selection(at)) else {
+            return false;
+        };
+        match &self.dl {
+            Dl::Idle | Dl::Unanswered { .. } => true,
+            Dl::Starting { .. } | Dl::Running { .. } => false,
+            Dl::Finished { what, .. } => *what != now,
+        }
+    }
+
+    /// Download was pressed in `at`: the selection it fetches and the request to send it as,
+    /// or `None` when it is not offered. `fresh` is the request of a new attempt; a press that
+    /// follows a lost answer for the same selection sends that attempt's request again.
+    pub fn download_pressed(
+        &mut self,
+        at: &Scope,
+        fresh: RequestId,
+    ) -> Option<(RequestId, Selection)> {
+        if !self.can_download(Some(at)) {
+            return None;
+        }
+        let what = self.selection(at)?;
+        let request = match &self.dl {
+            Dl::Unanswered {
+                request,
+                what: lost,
+            } if *lost == what => *request,
+            Dl::Idle
+            | Dl::Unanswered { .. }
+            | Dl::Starting { .. }
+            | Dl::Running { .. }
+            | Dl::Finished { .. } => fresh,
+        };
+        self.error = None;
+        self.dl = Dl::Starting {
+            request,
+            what: what.clone(),
+        };
+        Some((request, what))
+    }
+
+    /// The press that waits to be sent, once the internet is on.
+    pub fn starting(&self) -> Option<(RequestId, Selection)> {
+        match &self.dl {
+            Dl::Starting { request, what } => Some((*request, what.clone())),
+            Dl::Idle | Dl::Running { .. } | Dl::Finished { .. } | Dl::Unanswered { .. } => None,
+        }
+    }
+
+    /// Whether `what` is the package and book the dialog shows.
+    fn shows(&self, what: &Selection) -> bool {
+        self.gateway.as_ref() == Some(&what.gateway) && self.book == what.book
+    }
+
+    /// Not now at the internet question: nothing was sent.
+    pub fn download_not_sent(&mut self) {
+        if matches!(self.dl, Dl::Starting { .. }) {
+            self.dl = Dl::Idle;
+        }
+    }
+
+    /// The internet question was asked again for `request`: the same selection waits for its
+    /// answer, to be sent as `next`.
+    pub fn download_asked_again(&mut self, request: RequestId, next: RequestId) {
+        if let Dl::Starting { request: sent, .. } = &mut self.dl
+            && *sent == request
+        {
+            *sent = next;
+        }
+    }
+
+    /// The server started `job` for `request`.
+    pub fn download_started(&mut self, request: RequestId, job: JobId) {
+        if let Dl::Starting {
+            request: sent,
+            what,
+        } = &self.dl
+            && *sent == request
+        {
+            self.dl = Dl::Running {
+                what: what.clone(),
+                job,
+                repo: None,
+            };
+        }
+    }
+
+    /// The server refused `request`: `reason` in tC4's words, or `None` when the open it was
+    /// pressed in is not on screen. The next press is a new attempt.
+    pub fn download_refused(&mut self, request: RequestId, reason: Option<String>) {
+        if let Dl::Starting {
+            request: sent,
+            what,
+        } = &self.dl
+            && *sent == request
+        {
+            if self.shows(what) && reason.is_some() {
+                self.error = reason;
+            }
+            self.dl = Dl::Idle;
+        }
+    }
+
+    /// No answer came for `request`: it may have reached the server.
+    pub fn download_unanswered(&mut self, request: RequestId, reason: Option<String>) {
+        if let Dl::Starting {
+            request: sent,
+            what,
+        } = &self.dl
+            && *sent == request
+        {
+            if self.shows(what) && reason.is_some() {
+                self.error = reason;
+            }
+            self.dl = Dl::Unanswered {
+                request,
+                what: what.clone(),
+            };
+        }
+    }
+
+    /// `job` installs `repo` now.
+    pub fn download_progress(&mut self, job: JobId, repo: String) {
+        if let Dl::Running {
+            job: running,
+            repo: shown,
+            ..
+        } = &mut self.dl
+            && *running == job
+        {
+            *shown = Some(repo);
+        }
+    }
+
+    /// `job` ended without a failure: the download is under way no more.
+    pub fn download_ended(&mut self, job: JobId, end: DlEnd) {
+        let Dl::Running {
+            what, job: running, ..
+        } = &self.dl
+        else {
+            return;
+        };
+        if *running != job {
+            return;
+        }
+        let what = what.clone();
+        self.dl = match end {
+            DlEnd::Done(outcome) => Dl::Finished { what, outcome },
+            DlEnd::Stopped => Dl::Idle,
+        };
+    }
+
+    /// `job` failed. Its selection waits as `retry` until the failure is sorted, which the
+    /// caller does at once: the internet question sends it again or drops it
+    /// (`download_not_sent`), and any other failure refuses it (`download_refused`). No path
+    /// leaves it waiting.
+    pub fn download_failed(&mut self, job: JobId, retry: RequestId) {
+        if let Dl::Running {
+            what, job: running, ..
+        } = &self.dl
+            && *running == job
+        {
+            self.dl = Dl::Starting {
+                request: retry,
+                what: what.clone(),
+            };
+        }
+    }
+
+    /// The person chose again: a finished download's line goes, and Download is offered for
+    /// what is chosen now. A download under way is not touched.
+    fn chose(&mut self) {
+        if matches!(self.dl, Dl::Finished { .. }) {
+            self.dl = Dl::Idle;
+        }
+    }
+
+    /// Step 1's packages of `here`, the open on screen: none until its own read comes.
+    pub fn packages(&self, here: Option<&Scope>) -> Option<&SourcesView> {
         self.packages
             .as_ref()
+            .filter(|(at, _)| Some(at) == here)
+            .map(|(_, view)| view)
+    }
+
+    /// The packages of `at` were read. Reads of two opens can come in either order: each
+    /// keeps its owner, so the later one never passes for the open on screen.
+    pub fn packages_read(&mut self, at: Scope, view: SourcesView) {
+        self.packages = Some((at, view));
+    }
+
+    /// Whether `gateway` is the checking language of `here`.
+    pub fn is_current(&self, here: Option<&Scope>, gateway: &GatewayPackage) -> bool {
+        self.packages(here)
             .and_then(|p| p.current.as_ref())
             .is_some_and(|current| current.is_same_package(&gateway.gateway))
     }
 
     /// Whether this computer holds `gateway`'s whole suite (tC4 `isCheckableGateway`).
-    pub fn is_checkable(&self, gateway: &GatewayPackage) -> bool {
-        self.packages.as_ref().is_some_and(|p| match &p.checkable {
+    pub fn is_checkable(&self, here: Option<&Scope>, gateway: &GatewayPackage) -> bool {
+        self.packages(here).is_some_and(|p| match &p.checkable {
             tc_api::resources::FromInstalls::Listed(keys) => keys.contains(&gateway.gateway),
             tc_api::resources::FromInstalls::Failed { .. } => false,
         })

@@ -239,7 +239,9 @@ impl Actions {
                 .with_untracked(|p| p.as_ref().is_some_and(|p| p.at == asked.at));
             match planned {
                 Ok(plan) if same_project => {
-                    this.s().up.try_update(|up| up.plan_ready(plan));
+                    this.s()
+                        .up
+                        .try_update(|up| up.repin_ready(asked.at.clone(), plan));
                     // The confirmation takes over: one dialog at a time.
                     if this.patch_fix(id, FixScreen::stopped).is_some() {
                         this.close_modal();
