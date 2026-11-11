@@ -340,7 +340,10 @@ impl SourcesForm {
     /// by a choice. Step 1 keeps its footer for it, so a download that ends there is still
     /// named (#982 requirement 5).
     pub fn has_line(&self) -> bool {
-        matches!(self.dl, Dl::Starting { .. } | Dl::Running { .. } | Dl::Finished { .. })
+        matches!(
+            self.dl,
+            Dl::Starting { .. } | Dl::Running { .. } | Dl::Finished { .. }
+        )
     }
 
     /// Whether the footer offers Download in `here`: a package with rows, no download under
