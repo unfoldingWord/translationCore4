@@ -136,10 +136,20 @@ impl Actions {
         }
         let this = self.clone();
         spawn_local(async move {
-            if let Ok(view) = this.runtime().api().call(&Sources { at }).await {
-                this.s().src.try_update(|src| src.packages = Some(view));
-            }
+            this.read_packages(at).await;
         });
+    }
+
+    /// Reads step 1's packages for `at` (INV-RESOURCE-ANSWER-HAS-AN-OWNER): the one place they
+    /// are read. An answer that comes after its open left the screen is dropped, so it never
+    /// takes the place of the packages the open on screen has read.
+    pub(super) async fn read_packages(&self, at: tc_api::Scope) {
+        let read = Sources { at: at.clone() };
+        if let Ok(view) = self.runtime().api().call(&read).await
+            && self.shows(&at)
+        {
+            self.patch_src(|src| src.packages_read(at, view));
+        }
     }
 
     pub fn patch_src(&self, patch: impl FnOnce(&mut SourcesForm)) {
@@ -322,12 +332,7 @@ impl Actions {
                     ..ChangeParts::default()
                 });
                 this.runtime().cache().changed(&now, &installed);
-                let read = Sources { at: now.clone() };
-                if let Ok(view) = this.runtime().api().call(&read).await
-                    && this.shows(&now)
-                {
-                    this.patch_src(|src| src.packages = Some(view));
-                }
+                this.read_packages(now).await;
             }
         });
     }

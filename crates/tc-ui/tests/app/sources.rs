@@ -172,16 +172,29 @@ fn rows_for_a_package_or_book_left_meanwhile_are_not_shown() {
 
 #[test]
 fn the_current_package_compares_its_owner_without_letter_case() {
+    let (alef, bet) = (open(1), open(2));
     let mut src = SourcesForm::default();
-    src.packages = Some(SourcesView {
-        gateways: Vec::new(),
-        current: Some(gateway("es-419", "ES-419_GL")),
-        checkable: FromInstalls::Listed(vec![gateway("en", "unfoldingWord")]),
-        pinned: true,
-    });
-    assert!(src.is_current(&package("es-419", "es-419_gl")));
-    assert!(!src.is_current(&package("en", "unfoldingWord")));
-    assert!(src.is_checkable(&package("en", "unfoldingWord")));
+    src.packages_read(
+        alef.clone(),
+        SourcesView {
+            gateways: Vec::new(),
+            current: Some(gateway("es-419", "ES-419_GL")),
+            checkable: FromInstalls::Listed(vec![gateway("en", "unfoldingWord")]),
+            pinned: true,
+        },
+    );
+    assert!(src.is_current(Some(&alef), &package("es-419", "es-419_gl")));
+    assert!(!src.is_current(Some(&alef), &package("en", "unfoldingWord")));
+    assert!(src.is_checkable(Some(&alef), &package("en", "unfoldingWord")));
+    // Another open, and Home, never read alef's packages as their own.
+    for other in [Some(&bet), None] {
+        assert!(
+            src.packages(other).is_none()
+                && !src.is_current(other, &package("es-419", "es-419_gl"))
+                && !src.is_checkable(other, &package("en", "unfoldingWord")),
+            "INV-RESOURCE-ANSWER-HAS-AN-OWNER: one open's packages are shown for another"
+        );
+    }
     src.not_read();
     assert!(src.needs_internet);
 }

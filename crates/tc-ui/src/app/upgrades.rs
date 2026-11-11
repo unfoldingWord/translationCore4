@@ -66,18 +66,38 @@ pub struct Preview {
     pub applying: bool,
 }
 
+/// One open's upgrade (INV-RESOURCE-ANSWER-HAS-AN-OWNER): the install, then the confirmation,
+/// and what went wrong. Every answer names the open it was started for, and every reader the
+/// open on screen, so one project's install or confirmation never shows over another.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Flow {
+    at: Scope,
+    installing: Option<Installing>,
+    /// The repository being downloaded (`sources.progress`).
+    progress: Option<String>,
+    /// A failed install or confirm, in tC4's words.
+    error: Option<String>,
+    preview: Option<Preview>,
+}
+
+impl Flow {
+    fn new(at: Scope) -> Self {
+        Self {
+            at,
+            installing: None,
+            progress: None,
+            error: None,
+            preview: None,
+        }
+    }
+}
+
 /// tC4's `s.upgrade`.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct UpgradeState {
     check: Check,
-    pub installing: Option<Installing>,
-    /// The repository being downloaded (`sources.progress`).
-    pub progress: Option<String>,
-    /// A failed install or confirm, in tC4's words. A failed check is in `check`, with its
-    /// open.
-    pub error: Option<String>,
     offers: Option<Offers>,
-    pub preview: Option<Preview>,
+    flow: Option<Flow>,
 }
 
 impl UpgradeState {
@@ -110,8 +130,10 @@ impl UpgradeState {
         if self.checking(Some(&at)) {
             return false;
         }
+        if let Some(flow) = self.flow_mut(&at) {
+            flow.error = None;
+        }
         self.check = Check::Running { at };
-        self.error = None;
         self.offers = None;
         true
     }
@@ -138,64 +160,119 @@ impl UpgradeState {
         };
     }
 
-    /// An offer's Upgrade was pressed: nothing else can start while it downloads.
-    pub fn install_started(&mut self, what: Installing) {
-        self.installing = Some(what);
-        self.error = None;
-        self.progress = None;
+    /// The upgrade of `here`, the open on screen.
+    fn flow(&self, here: Option<&Scope>) -> Option<&Flow> {
+        self.flow.as_ref().filter(|f| Some(&f.at) == here)
     }
 
-    pub fn install_progress(&mut self, repo: String) {
-        if self.installing.is_some() {
-            self.progress = Some(repo);
+    /// The upgrade an answer for `at` belongs to: none once another open started its own.
+    fn flow_mut(&mut self, at: &Scope) -> Option<&mut Flow> {
+        self.flow.as_mut().filter(|f| f.at == *at)
+    }
+
+    /// What `here` is installing (tC4 `upgrade.installing`).
+    pub fn installing(&self, here: Option<&Scope>) -> Option<&Installing> {
+        self.flow(here)?.installing.as_ref()
+    }
+
+    /// The repository `here`'s install downloads now.
+    pub fn progress(&self, here: Option<&Scope>) -> Option<&str> {
+        self.flow(here)?.progress.as_deref()
+    }
+
+    /// `here`'s failed install or confirm, in tC4's words.
+    pub fn error(&self, here: Option<&Scope>) -> Option<&str> {
+        self.flow(here)?.error.as_deref()
+    }
+
+    /// The confirmation `here` is reading.
+    pub fn preview(&self, here: Option<&Scope>) -> Option<&Preview> {
+        self.flow(here)?.preview.as_ref()
+    }
+
+    /// An offer's Upgrade was pressed in `at`: nothing else can start there while it downloads.
+    pub fn install_started(&mut self, at: Scope, what: Installing) {
+        self.flow = Some(Flow {
+            installing: Some(what),
+            ..Flow::new(at)
+        });
+    }
+
+    pub fn install_progress(&mut self, at: &Scope, repo: String) {
+        if let Some(flow) = self.flow_mut(at)
+            && flow.installing.is_some()
+        {
+            flow.progress = Some(repo);
         }
     }
 
-    /// The release is installed and its plan is ready: the confirmation opens.
-    pub fn plan_ready(&mut self, plan: PlanView) {
-        self.installing = None;
-        self.progress = None;
-        self.preview = Some(Preview {
-            plan,
-            applying: false,
+    /// The release is installed and its plan is ready: the confirmation opens, in `at`.
+    pub fn plan_ready(&mut self, at: &Scope, plan: PlanView) {
+        if let Some(flow) = self.flow_mut(at) {
+            flow.installing = None;
+            flow.progress = None;
+            flow.preview = Some(Preview {
+                plan,
+                applying: false,
+            });
+        }
+    }
+
+    /// The guided fix's re-pin has its plan: the same confirmation, started here for `at`.
+    pub fn repin_ready(&mut self, at: Scope, plan: PlanView) {
+        self.flow = Some(Flow {
+            preview: Some(Preview {
+                plan,
+                applying: false,
+            }),
+            ..Flow::new(at)
         });
     }
 
     /// The download or the plan failed or was cancelled; the pins did not move.
-    pub fn install_failed(&mut self, reason: Option<String>) {
-        self.installing = None;
-        self.progress = None;
-        if reason.is_some() {
-            self.error = reason;
+    pub fn install_failed(&mut self, at: &Scope, reason: Option<String>) {
+        if let Some(flow) = self.flow_mut(at) {
+            flow.installing = None;
+            flow.progress = None;
+            if reason.is_some() {
+                flow.error = reason;
+            }
         }
     }
 
-    /// "Keep the current release" or the ✕: nothing changes.
-    pub fn cancel(&mut self) {
-        if self.preview.as_ref().is_some_and(|p| p.applying) {
-            return;
+    /// "Keep the current release" or the ✕ in `here`: nothing changes.
+    pub fn cancel(&mut self, here: &Scope) {
+        if let Some(flow) = self.flow_mut(here)
+            && !flow.preview.as_ref().is_some_and(|p| p.applying)
+        {
+            flow.preview = None;
+            flow.error = None;
         }
-        self.preview = None;
-        self.error = None;
     }
 
-    /// Confirm was pressed. `false` when it must not go: the plan is blocked, or one is on its way.
-    pub fn confirm_started(&mut self) -> bool {
-        let Some(preview) = &mut self.preview else {
-            return false;
-        };
+    /// Confirm was pressed in `here`: the plan to send and the open it was made for, which is
+    /// the one to send it with. `None` when it must not go: no plan of this open is on screen,
+    /// the plan is blocked, or one is on its way.
+    pub fn confirm_started(&mut self, here: &Scope) -> Option<tc_api::ids::PlanId> {
+        let flow = self.flow_mut(here)?;
+        let preview = flow.preview.as_mut()?;
         if preview.applying || !preview.plan.blocked.is_empty() {
-            return false;
+            return None;
         }
         preview.applying = true;
-        self.error = None;
-        true
+        flow.error = None;
+        Some(preview.plan.plan)
     }
 
-    /// The plan was written: the offer it answered is spent.
-    pub fn applied(&mut self) {
-        if let Some(preview) = self.preview.take()
+    /// The plan of `at` was written: the offer it answered is spent.
+    pub fn applied(&mut self, at: &Scope) {
+        let Some(flow) = self.flow_mut(at) else {
+            return;
+        };
+        flow.error = None;
+        if let Some(preview) = flow.preview.take()
             && let (Some(offers), Some(spent)) = (&mut self.offers, spent_by(&preview.plan))
+            && offers.at == *at
         {
             match spent {
                 Spent::Set(rung) => {
@@ -206,24 +283,27 @@ impl UpgradeState {
                 Spent::Text(repo) => offers.view.texts.retain(|t| t.change.repo != repo),
             }
         }
-        self.error = None;
     }
 
     /// The project moved under the plan: the plan made again is on screen to read.
-    pub fn replanned(&mut self, plan: PlanView) {
-        self.error = None;
-        self.preview = Some(Preview {
-            plan,
-            applying: false,
-        });
+    pub fn replanned(&mut self, at: &Scope, plan: PlanView) {
+        if let Some(flow) = self.flow_mut(at) {
+            flow.error = None;
+            flow.preview = Some(Preview {
+                plan,
+                applying: false,
+            });
+        }
     }
 
     /// The save failed: the plan stays, with the reason, for another try.
-    pub fn apply_failed(&mut self, reason: String) {
-        if let Some(preview) = &mut self.preview {
-            preview.applying = false;
+    pub fn apply_failed(&mut self, at: &Scope, reason: String) {
+        if let Some(flow) = self.flow_mut(at) {
+            if let Some(preview) = &mut flow.preview {
+                preview.applying = false;
+            }
+            flow.error = Some(reason);
         }
-        self.error = Some(reason);
     }
 }
 

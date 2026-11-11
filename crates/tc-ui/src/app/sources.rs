@@ -200,8 +200,9 @@ pub enum DlEnd {
 /// tC4's `src`: kept across the dialog's openings, as tC4 keeps it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourcesForm {
-    /// Step 1's packages for the open project.
-    pub packages: Option<SourcesView>,
+    /// Step 1's packages, with the open they were read for
+    /// (INV-RESOURCE-ANSWER-HAS-AN-OWNER): another open never reads them as its own.
+    packages: Option<(Scope, SourcesView)>,
     /// Step 2's package, once one is chosen.
     pub gateway: Option<GatewayPackage>,
     pub book: BookId,
@@ -517,17 +518,30 @@ impl SourcesForm {
         }
     }
 
-    /// Whether `gateway` is the project's checking language.
-    pub fn is_current(&self, gateway: &GatewayPackage) -> bool {
+    /// Step 1's packages of `here`, the open on screen: none until its own read comes.
+    pub fn packages(&self, here: Option<&Scope>) -> Option<&SourcesView> {
         self.packages
             .as_ref()
+            .filter(|(at, _)| Some(at) == here)
+            .map(|(_, view)| view)
+    }
+
+    /// The packages of `at` were read. Reads of two opens can come in either order: each
+    /// keeps its owner, so the later one never passes for the open on screen.
+    pub fn packages_read(&mut self, at: Scope, view: SourcesView) {
+        self.packages = Some((at, view));
+    }
+
+    /// Whether `gateway` is the checking language of `here`.
+    pub fn is_current(&self, here: Option<&Scope>, gateway: &GatewayPackage) -> bool {
+        self.packages(here)
             .and_then(|p| p.current.as_ref())
             .is_some_and(|current| current.is_same_package(&gateway.gateway))
     }
 
     /// Whether this computer holds `gateway`'s whole suite (tC4 `isCheckableGateway`).
-    pub fn is_checkable(&self, gateway: &GatewayPackage) -> bool {
-        self.packages.as_ref().is_some_and(|p| match &p.checkable {
+    pub fn is_checkable(&self, here: Option<&Scope>, gateway: &GatewayPackage) -> bool {
+        self.packages(here).is_some_and(|p| match &p.checkable {
             tc_api::resources::FromInstalls::Listed(keys) => keys.contains(&gateway.gateway),
             tc_api::resources::FromInstalls::Failed { .. } => false,
         })

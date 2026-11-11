@@ -108,8 +108,11 @@ fn sources_modal(
                 }
             };
             let packages = {
-                let src = src.clone();
-                Memo::new(move |_| src.with(|src| src.packages.clone()))
+                let (src, project) = (src.clone(), project.clone());
+                Memo::new(move |_| {
+                    let here = project.with(|p| p.as_ref().map(|p| p.at.clone()));
+                    src.with(|src| src.packages(here.as_ref()).cloned())
+                })
             };
             let body = move || match gateway.get() {
                 None => {
@@ -122,7 +125,7 @@ fn sources_modal(
                     }
                     .into_any()
                 }
-                Some(g) => gateway_step(&actions, &src, g).into_any(),
+                Some(g) => gateway_step(&actions, &src, &project, g).into_any(),
             };
             view! { {offline} {body} }.into_any()
         })
@@ -166,9 +169,10 @@ fn resource_updates(
             })
         };
         let progress = {
-            let up = up.clone();
+            let (up, here) = (up.clone(), here.clone());
             move || {
-                up.with(|up| up.progress.clone()).map(|repo| {
+                let here = here();
+                up.with(|up| up.progress(here.as_ref()).map(str::to_owned)).map(|repo| {
                     view! {
                         <p data-testid="upgrade-progress" style="font-size: var(--fs-caption-lg); color: var(--text-secondary); font-weight: var(--fw-bold); margin: 0px;">
                             {t(keys::sources::PROGRESS, &[("repo", &repo)])}
@@ -182,7 +186,12 @@ fn resource_updates(
             let (up, here) = (up.clone(), here.clone());
             move || {
                 let here = here();
-                up.with(|up| up.error.clone().or_else(|| up.check_error(here.as_ref()))).map(|error| {
+                up.with(|up| {
+                    up.error(here.as_ref())
+                        .map(str::to_owned)
+                        .or_else(|| up.check_error(here.as_ref()))
+                })
+                .map(|error| {
                     view! {
                         <Callout
                             tone=CalloutTone::Warn
@@ -201,7 +210,10 @@ fn resource_updates(
             move || {
                 let here = here();
                 let (offers, installing) = up.with(|up| {
-                    (up.offers_for(here.as_ref()).cloned(), up.installing.clone())
+                    (
+                        up.offers_for(here.as_ref()).cloned(),
+                        up.installing(here.as_ref()).cloned(),
+                    )
                 });
                 let offers = offers?;
                 let sets = offers
@@ -453,13 +465,22 @@ pub(super) fn book_options(held: &[BookId]) -> Vec<SelectOption> {
 fn gateway_step(
     actions: &Actions,
     src: &ArcRwSignal<SourcesForm>,
+    project: &ArcRwSignal<Option<CurrentProject>>,
     g: GatewayPackage,
 ) -> impl IntoView + use<> {
     // Read as the packages change: after "Use for checking" this step stays open, and must
     // stop offering the language that is now in use (#855).
     let in_use = {
-        let (src, g) = (src.clone(), g.clone());
-        move || src.with(|src| (src.is_current(&g), src.is_checkable(&g)))
+        let (src, project, g) = (src.clone(), project.clone(), g.clone());
+        move || {
+            let here = project.with(|p| p.as_ref().map(|p| p.at.clone()));
+            src.with(|src| {
+                (
+                    src.is_current(here.as_ref(), &g),
+                    src.is_checkable(here.as_ref(), &g),
+                )
+            })
+        }
     };
     let change = actions.clone();
     let check_in = {

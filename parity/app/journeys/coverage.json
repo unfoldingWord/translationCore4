@@ -128,7 +128,8 @@
           "j3_a_download_keeps_its_cancel_and_names_its_own_book_whatever_is_chosen_meanwhile",
           "j3_cancel_stops_the_download_it_belongs_to_after_another_book_was_chosen",
           "j3_two_quick_presses_of_download_start_one_download",
-          "j3_a_download_whose_first_answer_was_lost_is_asked_again_as_the_same_request"
+          "j3_a_download_whose_first_answer_was_lost_is_asked_again_as_the_same_request",
+          "j3_a_running_download_shows_with_its_cancel_in_another_projects_source_texts"
         ]
       }
     ],
@@ -267,7 +268,9 @@
           "j12_an_upgrade_through_the_screens_moves_the_pin_on_disk",
           "j12_a_check_answered_after_its_project_closed_leaves_check_for_updates_ready",
           "j12_a_check_from_an_earlier_open_never_holds_or_fills_the_reopened_project",
-          "j12_a_failed_check_is_said_only_in_the_open_it_was_made_for"
+          "j12_a_failed_check_is_said_only_in_the_open_it_was_made_for",
+          "j12_a_confirmation_made_for_a_project_that_was_left_never_shows_over_another",
+          "j12_a_failed_install_is_said_only_in_the_open_it_was_pressed_in"
         ]
       }
     ],
@@ -280,7 +283,8 @@
           "j13_both_buttons_fit_inside_the_dialog_in_en",
           "j13_both_buttons_fit_inside_the_dialog_in_ar",
           "j13_the_language_in_use_is_never_asked",
-          "j13_get_source_texts_never_offers_the_language_in_use"
+          "j13_get_source_texts_never_offers_the_language_in_use",
+          "j13_one_projects_packages_never_show_in_another_projects_source_texts"
         ]
       }
     ],

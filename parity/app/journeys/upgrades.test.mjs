@@ -313,3 +313,114 @@ browserTest('j12_a_failed_check_is_said_only_in_the_open_it_was_made_for', async
     assert.equal(await page.getByTestId('upgrade-error').count(), 0, 'INV-RESOURCE-ANSWER-HAS-AN-OWNER: the earlier open\'s failed check is said in this open');
   }, { door43: true });
 });
+
+// #982 C. The sample has two projects, the Bible and the stories: one's late answers must
+// not show over the other.
+const OBS = 'sample_burrito_obs';
+const sourceTextsOf = async (page, project) => {
+  await page.getByTestId(`project-${project}`).getByRole('button', { name: en['home.settings'], exact: true }).click();
+  await page.getByTestId('settings-manage-sources').click();
+  await page.getByTestId('sources-modal').waitFor();
+};
+const homeFrom = async (page, project) => {
+  await page.getByTestId('project-switch').click();
+  await until('Home shows the project card', () => page.getByTestId(`project-${project}`).count());
+};
+
+browserTest('j13_one_projects_packages_never_show_in_another_projects_source_texts', async () => {
+  await withApp(async ({ page }) => {
+    // The Bible checks in English from here on; the stories do not.
+    await sourceTextsOf(page, BIBLE);
+    await page.getByTestId('sources-modal').getByText('English', { exact: true }).first().click();
+    await page.getByTestId('net-cancel').click();
+    await page.getByTestId('use-for-checking').click();
+    await page.getByTestId('gateway-change').waitFor();
+    await page.getByTestId('gateway-confirm').click();
+    await page.getByTestId('already-checking-in').waitFor();
+    await closeSourceTexts(page);
+    await homeFrom(page, BIBLE);
+    // The Bible's next read of its packages is held until the stories' dialog is open.
+    let release;
+    let reached;
+    let landed;
+    const held = new Promise((resolve) => { release = resolve; });
+    const entered = new Promise((resolve) => { reached = resolve; });
+    const answered = new Promise((resolve) => { landed = resolve; });
+    let first = true;
+    await page.route('**/api/v1/resources/sources', async (route) => {
+      if (!first) return route.continue();
+      first = false;
+      const response = await route.fetch();
+      reached();
+      await held;
+      await route.fulfill({ response });
+      landed();
+    });
+    await sourceTextsOf(page, BIBLE);
+    await entered;
+    await closeSourceTexts(page);
+    await homeFrom(page, BIBLE);
+    await sourceTextsOf(page, OBS);
+    // The dialog is still on English's step. The stories do not check in English.
+    await page.getByTestId('use-for-checking').waitFor();
+    release();
+    await answered;
+    await settled(page);
+    assert.equal(await page.getByTestId('already-checking-in').count(), 0, 'INV-RESOURCE-ANSWER-HAS-AN-OWNER: the Bible\'s checking language is said in the stories\' dialog');
+    assert.equal(await page.getByTestId('use-for-checking').count(), 1, 'INV-RESOURCE-ANSWER-HAS-AN-OWNER: the stories\' own packages were replaced');
+  }, { door43: true });
+});
+
+/** The Bible's text upgrade is pressed with Door43 holding the download. Answers the plan job. */
+async function upgradeWithDoor43Held(page, env, { thenFails = false } = {}) {
+  await sourceTextsOf(page, BIBLE);
+  await page.getByTestId('check-updates').click();
+  await page.getByTestId('net-confirm').click();
+  const apply = page.getByTestId('upgrade-text-apply-en_ult');
+  await apply.waitFor();
+  await env.door43.fault({ method: 'GET', path: '/unfoldingWord/en_ult/', times: 1, fault: { type: 'hold' } });
+  if (thenFails) await env.door43.fault({ method: 'GET', path: '/unfoldingWord/en_ult/', fault: { type: 'status', status: 503, message: 'down for maintenance' } });
+  const started = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/v1/resources/planUpgrade');
+  await apply.click();
+  const job = (await (await started).json()).value;
+  await until('Door43 holds the download of the release', async () => (await env.door43.held()) > 0);
+  return job;
+}
+/** The page follows a job by its frames, and asks the server once a second in case one was
+ * lost: after this long it has seen an end the server already reports. A wrong build shows the
+ * answer by then; a right one shows nothing, so there is no signal on the page to wait for. */
+const pageSawTheJobEnd = () => sleep(1500);
+const jobEnded = (env, job) => until('the plan job ended', async () => {
+  const view = await env.call('jobs/get', { job });
+  return ['done', 'failed', 'cancelled'].includes(view?.state?.type) ? view.state.type : null;
+});
+
+browserTest('j12_a_confirmation_made_for_a_project_that_was_left_never_shows_over_another', async () => {
+  await withApp(async ({ page, env }) => {
+    const job = await upgradeWithDoor43Held(page, env);
+    await closeSourceTexts(page);
+    await homeFrom(page, BIBLE);
+    await sourceTextsOf(page, OBS);
+    await env.door43.release();
+    assert.equal(await jobEnded(env, job), 'done');
+    await pageSawTheJobEnd();
+    assert.equal(await page.getByTestId('upgrade-confirm').count(), 0, 'INV-RESOURCE-ANSWER-HAS-AN-OWNER: the Bible\'s upgrade confirmation is shown over the stories');
+    // The stories' own check still runs.
+    await assertCheckIsReady(page, 'in the stories, while the Bible\'s plan was made');
+  }, { door43: true });
+});
+
+browserTest('j12_a_failed_install_is_said_only_in_the_open_it_was_pressed_in', async () => {
+  await withApp(async ({ page, env, allow }) => {
+    allow(/503|Failed to load resource/);
+    const job = await upgradeWithDoor43Held(page, env, { thenFails: true });
+    await closeSourceTexts(page);
+    await homeFrom(page, BIBLE);
+    await sourceTextsOf(page, BIBLE);
+    assert.equal(await page.getByTestId('upgrade-progress').count(), 0, 'INV-BUSY-ENDS-WITH-ITS-WORK: the earlier open\'s install shows its progress in this open');
+    await env.door43.release();
+    assert.equal(await jobEnded(env, job), 'failed');
+    await pageSawTheJobEnd();
+    assert.equal(await page.getByTestId('upgrade-error').count(), 0, 'INV-RESOURCE-ANSWER-HAS-AN-OWNER: the earlier open\'s failed install is said in this open');
+  }, { door43: true });
+});
