@@ -12,7 +12,7 @@ use tc_api::resources::{
 use tc_api::settings::{CurrentGateway, GatewayCard, SettingsView};
 use tc_api::shown::{Direction, Known};
 use tc_core::BookId;
-use tc_ui::app::sources::{Dl, DlEnd, GatewayState, SettingsForm, SourcesForm};
+use tc_ui::app::sources::{CatalogRead, Dl, DlEnd, GatewayState, SettingsForm, SourcesForm};
 
 fn card(project: &str, books: &[BookId]) -> HomeCard {
     HomeCard {
@@ -134,7 +134,8 @@ fn the_text_is_always_included_and_helps_can_be_left_out() {
         row(PackageRole::Text, "en_ult"),
         row(PackageRole::Notes, "en_tn"),
     ];
-    src.rows_read(&alef(), &en, BookId::Titus, rows.clone());
+    let read = started(&mut src, &alef());
+    src.rows_read(&read, rows.clone());
     assert!(src.can_download(Some(&open(1))));
     assert!(!src.can_download(None), "no project, no download");
     src.toggle(&rows[0]);
@@ -152,23 +153,16 @@ fn rows_for_a_package_or_book_left_meanwhile_are_not_shown() {
         package("es-419", "es-419_gl"),
     );
     src.pick(en.clone());
+    let en_titus = started(&mut src, &alef());
     src.pick(es.clone());
-    src.rows_read(
-        &alef(),
-        &en,
-        BookId::Titus,
-        vec![row(PackageRole::Notes, "en_tn")],
-    );
+    let es_titus = started(&mut src, &alef());
+    src.rows_read(&en_titus, vec![row(PackageRole::Notes, "en_tn")]);
     assert!(src.loading && src.rows.is_empty());
     src.set_book(BookId::Jonah);
-    src.rows_failed(&alef(), &es, BookId::Titus, "late".into());
+    let es_jonah = started(&mut src, &alef());
+    src.rows_failed(&es_titus, "late".into());
     assert_eq!(src.error, None);
-    src.rows_read(
-        &alef(),
-        &es,
-        BookId::Jonah,
-        vec![row(PackageRole::Notes, "es-419_tn")],
-    );
+    src.rows_read(&es_jonah, vec![row(PackageRole::Notes, "es-419_tn")]);
     assert!(!src.loading);
     assert_eq!(src.chosen(), ["es-419_tn"]);
     src.change_gateway();
@@ -217,18 +211,19 @@ fn alef() -> ProjectRef {
     ProjectRef::parse("alef").unwrap()
 }
 
+/// A read of the chosen package's rows, started for `project`.
+fn started(src: &mut SourcesForm, project: &ProjectRef) -> CatalogRead {
+    src.catalog_started(project.clone()).expect("a package is chosen")
+}
+
 #[test]
 fn another_projects_dialog_starts_at_step_one_and_takes_no_rows_read_for_the_first() {
     let bet = ProjectRef::parse("bet").unwrap();
     let en = package("en", "unfoldingWord");
     let mut src = form();
     src.pick(en.clone());
-    src.rows_read(
-        &alef(),
-        &en,
-        BookId::Titus,
-        vec![row(PackageRole::Text, "en_ult")],
-    );
+    let first = started(&mut src, &alef());
+    src.rows_read(&first, vec![row(PackageRole::Text, "en_ult")]);
     // The same project opened again keeps its step.
     src.opened(&alef());
     assert_eq!(src.chosen(), ["en_ult"]);
@@ -239,24 +234,45 @@ fn another_projects_dialog_starts_at_step_one_and_takes_no_rows_read_for_the_fir
     );
     // A late answer for the first project, for the same package and book, is not bet's.
     src.pick(en.clone());
-    src.rows_read(
-        &alef(),
-        &en,
-        BookId::Titus,
-        vec![row(PackageRole::Notes, "en_tn")],
-    );
-    src.rows_failed(&alef(), &en, BookId::Titus, "late".into());
+    let mine = started(&mut src, &bet);
+    src.rows_read(&first, vec![row(PackageRole::Notes, "en_tn")]);
+    src.rows_failed(&first, "late".into());
     assert!(
         src.rows.is_empty() && src.error.is_none() && src.loading,
         "INV-RESOURCE-ANSWER-HAS-AN-OWNER: rows read for one project are shown for another"
     );
-    src.rows_read(
-        &bet,
-        &en,
-        BookId::Titus,
-        vec![row(PackageRole::ObsText, "en_obs")],
-    );
+    src.rows_read(&mine, vec![row(PackageRole::ObsText, "en_obs")]);
     assert_eq!(src.chosen(), ["en_obs"]);
+}
+
+#[test]
+fn an_earlier_opens_late_catalog_answer_never_replaces_the_rows_read_since() {
+    // #982 requirement 8: the same project, package and book, read before the project was
+    // opened again, answer after the read made since.
+    let bet = ProjectRef::parse("bet").unwrap();
+    let en = package("en", "unfoldingWord");
+    let mut src = form();
+    src.pick(en.clone());
+    let before = started(&mut src, &alef());
+    src.opened(&bet);
+    src.opened(&alef());
+    src.pick(en.clone());
+    let since = started(&mut src, &alef());
+    src.rows_read(&since, vec![row(PackageRole::Text, "en_ult")]);
+    src.rows_failed(&before, "late".into());
+    src.rows_read(&before, vec![row(PackageRole::Notes, "en_tn")]);
+    assert!(
+        src.error.is_none() && !src.loading && src.chosen() == ["en_ult"],
+        "INV-RESOURCE-ANSWER-HAS-AN-OWNER: an earlier read's answer replaced the rows read since"
+    );
+    // Within one open too: a package left and chosen again reads again, and the first read's
+    // failure is not shown over the second's rows.
+    src.change_gateway();
+    src.pick(en.clone());
+    let again = started(&mut src, &alef());
+    src.rows_read(&again, vec![row(PackageRole::Text, "en_ult")]);
+    src.rows_failed(&since, "late".into());
+    assert!(src.error.is_none() && src.chosen() == ["en_ult"]);
 }
 
 fn rid(n: u8) -> RequestId {
@@ -278,10 +294,9 @@ fn on_book(src: &mut SourcesForm, book: BookId) {
         src.pick(en.clone());
     }
     src.set_book(book);
+    let read = started(&mut src, &alef());
     src.rows_read(
-        &alef(),
-        &en,
-        book,
+        &read,
         vec![
             row(PackageRole::Text, "en_ult"),
             row(PackageRole::Notes, "en_tn"),

@@ -197,6 +197,17 @@ pub enum DlEnd {
     Stopped,
 }
 
+/// One read of a package's rows: what it was started for, and its attempt
+/// (INV-RESOURCE-ANSWER-HAS-AN-OWNER). Only the latest attempt's answer is shown, so an
+/// earlier read of the same project, package and book never replaces a later one's.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CatalogRead {
+    pub project: ProjectRef,
+    pub gateway: GatewayPackage,
+    pub book: BookId,
+    attempt: u64,
+}
+
 /// tC4's `src`: kept across the dialog's openings, as tC4 keeps it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourcesForm {
@@ -216,6 +227,8 @@ pub struct SourcesForm {
     pub error: Option<String>,
     /// The person answered Not now to the internet question: the catalog was not read.
     pub needs_internet: bool,
+    /// The attempt of the latest read of the rows (`CatalogRead`).
+    read: u64,
     dl: Dl,
 }
 
@@ -231,6 +244,7 @@ impl Default for SourcesForm {
             loading: false,
             error: None,
             needs_internet: false,
+            read: 0,
             dl: Dl::Idle,
         }
     }
@@ -309,39 +323,44 @@ impl SourcesForm {
         self.needs_internet = false;
     }
 
-    /// Whether an answer about `gateway` and `book`, read for `project`, is what the dialog
-    /// shows now.
-    fn reads(&self, project: &ProjectRef, gateway: &GatewayPackage, book: BookId) -> bool {
-        self.project.as_ref() == Some(project)
-            && self.gateway.as_ref() == Some(gateway)
-            && self.book == book
+    /// The rows of the chosen package and book are read now, for `project`: the read to answer
+    /// with, or `None` when no package is chosen. Every earlier read's answer is dropped from
+    /// here on.
+    pub fn catalog_started(&mut self, project: ProjectRef) -> Option<CatalogRead> {
+        let gateway = self.gateway.clone()?;
+        self.read += 1;
+        self.loading = true;
+        self.needs_internet = false;
+        Some(CatalogRead {
+            project,
+            gateway,
+            book: self.book,
+            attempt: self.read,
+        })
     }
 
-    /// The rows of `gateway` and `book` came, read for `project`. Rows for a project, a
-    /// package or a book the person has left meanwhile are not shown.
-    pub fn rows_read(
-        &mut self,
-        project: &ProjectRef,
-        gateway: &GatewayPackage,
-        book: BookId,
-        rows: Vec<PackageRow>,
-    ) {
-        if !self.reads(project, gateway, book) {
+    /// Whether the answer to `read` is what the dialog waits for now: the project, package
+    /// and book it shows, and its latest read of them.
+    fn reads(&self, read: &CatalogRead) -> bool {
+        self.project.as_ref() == Some(&read.project)
+            && self.gateway.as_ref() == Some(&read.gateway)
+            && self.book == read.book
+            && self.read == read.attempt
+    }
+
+    /// The rows of `read` came. Rows for a project, a package or a book the person has left
+    /// meanwhile, or for a read a later one has replaced, are not shown.
+    pub fn rows_read(&mut self, read: &CatalogRead, rows: Vec<PackageRow>) {
+        if !self.reads(read) {
             return;
         }
         self.loading = false;
         self.rows = rows;
     }
 
-    /// The catalog could not be read: `sources.catalogError`'s reason.
-    pub fn rows_failed(
-        &mut self,
-        project: &ProjectRef,
-        gateway: &GatewayPackage,
-        book: BookId,
-        reason: String,
-    ) {
-        if !self.reads(project, gateway, book) {
+    /// The catalog could not be read for `read`: `sources.catalogError`'s reason.
+    pub fn rows_failed(&mut self, read: &CatalogRead, reason: String) {
+        if !self.reads(read) {
             return;
         }
         self.loading = false;

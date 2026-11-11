@@ -210,32 +210,24 @@ impl Actions {
         else {
             return;
         };
-        let Some((gateway, book)) = s
+        let Some(read) = s
             .src
-            .with_untracked(|src| src.gateway.clone().map(|g| (g, src.book)))
+            .try_update(|src| src.catalog_started(at.project.clone()))
+            .flatten()
         else {
             return;
         };
-        self.patch_src(|src| {
-            src.loading = true;
-            src.needs_internet = false;
-        });
         let this = self.clone();
         spawn_local(async move {
-            let project = at.project.clone();
             let request = Catalog {
                 at,
-                gateway: gateway.gateway.clone(),
-                book,
+                gateway: read.gateway.gateway.clone(),
+                book: read.book,
             };
             match this.run_net(Pending::Catalog, &request).await.said() {
-                Ok(view) => {
-                    this.patch_src(|src| src.rows_read(&project, &gateway, book, view.rows));
-                }
+                Ok(view) => this.patch_src(|src| src.rows_read(&read, view.rows)),
                 Err(None) => {}
-                Err(Some(reason)) => {
-                    this.patch_src(|src| src.rows_failed(&project, &gateway, book, reason));
-                }
+                Err(Some(reason)) => this.patch_src(|src| src.rows_failed(&read, reason)),
             }
         });
     }
