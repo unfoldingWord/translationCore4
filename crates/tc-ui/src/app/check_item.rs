@@ -927,6 +927,7 @@ mod tests {
                     testament: Testament::Nt,
                 },
                 gateway: GatewayView::NoPane,
+                simplified: None,
             },
             target: TargetWords {
                 words: words.iter().map(|w| (*w).to_owned()).collect(),

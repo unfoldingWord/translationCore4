@@ -43,7 +43,7 @@ use tc_api::check::{
     Dot, DroppedNote, GatewayText, GatewayView, Item, NextCheck, NoteCategory, Open as CheckOpen,
     OriginalVerse, OriginalView, Picker, PickerView, PinCitation, RailProgress, RailRow,
     RailRowPatch, RailRows, RailSince, ResourceCitation, RowFlags, Rows, RowsView, Rung,
-    TargetWords, Testament as CheckTestament, Tool, ToolCard, ToolState,
+    SimplifiedPane, TargetWords, Testament as CheckTestament, Tool, ToolCard, ToolState,
 };
 use tc_api::create::{
     AddBlankBooks, AddUsfmBooks, Bible, BooksAdded, Created, Details, GuessUsfm, Obs, ReviewUsfm,
@@ -2959,6 +2959,11 @@ impl Example for CheckItemView {
                         lit: vec![0],
                     },
                 },
+                simplified: Some(SimplifiedPane {
+                    repo: "en_ust".into(),
+                    tokens: vec!["I".into(), ", ".into(), "Paul".into()],
+                    lit: vec![2],
+                }),
             },
             target: TargetWords {
                 words: vec!["Pablo".into(), "siervo".into()],

@@ -9,6 +9,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { REPO } from '../env-rust.mjs';
 import { browserTest, catalog, sleep, until, withApp } from './kit.mjs';
 
 const BIBLE = 'sample_burrito';
@@ -940,7 +941,7 @@ browserTest('check_shows_new_draft_after_switching_back', async () => {
 });
 
 // tC4 #762 (`e2e/compare-card.spec.ts`, which renders 1 to 6 sources in a harness; the product
-// shows two): as many source texts in a row as fit at 40ch each, all as wide as one another, a
+// shows two, or three with a simplified Bible, #996): as many source texts in a row as fit at 40ch each, all as wide as one another, a
 // card alone in the last row as wide as the row, and "Your translation" a card of its own below.
 // OLH-1 (owner ruling Q39, tC4 #840): the Greek row of the check card marks the check's quote,
 // the words the server names, as the gateway row marks its rendering.
@@ -959,47 +960,151 @@ browserTest('the_greek_row_marks_the_quote_of_the_check', async () => {
   });
 });
 
+/** The compare card's boxes: the row of sources, the 40ch minimum in the row's own font (a
+ * probe of that width, as tC4's harness has), each source card in order, and "Your translation". */
+const compareBoxes = (page) => page.evaluate(() => {
+  const box = (el) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, bottom: r.bottom }; };
+  const sources = document.querySelector('[data-testid="compare-sources"]');
+  const probe = document.createElement('div');
+  probe.style.cssText = 'flex: none; width: calc(40ch + 40px); height: 1px';
+  sources.appendChild(probe);
+  const min = probe.getBoundingClientRect().width;
+  probe.remove();
+  return {
+    row: box(sources),
+    min,
+    cards: [...sources.children].map((el) => ({ id: el.getAttribute('data-testid'), ...box(el) })),
+    yours: box(document.querySelector('[data-testid="compare-translation"]')),
+  };
+});
+
+/** #762's width rules on the compare card as it is now, for however many sources it shows: as
+ * many in a row as fit at 40ch, the cards of a row as wide as one another, a card alone in its
+ * row as wide as the row. Answers the sources' test ids in order. */
+async function assertCompareFits(page, label) {
+  await page.evaluate(() => document.fonts.ready);
+  const { row, min, cards, yours } = await compareBoxes(page);
+  const GAP = 6;
+  const fit = Math.max(1, Math.floor((row.width + GAP) / (min + GAP)));
+  const columns = Math.min(cards.length, fit);
+  const rows = [];
+  for (const card of cards) {
+    const last = rows.at(-1);
+    if (last && Math.abs(last[0].y - card.y) < 1) last.push(card);
+    else rows.push([card]);
+  }
+  assert.deepEqual(
+    rows.map((r) => r.length),
+    Array.from({ length: Math.ceil(cards.length / columns) }, (_, i) => Math.min(columns, cards.length - i * columns)),
+    `${label}: ${columns} column(s) of ${cards.length} sources`,
+  );
+  for (const cardsOfRow of rows) {
+    const width = (row.width - GAP * (cardsOfRow.length - 1)) / cardsOfRow.length;
+    for (const c of cardsOfRow) {
+      assert.ok(Math.abs(c.width - width) < 1, `${label}: ${c.id} is ${c.width}px wide in a row of ${cardsOfRow.length}`);
+      assert.ok(c.width >= min - 1, `${label}: ${c.id} is not under 40ch`);
+    }
+  }
+  // "Your translation" is a card of its own, 24 px below the sources, as wide as the row.
+  assert.ok(Math.abs(yours.y - Math.max(...cards.map((c) => c.bottom)) - 24) < 1.5, `${label}: 24 px below the sources`);
+  assert.ok(Math.abs(yours.width - row.width) < 1, `${label}: as wide as the row`);
+  return cards.map((c) => c.id);
+}
+
+/** With TC4_EVIDENCE set to a folder, a screenshot of the compare card there (#996). */
+async function evidence(page, name) {
+  if (process.env.TC4_EVIDENCE) await page.getByTestId('compare-card').screenshot({ path: path.join(process.env.TC4_EVIDENCE, `${name}.png`) });
+}
+
+const SOURCES_WITH_SIMPLIFIED = ['orig-pane', 'ult-pane', 'simplified-pane'];
+const gatewayLabel = (name) => catalog('en')['check.gatewayLabel'].replace('{name}', name);
+/** The name over a source card. */
+const cardLabel = (page, id) => page.getByTestId(id).locator(':scope > :first-child').textContent();
+
+// #996 (J4), the English suite: the simplified Bible of the language sets (the UST) is a source
+// text of its own beside the Greek and the literal text, by #762's width rules, and the sources
+// hold no control to add another text (#719).
 browserTest('compare_card_columns_fit_the_width', async () => {
   await withApp(async ({ page }) => {
     await openTool(page, 'translationNotes');
-    for (const width of [900, 1280, 1600, 1920]) {
-      await page.setViewportSize({ width, height: 900 });
-      await page.evaluate(() => document.fonts.ready);
-      const { row, min, cards, yours } = await page.evaluate(() => {
-        const box = (el) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, bottom: r.bottom }; };
-        const sources = document.querySelector('[data-testid="compare-sources"]');
-        // The 40ch minimum in the row's own font: a probe of that width, as tC4's harness has.
-        const probe = document.createElement('div');
-        probe.style.cssText = 'flex: none; width: calc(40ch + 40px); height: 1px';
-        sources.appendChild(probe);
-        const min = probe.getBoundingClientRect().width;
-        probe.remove();
-        return {
-          row: box(sources),
-          min,
-          cards: ['orig-pane', 'ult-pane'].map((id) => box(document.querySelector(`[data-testid="${id}"]`))),
-          yours: box(document.querySelector('[data-testid="compare-translation"]')),
-        };
-      });
-      const label = `at ${width}px`;
-      const GAP = 6;
-      const fit = Math.max(1, Math.floor((row.width + GAP) / (min + GAP)));
-      const columns = Math.min(2, fit);
-      const inOneRow = Math.abs(cards[0].y - cards[1].y) < 1;
-      assert.equal(inOneRow, columns === 2, `${label}: ${columns} column(s)`);
-      if (inOneRow) {
-        assert.ok(Math.abs(cards[0].width - cards[1].width) < 1, `${label}: equal cards`);
-        for (const c of cards) assert.ok(c.width >= min - 1, `${label}: no card under 40ch`);
-      } else {
-        // A card alone in its row takes the full width.
-        for (const c of cards) assert.ok(Math.abs(c.width - row.width) < 1, `${label}: a lone card is as wide as the row`);
-      }
-      // "Your translation" is a card of its own, 24 px below the sources, as wide as the row.
-      assert.ok(Math.abs(yours.y - (row.bottom ?? Math.max(...cards.map((c) => c.bottom))) - 24) < 1.5
-        || Math.abs(yours.y - Math.max(...cards.map((c) => c.bottom)) - 24) < 1.5, `${label}: 24 px below the sources`);
-      assert.ok(Math.abs(yours.width - row.width) < 1, `${label}: as wide as the row`);
+    for (const [width, height] of [[900, 900], [1280, 800], [1600, 900], [1920, 900]]) {
+      await page.setViewportSize({ width, height });
+      assert.deepEqual(await assertCompareFits(page, `at ${width}px`), SOURCES_WITH_SIMPLIFIED);
     }
+    await page.setViewportSize({ width: 1280, height: 800 });
+    assert.equal(await cardLabel(page, 'simplified-pane'), gatewayLabel('UST'));
+    assert.match(await page.getByTestId('simplified-pane-text').textContent(), /^I, Paul, /);
+    assert.ok((await page.getByTestId('simplified-hl').count()) > 0, 'the simplified row marks the quote');
+    assert.equal(await page.getByTestId('compare-sources').locator('button, a, input, select').count(), 0, 'the sources hold no control');
+    await evidence(page, 'compare-card-en-ust');
   }, { scenario: 'en-pins' });
+});
+
+const RESOURCE_SLICES = path.join(REPO, 'fixtures', 'tc4', 'test-fixtures', 'resources');
+const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
+const writeJson = (file, value) => fs.writeFileSync(file, JSON.stringify(value, null, 2));
+
+/** Puts the Bible project of a built `en-pins` state on the Indonesian package (bahtraku): its
+ * only source pane is the literal Bible (`id_glt` v105), and its primary set pins the simplified
+ * Bible (`id_gst` v16), which is on the computer with `gst`. No `ust` or `gst` pane is pinned, and
+ * without `fallbackUst` the English set pins no simplified Bible either. */
+const indonesianPackage = ({ gst, fallbackUst }) => (state) => {
+  const records = path.join(state, 'client_settings', 'uw-tc4.json');
+  const installed = readJson(records);
+  /** The pin of a release slice; with `install`, the slice as a sideloaded burrito of Titus. */
+  const slice = (repo, tag, install) => {
+    const from = path.join(RESOURCE_SLICES, `${repo}@${tag}`);
+    const metadata = readJson(path.join(from, 'metadata.json'));
+    const pin = {
+      repoPath: `git.door43.org/bahtraku/${repo}`,
+      version: tag,
+      sha: metadata.identification.primary.dcs[`bahtraku/${repo}`].revision,
+      flavor: 'scripture/textTranslation',
+    };
+    if (install) {
+      const to = path.join(state, 'repos', '_local_', '_sideloaded_', repo);
+      fs.mkdirSync(path.join(to, 'ingredients'), { recursive: true });
+      metadata.ingredients = { 'ingredients/TIT.usfm': metadata.ingredients['ingredients/TIT.usfm'] };
+      writeJson(path.join(to, 'metadata.json'), metadata);
+      fs.copyFileSync(path.join(from, 'TIT.usfm'), path.join(to, 'ingredients', 'TIT.usfm'));
+      installed.installedResources[`_local_/_sideloaded_/${repo}`] = pin;
+    }
+    return pin;
+  };
+  const file = path.join(state, 'repos', '_local_', '_local_', BIBLE, 'ingredients', 'checking', 'resources.json');
+  const pins = readJson(file);
+  pins.languageSets.primary.gatewayLanguage = { languageId: 'id', owner: 'bahtraku' };
+  pins.languageSets.primary.simplifiedText = slice('id_gst', 'v16', gst);
+  if (!fallbackUst) delete pins.languageSets.fallback.simplifiedText;
+  pins.extraScripture = [{ id: 'glt', ...slice('id_glt', 'v105', true) }];
+  writeJson(file, pins);
+  writeJson(records, installed);
+};
+
+// #996 (J4), the report: on the Indonesian package, with its simplified Bible (GST) on the
+// computer, a check shows the GST verse as a source of its own beside the Greek and the literal
+// Bible (GLT), above "Your translation", though the project pins no `gst` pane.
+browserTest('a_check_shows_the_packages_simplified_bible_beside_the_literal_one', async () => {
+  await withApp(async ({ page }) => {
+    await openTool(page, 'translationNotes');
+    await page.setViewportSize({ width: 1280, height: 800 });
+    assert.deepEqual(await assertCompareFits(page, 'at 1280px'), SOURCES_WITH_SIMPLIFIED);
+    assert.equal(await cardLabel(page, 'ult-pane'), gatewayLabel('GLT'));
+    assert.equal(await cardLabel(page, 'simplified-pane'), gatewayLabel('GST'));
+    assert.match(await page.getByTestId('simplified-pane-text').textContent(), /^Aku, Paulus, menulis surat ini kepadamu, Titus\./);
+    await evidence(page, 'compare-card-id-gst');
+  }, { scenario: 'en-pins', editState: indonesianPackage({ gst: true, fallbackUst: true }) });
+});
+
+// #996: with no simplified Bible on the computer the compare card is as it was, the Greek and
+// the literal Bible, with no card for the absent text.
+browserTest('a_check_without_a_simplified_bible_shows_no_card_for_it', async () => {
+  await withApp(async ({ page }) => {
+    await openTool(page, 'translationNotes');
+    await page.setViewportSize({ width: 1280, height: 800 });
+    assert.deepEqual(await assertCompareFits(page, 'at 1280px'), ['orig-pane', 'ult-pane']);
+    await evidence(page, 'compare-card-no-simplified');
+  }, { scenario: 'en-pins', editState: indonesianPackage({ gst: false, fallbackUst: false }) });
 });
 
 // tC4 #614 (`ds-labels`): the drawer's close button, eyebrow and title come from the shown

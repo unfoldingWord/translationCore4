@@ -138,7 +138,8 @@ export const LABEL = Object.fromEntries(LOCALES.map((l) => [l.id, l.label]));
  * A browser, a `tc4` and a page, Home loaded in `locale` (the probe page with `probe`; with
  * `seed(folder)`, tc-store over a projects folder it fills instead of the sample scenario), then
  * `body({ env, page, context, errors, allow })`; `scenario` names another parity scenario
- * (`en-pins` for B3, `shared` for B10). `init(context, env)` runs before the page
+ * (`en-pins` for B3, `shared` for B10), and `editState(dir)` changes that scenario's built state
+ * before the app reads it. `init(context, env)` runs before the page
  * exists (routes, init scripts). `allow(re)` lets a console error matching `re` pass. With
  * `door43`, tc4 signs in to a fake Door43 of its own (`env.door43`); with `realSync` too, sync
  * and open from Door43 go to it for real (E1a). With `hooks`, the page is the
@@ -146,14 +147,14 @@ export const LABEL = Object.fromEntries(LOCALES.map((l) => [l.id, l.label]));
  * After `body`, every project folder must be a valid Scripture Burrito (P5);
  * `invalidOnPurpose: { folder, why }` excuses the one folder a journey leaves invalid on purpose.
  */
-export async function withApp(body, { locale = 'en', probe = false, hooks = false, init, seed, door43: fake = false, realSync = false, scenario: named = 'sample', invalidOnPurpose, notices } = {}) {
+export async function withApp(body, { locale = 'en', probe = false, hooks = false, init, seed, editState, door43: fake = false, realSync = false, scenario: named = 'sample', invalidOnPurpose, notices } = {}) {
   const browser = await setup.chromium.launch({ args: CHROMIUM_ARGS });
   const door43 = fake ? await startDoor43Fake(setup.door43) : undefined;
   const scenario = seed ? 'store' : named;
   const teammates = [];
   let env;
   try {
-    env = await startRustEnv({ scenario, seed, tc4: setup.tc4, ui: probe || hooks ? setup.hooks : setup.ui, door43, realSync, notices });
+    env = await startRustEnv({ scenario, seed, editState, tc4: setup.tc4, ui: probe || hooks ? setup.hooks : setup.ui, door43, realSync, notices });
   } catch (error) {
     await door43?.close();
     await browser.close();

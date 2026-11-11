@@ -1,0 +1,311 @@
+{
+  "format": "scripture burrito",
+  "meta": {
+    "version": "1.0.0",
+    "category": "source",
+    "generator": {
+      "softwareName": "go-rc2sb",
+      "softwareVersion": "v0.9.0",
+      "userName": ""
+    },
+    "defaultLocale": "en",
+    "dateCreated": "2025-01-24T06:38:27.000Z",
+    "normalization": "NFC"
+  },
+  "idAuthorities": {
+    "dcs": {
+      "id": "https://git.door43.org",
+      "name": {
+        "en": "Door43 Content Service"
+      }
+    }
+  },
+  "identification": {
+    "primary": {
+      "dcs": {
+        "bahtraku/id_glt": {
+          "revision": "1cf26ea1b15f2a24da71d4a517145f3ccab7c0bc",
+          "timestamp": "2025-01-24T06:38:27.000Z"
+        }
+      }
+    },
+    "name": {
+      "en": "BAHTRAKU Teks Literal"
+    },
+    "description": {
+      "en": "BAHTRAKU Teks Literal"
+    },
+    "abbreviation": {
+      "en": "GLT"
+    }
+  },
+  "languages": [
+    {
+      "tag": "id",
+      "name": {
+        "en": "Bahasa Indonesia"
+      },
+      "scriptDirection": "ltr"
+    }
+  ],
+  "type": {
+    "flavorType": {
+      "name": "scripture",
+      "flavor": {
+        "name": "textTranslation",
+        "usfmVersion": "3.0",
+        "translationType": "revision",
+        "audience": "common",
+        "projectType": "standard"
+      },
+      "currentScope": {
+        "1TH": [],
+        "1TI": [],
+        "2PE": [],
+        "2TH": [],
+        "2TI": [],
+        "3JN": [],
+        "COL": [],
+        "PHM": [],
+        "TIT": []
+      }
+    }
+  },
+  "confidential": false,
+  "localizedNames": {
+    "book-1th": {
+      "abbr": {
+        "en": "1Th",
+        "id": "1th"
+      },
+      "short": {
+        "en": "First Thessalonians",
+        "id": "1 Tesalonika"
+      },
+      "long": {
+        "en": "The First Letter of Paul to the Thessalonians",
+        "id": "1 Tesalonika"
+      }
+    },
+    "book-1ti": {
+      "abbr": {
+        "en": "1Ti",
+        "id": "1ti"
+      },
+      "short": {
+        "en": "First Timothy",
+        "id": "1 Timotius"
+      },
+      "long": {
+        "en": "The First Letter of Paul to Timothy",
+        "id": "1 Timotius"
+      }
+    },
+    "book-2pe": {
+      "abbr": {
+        "en": "2Pe",
+        "id": "2pe"
+      },
+      "short": {
+        "en": "Second Peter",
+        "id": "2 Petrus"
+      },
+      "long": {
+        "en": "The Second Letter of Peter",
+        "id": "2 Petrus"
+      }
+    },
+    "book-2th": {
+      "abbr": {
+        "en": "2Th",
+        "id": "2th"
+      },
+      "short": {
+        "en": "Second Thessalonians",
+        "id": "2 Tesalonika"
+      },
+      "long": {
+        "en": "The Second Letter of Paul to the Thessalonians",
+        "id": "2 Tesalonika"
+      }
+    },
+    "book-2ti": {
+      "abbr": {
+        "en": "2Ti",
+        "id": "2ti"
+      },
+      "short": {
+        "en": "Second Timothy",
+        "id": "2 Timotius"
+      },
+      "long": {
+        "en": "The Second Letter of Paul to Timothy",
+        "id": "2 Timotius"
+      }
+    },
+    "book-3jn": {
+      "abbr": {
+        "en": "3Jn",
+        "id": "3Jn"
+      },
+      "short": {
+        "en": "Third John",
+        "id": "3 Yohanes"
+      },
+      "long": {
+        "en": "The Third Letter of John",
+        "id": "3 Yohanes"
+      }
+    },
+    "book-col": {
+      "abbr": {
+        "en": "Col",
+        "id": "col"
+      },
+      "short": {
+        "en": "Colossians",
+        "id": "Kolose"
+      },
+      "long": {
+        "en": "The Letter of Paul to the Colossians",
+        "id": "Kolose"
+      }
+    },
+    "book-phm": {
+      "abbr": {
+        "en": "Phm",
+        "id": "phm"
+      },
+      "short": {
+        "en": "Philemon",
+        "id": "Filemon"
+      },
+      "long": {
+        "en": "The Letter of Paul to Philemon",
+        "id": "Filemon"
+      }
+    },
+    "book-tit": {
+      "abbr": {
+        "en": "Tit",
+        "id": "Tit"
+      },
+      "short": {
+        "en": "Titus",
+        "id": "Titus"
+      },
+      "long": {
+        "en": "The Letter of Paul to Titus",
+        "id": "Titus"
+      }
+    }
+  },
+  "ingredients": {
+    "ingredients/1TH.usfm": {
+      "checksum": {
+        "md5": "4cd98aa81851fb868e2333825775ad2a"
+      },
+      "mimeType": "text/plain",
+      "size": 302942,
+      "scope": {
+        "1TH": []
+      }
+    },
+    "ingredients/1TI.usfm": {
+      "checksum": {
+        "md5": "cdfdc41ae4ed4e7b2798c21c5d212bfe"
+      },
+      "mimeType": "text/plain",
+      "size": 342828,
+      "scope": {
+        "1TI": []
+      }
+    },
+    "ingredients/2PE.usfm": {
+      "checksum": {
+        "md5": "e9a32d2f99a231b6dfec6bffa5d3b0ab"
+      },
+      "mimeType": "text/plain",
+      "size": 234299,
+      "scope": {
+        "2PE": []
+      }
+    },
+    "ingredients/2TH.usfm": {
+      "checksum": {
+        "md5": "0079d851a614f7d55f3d579bbbf7cfb2"
+      },
+      "mimeType": "text/plain",
+      "size": 167706,
+      "scope": {
+        "2TH": []
+      }
+    },
+    "ingredients/2TI.usfm": {
+      "checksum": {
+        "md5": "ca66df1d0ae577b0ca51886315f4474f"
+      },
+      "mimeType": "text/plain",
+      "size": 258352,
+      "scope": {
+        "2TI": []
+      }
+    },
+    "ingredients/3JN.usfm": {
+      "checksum": {
+        "md5": "b345aee5cf02a5cd951e1bc799efd68e"
+      },
+      "mimeType": "text/plain",
+      "size": 47559,
+      "scope": {
+        "3JN": []
+      }
+    },
+    "ingredients/COL.usfm": {
+      "checksum": {
+        "md5": "07a2a2f0ef1553df13c5e04f7407b3bf"
+      },
+      "mimeType": "text/plain",
+      "size": 319349,
+      "scope": {
+        "COL": []
+      }
+    },
+    "ingredients/LICENSE.md": {
+      "checksum": {
+        "md5": "5d75b94e643371d7899307c8615dc9e3"
+      },
+      "mimeType": "text/markdown",
+      "size": 1498
+    },
+    "ingredients/PHM.usfm": {
+      "checksum": {
+        "md5": "9f301db828f5e8c0273cd30fedabe609"
+      },
+      "mimeType": "text/plain",
+      "size": 71349,
+      "scope": {
+        "PHM": []
+      }
+    },
+    "ingredients/TIT.usfm": {
+      "checksum": {
+        "md5": "5bd4c9596b039cf2697acc38f353b7f7"
+      },
+      "mimeType": "text/plain",
+      "size": 142707,
+      "scope": {
+        "TIT": []
+      }
+    }
+  },
+  "copyright": {
+    "shortStatements": [
+      {
+        "statement": "© BAHTRAKU 2025, CC BY-SA 4.0",
+        "mimetype": "text/plain",
+        "lang": "en"
+      }
+    ]
+  }
+}

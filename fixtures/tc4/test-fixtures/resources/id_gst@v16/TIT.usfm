@@ -1,0 +1,1779 @@
+\id TIT EN_GST id_Bahasa⋅Indonesia_ltr Unlocked Dynamic Bible Fri May 10 2024 12:18:54 GMT+0700 (Western Indonesia Time) tc
+\usfm 3.0
+\ide UTF-8
+\h Titus
+\toc1 Titus
+\toc2 Titus
+\toc3 Tit
+\mt Titus
+
+\c 1
+\p 
+\v 1 \zaln-s |x-strong="G39720" x-lemma="Παῦλος" x-morph="Gr,N,,,,,NMS," x-occurrence="1" x-occurrences="1" x-content="Παῦλος"\*\w Aku|x-occurrence="1" x-occurrences="2"\w*,
+\w Paulus|x-occurrence="1" x-occurrences="1"\w*,
+\w menulis|x-occurrence="1" x-occurrences="1"\w*
+\w surat|x-occurrence="1" x-occurrences="1"\w*
+\w ini|x-occurrence="1" x-occurrences="1"\w*
+\w kepadamu|x-occurrence="1" x-occurrences="1"\w*,
+\w Titus|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*.
+\zaln-s |x-strong="G14010" x-lemma="δοῦλος" x-morph="Gr,N,,,,,NMS," x-occurrence="1" x-occurrences="1" x-content="δοῦλος"\*\w Aku|x-occurrence="2" x-occurrences="2"\w*
+\w seorang|x-occurrence="1" x-occurrences="1"\w*
+\w hamba|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G23160" x-lemma="θεός" x-morph="Gr,N,,,,,GMS," x-occurrence="1" x-occurrences="2" x-content="Θεοῦ"\*\w Allah|x-occurrence="1" x-occurrences="3"\w*\zaln-e\*
+\zaln-s |x-strong="G11610" x-lemma="δέ" x-morph="Gr,CC,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="δὲ"\*\w dan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G06520" x-lemma="ἀπόστολος" x-morph="Gr,N,,,,,NMS," x-occurrence="1" x-occurrences="1" x-content="ἀπόστολος"\*\w rasul|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G24240" x-lemma="Ἰησοῦς" x-morph="Gr,N,,,,,GMS," x-occurrence="1" x-occurrences="1" x-content="Ἰησοῦ"\*\w Yesus|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G55470" x-lemma="χριστός" x-morph="Gr,N,,,,,GMS," x-occurrence="1" x-occurrences="1" x-content="Χριστοῦ"\*\w sang|x-occurrence="1" x-occurrences="1"\w*
+\w Mesias|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*.
+\zaln-s |x-strong="G23160" x-lemma="θεός" x-morph="Gr,N,,,,,GMS," x-occurrence="2" x-occurrences="2" x-content="Θεοῦ"\*\w Allah|x-occurrence="2" x-occurrences="3"\w*\zaln-e\*
+\zaln-s |x-strong="G25960" x-lemma="κατά" x-morph="Gr,P,,,,,A,,," x-occurrence="1" x-occurrences="1" x-content="κατὰ"\*\zaln-s |x-strong="G41020" x-lemma="πίστις" x-morph="Gr,N,,,,,AFS," x-occurrence="1" x-occurrences="1" x-content="πίστιν"\*\w telah|x-occurrence="1" x-occurrences="2"\w*
+\w mengutus|x-occurrence="1" x-occurrences="1"\w*
+\w aku|x-occurrence="1" x-occurrences="2"\w*
+\w untuk|x-occurrence="1" x-occurrences="2"\w*
+\w mengajar|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G15880" x-lemma="ἐκλεκτός" x-morph="Gr,NS,,,,GMP," x-occurrence="1" x-occurrences="1" x-content="ἐκλεκτῶν"\*\w orang|x-occurrence="1" x-occurrences="2"\w*-\w orang|x-occurrence="2" x-occurrences="2"\w*
+\w yang|x-occurrence="1" x-occurrences="3"\w*
+\w telah|x-occurrence="2" x-occurrences="2"\w*
+\w Dia|x-occurrence="1" x-occurrences="1"\w*
+\w pilih|x-occurrence="1" x-occurrences="1"\w*
+\w menjadi|x-occurrence="1" x-occurrences="1"\w*
+\w milikNya|x-occurrence="1" x-occurrences="1"\w*
+\w agar|x-occurrence="1" x-occurrences="1"\w*
+\w lebih|x-occurrence="1" x-occurrences="1"\w*
+\w percaya|x-occurrence="1" x-occurrences="1"\w*
+\w kepadaNya|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*.
+\zaln-s |x-strong="G25320" x-lemma="καί" x-morph="Gr,CC,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="καὶ"\*\w Dan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G19220" x-lemma="ἐπίγνωσις" x-morph="Gr,N,,,,,AFS," x-occurrence="1" x-occurrences="1" x-content="ἐπίγνωσιν"\*\w aku|x-occurrence="2" x-occurrences="2"\w*
+\w melayani|x-occurrence="1" x-occurrences="1"\w*
+\w untuk|x-occurrence="2" x-occurrences="2"\w*
+\w menolong|x-occurrence="1" x-occurrences="1"\w*
+\w umatNya|x-occurrence="1" x-occurrences="1"\w*
+\w mengetahui|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G02250" x-lemma="ἀλήθεια" x-morph="Gr,N,,,,,GFS," x-occurrence="1" x-occurrences="1" x-content="ἀληθείας"\*\w apa|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="2" x-occurrences="3"\w*
+\w benar|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*,
+\zaln-s |x-strong="G25960" x-lemma="κατά" x-morph="Gr,P,,,,,A,,," x-occurrence="1" x-occurrences="1" x-content="κατ’"\*\w sehingga|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,GFS," x-occurrence="1" x-occurrences="1" x-content="τῆς"\*\zaln-s |x-strong="G21500" x-lemma="εὐσέβεια" x-morph="Gr,N,,,,,AFS," x-occurrence="1" x-occurrences="1" x-content="εὐσέβειαν"\*\w mereka|x-occurrence="1" x-occurrences="1"\w*
+\w dapat|x-occurrence="1" x-occurrences="1"\w*
+\w hidup|x-occurrence="1" x-occurrences="1"\w*
+\w dalam|x-occurrence="1" x-occurrences="1"\w*
+\w cara|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="3" x-occurrences="3"\w*
+\w berkenan|x-occurrence="1" x-occurrences="1"\w*
+\w kepada|x-occurrence="1" x-occurrences="1"\w*
+\w Allah|x-occurrence="3" x-occurrences="3"\w*\zaln-e\*\zaln-e\*. 
+\p 
+\v 2 \zaln-s |x-strong="G19090" x-lemma="ἐπί" x-morph="Gr,P,,,,,D,,," x-occurrence="1" x-occurrences="1" x-content="ἐπ’"\*\w UmatNya|x-occurrence="1" x-occurrences="1"\w*
+\w dapat|x-occurrence="1" x-occurrences="1"\w*
+\w belajar|x-occurrence="1" x-occurrences="1"\w*
+\w bagaimana|x-occurrence="1" x-occurrences="1"\w*
+\w hidup|x-occurrence="1" x-occurrences="2"\w*
+\w seperti|x-occurrence="1" x-occurrences="1"\w*
+\w ini|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G16800" x-lemma="ἐλπίς" x-morph="Gr,N,,,,,DFS," x-occurrence="1" x-occurrences="1" x-content="ἐλπίδι"\*\w karena|x-occurrence="1" x-occurrences="1"\w*
+\w mereka|x-occurrence="1" x-occurrences="2"\w*
+\w yakin|x-occurrence="1" x-occurrences="1"\w*
+\w bahwa|x-occurrence="1" x-occurrences="1"\w*
+\w Allah|x-occurrence="1" x-occurrences="2"\w*
+\w akan|x-occurrence="1" x-occurrences="2"\w*
+\w memberikan|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*
+\zaln-s |x-strong="G22220" x-lemma="ζωή" x-morph="Gr,N,,,,,GFS," x-occurrence="1" x-occurrences="1" x-content="ζωῆς"\*\w kehidupan|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*
+\zaln-s |x-strong="G01660" x-lemma="αἰώνιος" x-morph="Gr,AA,,,,GFS," x-occurrence="1" x-occurrences="1" x-content="αἰωνίου"\*\w kekal|x-occurrence="1" x-occurrences="2"\w*
+\w kepada|x-occurrence="1" x-occurrences="1"\w*
+\w mereka|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*.
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,NMS," x-occurrence="1" x-occurrences="1" x-content="ὁ"\*\zaln-s |x-strong="G23160" x-lemma="θεός" x-morph="Gr,N,,,,,NMS," x-occurrence="1" x-occurrences="1" x-content="Θεὸς"\*\w Allah|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G08930" x-lemma="ἀψευδής" x-morph="Gr,AA,,,,NMS," x-occurrence="1" x-occurrences="1" x-content="ἀψευδὴς"\*\w tidak|x-occurrence="1" x-occurrences="1"\w*
+\w berbohong|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*.
+\zaln-s |x-strong="G42530" x-lemma="πρό" x-morph="Gr,P,,,,,G,,," x-occurrence="1" x-occurrences="1" x-content="πρὸ"\*\w Bahkan|x-occurrence="1" x-occurrences="1"\w*
+\w sebelum|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G55500" x-lemma="χρόνος" x-morph="Gr,N,,,,,GMP," x-occurrence="1" x-occurrences="1" x-content="χρόνων"\*\w dunia|x-occurrence="1" x-occurrences="1"\w*
+\w diciptakan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*,
+\zaln-s |x-strong="G37390" x-lemma="ὅς" x-morph="Gr,RR,,,,AFS," x-occurrence="1" x-occurrences="1" x-content="ἣν"\*\zaln-s |x-strong="G18610" x-lemma="ἐπαγγέλλω" x-morph="Gr,V,IAM3,,S," x-occurrence="1" x-occurrences="1" x-content="ἐπηγγείλατο"\*\w Dia|x-occurrence="1" x-occurrences="1"\w*
+\w berjanji|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G01660" x-lemma="αἰώνιος" x-morph="Gr,AA,,,,GMP," x-occurrence="1" x-occurrences="1" x-content="αἰωνίων"\*\w akan|x-occurrence="2" x-occurrences="2"\w*
+\w memberikan|x-occurrence="2" x-occurrences="2"\w*
+\w kita|x-occurrence="1" x-occurrences="1"\w*
+\w hidup|x-occurrence="2" x-occurrences="2"\w*
+\w yang|x-occurrence="2" x-occurrences="2"\w*
+\w kekal|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*. 
+\p 
+\v 3 \zaln-s |x-strong="G11610" x-lemma="δέ" x-morph="Gr,CC,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="δὲ"\*\w Kemudian|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*,
+\zaln-s |x-strong="G25400" x-lemma="καιρός" x-morph="Gr,N,,,,,DMP," x-occurrence="1" x-occurrences="1" x-content="καιροῖς"\*\w pada|x-occurrence="1" x-occurrences="1"\w*
+\w waktu|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="1" x-occurrences="3"\w*
+\w tepat|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*,
+\zaln-s |x-strong="G53190" x-lemma="φανερόω" x-morph="Gr,V,IAA3,,S," x-occurrence="1" x-occurrences="1" x-content="ἐφανέρωσεν"\*\w Dia|x-occurrence="1" x-occurrences="1"\w*
+\w menyampaikan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G23980" x-lemma="ἴδιος" x-morph="Gr,EF,,,,DMP," x-occurrence="1" x-occurrences="1" x-content="ἰδίοις"\*\w rencanaNya|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,AMS," x-occurrence="1" x-occurrences="1" x-content="τὸν"\*\zaln-s |x-strong="G30560" x-lemma="λόγος" x-morph="Gr,N,,,,,AMS," x-occurrence="1" x-occurrences="1" x-content="λόγον"\*\w melalui|x-occurrence="1" x-occurrences="1"\w*
+\w firman|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*-\zaln-s |x-strong="G08460" x-lemma="αὐτός" x-morph="Gr,RP,,,3GMS," x-occurrence="1" x-occurrences="1" x-content="αὐτοῦ"\*\w Nya|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G37390" x-lemma="ὅς" x-morph="Gr,RR,,,,ANS," x-occurrence="1" x-occurrences="1" x-content="ὃ"\*\w yang|x-occurrence="2" x-occurrences="3"\w*\zaln-e\*
+\zaln-s |x-strong="G41000" x-lemma="πιστεύω" x-morph="Gr,V,IAP1,,S," x-occurrence="1" x-occurrences="1" x-content="ἐπιστεύθην"\*\w dipercayakan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G53190" x-lemma="φανερόω" x-morph="Gr,V,IAA3,,S," x-occurrence="1" x-occurrences="1" x-content="ἐφανέρωσεν"\*\w kepadaku|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G17220" x-lemma="ἐν" x-morph="Gr,P,,,,,D,,," x-occurrence="1" x-occurrences="1" x-content="ἐν"\*\w untuk|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*
+\zaln-s |x-strong="G27820" x-lemma="κήρυγμα" x-morph="Gr,N,,,,,DNS," x-occurrence="1" x-occurrences="1" x-content="κηρύγματι"\*\w memberitakannya|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*.
+\zaln-s |x-strong="G14730" x-lemma="ἐγώ" x-morph="Gr,RP,,,1N,S," x-occurrence="1" x-occurrences="1" x-content="ἐγὼ"\*\w Aku|x-occurrence="1" x-occurrences="1"\w*
+\w melakukan|x-occurrence="1" x-occurrences="1"\w*
+\w hal|x-occurrence="1" x-occurrences="1"\w*
+\w ini|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G25960" x-lemma="κατά" x-morph="Gr,P,,,,,A,,," x-occurrence="1" x-occurrences="1" x-content="κατ’"\*\w untuk|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*
+\zaln-s |x-strong="G20030" x-lemma="ἐπιταγή" x-morph="Gr,N,,,,,AFS," x-occurrence="1" x-occurrences="1" x-content="ἐπιταγὴν"\*\w menaati|x-occurrence="1" x-occurrences="1"\w*
+\w perintah|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,GMS," x-occurrence="1" x-occurrences="1" x-content="τοῦ"\*\zaln-s |x-strong="G23160" x-lemma="θεός" x-morph="Gr,N,,,,,GMS," x-occurrence="1" x-occurrences="1" x-content="Θεοῦ"\*\w Allah|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*,
+\zaln-s |x-strong="G49900" x-lemma="σωτήρ" x-morph="Gr,N,,,,,GMS," x-occurrence="1" x-occurrences="1" x-content="Σωτῆρος"\*\w yang|x-occurrence="3" x-occurrences="3"\w*
+\w menyelamatkan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G14730" x-lemma="ἐγώ" x-morph="Gr,RP,,,1G,P," x-occurrence="1" x-occurrences="1" x-content="ἡμῶν"\*\w kita|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*. 
+\p 
+\v 4 \zaln-s |x-strong="G51030" x-lemma="Τίτος" x-morph="Gr,N,,,,,DMS," x-occurrence="1" x-occurrences="1" x-content="Τίτῳ"\*\w Aku|x-occurrence="1" x-occurrences="1"\w*
+\w menulis|x-occurrence="1" x-occurrences="1"\w*
+\w kepadamu|x-occurrence="1" x-occurrences="1"\w*,
+\w Titus|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*;
+\zaln-s |x-strong="G11030" x-lemma="γνήσιος" x-morph="Gr,AA,,,,DNS," x-occurrence="1" x-occurrences="1" x-content="γνησίῳ"\*\w engkau|x-occurrence="1" x-occurrences="3"\w*
+\w telah|x-occurrence="1" x-occurrences="1"\w*
+\w menjadi|x-occurrence="1" x-occurrences="1"\w*
+\w seperti|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G50430" x-lemma="τέκνον" x-morph="Gr,N,,,,,DNS," x-occurrence="1" x-occurrences="1" x-content="τέκνῳ"\*\w anak|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="1" x-occurrences="4"\w*
+\w sesungguhnya|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G11030" x-lemma="γνήσιος" x-morph="Gr,AA,,,,DNS," x-occurrence="1" x-occurrences="1" x-content="γνησίῳ"\*\w bagiku|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G25960" x-lemma="κατά" x-morph="Gr,P,,,,,A,,," x-occurrence="1" x-occurrences="1" x-content="κατὰ"\*\w sebab|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G28390" x-lemma="κοινός" x-morph="Gr,AA,,,,AFS," x-occurrence="1" x-occurrences="1" x-content="κοινὴν"\*\w kita|x-occurrence="1" x-occurrences="2"\w*
+\w berdua|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G41020" x-lemma="πίστις" x-morph="Gr,N,,,,,AFS," x-occurrence="1" x-occurrences="1" x-content="πίστιν"\*\w sekarang|x-occurrence="1" x-occurrences="1"\w*
+\w percaya|x-occurrence="1" x-occurrences="1"\w*
+\w kepada|x-occurrence="1" x-occurrences="2"\w*
+\w Yesus|x-occurrence="1" x-occurrences="2"\w*
+\w sang|x-occurrence="1" x-occurrences="2"\w*
+\w Mesias|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*.
+\zaln-s |x-strong="G05750" x-lemma="ἀπό" x-morph="Gr,P,,,,,G,,," x-occurrence="1" x-occurrences="1" x-content="ἀπὸ"\*\zaln-s |x-strong="G23160" x-lemma="θεός" x-morph="Gr,N,,,,,GMS," x-occurrence="1" x-occurrences="1" x-content="Θεοῦ"\*\zaln-s |x-strong="G39620" x-lemma="πατήρ" x-morph="Gr,N,,,,,GMS," x-occurrence="1" x-occurrences="1" x-content="Πατρὸς"\*\w Semoga|x-occurrence="1" x-occurrences="1"\w*
+\w Allah|x-occurrence="1" x-occurrences="1"\w*
+\w Bapa|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G25320" x-lemma="καί" x-morph="Gr,CC,,,,,,,," x-occurrence="1" x-occurrences="2" x-content="καὶ"\*\w dan|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*
+\zaln-s |x-strong="G24240" x-lemma="Ἰησοῦς" x-morph="Gr,N,,,,,GMS," x-occurrence="1" x-occurrences="1" x-content="Ἰησοῦ"\*\w Yesus|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*
+\zaln-s |x-strong="G55470" x-lemma="χριστός" x-morph="Gr,N,,,,,GMS," x-occurrence="1" x-occurrences="1" x-content="Χριστοῦ"\*\w sang|x-occurrence="2" x-occurrences="2"\w*
+\w Mesias|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,GMS," x-occurrence="1" x-occurrences="1" x-content="τοῦ"\*\zaln-s |x-strong="G49900" x-lemma="σωτήρ" x-morph="Gr,N,,,,,GMS," x-occurrence="1" x-occurrences="1" x-content="Σωτῆρος"\*\w yang|x-occurrence="2" x-occurrences="4"\w*
+\w menyelamatkan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G14730" x-lemma="ἐγώ" x-morph="Gr,RP,,,1G,P," x-occurrence="1" x-occurrences="1" x-content="ἡμῶν"\*\w kita|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*
+\zaln-s |x-strong="G54850" x-lemma="χάρις" x-morph="Gr,N,,,,,NFS," x-occurrence="1" x-occurrences="1" x-content="χάρις"\*\w terus|x-occurrence="1" x-occurrences="1"\w*
+\w mencurahkan|x-occurrence="1" x-occurrences="1"\w*
+\w segala|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="3" x-occurrences="4"\w*
+\w baik|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G15150" x-lemma="εἰρήνη" x-morph="Gr,N,,,,,NFS," x-occurrence="1" x-occurrences="1" x-content="εἰρήνη"\*\w kepada|x-occurrence="2" x-occurrences="2"\w*
+\w engkau|x-occurrence="2" x-occurrences="3"\w*\zaln-e\*
+\zaln-s |x-strong="G25320" x-lemma="καί" x-morph="Gr,CC,,,,,,,," x-occurrence="2" x-occurrences="2" x-content="καὶ"\*\w dan|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*
+\zaln-s |x-strong="G15150" x-lemma="εἰρήνη" x-morph="Gr,N,,,,,NFS," x-occurrence="1" x-occurrences="1" x-content="εἰρήνη"\*\w memberi|x-occurrence="1" x-occurrences="1"\w*
+\w engkau|x-occurrence="3" x-occurrences="3"\w*
+\w roh|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="4" x-occurrences="4"\w*
+\w penuh|x-occurrence="1" x-occurrences="1"\w*
+\w kedamaian|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*. 
+\p 
+\v 5 \zaln-s |x-strong="G06200" x-lemma="ἀπολίπω" x-morph="Gr,V,IAA1,,S," x-occurrence="1" x-occurrences="1" x-content="ἀπέλιπόν"\*\w Aku|x-occurrence="1" x-occurrences="1"\w*
+\w telah|x-occurrence="1" x-occurrences="2"\w*
+\w meninggalkan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G47710" x-lemma="σύ" x-morph="Gr,RP,,,2A,S," x-occurrence="1" x-occurrences="1" x-content="σε"\*\w kamu|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G17220" x-lemma="ἐν" x-morph="Gr,P,,,,,D,,," x-occurrence="1" x-occurrences="1" x-content="ἐν"\*\w di|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*
+\zaln-s |x-strong="G29140" x-lemma="Κρήτη" x-morph="Gr,N,,,,,DFS," x-occurrence="1" x-occurrences="1" x-content="Κρήτῃ"\*\w Pulau|x-occurrence="1" x-occurrences="1"\w*
+\w Kreta|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G37780" x-lemma="οὗτος" x-morph="Gr,RD,,,,GNS," x-occurrence="1" x-occurrences="1" x-content="τούτου"\*\zaln-s |x-strong="G54840" x-lemma="χάριν" x-morph="Gr,PI,,,,G,,," x-occurrence="1" x-occurrences="1" x-content="χάριν"\*\w karena|x-occurrence="1" x-occurrences="1"\w*
+\w alasan|x-occurrence="1" x-occurrences="1"\w*
+\w ini|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*:
+\zaln-s |x-strong="G24430" x-lemma="ἵνα" x-morph="Gr,CS,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="ἵνα"\*\w agar|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G19300" x-lemma="ἐπιδιορθόω" x-morph="Gr,V,SAM2,,S," x-occurrence="1" x-occurrences="1" x-content="ἐπιδιορθώσῃ"\*\w engkau|x-occurrence="1" x-occurrences="1"\w*
+\w melakukan|x-occurrence="1" x-occurrences="1"\w*
+\w pekerjaan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,ANP," x-occurrence="1" x-occurrences="1" x-content="τὰ"\*\zaln-s |x-strong="G30070" x-lemma="λείπω" x-morph="Gr,V,PPA,ANP," x-occurrence="1" x-occurrences="1" x-content="λείποντα"\*\w yang|x-occurrence="1" x-occurrences="2"\w*
+\w masih|x-occurrence="1" x-occurrences="1"\w*
+\w belum|x-occurrence="1" x-occurrences="1"\w*
+\w selesai|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G25320" x-lemma="καί" x-morph="Gr,CC,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="καὶ"\*\w dan|x-occurrence="1" x-occurrences="1"\w*
+\w juga|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G25250" x-lemma="καθίστημι" x-morph="Gr,V,SAA2,,S," x-occurrence="1" x-occurrences="1" x-content="καταστήσῃς"\*\w menetapkan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G42450" x-lemma="πρεσβύτερος" x-morph="Gr,NS,,,,AMPC" x-occurrence="1" x-occurrences="1" x-content="πρεσβυτέρους"\*\w penatua|x-occurrence="1" x-occurrences="2"\w*-\w penatua|x-occurrence="2" x-occurrences="2"\w*
+\w bagi|x-occurrence="1" x-occurrences="1"\w*
+\w kelompok|x-occurrence="1" x-occurrences="1"\w*
+\w orang|x-occurrence="1" x-occurrences="1"\w*
+\w percaya|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G25960" x-lemma="κατά" x-morph="Gr,P,,,,,A,,," x-occurrence="1" x-occurrences="1" x-content="κατὰ"\*\w di|x-occurrence="2" x-occurrences="2"\w*
+\w setiap|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G41720" x-lemma="πόλις" x-morph="Gr,N,,,,,AFS," x-occurrence="1" x-occurrences="1" x-content="πόλιν"\*\w kota|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*,
+\zaln-s |x-strong="G56130" x-lemma="ὡς" x-morph="Gr,CS,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="ὡς"\*\w seperti|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*
+\zaln-s |x-strong="G12990" x-lemma="διατάσσω" x-morph="Gr,V,IAM1,,S," x-occurrence="1" x-occurrences="1" x-content="διεταξάμην"\*\w telah|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*
+\zaln-s |x-strong="G14730" x-lemma="ἐγώ" x-morph="Gr,RP,,,1N,S," x-occurrence="1" x-occurrences="1" x-content="ἐγώ"\*\w aku|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G12990" x-lemma="διατάσσω" x-morph="Gr,V,IAM1,,S," x-occurrence="1" x-occurrences="1" x-content="διεταξάμην"\*\w pesankan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G47710" x-lemma="σύ" x-morph="Gr,RP,,,2D,S," x-occurrence="1" x-occurrences="1" x-content="σοι"\*\w kepadamu|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*. 
+\p 
+\v 6 \zaln-s |x-strong="G14870" x-lemma="εἰ" x-morph="Gr,CS,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="εἴ"\*\w Setiap|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G51000" x-lemma="τις" x-morph="Gr,RI,,,,NMS," x-occurrence="1" x-occurrences="1" x-content="τίς"\*\w penatua|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G15100" x-lemma="εἰμί" x-morph="Gr,V,IPA3,,S," x-occurrence="1" x-occurrences="1" x-content="ἐστιν"\*\w haruslah|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G04100" x-lemma="ἀνέγκλητος" x-morph="Gr,NP,,,,NMS," x-occurrence="1" x-occurrences="1" x-content="ἀνέγκλητος"\*\w orang|x-occurrence="1" x-occurrences="3"\w*
+\w yang|x-occurrence="1" x-occurrences="1"\w*
+\w tidak|x-occurrence="1" x-occurrences="4"\w*
+\w dapat|x-occurrence="1" x-occurrences="2"\w*
+\w dicela|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*.
+\zaln-s |x-strong="G04350" x-lemma="ἀνήρ" x-morph="Gr,N,,,,,NMS," x-occurrence="1" x-occurrences="1" x-content="ἀνήρ"\*\w Ia|x-occurrence="1" x-occurrences="1"\w*
+\w juga|x-occurrence="1" x-occurrences="1"\w*
+\w harus|x-occurrence="1" x-occurrences="2"\w*
+\w mempunyai|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G15200" x-lemma="εἷς" x-morph="Gr,EN,,,,GFS," x-occurrence="1" x-occurrences="1" x-content="μιᾶς"\*\w hanya|x-occurrence="1" x-occurrences="1"\w*
+\w satu|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G11350" x-lemma="γυνή" x-morph="Gr,N,,,,,GFS," x-occurrence="1" x-occurrences="1" x-content="γυναικὸς"\*\w istri|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*,
+\zaln-s |x-strong="G50430" x-lemma="τέκνον" x-morph="Gr,N,,,,,ANP," x-occurrence="1" x-occurrences="1" x-content="τέκνα"\*\w anak|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*-\zaln-s |x-strong="G21920" x-lemma="ἔχω" x-morph="Gr,V,PPA,NMS," x-occurrence="1" x-occurrences="1" x-content="ἔχων"\*\w anaknya|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*
+\zaln-s |x-strong="G41030" x-lemma="πιστός" x-morph="Gr,NS,,,,ANP," x-occurrence="1" x-occurrences="1" x-content="πιστά"\*\w harus|x-occurrence="2" x-occurrences="2"\w*
+\w percaya|x-occurrence="1" x-occurrences="1"\w*
+\w kepada|x-occurrence="1" x-occurrences="1"\w*
+\w Allah|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*,
+\zaln-s |x-strong="G17220" x-lemma="ἐν" x-morph="Gr,P,,,,,D,,," x-occurrence="1" x-occurrences="1" x-content="ἐν"\*\zaln-s |x-strong="G27240" x-lemma="κατηγορία" x-morph="Gr,N,,,,,DFS," x-occurrence="1" x-occurrences="1" x-content="κατηγορίᾳ"\*\w dan|x-occurrence="1" x-occurrences="1"\w*
+\w orang|x-occurrence="2" x-occurrences="3"\w*-\w orang|x-occurrence="3" x-occurrences="3"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G33610" x-lemma="μή" x-morph="Gr,D,,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="μὴ"\*\w tidak|x-occurrence="2" x-occurrences="4"\w*
+\w boleh|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G08100" x-lemma="ἀσωτία" x-morph="Gr,N,,,,,GFS," x-occurrence="1" x-occurrences="1" x-content="ἀσωτίας"\*\w menganggap|x-occurrence="1" x-occurrences="1"\w*
+\w anak|x-occurrence="2" x-occurrences="2"\w*-\w anaknya|x-occurrence="2" x-occurrences="2"\w*
+\w tidak|x-occurrence="3" x-occurrences="4"\w*
+\w dapat|x-occurrence="2" x-occurrences="2"\w*
+\w mengendalikan|x-occurrence="1" x-occurrences="1"\w*
+\w diri|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G22280" x-lemma="ἤ" x-morph="Gr,CC,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="ἢ"\*\w atau|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G05060" x-lemma="ἀνυπότακτος" x-morph="Gr,NP,,,,ANP," x-occurrence="1" x-occurrences="1" x-content="ἀνυπότακτα"\*\w tidak|x-occurrence="4" x-occurrences="4"\w*
+\w taat|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*. 
+\p 
+\v 7 \zaln-s |x-strong="G12100" x-lemma="δέω" x-morph="Gr,V,IPA3,,S," x-occurrence="1" x-occurrences="1" x-content="δεῖ"\*\w Setiap|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,AMS," x-occurrence="1" x-occurrences="1" x-content="τὸν"\*\zaln-s |x-strong="G19850" x-lemma="ἐπίσκοπος" x-morph="Gr,N,,,,,AMS," x-occurrence="1" x-occurrences="1" x-content="ἐπίσκοπον"\*\w orang|x-occurrence="1" x-occurrences="4"\w*
+\w yang|x-occurrence="1" x-occurrences="3"\w*
+\w memimpin|x-occurrence="1" x-occurrences="1"\w*
+\w umat|x-occurrence="1" x-occurrences="1"\w*
+\w Allah|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G15100" x-lemma="εἰμί" x-morph="Gr,V,NPA,,,,," x-occurrence="1" x-occurrences="1" x-content="εἶναι"\*\w adalah|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G56130" x-lemma="ὡς" x-morph="Gr,CS,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="ὡς"\*\w seperti|x-occurrence="1" x-occurrences="1"\w*
+\w orang|x-occurrence="2" x-occurrences="4"\w*\zaln-e\*
+\zaln-s |x-strong="G36230" x-lemma="οἰκονόμος" x-morph="Gr,N,,,,,AMS," x-occurrence="1" x-occurrences="1" x-content="οἰκονόμον"\*\w yang|x-occurrence="2" x-occurrences="3"\w*
+\w mengelola|x-occurrence="1" x-occurrences="1"\w*
+\w hamba|x-occurrence="1" x-occurrences="2"\w*-\w hamba|x-occurrence="2" x-occurrences="2"\w*
+\w dan|x-occurrence="1" x-occurrences="4"\w*
+\w harta|x-occurrence="1" x-occurrences="1"\w*
+\w milik|x-occurrence="1" x-occurrences="1"\w*
+\w orang|x-occurrence="3" x-occurrences="4"\w*
+\w lain|x-occurrence="1" x-occurrences="1"\w*,
+\w tetapi|x-occurrence="1" x-occurrences="1"\w*
+\w ia|x-occurrence="1" x-occurrences="1"\w*
+\w melakukan|x-occurrence="1" x-occurrences="1"\w*
+\w ini|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*
+\zaln-s |x-strong="G23160" x-lemma="θεός" x-morph="Gr,N,,,,,GMS," x-occurrence="1" x-occurrences="1" x-content="Θεοῦ"\*\w untuk|x-occurrence="1" x-occurrences="1"\w*
+\w Allah|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*.
+\zaln-s |x-strong="G10630" x-lemma="γάρ" x-morph="Gr,CC,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="γὰρ"\*\w Jadi|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*,
+\zaln-s |x-strong="G04100" x-lemma="ἀνέγκλητος" x-morph="Gr,NS,,,,AMS," x-occurrence="1" x-occurrences="1" x-content="ἀνέγκλητον"\*\w orang|x-occurrence="4" x-occurrences="4"\w*
+\w ini|x-occurrence="2" x-occurrences="2"\w*
+\w harus|x-occurrence="1" x-occurrences="1"\w*
+\w memiliki|x-occurrence="1" x-occurrences="1"\w*
+\w reputasi|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="3" x-occurrences="3"\w*
+\w baik|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*.
+\zaln-s |x-strong="G33610" x-lemma="μή" x-morph="Gr,D,,,,,,,,," x-occurrence="1" x-occurrences="5" x-content="μὴ"\*\w Ia|x-occurrence="1" x-occurrences="2"\w*
+\w tidak|x-occurrence="1" x-occurrences="5"\w*
+\w boleh|x-occurrence="1" x-occurrences="3"\w*\zaln-e\*
+\zaln-s |x-strong="G08290" x-lemma="αὐθάδης" x-morph="Gr,NS,,,,AMS," x-occurrence="1" x-occurrences="1" x-content="αὐθάδη"\*\w sombong|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G33610" x-lemma="μή" x-morph="Gr,D,,,,,,,,," x-occurrence="4" x-occurrences="5" x-content="μὴ"\*\w dan|x-occurrence="2" x-occurrences="4"\w*\zaln-e\*
+\zaln-s |x-strong="G33610" x-lemma="μή" x-morph="Gr,D,,,,,,,,," x-occurrence="2" x-occurrences="5" x-content="μὴ"\*\w tidak|x-occurrence="2" x-occurrences="5"\w*
+\w boleh|x-occurrence="2" x-occurrences="3"\w*\zaln-e\*
+\zaln-s |x-strong="G37110" x-lemma="ὀργίλος" x-morph="Gr,NS,,,,AMS," x-occurrence="1" x-occurrences="1" x-content="ὀργίλον"\*\w cepat|x-occurrence="1" x-occurrences="1"\w*
+\w marah|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*.
+\zaln-s |x-strong="G33610" x-lemma="μή" x-morph="Gr,D,,,,,,,,," x-occurrence="3" x-occurrences="5" x-content="μὴ"\*\w Ia|x-occurrence="2" x-occurrences="2"\w*
+\w tidak|x-occurrence="3" x-occurrences="5"\w*
+\w boleh|x-occurrence="3" x-occurrences="3"\w*\zaln-e\*
+\zaln-s |x-strong="G39430" x-lemma="πάροινος" x-morph="Gr,NS,,,,AMS," x-occurrence="1" x-occurrences="1" x-content="πάροινον"\*\w seorang|x-occurrence="1" x-occurrences="1"\w*
+\w pemabuk|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*,
+\zaln-s |x-strong="G41310" x-lemma="πλήκτης" x-morph="Gr,N,,,,,AMS," x-occurrence="1" x-occurrences="1" x-content="πλήκτην"\*\w tidak|x-occurrence="4" x-occurrences="5"\w*
+\w suka|x-occurrence="1" x-occurrences="1"\w*
+\w berkelahi|x-occurrence="1" x-occurrences="1"\w*
+\w dan|x-occurrence="3" x-occurrences="4"\w*
+\w bertengkar|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*,
+\zaln-s |x-strong="G33610" x-lemma="μή" x-morph="Gr,D,,,,,,,,," x-occurrence="5" x-occurrences="5" x-content="μὴ"\*\w dan|x-occurrence="4" x-occurrences="4"\w*
+\w tidak|x-occurrence="5" x-occurrences="5"\w*\zaln-e\*
+\zaln-s |x-strong="G01460" x-lemma="αἰσχροκερδής" x-morph="Gr,NS,,,,AMS," x-occurrence="1" x-occurrences="1" x-content="αἰσχροκερδῆ"\*\w serakah|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*. 
+\p 
+\v 8 \zaln-s |x-strong="G02350" x-lemma="ἀλλά" x-morph="Gr,CC,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="ἀλλὰ"\*\w Sebaliknya|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*,
+\zaln-s |x-strong="G53820" x-lemma="φιλόξενος" x-morph="Gr,NS,,,,AMS," x-occurrence="1" x-occurrences="1" x-content="φιλόξενον"\*\w ia|x-occurrence="1" x-occurrences="2"\w*
+\w harus|x-occurrence="1" x-occurrences="4"\w*
+\w menyambut|x-occurrence="1" x-occurrences="1"\w*
+\w orang|x-occurrence="1" x-occurrences="3"\w*
+\w asing|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G53580" x-lemma="φιλάγαθος" x-morph="Gr,NS,,,,AMS," x-occurrence="1" x-occurrences="1" x-content="φιλάγαθον"\*\w dan|x-occurrence="1" x-occurrences="4"\w*
+\w mencintai|x-occurrence="1" x-occurrences="1"\w*
+\w hal|x-occurrence="1" x-occurrences="2"\w*-\w hal|x-occurrence="2" x-occurrences="2"\w*
+\w yang|x-occurrence="1" x-occurrences="4"\w*
+\w baik|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*.
+\zaln-s |x-strong="G49980" x-lemma="σώφρων" x-morph="Gr,NS,,,,AMS," x-occurrence="1" x-occurrences="1" x-content="σώφρονα"\*\w Ia|x-occurrence="1" x-occurrences="2"\w*
+\w harus|x-occurrence="2" x-occurrences="4"\w*
+\w selalu|x-occurrence="1" x-occurrences="3"\w*
+\w bertindak|x-occurrence="1" x-occurrences="2"\w*
+\w bijaksana|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G13420" x-lemma="δίκαιος" x-morph="Gr,NS,,,,AMS," x-occurrence="1" x-occurrences="1" x-content="δίκαιον"\*\w dan|x-occurrence="2" x-occurrences="4"\w*
+\w memperlakukan|x-occurrence="1" x-occurrences="1"\w*
+\w orang|x-occurrence="2" x-occurrences="3"\w*
+\w lain|x-occurrence="1" x-occurrences="1"\w*
+\w dengan|x-occurrence="1" x-occurrences="2"\w*
+\w cara|x-occurrence="1" x-occurrences="2"\w*
+\w yang|x-occurrence="2" x-occurrences="4"\w*
+\w adil|x-occurrence="1" x-occurrences="1"\w*
+\w dan|x-occurrence="3" x-occurrences="4"\w*
+\w jujur|x-occurrence="1" x-occurrences="1"\w*.
+\w Ia|x-occurrence="2" x-occurrences="2"\w*
+\w harus|x-occurrence="3" x-occurrences="4"\w*
+\w selalu|x-occurrence="2" x-occurrences="3"\w*
+\w bertindak|x-occurrence="2" x-occurrences="2"\w*
+\w dengan|x-occurrence="2" x-occurrences="2"\w*
+\w cara|x-occurrence="2" x-occurrences="2"\w*
+\w yang|x-occurrence="3" x-occurrences="4"\w*
+\w benar|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G37410" x-lemma="ὅσιος" x-morph="Gr,NS,,,,AMS," x-occurrence="1" x-occurrences="1" x-content="ὅσιον"\*\w sebagai|x-occurrence="1" x-occurrences="1"\w*
+\w orang|x-occurrence="3" x-occurrences="3"\w*
+\w yang|x-occurrence="4" x-occurrences="4"\w*
+\w berbakti|x-occurrence="1" x-occurrences="1"\w*
+\w kepada|x-occurrence="1" x-occurrences="1"\w*
+\w Allah|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G14680" x-lemma="ἐγκρατής" x-morph="Gr,NS,,,,AMS," x-occurrence="1" x-occurrences="1" x-content="ἐγκρατῆ"\*\w dan|x-occurrence="4" x-occurrences="4"\w*
+\w ia|x-occurrence="2" x-occurrences="2"\w*
+\w harus|x-occurrence="4" x-occurrences="4"\w*
+\w selalu|x-occurrence="3" x-occurrences="3"\w*
+\w mengendalikan|x-occurrence="1" x-occurrences="1"\w*
+\w emosinya|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*. 
+\p 
+\v 9 \zaln-s |x-strong="G04720" x-lemma="ἀντέχω" x-morph="Gr,V,PPM,AMS," x-occurrence="1" x-occurrences="1" x-content="ἀντεχόμενον"\*\w Ia|x-occurrence="1" x-occurrences="2"\w*
+\w harus|x-occurrence="1" x-occurrences="3"\w*
+\w selalu|x-occurrence="1" x-occurrences="1"\w*
+\w percaya|x-occurrence="1" x-occurrences="1"\w*
+\w pada|x-occurrence="1" x-occurrences="1"\w*
+\w hal|x-occurrence="1" x-occurrences="5"\w*-\w hal|x-occurrence="2" x-occurrences="5"\w*
+\w yang|x-occurrence="1" x-occurrences="2"\w*
+\w benar|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,GMS," x-occurrence="1" x-occurrences="1" x-content="τοῦ"\*\zaln-s |x-strong="G25960" x-lemma="κατά" x-morph="Gr,P,,,,,A,,," x-occurrence="1" x-occurrences="1" x-content="κατὰ"\*\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,AFS," x-occurrence="1" x-occurrences="1" x-content="τὴν"\*\zaln-s |x-strong="G13220" x-lemma="διδαχή" x-morph="Gr,N,,,,,AFS," x-occurrence="1" x-occurrences="1" x-content="διδαχὴν"\*\w yang|x-occurrence="2" x-occurrences="2"\w*
+\w telah|x-occurrence="1" x-occurrences="1"\w*
+\w kami|x-occurrence="1" x-occurrences="1"\w*
+\w ajarkan|x-occurrence="1" x-occurrences="1"\w*
+\w kepadanya|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*\zaln-e\*\zaln-e\*,
+\zaln-s |x-strong="G17220" x-lemma="ἐν" x-morph="Gr,P,,,,,D,,," x-occurrence="1" x-occurrences="1" x-content="ἐν"\*\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,DFS," x-occurrence="1" x-occurrences="2" x-content="τῇ"\*\zaln-s |x-strong="G13190" x-lemma="διδασκαλία" x-morph="Gr,N,,,,,DFS," x-occurrence="1" x-occurrences="1" x-content="διδασκαλίᾳ"\*\w dan|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,DFS," x-occurrence="2" x-occurrences="2" x-content="τῇ"\*\zaln-s |x-strong="G51980" x-lemma="ὑγιαίνω" x-morph="Gr,V,PPA,DFS," x-occurrence="1" x-occurrences="1" x-content="ὑγιαινούσῃ"\*\w ia|x-occurrence="1" x-occurrences="3"\w*
+\w harus|x-occurrence="2" x-occurrences="3"\w*
+\w hidup|x-occurrence="1" x-occurrences="3"\w*
+\w sesuai|x-occurrence="1" x-occurrences="1"\w*
+\w dengan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G17220" x-lemma="ἐν" x-morph="Gr,P,,,,,D,,," x-occurrence="1" x-occurrences="1" x-content="ἐν"\*\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,DFS," x-occurrence="1" x-occurrences="2" x-content="τῇ"\*\zaln-s |x-strong="G13190" x-lemma="διδασκαλία" x-morph="Gr,N,,,,,DFS," x-occurrence="1" x-occurrences="1" x-content="διδασκαλίᾳ"\*\w hal|x-occurrence="3" x-occurrences="5"\w*-\w hal|x-occurrence="4" x-occurrences="5"\w*
+\w tersebut|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*\zaln-e\*.
+\zaln-s |x-strong="G41030" x-lemma="πιστός" x-morph="Gr,AA,,,,GMS," x-occurrence="1" x-occurrences="1" x-content="πιστοῦ"\*\zaln-s |x-strong="G30560" x-lemma="λόγος" x-morph="Gr,N,,,,,GMS," x-occurrence="1" x-occurrences="1" x-content="λόγου"\*\zaln-s |x-strong="G24430" x-lemma="ἵνα" x-morph="Gr,CS,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="ἵνα"\*\w Ia|x-occurrence="2" x-occurrences="2"\w*
+\w harus|x-occurrence="3" x-occurrences="3"\w*
+\w melakukan|x-occurrence="1" x-occurrences="1"\w*
+\w hal|x-occurrence="5" x-occurrences="5"\w*
+\w ini|x-occurrence="1" x-occurrences="3"\w*
+\w agar|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G14150" x-lemma="δυνατός" x-morph="Gr,NS,,,,NMS," x-occurrence="1" x-occurrences="1" x-content="δυνατὸς"\*\w ia|x-occurrence="2" x-occurrences="3"\w*
+\w dapat|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*
+\zaln-s |x-strong="G38700" x-lemma="παρακαλέω" x-morph="Gr,V,NPA,,,,," x-occurrence="1" x-occurrences="1" x-content="παρακαλεῖν"\*\w meyakinkan|x-occurrence="1" x-occurrences="1"\w*
+\w orang|x-occurrence="1" x-occurrences="3"\w*
+\w untuk|x-occurrence="1" x-occurrences="1"\w*
+\w hidup|x-occurrence="2" x-occurrences="3"\w*
+\w seperti|x-occurrence="1" x-occurrences="2"\w*
+\w ini|x-occurrence="2" x-occurrences="3"\w*\zaln-e\*
+\zaln-s |x-strong="G15100" x-lemma="εἰμί" x-morph="Gr,V,SPA3,,S," x-occurrence="1" x-occurrences="1" x-content="ᾖ"\*\zaln-s |x-strong="G25320" x-lemma="καί" x-morph="Gr,DO,,,,,,,," x-occurrence="1" x-occurrences="2" x-content="καὶ"\*\w juga|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*,
+\zaln-s |x-strong="G25320" x-lemma="καί" x-morph="Gr,CO,,,,,,,," x-occurrence="2" x-occurrences="2" x-content="καὶ"\*\w dan|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*
+\zaln-s |x-strong="G16510" x-lemma="ἐλέγχω" x-morph="Gr,V,NPA,,,,," x-occurrence="1" x-occurrences="1" x-content="ἐλέγχειν"\*\w agar|x-occurrence="2" x-occurrences="2"\w*
+\w ia|x-occurrence="3" x-occurrences="3"\w*
+\w dapat|x-occurrence="2" x-occurrences="2"\w*
+\w mengoreksi|x-occurrence="1" x-occurrences="1"\w*
+\w orang|x-occurrence="2" x-occurrences="3"\w*-\w orang|x-occurrence="3" x-occurrences="3"\w*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,AMP," x-occurrence="1" x-occurrences="1" x-content="τοὺς"\*\zaln-s |x-strong="G04830" x-lemma="ἀντιλέγω" x-morph="Gr,V,PPA,AMP," x-occurrence="1" x-occurrences="1" x-content="ἀντιλέγοντας"\*\w jika|x-occurrence="1" x-occurrences="1"\w*
+\w mereka|x-occurrence="1" x-occurrences="1"\w*
+\w tidak|x-occurrence="1" x-occurrences="1"\w*
+\w ingin|x-occurrence="1" x-occurrences="1"\w*
+\w hidup|x-occurrence="3" x-occurrences="3"\w*
+\w seperti|x-occurrence="2" x-occurrences="2"\w*
+\w ini|x-occurrence="3" x-occurrences="3"\w*\zaln-e\*\zaln-e\*. 
+\p 
+\v 10 \zaln-s |x-strong="G15100" x-lemma="εἰμί" x-morph="Gr,V,IPA3,,P," x-occurrence="1" x-occurrences="1" x-content="εἰσὶν"\*\w Hal|x-occurrence="1" x-occurrences="1"\w*
+\w ini|x-occurrence="1" x-occurrences="3"\w*
+\w kukatakan|x-occurrence="1" x-occurrences="1"\w*
+\w kepadamu|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G10630" x-lemma="γάρ" x-morph="Gr,CC,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="γὰρ"\*\w karena|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G41830" x-lemma="πολλός" x-morph="Gr,RI,,,,NMP," x-occurrence="1" x-occurrences="1" x-content="πολλοὶ"\*\w banyak|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*
+\zaln-s |x-strong="G25320" x-lemma="καί" x-morph="Gr,D,,,,,,,,," x-occurrence="1" x-occurrences="2" x-content="καὶ"\*\w juga|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G41830" x-lemma="πολλός" x-morph="Gr,RI,,,,NMP," x-occurrence="1" x-occurrences="1" x-content="πολλοὶ"\*\w orang|x-occurrence="1" x-occurrences="8"\w*
+\w yang|x-occurrence="1" x-occurrences="6"\w*\zaln-e\*
+\zaln-s |x-strong="G05060" x-lemma="ἀνυπότακτος" x-morph="Gr,NS,,,,NMP," x-occurrence="1" x-occurrences="1" x-content="ἀνυπότακτοι"\*\w tidak|x-occurrence="1" x-occurrences="2"\w*
+\w mau|x-occurrence="1" x-occurrences="1"\w*
+\w menaati|x-occurrence="1" x-occurrences="1"\w*
+\w mereka|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="2" x-occurrences="6"\w*
+\w menjadi|x-occurrence="1" x-occurrences="1"\w*
+\w pimpinan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*.
+\zaln-s |x-strong="G31510" x-lemma="ματαιολόγος" x-morph="Gr,NS,,,,NMP," x-occurrence="1" x-occurrences="1" x-content="ματαιολόγοι"\*\w Apa|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="3" x-occurrences="6"\w*
+\w dikatakan|x-occurrence="1" x-occurrences="1"\w*
+\w orang|x-occurrence="2" x-occurrences="8"\w*-\w orang|x-occurrence="3" x-occurrences="8"\w*
+\w ini|x-occurrence="2" x-occurrences="3"\w*
+\w tidak|x-occurrence="2" x-occurrences="2"\w*
+\w ada|x-occurrence="1" x-occurrences="1"\w*
+\w nilainya|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*.
+\zaln-s |x-strong="G25320" x-lemma="καί" x-morph="Gr,CC,,,,,,,," x-occurrence="2" x-occurrences="2" x-content="καὶ"\*\zaln-s |x-strong="G54230" x-lemma="φρεναπάτης" x-morph="Gr,N,,,,,NMP," x-occurrence="1" x-occurrences="1" x-content="φρεναπάται"\*\w Mereka|x-occurrence="1" x-occurrences="1"\w*
+\w membujuk|x-occurrence="1" x-occurrences="1"\w*
+\w orang|x-occurrence="4" x-occurrences="8"\w*
+\w untuk|x-occurrence="1" x-occurrences="2"\w*
+\w mempercayai|x-occurrence="1" x-occurrences="1"\w*
+\w hal|x-occurrence="1" x-occurrences="3"\w*-\w hal|x-occurrence="2" x-occurrences="3"\w*
+\w yang|x-occurrence="4" x-occurrences="6"\w*
+\w salah|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*.
+\zaln-s |x-strong="G31220" x-lemma="μάλιστα" x-morph="Gr,D,,,,,,,,S" x-occurrence="1" x-occurrences="1" x-content="μάλιστα"\*\w Sesungguhnya|x-occurrence="1" x-occurrences="1"\w*,
+\w orang|x-occurrence="5" x-occurrences="8"\w*-\w orang|x-occurrence="6" x-occurrences="8"\w*
+\w yang|x-occurrence="5" x-occurrences="6"\w*
+\w paling|x-occurrence="1" x-occurrences="1"\w*
+\w banyak|x-occurrence="2" x-occurrences="2"\w*
+\w melakukan|x-occurrence="1" x-occurrences="1"\w*
+\w hal|x-occurrence="3" x-occurrences="3"\w*
+\w ini|x-occurrence="3" x-occurrences="3"\w*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,NMP," x-occurrence="1" x-occurrences="1" x-content="οἱ"\*\w adalah|x-occurrence="1" x-occurrences="1"\w*
+\w orang|x-occurrence="7" x-occurrences="8"\w*-\w orang|x-occurrence="8" x-occurrences="8"\w*
+\w yang|x-occurrence="6" x-occurrences="6"\w*
+\w menyuruh|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G15370" x-lemma="ἐκ" x-morph="Gr,P,,,,,G,,," x-occurrence="1" x-occurrences="1" x-content="ἐκ"\*\w semua|x-occurrence="1" x-occurrences="1"\w*
+\w pengikut|x-occurrence="1" x-occurrences="1"\w*
+\w Mesias|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,GFS," x-occurrence="1" x-occurrences="1" x-content="τῆς"\*\zaln-s |x-strong="G40610" x-lemma="περιτομή" x-morph="Gr,N,,,,,GFS," x-occurrence="1" x-occurrences="1" x-content="περιτομῆς"\*\w untuk|x-occurrence="2" x-occurrences="2"\w*
+\w disunat|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*. 
+\p 
+\v 11 \zaln-s |x-strong="G37390" x-lemma="ὅς" x-morph="Gr,RR,,,,AMP," x-occurrence="1" x-occurrences="1" x-content="οὓς"\*\w Engkau|x-occurrence="1" x-occurrences="1"\w*
+\w dan|x-occurrence="1" x-occurrences="1"\w*
+\w para|x-occurrence="1" x-occurrences="1"\w*
+\w pemimpin|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="1" x-occurrences="3"\w*
+\w engkau|x-occurrence="1" x-occurrences="1"\w*
+\w tunjuk|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G12100" x-lemma="δέω" x-morph="Gr,V,IPA3,,S," x-occurrence="1" x-occurrences="2" x-content="δεῖ"\*\w harus|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G19930" x-lemma="ἐπιστομίζω" x-morph="Gr,V,NPA,,,,," x-occurrence="1" x-occurrences="1" x-content="ἐπιστομίζειν"\*\w mencegah|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G37480" x-lemma="ὅστις" x-morph="Gr,RR,,,,NMP," x-occurrence="1" x-occurrences="1" x-content="οἵτινες"\*\w orang|x-occurrence="1" x-occurrences="6"\w*-\w orang|x-occurrence="2" x-occurrences="6"\w*
+\w itu|x-occurrence="1" x-occurrences="1"\w*
+\w mengajar|x-occurrence="1" x-occurrences="1"\w*
+\w orang|x-occurrence="3" x-occurrences="6"\w*-\w orang|x-occurrence="4" x-occurrences="6"\w*
+\w percaya|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*.
+\zaln-s |x-strong="G03960" x-lemma="ἀνατρέπω" x-morph="Gr,V,IPA3,,P," x-occurrence="1" x-occurrences="1" x-content="ἀνατρέπουσιν"\*\w Mereka|x-occurrence="1" x-occurrences="2"\w*
+\w mengajarkan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G37390" x-lemma="ὅς" x-morph="Gr,RD,,,,ANP," x-occurrence="1" x-occurrences="1" x-content="ἃ"\*\w hal|x-occurrence="1" x-occurrences="5"\w*-\w hal|x-occurrence="2" x-occurrences="5"\w*
+\w yang|x-occurrence="2" x-occurrences="3"\w*\zaln-e\*
+\zaln-s |x-strong="G33610" x-lemma="μή" x-morph="Gr,D,,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="μὴ"\*\w tidak|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G12100" x-lemma="δέω" x-morph="Gr,V,IPA3,,S," x-occurrence="2" x-occurrences="2" x-content="δεῖ"\*\w seharusnya|x-occurrence="1" x-occurrences="1"\w*
+\w mereka|x-occurrence="1" x-occurrences="2"\w*
+\w ajarkan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*,
+\zaln-s |x-strong="G13210" x-lemma="διδάσκω" x-morph="Gr,V,PPA,NMP," x-occurrence="1" x-occurrences="1" x-content="διδάσκοντες"\*\w menyebabkan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G36500" x-lemma="ὅλος" x-morph="Gr,EQ,,,,AMP," x-occurrence="1" x-occurrences="1" x-content="ὅλους"\*\w seluruh|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G36240" x-lemma="οἶκος" x-morph="Gr,N,,,,,AMP," x-occurrence="1" x-occurrences="1" x-content="οἴκους"\*\w keluarga|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G13210" x-lemma="διδάσκω" x-morph="Gr,V,PPA,NMP," x-occurrence="1" x-occurrences="1" x-content="διδάσκοντες"\*\w mempercayai|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G03960" x-lemma="ἀνατρέπω" x-morph="Gr,V,IPA3,,P," x-occurrence="1" x-occurrences="1" x-content="ἀνατρέπουσιν"\*\w hal|x-occurrence="3" x-occurrences="5"\w*-\w hal|x-occurrence="4" x-occurrences="5"\w*
+\w yang|x-occurrence="3" x-occurrences="3"\w*
+\w salah|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*.
+\zaln-s |x-strong="G27710" x-lemma="κέρδος" x-morph="Gr,N,,,,,GNS," x-occurrence="1" x-occurrences="1" x-content="κέρδους"\*\w Mereka|x-occurrence="2" x-occurrences="2"\w*
+\w melakukan|x-occurrence="1" x-occurrences="1"\w*
+\w hal|x-occurrence="5" x-occurrences="5"\w*
+\w ini|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G54840" x-lemma="χάριν" x-morph="Gr,PI,,,,G,,," x-occurrence="1" x-occurrences="1" x-content="χάριν"\*\w hanya|x-occurrence="1" x-occurrences="1"\w*
+\w agar|x-occurrence="1" x-occurrences="1"\w*
+\w orang|x-occurrence="5" x-occurrences="6"\w*-\w orang|x-occurrence="6" x-occurrences="6"\w*
+\w mau|x-occurrence="1" x-occurrences="1"\w*
+\w memberi|x-occurrence="1" x-occurrences="1"\w*
+\w mereka|x-occurrence="2" x-occurrences="2"\w*
+\w uang|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*.
+\zaln-s |x-strong="G01500" x-lemma="αἰσχρός" x-morph="Gr,AA,,,,GNS," x-occurrence="1" x-occurrences="1" x-content="αἰσχροῦ"\*\w Ini|x-occurrence="1" x-occurrences="1"\w*
+\w sangat|x-occurrence="1" x-occurrences="1"\w*
+\w memalukan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*! 
+\p 
+\v 12 \zaln-s |x-strong="G51000" x-lemma="τις" x-morph="Gr,RI,,,,NMS," x-occurrence="1" x-occurrences="1" x-content="τις"\*\zaln-s |x-strong="G15370" x-lemma="ἐκ" x-morph="Gr,P,,,,,G,,," x-occurrence="1" x-occurrences="1" x-content="ἐξ"\*\zaln-s |x-strong="G08460" x-lemma="αὐτός" x-morph="Gr,RP,,,3GMP," x-occurrence="1" x-occurrences="2" x-content="αὐτῶν"\*\w Seorang|x-occurrence="1" x-occurrences="1"\w*
+\w laki|x-occurrence="1" x-occurrences="2"\w*-\w laki|x-occurrence="2" x-occurrences="2"\w*
+\w dari|x-occurrence="1" x-occurrences="1"\w*
+\w Kreta|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*\zaln-e\*\zaln-e\*,
+\zaln-s |x-strong="G43960" x-lemma="προφήτης" x-morph="Gr,N,,,,,NMS," x-occurrence="1" x-occurrences="1" x-content="προφήτης"\*\w yang|x-occurrence="1" x-occurrences="3"\w*
+\w dianggap|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G23980" x-lemma="ἴδιος" x-morph="Gr,RD,,,,NMS," x-occurrence="1" x-occurrences="1" x-content="ἴδιος"\*\zaln-s |x-strong="G08460" x-lemma="αὐτός" x-morph="Gr,RP,,,3GMP," x-occurrence="2" x-occurrences="2" x-content="αὐτῶν"\*\w oleh|x-occurrence="1" x-occurrences="1"\w*
+\w kelompok|x-occurrence="1" x-occurrences="1"\w*
+\w nya|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G43960" x-lemma="προφήτης" x-morph="Gr,N,,,,,NMS," x-occurrence="1" x-occurrences="1" x-content="προφήτης"\*\w sebagai|x-occurrence="1" x-occurrences="1"\w*
+\w seorang|x-occurrence="1" x-occurrences="1"\w*
+\w nabi|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*,
+\zaln-s |x-strong="G30040" x-lemma="λέγω" x-morph="Gr,V,IAA3,,S," x-occurrence="1" x-occurrences="1" x-content="εἶπέν"\*\w pernah|x-occurrence="1" x-occurrences="1"\w*
+\w berkata|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*, “\zaln-s |x-strong="G29120" x-lemma="Κρής" x-morph="Gr,N,,,,,NMP," x-occurrence="1" x-occurrences="1" x-content="Κρῆτες"\*\w Orang|x-occurrence="1" x-occurrences="1"\w*-\w orang|x-occurrence="1" x-occurrences="1"\w*
+\w Kreta|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*
+\zaln-s |x-strong="G01040" x-lemma="ἀεί" x-morph="Gr,D,,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="ἀεὶ"\*\w sering|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G55830" x-lemma="ψεύστης" x-morph="Gr,N,,,,,NMP," x-occurrence="1" x-occurrences="1" x-content="ψεῦσται"\*\w berbohong|x-occurrence="1" x-occurrences="1"\w*
+\w satu|x-occurrence="1" x-occurrences="1"\w*
+\w kepada|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="2" x-occurrences="3"\w*
+\w lain|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*!
+\zaln-s |x-strong="G23420" x-lemma="θηρίον" x-morph="Gr,N,,,,,NNP," x-occurrence="1" x-occurrences="1" x-content="θηρία"\*\w Mereka|x-occurrence="1" x-occurrences="2"\w*
+\w seperti|x-occurrence="1" x-occurrences="1"\w*
+\w binatang|x-occurrence="1" x-occurrences="1"\w*
+\w liar|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G25560" x-lemma="κακός" x-morph="Gr,AA,,,,NNP," x-occurrence="1" x-occurrences="1" x-content="κακὰ"\*\w yang|x-occurrence="3" x-occurrences="3"\w*
+\w berbahaya|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*!
+\zaln-s |x-strong="G10640" x-lemma="γαστήρ" x-morph="Gr,N,,,,,NFP," x-occurrence="1" x-occurrences="1" x-content="γαστέρες"\*\zaln-s |x-strong="G06920" x-lemma="ἀργός" x-morph="Gr,AA,,,,NFP," x-occurrence="1" x-occurrences="1" x-content="ἀργαί"\*\w Mereka|x-occurrence="2" x-occurrences="2"\w*
+\w malas|x-occurrence="1" x-occurrences="1"\w*
+\w dan|x-occurrence="1" x-occurrences="1"\w*
+\w selalu|x-occurrence="1" x-occurrences="1"\w*
+\w makan|x-occurrence="1" x-occurrences="1"\w*
+\w terlalu|x-occurrence="1" x-occurrences="1"\w*
+\w banyak|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*.” 
+\p 
+\v 13 \zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,NFS," x-occurrence="1" x-occurrences="1" x-content="ἡ"\*\zaln-s |x-strong="G31410" x-lemma="μαρτυρία" x-morph="Gr,N,,,,,NFS," x-occurrence="1" x-occurrences="1" x-content="μαρτυρία"\*\w Apa|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="1" x-occurrences="2"\w*
+\w dikatakannya|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G37780" x-lemma="οὗτος" x-morph="Gr,ED,,,,NFS," x-occurrence="1" x-occurrences="1" x-content="αὕτη"\*\w itu|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*
+\zaln-s |x-strong="G15100" x-lemma="εἰμί" x-morph="Gr,V,IPA3,,S," x-occurrence="1" x-occurrences="1" x-content="ἐστὶν"\*\w adalah|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G02270" x-lemma="ἀληθής" x-morph="Gr,NP,,,,NFS," x-occurrence="1" x-occurrences="1" x-content="ἀληθής"\*\w benar|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*,
+\zaln-s |x-strong="G12230" x-lemma="διά" x-morph="Gr,P,,,,,A,,," x-occurrence="1" x-occurrences="1" x-content="δι’"\*\zaln-s |x-strong="G37390" x-lemma="ὅς" x-morph="Gr,ER,,,,AFS," x-occurrence="1" x-occurrences="1" x-content="ἣν"\*\zaln-s |x-strong="G01560" x-lemma="αἰτία" x-morph="Gr,N,,,,,AFS," x-occurrence="1" x-occurrences="1" x-content="αἰτίαν"\*\w karena|x-occurrence="1" x-occurrences="1"\w*
+\w itu|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G16510" x-lemma="ἐλέγχω" x-morph="Gr,V,MPA2,,S," x-occurrence="1" x-occurrences="1" x-content="ἔλεγχε"\*\w koreksilah|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G08460" x-lemma="αὐτός" x-morph="Gr,RP,,,3AMP," x-occurrence="1" x-occurrences="1" x-content="αὐτοὺς"\*\w mereka|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*
+\zaln-s |x-strong="G06640" x-lemma="ἀποτόμως" x-morph="Gr,D,,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="ἀποτόμως"\*\w dengan|x-occurrence="1" x-occurrences="1"\w*
+\w tegas|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G24430" x-lemma="ἵνα" x-morph="Gr,CS,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="ἵνα"\*\w agar|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G51980" x-lemma="ὑγιαίνω" x-morph="Gr,V,SPA3,,P," x-occurrence="1" x-occurrences="1" x-content="ὑγιαίνωσιν"\*\w mereka|x-occurrence="2" x-occurrences="2"\w*
+\w percaya|x-occurrence="1" x-occurrences="1"\w*
+\w dan|x-occurrence="1" x-occurrences="1"\w*
+\w mengajarkan|x-occurrence="1" x-occurrences="1"\w*
+\w hal|x-occurrence="1" x-occurrences="2"\w*-\w hal|x-occurrence="2" x-occurrences="2"\w*
+\w yang|x-occurrence="2" x-occurrences="2"\w*
+\w benar|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*
+\zaln-s |x-strong="G17220" x-lemma="ἐν" x-morph="Gr,P,,,,,D,,," x-occurrence="1" x-occurrences="1" x-content="ἐν"\*\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,DFS," x-occurrence="1" x-occurrences="1" x-content="τῇ"\*\zaln-s |x-strong="G41020" x-lemma="πίστις" x-morph="Gr,N,,,,,DFS," x-occurrence="1" x-occurrences="1" x-content="πίστει"\*\w tentang|x-occurrence="1" x-occurrences="1"\w*
+\w iman|x-occurrence="1" x-occurrences="1"\w*
+\w kepada|x-occurrence="1" x-occurrences="1"\w*
+\w Allah|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*\zaln-e\*. 
+\p 
+\v 14 \zaln-s |x-strong="G43370" x-lemma="προσέχω" x-morph="Gr,V,PPA,NMP," x-occurrence="1" x-occurrences="1" x-content="προσέχοντες"\*\w Mereka|x-occurrence="1" x-occurrences="1"\w*
+\w harus|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G33610" x-lemma="μή" x-morph="Gr,D,,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="μὴ"\*\w berhenti|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G24510" x-lemma="Ἰουδαϊκός" x-morph="Gr,AA,,,,DMP," x-occurrence="1" x-occurrences="1" x-content="Ἰουδαϊκοῖς"\*\w hidup|x-occurrence="1" x-occurrences="1"\w*
+\w menurut|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G34540" x-lemma="μῦθος" x-morph="Gr,N,,,,,DMP," x-occurrence="1" x-occurrences="1" x-content="μύθοις"\*\w cerita|x-occurrence="1" x-occurrences="2"\w*-\w cerita|x-occurrence="2" x-occurrences="2"\w*
+\w yang|x-occurrence="1" x-occurrences="4"\w*
+\w diciptakan|x-occurrence="1" x-occurrences="1"\w*
+\w oleh|x-occurrence="1" x-occurrences="1"\w*
+\w orang|x-occurrence="1" x-occurrences="4"\w*-\w orang|x-occurrence="2" x-occurrences="4"\w*
+\w Yahudi|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G25320" x-lemma="καί" x-morph="Gr,CC,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="καὶ"\*\w dan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G17850" x-lemma="ἐντολή" x-morph="Gr,N,,,,,DFP," x-occurrence="1" x-occurrences="1" x-content="ἐντολαῖς"\*\zaln-s |x-strong="G04440" x-lemma="ἄνθρωπος" x-morph="Gr,N,,,,,GMP," x-occurrence="1" x-occurrences="1" x-content="ἀνθρώπων"\*\w perintah|x-occurrence="1" x-occurrences="3"\w*-\w perintah|x-occurrence="2" x-occurrences="3"\w*
+\w yang|x-occurrence="2" x-occurrences="4"\w*
+\w bukan|x-occurrence="1" x-occurrences="1"\w*
+\w dari|x-occurrence="1" x-occurrences="2"\w*
+\w Allah|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*.
+\zaln-s |x-strong="G06540" x-lemma="ἀποστρέφω" x-morph="Gr,V,PPM,GMP," x-occurrence="1" x-occurrences="1" x-content="ἀποστρεφομένων"\*\w Perintah|x-occurrence="1" x-occurrences="1"\w*-\w perintah|x-occurrence="3" x-occurrences="3"\w*
+\w ini|x-occurrence="1" x-occurrences="1"\w*
+\w datang|x-occurrence="1" x-occurrences="1"\w*
+\w dari|x-occurrence="2" x-occurrences="2"\w*
+\w orang|x-occurrence="3" x-occurrences="4"\w*-\w orang|x-occurrence="4" x-occurrences="4"\w*
+\w yang|x-occurrence="3" x-occurrences="4"\w*
+\w tidak|x-occurrence="1" x-occurrences="1"\w*
+\w lagi|x-occurrence="1" x-occurrences="1"\w*
+\w menaati|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,AFS," x-occurrence="1" x-occurrences="1" x-content="τὴν"\*\zaln-s |x-strong="G02250" x-lemma="ἀλήθεια" x-morph="Gr,N,,,,,AFS," x-occurrence="1" x-occurrences="1" x-content="ἀλήθειαν"\*\w apa|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="4" x-occurrences="4"\w*
+\w benar|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*. 
+\p 
+\v 15 \zaln-s |x-strong="G39560" x-lemma="πᾶς" x-morph="Gr,RI,,,,NNP," x-occurrence="1" x-occurrences="1" x-content="πάντα"\*\w Jika|x-occurrence="1" x-occurrences="1"\w*
+\w beberapa|x-occurrence="1" x-occurrences="1"\w*
+\w orang|x-occurrence="1" x-occurrences="3"\w*\zaln-e\*
+\zaln-s |x-strong="G25130" x-lemma="καθαρός" x-morph="Gr,NP,,,,NNP," x-occurrence="1" x-occurrences="1" x-content="καθαρὰ"\*\w mau|x-occurrence="1" x-occurrences="1"\w*
+\w melakukan|x-occurrence="1" x-occurrences="3"\w*
+\w atau|x-occurrence="1" x-occurrences="1"\w*
+\w memikirkan|x-occurrence="1" x-occurrences="1"\w*
+\w untuk|x-occurrence="1" x-occurrences="1"\w*
+\w melakukan|x-occurrence="2" x-occurrences="3"\w*
+\w hal|x-occurrence="1" x-occurrences="2"\w*-\w hal|x-occurrence="2" x-occurrences="2"\w*
+\w baik|x-occurrence="1" x-occurrences="4"\w*\zaln-e\*,
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,DMP," x-occurrence="1" x-occurrences="2" x-content="τοῖς"\*\zaln-s |x-strong="G25130" x-lemma="καθαρός" x-morph="Gr,NS,,,,DMP," x-occurrence="1" x-occurrences="1" x-content="καθαροῖς"\*\w maka|x-occurrence="1" x-occurrences="1"\w*
+\w segala|x-occurrence="1" x-occurrences="2"\w*
+\w sesuatu|x-occurrence="1" x-occurrences="2"\w*
+\w yang|x-occurrence="1" x-occurrences="3"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G37620" x-lemma="οὐδείς" x-morph="Gr,RI,,,,NNS," x-occurrence="1" x-occurrences="1" x-content="οὐδὲν"\*\w mereka|x-occurrence="1" x-occurrences="4"\w*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,DMP," x-occurrence="1" x-occurrences="2" x-content="τοῖς"\*\zaln-s |x-strong="G25130" x-lemma="καθαρός" x-morph="Gr,NS,,,,DMP," x-occurrence="1" x-occurrences="1" x-content="καθαροῖς"\*\w lakukan|x-occurrence="1" x-occurrences="2"\w*
+\w adalah|x-occurrence="1" x-occurrences="1"\w*
+\w baik|x-occurrence="2" x-occurrences="4"\w*\zaln-e\*\zaln-e\*. 
+\zaln-s |x-strong="G11610" x-lemma="δέ" x-morph="Gr,CC,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="δὲ"\*\w Tetapi|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,DMP," x-occurrence="2" x-occurrences="2" x-content="τοῖς"\*\zaln-s |x-strong="G33920" x-lemma="μιαίνω" x-morph="Gr,V,PEP,DMP," x-occurrence="1" x-occurrences="1" x-content="μεμιαμμένοις"\*\w jika|x-occurrence="1" x-occurrences="1"\w*
+\w orang|x-occurrence="2" x-occurrences="3"\w*-\w orang|x-occurrence="3" x-occurrences="3"\w*
+\w menjadi|x-occurrence="1" x-occurrences="3"\w*
+\w jahat|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G25320" x-lemma="καί" x-morph="Gr,CC,,,,,,,," x-occurrence="1" x-occurrences="3" x-content="καὶ"\*\w dan|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*
+\zaln-s |x-strong="G05710" x-lemma="ἄπιστος" x-morph="Gr,NS,,,,DMP," x-occurrence="1" x-occurrences="1" x-content="ἀπίστοις"\*\w tidak|x-occurrence="1" x-occurrences="3"\w*
+\w percaya|x-occurrence="1" x-occurrences="1"\w*
+\w kepada|x-occurrence="1" x-occurrences="1"\w*
+\w Yesus|x-occurrence="1" x-occurrences="1"\w*
+\w sang|x-occurrence="1" x-occurrences="1"\w*
+\w Mesias|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*,
+\zaln-s |x-strong="G37620" x-lemma="οὐδείς" x-morph="Gr,RI,,,,NNS," x-occurrence="1" x-occurrences="1" x-content="οὐδὲν"\*\w segala|x-occurrence="2" x-occurrences="2"\w*
+\w sesuatu|x-occurrence="2" x-occurrences="2"\w*
+\w yang|x-occurrence="2" x-occurrences="3"\w*\zaln-e\*
+\zaln-s |x-strong="G08460" x-lemma="αὐτός" x-morph="Gr,RP,,,3GMP," x-occurrence="1" x-occurrences="1" x-content="αὐτῶν"\*\w mereka|x-occurrence="2" x-occurrences="4"\w*\zaln-e\*
+\zaln-s |x-strong="G37620" x-lemma="οὐδείς" x-morph="Gr,RI,,,,NNS," x-occurrence="1" x-occurrences="1" x-content="οὐδὲν"\*\w lakukan|x-occurrence="2" x-occurrences="2"\w*
+\w menjadi|x-occurrence="2" x-occurrences="3"\w*
+\w tidak|x-occurrence="2" x-occurrences="3"\w*\zaln-e\*
+\zaln-s |x-strong="G25130" x-lemma="καθαρός" x-morph="Gr,NP,,,,NNS," x-occurrence="1" x-occurrences="1" x-content="καθαρόν"\*\w baik|x-occurrence="3" x-occurrences="4"\w*\zaln-e\*.
+\zaln-s |x-strong="G02350" x-lemma="ἀλλά" x-morph="Gr,CC,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="ἀλλὰ"\*\w Jadi|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*,
+\zaln-s |x-strong="G25320" x-lemma="καί" x-morph="Gr,DO,,,,,,,," x-occurrence="2" x-occurrences="3" x-content="καὶ"\*\w baik|x-occurrence="4" x-occurrences="4"\w*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,NMS," x-occurrence="1" x-occurrences="1" x-content="ὁ"\*\zaln-s |x-strong="G35630" x-lemma="νοῦς" x-morph="Gr,N,,,,,NMS," x-occurrence="1" x-occurrences="1" x-content="νοῦς"\*\w pikiran|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G25320" x-lemma="καί" x-morph="Gr,CO,,,,,,,," x-occurrence="3" x-occurrences="3" x-content="καὶ"\*\w dan|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,NFS," x-occurrence="1" x-occurrences="1" x-content="ἡ"\*\zaln-s |x-strong="G48930" x-lemma="συνείδησις" x-morph="Gr,N,,,,,NFS," x-occurrence="1" x-occurrences="1" x-content="συνείδησις"\*\w hati|x-occurrence="1" x-occurrences="1"\w*
+\w nurani|x-occurrence="1" x-occurrences="1"\w*
+\w mereka|x-occurrence="3" x-occurrences="4"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G33920" x-lemma="μιαίνω" x-morph="Gr,V,IEP3,,S," x-occurrence="1" x-occurrences="1" x-content="μεμίανται"\*\w sudah|x-occurrence="1" x-occurrences="1"\w*
+\w menjadi|x-occurrence="3" x-occurrences="3"\w*
+\w rusak|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*, 
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,NMS," x-occurrence="1" x-occurrences="1" x-content="ὁ"\*\zaln-s |x-strong="G35630" x-lemma="νοῦς" x-morph="Gr,N,,,,,NMS," x-occurrence="1" x-occurrences="1" x-content="νοῦς"\*\w mereka|x-occurrence="4" x-occurrences="4"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,NFS," x-occurrence="1" x-occurrences="1" x-content="ἡ"\*\zaln-s |x-strong="G48930" x-lemma="συνείδησις" x-morph="Gr,N,,,,,NFS," x-occurrence="1" x-occurrences="1" x-content="συνείδησις"\*\w tidak|x-occurrence="3" x-occurrences="3"\w*
+\w merasa|x-occurrence="1" x-occurrences="1"\w*
+\w bersalah|x-occurrence="1" x-occurrences="1"\w*
+\w ketika|x-occurrence="1" x-occurrences="1"\w*
+\w melakukan|x-occurrence="3" x-occurrences="3"\w*
+\w apa|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="3" x-occurrences="3"\w*
+\w jahat|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*\zaln-e\*. 
+\p 
+\v 16 \zaln-s |x-strong="G36700" x-lemma="ὁμολογέω" x-morph="Gr,V,IPA3,,P," x-occurrence="1" x-occurrences="1" x-content="ὁμολογοῦσιν"\*\w Meskipun|x-occurrence="1" x-occurrences="1"\w*
+\w mereka|x-occurrence="1" x-occurrences="3"\w*
+\w mengaku|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G14920" x-lemma="εἴδω" x-morph="Gr,V,NEA,,,,," x-occurrence="1" x-occurrences="1" x-content="εἰδέναι"\*\w mengenal|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*
+\zaln-s |x-strong="G23160" x-lemma="θεός" x-morph="Gr,N,,,,,AMS," x-occurrence="1" x-occurrences="1" x-content="Θεὸν"\*\w Allah|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*,
+\zaln-s |x-strong="G11610" x-lemma="δέ" x-morph="Gr,CC,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="δὲ"\*\w namun|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,DNP," x-occurrence="1" x-occurrences="1" x-content="τοῖς"\*\zaln-s |x-strong="G20410" x-lemma="ἔργον" x-morph="Gr,N,,,,,DNP," x-occurrence="1" x-occurrences="1" x-content="ἔργοις"\*\w apa|x-occurrence="1" x-occurrences="2"\w*
+\w yang|x-occurrence="1" x-occurrences="2"\w*
+\w mereka|x-occurrence="2" x-occurrences="3"\w*
+\w lakukan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G07200" x-lemma="ἀρνέομαι" x-morph="Gr,V,IPM3,,P," x-occurrence="1" x-occurrences="1" x-content="ἀρνοῦνται"\*\w menunjukkan|x-occurrence="1" x-occurrences="1"\w*
+\w bahwa|x-occurrence="1" x-occurrences="1"\w*
+\w mereka|x-occurrence="3" x-occurrences="3"\w*
+\w tidak|x-occurrence="1" x-occurrences="3"\w*
+\w mengenal|x-occurrence="2" x-occurrences="2"\w*-\w Nya|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*.
+\zaln-s |x-strong="G09470" x-lemma="βδελυκτός" x-morph="Gr,NS,,,,NMP," x-occurrence="1" x-occurrences="1" x-content="βδελυκτοὶ"\*\w Mereka|x-occurrence="1" x-occurrences="2"\w*
+\w menjijikkan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*.
+\zaln-s |x-strong="G15100" x-lemma="εἰμί" x-morph="Gr,V,PPA,NMP," x-occurrence="1" x-occurrences="1" x-content="ὄντες"\*\w Mereka|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*
+\zaln-s |x-strong="G25320" x-lemma="καί" x-morph="Gr,CC,,,,,,,," x-occurrence="1" x-occurrences="2" x-content="καὶ"\*\w bahkan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G05450" x-lemma="ἀπειθής" x-morph="Gr,NS,,,,NMP," x-occurrence="1" x-occurrences="1" x-content="ἀπειθεῖς"\*\w tidak|x-occurrence="2" x-occurrences="3"\w*
+\w menaati|x-occurrence="1" x-occurrences="1"\w*
+\w Allah|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*
+\zaln-s |x-strong="G25320" x-lemma="καί" x-morph="Gr,CC,,,,,,,," x-occurrence="2" x-occurrences="2" x-content="καὶ"\*\w dan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G00960" x-lemma="ἀδόκιμος" x-morph="Gr,NS,,,,NMP," x-occurrence="1" x-occurrences="1" x-content="ἀδόκιμοι"\*\w tidak|x-occurrence="3" x-occurrences="3"\w*
+\w dapat|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G20410" x-lemma="ἔργον" x-morph="Gr,N,,,,,ANS," x-occurrence="1" x-occurrences="1" x-content="ἔργον"\*\w melakukan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G39560" x-lemma="πᾶς" x-morph="Gr,EQ,,,,ANS," x-occurrence="1" x-occurrences="1" x-content="πᾶν"\*\w apa|x-occurrence="2" x-occurrences="2"\w*
+\w pun|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G00180" x-lemma="ἀγαθός" x-morph="Gr,AA,,,,ANS," x-occurrence="1" x-occurrences="1" x-content="ἀγαθὸν"\*\w yang|x-occurrence="2" x-occurrences="2"\w*
+\w baik|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G43140" x-lemma="πρός" x-morph="Gr,P,,,,,A,,," x-occurrence="1" x-occurrences="1" x-content="πρὸς"\*\w bagi|x-occurrence="1" x-occurrences="1"\w*-\w Nya|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*.
+\c 2
+\p 
+\v 1 \zaln-s |x-strong="G11610" x-lemma="δέ" x-morph="Gr,CC,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="δὲ"\*\w Tetapi|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G47710" x-lemma="σύ" x-morph="Gr,RP,,,2N,S," x-occurrence="1" x-occurrences="1" x-content="σὺ"\*\w tentang|x-occurrence="1" x-occurrences="2"\w*
+\w engkau|x-occurrence="1" x-occurrences="2"\w*,
+\w Titus|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*,
+\zaln-s |x-strong="G29800" x-lemma="λαλέω" x-morph="Gr,V,MPA2,,S," x-occurrence="1" x-occurrences="1" x-content="λάλει"\*\w harus|x-occurrence="1" x-occurrences="1"\w*
+\w mengajar|x-occurrence="1" x-occurrences="1"\w*
+\w orang|x-occurrence="1" x-occurrences="2"\w*-\w orang|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*
+\zaln-s |x-strong="G37390" x-lemma="ὅς" x-morph="Gr,RD,,,,ANP," x-occurrence="1" x-occurrences="1" x-content="ἃ"\*\w hal|x-occurrence="1" x-occurrences="2"\w*-\w hal|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*
+\zaln-s |x-strong="G42410" x-lemma="πρέπω" x-morph="Gr,V,IPA3,,S," x-occurrence="1" x-occurrences="1" x-content="πρέπει"\*\w yang|x-occurrence="1" x-occurrences="3"\w*
+\w sesuai|x-occurrence="1" x-occurrences="1"\w*
+\w dengan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,DFS," x-occurrence="1" x-occurrences="1" x-content="τῇ"\*\zaln-s |x-strong="G51980" x-lemma="ὑγιαίνω" x-morph="Gr,V,PPA,DFS," x-occurrence="1" x-occurrences="1" x-content="ὑγιαινούσῃ"\*\zaln-s |x-strong="G13190" x-lemma="διδασκαλία" x-morph="Gr,N,,,,,DFS," x-occurrence="1" x-occurrences="1" x-content="διδασκαλίᾳ"\*\w apa|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="2" x-occurrences="3"\w*
+\w engkau|x-occurrence="2" x-occurrences="2"\w*
+\w ketahui|x-occurrence="1" x-occurrences="1"\w*
+\w sebagai|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="3" x-occurrences="3"\w*
+\w benar|x-occurrence="1" x-occurrences="1"\w*
+\w tentang|x-occurrence="2" x-occurrences="2"\w*
+\w Allah|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*\zaln-e\*. 
+\p 
+\v 2 \zaln-s |x-strong="G42460" x-lemma="πρεσβύτης" x-morph="Gr,N,,,,,AMP," x-occurrence="1" x-occurrences="1" x-content="πρεσβύτας"\*\w Pesankanlah|x-occurrence="1" x-occurrences="1"\w*
+\w kepada|x-occurrence="1" x-occurrences="2"\w*
+\w laki|x-occurrence="1" x-occurrences="2"\w*-\w laki|x-occurrence="2" x-occurrences="2"\w*
+\w yang|x-occurrence="1" x-occurrences="2"\w*
+\w lebih|x-occurrence="1" x-occurrences="1"\w*
+\w tua|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G35240" x-lemma="νηφάλιος" x-morph="Gr,NS,,,,AMP," x-occurrence="1" x-occurrences="1" x-content="νηφαλίους"\*\zaln-s |x-strong="G15100" x-lemma="εἰμί" x-morph="Gr,V,NPA,,,,," x-occurrence="1" x-occurrences="1" x-content="εἶναι"\*\w bahwa|x-occurrence="1" x-occurrences="2"\w*
+\w mereka|x-occurrence="1" x-occurrences="5"\w*
+\w harus|x-occurrence="1" x-occurrences="4"\w*
+\w selalu|x-occurrence="1" x-occurrences="1"\w*
+\w menahan|x-occurrence="1" x-occurrences="1"\w*
+\w diri|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*\zaln-e\*,
+\zaln-s |x-strong="G45860" x-lemma="σεμνός" x-morph="Gr,NP,,,,AMP," x-occurrence="1" x-occurrences="1" x-content="σεμνούς"\*\w mereka|x-occurrence="2" x-occurrences="5"\w*
+\w harus|x-occurrence="2" x-occurrences="4"\w*
+\w hidup|x-occurrence="1" x-occurrences="1"\w*
+\w dalam|x-occurrence="1" x-occurrences="2"\w*
+\w cara|x-occurrence="1" x-occurrences="1"\w*
+\w di|x-occurrence="1" x-occurrences="1"\w*
+\w mana|x-occurrence="1" x-occurrences="1"\w*
+\w orang|x-occurrence="1" x-occurrences="2"\w*
+\w lain|x-occurrence="1" x-occurrences="2"\w*
+\w menaruh|x-occurrence="1" x-occurrences="1"\w*
+\w hormat|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*,
+\zaln-s |x-strong="G51980" x-lemma="ὑγιαίνω" x-morph="Gr,V,PPA,AMP," x-occurrence="1" x-occurrences="1" x-content="ὑγιαίνοντας"\*\w dan|x-occurrence="1" x-occurrences="2"\w*
+\w mereka|x-occurrence="3" x-occurrences="5"\w*
+\w harus|x-occurrence="3" x-occurrences="4"\w*\zaln-e\*
+\zaln-s |x-strong="G49980" x-lemma="σώφρων" x-morph="Gr,NS,,,,AMP," x-occurrence="1" x-occurrences="1" x-content="σώφρονας"\*\w mengendalikan|x-occurrence="1" x-occurrences="1"\w*
+\w diri|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*.
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,DFS," x-occurrence="1" x-occurrences="3" x-content="τῇ"\*\zaln-s |x-strong="G41020" x-lemma="πίστις" x-morph="Gr,N,,,,,DFS," x-occurrence="1" x-occurrences="1" x-content="πίστει"\*\w Pesankan|x-occurrence="1" x-occurrences="1"\w*
+\w kepada|x-occurrence="2" x-occurrences="2"\w*
+\w mereka|x-occurrence="4" x-occurrences="5"\w*
+\w bahwa|x-occurrence="2" x-occurrences="2"\w*
+\w mereka|x-occurrence="5" x-occurrences="5"\w*
+\w juga|x-occurrence="1" x-occurrences="1"\w*
+\w harus|x-occurrence="4" x-occurrences="4"\w*
+\w teguh|x-occurrence="1" x-occurrences="1"\w*
+\w percaya|x-occurrence="1" x-occurrences="1"\w*
+\w pada|x-occurrence="1" x-occurrences="1"\w*
+\w hal|x-occurrence="1" x-occurrences="3"\w*-\w hal|x-occurrence="2" x-occurrences="3"\w*
+\w yang|x-occurrence="2" x-occurrences="2"\w*
+\w benar|x-occurrence="1" x-occurrences="1"\w* 
+\w tentang|x-occurrence="1" x-occurrences="1"\w*
+\w Allah|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*,
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,DFS," x-occurrence="2" x-occurrences="3" x-content="τῇ"\*\zaln-s |x-strong="G00260" x-lemma="ἀγάπη" x-morph="Gr,N,,,,,DFS," x-occurrence="1" x-occurrences="1" x-content="ἀγάπῃ"\*\w sungguh|x-occurrence="1" x-occurrences="2"\w*-\w sungguh|x-occurrence="2" x-occurrences="2"\w*
+\w mengasihi|x-occurrence="1" x-occurrences="1"\w*
+\w orang|x-occurrence="2" x-occurrences="2"\w*
+\w lain|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*\zaln-e\*,
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,DFS," x-occurrence="3" x-occurrences="3" x-content="τῇ"\*\zaln-s |x-strong="G52810" x-lemma="ὑπομονή" x-morph="Gr,N,,,,,DFS," x-occurrence="1" x-occurrences="1" x-content="ὑπομονῇ"\*\w dan|x-occurrence="2" x-occurrences="2"\w*
+\w melakukan|x-occurrence="1" x-occurrences="1"\w*
+\w semua|x-occurrence="1" x-occurrences="1"\w*
+\w hal|x-occurrence="3" x-occurrences="3"\w*
+\w ini|x-occurrence="1" x-occurrences="1"\w*
+\w sekalipun|x-occurrence="1" x-occurrences="1"\w*
+\w dalam|x-occurrence="2" x-occurrences="2"\w*
+\w keadaan|x-occurrence="1" x-occurrences="1"\w*
+\w sulit|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*. 
+\p 
+\v 3 \zaln-s |x-strong="G42470" x-lemma="πρεσβῦτις" x-morph="Gr,N,,,,,AFP," x-occurrence="1" x-occurrences="1" x-content="πρεσβύτιδας"\*\w Pesankanlah|x-occurrence="1" x-occurrences="1"\w*
+\w kepada|x-occurrence="1" x-occurrences="2"\w*
+\w perempuan|x-occurrence="1" x-occurrences="2"\w*-\w perempuan|x-occurrence="2" x-occurrences="2"\w*
+\w yang|x-occurrence="1" x-occurrences="3"\w*
+\w lebih|x-occurrence="1" x-occurrences="1"\w*
+\w tua|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*,
+\zaln-s |x-strong="G56150" x-lemma="ὡσαύτως" x-morph="Gr,D,,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="ὡσαύτως"\*\w seperti|x-occurrence="1" x-occurrences="1"\w*
+\w juga|x-occurrence="1" x-occurrences="1"\w*
+\w laki|x-occurrence="1" x-occurrences="2"\w*-\w laki|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*,
+\zaln-s |x-strong="G17220" x-lemma="ἐν" x-morph="Gr,P,,,,,D,,," x-occurrence="1" x-occurrences="1" x-content="ἐν"\*\zaln-s |x-strong="G26880" x-lemma="κατάστημα" x-morph="Gr,N,,,,,DNS," x-occurrence="1" x-occurrences="1" x-content="καταστήματι"\*\zaln-s |x-strong="G24120" x-lemma="ἱεροπρεπής" x-morph="Gr,NS,,,,AFP," x-occurrence="1" x-occurrences="1" x-content="ἱεροπρεπεῖς"\*\w untuk|x-occurrence="1" x-occurrences="1"\w*
+\w hidup|x-occurrence="1" x-occurrences="1"\w*
+\w sedemikian|x-occurrence="1" x-occurrences="1"\w*
+\w rupa|x-occurrence="1" x-occurrences="1"\w*
+\w sehingga|x-occurrence="1" x-occurrences="1"\w*
+\w semua|x-occurrence="1" x-occurrences="1"\w*
+\w orang|x-occurrence="1" x-occurrences="3"\w*
+\w tahu|x-occurrence="1" x-occurrences="1"\w*
+\w bahwa|x-occurrence="1" x-occurrences="3"\w*
+\w mereka|x-occurrence="1" x-occurrences="5"\w*
+\w sangat|x-occurrence="1" x-occurrences="1"\w*
+\w menghormati|x-occurrence="1" x-occurrences="1"\w*
+\w Allah|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*\zaln-e\*.
+\zaln-s |x-strong="G33610" x-lemma="μή" x-morph="Gr,D,,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="μὴ"\*\zaln-s |x-strong="G12280" x-lemma="διάβολος" x-morph="Gr,NS,,,,AFP," x-occurrence="1" x-occurrences="1" x-content="διαβόλους"\*\w Pesankan|x-occurrence="1" x-occurrences="1"\w*
+\w mereka|x-occurrence="2" x-occurrences="5"\w*
+\w bahwa|x-occurrence="2" x-occurrences="3"\w*
+\w mereka|x-occurrence="3" x-occurrences="5"\w*
+\w tidak|x-occurrence="1" x-occurrences="2"\w*
+\w boleh|x-occurrence="1" x-occurrences="2"\w*
+\w mengatakan|x-occurrence="1" x-occurrences="1"\w*
+\w hal|x-occurrence="1" x-occurrences="4"\w*-\w hal|x-occurrence="2" x-occurrences="4"\w*
+\w yang|x-occurrence="2" x-occurrences="3"\w*
+\w jahat|x-occurrence="1" x-occurrences="1"\w*
+\w atau|x-occurrence="1" x-occurrences="1"\w*
+\w salah|x-occurrence="1" x-occurrences="1"\w*
+\w tentang|x-occurrence="1" x-occurrences="1"\w*
+\w orang|x-occurrence="2" x-occurrences="3"\w*
+\w lain|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*\zaln-e\*,
+\zaln-s |x-strong="G33660" x-lemma="μηδέ" x-morph="Gr,D,,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="μηδὲ"\*\zaln-s |x-strong="G36310" x-lemma="οἶνος" x-morph="Gr,N,,,,,DMS," x-occurrence="1" x-occurrences="1" x-content="οἴνῳ"\*\zaln-s |x-strong="G41830" x-lemma="πολλός" x-morph="Gr,EQ,,,,DMS," x-occurrence="1" x-occurrences="1" x-content="πολλῷ"\*\zaln-s |x-strong="G14020" x-lemma="δουλόω" x-morph="Gr,V,PEP,AFP," x-occurrence="1" x-occurrences="1" x-content="δεδουλωμένας"\*\w dan|x-occurrence="1" x-occurrences="1"\w*
+\w bahwa|x-occurrence="3" x-occurrences="3"\w*
+\w mereka|x-occurrence="4" x-occurrences="5"\w*
+\w tidak|x-occurrence="2" x-occurrences="2"\w*
+\w boleh|x-occurrence="2" x-occurrences="2"\w*
+\w kecanduan|x-occurrence="1" x-occurrences="1"\w*
+\w minum|x-occurrence="1" x-occurrences="1"\w*
+\w banyak|x-occurrence="1" x-occurrences="1"\w*
+\w anggur|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*\zaln-e\*\zaln-e\*.
+\zaln-s |x-strong="G25670" x-lemma="καλοδιδάσκαλος" x-morph="Gr,NS,,,,AFP," x-occurrence="1" x-occurrences="1" x-content="καλοδιδασκάλους"\*\w Sebaliknya|x-occurrence="1" x-occurrences="1"\w*,
+\w mereka|x-occurrence="5" x-occurrences="5"\w*
+\w harus|x-occurrence="1" x-occurrences="1"\w*
+\w mengajarkan|x-occurrence="1" x-occurrences="1"\w*
+\w hal|x-occurrence="3" x-occurrences="4"\w*-\w hal|x-occurrence="4" x-occurrences="4"\w*
+\w yang|x-occurrence="3" x-occurrences="3"\w*
+\w baik|x-occurrence="1" x-occurrences="1"\w*
+\w kepada|x-occurrence="2" x-occurrences="2"\w*
+\w orang|x-occurrence="3" x-occurrences="3"\w*
+\w lain|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*. 
+\p 
+\v 4 \zaln-s |x-strong="G24430" x-lemma="ἵνα" x-morph="Gr,CS,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="ἵνα"\*\w Demikianlah|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*,
+\zaln-s |x-strong="G49940" x-lemma="σωφρονίζω" x-morph="Gr,V,SPA3,,P," x-occurrence="1" x-occurrences="1" x-content="σωφρονίζωσι"\*\w mereka|x-occurrence="1" x-occurrences="2"\w*
+\w dapat|x-occurrence="1" x-occurrences="1"\w*
+\w menasihati|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,AFP," x-occurrence="1" x-occurrences="1" x-content="τὰς"\*\zaln-s |x-strong="G35010" x-lemma="νέος" x-morph="Gr,NS,,,,AFP," x-occurrence="1" x-occurrences="1" x-content="νέας"\*\w perempuan|x-occurrence="1" x-occurrences="2"\w*-\w perempuan|x-occurrence="2" x-occurrences="2"\w*
+\w yang|x-occurrence="1" x-occurrences="1"\w*
+\w lebih|x-occurrence="1" x-occurrences="1"\w*
+\w muda|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G53620" x-lemma="φίλανδρος" x-morph="Gr,NS,,,,AFP," x-occurrence="1" x-occurrences="1" x-content="φιλάνδρους"\*\zaln-s |x-strong="G15100" x-lemma="εἰμί" x-morph="Gr,V,NPA,,,,," x-occurrence="1" x-occurrences="1" x-content="εἶναι"\*\w untuk|x-occurrence="1" x-occurrences="1"\w*
+\w mengasihi|x-occurrence="1" x-occurrences="1"\w*
+\w suami|x-occurrence="1" x-occurrences="2"\w*-\w suami|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G53880" x-lemma="φιλότεκνος" x-morph="Gr,NS,,,,AFP," x-occurrence="1" x-occurrences="1" x-content="φιλοτέκνους"\*\w dan|x-occurrence="1" x-occurrences="1"\w*
+\w anak|x-occurrence="1" x-occurrences="2"\w*-\w anak|x-occurrence="2" x-occurrences="2"\w*
+\w mereka|x-occurrence="2" x-occurrences="2"\w*
+\w sendiri|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*. 
+\p 
+\v 5 \zaln-s |x-strong="G49980" x-lemma="σώφρων" x-morph="Gr,NS,,,,AFP," x-occurrence="1" x-occurrences="1" x-content="σώφρονας"\*\w Perempuan|x-occurrence="1" x-occurrences="1"\w*-\w perempuan|x-occurrence="1" x-occurrences="3"\w*
+\w yang|x-occurrence="1" x-occurrences="5"\w*
+\w lebih|x-occurrence="1" x-occurrences="2"\w*
+\w tua|x-occurrence="1" x-occurrences="1"\w*
+\w juga|x-occurrence="1" x-occurrences="1"\w*
+\w harus|x-occurrence="1" x-occurrences="2"\w*
+\w mengajar|x-occurrence="1" x-occurrences="1"\w*
+\w perempuan|x-occurrence="2" x-occurrences="3"\w*-\w perempuan|x-occurrence="3" x-occurrences="3"\w*
+\w yang|x-occurrence="2" x-occurrences="5"\w*
+\w lebih|x-occurrence="2" x-occurrences="2"\w*
+\w muda|x-occurrence="1" x-occurrences="1"\w*
+\w untuk|x-occurrence="1" x-occurrences="3"\w*
+\w mengendalikan|x-occurrence="1" x-occurrences="1"\w*
+\w perkataan|x-occurrence="1" x-occurrences="1"\w*
+\w dan|x-occurrence="1" x-occurrences="2"\w*
+\w perbuatan|x-occurrence="1" x-occurrences="1"\w*
+\w mereka|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*,
+\zaln-s |x-strong="G00530" x-lemma="ἁγνός" x-morph="Gr,NS,,,,AFP," x-occurrence="1" x-occurrences="1" x-content="ἁγνάς"\*\w untuk|x-occurrence="2" x-occurrences="3"\w*
+\w tidak|x-occurrence="1" x-occurrences="2"\w*
+\w bertindak|x-occurrence="1" x-occurrences="1"\w*
+\w dengan|x-occurrence="1" x-occurrences="2"\w*
+\w cara|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="3" x-occurrences="5"\w*
+\w salah|x-occurrence="1" x-occurrences="1"\w*
+\w terhadap|x-occurrence="1" x-occurrences="1"\w*
+\w laki|x-occurrence="1" x-occurrences="2"\w*-\w laki|x-occurrence="2" x-occurrences="2"\w*
+\w mana|x-occurrence="1" x-occurrences="1"\w*
+\w pun|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*,
+\zaln-s |x-strong="G36260" x-lemma="οἰκουργός" x-morph="Gr,NS,,,,AFP," x-occurrence="1" x-occurrences="1" x-content="οἰκουργούς"\*\zaln-s |x-strong="G00180" x-lemma="ἀγαθός" x-morph="Gr,NS,,,,AFP," x-occurrence="1" x-occurrences="1" x-content="ἀγαθάς"\*\w untuk|x-occurrence="3" x-occurrences="3"\w*
+\w bekerja|x-occurrence="1" x-occurrences="1"\w*
+\w dengan|x-occurrence="2" x-occurrences="2"\w*
+\w baik|x-occurrence="1" x-occurrences="1"\w*
+\w di|x-occurrence="1" x-occurrences="1"\w*
+\w rumah|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*,
+\zaln-s |x-strong="G52930" x-lemma="ὑποτάσσω" x-morph="Gr,V,PPP,AFP," x-occurrence="1" x-occurrences="1" x-content="ὑποτασσομένας"\*\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,DMP," x-occurrence="1" x-occurrences="1" x-content="τοῖς"\*\zaln-s |x-strong="G23980" x-lemma="ἴδιος" x-morph="Gr,EF,,,,DMP," x-occurrence="1" x-occurrences="1" x-content="ἰδίοις"\*\zaln-s |x-strong="G04350" x-lemma="ἀνήρ" x-morph="Gr,N,,,,,DMP," x-occurrence="1" x-occurrences="1" x-content="ἀνδράσιν"\*\w dan|x-occurrence="2" x-occurrences="2"\w*
+\w melakukan|x-occurrence="1" x-occurrences="2"\w*
+\w apa|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="4" x-occurrences="5"\w*
+\w suami|x-occurrence="1" x-occurrences="2"\w*-\w suami|x-occurrence="2" x-occurrences="2"\w*
+\w mereka|x-occurrence="2" x-occurrences="2"\w*
+\w katakan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*\zaln-e\*\zaln-e\*.
+\zaln-s |x-strong="G24430" x-lemma="ἵνα" x-morph="Gr,CS,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="ἵνα"\*\w Mereka|x-occurrence="1" x-occurrences="1"\w*
+\w harus|x-occurrence="2" x-occurrences="2"\w*
+\w melakukan|x-occurrence="2" x-occurrences="2"\w*
+\w hal|x-occurrence="1" x-occurrences="2"\w*-\w hal|x-occurrence="2" x-occurrences="2"\w*
+\w ini|x-occurrence="1" x-occurrences="1"\w*
+\w supaya|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G33610" x-lemma="μή" x-morph="Gr,D,,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="μὴ"\*\w tidak|x-occurrence="2" x-occurrences="2"\w*
+\w ada|x-occurrence="1" x-occurrences="1"\w*
+\w seorang|x-occurrence="1" x-occurrences="1"\w*
+\w pun|x-occurrence="2" x-occurrences="2"\w*
+\w yang|x-occurrence="5" x-occurrences="5"\w*\zaln-e\*
+\zaln-s |x-strong="G09870" x-lemma="βλασφημέω" x-morph="Gr,V,SPP3,,S," x-occurrence="1" x-occurrences="1" x-content="βλασφημῆται"\*\w dapat|x-occurrence="1" x-occurrences="1"\w*
+\w mengejek|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,NMS," x-occurrence="1" x-occurrences="1" x-content="ὁ"\*\zaln-s |x-strong="G30560" x-lemma="λόγος" x-morph="Gr,N,,,,,NMS," x-occurrence="1" x-occurrences="1" x-content="λόγος"\*\w pesan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,GMS," x-occurrence="1" x-occurrences="1" x-content="τοῦ"\*\zaln-s |x-strong="G23160" x-lemma="θεός" x-morph="Gr,N,,,,,GMS," x-occurrence="1" x-occurrences="1" x-content="Θεοῦ"\*\w Allah|x-occurrence="1" x-occurrences="1"\w*
+\w kepada|x-occurrence="1" x-occurrences="1"\w*
+\w kita|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*. 
+\p 
+\v 6 \zaln-s |x-strong="G56150" x-lemma="ὡσαύτως" x-morph="Gr,D,,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="ὡσαύτως"\*\w Demikian|x-occurrence="1" x-occurrences="1"\w*
+\w juga|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*,
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,AMP," x-occurrence="1" x-occurrences="1" x-content="τοὺς"\*\zaln-s |x-strong="G35125" x-lemma="νεώτερος" x-morph="Gr,AA,,,,AMPC" x-occurrence="1" x-occurrences="1" x-content="νεωτέρους"\*\w kepada|x-occurrence="1" x-occurrences="1"\w*
+\w orang|x-occurrence="1" x-occurrences="2"\w*-\w orang|x-occurrence="2" x-occurrences="2"\w*
+\w yang|x-occurrence="1" x-occurrences="1"\w*
+\w lebih|x-occurrence="1" x-occurrences="1"\w*
+\w muda|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*,
+\zaln-s |x-strong="G38700" x-lemma="παρακαλέω" x-morph="Gr,V,MPA2,,S," x-occurrence="1" x-occurrences="1" x-content="παρακάλει"\*\w nasihatilah|x-occurrence="1" x-occurrences="1"\w*
+\w mereka|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*
+\zaln-s |x-strong="G49930" x-lemma="σωφρονέω" x-morph="Gr,V,NPA,,,,," x-occurrence="1" x-occurrences="1" x-content="σωφρονεῖν"\*\w supaya|x-occurrence="1" x-occurrences="1"\w*
+\w mereka|x-occurrence="2" x-occurrences="2"\w*
+\w juga|x-occurrence="2" x-occurrences="2"\w*
+\w dapat|x-occurrence="1" x-occurrences="1"\w*
+\w mengendalikan|x-occurrence="1" x-occurrences="1"\w*
+\w diri|x-occurrence="1" x-occurrences="1"\w*
+\w dengan|x-occurrence="1" x-occurrences="1"\w*
+\w baik|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*. 
+\p 
+\v 7 \zaln-s |x-strong="G40120" x-lemma="περί" x-morph="Gr,P,,,,,A,,," x-occurrence="1" x-occurrences="1" x-content="περὶ"\*\zaln-s |x-strong="G39560" x-lemma="πᾶς" x-morph="Gr,RI,,,,ANP," x-occurrence="1" x-occurrences="1" x-content="πάντα"\*\zaln-s |x-strong="G45720" x-lemma="σεαυτοῦ" x-morph="Gr,RE,,,2AMS," x-occurrence="1" x-occurrences="1" x-content="σεαυτὸν"\*\zaln-s |x-strong="G39300" x-lemma="παρέχω" x-morph="Gr,V,PPM,NMS," x-occurrence="1" x-occurrences="1" x-content="παρεχόμενος"\*\w Engkau|x-occurrence="1" x-occurrences="1"\w*
+\w sendiri|x-occurrence="1" x-occurrences="1"\w*
+\w harus|x-occurrence="1" x-occurrences="1"\w*
+\w senantiasa|x-occurrence="1" x-occurrences="1"\w*
+\w melakukan|x-occurrence="1" x-occurrences="1"\w*
+\w apa|x-occurrence="1" x-occurrences="2"\w*
+\w yang|x-occurrence="1" x-occurrences="4"\w*
+\w baik|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*\zaln-e\*\zaln-e\*,
+\zaln-s |x-strong="G51790" x-lemma="τύπος" x-morph="Gr,N,,,,,AMS," x-occurrence="1" x-occurrences="1" x-content="τύπον"\*\zaln-s |x-strong="G25700" x-lemma="καλός" x-morph="Gr,AA,,,,GNP," x-occurrence="1" x-occurrences="1" x-content="καλῶν"\*\zaln-s |x-strong="G20410" x-lemma="ἔργον" x-morph="Gr,N,,,,,GNP," x-occurrence="1" x-occurrences="1" x-content="ἔργων"\*\w supaya|x-occurrence="1" x-occurrences="1"\w*
+\w orang|x-occurrence="1" x-occurrences="3"\w*
+\w lain|x-occurrence="1" x-occurrences="1"\w*
+\w juga|x-occurrence="1" x-occurrences="1"\w*
+\w melihat|x-occurrence="1" x-occurrences="1"\w*
+\w apa|x-occurrence="2" x-occurrences="2"\w*
+\w yang|x-occurrence="2" x-occurrences="4"\w*
+\w seharusnya|x-occurrence="1" x-occurrences="1"\w*
+\w mereka|x-occurrence="1" x-occurrences="2"\w*
+\w lakukan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*\zaln-e\*.
+\zaln-s |x-strong="G17220" x-lemma="ἐν" x-morph="Gr,P,,,,,D,,," x-occurrence="1" x-occurrences="1" x-content="ἐν"\*\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,DFS," x-occurrence="1" x-occurrences="1" x-content="τῇ"\*\zaln-s |x-strong="G13190" x-lemma="διδασκαλία" x-morph="Gr,N,,,,,DFS," x-occurrence="1" x-occurrences="1" x-content="διδασκαλίᾳ"\*\w Ketika|x-occurrence="1" x-occurrences="1"\w*
+\w engkau|x-occurrence="1" x-occurrences="2"\w*
+\w mengajar|x-occurrence="1" x-occurrences="1"\w*
+\w orang|x-occurrence="2" x-occurrences="3"\w*-\w orang|x-occurrence="3" x-occurrences="3"\w*
+\w percaya|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*\zaln-e\*,
+\zaln-s |x-strong="G08627" x-lemma="ἀφθορία" x-morph="Gr,N,,,,,AFS," x-occurrence="1" x-occurrences="1" x-content="ἀφθορίαν"\*\w pastikanlah|x-occurrence="1" x-occurrences="1"\w*
+\w bahwa|x-occurrence="1" x-occurrences="1"\w*
+\w semua|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="3" x-occurrences="4"\w*
+\w engkau|x-occurrence="2" x-occurrences="2"\w*
+\w katakan|x-occurrence="1" x-occurrences="1"\w*
+\w itu|x-occurrence="1" x-occurrences="1"\w*
+\w benar|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G45870" x-lemma="σεμνότης" x-morph="Gr,N,,,,,AFS," x-occurrence="1" x-occurrences="1" x-content="σεμνότητα"\*\w dan|x-occurrence="1" x-occurrences="1"\w*
+\w katakanlah|x-occurrence="1" x-occurrences="1"\w*
+\w dengan|x-occurrence="1" x-occurrences="1"\w*
+\w cara|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="4" x-occurrences="4"\w*
+\w dapat|x-occurrence="1" x-occurrences="1"\w*
+\w mereka|x-occurrence="2" x-occurrences="2"\w*
+\w hormati|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*. 
+\p 
+\v 8 \zaln-s |x-strong="G30560" x-lemma="λόγος" x-morph="Gr,N,,,,,AMS," x-occurrence="1" x-occurrences="1" x-content="λόγον"\*\zaln-s |x-strong="G51990" x-lemma="ὑγιής" x-morph="Gr,AA,,,,AMS," x-occurrence="1" x-occurrences="1" x-content="ὑγιῆ"\*\w Ajarkanlah|x-occurrence="1" x-occurrences="1"\w*
+\w kepada|x-occurrence="1" x-occurrences="1"\w*
+\w orang|x-occurrence="1" x-occurrences="4"\w*-\w orang|x-occurrence="2" x-occurrences="4"\w*
+\w apa|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="1" x-occurrences="4"\w*
+\w benar|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G01760" x-lemma="ἀκατάγνωστος" x-morph="Gr,NS,,,,AMS," x-occurrence="1" x-occurrences="1" x-content="ἀκατάγνωστον"\*\w dengan|x-occurrence="1" x-occurrences="1"\w*
+\w pesan|x-occurrence="1" x-occurrences="2"\w*-\w pesan|x-occurrence="2" x-occurrences="2"\w*
+\w yang|x-occurrence="2" x-occurrences="4"\w*
+\w tidak|x-occurrence="1" x-occurrences="2"\w*
+\w dapat|x-occurrence="1" x-occurrences="2"\w*
+\w dikritik|x-occurrence="1" x-occurrences="1"\w*
+\w oleh|x-occurrence="1" x-occurrences="1"\w*
+\w siapa|x-occurrence="1" x-occurrences="1"\w*
+\w pun|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*,
+\zaln-s |x-strong="G24430" x-lemma="ἵνα" x-morph="Gr,CS,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="ἵνα"\*\w supaya|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,NMS," x-occurrence="1" x-occurrences="1" x-content="ὁ"\*\zaln-s |x-strong="G15370" x-lemma="ἐκ" x-morph="Gr,P,,,,,G,,," x-occurrence="1" x-occurrences="1" x-content="ἐξ"\*\zaln-s |x-strong="G17270" x-lemma="ἐναντίος" x-morph="Gr,NS,,,,GFS," x-occurrence="1" x-occurrences="1" x-content="ἐναντίας"\*\w jika|x-occurrence="1" x-occurrences="1"\w*
+\w ada|x-occurrence="1" x-occurrences="1"\w*
+\w orang|x-occurrence="3" x-occurrences="4"\w*
+\w yang|x-occurrence="3" x-occurrences="4"\w*
+\w ingin|x-occurrence="1" x-occurrences="1"\w*
+\w menghentikan|x-occurrence="1" x-occurrences="1"\w*
+\w engkau|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*\zaln-e\*,
+\zaln-s |x-strong="G17880" x-lemma="ἐντρέπω" x-morph="Gr,V,SAP3,,S," x-occurrence="1" x-occurrences="1" x-content="ἐντραπῇ"\*\w orang|x-occurrence="4" x-occurrences="4"\w*
+\w lain|x-occurrence="1" x-occurrences="1"\w*
+\w akan|x-occurrence="1" x-occurrences="1"\w*
+\w mempermalukan|x-occurrence="1" x-occurrences="1"\w*
+\w mereka|x-occurrence="1" x-occurrences="3"\w*\zaln-e\*
+\zaln-s |x-strong="G33670" x-lemma="μηδείς" x-morph="Gr,RI,,,,ANS," x-occurrence="1" x-occurrences="1" x-content="μηδὲν"\*\zaln-s |x-strong="G21920" x-lemma="ἔχω" x-morph="Gr,V,PPA,NMS," x-occurrence="1" x-occurrences="1" x-content="ἔχων"\*\w karena|x-occurrence="1" x-occurrences="1"\w*
+\w mereka|x-occurrence="2" x-occurrences="3"\w*
+\w tidak|x-occurrence="2" x-occurrences="2"\w*
+\w memiliki|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G53370" x-lemma="φαῦλος" x-morph="Gr,NS,,,,ANS," x-occurrence="1" x-occurrences="1" x-content="φαῦλον"\*\w hal|x-occurrence="1" x-occurrences="1"\w*
+\w buruk|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G30040" x-lemma="λέγω" x-morph="Gr,V,NPA,,,,," x-occurrence="1" x-occurrences="1" x-content="λέγειν"\*\w yang|x-occurrence="4" x-occurrences="4"\w*
+\w dapat|x-occurrence="2" x-occurrences="2"\w*
+\w mereka|x-occurrence="3" x-occurrences="3"\w*
+\w katakan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G40120" x-lemma="περί" x-morph="Gr,P,,,,,G,,," x-occurrence="1" x-occurrences="1" x-content="περὶ"\*\zaln-s |x-strong="G14730" x-lemma="ἐγώ" x-morph="Gr,RP,,,1G,P," x-occurrence="1" x-occurrences="1" x-content="ἡμῶν"\*\w tentang|x-occurrence="1" x-occurrences="1"\w*
+\w seorang|x-occurrence="1" x-occurrences="1"\w*
+\w pun|x-occurrence="2" x-occurrences="2"\w*
+\w di|x-occurrence="1" x-occurrences="1"\w*
+\w antara|x-occurrence="1" x-occurrences="1"\w*
+\w kita|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*. 
+\p 
+\v 9 \zaln-s |x-strong="G14010" x-lemma="δοῦλος" x-morph="Gr,N,,,,,AMP," x-occurrence="1" x-occurrences="1" x-content="δούλους"\*\w Tentang|x-occurrence="1" x-occurrences="1"\w*
+\w budak|x-occurrence="1" x-occurrences="2"\w*-\w budak|x-occurrence="2" x-occurrences="2"\w*
+\w yang|x-occurrence="1" x-occurrences="2"\w*
+\w percaya|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*,
+\zaln-s |x-strong="G52930" x-lemma="ὑποτάσσω" x-morph="Gr,V,NPM,,,,," x-occurrence="1" x-occurrences="1" x-content="ὑποτάσσεσθαι"\*\w ajarilah|x-occurrence="1" x-occurrences="1"\w*
+\w mereka|x-occurrence="1" x-occurrences="5"\w*
+\w agar|x-occurrence="1" x-occurrences="1"\w*
+\w selalu|x-occurrence="1" x-occurrences="1"\w*
+\w tunduk|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G23980" x-lemma="ἴδιος" x-morph="Gr,EF,,,,DMP," x-occurrence="1" x-occurrences="1" x-content="ἰδίοις"\*\zaln-s |x-strong="G12030" x-lemma="δεσπότης" x-morph="Gr,N,,,,,DMP," x-occurrence="1" x-occurrences="1" x-content="δεσπόταις"\*\w kepada|x-occurrence="1" x-occurrences="2"\w*
+\w tuan|x-occurrence="1" x-occurrences="4"\w*-\w tuan|x-occurrence="2" x-occurrences="4"\w*
+\w mereka|x-occurrence="2" x-occurrences="5"\w*\zaln-e\*\zaln-e\*.
+\zaln-s |x-strong="G21010" x-lemma="εὐάρεστος" x-morph="Gr,NP,,,,AMP," x-occurrence="1" x-occurrences="1" x-content="εὐαρέστους"\*\zaln-s |x-strong="G15100" x-lemma="εἰμί" x-morph="Gr,V,NPA,,,,," x-occurrence="1" x-occurrences="1" x-content="εἶναι"\*\w Pesankan|x-occurrence="1" x-occurrences="1"\w*
+\w kepada|x-occurrence="2" x-occurrences="2"\w*
+\w mereka|x-occurrence="3" x-occurrences="5"\w*
+\w untuk|x-occurrence="1" x-occurrences="1"\w*
+\w hidup|x-occurrence="1" x-occurrences="1"\w*
+\w dengan|x-occurrence="1" x-occurrences="2"\w*
+\w cara|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="2" x-occurrences="2"\w*
+\w menyenangkan|x-occurrence="1" x-occurrences="1"\w*
+\w tuan|x-occurrence="3" x-occurrences="4"\w*-\w tuan|x-occurrence="4" x-occurrences="4"\w*
+\w mereka|x-occurrence="4" x-occurrences="5"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G17220" x-lemma="ἐν" x-morph="Gr,P,,,,,D,,," x-occurrence="1" x-occurrences="1" x-content="ἐν"\*\zaln-s |x-strong="G39560" x-lemma="πᾶς" x-morph="Gr,RI,,,,DNP," x-occurrence="1" x-occurrences="1" x-content="πᾶσιν"\*\w dalam|x-occurrence="1" x-occurrences="1"\w*
+\w segala|x-occurrence="1" x-occurrences="1"\w*
+\w hal|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*,
+\zaln-s |x-strong="G33610" x-lemma="μή" x-morph="Gr,D,,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="μὴ"\*\w dan|x-occurrence="1" x-occurrences="1"\w*
+\w tidak|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G04830" x-lemma="ἀντιλέγω" x-morph="Gr,V,PPA,AMP," x-occurrence="1" x-occurrences="1" x-content="ἀντιλέγοντας"\*\w berbantah|x-occurrence="1" x-occurrences="1"\w*-\w bantah|x-occurrence="1" x-occurrences="1"\w*
+\w dengan|x-occurrence="2" x-occurrences="2"\w*
+\w mereka|x-occurrence="5" x-occurrences="5"\w*\zaln-e\*. 
+\p 
+\v 10 \zaln-s |x-strong="G35570" x-lemma="νοσφίζω" x-morph="Gr,V,PPM,AMP," x-occurrence="1" x-occurrences="1" x-content="νοσφιζομένους"\*\w Mereka|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G33610" x-lemma="μή" x-morph="Gr,D,,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="μὴ"\*\w tidak|x-occurrence="1" x-occurrences="1"\w*
+\w boleh|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G35570" x-lemma="νοσφίζω" x-morph="Gr,V,PPM,AMP," x-occurrence="1" x-occurrences="1" x-content="νοσφιζομένους"\*\w mencuri|x-occurrence="1" x-occurrences="1"\w*
+\w barang|x-occurrence="1" x-occurrences="1"\w*
+\w sekecil|x-occurrence="1" x-occurrences="1"\w*
+\w apa|x-occurrence="1" x-occurrences="1"\w*
+\w pun|x-occurrence="1" x-occurrences="1"\w*
+\w dari|x-occurrence="1" x-occurrences="1"\w*
+\w tuan|x-occurrence="1" x-occurrences="4"\w*-\w tuan|x-occurrence="2" x-occurrences="4"\w*
+\w mereka|x-occurrence="1" x-occurrences="4"\w*\zaln-e\*;
+\zaln-s |x-strong="G02350" x-lemma="ἀλλά" x-morph="Gr,CC,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="ἀλλὰ"\*\w sebaliknya|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*,
+\zaln-s |x-strong="G39560" x-lemma="πᾶς" x-morph="Gr,EQ,,,,AFS," x-occurrence="1" x-occurrences="1" x-content="πᾶσαν"\*\zaln-s |x-strong="G41020" x-lemma="πίστις" x-morph="Gr,N,,,,,AFS," x-occurrence="1" x-occurrences="1" x-content="πίστιν"\*\zaln-s |x-strong="G17310" x-lemma="ἐνδείκνυμι" x-morph="Gr,V,PPM,AMP," x-occurrence="1" x-occurrences="1" x-content="ἐνδεικνυμένους"\*\zaln-s |x-strong="G00180" x-lemma="ἀγαθός" x-morph="Gr,NS,,,,AFS," x-occurrence="1" x-occurrences="1" x-content="ἀγαθήν"\*\w mereka|x-occurrence="2" x-occurrences="4"\w*
+\w harus|x-occurrence="1" x-occurrences="2"\w*
+\w menunjukkan|x-occurrence="1" x-occurrences="1"\w*
+\w kesetiaan|x-occurrence="1" x-occurrences="1"\w*
+\w penuh|x-occurrence="1" x-occurrences="1"\w* 
+\w kepada|x-occurrence="1" x-occurrences="1"\w*
+\w tuan|x-occurrence="3" x-occurrences="4"\w*-\w tuan|x-occurrence="4" x-occurrences="4"\w*
+\w mereka|x-occurrence="3" x-occurrences="4"\w*\zaln-e\*\zaln-e\*\zaln-e\*\zaln-e\*,
+\zaln-s |x-strong="G28850" x-lemma="κοσμέω" x-morph="Gr,V,SPA3,,P," x-occurrence="1" x-occurrences="1" x-content="κοσμῶσιν"\*\zaln-s |x-strong="G17220" x-lemma="ἐν" x-morph="Gr,P,,,,,D,,," x-occurrence="1" x-occurrences="1" x-content="ἐν"\*\zaln-s |x-strong="G39560" x-lemma="πᾶς" x-morph="Gr,RI,,,,DNP," x-occurrence="1" x-occurrences="1" x-content="πᾶσιν"\*\w dan|x-occurrence="1" x-occurrences="1"\w*
+\w mereka|x-occurrence="4" x-occurrences="4"\w*
+\w harus|x-occurrence="2" x-occurrences="2"\w*
+\w melakukan|x-occurrence="1" x-occurrences="1"\w*
+\w segalanya|x-occurrence="1" x-occurrences="1"\w*
+\w dengan|x-occurrence="1" x-occurrences="1"\w*
+\w cara|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="1" x-occurrences="3"\w*
+\w membuat|x-occurrence="1" x-occurrences="1"\w*
+\w orang|x-occurrence="1" x-occurrences="1"\w*
+\w mengagumi|x-occurrence="1" x-occurrences="1"\w*
+\w semua|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G24430" x-lemma="ἵνα" x-morph="Gr,CS,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="ἵνα"\*\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,AFS," x-occurrence="1" x-occurrences="2" x-content="τὴν"\*\zaln-s |x-strong="G13190" x-lemma="διδασκαλία" x-morph="Gr,N,,,,,AFS," x-occurrence="1" x-occurrences="1" x-content="διδασκαλίαν"\*\w yang|x-occurrence="2" x-occurrences="3"\w*
+\w kita|x-occurrence="1" x-occurrences="2"\w*
+\w ajarkan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,AFS," x-occurrence="2" x-occurrences="2" x-content="τὴν"\*\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,GMS," x-occurrence="1" x-occurrences="1" x-content="τοῦ"\*\zaln-s |x-strong="G49900" x-lemma="σωτήρ" x-morph="Gr,N,,,,,GMS," x-occurrence="1" x-occurrences="1" x-content="Σωτῆρος"\*\zaln-s |x-strong="G14730" x-lemma="ἐγώ" x-morph="Gr,RP,,,1G,P," x-occurrence="1" x-occurrences="1" x-content="ἡμῶν"\*\zaln-s |x-strong="G23160" x-lemma="θεός" x-morph="Gr,N,,,,,GMS," x-occurrence="1" x-occurrences="1" x-content="Θεοῦ"\*\w tentang|x-occurrence="1" x-occurrences="1"\w*
+\w Allah|x-occurrence="1" x-occurrences="1"\w*,
+\w yang|x-occurrence="3" x-occurrences="3"\w*
+\w menyelamatkan|x-occurrence="1" x-occurrences="1"\w*
+\w kita|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*\zaln-e\*\zaln-e\*\zaln-e\*\zaln-e\*. 
+\p 
+\v 11 \zaln-s |x-strong="G20140" x-lemma="ἐπιφαίνω" x-morph="Gr,V,IAP3,,S," x-occurrence="1" x-occurrences="1" x-content="ἐπεφάνη"\*\zaln-s |x-strong="G10630" x-lemma="γάρ" x-morph="Gr,CC,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="γὰρ"\*\w Orang|x-occurrence="1" x-occurrences="1"\w*-\w orang|x-occurrence="1" x-occurrences="2"\w*
+\w percaya|x-occurrence="1" x-occurrences="1"\w*
+\w harus|x-occurrence="1" x-occurrences="1"\w*
+\w berperilaku|x-occurrence="1" x-occurrences="1"\w*
+\w dalam|x-occurrence="1" x-occurrences="1"\w*
+\w cara|x-occurrence="1" x-occurrences="2"\w*-\w cara|x-occurrence="2" x-occurrences="2"\w*
+\w yang|x-occurrence="1" x-occurrences="2"\w*
+\w baik|x-occurrence="1" x-occurrences="1"\w*
+\w ini|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,GMS," x-occurrence="1" x-occurrences="1" x-content="τοῦ"\*\zaln-s |x-strong="G23160" x-lemma="θεός" x-morph="Gr,N,,,,,GMS," x-occurrence="1" x-occurrences="1" x-content="Θεοῦ"\*\zaln-s |x-strong="G49920" x-lemma="σωτήριος" x-morph="Gr,NS,,,,NMS," x-occurrence="1" x-occurrences="1" x-content="σωτήριος"\*\w karena|x-occurrence="1" x-occurrences="1"\w*
+\w Allah|x-occurrence="1" x-occurrences="1"\w*
+\w menawarkan|x-occurrence="1" x-occurrences="1"\w*
+\w untuk|x-occurrence="1" x-occurrences="1"\w*
+\w menyelamatkan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G39560" x-lemma="πᾶς" x-morph="Gr,EQ,,,,DMP," x-occurrence="1" x-occurrences="1" x-content="πᾶσιν"\*\zaln-s |x-strong="G04440" x-lemma="ἄνθρωπος" x-morph="Gr,N,,,,,DMP," x-occurrence="1" x-occurrences="1" x-content="ἀνθρώποις"\*\w setiap|x-occurrence="1" x-occurrences="1"\w*
+\w orang|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,NFS," x-occurrence="1" x-occurrences="1" x-content="ἡ"\*\zaln-s |x-strong="G54850" x-lemma="χάρις" x-morph="Gr,N,,,,,NFS," x-occurrence="1" x-occurrences="1" x-content="χάρις"\*\w sebagai|x-occurrence="1" x-occurrences="1"\w*
+\w satu|x-occurrence="1" x-occurrences="1"\w*
+\w pemberian|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="2" x-occurrences="2"\w*
+\w tidak|x-occurrence="1" x-occurrences="1"\w*
+\w layak|x-occurrence="1" x-occurrences="1"\w*
+\w diterima|x-occurrence="1" x-occurrences="1"\w*
+\w oleh|x-occurrence="1" x-occurrences="1"\w*
+\w siapa|x-occurrence="1" x-occurrences="1"\w*
+\w pun|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*. 
+\p 
+\v 12 \zaln-s |x-strong="G38110" x-lemma="παιδεύω" x-morph="Gr,V,PPA,NFS," x-occurrence="1" x-occurrences="1" x-content="παιδεύουσα"\*\w Melalui|x-occurrence="1" x-occurrences="1"\w*
+\w pemberian|x-occurrence="1" x-occurrences="1"\w*
+\w cuma|x-occurrence="1" x-occurrences="2"\w*-\w cuma|x-occurrence="2" x-occurrences="2"\w*
+\w ini|x-occurrence="1" x-occurrences="2"\w*,
+\w Allah|x-occurrence="1" x-occurrences="1"\w*
+\w melatih|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G14730" x-lemma="ἐγώ" x-morph="Gr,RP,,,1A,P," x-occurrence="1" x-occurrences="1" x-content="ἡμᾶς"\*\w kita|x-occurrence="1" x-occurrences="3"\w*\zaln-e\*
+\zaln-s |x-strong="G24430" x-lemma="ἵνα" x-morph="Gr,CS,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="ἵνα"\*\zaln-s |x-strong="G07200" x-lemma="ἀρνέομαι" x-morph="Gr,V,PAM,NMP," x-occurrence="1" x-occurrences="1" x-content="ἀρνησάμενοι"\*\w untuk|x-occurrence="1" x-occurrences="3"\w*
+\w berhenti|x-occurrence="1" x-occurrences="1"\w*
+\w melakukan|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,AFS," x-occurrence="1" x-occurrences="1" x-content="τὴν"\*\zaln-s |x-strong="G07630" x-lemma="ἀσέβεια" x-morph="Gr,N,,,,,AFS," x-occurrence="1" x-occurrences="1" x-content="ἀσέβειαν"\*\w apa|x-occurrence="1" x-occurrences="3"\w*
+\w yang|x-occurrence="1" x-occurrences="3"\w*
+\w salah|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G25320" x-lemma="καί" x-morph="Gr,CC,,,,,,,," x-occurrence="1" x-occurrences="3" x-content="καὶ"\*\w dan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,AFP," x-occurrence="1" x-occurrences="1" x-content="τὰς"\*\zaln-s |x-strong="G28860" x-lemma="κοσμικός" x-morph="Gr,AA,,,,AFP," x-occurrence="1" x-occurrences="1" x-content="κοσμικὰς"\*\w apa|x-occurrence="2" x-occurrences="3"\w*
+\w yang|x-occurrence="2" x-occurrences="3"\w*
+\w orang|x-occurrence="1" x-occurrences="2"\w*-\w orang|x-occurrence="2" x-occurrences="2"\w*
+\w dunia|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G19390" x-lemma="ἐπιθυμία" x-morph="Gr,N,,,,,AFP," x-occurrence="1" x-occurrences="1" x-content="ἐπιθυμίας"\*\w ingin|x-occurrence="1" x-occurrences="1"\w*
+\w lakukan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*.
+\zaln-s |x-strong="G49960" x-lemma="σωφρόνως" x-morph="Gr,D,,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="σωφρόνως"\*\w Dia|x-occurrence="1" x-occurrences="2"\w*
+\w mengajari|x-occurrence="1" x-occurrences="1"\w*
+\w kita|x-occurrence="2" x-occurrences="3"\w*
+\w baik|x-occurrence="1" x-occurrences="1"\w*
+\w untuk|x-occurrence="2" x-occurrences="3"\w*
+\w bersikap|x-occurrence="1" x-occurrences="1"\w*
+\w bijak|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*,
+\zaln-s |x-strong="G25320" x-lemma="καί" x-morph="Gr,CC,,,,,,,," x-occurrence="2" x-occurrences="3" x-content="καὶ"\*\zaln-s |x-strong="G13460" x-lemma="δικαίως" x-morph="Gr,D,,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="δικαίως"\*\w melakukan|x-occurrence="2" x-occurrences="2"\w*
+\w apa|x-occurrence="3" x-occurrences="3"\w*
+\w yang|x-occurrence="3" x-occurrences="3"\w*
+\w benar|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*,
+\zaln-s |x-strong="G25320" x-lemma="καί" x-morph="Gr,CC,,,,,,,," x-occurrence="3" x-occurrences="3" x-content="καὶ"\*\zaln-s |x-strong="G21530" x-lemma="εὐσεβῶς" x-morph="Gr,D,,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="εὐσεβῶς"\*\w maupun|x-occurrence="1" x-occurrences="1"\w*
+\w untuk|x-occurrence="3" x-occurrences="3"\w*
+\w menaati|x-occurrence="1" x-occurrences="1"\w*
+\w Dia|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G21980" x-lemma="ζάω" x-morph="Gr,V,SAA1,,P," x-occurrence="1" x-occurrences="1" x-content="ζήσωμεν"\*\w selama|x-occurrence="1" x-occurrences="1"\w*
+\w kita|x-occurrence="3" x-occurrences="3"\w*
+\w hidup|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G17220" x-lemma="ἐν" x-morph="Gr,P,,,,,D,,," x-occurrence="1" x-occurrences="1" x-content="ἐν"\*\w pada|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,DMS," x-occurrence="1" x-occurrences="1" x-content="τῷ"\*\zaln-s |x-strong="G35680" x-lemma="νῦν" x-morph="Gr,D,,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="νῦν"\*\zaln-s |x-strong="G01650" x-lemma="αἰών" x-morph="Gr,N,,,,,DMS," x-occurrence="1" x-occurrences="1" x-content="αἰῶνι"\*\w masa|x-occurrence="1" x-occurrences="1"\w*
+\w sekarang|x-occurrence="1" x-occurrences="1"\w*
+\w ini|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*\zaln-e\*\zaln-e\*. 
+\p 
+\v 13 \zaln-s |x-strong="G43270" x-lemma="προσδέχομαι" x-morph="Gr,V,PPM,NMP," x-occurrence="1" x-occurrences="1" x-content="προσδεχόμενοι"\*\w Pada|x-occurrence="1" x-occurrences="1"\w*
+\w saat|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="1" x-occurrences="5"\w*
+\w sama|x-occurrence="1" x-occurrences="1"\w*,
+\w Allah|x-occurrence="1" x-occurrences="2"\w*
+\w mengajari|x-occurrence="1" x-occurrences="1"\w*
+\w kita|x-occurrence="1" x-occurrences="4"\w*
+\w untuk|x-occurrence="1" x-occurrences="1"\w*
+\w menantikan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,AFS," x-occurrence="1" x-occurrences="1" x-content="τὴν"\*\zaln-s |x-strong="G31070" x-lemma="μακάριος" x-morph="Gr,AA,,,,AFS," x-occurrence="1" x-occurrences="1" x-content="μακαρίαν"\*\zaln-s |x-strong="G16800" x-lemma="ἐλπίς" x-morph="Gr,N,,,,,AFS," x-occurrence="1" x-occurrences="1" x-content="ἐλπίδα"\*\w apa|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="2" x-occurrences="5"\w*
+\w pasti|x-occurrence="1" x-occurrences="1"\w*
+\w akan|x-occurrence="1" x-occurrences="3"\w*
+\w Dia|x-occurrence="1" x-occurrences="1"\w*
+\w lakukan|x-occurrence="1" x-occurrences="1"\w*
+\w di|x-occurrence="1" x-occurrences="1"\w*
+\w masa|x-occurrence="1" x-occurrences="1"\w*
+\w depan|x-occurrence="1" x-occurrences="1"\w*,
+\w yaitu|x-occurrence="1" x-occurrences="1"\w*
+\w sesuatu|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="3" x-occurrences="5"\w*
+\w akan|x-occurrence="2" x-occurrences="3"\w*
+\w membuat|x-occurrence="1" x-occurrences="1"\w*
+\w kita|x-occurrence="2" x-occurrences="4"\w*
+\w sangat|x-occurrence="1" x-occurrences="1"\w*
+\w bahagia|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*\zaln-e\*:
+\zaln-s |x-strong="G25320" x-lemma="καί" x-morph="Gr,CC,,,,,,,," x-occurrence="1" x-occurrences="2" x-content="καὶ"\*\zaln-s |x-strong="G20150" x-lemma="ἐπιφάνεια" x-morph="Gr,N,,,,,AFS," x-occurrence="1" x-occurrences="1" x-content="ἐπιφάνειαν"\*\w Artinya|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*,
+\zaln-s |x-strong="G24240" x-lemma="Ἰησοῦς" x-morph="Gr,N,,,,,GMS," x-occurrence="1" x-occurrences="1" x-content="Ἰησοῦ"\*\zaln-s |x-strong="G55470" x-lemma="χριστός" x-morph="Gr,N,,,,,GMS," x-occurrence="1" x-occurrences="1" x-content="Χριστοῦ"\*\w Yesus|x-occurrence="1" x-occurrences="1"\w*
+\w sang|x-occurrence="1" x-occurrences="1"\w*
+\w Mesias|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*,
+\zaln-s |x-strong="G49900" x-lemma="σωτήρ" x-morph="Gr,N,,,,,GMS," x-occurrence="1" x-occurrences="1" x-content="Σωτῆρος"\*\zaln-s |x-strong="G14730" x-lemma="ἐγώ" x-morph="Gr,RP,,,1G,P," x-occurrence="1" x-occurrences="1" x-content="ἡμῶν"\*\w Juruselamat|x-occurrence="1" x-occurrences="1"\w*
+\w kita|x-occurrence="3" x-occurrences="4"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G25320" x-lemma="καί" x-morph="Gr,CC,,,,,,,," x-occurrence="2" x-occurrences="2" x-content="καὶ"\*\w dan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,GMS," x-occurrence="1" x-occurrences="1" x-content="τοῦ"\*\zaln-s |x-strong="G31730" x-lemma="μέγας" x-morph="Gr,AA,,,,GMS," x-occurrence="1" x-occurrences="1" x-content="μεγάλου"\*\zaln-s |x-strong="G23160" x-lemma="θεός" x-morph="Gr,N,,,,,GMS," x-occurrence="1" x-occurrences="1" x-content="Θεοῦ"\*\w Allah|x-occurrence="2" x-occurrences="2"\w*
+\w yang|x-occurrence="4" x-occurrences="5"\w*
+\w berkuasa|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*\zaln-e\*,
+\zaln-s |x-strong="G25320" x-lemma="καί" x-morph="Gr,CC,,,,,,,," x-occurrence="1" x-occurrences="2" x-content="καὶ"\*\zaln-s |x-strong="G20150" x-lemma="ἐπιφάνεια" x-morph="Gr,N,,,,,AFS," x-occurrence="1" x-occurrences="1" x-content="ἐπιφάνειαν"\*\w akan|x-occurrence="3" x-occurrences="3"\w*
+\w kembali|x-occurrence="1" x-occurrences="1"\w*
+\w kepada|x-occurrence="1" x-occurrences="1"\w*
+\w kita|x-occurrence="4" x-occurrences="4"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,GFS," x-occurrence="1" x-occurrences="1" x-content="τῆς"\*\zaln-s |x-strong="G13910" x-lemma="δόξα" x-morph="Gr,N,,,,,GFS," x-occurrence="1" x-occurrences="1" x-content="δόξης"\*\w dalam|x-occurrence="1" x-occurrences="1"\w*
+\w cara|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="5" x-occurrences="5"\w*
+\w mulia|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*. 
+\p 
+\v 14 \zaln-s |x-strong="G37390" x-lemma="ὅς" x-morph="Gr,RR,,,,NMS," x-occurrence="1" x-occurrences="1" x-content="ὃς"\*\zaln-s |x-strong="G13250" x-lemma="δίδωμι" x-morph="Gr,V,IAA3,,S," x-occurrence="1" x-occurrences="1" x-content="ἔδωκεν"\*\w Dia|x-occurrence="1" x-occurrences="1"\w*
+\w menyerahkan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G14380" x-lemma="ἑαυτοῦ" x-morph="Gr,RE,,,3AMS," x-occurrence="1" x-occurrences="1" x-content="ἑαυτὸν"\*\w diri|x-occurrence="1" x-occurrences="1"\w*-\w Nya|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*
+\zaln-s |x-strong="G52280" x-lemma="ὑπέρ" x-morph="Gr,P,,,,,G,,," x-occurrence="1" x-occurrences="1" x-content="ὑπὲρ"\*\zaln-s |x-strong="G14730" x-lemma="ἐγώ" x-morph="Gr,RP,,,1G,P," x-occurrence="1" x-occurrences="1" x-content="ἡμῶν"\*\w untuk|x-occurrence="1" x-occurrences="3"\w*
+\w mati|x-occurrence="1" x-occurrences="1"\w*
+\w bagi|x-occurrence="1" x-occurrences="2"\w*
+\w kita|x-occurrence="1" x-occurrences="5"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G24430" x-lemma="ἵνα" x-morph="Gr,CS,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="ἵνα"\*\w supaya|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*
+\zaln-s |x-strong="G30840" x-lemma="λυτρόω" x-morph="Gr,V,SAM3,,S," x-occurrence="1" x-occurrences="1" x-content="λυτρώσηται"\*\zaln-s |x-strong="G14730" x-lemma="ἐγώ" x-morph="Gr,RP,,,1A,P," x-occurrence="1" x-occurrences="1" x-content="ἡμᾶς"\*\zaln-s |x-strong="G05750" x-lemma="ἀπό" x-morph="Gr,P,,,,,G,,," x-occurrence="1" x-occurrences="1" x-content="ἀπὸ"\*\zaln-s |x-strong="G39560" x-lemma="πᾶς" x-morph="Gr,EQ,,,,GFS," x-occurrence="1" x-occurrences="1" x-content="πάσης"\*\zaln-s |x-strong="G04580" x-lemma="ἀνομία" x-morph="Gr,N,,,,,GFS," x-occurrence="1" x-occurrences="1" x-content="ἀνομίας"\*\w kita|x-occurrence="2" x-occurrences="5"\w*
+\w dapat|x-occurrence="1" x-occurrences="2"\w*
+\w dimerdekakan|x-occurrence="1" x-occurrences="1"\w*
+\w untuk|x-occurrence="2" x-occurrences="3"\w*
+\w hidup|x-occurrence="1" x-occurrences="1"\w*
+\w sesuai|x-occurrence="1" x-occurrences="1"\w*
+\w dengan|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="1" x-occurrences="5"\w*
+\w Allah|x-occurrence="1" x-occurrences="1"\w*
+\w kehendaki|x-occurrence="1" x-occurrences="1"\w*
+\w bagi|x-occurrence="2" x-occurrences="2"\w*
+\w kita|x-occurrence="3" x-occurrences="5"\w*\zaln-e\*\zaln-e\*\zaln-e\*\zaln-e\*\zaln-e\*,
+\zaln-s |x-strong="G25320" x-lemma="καί" x-morph="Gr,CC,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="καὶ"\*\w dan|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*
+\zaln-s |x-strong="G25110" x-lemma="καθαρίζω" x-morph="Gr,V,SAA3,,S," x-occurrence="1" x-occurrences="1" x-content="καθαρίσῃ"\*\w untuk|x-occurrence="3" x-occurrences="3"\w*
+\w menghapus|x-occurrence="1" x-occurrences="1"\w*
+\w dosa|x-occurrence="1" x-occurrences="1"\w*
+\w kita|x-occurrence="4" x-occurrences="5"\w*\zaln-e\*
+\zaln-s |x-strong="G14380" x-lemma="ἑαυτοῦ" x-morph="Gr,RE,,,3DMS," x-occurrence="1" x-occurrences="1" x-content="ἑαυτῷ"\*\zaln-s |x-strong="G29920" x-lemma="λαός" x-morph="Gr,N,,,,,AMS," x-occurrence="1" x-occurrences="1" x-content="λαὸν"\*\zaln-s |x-strong="G40410" x-lemma="περιούσιος" x-morph="Gr,AA,,,,AMS," x-occurrence="1" x-occurrences="1" x-content="περιούσιον"\*\w supaya|x-occurrence="2" x-occurrences="2"\w*
+\w kita|x-occurrence="5" x-occurrences="5"\w*
+\w dapat|x-occurrence="2" x-occurrences="2"\w*
+\w menjadi|x-occurrence="1" x-occurrences="2"\w*
+\w umat|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="2" x-occurrences="5"\w*
+\w khusus|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="3" x-occurrences="5"\w*
+\w hanya|x-occurrence="1" x-occurrences="1"\w*
+\w menjadi|x-occurrence="2" x-occurrences="2"\w*
+\w milik|x-occurrence="1" x-occurrences="1"\w*-\w Nya|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*\zaln-e\*\zaln-e\*,
+\zaln-s |x-strong="G22070" x-lemma="ζηλωτής" x-morph="Gr,N,,,,,AMS," x-occurrence="1" x-occurrences="1" x-content="ζηλωτὴν"\*\w dan|x-occurrence="2" x-occurrences="2"\w*
+\w yang|x-occurrence="4" x-occurrences="5"\w*
+\w berhasrat|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G25700" x-lemma="καλός" x-morph="Gr,AA,,,,GNP," x-occurrence="1" x-occurrences="1" x-content="καλῶν"\*\zaln-s |x-strong="G20410" x-lemma="ἔργον" x-morph="Gr,N,,,,,GNP," x-occurrence="1" x-occurrences="1" x-content="ἔργων"\*\w melakukan|x-occurrence="1" x-occurrences="1"\w*
+\w apa|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="5" x-occurrences="5"\w*
+\w baik|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*. 
+\p 
+\v 15 \zaln-s |x-strong="G29800" x-lemma="λαλέω" x-morph="Gr,V,MPA2,,S," x-occurrence="1" x-occurrences="1" x-content="λάλει"\*\w Titus|x-occurrence="1" x-occurrences="1"\w*,
+\w bicarakanlah|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G37780" x-lemma="οὗτος" x-morph="Gr,RD,,,,ANP," x-occurrence="1" x-occurrences="1" x-content="ταῦτα"\*\w hal|x-occurrence="1" x-occurrences="2"\w*-\w hal|x-occurrence="2" x-occurrences="2"\w*
+\w ini|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*.
+\zaln-s |x-strong="G25320" x-lemma="καί" x-morph="Gr,CC,,,,,,,," x-occurrence="1" x-occurrences="2" x-content="καὶ"\*\zaln-s |x-strong="G38700" x-lemma="παρακαλέω" x-morph="Gr,V,MPA2,,S," x-occurrence="1" x-occurrences="1" x-content="παρακάλει"\*\w Doronglah|x-occurrence="1" x-occurrences="1"\w*
+\w orang|x-occurrence="1" x-occurrences="3"\w*-\w orang|x-occurrence="2" x-occurrences="3"\w*
+\w percaya|x-occurrence="1" x-occurrences="1"\w*
+\w untuk|x-occurrence="1" x-occurrences="2"\w*
+\w hidup|x-occurrence="1" x-occurrences="1"\w*
+\w seperti|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="1" x-occurrences="2"\w*
+\w telah|x-occurrence="1" x-occurrences="1"\w*
+\w aku|x-occurrence="1" x-occurrences="1"\w*
+\w jelaskan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G25320" x-lemma="καί" x-morph="Gr,CC,,,,,,,," x-occurrence="2" x-occurrences="2" x-content="καὶ"\*\w dan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G16510" x-lemma="ἐλέγχω" x-morph="Gr,V,MPA2,,S," x-occurrence="1" x-occurrences="1" x-content="ἔλεγχε"\*\w koreksi|x-occurrence="1" x-occurrences="1"\w*
+\w mereka|x-occurrence="1" x-occurrences="3"\w*
+\w ketika|x-occurrence="1" x-occurrences="1"\w*
+\w mereka|x-occurrence="2" x-occurrences="3"\w*
+\w tidak|x-occurrence="1" x-occurrences="1"\w*
+\w melakukannya|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*,
+\zaln-s |x-strong="G33260" x-lemma="μετά" x-morph="Gr,P,,,,,G,,," x-occurrence="1" x-occurrences="1" x-content="μετὰ"\*\zaln-s |x-strong="G39560" x-lemma="πᾶς" x-morph="Gr,EQ,,,,GFS," x-occurrence="1" x-occurrences="1" x-content="πάσης"\*\zaln-s |x-strong="G20030" x-lemma="ἐπιταγή" x-morph="Gr,N,,,,,GFS," x-occurrence="1" x-occurrences="1" x-content="ἐπιταγῆς"\*\w gunakan|x-occurrence="1" x-occurrences="1"\w*
+\w hakmu|x-occurrence="1" x-occurrences="1"\w*
+\w untuk|x-occurrence="2" x-occurrences="2"\w*
+\w memerintahkan|x-occurrence="1" x-occurrences="1"\w*
+\w mereka|x-occurrence="3" x-occurrences="3"\w*
+\w jika|x-occurrence="1" x-occurrences="1"\w*
+\w perlu|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*\zaln-e\*.
+\zaln-s |x-strong="G33670" x-lemma="μηδείς" x-morph="Gr,RI,,,,NMS," x-occurrence="1" x-occurrences="1" x-content="μηδείς"\*\zaln-s |x-strong="G47710" x-lemma="σύ" x-morph="Gr,RP,,,2G,S," x-occurrence="1" x-occurrences="1" x-content="σου"\*\zaln-s |x-strong="G40650" x-lemma="περιφρονέω" x-morph="Gr,V,MPA3,,S," x-occurrence="1" x-occurrences="1" x-content="περιφρονείτω"\*\w Pastikan|x-occurrence="1" x-occurrences="1"\w*
+\w semua|x-occurrence="1" x-occurrences="1"\w*
+\w orang|x-occurrence="3" x-occurrences="3"\w*
+\w memperhatikan|x-occurrence="1" x-occurrences="1"\w*
+\w apa|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="2" x-occurrences="2"\w*
+\w kamu|x-occurrence="1" x-occurrences="1"\w*
+\w katakan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*\zaln-e\*.
+\c 3
+\p 
+\v 1 \zaln-s |x-strong="G52790" x-lemma="ὑπομιμνῄσκω" x-morph="Gr,V,MPA2,,S," x-occurrence="1" x-occurrences="1" x-content="ὑπομίμνῃσκε"\*\zaln-s |x-strong="G08460" x-lemma="αὐτός" x-morph="Gr,RP,,,3AMP," x-occurrence="1" x-occurrences="1" x-content="αὐτοὺς"\*\w Titus|x-occurrence="1" x-occurrences="1"\w*,
+\w teruslah|x-occurrence="1" x-occurrences="1"\w*
+\w beritahukan|x-occurrence="1" x-occurrences="1"\w*
+\w kepada|x-occurrence="1" x-occurrences="1"\w*
+\w saudara|x-occurrence="1" x-occurrences="2"\w*-\w saudara|x-occurrence="2" x-occurrences="2"\w*
+\w kita|x-occurrence="1" x-occurrences="1"\w*
+\w lagi|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G52930" x-lemma="ὑποτάσσω" x-morph="Gr,V,NPM,,,,," x-occurrence="1" x-occurrences="1" x-content="ὑποτάσσεσθαι"\*\zaln-s |x-strong="G39800" x-lemma="πειθαρχέω" x-morph="Gr,V,NPA,,,,," x-occurrence="1" x-occurrences="1" x-content="πειθαρχεῖν"\*\w bahwa|x-occurrence="1" x-occurrences="1"\w*
+\w mereka|x-occurrence="1" x-occurrences="3"\w*
+\w harus|x-occurrence="1" x-occurrences="2"\w*
+\w menaati|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G07460" x-lemma="ἀρχή" x-morph="Gr,N,,,,,DFP," x-occurrence="1" x-occurrences="1" x-content="ἀρχαῖς"\*\zaln-s |x-strong="G18490" x-lemma="ἐξουσία" x-morph="Gr,N,,,,,DFP," x-occurrence="1" x-occurrences="1" x-content="ἐξουσίαις"\*\w orang|x-occurrence="1" x-occurrences="2"\w*-\w orang|x-occurrence="2" x-occurrences="2"\w*
+\w yang|x-occurrence="1" x-occurrences="1"\w*
+\w memerintah|x-occurrence="1" x-occurrences="1"\w*
+\w mereka|x-occurrence="2" x-occurrences="3"\w*\zaln-e\*\zaln-e\*.
+\zaln-s |x-strong="G20920" x-lemma="ἕτοιμος" x-morph="Gr,NP,,,,AMP," x-occurrence="1" x-occurrences="1" x-content="ἑτοίμους"\*\zaln-s |x-strong="G15100" x-lemma="εἰμί" x-morph="Gr,V,NPA,,,,," x-occurrence="1" x-occurrences="1" x-content="εἶναι"\*\w Mereka|x-occurrence="1" x-occurrences="1"\w*
+\w harus|x-occurrence="2" x-occurrences="2"\w*
+\w siap|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G43140" x-lemma="πρός" x-morph="Gr,P,,,,,A,,," x-occurrence="1" x-occurrences="1" x-content="πρὸς"\*\zaln-s |x-strong="G39560" x-lemma="πᾶς" x-morph="Gr,EQ,,,,ANS," x-occurrence="1" x-occurrences="1" x-content="πᾶν"\*\zaln-s |x-strong="G20410" x-lemma="ἔργον" x-morph="Gr,N,,,,,ANS," x-occurrence="1" x-occurrences="1" x-content="ἔργον"\*\zaln-s |x-strong="G00180" x-lemma="ἀγαθός" x-morph="Gr,AA,,,,ANS," x-occurrence="1" x-occurrences="1" x-content="ἀγαθὸν"\*\w untuk|x-occurrence="1" x-occurrences="1"\w*
+\w membantu|x-occurrence="1" x-occurrences="1"\w*
+\w kapan|x-occurrence="1" x-occurrences="1"\w*
+\w pun|x-occurrence="1" x-occurrences="1"\w*
+\w mereka|x-occurrence="3" x-occurrences="3"\w*
+\w mampu|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*\zaln-e\*\zaln-e\*. 
+\p 
+\v 2 \zaln-s |x-strong="G33670" x-lemma="μηδείς" x-morph="Gr,RI,,,,AMS," x-occurrence="1" x-occurrences="1" x-content="μηδένα"\*\w Mereka|x-occurrence="1" x-occurrences="3"\w*
+\w tidak|x-occurrence="1" x-occurrences="2"\w*
+\w boleh|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G09870" x-lemma="βλασφημέω" x-morph="Gr,V,NPA,,,,," x-occurrence="1" x-occurrences="1" x-content="βλασφημεῖν"\*\w mengatakan|x-occurrence="1" x-occurrences="1"\w*
+\w hal|x-occurrence="1" x-occurrences="2"\w*-\w hal|x-occurrence="2" x-occurrences="2"\w*
+\w yang|x-occurrence="1" x-occurrences="1"\w*
+\w tidak|x-occurrence="2" x-occurrences="2"\w*
+\w sopan|x-occurrence="1" x-occurrences="1"\w*
+\w tentang|x-occurrence="1" x-occurrences="1"\w*
+\w siapa|x-occurrence="1" x-occurrences="1"\w*
+\w pun|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*.
+\zaln-s |x-strong="G02690" x-lemma="ἄμαχος" x-morph="Gr,NP,,,,AMP," x-occurrence="1" x-occurrences="1" x-content="ἀμάχους"\*\zaln-s |x-strong="G15100" x-lemma="εἰμί" x-morph="Gr,V,NPA,,,,," x-occurrence="1" x-occurrences="1" x-content="εἶναι"\*\w Mereka|x-occurrence="2" x-occurrences="3"\w*
+\w harus|x-occurrence="1" x-occurrences="2"\w*
+\w bersikap|x-occurrence="1" x-occurrences="1"\w*
+\w damai|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*.
+\zaln-s |x-strong="G19330" x-lemma="ἐπιεικής" x-morph="Gr,NP,,,,AMP," x-occurrence="1" x-occurrences="1" x-content="ἐπιεικεῖς"\*\w Mereka|x-occurrence="3" x-occurrences="3"\w*
+\w harus|x-occurrence="2" x-occurrences="2"\w*
+\w memperlakukan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G39560" x-lemma="πᾶς" x-morph="Gr,EQ,,,,AFS," x-occurrence="1" x-occurrences="1" x-content="πᾶσαν"\*\w semua|x-occurrence="1" x-occurrences="1"\w*
+\w orang|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G19330" x-lemma="ἐπιεικής" x-morph="Gr,NP,,,,AMP," x-occurrence="1" x-occurrences="1" x-content="ἐπιεικεῖς"\*\w dengan|x-occurrence="1" x-occurrences="1"\w*
+\w lembut|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G17310" x-lemma="ἐνδείκνυμι" x-morph="Gr,V,PPM,AMP," x-occurrence="1" x-occurrences="1" x-content="ἐνδεικνυμένους"\*\zaln-s |x-strong="G42400" x-lemma="πραΰτης" x-morph="Gr,N,,,,,AFS," x-occurrence="1" x-occurrences="1" x-content="πραΰτητα"\*\w dan|x-occurrence="1" x-occurrences="1"\w*
+\w lebih|x-occurrence="1" x-occurrences="1"\w*
+\w penting|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G43140" x-lemma="πρός" x-morph="Gr,P,,,,,A,,," x-occurrence="1" x-occurrences="1" x-content="πρὸς"\*\zaln-s |x-strong="G39560" x-lemma="πᾶς" x-morph="Gr,EQ,,,,AMP," x-occurrence="1" x-occurrences="1" x-content="πάντας"\*\zaln-s |x-strong="G04440" x-lemma="ἄνθρωπος" x-morph="Gr,N,,,,,AMP," x-occurrence="1" x-occurrences="1" x-content="ἀνθρώπους"\*\w daripada|x-occurrence="1" x-occurrences="1"\w*
+\w diri|x-occurrence="1" x-occurrences="1"\w*
+\w mereka|x-occurrence="1" x-occurrences="1"\w*
+\w sendiri|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*\zaln-e\*. 
+\p 
+\v 3 \zaln-s |x-strong="G15100" x-lemma="εἰμί" x-morph="Gr,V,IIA1,,P," x-occurrence="1" x-occurrences="1" x-content="ἦμεν"\*\zaln-s |x-strong="G10630" x-lemma="γάρ" x-morph="Gr,CC,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="γάρ"\*\w Kita|x-occurrence="1" x-occurrences="4"\w*
+\w perlu|x-occurrence="1" x-occurrences="1"\w*
+\w mengingat|x-occurrence="1" x-occurrences="1"\w*
+\w bahwa|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G42180" x-lemma="ποτέ" x-morph="Gr,D,,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="ποτε"\*\zaln-s |x-strong="G25320" x-lemma="καί" x-morph="Gr,D,,,,,,,,," x-occurrence="1" x-occurrences="3" x-content="καὶ"\*\w pada|x-occurrence="1" x-occurrences="1"\w*
+\w masa|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="1" x-occurrences="2"\w*
+\w lalu|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G14730" x-lemma="ἐγώ" x-morph="Gr,RP,,,1N,P," x-occurrence="1" x-occurrences="1" x-content="ἡμεῖς"\*\w kita|x-occurrence="1" x-occurrences="7"\w*
+\w sendiri|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G04530" x-lemma="ἀνόητος" x-morph="Gr,NS,,,,NMP," x-occurrence="1" x-occurrences="1" x-content="ἀνόητοι"\*\w bodoh|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G05450" x-lemma="ἀπειθής" x-morph="Gr,NS,,,,NMP," x-occurrence="1" x-occurrences="1" x-content="ἀπειθεῖς"\*\w dan|x-occurrence="1" x-occurrences="4"\w*
+\w tidak|x-occurrence="1" x-occurrences="2"\w*
+\w mau|x-occurrence="1" x-occurrences="1"\w*
+\w menaati|x-occurrence="1" x-occurrences="1"\w*
+\w Allah|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*.
+\zaln-s |x-strong="G41050" x-lemma="πλανάω" x-morph="Gr,V,PPP,NMP," x-occurrence="1" x-occurrences="1" x-content="πλανώμενοι"\*\w Kita|x-occurrence="2" x-occurrences="4"\w*
+\w sangat|x-occurrence="1" x-occurrences="1"\w*
+\w ingin|x-occurrence="1" x-occurrences="1"\w*
+\w melakukan|x-occurrence="1" x-occurrences="4"\w*
+\w hal|x-occurrence="1" x-occurrences="8"\w*-\w hal|x-occurrence="2" x-occurrences="8"\w*
+\w yang|x-occurrence="2" x-occurrences="2"\w*
+\w membuat|x-occurrence="1" x-occurrences="2"\w*
+\w kita|x-occurrence="2" x-occurrences="7"\w*
+\w merasa|x-occurrence="1" x-occurrences="1"\w*
+\w senang|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*,
+\zaln-s |x-strong="G25320" x-lemma="καί" x-morph="Gr,CC,,,,,,,," x-occurrence="2" x-occurrences="3" x-content="καὶ"\*\w dan|x-occurrence="2" x-occurrences="4"\w*\zaln-e\*
+\zaln-s |x-strong="G13980" x-lemma="δουλεύω" x-morph="Gr,V,PPA,NMP," x-occurrence="1" x-occurrences="1" x-content="δουλεύοντες"\*\zaln-s |x-strong="G19390" x-lemma="ἐπιθυμία" x-morph="Gr,N,,,,,DFP," x-occurrence="1" x-occurrences="1" x-content="ἐπιθυμίαις"\*\w kita|x-occurrence="3" x-occurrences="7"\w*
+\w pun|x-occurrence="1" x-occurrences="1"\w*
+\w melakukan|x-occurrence="2" x-occurrences="4"\w*
+\w hal|x-occurrence="3" x-occurrences="8"\w*-\w hal|x-occurrence="4" x-occurrences="8"\w*
+\w itu|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*\zaln-e\*.
+\zaln-s |x-strong="G22370" x-lemma="ἡδονή" x-morph="Gr,N,,,,,DFP," x-occurrence="1" x-occurrences="1" x-content="ἡδοναῖς"\*\w Tetapi|x-occurrence="1" x-occurrences="1"\w*
+\w kemudian|x-occurrence="1" x-occurrences="1"\w*
+\w kita|x-occurrence="4" x-occurrences="7"\w*
+\w mendapati|x-occurrence="1" x-occurrences="1"\w*
+\w bahwa|x-occurrence="2" x-occurrences="2"\w*
+\w kita|x-occurrence="5" x-occurrences="7"\w*
+\w tidak|x-occurrence="2" x-occurrences="2"\w*
+\w dapat|x-occurrence="1" x-occurrences="1"\w*
+\w berhenti|x-occurrence="1" x-occurrences="1"\w*
+\w melakukan|x-occurrence="3" x-occurrences="4"\w*
+\w hal|x-occurrence="5" x-occurrences="8"\w*-\w hal|x-occurrence="6" x-occurrences="8"\w*
+\w itu|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*.
+\zaln-s |x-strong="G41640" x-lemma="ποικίλος" x-morph="Gr,AA,,,,DFP," x-occurrence="1" x-occurrences="1" x-content="ποικίλαις"\*\zaln-s |x-strong="G17220" x-lemma="ἐν" x-morph="Gr,P,,,,,D,,," x-occurrence="1" x-occurrences="1" x-content="ἐν"\*\zaln-s |x-strong="G25490" x-lemma="κακία" x-morph="Gr,N,,,,,DFS," x-occurrence="1" x-occurrences="1" x-content="κακίᾳ"\*\w Kita|x-occurrence="3" x-occurrences="4"\w*
+\w terus|x-occurrence="1" x-occurrences="1"\w*-\w menerus|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G53550" x-lemma="φθόνος" x-morph="Gr,N,,,,,DMS," x-occurrence="1" x-occurrences="1" x-content="φθόνῳ"\*\w saling|x-occurrence="1" x-occurrences="2"\w*
+\w iri|x-occurrence="1" x-occurrences="1"\w*
+\w hati|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G25320" x-lemma="καί" x-morph="Gr,CC,,,,,,,," x-occurrence="3" x-occurrences="3" x-content="καὶ"\*\w dan|x-occurrence="3" x-occurrences="4"\w*\zaln-e\*
+\zaln-s |x-strong="G12360" x-lemma="διάγω" x-morph="Gr,V,PPA,NMP," x-occurrence="1" x-occurrences="1" x-content="διάγοντες"\*\zaln-s |x-strong="G47670" x-lemma="στυγητός" x-morph="Gr,NS,,,,NMP," x-occurrence="1" x-occurrences="1" x-content="στυγητοί"\*\w melakukan|x-occurrence="4" x-occurrences="4"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G41640" x-lemma="ποικίλος" x-morph="Gr,AA,,,,DFP," x-occurrence="1" x-occurrences="1" x-content="ποικίλαις"\*\zaln-s |x-strong="G17220" x-lemma="ἐν" x-morph="Gr,P,,,,,D,,," x-occurrence="1" x-occurrences="1" x-content="ἐν"\*\zaln-s |x-strong="G25490" x-lemma="κακία" x-morph="Gr,N,,,,,DFS," x-occurrence="1" x-occurrences="1" x-content="κακίᾳ"\*\w hal|x-occurrence="7" x-occurrences="8"\w*-\w hal|x-occurrence="8" x-occurrences="8"\w*
+\w jahat|x-occurrence="1" x-occurrences="1"\w*
+\w lainnya|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*\zaln-e\*.
+\zaln-s |x-strong="G12360" x-lemma="διάγω" x-morph="Gr,V,PPA,NMP," x-occurrence="1" x-occurrences="1" x-content="διάγοντες"\*\zaln-s |x-strong="G47670" x-lemma="στυγητός" x-morph="Gr,NS,,,,NMP," x-occurrence="1" x-occurrences="1" x-content="στυγητοί"\*\w Kita|x-occurrence="4" x-occurrences="4"\w*
+\w membuat|x-occurrence="2" x-occurrences="2"\w*
+\w orang|x-occurrence="1" x-occurrences="1"\w*
+\w lain|x-occurrence="1" x-occurrences="1"\w*
+\w membenci|x-occurrence="1" x-occurrences="2"\w*
+\w kita|x-occurrence="6" x-occurrences="7"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G34040" x-lemma="μισέω" x-morph="Gr,V,PPA,NMP," x-occurrence="1" x-occurrences="1" x-content="μισοῦντες"\*\zaln-s |x-strong="G02400" x-lemma="ἀλλήλων" x-morph="Gr,RC,,,,AMP," x-occurrence="1" x-occurrences="1" x-content="ἀλλήλους"\*\w dan|x-occurrence="4" x-occurrences="4"\w*
+\w kita|x-occurrence="7" x-occurrences="7"\w*
+\w saling|x-occurrence="2" x-occurrences="2"\w*
+\w membenci|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*\zaln-e\*. 
+\p  
+\v 4 \zaln-s |x-strong="G11610" x-lemma="δέ" x-morph="Gr,CC,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="δὲ"\*\w Tetapi|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G37530" x-lemma="ὅτε" x-morph="Gr,CS,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="ὅτε"\*\w ketika|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,NFS," x-occurrence="1" x-occurrences="2" x-content="ἡ"\*\zaln-s |x-strong="G55440" x-lemma="χρηστότης" x-morph="Gr,N,,,,,NFS," x-occurrence="1" x-occurrences="1" x-content="χρηστότης"\*\w Allah|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G20140" x-lemma="ἐπιφαίνω" x-morph="Gr,V,IAP3,,S," x-occurrence="1" x-occurrences="1" x-content="ἐπεφάνη"\*\w menunjukkan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,NFS," x-occurrence="1" x-occurrences="2" x-content="ἡ"\*\zaln-s |x-strong="G55440" x-lemma="χρηστότης" x-morph="Gr,N,,,,,NFS," x-occurrence="1" x-occurrences="1" x-content="χρηστότης"\*\w kepada|x-occurrence="1" x-occurrences="1"\w*
+\w kita|x-occurrence="1" x-occurrences="3"\w*
+\w bahwa|x-occurrence="1" x-occurrences="1"\w*
+\w Ia|x-occurrence="1" x-occurrences="2"\w*
+\w telah|x-occurrence="1" x-occurrences="1"\w*
+\w bermurah|x-occurrence="1" x-occurrences="1"\w*
+\w hati|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G25320" x-lemma="καί" x-morph="Gr,CC,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="καὶ"\*\w untuk|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,GMS," x-occurrence="1" x-occurrences="1" x-content="τοῦ"\*\zaln-s |x-strong="G49900" x-lemma="σωτήρ" x-morph="Gr,N,,,,,GMS," x-occurrence="1" x-occurrences="1" x-content="Σωτῆρος"\*\zaln-s |x-strong="G14730" x-lemma="ἐγώ" x-morph="Gr,RP,,,1G,P," x-occurrence="1" x-occurrences="1" x-content="ἡμῶν"\*\zaln-s |x-strong="G23160" x-lemma="θεός" x-morph="Gr,N,,,,,GMS," x-occurrence="1" x-occurrences="1" x-content="Θεοῦ"\*\w menyelamatkan|x-occurrence="1" x-occurrences="1"\w*
+\w kita|x-occurrence="2" x-occurrences="3"\w*\zaln-e\*\zaln-e\*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,NFS," x-occurrence="2" x-occurrences="2" x-content="ἡ"\*\zaln-s |x-strong="G53630" x-lemma="φιλανθρωπία" x-morph="Gr,N,,,,,NFS," x-occurrence="1" x-occurrences="1" x-content="φιλανθρωπία"\*\w karena|x-occurrence="1" x-occurrences="1"\w*
+\w Ia|x-occurrence="2" x-occurrences="2"\w*
+\w mengasihi|x-occurrence="1" x-occurrences="1"\w*
+\w kita|x-occurrence="3" x-occurrences="3"\w*\zaln-e\*\zaln-e\*, 
+\p 
+\v 5 \zaln-s |x-strong="G15370" x-lemma="ἐκ" x-morph="Gr,P,,,,,G,,," x-occurrence="1" x-occurrences="1" x-content="ἐξ"\*\zaln-s |x-strong="G20410" x-lemma="ἔργον" x-morph="Gr,N,,,,,GNP," x-occurrence="1" x-occurrences="1" x-content="ἔργων"\*\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,GNP," x-occurrence="1" x-occurrences="1" x-content="τῶν"\*\w Dia|x-occurrence="1" x-occurrences="5"\w*
+\w menyelamatkan|x-occurrence="1" x-occurrences="3"\w*
+\w kita|x-occurrence="1" x-occurrences="8"\w*\zaln-e\*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G12230" x-lemma="διά" x-morph="Gr,P,,,,,G,,," x-occurrence="1" x-occurrences="1" x-content="διὰ"\*\zaln-s |x-strong="G30670" x-lemma="λουτρόν" x-morph="Gr,N,,,,,GNS," x-occurrence="1" x-occurrences="1" x-content="λουτροῦ"\*\zaln-s |x-strong="G38240" x-lemma="παλινγενεσία" x-morph="Gr,N,,,,,GFS," x-occurrence="1" x-occurrences="1" x-content="παλινγενεσίας"\*\w dengan|x-occurrence="1" x-occurrences="3"\w*
+\w menyingkirkan|x-occurrence="1" x-occurrences="1"\w*
+\w dosa|x-occurrence="1" x-occurrences="1"\w*
+\w kita|x-occurrence="2" x-occurrences="8"\w*
+\w dari|x-occurrence="1" x-occurrences="1"\w*
+\w diri|x-occurrence="1" x-occurrences="1"\w*
+\w kita|x-occurrence="3" x-occurrences="8"\w*
+\w dengan|x-occurrence="2" x-occurrences="3"\w*
+\w cara|x-occurrence="1" x-occurrences="2"\w*
+\w membersihkannya|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*\zaln-e\*.
+\zaln-s |x-strong="G17220" x-lemma="ἐν" x-morph="Gr,P,,,,,D,,," x-occurrence="1" x-occurrences="1" x-content="ἐν"\*\zaln-s |x-strong="G13430" x-lemma="δικαιοσύνη" x-morph="Gr,N,,,,,DFS," x-occurrence="1" x-occurrences="1" x-content="δικαιοσύνῃ"\*\zaln-s |x-strong="G37390" x-lemma="ὅς" x-morph="Gr,RD,,,,ANP," x-occurrence="1" x-occurrences="1" x-content="ἃ"\*\zaln-s |x-strong="G41600" x-lemma="ποιέω" x-morph="Gr,V,IAA1,,P," x-occurrence="1" x-occurrences="1" x-content="ἐποιήσαμεν"\*\zaln-s |x-strong="G14730" x-lemma="ἐγώ" x-morph="Gr,RP,,,1N,P," x-occurrence="1" x-occurrences="1" x-content="ἡμεῖς"\*\w Ketika|x-occurrence="1" x-occurrences="1"\w*
+\w Dia|x-occurrence="2" x-occurrences="5"\w*
+\w melakukan|x-occurrence="1" x-occurrences="2"\w*
+\w hal|x-occurrence="1" x-occurrences="3"\w*
+\w ini|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*\zaln-e\*\zaln-e\*\zaln-e\*,
+\zaln-s |x-strong="G41510" x-lemma="πνεῦμα" x-morph="Gr,N,,,,,GNS," x-occurrence="1" x-occurrences="1" x-content="Πνεύματος"\*\zaln-s |x-strong="G00400" x-lemma="ἅγιος" x-morph="Gr,AA,,,,GNS," x-occurrence="1" x-occurrences="1" x-content="Ἁγίου"\*\w Roh|x-occurrence="1" x-occurrences="1"\w*
+\w Kudus|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G03420" x-lemma="ἀνακαίνωσις" x-morph="Gr,N,,,,,GFS," x-occurrence="1" x-occurrences="1" x-content="ἀνακαινώσεως"\*\w menjadikan|x-occurrence="1" x-occurrences="1"\w*
+\w kita|x-occurrence="4" x-occurrences="8"\w*
+\w baru|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*
+\zaln-s |x-strong="G25320" x-lemma="καί" x-morph="Gr,CC,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="καὶ"\*\w dan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G17220" x-lemma="ἐν" x-morph="Gr,P,,,,,D,,," x-occurrence="1" x-occurrences="1" x-content="ἐν"\*\zaln-s |x-strong="G13430" x-lemma="δικαιοσύνη" x-morph="Gr,N,,,,,DFS," x-occurrence="1" x-occurrences="1" x-content="δικαιοσύνῃ"\*\zaln-s |x-strong="G37390" x-lemma="ὅς" x-morph="Gr,RD,,,,ANP," x-occurrence="1" x-occurrences="1" x-content="ἃ"\*\zaln-s |x-strong="G41600" x-lemma="ποιέω" x-morph="Gr,V,IAA1,,P," x-occurrence="1" x-occurrences="1" x-content="ἐποιήσαμεν"\*\zaln-s |x-strong="G14730" x-lemma="ἐγώ" x-morph="Gr,RP,,,1N,P," x-occurrence="1" x-occurrences="1" x-content="ἡμεῖς"\*\w memampukan|x-occurrence="1" x-occurrences="1"\w*
+\w kita|x-occurrence="5" x-occurrences="8"\w*
+\w untuk|x-occurrence="1" x-occurrences="1"\w*
+\w mulai|x-occurrence="1" x-occurrences="1"\w*
+\w hidup|x-occurrence="1" x-occurrences="1"\w*
+\w dengan|x-occurrence="3" x-occurrences="3"\w*
+\w cara|x-occurrence="2" x-occurrences="2"\w*
+\w yang|x-occurrence="1" x-occurrences="2"\w*
+\w baru|x-occurrence="2" x-occurrences="2"\w*
+\w bagi|x-occurrence="1" x-occurrences="1"\w*
+\w Allah|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*\zaln-e\*\zaln-e\*\zaln-e\*.
+\zaln-s |x-strong="G25960" x-lemma="κατά" x-morph="Gr,P,,,,,A,,," x-occurrence="1" x-occurrences="1" x-content="κατὰ"\*\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,ANS," x-occurrence="1" x-occurrences="1" x-content="τὸ"\*\zaln-s |x-strong="G08460" x-lemma="αὐτός" x-morph="Gr,RP,,,3GMS," x-occurrence="1" x-occurrences="1" x-content="αὐτοῦ"\*\zaln-s |x-strong="G16560" x-lemma="ἔλεος" x-morph="Gr,N,,,,,ANS," x-occurrence="1" x-occurrences="1" x-content="ἔλεος"\*\w Dia|x-occurrence="3" x-occurrences="5"\w*\zaln-e\*\zaln-e\*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G37560" x-lemma="οὐ" x-morph="Gr,DO,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="οὐκ"\*\w tidak|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G25960" x-lemma="κατά" x-morph="Gr,P,,,,,A,,," x-occurrence="1" x-occurrences="1" x-content="κατὰ"\*\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,ANS," x-occurrence="1" x-occurrences="1" x-content="τὸ"\*\zaln-s |x-strong="G08460" x-lemma="αὐτός" x-morph="Gr,RP,,,3GMS," x-occurrence="1" x-occurrences="1" x-content="αὐτοῦ"\*\zaln-s |x-strong="G16560" x-lemma="ἔλεος" x-morph="Gr,N,,,,,ANS," x-occurrence="1" x-occurrences="1" x-content="ἔλεος"\*\w menyelamatkan|x-occurrence="2" x-occurrences="3"\w*
+\w kita|x-occurrence="6" x-occurrences="8"\w*\zaln-e\*\zaln-e\*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G15370" x-lemma="ἐκ" x-morph="Gr,P,,,,,G,,," x-occurrence="1" x-occurrences="1" x-content="ἐξ"\*\zaln-s |x-strong="G20410" x-lemma="ἔργον" x-morph="Gr,N,,,,,GNP," x-occurrence="1" x-occurrences="1" x-content="ἔργων"\*\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,GNP," x-occurrence="1" x-occurrences="1" x-content="τῶν"\*\w karena|x-occurrence="1" x-occurrences="2"\w*
+\w kita|x-occurrence="7" x-occurrences="8"\w*
+\w melakukan|x-occurrence="2" x-occurrences="2"\w*
+\w hal|x-occurrence="2" x-occurrences="3"\w*-\w hal|x-occurrence="3" x-occurrences="3"\w*
+\w yang|x-occurrence="2" x-occurrences="2"\w*
+\w baik|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*\zaln-e\*,
+\zaln-s |x-strong="G02350" x-lemma="ἀλλά" x-morph="Gr,CO,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="ἀλλὰ"\*\w tetapi|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G49820" x-lemma="σῴζω" x-morph="Gr,V,IAA3,,S," x-occurrence="1" x-occurrences="1" x-content="ἔσωσεν"\*\zaln-s |x-strong="G14730" x-lemma="ἐγώ" x-morph="Gr,RP,,,1A,P," x-occurrence="1" x-occurrences="1" x-content="ἡμᾶς"\*\w Dia|x-occurrence="4" x-occurrences="5"\w*
+\w menyelamatkan|x-occurrence="3" x-occurrences="3"\w*
+\w kita|x-occurrence="8" x-occurrences="8"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G25960" x-lemma="κατά" x-morph="Gr,P,,,,,A,,," x-occurrence="1" x-occurrences="1" x-content="κατὰ"\*\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,ANS," x-occurrence="1" x-occurrences="1" x-content="τὸ"\*\zaln-s |x-strong="G08460" x-lemma="αὐτός" x-morph="Gr,RP,,,3GMS," x-occurrence="1" x-occurrences="1" x-content="αὐτοῦ"\*\zaln-s |x-strong="G16560" x-lemma="ἔλεος" x-morph="Gr,N,,,,,ANS," x-occurrence="1" x-occurrences="1" x-content="ἔλεος"\*\w karena|x-occurrence="2" x-occurrences="2"\w*
+\w Dia|x-occurrence="5" x-occurrences="5"\w*
+\w penuh|x-occurrence="1" x-occurrences="1"\w*
+\w belas|x-occurrence="1" x-occurrences="1"\w*
+\w kasihan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*\zaln-e\*\zaln-e\*.
+\p 
+\v 6 \zaln-s |x-strong="G37390" x-lemma="ὅς" x-morph="Gr,RR,,,,GNS," x-occurrence="1" x-occurrences="1" x-content="οὗ"\*\zaln-s |x-strong="G16320" x-lemma="ἐκχέω" x-morph="Gr,V,IAA3,,S," x-occurrence="1" x-occurrences="1" x-content="ἐξέχεεν"\*\w Allah|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G41460" x-lemma="πλουσίως" x-morph="Gr,D,,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="πλουσίως"\*\w dengan|x-occurrence="1" x-occurrences="1"\w*
+\w murah|x-occurrence="1" x-occurrences="1"\w*
+\w hati|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G37390" x-lemma="ὅς" x-morph="Gr,RR,,,,GNS," x-occurrence="1" x-occurrences="1" x-content="οὗ"\*\zaln-s |x-strong="G16320" x-lemma="ἐκχέω" x-morph="Gr,V,IAA3,,S," x-occurrence="1" x-occurrences="1" x-content="ἐξέχεεν"\*\w memberikan|x-occurrence="1" x-occurrences="1"\w*
+\w Roh|x-occurrence="1" x-occurrences="1"\w*
+\w Kudus|x-occurrence="1" x-occurrences="1"\w*-\w Nya|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G19090" x-lemma="ἐπί" x-morph="Gr,P,,,,,A,,," x-occurrence="1" x-occurrences="1" x-content="ἐφ’"\*\zaln-s |x-strong="G14730" x-lemma="ἐγώ" x-morph="Gr,RP,,,1A,P," x-occurrence="1" x-occurrences="1" x-content="ἡμᾶς"\*\w kepada|x-occurrence="1" x-occurrences="1"\w*
+\w kita|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G12230" x-lemma="διά" x-morph="Gr,P,,,,,G,,," x-occurrence="1" x-occurrences="1" x-content="διὰ"\*\zaln-s |x-strong="G24240" x-lemma="Ἰησοῦς" x-morph="Gr,N,,,,,GMS," x-occurrence="1" x-occurrences="1" x-content="Ἰησοῦ"\*\w ketika|x-occurrence="1" x-occurrences="1"\w*
+\w Yesus|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G55470" x-lemma="χριστός" x-morph="Gr,N,,,,,GMS," x-occurrence="1" x-occurrences="1" x-content="Χριστοῦ"\*\w sang|x-occurrence="1" x-occurrences="1"\w*
+\w Mesias|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,GMS," x-occurrence="1" x-occurrences="1" x-content="τοῦ"\*\zaln-s |x-strong="G49900" x-lemma="σωτήρ" x-morph="Gr,N,,,,,GMS," x-occurrence="1" x-occurrences="1" x-content="Σωτῆρος"\*\w menyelamatkan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G14730" x-lemma="ἐγώ" x-morph="Gr,RP,,,1G,P," x-occurrence="1" x-occurrences="1" x-content="ἡμῶν"\*\w kita|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*. 
+\p 
+\v 7 \zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,DFS," x-occurrence="1" x-occurrences="1" x-content="τῇ"\*\zaln-s |x-strong="G15650" x-lemma="ἐκεῖνος" x-morph="Gr,RD,,,,GMS," x-occurrence="1" x-occurrences="1" x-content="ἐκείνου"\*\zaln-s |x-strong="G54850" x-lemma="χάρις" x-morph="Gr,N,,,,,DFS," x-occurrence="1" x-occurrences="1" x-content="χάριτι"\*\w Ketika|x-occurrence="1" x-occurrences="1"\w*
+\w Yesus|x-occurrence="1" x-occurrences="3"\w*
+\w dengan|x-occurrence="1" x-occurrences="1"\w*
+\w sukarela|x-occurrence="1" x-occurrences="1"\w*
+\w memberikan|x-occurrence="1" x-occurrences="2"\w*
+\w diri|x-occurrence="1" x-occurrences="1"\w*-\w Nya|x-occurrence="1" x-occurrences="2"\w*
+\w bagi|x-occurrence="1" x-occurrences="1"\w*
+\w kita|x-occurrence="1" x-occurrences="5"\w*\zaln-e\*\zaln-e\*\zaln-e\*,
+\zaln-s |x-strong="G24430" x-lemma="ἵνα" x-morph="Gr,CS,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="ἵνα"\*\zaln-s |x-strong="G13440" x-lemma="δικαιόω" x-morph="Gr,V,PAP,NMP," x-occurrence="1" x-occurrences="1" x-content="δικαιωθέντες"\*\w Allah|x-occurrence="1" x-occurrences="2"\w*
+\w menyatakan|x-occurrence="1" x-occurrences="1"\w*
+\w bahwa|x-occurrence="1" x-occurrences="1"\w*
+\w segala|x-occurrence="1" x-occurrences="2"\w*
+\w sesuatu|x-occurrence="1" x-occurrences="2"\w*
+\w telah|x-occurrence="1" x-occurrences="2"\w*
+\w dipulihkan|x-occurrence="1" x-occurrences="1"\w*
+\w antara|x-occurrence="1" x-occurrences="1"\w*
+\w Dia|x-occurrence="1" x-occurrences="1"\w*
+\w dan|x-occurrence="1" x-occurrences="1"\w*
+\w kita|x-occurrence="2" x-occurrences="5"\w*\zaln-e\*\zaln-e\*.
+\zaln-s |x-strong="G28180" x-lemma="κληρονόμος" x-morph="Gr,N,,,,,NMP," x-occurrence="1" x-occurrences="1" x-content="κληρονόμοι"\*\w Karena|x-occurrence="1" x-occurrences="1"\w*
+\w Yesus|x-occurrence="2" x-occurrences="3"\w*
+\w telah|x-occurrence="2" x-occurrences="2"\w*
+\w melakukan|x-occurrence="1" x-occurrences="1"\w*
+\w hal|x-occurrence="1" x-occurrences="1"\w*
+\w itu|x-occurrence="1" x-occurrences="1"\w*,
+\w Allah|x-occurrence="2" x-occurrences="2"\w*
+\w memberikan|x-occurrence="2" x-occurrences="2"\w*
+\w Roh|x-occurrence="1" x-occurrences="1"\w*
+\w Kudus|x-occurrence="1" x-occurrences="1"\w*
+\w kepada|x-occurrence="1" x-occurrences="2"\w*
+\w kita|x-occurrence="3" x-occurrences="5"\w*\zaln-e\*
+\zaln-s |x-strong="G10960" x-lemma="γίνομαι" x-morph="Gr,V,SAP1,,P," x-occurrence="1" x-occurrences="1" x-content="γενηθῶμεν"\*\w sehingga|x-occurrence="1" x-occurrences="1"\w*
+\w kita|x-occurrence="4" x-occurrences="5"\w*
+\w dapat|x-occurrence="1" x-occurrences="1"\w*
+\w mengambil|x-occurrence="1" x-occurrences="1"\w*
+\w bagian|x-occurrence="1" x-occurrences="1"\w*
+\w dalam|x-occurrence="1" x-occurrences="1"\w*
+\w segala|x-occurrence="2" x-occurrences="2"\w*
+\w sesuatu|x-occurrence="2" x-occurrences="2"\w*
+\w yang|x-occurrence="1" x-occurrences="1"\w*
+\w Tuhan|x-occurrence="1" x-occurrences="1"\w*
+\w Yesus|x-occurrence="3" x-occurrences="3"\w*
+\w berikan|x-occurrence="1" x-occurrences="1"\w*
+\w kepada|x-occurrence="2" x-occurrences="2"\w*
+\w kita|x-occurrence="5" x-occurrences="5"\w*\zaln-e\*,
+\zaln-s |x-strong="G25960" x-lemma="κατά" x-morph="Gr,P,,,,,A,,," x-occurrence="1" x-occurrences="1" x-content="κατ’"\*\zaln-s |x-strong="G16800" x-lemma="ἐλπίς" x-morph="Gr,N,,,,,AFS," x-occurrence="1" x-occurrences="1" x-content="ἐλπίδα"\*\w terutama|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G22220" x-lemma="ζωή" x-morph="Gr,N,,,,,GFS," x-occurrence="1" x-occurrences="1" x-content="ζωῆς"\*\w kehidupan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G01660" x-lemma="αἰώνιος" x-morph="Gr,AA,,,,GFS," x-occurrence="1" x-occurrences="1" x-content="αἰωνίου"\*\w kekal|x-occurrence="1" x-occurrences="1"\w*
+\w bersama|x-occurrence="1" x-occurrences="1"\w*-\w Nya|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*. 
+\p 
+\v 8 \zaln-s |x-strong="G41030" x-lemma="πιστός" x-morph="Gr,NP,,,,NMS," x-occurrence="1" x-occurrences="1" x-content="πιστὸς"\*\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,NMS," x-occurrence="1" x-occurrences="1" x-content="ὁ"\*\zaln-s |x-strong="G30560" x-lemma="λόγος" x-morph="Gr,N,,,,,NMS," x-occurrence="1" x-occurrences="1" x-content="λόγος"\*\w Ini|x-occurrence="1" x-occurrences="1"\w*
+\w adalah|x-occurrence="1" x-occurrences="1"\w*
+\w pernyataan|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="1" x-occurrences="3"\w*
+\w dapat|x-occurrence="1" x-occurrences="2"\w*
+\w dipercaya|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*\zaln-e\*.
+\zaln-s |x-strong="G40120" x-lemma="περί" x-morph="Gr,P,,,,,G,,," x-occurrence="1" x-occurrences="1" x-content="περὶ"\*\zaln-s |x-strong="G37780" x-lemma="οὗτος" x-morph="Gr,RD,,,,GNP," x-occurrence="1" x-occurrences="1" x-content="τούτων"\*\zaln-s |x-strong="G10140" x-lemma="βούλομαι" x-morph="Gr,V,IPM1,,S," x-occurrence="1" x-occurrences="1" x-content="βούλομαί"\*\zaln-s |x-strong="G47710" x-lemma="σύ" x-morph="Gr,RP,,,2A,S," x-occurrence="1" x-occurrences="1" x-content="σε"\*\zaln-s |x-strong="G12260" x-lemma="διαβεβαιόομαι" x-morph="Gr,V,NPM,,,,," x-occurrence="1" x-occurrences="1" x-content="διαβεβαιοῦσθαι"\*\w Aku|x-occurrence="1" x-occurrences="1"\w*
+\w ingin|x-occurrence="1" x-occurrences="1"\w*
+\w engkau|x-occurrence="1" x-occurrences="1"\w*
+\w terus|x-occurrence="1" x-occurrences="2"\w*
+\w menekankan|x-occurrence="1" x-occurrences="1"\w*
+\w hal|x-occurrence="1" x-occurrences="5"\w*-\w hal|x-occurrence="2" x-occurrences="5"\w*
+\w ini|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*\zaln-e\*\zaln-e\*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G24430" x-lemma="ἵνα" x-morph="Gr,CS,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="ἵνα"\*\zaln-s |x-strong="G54310" x-lemma="φροντίζω" x-morph="Gr,V,SPA3,,P," x-occurrence="1" x-occurrences="1" x-content="φροντίζωσιν"\*\w sehingga|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,NMP," x-occurrence="1" x-occurrences="1" x-content="οἱ"\*\zaln-s |x-strong="G41000" x-lemma="πιστεύω" x-morph="Gr,V,PEA,NMP," x-occurrence="1" x-occurrences="1" x-content="πεπιστευκότες"\*\w mereka|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="2" x-occurrences="3"\w*
+\w telah|x-occurrence="1" x-occurrences="1"\w*
+\w percaya|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G23160" x-lemma="θεός" x-morph="Gr,N,,,,,DMS," x-occurrence="1" x-occurrences="1" x-content="Θεῷ"\*\w kepada|x-occurrence="1" x-occurrences="2"\w*
+\w Allah|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G24430" x-lemma="ἵνα" x-morph="Gr,CS,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="ἵνα"\*\zaln-s |x-strong="G54310" x-lemma="φροντίζω" x-morph="Gr,V,SPA3,,P," x-occurrence="1" x-occurrences="1" x-content="φροντίζωσιν"\*\w dapat|x-occurrence="2" x-occurrences="2"\w*
+\w terus|x-occurrence="2" x-occurrences="2"\w*
+\w memberi|x-occurrence="1" x-occurrences="1"\w*
+\w perhatian|x-occurrence="1" x-occurrences="1"\w*
+\w kepada|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*\zaln-e\* 
+\zaln-s |x-strong="G25700" x-lemma="καλός" x-morph="Gr,AA,,,,GNP," x-occurrence="1" x-occurrences="1" x-content="καλῶν"\*\zaln-s |x-strong="G20410" x-lemma="ἔργον" x-morph="Gr,N,,,,,GNP," x-occurrence="1" x-occurrences="1" x-content="ἔργων"\*\w hal|x-occurrence="3" x-occurrences="5"\w*-\w hal|x-occurrence="4" x-occurrences="5"\w*
+\w yang|x-occurrence="3" x-occurrences="3"\w*
+\w baik|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G25320" x-lemma="καί" x-morph="Gr,CC,,,,,,,," x-occurrence="1" x-occurrences="2" x-content="καὶ"\*\w dan|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*
+\zaln-s |x-strong="G42910" x-lemma="προΐστημι" x-morph="Gr,V,NPM,,,,," x-occurrence="1" x-occurrences="1" x-content="προΐστασθαι"\*\w menolong|x-occurrence="1" x-occurrences="1"\w*
+\w orang|x-occurrence="1" x-occurrences="2"\w*
+\w lain|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*.
+\zaln-s |x-strong="G37780" x-lemma="οὗτος" x-morph="Gr,RD,,,,NNP," x-occurrence="1" x-occurrences="1" x-content="ταῦτά"\*\zaln-s |x-strong="G15100" x-lemma="εἰμί" x-morph="Gr,V,IPA3,,S," x-occurrence="1" x-occurrences="1" x-content="ἐστιν"\*\zaln-s |x-strong="G25700" x-lemma="καλός" x-morph="Gr,NP,,,,NNP," x-occurrence="1" x-occurrences="1" x-content="καλὰ"\*\w Hal|x-occurrence="1" x-occurrences="1"\w*-\w hal|x-occurrence="5" x-occurrences="5"\w*
+\w ini|x-occurrence="2" x-occurrences="2"\w*
+\w sangat|x-occurrence="1" x-occurrences="1"\w*
+\w baik|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G25320" x-lemma="καί" x-morph="Gr,CC,,,,,,,," x-occurrence="2" x-occurrences="2" x-content="καὶ"\*\w dan|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*
+\zaln-s |x-strong="G56240" x-lemma="ὠφέλιμος" x-morph="Gr,NP,,,,NNP," x-occurrence="1" x-occurrences="1" x-content="ὠφέλιμα"\*\w bermanfaat|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,DMP," x-occurrence="1" x-occurrences="1" x-content="τοῖς"\*\zaln-s |x-strong="G04440" x-lemma="ἄνθρωπος" x-morph="Gr,N,,,,,DMP," x-occurrence="1" x-occurrences="1" x-content="ἀνθρώποις"\*\w bagi|x-occurrence="1" x-occurrences="1"\w*
+\w semua|x-occurrence="1" x-occurrences="1"\w*
+\w orang|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*\zaln-e\*. 
+\p 
+\v 9 \zaln-s |x-strong="G11610" x-lemma="δέ" x-morph="Gr,CC,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="δὲ"\*\w Tetapi|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G34740" x-lemma="μωρός" x-morph="Gr,AA,,,,AFP," x-occurrence="1" x-occurrences="1" x-content="μωρὰς"\*\zaln-s |x-strong="G22140" x-lemma="ζήτησις" x-morph="Gr,N,,,,,AFP," x-occurrence="1" x-occurrences="1" x-content="ζητήσεις"\*\w banyak|x-occurrence="1" x-occurrences="2"\w*
+\w orang|x-occurrence="1" x-occurrences="2"\w*
+\w yang|x-occurrence="1" x-occurrences="2"\w*
+\w ingin|x-occurrence="1" x-occurrences="2"\w*
+\w berdebat|x-occurrence="1" x-occurrences="3"\w*
+\w dengan|x-occurrence="1" x-occurrences="5"\w*
+\w mu|x-occurrence="1" x-occurrences="4"\w*
+\w tentang|x-occurrence="1" x-occurrences="4"\w*
+\w hal|x-occurrence="1" x-occurrences="4"\w*-\w hal|x-occurrence="2" x-occurrences="4"\w*
+\w yang|x-occurrence="2" x-occurrences="2"\w*
+\w tidak|x-occurrence="1" x-occurrences="3"\w*
+\w masuk|x-occurrence="1" x-occurrences="1"\w*
+\w akal|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*,
+\zaln-s |x-strong="G25320" x-lemma="καί" x-morph="Gr,CC,,,,,,,," x-occurrence="1" x-occurrences="4" x-content="καὶ"\*\zaln-s |x-strong="G10760" x-lemma="γενεαλογία" x-morph="Gr,N,,,,,AFP," x-occurrence="1" x-occurrences="1" x-content="γενεαλογίας"\*\w seperti|x-occurrence="1" x-occurrences="1"\w*
+\w tentang|x-occurrence="2" x-occurrences="4"\w*
+\w daftar|x-occurrence="1" x-occurrences="1"\w*
+\w nenek|x-occurrence="1" x-occurrences="1"\w*
+\w moyang|x-occurrence="1" x-occurrences="1"\w*
+\w orang|x-occurrence="2" x-occurrences="2"\w*
+\w Yahudi|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*.
+\zaln-s |x-strong="G25320" x-lemma="καί" x-morph="Gr,CC,,,,,,,," x-occurrence="3" x-occurrences="4" x-content="καὶ"\*\zaln-s |x-strong="G31630" x-lemma="μάχη" x-morph="Gr,N,,,,,AFP," x-occurrence="1" x-occurrences="1" x-content="μάχας"\*\zaln-s |x-strong="G35440" x-lemma="νομικός" x-morph="Gr,AA,,,,AFP," x-occurrence="1" x-occurrences="1" x-content="νομικὰς"\*\w Mereka|x-occurrence="1" x-occurrences="1"\w*
+\w ingin|x-occurrence="2" x-occurrences="2"\w*
+\w berdebat|x-occurrence="2" x-occurrences="3"\w*
+\w dengan|x-occurrence="2" x-occurrences="5"\w*
+\w mu|x-occurrence="2" x-occurrences="4"\w*
+\w tentang|x-occurrence="3" x-occurrences="4"\w*
+\w hukum|x-occurrence="1" x-occurrences="1"\w*
+\w agama|x-occurrence="1" x-occurrences="1"\w*
+\w dan|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G25320" x-lemma="καί" x-morph="Gr,CC,,,,,,,," x-occurrence="2" x-occurrences="4" x-content="καὶ"\*\zaln-s |x-strong="G20540" x-lemma="ἔρις" x-morph="Gr,N,,,,,AFP," x-occurrence="1" x-occurrences="1" x-content="ἔρεις"\*\w berdebat|x-occurrence="3" x-occurrences="3"\w*
+\w dengan|x-occurrence="3" x-occurrences="5"\w*
+\w mu|x-occurrence="3" x-occurrences="4"\w*
+\w tentang|x-occurrence="4" x-occurrences="4"\w*
+\w banyak|x-occurrence="2" x-occurrences="2"\w*
+\w hal|x-occurrence="3" x-occurrences="4"\w*\zaln-e\*\zaln-e\*.
+\zaln-s |x-strong="G40260" x-lemma="περιΐστημι" x-morph="Gr,V,MPM2,,S," x-occurrence="1" x-occurrences="1" x-content="περιΐστασο"\*\w Jangan|x-occurrence="1" x-occurrences="1"\w*
+\w terlibat|x-occurrence="1" x-occurrences="1"\w*
+\w dengan|x-occurrence="4" x-occurrences="5"\w*
+\w mereka|x-occurrence="1" x-occurrences="1"\w*
+\w dalam|x-occurrence="1" x-occurrences="1"\w*
+\w semua|x-occurrence="1" x-occurrences="1"\w*
+\w itu|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*.
+\zaln-s |x-strong="G15100" x-lemma="εἰμί" x-morph="Gr,V,IPA3,,P," x-occurrence="1" x-occurrences="1" x-content="εἰσὶν"\*\zaln-s |x-strong="G10630" x-lemma="γάρ" x-morph="Gr,CC,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="γὰρ"\*\zaln-s |x-strong="G05120" x-lemma="ἀνωφελής" x-morph="Gr,NS,,,,NFP," x-occurrence="1" x-occurrences="1" x-content="ἀνωφελεῖς"\*\w Hal|x-occurrence="1" x-occurrences="1"\w*-\w hal|x-occurrence="4" x-occurrences="4"\w*
+\w semacam|x-occurrence="1" x-occurrences="1"\w*
+\w itu|x-occurrence="2" x-occurrences="2"\w*
+\w tidak|x-occurrence="2" x-occurrences="3"\w*
+\w berguna|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G25320" x-lemma="καί" x-morph="Gr,CC,,,,,,,," x-occurrence="4" x-occurrences="4" x-content="καὶ"\*\w dan|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*
+\zaln-s |x-strong="G31520" x-lemma="μάταιος" x-morph="Gr,NS,,,,NFP," x-occurrence="1" x-occurrences="1" x-content="μάταιοι"\*\w tidak|x-occurrence="3" x-occurrences="3"\w*
+\w membantu|x-occurrence="1" x-occurrences="1"\w*
+\w mu|x-occurrence="4" x-occurrences="4"\w*
+\w dengan|x-occurrence="5" x-occurrences="5"\w*
+\w cara|x-occurrence="1" x-occurrences="1"\w*
+\w apa|x-occurrence="1" x-occurrences="1"\w*
+\w pun|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*. 
+\p 
+\v 10 \zaln-s |x-strong="G01410" x-lemma="αἱρετικός" x-morph="Gr,AA,,,,AMS," x-occurrence="1" x-occurrences="1" x-content="αἱρετικὸν"\*\zaln-s |x-strong="G04440" x-lemma="ἄνθρωπος" x-morph="Gr,N,,,,,AMS," x-occurrence="1" x-occurrences="1" x-content="ἄνθρωπον"\*\w Jika|x-occurrence="1" x-occurrences="1"\w*
+\w seseorang|x-occurrence="1" x-occurrences="1"\w*
+\w bersikeras|x-occurrence="1" x-occurrences="1"\w*
+\w untuk|x-occurrence="1" x-occurrences="2"\w*
+\w terlibat|x-occurrence="1" x-occurrences="1"\w*
+\w dalam|x-occurrence="1" x-occurrences="1"\w*
+\w tindakan|x-occurrence="1" x-occurrences="2"\w*-\w tindakan|x-occurrence="2" x-occurrences="2"\w*
+\w yang|x-occurrence="1" x-occurrences="1"\w*
+\w memecah|x-occurrence="1" x-occurrences="1"\w*-\w belah|x-occurrence="1" x-occurrences="1"\w*
+\w itu|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G35590" x-lemma="νουθεσία" x-morph="Gr,N,,,,,AFS," x-occurrence="1" x-occurrences="1" x-content="νουθεσίαν"\*\w setelah|x-occurrence="1" x-occurrences="1"\w*
+\w engkau|x-occurrence="1" x-occurrences="1"\w*
+\w memperingatkannya|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G33260" x-lemma="μετά" x-morph="Gr,P,,,,,A,,," x-occurrence="1" x-occurrences="1" x-content="μετὰ"\*\zaln-s |x-strong="G15200" x-lemma="εἷς" x-morph="Gr,EN,,,,AFS," x-occurrence="1" x-occurrences="1" x-content="μίαν"\*\w satu|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G25320" x-lemma="καί" x-morph="Gr,CC,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="καὶ"\*\w atau|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G12080" x-lemma="δεύτερος" x-morph="Gr,EO,,,,AFS," x-occurrence="1" x-occurrences="1" x-content="δευτέραν"\*\w dua|x-occurrence="1" x-occurrences="1"\w*
+\w kali|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G35590" x-lemma="νουθεσία" x-morph="Gr,N,,,,,AFS," x-occurrence="1" x-occurrences="1" x-content="νουθεσίαν"\*\w untuk|x-occurrence="2" x-occurrences="2"\w*
+\w berhenti|x-occurrence="1" x-occurrences="1"\w*
+\w melakukannya|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*,
+\zaln-s |x-strong="G38680" x-lemma="παραιτέομαι" x-morph="Gr,V,MPM2,,S," x-occurrence="1" x-occurrences="1" x-content="παραιτοῦ"\*\w maka|x-occurrence="1" x-occurrences="1"\w*
+\w jangan|x-occurrence="1" x-occurrences="1"\w*
+\w berurusan|x-occurrence="1" x-occurrences="1"\w*
+\w lagi|x-occurrence="1" x-occurrences="1"\w*
+\w dengan|x-occurrence="1" x-occurrences="1"\w*
+\w dia|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*, 
+\p 
+\v 11 \zaln-s |x-strong="G14920" x-lemma="εἴδω" x-morph="Gr,V,PEA,NMS," x-occurrence="1" x-occurrences="1" x-content="εἰδὼς"\*\w karena|x-occurrence="1" x-occurrences="1"\w*
+\w engkau|x-occurrence="1" x-occurrences="1"\w*
+\w tahu|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G37540" x-lemma="ὅτι" x-morph="Gr,CS,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="ὅτι"\*\w bahwa|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,NMS," x-occurrence="1" x-occurrences="1" x-content="ὁ"\*\zaln-s |x-strong="G51080" x-lemma="τοιοῦτος" x-morph="Gr,RD,,,,NMS," x-occurrence="1" x-occurrences="1" x-content="τοιοῦτος"\*\w orang|x-occurrence="1" x-occurrences="1"\w*
+\w seperti|x-occurrence="1" x-occurrences="1"\w*
+\w itu|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G16120" x-lemma="ἐκστρέφω" x-morph="Gr,V,IEP3,,S," x-occurrence="1" x-occurrences="1" x-content="ἐξέστραπται"\*\w telah|x-occurrence="1" x-occurrences="1"\w*
+\w menolak|x-occurrence="1" x-occurrences="1"\w*
+\w kebenaran|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*;
+\zaln-s |x-strong="G02640" x-lemma="ἁμαρτάνω" x-morph="Gr,V,IPA3,,S," x-occurrence="1" x-occurrences="1" x-content="ἁμαρτάνει"\*\w dia|x-occurrence="1" x-occurrences="1"\w*
+\w melakukan|x-occurrence="1" x-occurrences="1"\w*
+\w dosa|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G25320" x-lemma="καί" x-morph="Gr,CC,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="καὶ"\*\w dan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G15100" x-lemma="εἰμί" x-morph="Gr,V,PPA,NMS," x-occurrence="1" x-occurrences="1" x-content="ὢν"\*\zaln-s |x-strong="G08430" x-lemma="αὐτοκατάκριτος" x-morph="Gr,NP,,,,NMS," x-occurrence="1" x-occurrences="1" x-content="αὐτοκατάκριτος"\*\w menghukum|x-occurrence="1" x-occurrences="1"\w*
+\w dirinya|x-occurrence="1" x-occurrences="1"\w*
+\w sendiri|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*. 
+\p 
+\v 12 \zaln-s |x-strong="G37520" x-lemma="ὅταν" x-morph="Gr,CS,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="ὅταν"\*\zaln-s |x-strong="G39920" x-lemma="πέμπω" x-morph="Gr,V,SAA1,,S," x-occurrence="1" x-occurrences="1" x-content="πέμψω"\*\w Aku|x-occurrence="1" x-occurrences="1"\w*
+\w berencana|x-occurrence="1" x-occurrences="1"\w*
+\w mengutus|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G07340" x-lemma="Ἀρτεμᾶς" x-morph="Gr,N,,,,,AMS," x-occurrence="1" x-occurrences="1" x-content="Ἀρτεμᾶν"\*\w Artemas|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G22280" x-lemma="ἤ" x-morph="Gr,CC,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="ἢ"\*\w atau|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G51900" x-lemma="Τυχικός" x-morph="Gr,N,,,,,AMS," x-occurrence="1" x-occurrences="1" x-content="Τυχικόν"\*\w Tikhikus|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G43140" x-lemma="πρός" x-morph="Gr,P,,,,,A,,," x-occurrence="1" x-occurrences="1" x-content="πρὸς"\*\zaln-s |x-strong="G47710" x-lemma="σύ" x-morph="Gr,RP,,,2A,S," x-occurrence="1" x-occurrences="1" x-content="σὲ"\*\w kepadamu|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*.
+\zaln-s |x-strong="G47040" x-lemma="σπουδάζω" x-morph="Gr,V,MAA2,,S," x-occurrence="1" x-occurrences="1" x-content="σπούδασον"\*\w Setelah|x-occurrence="1" x-occurrences="1"\w*
+\w salah|x-occurrence="1" x-occurrences="1"\w*
+\w seorang|x-occurrence="1" x-occurrences="1"\w*
+\w dari|x-occurrence="1" x-occurrences="1"\w*
+\w mereka|x-occurrence="1" x-occurrences="1"\w*
+\w tiba|x-occurrence="1" x-occurrences="1"\w*,
+\w segeralah|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G20640" x-lemma="ἔρχομαι" x-morph="Gr,V,NAA,,,,," x-occurrence="1" x-occurrences="1" x-content="ἐλθεῖν"\*\w datang|x-occurrence="1" x-occurrences="1"\w*\zaln-e\* 
+\zaln-s |x-strong="G43140" x-lemma="πρός" x-morph="Gr,P,,,,,A,,," x-occurrence="1" x-occurrences="1" x-content="πρός"\*\zaln-s |x-strong="G14730" x-lemma="ἐγώ" x-morph="Gr,RP,,,1A,S," x-occurrence="1" x-occurrences="1" x-content="με"\*\w kepadaku|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G15190" x-lemma="εἰς" x-morph="Gr,P,,,,,A,,," x-occurrence="1" x-occurrences="1" x-content="εἰς"\*\zaln-s |x-strong="G35330" x-lemma="Νικόπολις" x-morph="Gr,N,,,,,AFS," x-occurrence="1" x-occurrences="1" x-content="Νικόπολιν"\*\w di|x-occurrence="1" x-occurrences="2"\w*
+\w kota|x-occurrence="1" x-occurrences="1"\w*
+\w Nikopolis|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*,
+\zaln-s |x-strong="G10630" x-lemma="γάρ" x-morph="Gr,CC,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="γὰρ"\*\w karena|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G29190" x-lemma="κρίνω" x-morph="Gr,V,IEA1,,S," x-occurrence="1" x-occurrences="1" x-content="κέκρικα"\*\w aku|x-occurrence="1" x-occurrences="1"\w*
+\w telah|x-occurrence="1" x-occurrences="1"\w*
+\w memutuskan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G39140" x-lemma="παραχειμάζω" x-morph="Gr,V,NAA,,,,," x-occurrence="1" x-occurrences="1" x-content="παραχειμάσαι"\*\w untuk|x-occurrence="1" x-occurrences="1"\w*
+\w tinggal|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G15630" x-lemma="ἐκεῖ" x-morph="Gr,D,,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="ἐκεῖ"\*\w di|x-occurrence="2" x-occurrences="2"\w*
+\w sana|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G39140" x-lemma="παραχειμάζω" x-morph="Gr,V,NAA,,,,," x-occurrence="1" x-occurrences="1" x-content="παραχειμάσαι"\*\w selama|x-occurrence="1" x-occurrences="1"\w*
+\w musim|x-occurrence="1" x-occurrences="1"\w*
+\w dingin|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*. 
+\p 
+\v 13 \zaln-s |x-strong="G47090" x-lemma="σπουδαίως" x-morph="Gr,D,,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="σπουδαίως"\*\w Lakukan|x-occurrence="1" x-occurrences="1"\w*
+\w semua|x-occurrence="1" x-occurrences="2"\w*
+\w yang|x-occurrence="1" x-occurrences="2"\w*
+\w engkau|x-occurrence="1" x-occurrences="1"\w*
+\w bisa|x-occurrence="1" x-occurrences="1"\w*
+\w untuk|x-occurrence="1" x-occurrences="2"\w*
+\w memperlengkapi|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G22110" x-lemma="Ζηνᾶς" x-morph="Gr,N,,,,,AMS," x-occurrence="1" x-occurrences="1" x-content="Ζηνᾶν"\*\w Zenas|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,AMS," x-occurrence="1" x-occurrences="1" x-content="τὸν"\*\zaln-s |x-strong="G35440" x-lemma="νομικός" x-morph="Gr,AR,,,,AMS," x-occurrence="1" x-occurrences="1" x-content="νομικὸν"\*\w sang|x-occurrence="1" x-occurrences="1"\w*
+\w ahli|x-occurrence="1" x-occurrences="1"\w*
+\w hukum|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G25320" x-lemma="καί" x-morph="Gr,CC,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="καὶ"\*\w dan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G06250" x-lemma="Ἀπολλῶς" x-morph="Gr,N,,,,,AMS," x-occurrence="1" x-occurrences="1" x-content="Ἀπολλῶν"\*\w Apolos|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G43110" x-lemma="προπέμπω" x-morph="Gr,V,MAA2,,S," x-occurrence="1" x-occurrences="1" x-content="πρόπεμψον"\*\w untuk|x-occurrence="2" x-occurrences="2"\w*
+\w perjalanan|x-occurrence="1" x-occurrences="1"\w*
+\w mereka|x-occurrence="1" x-occurrences="3"\w*\zaln-e\*,
+\zaln-s |x-strong="G24430" x-lemma="ἵνα" x-morph="Gr,CS,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="ἵνα"\*\zaln-s |x-strong="G33670" x-lemma="μηδείς" x-morph="Gr,RI,,,,NNS," x-occurrence="1" x-occurrences="1" x-content="μηδὲν"\*\zaln-s |x-strong="G08460" x-lemma="αὐτός" x-morph="Gr,RP,,,3DMP," x-occurrence="1" x-occurrences="1" x-content="αὐτοῖς"\*\zaln-s |x-strong="G30070" x-lemma="λείπω" x-morph="Gr,V,SPA3,,S," x-occurrence="1" x-occurrences="1" x-content="λείπῃ"\*\w pastikanlah|x-occurrence="1" x-occurrences="1"\w*
+\w bahwa|x-occurrence="1" x-occurrences="1"\w*
+\w mereka|x-occurrence="2" x-occurrences="3"\w*
+\w memiliki|x-occurrence="1" x-occurrences="1"\w*
+\w semua|x-occurrence="2" x-occurrences="2"\w*
+\w yang|x-occurrence="2" x-occurrences="2"\w*
+\w mereka|x-occurrence="3" x-occurrences="3"\w*
+\w butuhkan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*\zaln-e\*\zaln-e\*. 
+\p 
+\v 14 \zaln-s |x-strong="G11610" x-lemma="δέ" x-morph="Gr,CC,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="δὲ"\*\zaln-s |x-strong="G25320" x-lemma="καί" x-morph="Gr,D,,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="καὶ"\*\w Dengan|x-occurrence="1" x-occurrences="2"\w*
+\w cara|x-occurrence="1" x-occurrences="2"\w*
+\w yang|x-occurrence="1" x-occurrences="3"\w*
+\w sama|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*,
+\zaln-s |x-strong="G31290" x-lemma="μανθάνω" x-morph="Gr,V,MPA3,,P," x-occurrence="1" x-occurrences="1" x-content="μανθανέτωσαν"\*\w pastikan|x-occurrence="1" x-occurrences="1"\w*
+\w bahwa|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,NMP," x-occurrence="1" x-occurrences="1" x-content="οἱ"\*\zaln-s |x-strong="G22510" x-lemma="ἡμέτερος" x-morph="Gr,RP,,,1NMP," x-occurrence="1" x-occurrences="1" x-content="ἡμέτεροι"\*\w orang|x-occurrence="1" x-occurrences="4"\w*-\w orang|x-occurrence="2" x-occurrences="4"\w*
+\w kita|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G31290" x-lemma="μανθάνω" x-morph="Gr,V,MPA3,,P," x-occurrence="1" x-occurrences="1" x-content="μανθανέτωσαν"\*\w belajar|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G42910" x-lemma="προΐστημι" x-morph="Gr,V,NPM,,,,," x-occurrence="1" x-occurrences="1" x-content="προΐστασθαι"\*\w untuk|x-occurrence="1" x-occurrences="2"\w*
+\w menyibukkan|x-occurrence="1" x-occurrences="1"\w*
+\w diri|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*
+\zaln-s |x-strong="G25700" x-lemma="καλός" x-morph="Gr,AA,,,,GNP," x-occurrence="1" x-occurrences="1" x-content="καλῶν"\*\zaln-s |x-strong="G20410" x-lemma="ἔργον" x-morph="Gr,N,,,,,GNP," x-occurrence="1" x-occurrences="1" x-content="ἔργων"\*\w dengan|x-occurrence="1" x-occurrences="1"\w*
+\w melakukan|x-occurrence="1" x-occurrences="2"\w*
+\w hal|x-occurrence="1" x-occurrences="3"\w*-\w hal|x-occurrence="2" x-occurrences="3"\w*
+\w baik|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G15190" x-lemma="εἰς" x-morph="Gr,P,,,,,A,,," x-occurrence="1" x-occurrences="1" x-content="εἰς"\*\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,AFP," x-occurrence="1" x-occurrences="1" x-content="τὰς"\*\zaln-s |x-strong="G03160" x-lemma="ἀναγκαῖος" x-morph="Gr,AA,,,,AFP," x-occurrence="1" x-occurrences="1" x-content="ἀναγκαίας"\*\zaln-s |x-strong="G55320" x-lemma="χρεία" x-morph="Gr,N,,,,,AFP," x-occurrence="1" x-occurrences="1" x-content="χρείας"\*\w untuk|x-occurrence="2" x-occurrences="2"\w*
+\w orang|x-occurrence="3" x-occurrences="4"\w*-\w orang|x-occurrence="4" x-occurrences="4"\w*
+\w yang|x-occurrence="2" x-occurrences="3"\w*
+\w membutuhkan|x-occurrence="1" x-occurrences="1"\w*
+\w bantuan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*\zaln-e\*\zaln-e\*.
+\zaln-s |x-strong="G24430" x-lemma="ἵνα" x-morph="Gr,CS,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="ἵνα"\*\zaln-s |x-strong="G33610" x-lemma="μή" x-morph="Gr,D,,,,,,,,," x-occurrence="1" x-occurrences="1" x-content="μὴ"\*\zaln-s |x-strong="G15100" x-lemma="εἰμί" x-morph="Gr,V,SPA3,,P," x-occurrence="1" x-occurrences="1" x-content="ὦσιν"\*\zaln-s |x-strong="G01750" x-lemma="ἄκαρπος" x-morph="Gr,NP,,,,NMP," x-occurrence="1" x-occurrences="1" x-content="ἄκαρποι"\*\w Dengan|x-occurrence="2" x-occurrences="2"\w*
+\w melakukan|x-occurrence="2" x-occurrences="2"\w*
+\w hal|x-occurrence="3" x-occurrences="3"\w*
+\w ini|x-occurrence="1" x-occurrences="1"\w*,
+\w mereka|x-occurrence="1" x-occurrences="1"\w*
+\w akan|x-occurrence="1" x-occurrences="1"\w*
+\w hidup|x-occurrence="1" x-occurrences="1"\w*
+\w dalam|x-occurrence="1" x-occurrences="1"\w*
+\w cara|x-occurrence="2" x-occurrences="2"\w*
+\w yang|x-occurrence="3" x-occurrences="3"\w*
+\w berguna|x-occurrence="1" x-occurrences="1"\w*
+\w bagi|x-occurrence="1" x-occurrences="1"\w*
+\w Allah|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*\zaln-e\*\zaln-e\*. 
+\p 
+\v 15 \zaln-s |x-strong="G47710" x-lemma="σύ" x-morph="Gr,RP,,,2A,S," x-occurrence="1" x-occurrences="1" x-content="σε"\*\w Titus|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*,
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,NMP," x-occurrence="1" x-occurrences="1" x-content="οἱ"\*\zaln-s |x-strong="G39560" x-lemma="πᾶς" x-morph="Gr,RI,,,,NMP," x-occurrence="1" x-occurrences="1" x-content="πάντες"\*\w semua|x-occurrence="1" x-occurrences="2"\w*
+\w orang|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G33260" x-lemma="μετά" x-morph="Gr,P,,,,,G,,," x-occurrence="1" x-occurrences="1" x-content="μετ’"\*\zaln-s |x-strong="G14730" x-lemma="ἐγώ" x-morph="Gr,RP,,,1G,S," x-occurrence="1" x-occurrences="1" x-content="ἐμοῦ"\*\w yang|x-occurrence="1" x-occurrences="2"\w*
+\w bersamaku|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G07820" x-lemma="ἀσπάζομαι" x-morph="Gr,V,IPM3,,P," x-occurrence="1" x-occurrences="1" x-content="ἀσπάζονταί"\*\w mengirimkan|x-occurrence="1" x-occurrences="1"\w*
+\w salam|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*
+\zaln-s |x-strong="G47710" x-lemma="σύ" x-morph="Gr,RP,,,2A,S," x-occurrence="1" x-occurrences="1" x-content="σε"\*\w kepadamu|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*!
+\zaln-s |x-strong="G07820" x-lemma="ἀσπάζομαι" x-morph="Gr,V,MAM2,,S," x-occurrence="1" x-occurrences="1" x-content="ἄσπασαι"\*\w Sampaikan|x-occurrence="1" x-occurrences="1"\w*
+\w salam|x-occurrence="2" x-occurrences="2"\w*
+\w dari|x-occurrence="1" x-occurrences="1"\w*
+\w kami|x-occurrence="1" x-occurrences="2"\w*\zaln-e\*
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,AMP," x-occurrence="1" x-occurrences="1" x-content="τοὺς"\*\zaln-s |x-strong="G53680" x-lemma="φιλέω" x-morph="Gr,V,PPA,AMP," x-occurrence="1" x-occurrences="1" x-content="φιλοῦντας"\*\w kepada|x-occurrence="1" x-occurrences="2"\w*
+\w teman|x-occurrence="1" x-occurrences="2"\w*-\w teman|x-occurrence="2" x-occurrences="2"\w*
+\w di|x-occurrence="1" x-occurrences="1"\w*
+\w sana|x-occurrence="1" x-occurrences="1"\w*
+\w yang|x-occurrence="2" x-occurrences="2"\w*
+\w mengasihi|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G14730" x-lemma="ἐγώ" x-morph="Gr,RP,,,1A,P," x-occurrence="1" x-occurrences="1" x-content="ἡμᾶς"\*\w kami|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*
+\zaln-s |x-strong="G17220" x-lemma="ἐν" x-morph="Gr,P,,,,,D,,," x-occurrence="1" x-occurrences="1" x-content="ἐν"\*\zaln-s |x-strong="G41020" x-lemma="πίστις" x-morph="Gr,N,,,,,DFS," x-occurrence="1" x-occurrences="1" x-content="πίστει"\*\w sebagai|x-occurrence="1" x-occurrences="1"\w*
+\w sesama|x-occurrence="1" x-occurrences="1"\w*
+\w orang|x-occurrence="2" x-occurrences="2"\w*
+\w percaya|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*.
+\zaln-s |x-strong="G35880" x-lemma="ὁ" x-morph="Gr,EA,,,,NFS," x-occurrence="1" x-occurrences="1" x-content="ἡ"\*\zaln-s |x-strong="G54850" x-lemma="χάρις" x-morph="Gr,N,,,,,NFS," x-occurrence="1" x-occurrences="1" x-content="χάρις"\*\w Semoga|x-occurrence="1" x-occurrences="1"\w*
+\w Allah|x-occurrence="1" x-occurrences="1"\w*
+\w terus|x-occurrence="1" x-occurrences="1"\w*
+\w memberikan|x-occurrence="1" x-occurrences="1"\w*
+\w kebaikan|x-occurrence="1" x-occurrences="1"\w*\zaln-e\*\zaln-e\*
+\zaln-s |x-strong="G33260" x-lemma="μετά" x-morph="Gr,P,,,,,G,,," x-occurrence="1" x-occurrences="1" x-content="μετὰ"\*\zaln-s |x-strong="G39560" x-lemma="πᾶς" x-morph="Gr,RI,,,,GMP," x-occurrence="1" x-occurrences="1" x-content="πάντων"\*\zaln-s |x-strong="G47710" x-lemma="σύ" x-morph="Gr,RP,,,2G,P," x-occurrence="1" x-occurrences="1" x-content="ὑμῶν"\*\w kepada|x-occurrence="2" x-occurrences="2"\w*
+\w kalian|x-occurrence="1" x-occurrences="1"\w*
+\w semua|x-occurrence="2" x-occurrences="2"\w*\zaln-e\*\zaln-e\*\zaln-e\*.

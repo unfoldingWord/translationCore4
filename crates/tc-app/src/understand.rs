@@ -98,6 +98,18 @@ impl LoadedBook {
             .map_or(&LoadedText::Missing, |pane| &pane.text)
     }
 
+    /// The simplified Bible's book and the repository it was read from (`en_ust`), when it
+    /// loaded: a fallback set's when the primary set's is not on this computer.
+    pub(crate) fn simplified(&self) -> Option<(&str, &PaneBook)> {
+        let TextStatus::Loaded { pin, .. } = self.resources.text(&TextRole::Simplified)? else {
+            return None;
+        };
+        let Slot::Ready(ready) = &self.simplified else {
+            return None;
+        };
+        Some((pin.repo.name().as_str(), ready.items.first()?))
+    }
+
     pub(crate) fn pins(&self) -> Option<&ProjectPins> {
         self.pins.as_ref()
     }

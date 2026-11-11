@@ -17,7 +17,8 @@
 use tc_api::check::{
     CheckArticle, CheckArticleRead, CheckItemView, CheckNotice, CheckPlace, CheckSources,
     CheckUnit, Decide, DecideEdit, DecisionStatus, DecisionView, GatewayText, GatewayView, Item,
-    OriginalVerse, OriginalView, RailRowPatch, Rung, StoryPane, TargetWords, Testament, Tool,
+    OriginalVerse, OriginalView, RailRowPatch, Rung, SimplifiedPane, StoryPane, TargetWords,
+    Testament, Tool,
 };
 use tc_api::helps::{ArticleLink, ArticleView};
 use tc_api::ids::ViewSeq;
@@ -340,21 +341,8 @@ fn gateway(loaded: &LoadedBook, place: &CheckPlace, item: &CheckItem) -> Gateway
         return GatewayView::NoPane;
     };
     let text = match loaded.pane(&pane) {
-        Some(LoadedText::Ready(book)) => match pane_verse(book, place) {
-            Some(model) => {
-                let occurrence =
-                    Occurrence::nth(item.key.occurrence).unwrap_or(Occurrence::NotTied);
-                let lit =
-                    tc_helps::highlight::highlight_quote(&model.aligned, &item.quote, occurrence)
-                        .tokens
-                        .into_iter()
-                        .filter_map(|i| u32::try_from(i).ok())
-                        .collect();
-                GatewayText::Verse {
-                    tokens: one_space_tokens(&model.view.tokens),
-                    lit,
-                }
-            }
+        Some(LoadedText::Ready(book)) => match lit_verse(book, place, item) {
+            Some((tokens, lit)) => GatewayText::Verse { tokens, lit },
             None => GatewayText::Absent,
         },
         Some(LoadedText::NotInstalled) => GatewayText::NotInstalled,
@@ -364,6 +352,38 @@ fn gateway(loaded: &LoadedBook, place: &CheckPlace, item: &CheckItem) -> Gateway
         },
     };
     GatewayView::Pane { pane, text }
+}
+
+/// The verse at the check's place in a gateway text, as its card shows it: the tokens, and
+/// the ones that render the check's quote.
+fn lit_verse(
+    book: &crate::sources::PaneBook,
+    place: &CheckPlace,
+    item: &CheckItem,
+) -> Option<(Vec<String>, Vec<u32>)> {
+    let model = pane_verse(book, place)?;
+    let occurrence = Occurrence::nth(item.key.occurrence).unwrap_or(Occurrence::NotTied);
+    let lit = tc_helps::highlight::highlight_quote(&model.aligned, &item.quote, occurrence)
+        .tokens
+        .into_iter()
+        .filter_map(|i| u32::try_from(i).ok())
+        .collect();
+    Some((one_space_tokens(&model.view.tokens), lit))
+}
+
+/// The simplified Bible's verse at the check's place. None when the text is not on this
+/// computer, numbers its verses otherwise than the project, or has no such verse.
+fn simplified(loaded: &LoadedBook, place: &CheckPlace, item: &CheckItem) -> Option<SimplifiedPane> {
+    if !matches!(loaded.numbering, Numbering::Same) {
+        return None;
+    }
+    let (repo, book) = loaded.simplified()?;
+    let (tokens, lit) = lit_verse(book, place, item)?;
+    Some(SimplifiedPane {
+        repo: repo.to_owned(),
+        tokens,
+        lit,
+    })
 }
 
 /// A verse's tokens as tC4's usfm-js hands them to the pane: the USFM breaks a line between the
@@ -515,6 +535,7 @@ impl Handle<Item> for App {
                     CheckSources::Verse {
                         original: original(&loaded, book, &facts.place, &facts.item),
                         gateway: gateway(&loaded, &facts.place, &facts.item),
+                        simplified: simplified(&loaded, &facts.place, &facts.item),
                     },
                     rung_dir(loaded.pins(), rung),
                     article_title(&loaded, &link),

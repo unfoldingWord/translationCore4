@@ -24,6 +24,11 @@ Licenses: the content licenses are in `tc4/LICENSE-CONTENT.md`. unfoldingWord re
 (ULT, UST, UHB, UGNT, tN, tW, tA, tQ, TWL, OBS) are CC BY-SA 4.0, © unfoldingWord. The
 `.mjs` generator scripts are tC4 code, MIT since tC4 #838, kept for provenance.
 
+Not from tC4: `tc4/test-fixtures/resources/id_gst@v16/` and `id_glt@v105/` are Titus slices of
+the Indonesian gateway package, fetched from Door43 on 2026-11-11 for #996 and kept beside the
+other release slices that the same README lists. They are CC BY-SA 4.0, © BAHTRAKU 2025, as
+their `metadata.json` says.
+
 ## `tc3/`
 
 `en_kjv_luk_bridged.zip`: `tc4/conformance-fixtures/import/tc3/multi/en_kjv_luk_book.zip` with
