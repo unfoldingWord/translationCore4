@@ -73,12 +73,32 @@ pub fn computer_on(dir: &Path, name: &str, platform: FakePlatform) -> Computer {
     .unwrap();
     store.wait_cleanup();
     store.hooks().check_burrito(|folder: &Path| {
-        tc_burrito::validate_dir(folder)
-            .into_iter()
-            .map(|p| format!("{p:?}"))
-            .collect()
+        let found = tc_burrito::validate_dir(folder);
+        // A look that overlaps the test's own edit of a file reads bytes the app has not
+        // been shown yet (#1006): that is the person's edit, not a state the app wrote.
+        if edited_outside().contains(folder) {
+            return Vec::new();
+        }
+        found.into_iter().map(|p| format!("{p:?}")).collect()
     });
     Computer { store, projects }
+}
+
+/// The project folders a test is editing as another program would, until the app has looked.
+fn edited_outside() -> std::sync::MutexGuard<'static, std::collections::BTreeSet<PathBuf>> {
+    static FOLDERS: std::sync::Mutex<std::collections::BTreeSet<PathBuf>> =
+        std::sync::Mutex::new(std::collections::BTreeSet::new());
+    FOLDERS.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Another program writes `rel` in the project folder, and the person comes back to the app.
+fn put_outside(handle: &ProjectHandle, folder: &Path, rel: &str, bytes: &[u8]) {
+    edited_outside().insert(folder.to_owned());
+    std::fs::create_dir_all(folder.join(rel).parent().unwrap()).unwrap();
+    std::fs::write(folder.join(rel), bytes).unwrap();
+    blocking(|| handle.focus().wait().unwrap());
+    handle.wait_idle();
+    edited_outside().remove(folder);
 }
 
 fn repo_root() -> PathBuf {
@@ -2273,12 +2293,7 @@ async fn loss_door43_case_alias_never_recorded() {
     let folder_b = copy_to(&folder_a, &juan);
     let b = open(&juan, &folder_b);
     let a = open(&ana, &folder_a);
-    let add = |handle: &ProjectHandle, folder: &Path, rel: &str, bytes: &[u8]| {
-        std::fs::create_dir_all(folder.join("ingredients/audio")).unwrap();
-        std::fs::write(folder.join(rel), bytes).unwrap();
-        blocking(|| handle.focus().wait().unwrap());
-        handle.wait_idle();
-    };
+    let add = put_outside;
     add(&a, &folder_a, "ingredients/audio/Intro.mp3", b"Ana's intro");
     add(
         &b,
@@ -2365,12 +2380,7 @@ async fn carried_files_in_folders_that_differ_only_in_case_stay_two_paths() {
     let folder_b = copy_to(&folder_a, &juan);
     let b = open(&juan, &folder_b);
     let a = open(&ana, &folder_a);
-    let put = |handle: &ProjectHandle, folder: &Path, rel: &str, bytes: &[u8]| {
-        std::fs::create_dir_all(folder.join(rel).parent().unwrap()).unwrap();
-        std::fs::write(folder.join(rel), bytes).unwrap();
-        blocking(|| handle.focus().wait().unwrap());
-        handle.wait_idle();
-    };
+    let put = put_outside;
     let read = |folder: &Path, rel: &str| std::fs::read(folder.join(rel)).unwrap();
     let placed = |handle: &ProjectHandle| -> Vec<String> {
         handle
