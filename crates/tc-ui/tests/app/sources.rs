@@ -127,14 +127,14 @@ fn row(role: PackageRole, repo: &str) -> PackageRow {
 
 #[test]
 fn the_text_is_always_included_and_helps_can_be_left_out() {
-    let mut src = SourcesForm::default();
+    let mut src = form();
     let en = package("en", "unfoldingWord");
     src.pick(en.clone());
     let rows = vec![
         row(PackageRole::Text, "en_ult"),
         row(PackageRole::Notes, "en_tn"),
     ];
-    src.rows_read(&en, BookId::Titus, rows.clone());
+    src.rows_read(&alef(), &en, BookId::Titus, rows.clone());
     assert!(src.can_download(Some(&open(1))));
     assert!(!src.can_download(None), "no project, no download");
     src.toggle(&rows[0]);
@@ -146,19 +146,25 @@ fn the_text_is_always_included_and_helps_can_be_left_out() {
 
 #[test]
 fn rows_for_a_package_or_book_left_meanwhile_are_not_shown() {
-    let mut src = SourcesForm::default();
+    let mut src = form();
     let (en, es) = (
         package("en", "unfoldingWord"),
         package("es-419", "es-419_gl"),
     );
     src.pick(en.clone());
     src.pick(es.clone());
-    src.rows_read(&en, BookId::Titus, vec![row(PackageRole::Notes, "en_tn")]);
+    src.rows_read(
+        &alef(),
+        &en,
+        BookId::Titus,
+        vec![row(PackageRole::Notes, "en_tn")],
+    );
     assert!(src.loading && src.rows.is_empty());
     src.set_book(BookId::Jonah);
-    src.rows_failed(&es, BookId::Titus, "late".into());
+    src.rows_failed(&alef(), &es, BookId::Titus, "late".into());
     assert_eq!(src.error, None);
     src.rows_read(
+        &alef(),
         &es,
         BookId::Jonah,
         vec![row(PackageRole::Notes, "es-419_tn")],
@@ -172,18 +178,85 @@ fn rows_for_a_package_or_book_left_meanwhile_are_not_shown() {
 
 #[test]
 fn the_current_package_compares_its_owner_without_letter_case() {
-    let mut src = SourcesForm::default();
-    src.packages = Some(SourcesView {
-        gateways: Vec::new(),
-        current: Some(gateway("es-419", "ES-419_GL")),
-        checkable: FromInstalls::Listed(vec![gateway("en", "unfoldingWord")]),
-        pinned: true,
-    });
-    assert!(src.is_current(&package("es-419", "es-419_gl")));
-    assert!(!src.is_current(&package("en", "unfoldingWord")));
-    assert!(src.is_checkable(&package("en", "unfoldingWord")));
+    let (alef, bet) = (open(1), open(2));
+    let mut src = form();
+    src.packages_read(
+        alef.clone(),
+        SourcesView {
+            gateways: Vec::new(),
+            current: Some(gateway("es-419", "ES-419_GL")),
+            checkable: FromInstalls::Listed(vec![gateway("en", "unfoldingWord")]),
+            pinned: true,
+        },
+    );
+    assert!(src.is_current(Some(&alef), &package("es-419", "es-419_gl")));
+    assert!(!src.is_current(Some(&alef), &package("en", "unfoldingWord")));
+    assert!(src.is_checkable(Some(&alef), &package("en", "unfoldingWord")));
+    // Another open, and Home, never read alef's packages as their own.
+    for other in [Some(&bet), None] {
+        assert!(
+            src.packages(other).is_none()
+                && !src.is_current(other, &package("es-419", "es-419_gl"))
+                && !src.is_checkable(other, &package("en", "unfoldingWord")),
+            "INV-RESOURCE-ANSWER-HAS-AN-OWNER: one open's packages are shown for another"
+        );
+    }
     src.not_read();
     assert!(src.needs_internet);
+}
+
+/// Get source texts, opened in `alef`.
+fn form() -> SourcesForm {
+    let mut src = SourcesForm::default();
+    src.opened(&alef());
+    src
+}
+
+/// The project the forms of these tests are opened in.
+fn alef() -> ProjectRef {
+    ProjectRef::parse("alef").unwrap()
+}
+
+#[test]
+fn another_projects_dialog_starts_at_step_one_and_takes_no_rows_read_for_the_first() {
+    let bet = ProjectRef::parse("bet").unwrap();
+    let en = package("en", "unfoldingWord");
+    let mut src = form();
+    src.pick(en.clone());
+    src.rows_read(
+        &alef(),
+        &en,
+        BookId::Titus,
+        vec![row(PackageRole::Text, "en_ult")],
+    );
+    // The same project opened again keeps its step.
+    src.opened(&alef());
+    assert_eq!(src.chosen(), ["en_ult"]);
+    src.opened(&bet);
+    assert!(
+        src.gateway.is_none() && src.rows.is_empty(),
+        "INV-RESOURCE-ANSWER-HAS-AN-OWNER: one project's package rows are shown in another's dialog"
+    );
+    // A late answer for the first project, for the same package and book, is not bet's.
+    src.pick(en.clone());
+    src.rows_read(
+        &alef(),
+        &en,
+        BookId::Titus,
+        vec![row(PackageRole::Notes, "en_tn")],
+    );
+    src.rows_failed(&alef(), &en, BookId::Titus, "late".into());
+    assert!(
+        src.rows.is_empty() && src.error.is_none() && src.loading,
+        "INV-RESOURCE-ANSWER-HAS-AN-OWNER: rows read for one project are shown for another"
+    );
+    src.rows_read(
+        &bet,
+        &en,
+        BookId::Titus,
+        vec![row(PackageRole::ObsText, "en_obs")],
+    );
+    assert_eq!(src.chosen(), ["en_obs"]);
 }
 
 fn rid(n: u8) -> RequestId {
@@ -206,6 +279,7 @@ fn on_book(src: &mut SourcesForm, book: BookId) {
     }
     src.set_book(book);
     src.rows_read(
+        &alef(),
         &en,
         book,
         vec![
@@ -218,7 +292,7 @@ fn on_book(src: &mut SourcesForm, book: BookId) {
 #[test]
 fn a_download_keeps_its_cancel_and_names_what_it_fetched_whatever_is_chosen_meanwhile() {
     let here = open(1);
-    let mut src = SourcesForm::default();
+    let mut src = form();
     on_book(&mut src, BookId::Hebrews);
     let (request, what) = src.download_pressed(&here, rid(1)).unwrap();
     assert!(
@@ -257,7 +331,7 @@ fn a_download_keeps_its_cancel_and_names_what_it_fetched_whatever_is_chosen_mean
 #[test]
 fn a_download_that_ends_on_step_one_keeps_its_named_line_until_the_next_choice() {
     let here = open(1);
-    let mut src = SourcesForm::default();
+    let mut src = form();
     on_book(&mut src, BookId::Hebrews);
     let (request, what) = src.download_pressed(&here, rid(1)).unwrap();
     src.download_started(request, JobId::new(3));
@@ -280,7 +354,7 @@ fn a_download_that_ends_on_step_one_keeps_its_named_line_until_the_next_choice()
 #[test]
 fn what_just_finished_is_not_offered_again_in_its_open_until_the_person_chooses_again() {
     let here = open(1);
-    let mut src = SourcesForm::default();
+    let mut src = form();
     on_book(&mut src, BookId::Titus);
     let (request, _) = src.download_pressed(&here, rid(1)).unwrap();
     src.download_started(request, JobId::new(1));
@@ -300,7 +374,7 @@ fn what_just_finished_is_not_offered_again_in_its_open_until_the_person_chooses_
 #[test]
 fn a_lost_answer_is_asked_again_as_the_same_request_only_for_the_same_selection() {
     let here = open(1);
-    let mut src = SourcesForm::default();
+    let mut src = form();
     on_book(&mut src, BookId::Titus);
     let (request, _) = src.download_pressed(&here, rid(1)).unwrap();
     src.download_unanswered(request, Some("no answer".into()));
@@ -325,7 +399,7 @@ fn a_lost_answer_is_asked_again_as_the_same_request_only_for_the_same_selection(
 #[test]
 fn a_download_that_is_not_sent_or_fails_is_under_way_no_more() {
     let here = open(1);
-    let mut src = SourcesForm::default();
+    let mut src = form();
     on_book(&mut src, BookId::Titus);
     src.download_pressed(&here, rid(1)).unwrap();
     src.download_not_sent();
@@ -426,7 +500,7 @@ proptest! {
     fn a_download_is_under_way_from_its_press_to_its_end_on_every_sequence(
         steps in proptest::collection::vec(arb_dl_step(), 0..80),
     ) {
-        let mut src = SourcesForm::default();
+        let mut src = form();
         let mut epoch = 0;
         let mut here: Option<Scope> = None;
         let mut next = 0u8;

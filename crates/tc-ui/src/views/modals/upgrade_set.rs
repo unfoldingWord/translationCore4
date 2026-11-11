@@ -19,11 +19,24 @@ pub fn UpgradeSet() -> impl IntoView {
     let Some(AppCtx { s, actions }) = use_app() else {
         return ().into_any();
     };
-    let up = s.up.clone();
-    let preview = Memo::new(move |_| up.with(|up| up.preview.clone()));
+    // The confirmation and its failure are of one open: they show only over that open.
+    let here = {
+        let project = s.project.clone();
+        move || project.with(|p| p.as_ref().map(|p| p.at.clone()))
+    };
+    let preview = {
+        let (up, here) = (s.up.clone(), here.clone());
+        Memo::new(move |_| {
+            let here = here();
+            up.with(|up| up.preview(here.as_ref()).cloned())
+        })
+    };
     let error = {
         let up = s.up.clone();
-        move || up.with(|up| up.error.clone())
+        move || {
+            let here = here();
+            up.with(|up| up.error(here.as_ref()).map(str::to_owned))
+        }
     };
     (move || preview.get().map(|p| modal(&actions, p, error()))).into_any()
 }

@@ -244,6 +244,25 @@ browserTest('j3_cancel_stops_the_download_it_belongs_to_after_another_book_was_c
   }, { door43: true });
 });
 
+// Owner, 2026-11-10: what a download installs is for every project on this computer, so the
+// dialog of another project shows the download that still runs, and can cancel it.
+browserTest('j3_a_running_download_shows_with_its_cancel_in_another_projects_source_texts', async () => {
+  await withApp(async ({ page, env }) => {
+    await heldDownload(page, env);
+    await page.getByTestId('sources-modal').getByRole('button', { name: en['common.close'], exact: true }).first().click();
+    await page.getByTestId('project-switch').click();
+    const stories = page.getByTestId('project-sample_burrito_obs');
+    await stories.waitFor();
+    await stories.getByRole('button', { name: en['home.settings'], exact: true }).click();
+    await page.getByTestId('settings-manage-sources').click();
+    await page.getByTestId('sources-modal').waitFor();
+    await assertUnderWay(page, 'in another project\'s dialog');
+    await page.getByTestId('sources-cancel').click();
+    await page.getByTestId('sources-cancel').waitFor({ state: 'detached', timeout: 60_000 });
+    assert.deepEqual(installs(env, 'unfoldingWord', 'en_ult'), [], 'what was not finished is not installed');
+  }, { door43: true });
+});
+
 /** Step 2 on English for Titus, whose package is already on this computer. */
 const englishStepTwo = async (page) => {
   await settings(page).click();
