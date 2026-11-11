@@ -331,7 +331,7 @@ fn a_download_keeps_its_cancel_and_names_what_it_fetched_whatever_is_chosen_mean
 #[test]
 fn a_download_that_ends_on_step_one_keeps_its_named_line_until_the_next_choice() {
     let here = open(1);
-    let mut src = SourcesForm::default();
+    let mut src = form();
     on_book(&mut src, BookId::Hebrews);
     let (request, what) = src.download_pressed(&here, rid(1)).unwrap();
     src.download_started(request, JobId::new(3));
