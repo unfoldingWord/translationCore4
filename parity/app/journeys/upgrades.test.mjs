@@ -297,3 +297,19 @@ browserTest('j12_a_check_from_an_earlier_open_never_holds_or_fills_the_reopened_
     await page.getByTestId('upgrade-texts').waitFor();
   }, { door43: true });
 });
+
+browserTest('j12_a_failed_check_is_said_only_in_the_open_it_was_made_for', async () => {
+  await withApp(async ({ page, env, allow }) => {
+    await getSourceTexts(page);
+    await env.door43.fault({ method: 'GET', path: '/api/v1/catalog/search', fault: { type: 'status', status: 503, message: 'down for maintenance' } });
+    allow(/503|Failed to load resource/);
+    await page.getByTestId('check-updates').click();
+    await page.getByTestId('net-confirm').click();
+    await page.getByTestId('upgrade-error').waitFor();
+    await closeSourceTexts(page);
+    await toHome(page);
+    await getSourceTexts(page);
+    await assertCheckIsReady(page, 'after the earlier open\'s check failed');
+    assert.equal(await page.getByTestId('upgrade-error').count(), 0, 'INV-RESOURCE-ANSWER-HAS-AN-OWNER: the earlier open\'s failed check is said in this open');
+  }, { door43: true });
+});

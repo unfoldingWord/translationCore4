@@ -33,6 +33,11 @@ enum Check {
     Running {
         at: Scope,
     },
+    /// The check for `at` failed; `reason` is already tC4's sentence.
+    Failed {
+        at: Scope,
+        reason: String,
+    },
 }
 
 /// How a check for updates ended.
@@ -68,9 +73,10 @@ pub struct UpgradeState {
     pub installing: Option<Installing>,
     /// The repository being downloaded (`sources.progress`).
     pub progress: Option<String>,
-    /// A failed check, install or confirm, in tC4's words; one place, as tC4's is.
+    /// A failed install or confirm, in tC4's words. A failed check is in `check`, with its
+    /// open.
     pub error: Option<String>,
-    pub offers: Option<Offers>,
+    offers: Option<Offers>,
     pub preview: Option<Preview>,
 }
 
@@ -83,6 +89,18 @@ impl UpgradeState {
     /// What the last check found, when it was made for `here`.
     pub fn offers_for(&self, here: Option<&Scope>) -> Option<&Offers> {
         self.offers.as_ref().filter(|o| Some(&o.at) == here)
+    }
+
+    /// What the last check for `here` could not do, in tC4's words: the check itself, or the
+    /// scripture texts beside the offers it did read.
+    pub fn check_error(&self, here: Option<&Scope>) -> Option<String> {
+        match &self.check {
+            Check::Failed { at, reason } if Some(at) == here => Some(reason.clone()),
+            Check::Idle | Check::Running { .. } | Check::Failed { .. } => self
+                .offers_for(here)
+                .and_then(|o| o.view.texts_error)
+                .map(check_failed),
+        }
     }
 
     /// "Check for updates" was pressed for `at`. `false` while a check for `at` is out: a
@@ -104,18 +122,20 @@ impl UpgradeState {
         if !self.checking(Some(at)) {
             return;
         }
-        self.check = Check::Idle;
-        match end {
+        self.check = match end {
             CheckEnd::Offers(view) => {
-                self.error = view.texts_error.map(check_failed);
                 self.offers = Some(Offers {
                     at: at.clone(),
                     view,
                 });
+                Check::Idle
             }
-            CheckEnd::Failed(reason) => self.error = Some(reason),
-            CheckEnd::Nothing => {}
-        }
+            CheckEnd::Failed(reason) => Check::Failed {
+                at: at.clone(),
+                reason,
+            },
+            CheckEnd::Nothing => Check::Idle,
+        };
     }
 
     /// An offer's Upgrade was pressed: nothing else can start while it downloads.
