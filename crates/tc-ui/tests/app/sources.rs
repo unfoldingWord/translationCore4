@@ -329,6 +329,29 @@ fn a_download_keeps_its_cancel_and_names_what_it_fetched_whatever_is_chosen_mean
 }
 
 #[test]
+fn a_download_that_ends_on_step_one_keeps_its_named_line_until_the_next_choice() {
+    let here = open(1);
+    let mut src = SourcesForm::default();
+    on_book(&mut src, BookId::Hebrews);
+    let (request, what) = src.download_pressed(&here, rid(1)).unwrap();
+    src.download_started(request, JobId::new(3));
+    src.change_gateway();
+    assert!(src.gateway.is_none() && src.has_line());
+    src.download_ended(JobId::new(3), DlEnd::Done(Downloaded::Fetched));
+    assert!(src.has_line(), "the finished line went on step 1");
+    assert_eq!(
+        *src.dl(),
+        Dl::Finished {
+            what,
+            outcome: Downloaded::Fetched
+        },
+        "INV-DOWNLOAD-NAMES-WHAT-IT-FETCHED: the line on step 1 names another selection"
+    );
+    src.pick(package("en", "unfoldingWord"));
+    assert!(!src.has_line(), "a choice takes the finished line away");
+}
+
+#[test]
 fn what_just_finished_is_not_offered_again_in_its_open_until_the_person_chooses_again() {
     let here = open(1);
     let mut src = form();
