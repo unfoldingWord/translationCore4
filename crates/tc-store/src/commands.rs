@@ -64,14 +64,7 @@ fn refused(r: Refusal) -> CommandError {
 }
 
 fn change(record: Record, parents: &[ChangeId], cause: Cause) -> PlannedChange {
-    let mut parents = parents.to_vec();
-    parents.sort();
-    parents.dedup();
-    PlannedChange {
-        record,
-        parents,
-        cause,
-    }
+    PlannedChange::new(record, parents.to_vec(), cause)
 }
 
 impl Ctx<'_> {

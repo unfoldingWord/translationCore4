@@ -851,14 +851,14 @@ impl FoldState {
             }
             let parents = if unknown { Vec::new() } else { candidate.heads };
             plan.unknown_base |= unknown;
-            plan.changes.push(PlannedChange {
-                record: candidate.record,
+            plan.changes.push(PlannedChange::new(
+                candidate.record,
                 parents,
-                cause: Cause::External {
+                Cause::External {
                     source: source.clone(),
                     unknown_base: unknown,
                 },
-            });
+            ));
         }
         plan.changes.extend(presence);
         plan.changes.sort_by_key(|c| c.record.key());

@@ -4842,3 +4842,53 @@ fn a_checkpoint_after_a_pack_is_cut() -> Vec<Step> {
 fn a_checkpoint_after_a_pack_is_cut_is_not_refused() {
     assert_kept(&a_checkpoint_after_a_pack_is_cut());
 }
+
+/// #1005, the nightly of 2026-11-11 (run 42980021407; the model keeps no seed, so this is the
+/// history the run printed): after crashes and a lost `.tc`, the project's name has two
+/// heads of one value, and the open records `metadata.json` as another program's edit made
+/// from them. The plan named the two heads in History's order, which is id order only for
+/// some ids, so the journal refused the change (V5) and the name stayed only in the copy.
+fn a_metadata_json_recorded_over_two_heads_of_one_name() -> Vec<Step> {
+    vec![
+        lock(Holdable::File(File::Usfm), true),
+        Step::Open,
+        act(Act::Name),
+        lock(Holdable::File(File::Usfm), false),
+        Step::DenyRead {
+            file: File::Usfm,
+            on: true,
+        },
+        kill_with(Act::Save(2), 9, false, true),
+        Step::Revert {
+            file: File::Usfm,
+            back: 1,
+            told: false,
+        },
+        kill_with(Act::Leave, 54, true, false),
+        kill_with(Act::Section(1), 28, true, true),
+        Step::DeleteJournal {
+            journal: Journal::Pending,
+            which: 54,
+        },
+        kill_with(Act::Name, 2, false, true),
+        Step::LoseTc { heads: false },
+        act(Act::Section(1)),
+        act(Act::Save(1)),
+        Step::DeleteDuringSeal { which: 192, at: 2 },
+        lock(pending_held(88, true), true),
+        Step::Open,
+        act(Act::Checkpoint),
+        lock(pending_held(88, true), false),
+        act(Act::Section(1)),
+    ]
+}
+
+#[test]
+fn a_metadata_json_recorded_over_two_heads_of_one_name_is_kept() {
+    // Change ids are random, and the two heads were out of id order in a third to four
+    // fifths of the runs. `an_edit_over_two_heads_of_one_value_names_them_in_id_order` (tc-journal) gives
+    // the plan both orders every time.
+    for _ in 0..12 {
+        assert_kept(&a_metadata_json_recorded_over_two_heads_of_one_name());
+    }
+}
