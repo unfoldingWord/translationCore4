@@ -134,6 +134,7 @@ impl Actions {
         {
             s.sync_result.try_set(None);
         }
+        self.patch_src(|src| src.opened(&at.project));
         let this = self.clone();
         spawn_local(async move {
             this.read_packages(at).await;
@@ -221,16 +222,19 @@ impl Actions {
         });
         let this = self.clone();
         spawn_local(async move {
+            let project = at.project.clone();
             let request = Catalog {
                 at,
                 gateway: gateway.gateway.clone(),
                 book,
             };
             match this.run_net(Pending::Catalog, &request).await.said() {
-                Ok(view) => this.patch_src(|src| src.rows_read(&gateway, book, view.rows)),
+                Ok(view) => {
+                    this.patch_src(|src| src.rows_read(&project, &gateway, book, view.rows));
+                }
                 Err(None) => {}
                 Err(Some(reason)) => {
-                    this.patch_src(|src| src.rows_failed(&gateway, book, reason));
+                    this.patch_src(|src| src.rows_failed(&project, &gateway, book, reason));
                 }
             }
         });

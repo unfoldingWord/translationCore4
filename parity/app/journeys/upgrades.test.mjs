@@ -361,7 +361,12 @@ browserTest('j13_one_projects_packages_never_show_in_another_projects_source_tex
     await closeSourceTexts(page);
     await homeFrom(page, BIBLE);
     await sourceTextsOf(page, OBS);
-    // The dialog is still on English's step. The stories do not check in English.
+    // Another project's dialog starts at the language list. The stories do not check in
+    // English, and the offer to use it is drawn only from the stories' own packages.
+    assert.equal(await page.getByRole('combobox', { name: en['sources.book'], exact: true }).count(), 0,
+      'INV-RESOURCE-ANSWER-HAS-AN-OWNER: the stories\' dialog opens on the package and the rows read for the Bible');
+    await page.getByTestId('sources-modal').getByText('English', { exact: true }).first().click();
+    await page.getByTestId('net-cancel').click();
     await page.getByTestId('use-for-checking').waitFor();
     release();
     await answered;
@@ -386,10 +391,15 @@ async function upgradeWithDoor43Held(page, env, { thenFails = false } = {}) {
   await until('Door43 holds the download of the release', async () => (await env.door43.held()) > 0);
   return job;
 }
-/** The page follows a job by its frames, and asks the server once a second in case one was
- * lost: after this long it has seen an end the server already reports. A wrong build shows the
- * answer by then; a right one shows nothing, so there is no signal on the page to wait for. */
-const pageSawTheJobEnd = () => sleep(1500);
+/** A right build shows nothing when another open's job ends, so there is no change on the page
+ * to wait for. The signal is the open's own check for updates, pressed after the server
+ * reports the job's end and followed to its answer: the page has handled the end by then. */
+async function checkRunsToItsAnswer(page, covered) {
+  const answered = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/v1/resources/checkUpdates', { timeout: 60_000 }).catch(() => null);
+  await page.getByTestId('check-updates').click({ timeout: 10_000 }).catch(() => assert.fail(covered));
+  assert.ok(await answered, 'this open\'s own check for updates was answered');
+  await settled(page);
+}
 const jobEnded = (env, job) => until('the plan job ended', async () => {
   const view = await env.call('jobs/get', { job });
   return ['done', 'failed', 'cancelled'].includes(view?.state?.type) ? view.state.type : null;
@@ -403,10 +413,10 @@ browserTest('j12_a_confirmation_made_for_a_project_that_was_left_never_shows_ove
     await sourceTextsOf(page, OBS);
     await env.door43.release();
     assert.equal(await jobEnded(env, job), 'done');
-    await pageSawTheJobEnd();
+    // On a wrong build the confirmation covers the dialog, and this press never lands.
+    await checkRunsToItsAnswer(page, 'INV-RESOURCE-ANSWER-HAS-AN-OWNER: the Bible\'s upgrade confirmation covers the stories\' dialog');
     assert.equal(await page.getByTestId('upgrade-confirm').count(), 0, 'INV-RESOURCE-ANSWER-HAS-AN-OWNER: the Bible\'s upgrade confirmation is shown over the stories');
-    // The stories' own check still runs.
-    await assertCheckIsReady(page, 'in the stories, while the Bible\'s plan was made');
+    await assertCheckIsReady(page, 'in the stories, after the Bible\'s plan was made');
   }, { door43: true });
 });
 
@@ -420,7 +430,6 @@ browserTest('j12_a_failed_install_is_said_only_in_the_open_it_was_pressed_in', a
     assert.equal(await page.getByTestId('upgrade-progress').count(), 0, 'INV-BUSY-ENDS-WITH-ITS-WORK: the earlier open\'s install shows its progress in this open');
     await env.door43.release();
     assert.equal(await jobEnded(env, job), 'failed');
-    await pageSawTheJobEnd();
     assert.equal(await page.getByTestId('upgrade-error').count(), 0, 'INV-RESOURCE-ANSWER-HAS-AN-OWNER: the earlier open\'s failed install is said in this open');
   }, { door43: true });
 });

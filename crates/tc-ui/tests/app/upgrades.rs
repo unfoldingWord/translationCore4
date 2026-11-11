@@ -747,6 +747,23 @@ fn an_install_and_its_confirmation_show_only_in_the_open_they_were_started_for()
 }
 
 #[test]
+fn an_installs_late_plan_never_replaces_the_guided_fixs_confirmation() {
+    let alef = open("alef", 1);
+    let mut up = UpgradeState::default();
+    up.install_started(alef.clone(), Installing::Text("en_ult".into()));
+    // The guided fix's re-pin takes the open's confirmation while the install still runs.
+    up.repin_ready(alef.clone(), set_plan(1, Vec::new()));
+    up.plan_ready(&alef, set_plan(2, Vec::new()));
+    up.install_failed(&alef, Some("the upgrade failed".into()));
+    assert_eq!(
+        up.preview(Some(&alef)).map(|p| p.plan.plan),
+        Some(PlanId::new(1)),
+        "INV-RESOURCE-ANSWER-HAS-AN-OWNER: the confirmation changed under its reader"
+    );
+    assert!(up.error(Some(&alef)).is_none());
+}
+
+#[test]
 fn a_plan_is_confirmed_with_the_open_it_was_made_for() {
     let alef = open("alef", 1);
     let mut up = UpgradeState::default();

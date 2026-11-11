@@ -216,6 +216,11 @@ Under the same rule, tC4 4.0 bugs the rebuild fixes on purpose (FIX-R, 2026-10-2
   on this computer (for the project's package, the installed release it pins), and tC4's
   registry release for one not installed; tC4 always names its
   registry's, so English said v89 while v91 was installed and pinned (#833.5).
+- Get source texts opened in another project than last time starts at the language list, so
+  one project's package rows never show in another's dialog. tC4 keeps the chosen language, its
+  rows and what was left out when the dialog opens in another project; it sets them again only
+  for a story project with a pinned gateway language (`git show d25b7871:src/state.jsx`,
+  `openSources`) (#982).
 - A download in Get source texts keeps its progress line and its Cancel until it ends,
   whatever the person chooses meanwhile: another book, another row, step 1 (which then has a
   footer), or another project. Download is not offered while one runs, and the finished line

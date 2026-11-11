@@ -200,6 +200,9 @@ pub enum DlEnd {
 /// tC4's `src`: kept across the dialog's openings, as tC4 keeps it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourcesForm {
+    /// The project the dialog was last opened in. A package's rows depend on the project (a
+    /// Bible's differ from a story project's), so they are kept only for this one.
+    project: Option<ProjectRef>,
     /// Step 1's packages, with the open they were read for
     /// (INV-RESOURCE-ANSWER-HAS-AN-OWNER): another open never reads them as its own.
     packages: Option<(Scope, SourcesView)>,
@@ -219,6 +222,7 @@ pub struct SourcesForm {
 impl Default for SourcesForm {
     fn default() -> Self {
         Self {
+            project: None,
             packages: None,
             gateway: None,
             book: BookId::Titus,
@@ -233,6 +237,23 @@ impl Default for SourcesForm {
 }
 
 impl SourcesForm {
+    /// The dialog opens in `project` (INV-RESOURCE-ANSWER-HAS-AN-OWNER). In another project
+    /// than last time it starts at step 1: the package, its rows and what was left out were
+    /// read and chosen for the other one. A download under way is the computer's and stays.
+    pub fn opened(&mut self, project: &ProjectRef) {
+        if self.project.as_ref() == Some(project) {
+            return;
+        }
+        self.project = Some(project.clone());
+        self.gateway = None;
+        self.rows.clear();
+        self.exclude.clear();
+        self.loading = false;
+        self.error = None;
+        self.needs_internet = false;
+        self.chose();
+    }
+
     /// Whether a row is in the download: a fixed row always is.
     pub fn on(&self, row: &PackageRow) -> bool {
         row.role.fixed() || !self.exclude.contains(&row.key())
@@ -288,10 +309,24 @@ impl SourcesForm {
         self.needs_internet = false;
     }
 
-    /// The rows of `gateway` and `book` came. Rows for a package or book the person has left
-    /// meanwhile are not shown.
-    pub fn rows_read(&mut self, gateway: &GatewayPackage, book: BookId, rows: Vec<PackageRow>) {
-        if self.gateway.as_ref() != Some(gateway) || self.book != book {
+    /// Whether an answer about `gateway` and `book`, read for `project`, is what the dialog
+    /// shows now.
+    fn reads(&self, project: &ProjectRef, gateway: &GatewayPackage, book: BookId) -> bool {
+        self.project.as_ref() == Some(project)
+            && self.gateway.as_ref() == Some(gateway)
+            && self.book == book
+    }
+
+    /// The rows of `gateway` and `book` came, read for `project`. Rows for a project, a
+    /// package or a book the person has left meanwhile are not shown.
+    pub fn rows_read(
+        &mut self,
+        project: &ProjectRef,
+        gateway: &GatewayPackage,
+        book: BookId,
+        rows: Vec<PackageRow>,
+    ) {
+        if !self.reads(project, gateway, book) {
             return;
         }
         self.loading = false;
@@ -299,8 +334,14 @@ impl SourcesForm {
     }
 
     /// The catalog could not be read: `sources.catalogError`'s reason.
-    pub fn rows_failed(&mut self, gateway: &GatewayPackage, book: BookId, reason: String) {
-        if self.gateway.as_ref() != Some(gateway) || self.book != book {
+    pub fn rows_failed(
+        &mut self,
+        project: &ProjectRef,
+        gateway: &GatewayPackage,
+        book: BookId,
+        reason: String,
+    ) {
+        if !self.reads(project, gateway, book) {
             return;
         }
         self.loading = false;

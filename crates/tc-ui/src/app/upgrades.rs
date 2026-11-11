@@ -208,7 +208,11 @@ impl UpgradeState {
 
     /// The release is installed and its plan is ready: the confirmation opens, in `at`.
     pub fn plan_ready(&mut self, at: &Scope, plan: PlanView) {
-        if let Some(flow) = self.flow_mut(at) {
+        // Only an install under way takes its plan: the guided fix's re-pin may have taken
+        // the open's confirmation since, and it is not replaced under its reader.
+        if let Some(flow) = self.flow_mut(at)
+            && flow.installing.is_some()
+        {
             flow.installing = None;
             flow.progress = None;
             flow.preview = Some(Preview {
@@ -231,7 +235,9 @@ impl UpgradeState {
 
     /// The download or the plan failed or was cancelled; the pins did not move.
     pub fn install_failed(&mut self, at: &Scope, reason: Option<String>) {
-        if let Some(flow) = self.flow_mut(at) {
+        if let Some(flow) = self.flow_mut(at)
+            && flow.installing.is_some()
+        {
             flow.installing = None;
             flow.progress = None;
             if reason.is_some() {

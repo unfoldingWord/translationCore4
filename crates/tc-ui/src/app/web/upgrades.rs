@@ -312,7 +312,9 @@ impl Actions {
     /// "Change to …" (tC4 `confirmGatewayChange`).
     pub fn confirm_gateway_change(&self) {
         // The plan on screen is of this open: `ask_gateway_change` shows it only while its
-        // open is on screen, and its dialog covers every way to leave.
+        // open is on screen, and its dialog covers every way a person can leave. After a
+        // server restart the page goes Home under it: there is no project then, so this
+        // returns and nothing is sent.
         let Some(at) = self.project_scope() else {
             return;
         };
