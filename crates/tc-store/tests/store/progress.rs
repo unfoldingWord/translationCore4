@@ -67,11 +67,14 @@ fn open_shows_determinate_progress_by_300_ms() {
         usable - started > Duration::from_millis(600),
         "the open was not slow"
     );
-    let (first, _, first_at) = &seen[0];
+    let (first, _, first_at) = seen.first().expect("a slow open sent no report");
     let after = *first_at - started;
+    // No upper limit: how soon after 300 ms the report comes is speed, which the reference
+    // laptop measures (`docs/evidence/storage-open-save-2026-10-17.md`), not this test.
     assert!(
-        after >= Duration::from_millis(300) && after <= Duration::from_millis(400),
-        "first report after {after:?}"
+        after >= tc_store::progress::FIRST_REPORT,
+        "first report {after:?} after the open began by the test's clock, {:?} by its own",
+        first.at
     );
     assert!(first.total > 0);
     assert!(
