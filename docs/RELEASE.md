@@ -47,9 +47,10 @@ Uninstalling or updating replaces only the app. Projects and app data stay (tC4 
 test checks it.
 
 A newer installer replaces the installed app (#1016). On Windows, Inno Setup finds the earlier
-install by its `AppId` and installs into the same folder; before it writes, it removes every
-file the installed build's `BUILD-MANIFEST.json` names, so a file the newer build no longer has
-(the older UI folder, a library an older Electronite had) does not stay. On macOS the pkg writes only
+install by its `AppId` and installs into the same folder; once the install has succeeded, it
+removes every file the installed build's `BUILD-MANIFEST.json` named that the newer build's does
+not, so a file the newer build no longer has (the older UI folder, a library an older Electronite
+had) does not stay, and a cancelled or failed Setup leaves the older app whole. On macOS the pkg writes only
 `/Applications/translationCore 4.app`, so its scripts (`scripts/release/macos-preinstall.sh`,
 run before and after the install) look for a translationCore 4 anywhere else: by bundle id
 through Spotlight, in Applications and the home folder of the person at the screen, and, for a

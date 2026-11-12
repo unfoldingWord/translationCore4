@@ -56,18 +56,25 @@ Name: "{autodesktop}\translationCore 4"; Filename: "{app}\electron.exe"; Working
 
 [Code]
 // #1016: Setup writes this build's files over an installed one and leaves a file this build no
-// longer has, such as the older build's UI folder, whose name is a hash. Before the files are
-// written, every file the installed build's BUILD-MANIFEST.json names is removed, and each folder
-// that leaves empty. Nothing else in the folder is touched: a person may have installed into a
-// folder that holds their own files. The manifest has one "path" on a line, with forward slashes.
-procedure RemoveTheInstalledBuildsFiles();
+// longer has, such as the older build's UI folder, whose name is a hash. The installed build's
+// BUILD-MANIFEST.json is read before the files are written; once the install has succeeded, each
+// file it names that this build's manifest does not is removed, and each folder that leaves empty.
+// Nothing is removed before then: a cancelled or failed Setup rolls back only what Setup wrote,
+// and the installed app must still be whole. Nothing else in the folder is touched: a person may
+// have installed into a folder that holds their own files. The manifest has one "path" on a line,
+// with forward slashes.
+var
+  InstalledPaths: TStringList;
+
+// The paths the BUILD-MANIFEST.json in {app} names, each inside {app}, with backslashes.
+function ManifestPaths(): TStringList;
 var
   Lines: TArrayOfString;
   I, Quote: Integer;
-  Line, Path, Dir, App: String;
+  Line, Path: String;
 begin
-  App := ExpandConstant('{app}');
-  if not LoadStringsFromFile(App + '\BUILD-MANIFEST.json', Lines) then
+  Result := TStringList.Create;
+  if not LoadStringsFromFile(ExpandConstant('{app}') + '\BUILD-MANIFEST.json', Lines) then
     Exit;
   for I := 0 to GetArrayLength(Lines) - 1 do
   begin
@@ -83,19 +90,45 @@ begin
         if (Pos('\', Path) = 0) and (Pos('..', Path) = 0) and (Pos(':', Path) = 0) and (Path[1] <> '/') then
         begin
           StringChangeEx(Path, '/', '\', True);
-          Path := App + '\' + Path;
-          DeleteFile(Path);
-          Dir := ExtractFileDir(Path);
-          while (Length(Dir) > Length(App)) and RemoveDir(Dir) do
-            Dir := ExtractFileDir(Dir);
+          Result.Add(Path);
         end;
       end;
     end;
   end;
 end;
 
+procedure RemoveTheOlderBuildsFiles();
+var
+  Newer: TStringList;
+  I: Integer;
+  App, Path, Dir: String;
+begin
+  if InstalledPaths = nil then
+    Exit;
+  App := ExpandConstant('{app}');
+  Newer := ManifestPaths();
+  try
+    // An unreadable new manifest would make every file Setup just wrote look like the older one's.
+    if Newer.Count = 0 then
+      Exit;
+    for I := 0 to InstalledPaths.Count - 1 do
+      if Newer.IndexOf(InstalledPaths.Strings[I]) < 0 then
+      begin
+        Path := App + '\' + InstalledPaths.Strings[I];
+        DeleteFile(Path);
+        Dir := ExtractFileDir(Path);
+        while (Length(Dir) > Length(App)) and RemoveDir(Dir) do
+          Dir := ExtractFileDir(Dir);
+      end;
+  finally
+    Newer.Free;
+  end;
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssInstall then
-    RemoveTheInstalledBuildsFiles();
+    InstalledPaths := ManifestPaths()
+  else if CurStep = ssPostInstall then
+    RemoveTheOlderBuildsFiles();
 end;

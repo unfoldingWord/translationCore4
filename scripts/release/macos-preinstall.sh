@@ -71,7 +71,9 @@ installed_copies() {
 remove_others() {
   local app
   while IFS= read -r app; do
-    [ "$app" = "$target" ] && continue
+    # The same folder, not the same text: on a case-insensitive disk "TranslationCore 4.app" is
+    # the app the pkg just wrote.
+    [ "$app" = "$target" ] || [ "$app" -ef "$target" ] && continue
     rm -rf "$app" 2> /dev/null
     [ -e "$app" ] && printf '%s\n' "$app"
   done

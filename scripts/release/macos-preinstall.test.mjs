@@ -145,6 +145,25 @@ test('a_copy_that_cannot_be_removed_is_named', { skip: !macos || process.getuid(
   }
 });
 
+// A copy renamed only in case is the install location on a Mac's case-insensitive disk; a link to
+// its folder stands for that name on a disk that is not.
+test('replace_never_removes_the_new_app_by_another_name_for_it', (t) => {
+  const dir = temp(t);
+  const target = path.join(dir, 'Applications', 'translationCore 4.app');
+  fs.mkdirSync(target, { recursive: true });
+  const other = path.join(dir, 'Desktop', 'translationCore 4.app');
+  fs.mkdirSync(other, { recursive: true });
+  fs.symlinkSync(path.join(dir, 'Applications'), path.join(dir, 'Linked'));
+  const names = [path.join(dir, 'Linked', 'translationCore 4.app')];
+  const upper = path.join(dir, 'Applications', 'TranslationCore 4.app');
+  if (fs.existsSync(upper)) names.push(upper);
+
+  const left = installer(dir, target, `printf '%s\\n' ${[...names, other].map((n) => `'${n}'`).join(' ')} | remove_others`);
+  assert.equal(left.status, 0, left.stderr);
+  assert.equal(fs.existsSync(target), true);
+  assert.equal(fs.existsSync(other), false);
+});
+
 test('the_pkg_runs_the_script_before_and_after_and_records_the_whole_version', { skip: !macos }, (t) => {
   const dir = temp(t);
   const staged = app(dir, 'translationCore 4.app');
