@@ -47,7 +47,9 @@ Uninstalling or updating replaces only the app. Projects and app data stay (tC4 
 test checks it.
 
 A newer installer replaces the installed app (#1016). On Windows, Inno Setup finds the earlier
-install by its `AppId` and installs into the same folder. On macOS the pkg writes only
+install by its `AppId` and installs into the same folder; before it writes, it removes every
+file the installed build's `BUILD-MANIFEST.json` names, so a file the newer build no longer has
+(the older UI folder, a library an older Electronite had) does not stay. On macOS the pkg writes only
 `/Applications/translationCore 4.app`, so its scripts (`scripts/release/macos-preinstall.sh`,
 run before and after the install) look for a translationCore 4 anywhere else: by bundle id
 through Spotlight, in Applications and the home folder of the person at the screen, and, for a
@@ -166,7 +168,7 @@ branch, it can also be run by hand from the Actions tab on any branch.
 | `package.sh` | build | only a stage whose manifest matches its files, and on macOS whose seal is valid, is packaged; a failed build job skips `smoke` and `publish` |
 | `macos-preinstall.test.mjs` | build (macOS) | the pkg's scripts find a translationCore 4 under another name or in another folder and leave the tC4 4.0 beta and other apps; Replace removes the other copies only after the install, Cancel stops it and removes nothing, and with nobody to ask nothing elsewhere is removed; the pkg records the whole version. The person's answer is a stub: the dialog itself is checked by hand (#1016) |
 | `the_installed_app_and_receipt_show_the_app_s_version` | smoke (macOS) | Finder's version and the pkg receipt are the app's version, not Electronite's (#1016) |
-| `installing_over_leaves_one_translationcore_4`, `installing_over_keeps_app_data_and_projects` | smoke (Windows, macOS) | the newest published release is installed and started, then this build is installed over it with no uninstall: one app is there, and every file the older build wrote in app data, and a file put in the projects folder, is still there (#1016) |
+| `installing_over_leaves_one_translationcore_4`, `installing_over_keeps_app_data_and_projects` | smoke (Windows, macOS) | the newest published release is installed and started, then this build is installed over it with no uninstall: one app is there, and every file the older build wrote in app data, and a file put in the projects folder, is still there; `installed_files_are_the_manifest_s` then holds for the app installed over the older one, so no file of the older build stays (#1016) |
 | `installed_manifest_is_the_build_s` | smoke | the installed manifest is the build's |
 | `installed_files_are_the_manifest_s` | smoke | every installed file has the size and sha256 the manifest records, and nothing else is there but Inno Setup's uninstaller |
 | `installed_app_seal_is_valid` | smoke (macOS) | the installed bundle passes `codesign --verify --deep --strict` (#969) |
