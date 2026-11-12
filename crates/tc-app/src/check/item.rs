@@ -17,7 +17,8 @@
 use tc_api::check::{
     CheckArticle, CheckArticleRead, CheckItemView, CheckNotice, CheckPlace, CheckSources,
     CheckUnit, Decide, DecideEdit, DecisionStatus, DecisionView, GatewayText, GatewayView, Item,
-    OriginalVerse, OriginalView, RailRowPatch, Rung, StoryPane, TargetWords, Testament, Tool,
+    OriginalVerse, OriginalView, RailRowPatch, Rung, SimplifiedPane, StoryPane, TargetWords,
+    Testament, Tool,
 };
 use tc_api::helps::{ArticleLink, ArticleView};
 use tc_api::ids::ViewSeq;
@@ -342,18 +343,8 @@ fn gateway(loaded: &LoadedBook, place: &CheckPlace, item: &CheckItem) -> Gateway
     let text = match loaded.pane(&pane) {
         Some(LoadedText::Ready(book)) => match pane_verse(book, place) {
             Some(model) => {
-                let occurrence =
-                    Occurrence::nth(item.key.occurrence).unwrap_or(Occurrence::NotTied);
-                let lit =
-                    tc_helps::highlight::highlight_quote(&model.aligned, &item.quote, occurrence)
-                        .tokens
-                        .into_iter()
-                        .filter_map(|i| u32::try_from(i).ok())
-                        .collect();
-                GatewayText::Verse {
-                    tokens: one_space_tokens(&model.view.tokens),
-                    lit,
-                }
+                let (tokens, lit) = lit_verse(model, &model.aligned, item);
+                GatewayText::Verse { tokens, lit }
             }
             None => GatewayText::Absent,
         },
@@ -364,6 +355,45 @@ fn gateway(loaded: &LoadedBook, place: &CheckPlace, item: &CheckItem) -> Gateway
         },
     };
     GatewayView::Pane { pane, text }
+}
+
+/// A gateway text's verse as its card shows it: the tokens, and the ones that render the
+/// check's quote by the alignments in `aligned`.
+fn lit_verse(
+    model: &crate::sources::VerseModel,
+    aligned: &tc_helps::highlight::AlignedVerse,
+    item: &CheckItem,
+) -> (Vec<String>, Vec<u32>) {
+    let occurrence = Occurrence::nth(item.key.occurrence).unwrap_or(Occurrence::NotTied);
+    let lit = tc_helps::highlight::highlight_quote(aligned, &item.quote, occurrence)
+        .tokens
+        .into_iter()
+        .filter_map(|i| u32::try_from(i).ok())
+        .collect();
+    (one_space_tokens(&model.view.tokens), lit)
+}
+
+/// The verse of the package's simplified Bible at the check's place: the verse itself, or
+/// the verse span it is in, with the words of the check's verse lit. None when the package
+/// has no simplified text for the book on this computer, when the text numbers its verses
+/// otherwise than the project, or when it has no such verse. A check on a verse range (`9-10`)
+/// has the card only when the text holds the range inside one span; a list (`3,5`) has none.
+fn simplified(loaded: &LoadedBook, place: &CheckPlace, item: &CheckItem) -> Option<SimplifiedPane> {
+    if !matches!(loaded.numbering, Numbering::Same) {
+        return None;
+    }
+    let CheckPlace::Verse { chapter, verse, .. } = place else {
+        return None;
+    };
+    let (repo, book) = loaded.package_simplified()?;
+    let chapter = book.chapters.get(&chapter.as_str().parse::<u16>().ok()?)?;
+    let (model, aligned) = chapter.holding(verse.as_str())?;
+    let (tokens, lit) = lit_verse(model, &aligned, item);
+    Some(SimplifiedPane {
+        repo: repo.to_owned(),
+        tokens,
+        lit,
+    })
 }
 
 /// A verse's tokens as tC4's usfm-js hands them to the pane: the USFM breaks a line between the
@@ -515,6 +545,7 @@ impl Handle<Item> for App {
                     CheckSources::Verse {
                         original: original(&loaded, book, &facts.place, &facts.item),
                         gateway: gateway(&loaded, &facts.place, &facts.item),
+                        simplified: simplified(&loaded, &facts.place, &facts.item),
                     },
                     rung_dir(loaded.pins(), rung),
                     article_title(&loaded, &link),

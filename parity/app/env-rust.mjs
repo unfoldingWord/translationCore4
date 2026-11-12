@@ -56,11 +56,13 @@ const synced = (parts = {}) => ({ type: 'synced', value: { teammates: null, rest
  * the same bytes the tC4 environment starts from (APP-DESIGN 7.2), and answers the flags that
  * start `tc4` on it: its projects are written into the run's empty projects folder and opened
  * through the store (unit C1a), or held by the memory backend with `backend` 'memory' (unit
- * B1b); its sideloaded resources go into the app's store. */
-export function scenarioArgs(scenario, dir, backend = 'store') {
+ * B1b); its sideloaded resources go into the app's store. `editState(state)` changes the
+ * built state before the app reads it (a project on another package, #996). */
+export function scenarioArgs(scenario, dir, backend = 'store', editState) {
   if (!['store', 'memory'].includes(backend)) throw new Error(`the backend is store or memory, not ${backend}`);
   const state = path.join(dir, 'state');
   buildScenarioState({ scenario, out: state });
+  editState?.(state);
   return ['--scenario', state, ...(backend === 'memory' ? ['--backend', 'memory'] : [])];
 }
 
@@ -197,7 +199,7 @@ function apiCall(base, token, endpoint, body) {
  * `door43` is a started fake Door43 (`startDoor43Fake`), which `tc4` then signs in to;
  * without it Door43 is a port nothing listens on.
  */
-export async function startRustEnv({ scenario, tc4, ui, seed, door43, realSync = false, notices, backend = 'store', runDir = path.join(REPO, 'target', 'parity-rust', `${process.pid}-${Date.now()}`) }) {
+export async function startRustEnv({ scenario, tc4, ui, seed, editState, door43, realSync = false, notices, backend = 'store', runDir = path.join(REPO, 'target', 'parity-rust', `${process.pid}-${Date.now()}`) }) {
   if (!PROJECTS[scenario]) throw new Error(`no scenario ${scenario}; the scenarios are ${Object.keys(PROJECTS).join(', ')}`);
   const dir = path.join(runDir, scenario);
   fs.rmSync(dir, { recursive: true, force: true });
@@ -209,7 +211,7 @@ export async function startRustEnv({ scenario, tc4, ui, seed, door43, realSync =
   // stdin stays open: a closed stdin makes tc4 quit.
   const child = spawn(path.resolve(tc4), [
     'serve', '--app-data', path.join(dir, 'appdata'), '--projects', path.join(dir, 'projects'), '--ui', path.resolve(ui),
-    '--door43', door43?.url ?? DEAD_DOOR43, '--test-hooks', ...(realSync ? ['--real-sync'] : []), ...(notices ? ['--notices', notices] : []), ...(scenario === 'store' ? [] : scenarioArgs(scenario, dir, backend)),
+    '--door43', door43?.url ?? DEAD_DOOR43, '--test-hooks', ...(realSync ? ['--real-sync'] : []), ...(notices ? ['--notices', notices] : []), ...(scenario === 'store' ? [] : scenarioArgs(scenario, dir, backend, editState)),
   ], { stdio: ['pipe', 'pipe', 'inherit'] });
   const lines = readline.createInterface({ input: child.stdout })[Symbol.asyncIterator]();
   const exited = new Promise((resolve) => child.once('exit', (code, signal) => resolve({ code, signal })));

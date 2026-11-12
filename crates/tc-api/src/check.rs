@@ -636,8 +636,9 @@ pub struct CheckArticle {
     pub category: Category,
 }
 
-/// The source texts of the compare card (tC4's `SourcePanes`): a verse's original-language and
-/// gateway texts, or a story's gateway frame (a story has no original-language text, D74).
+/// The source texts of the compare card (tC4's `SourcePanes`): a verse's original-language,
+/// gateway and simplified texts, or a story's gateway frame (a story has no original-language
+/// text, D74).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "proptest", derive(proptest_derive::Arbitrary))]
 #[serde(
@@ -650,6 +651,9 @@ pub enum CheckSources {
     Verse {
         original: OriginalView,
         gateway: GatewayView,
+        /// The simplified Bible's verse (#996); none when it has no text to show at the
+        /// check's place, so the card is never empty.
+        simplified: Option<SimplifiedPane>,
     },
     Story {
         pane: StoryPane,
@@ -721,6 +725,21 @@ pub enum GatewayView {
         pane: String,
         text: GatewayText,
     },
+}
+
+/// The simplified row of the compare card: the verse in the simplified Bible of the project's
+/// checking package (the UST, or a package's GST).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "proptest", derive(proptest_derive::Arbitrary))]
+#[serde(rename_all = "camelCase")]
+pub struct SimplifiedPane {
+    /// The repository the text was read from (`id_gst`); the card is named after it.
+    pub repo: String,
+    #[cfg_attr(feature = "proptest", proptest(strategy = "crate::arb::few()"))]
+    pub tokens: Vec<String>,
+    /// The tokens that render the check's quote.
+    #[cfg_attr(feature = "proptest", proptest(strategy = "crate::arb::few()"))]
+    pub lit: Vec<u32>,
 }
 
 /// What a gateway pane has at the check's place.

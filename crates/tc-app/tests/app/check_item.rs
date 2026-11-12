@@ -10,7 +10,7 @@ use proptest::prelude::*;
 use tc_api::check::{
     CheckArticleRead, CheckItemView, CheckListRef, CheckSessionView, CheckSources, CheckUnit,
     Decide, DecideEdit, DecisionStatus, GatewayText, GatewayView, Item, Open, OriginalView,
-    RailRow, RailRows, RailSince, Rows, RowsView, Testament, Tool,
+    RailRow, RailRows, RailSince, Rows, RowsView, SimplifiedPane, Testament, Tool,
 };
 use tc_api::editor::{Draft, DraftField, SaveVerse};
 use tc_api::helps::ArticleView;
@@ -22,7 +22,7 @@ use tc_api::{ApiError, NotSaved, Reply};
 use tc_app::App;
 use tc_app::StoreChoice;
 use tc_app::backend::memory::{MemoryBackend, Scripted};
-use tc_app::backend::scenario::install_resources_into;
+use tc_app::backend::scenario::{ScenarioState, install_resources_into};
 use tc_app::backend::scenario_store::ScenarioStore;
 use tc_app::config::ProjectsFolder;
 use tc_check::selection::{TargetText, from_indices, indices, target_words};
@@ -32,7 +32,7 @@ use tc_store::fault::FaultFs;
 
 use super::common::{Parts, TestApp, folder, open_progress, post, rid, tit};
 use super::scenario::scenario;
-use super::understand::{ok, opened, start};
+use super::understand::{ok, opened, start, start_over};
 use crate::store_world::{APP, backend_over};
 
 fn list(tool: Tool) -> CheckListRef {
@@ -94,7 +94,12 @@ async fn a_note_shows_its_panes_its_article_and_the_draft_words() {
     let note: String = view.note.iter().map(|b| b.text()).collect();
     assert!(note.contains("abstract nouns"), "{note}");
     assert_eq!(view.article.title.as_deref(), Some("Abstract Nouns"));
-    let CheckSources::Verse { original, gateway } = &view.sources else {
+    let CheckSources::Verse {
+        original,
+        gateway,
+        simplified,
+    } = &view.sources
+    else {
         panic!("{:?}", view.sources);
     };
     match original {
@@ -134,11 +139,174 @@ async fn a_note_shows_its_panes_its_article_and_the_draft_words() {
     assert_eq!(pane, "ult");
     let lit_words: String = lit.iter().map(|&i| tokens[i as usize].as_str()).collect();
     assert!(lit_words.starts_with("forthefaith"), "{lit_words}");
+    // #996: the simplified Bible of the language sets (the English UST) is a source text of
+    // its own, with the quote's words lit as in the literal text.
+    let ust = simplified.as_ref().expect("the UST verse");
+    assert_eq!(ust.repo, "en_ust");
+    assert!(
+        ust.tokens
+            .concat()
+            .starts_with("I, Paul, {write this letter to you, Titus."),
+        "{ust:?}"
+    );
+    let ust_lit = simplified_lit(ust);
+    assert!(ust_lit.starts_with("Godtoteachthepeople"), "{ust_lit}");
     assert_eq!(view.target.words[..3], ["Pablo", "siervo", "de"]);
     assert!(view.target.selected.is_empty());
     assert!(view.target.verse.is_some());
     assert_eq!(view.decision.value.status, None);
     assert!(view.notices.is_empty(), "{:?}", view.notices);
+}
+
+/// The words of the simplified card that render the check's quote, in verse order.
+fn simplified_lit(pane: &SimplifiedPane) -> String {
+    pane.lit
+        .iter()
+        .map(|&i| pane.tokens[i as usize].as_str())
+        .collect()
+}
+
+const BIBLE_PINS: &str = "repos/_local_/_local_/sample_burrito/ingredients/checking/resources.json";
+const INSTALL_RECORDS: &str = "client_settings/uw-tc4.json";
+
+/// The pin of a bahtraku release slice under `fixtures/tc4/test-fixtures/resources`, and its
+/// files as a sideloaded burrito that lists only the book it holds.
+fn bahtraku(repo: &str, tag: &str) -> (serde_json::Value, Vec<(String, Vec<u8>)>) {
+    let dir = super::common::repo_root()
+        .join("fixtures/tc4/test-fixtures/resources")
+        .join(format!("{repo}@{tag}"));
+    let mut metadata: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(dir.join("metadata.json")).unwrap()).unwrap();
+    let sha = metadata["identification"]["primary"]["dcs"][format!("bahtraku/{repo}")]["revision"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    metadata["ingredients"]
+        .as_object_mut()
+        .unwrap()
+        .retain(|path, _| path == "ingredients/TIT.usfm");
+    let pin = serde_json::json!({
+        "repoPath": format!("git.door43.org/bahtraku/{repo}"),
+        "version": tag,
+        "sha": sha,
+        "flavor": "scripture/textTranslation",
+    });
+    let folder = format!("repos/_local_/_sideloaded_/{repo}/");
+    let files = vec![
+        (
+            format!("{folder}metadata.json"),
+            serde_json::to_vec_pretty(&metadata).unwrap(),
+        ),
+        (
+            format!("{folder}ingredients/TIT.usfm"),
+            std::fs::read(dir.join("TIT.usfm")).unwrap(),
+        ),
+    ];
+    (pin, files)
+}
+
+/// Whether the Indonesian package's simplified Bible is on the computer.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Gst {
+    Installed,
+    /// Pinned by the project, and not on this computer.
+    NotInstalled,
+}
+
+/// `en-pins` with the Bible project's checking language on the Indonesian package (bahtraku):
+/// its only source pane is the literal Bible (`id_glt` v105), and its primary set pins the
+/// simplified Bible (`id_gst` v16). No `ust` or `gst` pane is pinned. The fallback set stays
+/// the English suite, whose simplified Bible (`en_ust`) is on the computer.
+fn indonesian(gst: Gst) -> ScenarioState {
+    let (glt_pin, glt_files) = bahtraku("id_glt", "v105");
+    let (gst_pin, gst_files) = bahtraku("id_gst", "v16");
+    let mut files = scenario("en-pins").files().clone();
+    let json = |bytes: &[u8]| serde_json::from_slice::<serde_json::Value>(bytes).unwrap();
+
+    let mut pins = json(&files[BIBLE_PINS]);
+    let primary = &mut pins["languageSets"]["primary"];
+    primary["gatewayLanguage"] = serde_json::json!({ "languageId": "id", "owner": "bahtraku" });
+    primary["simplifiedText"] = gst_pin.clone();
+    let mut pane = glt_pin.clone();
+    pane["id"] = "glt".into();
+    pins["extraScripture"] = serde_json::json!([pane]);
+    files.insert(
+        BIBLE_PINS.to_owned(),
+        serde_json::to_vec_pretty(&pins).unwrap(),
+    );
+
+    let mut records = json(&files[INSTALL_RECORDS]);
+    records["installedResources"]["_local_/_sideloaded_/id_glt"] = glt_pin;
+    files.extend(glt_files);
+    if gst == Gst::Installed {
+        records["installedResources"]["_local_/_sideloaded_/id_gst"] = gst_pin;
+        files.extend(gst_files);
+    }
+    files.insert(
+        INSTALL_RECORDS.to_owned(),
+        serde_json::to_vec_pretty(&records).unwrap(),
+    );
+    ScenarioState::from_files(files).unwrap()
+}
+
+/// The sources of the first Titus 1:1 note of the Bible project of `state`: the Greek verse
+/// and the literal Bible's (the `glt` pane), which every Indonesian state shows, and the
+/// simplified Bible's.
+async fn first_note_sources(state: &ScenarioState) -> (Vec<String>, Option<SimplifiedPane>) {
+    let (_dir, t) = start_over(state).await;
+    let at = opened(&t.app).await.session.at;
+    let open = session(&t.app, &at, Tool::TranslationNotes).await;
+    let view = item(&t.app, &at, Tool::TranslationNotes, rows(&open)[0].index).await;
+    assert_eq!(view.place.to_string(), "TIT 1:1");
+    let CheckSources::Verse {
+        original,
+        gateway,
+        simplified,
+    } = view.sources
+    else {
+        panic!("{:?}", view.sources);
+    };
+    assert!(
+        matches!(original, OriginalView::Ready { verse: Some(_), .. }),
+        "{original:?}"
+    );
+    let GatewayView::Pane {
+        pane,
+        text: GatewayText::Verse { tokens, .. },
+    } = gateway
+    else {
+        panic!("{gateway:?}");
+    };
+    assert_eq!(pane, "glt");
+    (tokens, simplified)
+}
+
+/// #996 (J4): on the Indonesian package, a check shows the package's simplified Bible (GST)
+/// beside the Greek and the literal Bible (GLT), though the project pins no `gst` pane.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_check_shows_the_packages_simplified_bible_without_a_pane_for_it() {
+    let (glt, simplified) = first_note_sources(&indonesian(Gst::Installed)).await;
+    assert!(glt.concat().starts_with("Paulus, pelayan Allah"), "{glt:?}");
+    let gst = simplified.expect("the GST verse");
+    assert_eq!(gst.repo, "id_gst");
+    assert!(
+        gst.tokens
+            .concat()
+            .starts_with("Aku, Paulus, menulis surat ini kepadamu, Titus."),
+        "{gst:?}"
+    );
+    let gst_lit = simplified_lit(&gst);
+    assert!(gst_lit.starts_with("Allahtelahmengutusaku"), "{gst_lit}");
+}
+
+/// #996: when the package's simplified Bible has no text for the book (it is not on this
+/// computer, or does not hold the book), the language sets answer with the fallback set's,
+/// the English UST. That is another package's text: the compare card stays as it was, the
+/// Greek and the literal Bible, with no simplified card.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_check_shows_no_simplified_bible_of_another_package() {
+    let (_, simplified) = first_note_sources(&indonesian(Gst::NotInstalled)).await;
+    assert_eq!(simplified, None);
 }
 
 /// `en-check-tw-article`: a decided word check shows its selected word, and its article is

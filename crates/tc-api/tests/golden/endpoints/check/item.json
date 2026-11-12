@@ -92,6 +92,17 @@
                 }
               }
             }
+          },
+          "simplified": {
+            "repo": "en_ust",
+            "tokens": [
+              "I",
+              ", ",
+              "Paul"
+            ],
+            "lit": [
+              2
+            ]
           }
         }
       },

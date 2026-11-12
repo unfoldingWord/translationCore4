@@ -16,7 +16,7 @@ use leptos::html;
 use leptos::prelude::*;
 use tc_api::check::{
     CheckNotice, CheckSources, CheckUnit, DecideEdit, DecisionStatus, GatewayText, GatewayView,
-    OriginalVerse, OriginalView, Testament,
+    OriginalVerse, OriginalView, SimplifiedPane, Testament,
 };
 use tc_api::helps::ArticleView;
 use tc_api::shown::Direction as TextDir;
@@ -26,6 +26,7 @@ use super::rail::category_name;
 use crate::app::check::place_parts;
 use crate::app::check_item::{self, MarkFailure, WordKey, WordNav, WordStep};
 use crate::app::save::Source;
+use crate::app::understand::simplified_label;
 use crate::app::web::check::{Academy, Detail, Marking};
 use crate::app::web::{Actions, AppState, WriteCap};
 use crate::attrs::Attrs;
@@ -194,6 +195,19 @@ fn original_pane(original: &OriginalView) -> AnyView {
     .into_any()
 }
 
+/// A gateway text's verse with the quote's words lit.
+fn gateway_verse(
+    tokens: &[String],
+    lit: &[u32],
+    testid: &'static str,
+    lit_testid: &'static str,
+) -> AnyView {
+    let mut style = verse_text_style();
+    style.set("font-family", "var(--font-scripture)");
+    view! { <p data-testid=testid dir="auto" style=style.to_style()>{marked(tokens, lit, lit_testid)}</p> }
+        .into_any()
+}
+
 /// The gateway card (tC4's `UltPane`): the project's literal text with the quote's words lit.
 fn gateway_pane(gateway: &GatewayView) -> AnyView {
     let pane_id = match gateway {
@@ -205,11 +219,7 @@ fn gateway_pane(gateway: &GatewayView) -> AnyView {
         GatewayView::CrossFrame => pane_absent(t(keys::check::CROSS_FRAME, &[])),
         GatewayView::Pane { text, .. } => match text {
             GatewayText::Verse { tokens, lit } => {
-                let mut style = verse_text_style();
-                style.set("font-family", "var(--font-scripture)");
-                let words = marked(tokens, lit, "ult-hl");
-                view! { <p data-testid="ult-pane-text" dir="auto" style=style.to_style()>{words}</p> }
-                    .into_any()
+                gateway_verse(tokens, lit, "ult-pane-text", "ult-hl")
             }
             GatewayText::Absent => pane_absent(t(keys::check::PANE_ABSENT, &[])),
             GatewayText::NotInstalled => pane_absent(t(keys::source::NOT_INSTALLED, &[])),
@@ -225,6 +235,21 @@ fn gateway_pane(gateway: &GatewayView) -> AnyView {
         <div data-testid="ult-pane" style=source_card().to_style()>
             <Overline tone=OverlineTone::Muted>{label}</Overline>
             {body}
+        </div>
+    }
+    .into_any()
+}
+
+/// The simplified card (#996): the verse in the simplified Bible of the project's checking
+/// package, named after the text it shows (`id_gst` → GST), with the quote's words lit.
+fn simplified_pane(simplified: &SimplifiedPane) -> AnyView {
+    let name = simplified_label(Some(&simplified.repo));
+    view! {
+        <div data-testid="simplified-pane" style=source_card().to_style()>
+            <Overline tone=OverlineTone::Muted>
+                {t(keys::check::GATEWAY_LABEL, &[("name", &name)])}
+            </Overline>
+            {gateway_verse(&simplified.tokens, &simplified.lit, "simplified-pane-text", "simplified-hl")}
         </div>
     }
     .into_any()
@@ -838,9 +863,14 @@ fn item_detail(s: &AppState, actions: &Actions, unit: CheckUnit) -> AnyView {
         move || {
             detail.with(|d| match d {
                 Some(Detail::Ready(view)) => Some(match &view.sources {
-                    CheckSources::Verse { original, gateway } => view! {
+                    CheckSources::Verse {
+                        original,
+                        gateway,
+                        simplified,
+                    } => view! {
                         {original_pane(original)}
                         {gateway_pane(gateway)}
+                        {simplified.as_ref().map(simplified_pane)}
                     }
                     .into_any(),
                     CheckSources::Story { pane } => super::story::story_pane(pane),
