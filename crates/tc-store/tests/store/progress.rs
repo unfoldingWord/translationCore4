@@ -72,7 +72,7 @@ fn open_shows_determinate_progress_by_300_ms() {
     // No upper limit: how soon after 300 ms the report comes is speed, which the reference
     // laptop measures (`docs/evidence/storage-open-save-2026-10-17.md`), not this test.
     assert!(
-        after >= tc_store::progress::FIRST_REPORT,
+        after >= Duration::from_millis(300),
         "first report {after:?} after the open began by the test's clock, {:?} by its own",
         first.at
     );
@@ -87,10 +87,13 @@ fn open_shows_determinate_progress_by_300_ms() {
     );
     let reports: Vec<Progress> = seen.iter().map(|(p, _, _)| p.clone()).collect();
     assert_well_formed(&reports);
+    // A first report that comes after the reading ended fails here: no report shows the reading.
     assert!(
         reports
             .iter()
-            .any(|r| r.phase == Phase::Reading && r.bytes_total > 0)
+            .any(|r| r.phase == Phase::Reading && r.bytes_total > 0),
+        "no report of the reading with its bytes; phases and times: {:?}",
+        reports.iter().map(|r| (r.phase, r.at)).collect::<Vec<_>>()
     );
     handle.close().unwrap();
 }
