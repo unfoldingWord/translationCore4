@@ -289,8 +289,8 @@ pub struct UpgradePlan {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlannedChange {
     pub record: Record,
-    /// The record's heads in the snapshot, in id order, each once (V5). Private, so
-    /// [`Self::new`] is the only way to make one.
+    /// The record's heads in the snapshot, in id order, each once (V5). Private, so only
+    /// [`Self::new`] writes them.
     parents: Vec<ChangeId>,
     pub cause: Cause,
 }

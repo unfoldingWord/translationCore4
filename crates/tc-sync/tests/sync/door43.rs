@@ -3041,7 +3041,8 @@ async fn a_format_json_lost_on_door43_alone_is_restored() {
 /// the same recording, byte for byte, at one path before they sync, so its record has two
 /// heads of one blob. An edit of the file then starts from both, and it is recorded and
 /// reaches the teammate. Change ids are random and History lists the two heads by time, so
-/// the test uses eight recordings: for one of them at least, History's order is not id order.
+/// the test uses eight recordings: History's order is not id order for at least one of them
+/// in 255 runs of 256.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_edit_of_a_recording_two_teammates_added_alike_is_recorded() {
     let name = "titus-same-bytes";
