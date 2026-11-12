@@ -2613,8 +2613,12 @@ The test `open_shows_determinate_progress_by_300_ms` (unit S1) opens a corpus pr
 `FaultFs` that delays every read so that the open lasts several seconds (the Psalms corpus in
 the debug test run, where generating the whole Bible would take minutes; the whole Bible's open
 is measured in release builds, `docs/evidence/storage-open-save-2026-10-17.md`), and asserts:
-the first report, with a phase and a total, is sent no earlier than 300 ms and no later than
-400 ms after the open command; no report is sent from the caller's thread; counts never fall
+the first report, with a phase and a total, is sent no earlier than 300 ms after the open
+command, and another follows it before the project is usable (how soon after 300 ms the first
+one comes is the machine's speed, which this test does not limit: the release measurement in
+that evidence document, row "First progress report", judges it,
+`rulings/2026-10-23-tests-prove-behavior-not-speed.md`); no report is sent from the caller's
+thread; counts never fall
 within a phase, and each phase's last count is its total; the last report precedes "usable".
 It opens a small fixture without delays and asserts that, if the open ended before the 300 ms
 mark, no report was sent. It opens a folder that stops being readable 400 ms into the open

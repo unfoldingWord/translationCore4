@@ -69,11 +69,20 @@ fn open_shows_determinate_progress_by_300_ms() {
     );
     let (first, _, first_at) = &seen[0];
     let after = *first_at - started;
+    // How soon after 300 ms the report comes is the machine's speed, which the release
+    // measurement judges (ruling 2026-10-23, `docs/evidence/storage-open-save-2026-10-17.md`).
     assert!(
-        after >= Duration::from_millis(300) && after <= Duration::from_millis(400),
-        "first report after {after:?}"
+        after >= Duration::from_millis(300) && first.at >= Duration::from_millis(300),
+        "a report before 300 ms: the test saw it after {after:?}, the reporter sent it at {:?}",
+        first.at
     );
     assert!(first.total > 0);
+    assert!(
+        seen.len() > 1,
+        "the open sent one report only: the test saw it after {after:?}, the reporter sent \
+         it at {:?}",
+        first.at
+    );
     assert!(
         seen.iter().all(|(_, thread, _)| *thread != caller),
         "a report from the caller's thread"
