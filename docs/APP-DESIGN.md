@@ -3125,7 +3125,7 @@ tC4's spec assertions are the reference.
 | J9a, J9c, J9d import | F1 | store + I | P9 byte equality |
 | J11, J24 share | B9b, E1b | store + X | Upload cases become sync cases on the OBS card (Q2) |
 | J12 upgrade, J13 gateway change | C8, FIX-J | store | one `ApplyUpgrade` batch; look-again when heads moved; journeys `j12_an_upgrade_through_the_screens_moves_the_pin_on_disk` and `j13_change_writes_the_primary_set_to_disk` read the pin file from disk |
-| J15 slow open | B3 (UI with a held open), C1a | store with `FaultFs` delay | first report 300–400 ms (STORAGE:1883-1891) |
+| J15 slow open | B3 (UI with a held open), C1a | store with `FaultFs` delay | first report no earlier than 300 ms (STORAGE §6.1 "Progress") |
 | J16, J25 Understand | B3, B7, C3 | store | `Comment` records |
 | J17 open from Door43 | B9b, E1b | store + X | private repository through sign-in (Q3) |
 | J18 keep a version | B11 (read), C7a | store, second device's pending batch | `Resolve` with review tokens |
