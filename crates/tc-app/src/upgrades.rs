@@ -648,11 +648,11 @@ fn pin_changes(
                 "the project's resources have a conflict to resolve first".to_owned(),
             ));
         }
-        out.push(PlannedChange {
-            parents: read.heads(&key),
-            record: Record::Pins { group, value },
-            cause: Cause::Edit,
-        });
+        out.push(PlannedChange::new(
+            Record::Pins { group, value },
+            read.heads(&key),
+            Cause::Edit,
+        ));
     }
     Ok(out)
 }

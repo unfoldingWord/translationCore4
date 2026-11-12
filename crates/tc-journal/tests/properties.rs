@@ -647,11 +647,11 @@ fn the_loser_stays_in_history() {
             let parents = sim.devices[writer].state.shown_heads(&key, None);
             sim.write_planned(
                 writer,
-                vec![PlannedChange {
-                    record: record.clone(),
+                vec![PlannedChange::new(
+                    record.clone(),
                     parents,
-                    cause: Cause::Restore { from: loser },
-                }],
+                    Cause::Restore { from: loser },
+                )],
             );
             let after = &sim.devices[writer].state;
             let now = after.heads(&key);

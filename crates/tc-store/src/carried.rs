@@ -505,20 +505,20 @@ impl Writer {
             return Ok(false);
         };
         let plan = OutsidePlan {
-            changes: vec![PlannedChange {
-                record: Record::CarriedFile {
+            changes: vec![PlannedChange::new(
+                Record::CarriedFile {
                     path: record,
                     value: CarriedValue::Present { oid, size, md5 },
                 },
                 parents,
-                cause: Cause::External {
+                Cause::External {
                     source: ExternalSource::LocalFile {
                         path: source,
                         seen_md5: md5,
                     },
                     unknown_base: unknown,
                 },
-            }],
+            )],
             unknown_base: unknown,
             keys_examined: 1,
             ..OutsidePlan::default()

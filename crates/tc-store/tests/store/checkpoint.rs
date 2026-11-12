@@ -162,8 +162,8 @@ fn the_author_is_the_door43_username_after_consent() {
     handle
         .submit(Command::ApplyUpgrade {
             plan: tc_journal::command::UpgradePlan {
-                changes: vec![tc_journal::command::PlannedChange {
-                    record: Record::DeviceProfile {
+                changes: vec![tc_journal::command::PlannedChange::new(
+                    Record::DeviceProfile {
                         device,
                         value: tc_journal::record::DeviceProfileValue {
                             display_name: None,
@@ -174,8 +174,8 @@ fn the_author_is_the_door43_username_after_consent() {
                         },
                     },
                     parents,
-                    cause: Cause::Seed,
-                }],
+                    Cause::Seed,
+                )],
             },
         })
         .wait()

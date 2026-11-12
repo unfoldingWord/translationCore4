@@ -285,11 +285,7 @@ mod arbitrary {
         let mut plan_of = |record: Record| {
             let key = record.key();
             if keys.insert(key.clone()) {
-                changes.push(PlannedChange {
-                    parents: fold.heads(&key),
-                    record,
-                    cause: Cause::Seed,
-                });
+                changes.push(PlannedChange::new(record, fold.heads(&key), Cause::Seed));
             }
         };
         for (field, value) in details {

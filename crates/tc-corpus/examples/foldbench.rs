@@ -1198,7 +1198,10 @@ fn app(args: &[String]) {
         };
         let resolved: Vec<FoldInput> = planned
             .into_iter()
-            .map(|p| FoldInput::from(writer.write(p.record, p.parents, Cause::Resolve)))
+            .map(|p| {
+                let parents = p.parents().to_vec();
+                FoldInput::from(writer.write(p.record, parents, Cause::Resolve))
+            })
             .collect();
         let t = Instant::now();
         state.add(resolved);

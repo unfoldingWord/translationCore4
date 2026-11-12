@@ -94,7 +94,13 @@ impl Dev {
     pub fn apply(&mut self, planned: Vec<PlannedChange>) -> Vec<Change> {
         let cause = planned.first().map_or(Cause::Resolve, |p| p.cause.clone());
         self.batch(
-            planned.into_iter().map(|p| (p.record, p.parents)).collect(),
+            planned
+                .into_iter()
+                .map(|p| {
+                    let parents = p.parents().to_vec();
+                    (p.record, parents)
+                })
+                .collect(),
             cause,
         )
     }

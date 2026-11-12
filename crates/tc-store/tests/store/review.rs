@@ -71,8 +71,8 @@ fn record_carried(rig: &Rig, folder: &Path, handle: &ProjectHandle, bytes: &[u8]
     handle
         .submit(Command::ApplyUpgrade {
             plan: UpgradePlan {
-                changes: vec![PlannedChange {
-                    record: Record::CarriedFile {
+                changes: vec![PlannedChange::new(
+                    Record::CarriedFile {
                         path: RepoPath::parse(AUDIO).unwrap(),
                         value: CarriedValue::Present {
                             oid,
@@ -80,9 +80,9 @@ fn record_carried(rig: &Rig, folder: &Path, handle: &ProjectHandle, bytes: &[u8]
                             md5: Md5::of(bytes),
                         },
                     },
-                    parents: Vec::new(),
-                    cause: Cause::Seed,
-                }],
+                    Vec::new(),
+                    Cause::Seed,
+                )],
             },
         })
         .wait()

@@ -3036,3 +3036,77 @@ async fn a_format_json_lost_on_door43_alone_is_restored() {
         assert!(report.format_restored, "{repo}: {report:?}");
     }
 }
+
+/// V5 (a change's parents are in id order, each once), P1, P2 (#1010): Ana and Juan each add
+/// the same recording, byte for byte, at one path before they sync, so its record has two
+/// heads of one blob. An edit of the file then starts from both, and it is recorded and
+/// reaches the teammate. Change ids are random and History lists the two heads by time, so
+/// the test uses eight recordings: History's order is not id order for at least one of them
+/// in 255 runs of 256.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_edit_of_a_recording_two_teammates_added_alike_is_recorded() {
+    let name = "titus-same-bytes";
+    let door43 = door43(name).await;
+    let dir = tempfile::tempdir().unwrap();
+    let ana = computer(dir.path(), "ana");
+    let folder_a = titus(&ana);
+    let a = open(&ana, &folder_a);
+    connect(&a, &door43, name);
+    synced(&sync(&a, &door43).await);
+    a.close().unwrap();
+    let juan = computer(dir.path(), "juan");
+    let folder_b = copy_to(&folder_a, &juan);
+    let b = open(&juan, &folder_b);
+    let a = open(&ana, &folder_a);
+    let songs: Vec<String> = (1..=8)
+        .map(|n| format!("ingredients/audio/intro-{n}.mp3"))
+        .collect();
+    for song in &songs {
+        put_outside(&a, &folder_a, song, b"the intro");
+        put_outside(&b, &folder_b, song, b"the intro");
+    }
+    synced(&sync(&a, &door43).await);
+    synced(&sync(&b, &door43).await);
+    synced(&sync(&a, &door43).await);
+    let heads = |handle: &ProjectHandle, song: &str| {
+        let key = RecordKey::CarriedFile(tc_journal::RepoPath::parse(song).unwrap());
+        handle.snapshot().fold().heads(&key)
+    };
+    for song in &songs {
+        assert_eq!(
+            heads(&a, song).len(),
+            2,
+            "{song}: one head from each teammate"
+        );
+    }
+    // The edit is made where the project places the recording, whatever that path is.
+    let placed = a.snapshot().fold().carried_files();
+    for song in &songs {
+        let at = placed.iter().find(|p| p.record.as_str() == song).unwrap();
+        put_outside(&a, &folder_a, &at.path, b"the intro, recorded again");
+    }
+    let again = tc_journal::Md5::of(b"the intro, recorded again");
+    for song in &songs {
+        assert_eq!(
+            heads(&a, song).len(),
+            1,
+            "{song}: the edit replaced both heads"
+        );
+        let placed = a.snapshot().fold().carried_files();
+        let at: Vec<_> = placed.iter().filter(|p| &p.path == song).collect();
+        assert_eq!(at.len(), 1, "{song}: {placed:?}");
+        assert_eq!(at[0].md5, again, "{song}: the project holds the edit");
+    }
+    synced(&sync(&a, &door43).await);
+    synced(&sync(&b, &door43).await);
+    b.wait_idle();
+    for song in &songs {
+        assert_eq!(
+            std::fs::read(folder_b.join(song)).unwrap(),
+            b"the intro, recorded again",
+            "{song}: the edit reached the teammate"
+        );
+    }
+    a.close().unwrap();
+    b.close().unwrap();
+}

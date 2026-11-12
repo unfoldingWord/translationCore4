@@ -251,8 +251,8 @@ fn a_new_device_copies_the_profile_and_both_group_as_mine() {
     handle
         .submit(tc_journal::command::Command::ApplyUpgrade {
             plan: tc_journal::command::UpgradePlan {
-                changes: vec![tc_journal::command::PlannedChange {
-                    record: Record::DeviceProfile {
+                changes: vec![tc_journal::command::PlannedChange::new(
+                    Record::DeviceProfile {
                         device,
                         value: DeviceProfileValue {
                             display_name: None,
@@ -261,8 +261,8 @@ fn a_new_device_copies_the_profile_and_both_group_as_mine() {
                         },
                     },
                     parents,
-                    cause: tc_journal::Cause::Seed,
-                }],
+                    tc_journal::Cause::Seed,
+                )],
             },
         })
         .wait()

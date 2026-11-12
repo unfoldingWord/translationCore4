@@ -817,20 +817,20 @@ impl FoldState {
             && !candidates.is_empty()
         {
             plan.book_added = Some(book);
-            presence = Some(PlannedChange {
-                record: Record::BookPresence {
+            presence = Some(PlannedChange::new(
+                Record::BookPresence {
                     book,
                     value: BookPresence::Present {
                         scope: Scope::Whole,
                         how: PresentHow::Added,
                     },
                 },
-                parents: Vec::new(),
-                cause: Cause::External {
+                Vec::new(),
+                Cause::External {
                     source: source.clone(),
                     unknown_base: false,
                 },
-            });
+            ));
         }
         // Rule 9.
         let removed_value = candidates
@@ -1075,10 +1075,7 @@ impl FoldState {
         for change in outside.changes {
             let key = change.record.key();
             match &key {
-                RecordKey::BookPresence(_) => plan.changes.push(PlannedChange {
-                    cause: cause(false),
-                    ..change
-                }),
+                RecordKey::BookPresence(_) => plan.changes.push(change.with_cause(cause(false))),
                 RecordKey::Verse(_, c, v) => {
                     let project = self.projected(&key);
                     let heads = self.heads(&key);
@@ -1118,33 +1115,27 @@ impl FoldState {
                     } else if fillable && file_has {
                         verse_imported.insert((*c, *v));
                         plan.imported.push(key.clone());
-                        plan.changes.push(PlannedChange {
-                            parents: heads,
-                            cause: cause(false),
-                            record: change.record,
-                        });
+                        plan.changes
+                            .push(PlannedChange::new(change.record, heads, cause(false)));
                     } else if file_has
-                        && !change.parents.is_empty()
-                        && same_heads(&change.parents, &heads)
+                        && !change.parents().is_empty()
+                        && same_heads(change.parents(), &heads)
                     {
                         // Changed in the file since its base, and the project still holds
                         // the base's heads: the file's edit, with no question.
                         verse_imported.insert((*c, *v));
                         plan.imported.push(key.clone());
-                        plan.changes.push(PlannedChange {
-                            parents: heads,
-                            cause: cause(false),
-                            record: change.record,
-                        });
+                        plan.changes
+                            .push(PlannedChange::new(change.record, heads, cause(false)));
                     } else if is_a_head {
                     } else {
                         verse_review.insert((*c, *v));
                         plan.to_review.push(key);
-                        plan.review.push(PlannedChange {
-                            parents: Vec::new(),
-                            cause: cause(true),
-                            record: change.record,
-                        });
+                        plan.review.push(PlannedChange::new(
+                            change.record,
+                            Vec::new(),
+                            cause(true),
+                        ));
                     }
                 }
                 _ => later.push(change),
@@ -1157,24 +1148,21 @@ impl FoldState {
                     continue;
                 }
                 if verse_imported.contains(&(*c, *v)) {
-                    plan.changes.push(PlannedChange {
-                        parents: self.heads(&key),
-                        cause: cause(false),
-                        record: change.record,
-                    });
+                    plan.changes.push(PlannedChange::new(
+                        change.record,
+                        self.heads(&key),
+                        cause(false),
+                    ));
                     continue;
                 }
             }
             let heads = self.heads(&key);
-            if !change.parents.is_empty() && same_heads(&change.parents, &heads) {
+            if !change.parents().is_empty() && same_heads(change.parents(), &heads) {
                 // As for a verse: changed in the file since its base (a header, a chapter's
                 // front), and the project still holds the base's heads.
                 plan.imported.push(key);
-                plan.changes.push(PlannedChange {
-                    parents: heads,
-                    cause: cause(false),
-                    record: change.record,
-                });
+                plan.changes
+                    .push(PlannedChange::new(change.record, heads, cause(false)));
                 continue;
             }
             let wanted = compare_key(&change.record, true);
@@ -1186,11 +1174,8 @@ impl FoldState {
                 continue;
             }
             plan.to_review.push(key);
-            plan.review.push(PlannedChange {
-                parents: Vec::new(),
-                cause: cause(true),
-                record: change.record,
-            });
+            plan.review
+                .push(PlannedChange::new(change.record, Vec::new(), cause(true)));
         }
         plan.changes.sort_by_key(|c| c.record.key());
         plan.review.sort_by_key(|c| c.record.key());

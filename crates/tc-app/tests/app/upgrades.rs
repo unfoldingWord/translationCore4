@@ -980,14 +980,14 @@ async fn a_stale_confirm_reshows_the_dialog_with_new_counts() {
     todo.judgement.nothing_to_select = false;
     let record = RecordKey::Check(key.clone());
     let teammate = UpgradePlan {
-        changes: vec![PlannedChange {
-            parents: session.read().heads(&record),
-            record: Record::Check {
+        changes: vec![PlannedChange::new(
+            Record::Check {
                 key: key.clone(),
                 value: CheckValue::Decision(todo),
             },
-            cause: Cause::Edit,
-        }],
+            session.read().heads(&record),
+            Cause::Edit,
+        )],
     };
     session
         .handle()

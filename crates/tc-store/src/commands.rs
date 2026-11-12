@@ -1365,10 +1365,7 @@ fn apply_upgrade(ctx: &Ctx<'_>, plan: &UpgradePlan) -> R<Vec<PlannedChange>> {
     let mut keys = BTreeSet::new();
     for planned in &plan.changes {
         let key = planned.record.key();
-        let mut want = planned.parents.clone();
-        want.sort();
-        want.dedup();
-        if ctx.fold.heads(&key) != want || !keys.insert(key) {
+        if ctx.fold.heads(&key) != planned.parents() || !keys.insert(key) {
             return Err(CommandError::PlanStale);
         }
     }

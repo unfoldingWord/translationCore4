@@ -97,7 +97,7 @@ fn an_edited_verse_is_one_change_with_the_heads_it_started_from() {
     let change = &plan.changes[0];
     assert_eq!(change.record.key(), verse_key(1, 3));
     assert_eq!(words(&change.record), "words of 1:3, fixed");
-    assert_eq!(change.parents, state.heads(&verse_key(1, 3)));
+    assert_eq!(change.parents(), state.heads(&verse_key(1, 3)));
     assert!(matches!(
         &change.cause,
         Cause::External { unknown_base: false, source: ExternalSource::LocalFile { seen_md5, .. } }
@@ -259,7 +259,7 @@ fn loss_outside_mass_delete_is_conflict() {
     assert!(plan.unknown_base);
     assert!(plan.changes.len() >= 30, "{}", plan.changes.len());
     assert!(
-        plan.changes.iter().all(|c| c.parents.is_empty()
+        plan.changes.iter().all(|c| c.parents().is_empty()
             && matches!(
                 c.cause,
                 Cause::External {
@@ -298,7 +298,7 @@ fn loss_outside_revert_is_conflict() {
     let state = world.state();
     let plan = plan_of(&state, &old, &base, false);
     assert_eq!(plan.changes.len(), 1, "{plan:?}");
-    assert!(plan.changes[0].parents.is_empty());
+    assert!(plan.changes[0].parents().is_empty());
     assert!(plan.unknown_base);
     assert_eq!(words(&plan.changes[0].record), "words of 1:2");
 }
@@ -339,12 +339,12 @@ fn an_unknown_base_records_every_change_without_parents() {
     let file = edited(&bytes, "words of 1:3", "words of 1:3, fixed");
     let plan = plan_of(&state, &file, &Base::Unknown, false);
     assert_eq!(plan.changes.len(), 1);
-    assert!(plan.changes[0].parents.is_empty());
+    assert!(plan.changes[0].parents().is_empty());
     assert!(plan.unknown_base);
     // A known base forced unknown (the person took in a held file) does the same.
     let (_, base) = world.written(&DerivedFile::Usfm(BOOK));
     let forced = plan_of(&state, &file, &base, true);
-    assert!(forced.changes[0].parents.is_empty());
+    assert!(forced.changes[0].parents().is_empty());
     assert!(forced.unknown_base);
 }
 
@@ -359,7 +359,7 @@ fn more_than_fifty_changed_keys_are_recorded_without_parents() {
     let plan = plan_of(&state, text.as_bytes(), &base, false);
     assert_eq!(plan.changes.len(), 60);
     assert!(plan.unknown_base);
-    assert!(plan.changes.iter().all(|c| c.parents.is_empty()));
+    assert!(plan.changes.iter().all(|c| c.parents().is_empty()));
 }
 
 #[test]
@@ -391,7 +391,7 @@ fn a_book_file_of_an_absent_book_adds_the_book() {
                 },
                 ..
             }
-        ) && c.parents.is_empty()),
+        ) && c.parents().is_empty()),
         "{plan:?}"
     );
     let mut all = world.changes.clone();
@@ -428,7 +428,7 @@ fn an_outside_comment_edit_with_no_known_base_is_asked_never_dropped() {
     );
     assert_eq!(plan.changes.len(), 1, "{plan:?}");
     assert!(
-        plan.changes[0].parents.is_empty(),
+        plan.changes[0].parents().is_empty(),
         "V6: a comment change names no parents"
     );
     assert!(plan.unknown_base);
@@ -691,7 +691,7 @@ fn undo_outside_restores_previous_values_with_the_edit_as_parent() {
     assert!(left.is_empty());
     assert_eq!(undo.len(), 1);
     assert_eq!(
-        undo[0].parents,
+        undo[0].parents(),
         vec![external[0].id()],
         "the edit is the parent"
     );
@@ -1028,6 +1028,10 @@ fn an_edit_over_two_heads_of_one_value_names_them_in_id_order() {
         let plan = plan_of(&state, &file, &Base::Heads(records), false);
         assert_eq!(plan.changes.len(), 1, "{plan:?}");
         assert!(!plan.unknown_base, "{plan:?}");
-        assert_eq!(plan.changes[0].parents, sorted, "descending: {descending}");
+        assert_eq!(
+            plan.changes[0].parents(),
+            sorted,
+            "descending: {descending}"
+        );
     }
 }

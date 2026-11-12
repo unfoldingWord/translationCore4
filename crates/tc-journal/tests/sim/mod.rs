@@ -1950,7 +1950,10 @@ impl Sim {
         let cause = planned.first().map_or(Cause::Resolve, |p| p.cause.clone());
         let items = planned
             .into_iter()
-            .map(|p| (template_of(&self.labels, p.record), p.parents))
+            .map(|p| {
+                let parents = p.parents().to_vec();
+                (template_of(&self.labels, p.record), parents)
+            })
             .collect();
         self.write(d, items, cause);
     }
