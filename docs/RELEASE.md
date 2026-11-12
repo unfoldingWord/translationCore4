@@ -46,6 +46,21 @@ H3, H4, H10 and H16). The pipeline is `.github/workflows/release.yml`; its scrip
 Uninstalling or updating replaces only the app. Projects and app data stay (tC4 #44); the smoke
 test checks it.
 
+A newer installer replaces the installed app; it never leaves two (#1016). On Windows, Inno Setup
+finds the earlier install by its `AppId` and installs into the same folder. On macOS the pkg
+writes only `/Applications/translationCore 4.app`, so its preinstall
+(`scripts/release/macos-preinstall.sh`) looks for a translationCore 4 anywhere else: by bundle id
+through Spotlight, and in Applications, the person's own Applications, Desktop and Downloads for
+a Mac that does not index. When it finds one, at the install location or elsewhere, it asks
+before anything is replaced. *Replace* removes the copies elsewhere and installs; *Cancel*
+installs nothing and removes nothing, and Installer then reports a failed installation, which is
+the only way a pkg script can stop. `installer -pkg` in a terminal replaces without asking. The
+tC4 4.0 beta (`translationCore4.app`, the same bundle id) is not a translationCore 4 and stays
+beside it (H16 part 3). On Linux the translator deletes the old folder and unzips the new one.
+
+The installed bundle's `CFBundleShortVersionString` and the pkg receipt (`pkgutil --pkg-info
+org.unfoldingword.translationcore4`) carry the app's whole version, such as `4.1.0-preview2`.
+
 ## Cutting a release
 
 Each release has one GitHub issue, opened from the **Release** issue template
@@ -139,6 +154,8 @@ branch, it can also be run by hand from the Actions tab on any branch.
 | the Windows installer is signed | publish | no release carries an `-unsigned` Windows installer |
 | `seal-macos.test.mjs`, `seal-macos.sh` | build (macOS) | the staged bundle passes `codesign --verify --deep --strict` with its manifest inside, and the manifest is the record of its files (#969) |
 | `package.sh` | build | only a stage whose manifest matches its files, and on macOS whose seal is valid, is packaged; a failed build job skips `smoke` and `publish` |
+| `macos-preinstall.test.mjs` | build (macOS) | the pkg's preinstall finds a translationCore 4 under another name or in another folder, leaves the tC4 4.0 beta and other apps, removes only the copies the pkg does not overwrite, and the pkg records the whole version (#1016) |
+| `installing_over_leaves_one_translationcore_4`, `installing_over_keeps_app_data_and_projects` | smoke (Windows, macOS) | the newest published release is installed and started, then this build is installed over it with no uninstall: one app is there (on macOS, also after a second copy under another name), and every file the older build wrote in app data and the projects folder is still there (#1016) |
 | `installed_manifest_is_the_build_s` | smoke | the installed manifest is the build's |
 | `installed_files_are_the_manifest_s` | smoke | every installed file has the size and sha256 the manifest records, and nothing else is there but Inno Setup's uninstaller |
 | `installed_app_seal_is_valid` | smoke (macOS) | the installed bundle passes `codesign --verify --deep --strict` (#969) |

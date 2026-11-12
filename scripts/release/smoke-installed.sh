@@ -8,6 +8,10 @@
 #   scripts/release/smoke-installed.sh <platform> <dist dir> [<previous release's dist dir>]
 #
 # Until a release before this one exists, the reinstall uses this build's installer.
+#
+# TC4_UPGRADE_FROM names a folder that holds the installer of the release before this one. With
+# it, on Windows and macOS, that release is installed and started first and this build is
+# installed over it, with no uninstall between (#1016).
 set -euo pipefail
 platform=$1 dist=$2 previous=${3:-$2}
 here=$(cd "$(dirname "$0")" && pwd)
@@ -45,7 +49,57 @@ case "$platform" in
     ;;
   *) echo "smoke-installed.sh: no platform $platform" >&2; exit 2 ;;
 esac
+
+# #1016: a translator who has the release before this one installs this build over it. One
+# translationCore 4 is there afterwards, and what the older one wrote is still there.
+copies() {
+  case "$platform" in
+    macos-arm64)
+      find /Applications "$HOME/Applications" "$HOME/Desktop" "$HOME/Downloads" -maxdepth 3 -name '*.app' -prune -print 2> /dev/null | while IFS= read -r app; do
+        [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist" 2> /dev/null)" = org.unfoldingword.translationcore4 ] || continue
+        [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$app/Contents/Info.plist" 2> /dev/null)" = "translationCore 4" ] || continue
+        printf '%s\n' "$app"
+      done || true ;; # find fails on a folder this Mac does not have
+    windows-x64)
+      # The install folders, and the entries Settings, Apps lists.
+      ls -d "$(cygpath -u "$LOCALAPPDATA")/Programs/translationCore 4"* 2> /dev/null || true
+      MSYS2_ARG_CONV_EXCL='*' reg query 'HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall' /s /v DisplayName 2> /dev/null | grep 'translationCore 4' || true ;;
+  esac
+}
+upgrade_from=${TC4_UPGRADE_FROM:-}
+if [ -n "$upgrade_from" ]; then
+  [ "$platform" != linux-x64 ] || { echo "smoke-installed.sh: Linux is unzipped by hand; there is no install over" >&2; exit 2; }
+  install "$upgrade_from" previous
+  "${start[@]}" --app-data "$(np "$appdata")" 2>&1 | tee smoke-logs/previous-starts.txt
+  older=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).commit)' "$(np "$(find "$root" -name BUILD-MANIFEST.json | head -1)")")
+  [ -d "$HOME/translationCore4/projects" ] || { echo "FAIL the_older_build_made_its_projects_folder"; exit 1; }
+  find "$appdata" "$HOME/translationCore4" -type f ! -name shell.log | sort > smoke-logs/previous-files.txt
+  [ -s smoke-logs/previous-files.txt ] || { echo "FAIL the_older_build_wrote_app_data: $appdata is empty"; exit 1; }
+  # The reported case: the older app also sits under another name, where the pkg does not write.
+  [ "$platform" != macos-arm64 ] || sudo ditto "$root" "/Applications/translationCore 4 older.app"
+  echo "ok the_previous_release_installs_and_starts: $older"
+fi
 install "$dist" first
+if [ "$platform" = macos-arm64 ]; then
+  # #1016: Finder and the receipt name the app's version, as the installer's file name does.
+  version=$(basename "$(ls "$dist"/translationCore4-*-macos-arm64*.pkg)" | sed 's/^translationCore4-\(.*\)-macos-arm64.*$/\1/')
+  shown=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$root/Contents/Info.plist")
+  receipt=$(pkgutil --pkg-info org.unfoldingword.translationcore4 | sed -n 's/^version: //p')
+  [ "$shown" = "$version" ] && [ "$receipt" = "$version" ] || { echo "FAIL the_installed_app_and_receipt_show_the_app_s_version: $version, but the app shows $shown and the receipt $receipt"; exit 1; }
+  echo "ok the_installed_app_and_receipt_show_the_app_s_version: $version"
+fi
+if [ -n "$upgrade_from" ]; then
+  copies | tee smoke-logs/copies.txt
+  case "$platform" in macos-arm64) want=1 ;; windows-x64) want=2 ;; esac
+  [ "$(grep -c . smoke-logs/copies.txt)" = "$want" ] || { echo "FAIL installing_over_leaves_one_translationcore_4"; exit 1; }
+  echo "ok installing_over_leaves_one_translationcore_4"
+  while IFS= read -r file; do
+    [ -f "$file" ] || { echo "FAIL installing_over_keeps_app_data_and_projects: $file is gone"; exit 1; }
+  done < smoke-logs/previous-files.txt
+  echo "ok installing_over_keeps_app_data_and_projects"
+  newer=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).commit)' "$(np "$manifest")")
+  [ "$older" != "$newer" ] || { echo "FAIL the_previous_release_is_an_older_build: both are $older"; exit 1; }
+fi
 
 # #871: the translationCore mark, not Electron's, wherever the system shows the app's icon.
 repo=$(cd "$here/../.." && pwd)
