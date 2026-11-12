@@ -1091,6 +1091,8 @@ browserTest('a_check_shows_the_packages_simplified_bible_beside_the_literal_one'
     assert.equal(await cardLabel(page, 'ult-pane'), gatewayLabel('GLT'));
     assert.equal(await cardLabel(page, 'simplified-pane'), gatewayLabel('GST'));
     assert.match(await page.getByTestId('simplified-pane-text').textContent(), /^Aku, Paulus, menulis surat ini kepadamu, Titus\./);
+    const lit = (await page.getByTestId('simplified-hl').allTextContents()).join('').replace(/\s/g, '');
+    assert.match(lit, /^Allahtelahmengutusaku/, 'the simplified row marks the quote');
     await evidence(page, 'compare-card-id-gst');
   }, { scenario: 'en-pins', editState: indonesianPackage({ gst: true }) });
 });

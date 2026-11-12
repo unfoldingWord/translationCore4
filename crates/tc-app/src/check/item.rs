@@ -376,7 +376,8 @@ fn lit_verse(
 /// The verse of the package's simplified Bible at the check's place: the verse itself, or
 /// the verse span it is in, with the words of the check's verse lit. None when the package
 /// has no simplified text for the book on this computer, when the text numbers its verses
-/// otherwise than the project, or when it has no such verse.
+/// otherwise than the project, or when it has no such verse. A check on a verse range (`9-10`)
+/// has the card only when the text holds the range inside one span; a list (`3,5`) has none.
 fn simplified(loaded: &LoadedBook, place: &CheckPlace, item: &CheckItem) -> Option<SimplifiedPane> {
     if !matches!(loaded.numbering, Numbering::Same) {
         return None;

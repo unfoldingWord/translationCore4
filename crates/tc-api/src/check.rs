@@ -727,8 +727,8 @@ pub enum GatewayView {
     },
 }
 
+/// The simplified row of the compare card: the verse in the simplified Bible of the project's
 /// checking package (the UST, or a package's GST).
-/// language sets (the UST, or a package's GST).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "proptest", derive(proptest_derive::Arbitrary))]
 #[serde(rename_all = "camelCase")]

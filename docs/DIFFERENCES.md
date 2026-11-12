@@ -237,9 +237,11 @@ Under the same rule, tC4 4.0 bugs the rebuild fixes on purpose (FIX-R, 2026-10-2
 - In Check, the compare card shows the simplified Bible of the project's checking package (the
   UST, or a package's GST such as `id_gst`) as a source text of its own, after the original
   language and the literal Bible, whenever that Bible is on the computer and holds the verse,
-  by itself or inside a verse span. It needs no `ust` or `gst` source pane. Another package's
-  simplified Bible is not shown: when the package's own has no text for the book, the card is
-  the original language and the literal Bible, as in tC4, which shows those two only (#996).
+  by itself or inside a verse span. A check on a verse range (`9-10`) gets the card only when that
+  Bible holds the range inside one verse span, and a check on a list of verses (`3,5`) gets none.
+  It needs no `ust` or `gst` source pane. Another package's simplified Bible is not shown: when
+  the package's own has no text for the book, the card is the original language and the literal
+  Bible, as in tC4, which shows those two only (#996).
 - In Check, words selected on a check with no decision hold the translator on the check.
   Previous and Next are off until the check is marked or the words are unselected. A row of the rail,
   All checking tools, a mode tab and the project switch ask first: Stay, or Leave

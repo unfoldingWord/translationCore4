@@ -149,12 +149,21 @@ async fn a_note_shows_its_panes_its_article_and_the_draft_words() {
             .starts_with("I, Paul, {write this letter to you, Titus."),
         "{ust:?}"
     );
-    assert!(!ust.lit.is_empty(), "{ust:?}");
+    let ust_lit = simplified_lit(ust);
+    assert!(ust_lit.starts_with("Godtoteachthepeople"), "{ust_lit}");
     assert_eq!(view.target.words[..3], ["Pablo", "siervo", "de"]);
     assert!(view.target.selected.is_empty());
     assert!(view.target.verse.is_some());
     assert_eq!(view.decision.value.status, None);
     assert!(view.notices.is_empty(), "{:?}", view.notices);
+}
+
+/// The words of the simplified card that render the check's quote, in verse order.
+fn simplified_lit(pane: &SimplifiedPane) -> String {
+    pane.lit
+        .iter()
+        .map(|&i| pane.tokens[i as usize].as_str())
+        .collect()
 }
 
 const BIBLE_PINS: &str = "repos/_local_/_local_/sample_burrito/ingredients/checking/resources.json";
@@ -286,7 +295,8 @@ async fn a_check_shows_the_packages_simplified_bible_without_a_pane_for_it() {
             .starts_with("Aku, Paulus, menulis surat ini kepadamu, Titus."),
         "{gst:?}"
     );
-    assert!(!gst.lit.is_empty(), "the quote's words are lit: {gst:?}");
+    let gst_lit = simplified_lit(&gst);
+    assert!(gst_lit.starts_with("Allahtelahmengutusaku"), "{gst_lit}");
 }
 
 /// #996: when the package's simplified Bible has no text for the book (it is not on this
