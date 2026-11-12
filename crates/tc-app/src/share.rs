@@ -23,6 +23,7 @@ use crate::app::App;
 use crate::dispatch::Handle;
 use crate::flows::FlowRequest;
 use crate::jobs::{JobEnd, JobSpec, ProgressSink};
+use crate::pins::PinsStop;
 use crate::reports::{ReportOp, ReportOutcome, facts};
 
 /// tC4's `recommendOrganization`: of the organizations the person can create in, the one with
@@ -285,9 +286,9 @@ impl Handle<OpenDoor43> for App {
         Ok(self
             .inner
             .jobs
-            .start_typed::<OpenDoor43, _, _>(spec, move |_ctx| async move {
+            .start_typed::<OpenDoor43, _, _>(spec, move |ctx| async move {
                 let port = app.inner.sync.clone();
-                port.open(app, req.repo, name).await.map_err(JobEnd::Failed)
+                port.open(app, req.repo, name, ctx).await
             }))
     }
 }
@@ -302,17 +303,23 @@ enum OpenTry {
 impl App {
     /// The open from Door43 (E1a, unit X's `tc_sync::join`): `repo` fetched and placed as the
     /// project `name`. A refusal before anything was placed changes nothing.
+    ///
+    /// INV-OPEN-FROM-DOOR43-LEAVES-NO-PIN-MISSING (#1013): between the fetch and the placement,
+    /// the versions the project pins and this computer lacks are downloaded. The project is
+    /// placed only when every one of them is here; a cancel or a failed download adds no
+    /// project (owner rulings of 2026-11-12).
     pub(crate) async fn door43_open(
         &self,
         repo: tc_api::door43::RepoSource,
         name: tc_api::door43::ProjectName,
-    ) -> Result<tc_api::ids::ProjectRef, ApiError> {
+        ctx: crate::jobs::JobCtx,
+    ) -> Result<tc_api::ids::ProjectRef, JobEnd> {
         let client = self.door43()?.clone();
         // A public repository opens without a sign-in; a kept one is resumed if there is one.
         let session = match self.door43_session().await {
             Ok(session) => Some(session),
             Err(ApiError::NeedsSignIn(_)) => None,
-            Err(e) => return Err(e),
+            Err(e) => return Err(e.into()),
         };
         let attempt = match session {
             Some(_) => OpenTry::SignedIn,
@@ -325,44 +332,81 @@ impl App {
                 reason: "not owner/repository".to_owned(),
             })?;
         let store = self.inner.sessions.store().clone();
+        let gate: crate::backend::JoinGate = {
+            let app = self.clone();
+            Box::new(move |file: Option<Vec<u8>>| {
+                Box::pin(async move {
+                    if let Some(pins) = file.as_deref().and_then(crate::pins::pins_of_file) {
+                        app.install_missing_pins(&pins, &ctx).await?;
+                    }
+                    // A cancel that came at any moment before the placement adds no project,
+                    // also when nothing was left to download.
+                    match ctx.cancel.is_cancelled() {
+                        true => Err(PinsStop::Cancelled),
+                        false => Ok(()),
+                    }
+                })
+            })
+        };
         let joined = store
-            .door43_join(client, session.clone(), repo, name.as_str().to_owned())
+            .door43_join(
+                client,
+                session.clone(),
+                repo,
+                name.as_str().to_owned(),
+                gate,
+            )
             .await
             .ok_or(ApiError::Unavailable(tc_api::error::Feature::Sync))?;
         // INV-PRIVATE-OPEN-ASKS-SIGN-IN-ONCE: Door43 answers a private repository with 401 (git)
         // or 404 (API) to a request without a token. Only an anonymous try asks the sign-in; the
         // try after it carries the token, and its 401 or 404 is the refusal.
-        if let Err(tc_sync::JoinError::Refused(
+        if let Err(tc_sync::JoinStop::Join(tc_sync::JoinError::Refused(
             refusal @ (SyncRefusal::AuthFailed | SyncRefusal::RemoteMissing),
-        )) = &joined
+        ))) = &joined
         {
             match (attempt, &session) {
                 (OpenTry::Anonymous, _) => {
-                    return Err(ApiError::NeedsSignIn(
-                        tc_api::error::SignInReason::NotSignedIn,
-                    ));
+                    return Err(
+                        ApiError::NeedsSignIn(tc_api::error::SignInReason::NotSignedIn).into(),
+                    );
                 }
                 (OpenTry::SignedIn, Some(session)) if *refusal == SyncRefusal::AuthFailed => {
-                    return Err(self.door43_refused(session).await);
+                    return Err(self.door43_refused(session).await.into());
                 }
                 (OpenTry::SignedIn, _) => {}
             }
         }
-        let joined = joined.map_err(|e| match e {
-            tc_sync::JoinError::Blocked(block) => {
-                ApiError::Refused(Refusal::Sync(tc_api::refusal::SyncFailure::Blocked(block)))
+        let joined = joined.map_err(|stop| match stop {
+            tc_sync::JoinStop::Gate(PinsStop::Cancelled) => JobEnd::Cancelled,
+            // The switch was turned off while the open ran: the open asks again, as the
+            // guided fix's download does.
+            tc_sync::JoinStop::Gate(PinsStop::Offline) => {
+                JobEnd::Failed(ApiError::NeedsInternet(tc_api::endpoint::NetKind::Open))
             }
-            tc_sync::JoinError::Refused(refusal) => ApiError::Refused(Refusal::Sync(
-                tc_api::refusal::SyncFailure::BeforeIntake(refusal),
-            )),
+            tc_sync::JoinStop::Gate(PinsStop::Failed { pin, why, detail }) => {
+                JobEnd::Failed(ApiError::Refused(Refusal::OpenDoor43(
+                    OpenDoor43Refusal::PinNotDownloaded { pin, why, detail },
+                )))
+            }
+            tc_sync::JoinStop::Join(tc_sync::JoinError::Blocked(block)) => JobEnd::Failed(
+                ApiError::Refused(Refusal::Sync(tc_api::refusal::SyncFailure::Blocked(block))),
+            ),
+            tc_sync::JoinStop::Join(tc_sync::JoinError::Refused(refusal)) => {
+                JobEnd::Failed(ApiError::Refused(Refusal::Sync(
+                    tc_api::refusal::SyncFailure::BeforeIntake(refusal),
+                )))
+            }
             // Taken since the handler's check: the same answer the check gives, nothing touched.
-            tc_sync::JoinError::Create(tc_store::CreateError::NameExists(_)) => {
-                ApiError::Refused(Refusal::OpenDoor43(OpenDoor43Refusal::NameExists))
-            }
-            other => self.internal(
+            tc_sync::JoinStop::Join(tc_sync::JoinError::Create(
+                tc_store::CreateError::NameExists(_),
+            )) => JobEnd::Failed(ApiError::Refused(Refusal::OpenDoor43(
+                OpenDoor43Refusal::NameExists,
+            ))),
+            tc_sync::JoinStop::Join(other) => JobEnd::Failed(self.internal(
                 "the project from Door43 could not be placed",
                 facts(json!({ "reason": other.to_string() })),
-            ),
+            )),
         })?;
         self.report_not_written(ReportOp::OpenDoor43, &joined.folder, &joined.not_written);
         let folder = joined.folder;
@@ -371,10 +415,10 @@ impl App {
             .and_then(|n| n.to_str())
             .and_then(|n| tc_api::ids::ProjectRef::parse(n).ok());
         placed.ok_or_else(|| {
-            self.internal(
+            JobEnd::Failed(self.internal(
                 "the project from Door43 was placed under a name the app cannot read",
                 facts(json!({ "folder": folder.display().to_string() })),
-            )
+            ))
         })
     }
 }

@@ -42,13 +42,16 @@ pub trait SyncPort: Send + Sync {
         progress: ProgressSink,
     ) -> BoxFuture<Result<SharedRepo, JobEnd>>;
 
-    /// The open of Door43's `repo` as the project `name`: the project it added.
+    /// The open of Door43's `repo` as the project `name`: the project it added. The versions
+    /// the project pins and this computer lacks are downloaded first (#1013); `ctx` takes
+    /// their progress and carries the person's cancel.
     fn open(
         &self,
         app: App,
         repo: RepoSource,
         name: ProjectName,
-    ) -> BoxFuture<Result<ProjectRef, ApiError>>;
+        ctx: JobCtx,
+    ) -> BoxFuture<Result<ProjectRef, JobEnd>>;
 
     /// The scripted port, for the test hooks that script it.
     #[cfg(feature = "test-hooks")]

@@ -511,8 +511,17 @@ impl ProjectStore for ScenarioStore {
         session: Option<tc_door43::Session>,
         repo: tc_door43::RepoRef,
         name: String,
-    ) -> super::BoxFuture<Option<Result<tc_sync::Joined, tc_sync::JoinError>>> {
-        super::store::join_on(self, |s| s.backend.store(), client, session, repo, name)
+        gate: super::JoinGate,
+    ) -> super::BoxFuture<Option<super::Joining>> {
+        super::store::join_on(
+            self,
+            |s| s.backend.store(),
+            client,
+            session,
+            repo,
+            name,
+            gate,
+        )
     }
 
     fn copy(&self, folder: &ProjectRef, name: &ProjectRef) -> Result<(), super::CopyFailure> {

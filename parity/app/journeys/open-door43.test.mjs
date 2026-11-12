@@ -14,7 +14,7 @@ import path from 'node:path';
 import { FAKE_USER } from '../../tc4-baseline/mock-server/fake-door43.mjs';
 import { DOOR43_OWNER, REPO, saveTitus, titusWords } from '../env-rust.mjs';
 import { BIBLE as BIBLE_REPO } from '../screens.mjs';
-import { browserTest, catalog, withApp } from './kit.mjs';
+import { browserTest, catalog, loadHome, withApp } from './kit.mjs';
 
 const en = catalog('en');
 const rebuild = JSON.parse(fs.readFileSync(path.join(REPO, 'crates', 'tc-ui', 'assets', 'i18n-rebuild', 'en.json'), 'utf8'));
@@ -68,6 +68,45 @@ browserTest('J17. The project opens from Door43 on another computer with the tex
     await b.sync(opened);
     await openOwnFromDoor43(page, env);
     await page.getByTestId('mode-switch').waitFor();
+  }, opts);
+});
+
+browserTest('J17 (#1013). An open from Door43 downloads the versions the project pins, so none is missing; when Door43 cannot give one of them, the open adds no project and names the version', async () => {
+  await withApp(async ({ page, env, context, teammate }) => {
+    await teamCopy(page, env);
+    // Computer B has none of the versions the project pins: the open downloads them.
+    const b = await teammate('teammate-b');
+    const opened = await b.join(env.door43Repo(BIBLE_REPO));
+    // The open installs what the pins name and never changes them (R27, #766).
+    const pinFile = (projects, folder) => fs.readFileSync(path.join(projects, folder, 'ingredients', 'checking', 'resources.json'));
+    assert.ok(pinFile(b.env.projectsDir, opened).equals(pinFile(env.projectsDir, BIBLE)), 'the opened project\'s pin file equals the team\'s byte for byte');
+    assert.equal((await b.sync(opened)).missingPins, 0, 'INV-OPEN-FROM-DOOR43-LEAVES-NO-PIN-MISSING: the sync counts none missing');
+    // Door43 no longer has one of them: computer C gets no project (owner ruling of 2026-11-12).
+    const c = await teammate('teammate-c');
+    await env.door43.fault({ method: 'GET', path: '/unfoldingWord/en_ult/sb/', fault: { type: 'status', status: 404, message: 'Not Found' } });
+    // C's own screen: Add a project, Open a project from Door43, Open project. The page asks
+    // for the internet first, as it does for every person.
+    const cContext = await context.browser().newContext(c.env.contextOptions);
+    await c.env.prepare(cContext);
+    const cPage = await cContext.newPage();
+    await loadHome(cPage, c.env);
+    await cPage.getByTestId('add-project').click();
+    await cPage.getByTestId('add-project-door43').click();
+    await cPage.getByTestId('open-door43-repo').fill(`${DOOR43_OWNER}/${env.door43Repo(BIBLE_REPO)}`);
+    await cPage.getByTestId('open-door43-submit').click();
+    await cPage.getByTestId('net-confirm').click();
+    const refused = cPage.getByTestId('open-door43-refused');
+    await refused.waitFor({ timeout: 100_000 });
+    assert.equal(await refused.getAttribute('data-code'), 'open-door43.pin-not-downloaded');
+    const said = await cPage.getByTestId('open-door43-refusal').textContent();
+    // In plain words: which version, and that Door43 does not have it. Door43's own words and
+    // the request stay out of the sentence (Q36); "Ask for help" carries them.
+    assert.equal(said, rebuild['refusal.open-door43.pin-not-on-door43'].replace('{pin}', 'en_ult v91'));
+    assert.ok((await refused.textContent()).includes(en['openDoor43.nothingWritten']), 'and says that no project was added');
+    assert.deepEqual((await c.env.call('home/list', {})).cards, [], 'INV-OPEN-FROM-DOOR43-IS-ALL-OR-NOTHING: no project was added');
+    // The form can be used again.
+    assert.equal(await cPage.getByTestId('open-door43-submit').isEnabled(), true);
+    await cContext.close();
   }, opts);
 });
 

@@ -323,7 +323,8 @@
       {
         "file": "parity/app/journeys/open-door43.test.mjs",
         "tests": [
-          "J17. The project opens from Door43 on another computer with the text and name of the team, and syncs; on the computer that has it, Open from Door43 makes no second copy and opens the one there"
+          "J17. The project opens from Door43 on another computer with the text and name of the team, and syncs; on the computer that has it, Open from Door43 makes no second copy and opens the one there",
+          "J17 (#1013). An open from Door43 downloads the versions the project pins, so none is missing; when Door43 cannot give one of them, the open adds no project and names the version"
         ]
       }
     ],

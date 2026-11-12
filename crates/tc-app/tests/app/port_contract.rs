@@ -16,7 +16,9 @@ use tc_api::home::{HomeView, List};
 use tc_api::ids::RequestId;
 use tc_api::ids::{JobId, ProjectRef};
 use tc_api::jobs::{JobOutcome, JobState};
-use tc_api::refusal::{ExchangeRefusal, OpenDoor43Refusal, Refusal, SyncFailure, SyncRefusal};
+use tc_api::refusal::{
+    ExchangeRefusal, OpenDoor43Refusal, PinFailure, Refusal, SyncFailure, SyncRefusal,
+};
 use tc_api::session::Close;
 use tc_api::test::ScriptedSync;
 use tc_api::write::Stored;
@@ -584,6 +586,8 @@ impl SyncPortFixture for Door43 {
             .connect_door43(&folder(STORIES), PARITY_USER, STORY_REPO, "master")
             .await
             .unwrap();
+        // A second computer opens the samples here: Door43 gives the versions they pin (#1013).
+        tc_door43_fake::seeded::sample_pins(&w.fake).await.unwrap();
         w.fake.clear_requests();
         w
     }
@@ -642,6 +646,8 @@ impl SyncPortFixture for Door43 {
 
     async fn share_world() -> World {
         let w = world_of("sample", Some(Arc::new(tc_app::ports::door43::Door43Sync))).await;
+        // The shared project is opened from Door43 here: Door43 gives the versions it pins.
+        tc_door43_fake::seeded::sample_pins(&w.fake).await.unwrap();
         w.fake.clear_requests();
         w
     }
@@ -1062,13 +1068,24 @@ pub(super) struct Opener {
 /// A second computer (B) on the same fake Door43: its own app data, device and empty projects
 /// folder, the internet on and the parity user signed in.
 async fn computer_b(w: &World) -> (super::common::TestApp, tempfile::TempDir) {
+    let dir = tempfile::tempdir().unwrap();
+    let t = computer_on(w, &tc_store::fault::FaultFs::new(), dir.path()).await;
+    (t, dir)
+}
+
+/// Computer B over `fs` and `dir`: a second call with the same two is the same computer
+/// started again, which finds what the first run left.
+async fn computer_on(
+    w: &World,
+    fs: &tc_store::fault::FaultFs,
+    dir: &std::path::Path,
+) -> super::common::TestApp {
     use tc_app::StoreChoice;
     use tc_app::config::ProjectsFolder;
-    let dir = tempfile::tempdir().unwrap();
-    let projects = dir.path().join("projects");
+    let projects = dir.join("projects");
     std::fs::create_dir_all(&projects).unwrap();
     let (backend, watch) = crate::store_world::backend_over(
-        &tc_store::fault::FaultFs::new(),
+        fs,
         crate::store_world::APP,
         tc_store::FakePlatform {
             host: "computer-b".to_owned(),
@@ -1078,22 +1095,19 @@ async fn computer_b(w: &World) -> (super::common::TestApp, tempfile::TempDir) {
         Arc::default(),
     );
     let url = w.fake.url().to_owned();
-    let t = super::common::TestApp::start_with(
-        dir.path(),
-        &super::common::Parts::new(),
-        |config, deps| {
+    let t =
+        super::common::TestApp::start_with(dir, &super::common::Parts::new(), |config, deps| {
             config.projects = ProjectsFolder::Given(projects.clone());
             config.door43 = url.parse().unwrap();
             deps.store = StoreChoice::Given(Arc::new(backend));
             deps.sync = Arc::new(tc_app::ports::door43::Door43Sync);
-        },
-    )
-    .await;
+        })
+        .await;
     let mut t = t;
     t.watch = Some(watch);
     internet_on(&t.app).await;
     sign_in(&t.app).await;
-    (t, dir)
+    t
 }
 
 async fn teammate_b(w: &World) -> Teammate {
@@ -1108,6 +1122,479 @@ async fn teammate_b(w: &World) -> Teammate {
         project,
         _dir: dir,
     }
+}
+
+fn identity(pin: &tc_resources::ResourcePin) -> String {
+    format!("{} {}", pin.repo, pin.sha.to_hex())
+}
+
+/// The versions the sample pins that a download installs, each once, by repository and
+/// commit (`missing_versions` on a computer that has none: lexicons are left out).
+fn sample_versions() -> Vec<String> {
+    let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../fixtures/tc4/sample-burrito/ingredients/checking/resources.json");
+    let json: serde_json::Value = serde_json::from_slice(&std::fs::read(file).unwrap()).unwrap();
+    let pins = tc_resources::ProjectPins::from_resources_json(&json).unwrap();
+    let mut versions: Vec<String> = tc_resources::resolve::missing_versions(&pins, &|_| false)
+        .into_iter()
+        .map(identity)
+        .collect();
+    versions.sort();
+    versions
+}
+
+/// The Door43 versions installed on the computer whose folder is `dir`.
+fn installed_on(dir: &std::path::Path) -> Vec<String> {
+    let store =
+        tc_resources::ResourceStore::open(dir.join("app-data").join(tc_app::RESOURCES_FOLDER))
+            .unwrap();
+    let mut versions: Vec<String> = store
+        .installed_dcs_pins()
+        .unwrap()
+        .iter()
+        .map(identity)
+        .collect();
+    versions.sort();
+    versions
+}
+
+/// The resource downloads Door43 heard: burrito exports and archives.
+fn resource_requests(fake: &tc_door43_fake::FakeDoor43) -> Vec<String> {
+    fake.requests()
+        .into_iter()
+        .filter(|r| r.path.contains("/sb/") || r.path.contains("/archive/"))
+        .map(|r| r.path)
+        .collect()
+}
+
+async fn opened(app: &App, n: u8) -> JobState {
+    let job = post(app, &open(n)).await.unwrap();
+    ended(app, job).await
+}
+
+async fn home(app: &App) -> HomeView {
+    post(app, &List {}).await.unwrap()
+}
+
+/// INV-OPEN-FROM-DOOR43-LEAVES-NO-PIN-MISSING (#1013): a project opened from Door43 pins no
+/// version that this computer lacks, as the sync result counts them from the fold. The open
+/// installed exactly the pinned commits (J3), each asked for once.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_open_from_door43_leaves_no_pinned_version_missing() {
+    let w = <Door43 as SyncPortFixture>::world().await;
+    let a = &w.t.app;
+    internet_on(a).await;
+    sign_in(a).await;
+    synced(a, 41).await;
+    w.fake.clear_requests();
+    let b = teammate_b(&w).await;
+    assert_eq!(
+        installed_on(b._dir.path()),
+        sample_versions(),
+        "J3: exactly the commits the project pins are installed, and nothing else"
+    );
+    let asked = resource_requests(&w.fake);
+    assert_eq!(
+        asked.len(),
+        sample_versions().len(),
+        "each missing version is asked for once: {asked:?}"
+    );
+    sign_in_again(&b.t.app, 42).await;
+    let job = post(
+        &b.t.app,
+        &SyncProject {
+            request: rid(43),
+            project: b.project.clone(),
+        },
+    )
+    .await
+    .unwrap();
+    let JobState::Done(JobOutcome::Synced(view)) = ended(&b.t.app, job).await else {
+        panic!("B syncs");
+    };
+    assert_eq!(
+        view.missing_pins, 0,
+        "INV-OPEN-FROM-DOOR43-LEAVES-NO-PIN-MISSING: the fold counts a missing version"
+    );
+}
+
+fn copy_tree(from: &std::path::Path, to: &std::path::Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for entry in std::fs::read_dir(from).unwrap() {
+        let entry = entry.unwrap();
+        let target = to.join(entry.file_name());
+        if entry.file_type().unwrap().is_dir() {
+            copy_tree(&entry.path(), &target);
+        } else {
+            std::fs::copy(entry.path(), target).unwrap();
+        }
+    }
+}
+
+/// INV-OPEN-DOWNLOADS-ONLY-WHAT-IS-MISSING (#1013): on a computer that has every version the
+/// project pins, the open asks Door43 for no resource, and ends as it always did.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_open_with_every_pinned_version_here_asks_door43_for_no_resource() {
+    let w = <Door43 as SyncPortFixture>::world().await;
+    let a = &w.t.app;
+    internet_on(a).await;
+    sign_in(a).await;
+    synced(a, 41).await;
+    let b = teammate_b(&w).await;
+    // Computer C holds what B downloaded: the resource store is the computer's, not the project's.
+    let (c, c_dir) = computer_b(&w).await;
+    let resources = std::path::Path::new("app-data").join(tc_app::RESOURCES_FOLDER);
+    copy_tree(
+        &b._dir.path().join(&resources),
+        &c_dir.path().join(&resources),
+    );
+    assert_eq!(installed_on(c_dir.path()), sample_versions());
+    w.fake.clear_requests();
+    assert!(
+        matches!(
+            opened(&c.app, 50).await,
+            JobState::Done(JobOutcome::Created { .. })
+        ),
+        "C opens the sample from Door43"
+    );
+    assert_eq!(
+        resource_requests(&w.fake),
+        Vec::<String>::new(),
+        "INV-OPEN-DOWNLOADS-ONLY-WHAT-IS-MISSING"
+    );
+}
+
+/// INV-OPEN-FROM-DOOR43-IS-ALL-OR-NOTHING (#1013, owner ruling of 2026-11-12): a cancel while
+/// a pinned version downloads ends the open. No project is added, no part copy is left for the
+/// next start to report, and the next open of the same repository makes the one project.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_cancel_during_the_download_adds_no_project_and_leaves_no_part_copy() {
+    let w = <Door43 as SyncPortFixture>::world().await;
+    let a = &w.t.app;
+    internet_on(a).await;
+    sign_in(a).await;
+    synced(a, 41).await;
+    let fs = tc_store::fault::FaultFs::new();
+    let dir = tempfile::tempdir().unwrap();
+    let b = computer_on(&w, &fs, dir.path()).await;
+    w.fake.inject(FaultRule::once(
+        "GET",
+        "/unfoldingWord/en_tn/sb/",
+        Fault::HoldBody { after: 16 },
+    ));
+    let job = post(&b.app, &open(60)).await.unwrap();
+    until("the download of en_tn waits", || w.fake.held() == 1).await;
+    // The job says which version it downloads and how many follow it. Reports go out on
+    // the job's own beat, so the one for this version is waited for.
+    let mut reported = None;
+    for () in crate::store_world::for_a_minute() {
+        let view = post(&b.app, &tc_api::jobs::Get { job }).await.unwrap();
+        if let Some(JobState::Running(progress)) = view.map(|view| view.state)
+            && let tc_api::jobs::Phase::PinnedVersion { pin, left } = progress.phase
+            && pin.name() == "en_tn v91"
+        {
+            reported = Some(left);
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    assert!(
+        reported.is_some_and(|left| left > 0),
+        "the job reports en_tn v91 and the versions that follow it: {reported:?}"
+    );
+    post(
+        &b.app,
+        &tc_api::jobs::Cancel {
+            request: rid(61),
+            job,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(ended(&b.app, job).await, JobState::Cancelled);
+    w.fake.release_held();
+    assert!(
+        listed(&b.app).await.is_empty(),
+        "INV-OPEN-FROM-DOOR43-IS-ALL-OR-NOTHING: a cancelled open added a project"
+    );
+    assert!(
+        !installed_on(dir.path())
+            .iter()
+            .any(|v| v.contains("/en_tn ")),
+        "nothing of the version that was cancelled is installed"
+    );
+    drop(b);
+    let again = computer_on(&w, &fs, dir.path()).await;
+    let view = home(&again.app).await;
+    assert_eq!(
+        view.notices,
+        Vec::new(),
+        "INV-OPEN-FROM-DOOR43-IS-ALL-OR-NOTHING: the cancel left a part copy for this start"
+    );
+    assert!(view.cards.is_empty(), "no project");
+    assert!(
+        matches!(
+            opened(&again.app, 62).await,
+            JobState::Done(JobOutcome::Created { .. })
+        ),
+        "the next open makes the project"
+    );
+    assert_eq!(listed(&again.app).await.len(), 1, "one project");
+}
+
+/// INV-OPEN-FROM-DOOR43-IS-ALL-OR-NOTHING (#1013, owner ruling of 2026-11-12: "a failed
+/// download means no project"): Door43 does not have a pinned version, or sends a file that is
+/// not the pinned commit, or the connection breaks. The open names the version and the reason,
+/// adds no project, installs nothing of that version (J3) and leaves no part copy.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_failed_download_adds_no_project_and_names_the_version() {
+    let w = <Door43 as SyncPortFixture>::world().await;
+    let a = &w.t.app;
+    internet_on(a).await;
+    sign_in(a).await;
+    synced(a, 41).await;
+    // A rule stays for the whole test, and the versions download in the pin file's order: each
+    // case fails a version that comes before the ones the earlier cases fail.
+    let cases = [
+        (
+            "Door43 does not have the version",
+            PinFailure::NotOnDoor43,
+            "en_ult",
+            Fault::Status {
+                status: 404,
+                message: "Not Found".to_owned(),
+            },
+        ),
+        (
+            "the file is not the pinned commit",
+            PinFailure::NotThePinnedVersion,
+            "hbo_uhb",
+            Fault::SbRevision("ab".repeat(20)),
+        ),
+        (
+            "the connection breaks",
+            PinFailure::Unreachable,
+            "el-x-koine_ugnt",
+            Fault::BreakOff { after: 16 },
+        ),
+    ];
+    for (n, (case, kind, repo, fault)) in (0u8..).zip(cases) {
+        let fs = tc_store::fault::FaultFs::new();
+        let dir = tempfile::tempdir().unwrap();
+        let b = computer_on(&w, &fs, dir.path()).await;
+        w.fake.inject(FaultRule::always(
+            "GET",
+            &format!("/unfoldingWord/{repo}/sb/"),
+            fault,
+        ));
+        match opened(&b.app, 70 + n).await {
+            JobState::Failed(ApiError::Refused(Refusal::OpenDoor43(
+                OpenDoor43Refusal::PinNotDownloaded { pin, why, detail },
+            ))) => {
+                assert!(
+                    pin.name().starts_with(repo),
+                    "{case}: the refusal names {repo}, not {pin:?}"
+                );
+                assert_eq!(why, kind, "{case}: the refusal says why ({detail})");
+            }
+            other => panic!("{case}: {other:?}"),
+        }
+        assert!(
+            listed(&b.app).await.is_empty(),
+            "INV-OPEN-FROM-DOOR43-IS-ALL-OR-NOTHING: {case}: the open added a project"
+        );
+        assert!(
+            !installed_on(dir.path())
+                .iter()
+                .any(|v| v.contains(&format!("/{repo} "))),
+            "J3: {case}: something of {repo} is installed"
+        );
+        drop(b);
+        let again = computer_on(&w, &fs, dir.path()).await;
+        let view = home(&again.app).await;
+        assert_eq!(
+            view.notices,
+            Vec::new(),
+            "INV-OPEN-FROM-DOOR43-IS-ALL-OR-NOTHING: {case}: a part copy was left"
+        );
+        assert!(view.cards.is_empty(), "{case}: no project");
+    }
+}
+
+/// INV-OPEN-FROM-DOOR43-IS-ALL-OR-NOTHING (#1013): a cancel at any moment before the project
+/// is placed adds no project, also on a computer that has every version and so downloads
+/// nothing. Here it comes while the open still asks Door43 for the repository.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_cancel_with_nothing_left_to_download_adds_no_project() {
+    let w = <Door43 as SyncPortFixture>::world().await;
+    let a = &w.t.app;
+    internet_on(a).await;
+    sign_in(a).await;
+    synced(a, 41).await;
+    let b = teammate_b(&w).await;
+    // Computer C holds what B downloaded.
+    let fs = tc_store::fault::FaultFs::new();
+    let dir = tempfile::tempdir().unwrap();
+    let c = computer_on(&w, &fs, dir.path()).await;
+    let resources = std::path::Path::new("app-data").join(tc_app::RESOURCES_FOLDER);
+    copy_tree(
+        &b._dir.path().join(&resources),
+        &dir.path().join(&resources),
+    );
+    w.fake.clear_requests();
+    <Door43 as SyncPortFixture>::hold_next_sync(&w).await;
+    let job = post(&c.app, &open(64)).await.unwrap();
+    until("the repository lookup waits", || w.fake.held() == 1).await;
+    post(
+        &c.app,
+        &tc_api::jobs::Cancel {
+            request: rid(65),
+            job,
+        },
+    )
+    .await
+    .unwrap();
+    w.fake.release_held();
+    assert_eq!(
+        ended(&c.app, job).await,
+        JobState::Cancelled,
+        "INV-OPEN-FROM-DOOR43-IS-ALL-OR-NOTHING: a cancelled open ended another way"
+    );
+    assert!(listed(&c.app).await.is_empty(), "no project");
+    assert_eq!(
+        resource_requests(&w.fake),
+        Vec::<String>::new(),
+        "nothing was left to download"
+    );
+    drop(c);
+    let again = computer_on(&w, &fs, dir.path()).await;
+    assert_eq!(
+        home(&again.app).await.notices,
+        Vec::new(),
+        "INV-OPEN-FROM-DOOR43-IS-ALL-OR-NOTHING: the cancel left a part copy for this start"
+    );
+}
+
+/// INV-OPEN-FROM-DOOR43-IS-ALL-OR-NOTHING (#1013): this computer cannot write the download, as
+/// when its disk is full. The open names the version, adds no project and leaves no part copy.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_download_this_computer_cannot_write_adds_no_project() {
+    use std::os::unix::fs::PermissionsExt;
+    let w = <Door43 as SyncPortFixture>::world().await;
+    let a = &w.t.app;
+    internet_on(a).await;
+    sign_in(a).await;
+    synced(a, 41).await;
+    let fs = tc_store::fault::FaultFs::new();
+    let dir = tempfile::tempdir().unwrap();
+    let b = computer_on(&w, &fs, dir.path()).await;
+    let resources = dir.path().join("app-data").join(tc_app::RESOURCES_FOLDER);
+    std::fs::create_dir_all(&resources).unwrap();
+    let writable = std::fs::metadata(&resources).unwrap().permissions();
+    std::fs::set_permissions(&resources, std::fs::Permissions::from_mode(0o555)).unwrap();
+    let ended = opened(&b.app, 66).await;
+    std::fs::set_permissions(&resources, writable).unwrap();
+    match ended {
+        JobState::Failed(ApiError::Refused(Refusal::OpenDoor43(
+            OpenDoor43Refusal::PinNotDownloaded { pin, why, detail },
+        ))) => {
+            assert_eq!(
+                pin.name(),
+                "es-419_tn v66",
+                "the first version it could not write"
+            );
+            assert_eq!(why, PinFailure::NotSaved, "{detail}");
+        }
+        other => panic!("{other:?}"),
+    }
+    assert!(listed(&b.app).await.is_empty(), "no project");
+    assert_eq!(
+        installed_on(dir.path()),
+        Vec::<String>::new(),
+        "nothing is installed"
+    );
+    drop(b);
+    let again = computer_on(&w, &fs, dir.path()).await;
+    assert_eq!(
+        home(&again.app).await.notices,
+        Vec::new(),
+        "INV-OPEN-FROM-DOOR43-IS-ALL-OR-NOTHING: a part copy was left"
+    );
+}
+
+/// The internet turned off while the open downloads: the open asks for it again, as the guided
+/// fix's download does, and adds no project.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_internet_turned_off_during_the_download_adds_no_project() {
+    let w = <Door43 as SyncPortFixture>::world().await;
+    let a = &w.t.app;
+    internet_on(a).await;
+    sign_in(a).await;
+    synced(a, 41).await;
+    let (b, _dir) = computer_b(&w).await;
+    w.fake.inject(FaultRule::once(
+        "GET",
+        "/unfoldingWord/en_tn/sb/",
+        Fault::HoldBody { after: 16 },
+    ));
+    let job = post(&b.app, &open(80)).await.unwrap();
+    until("the download of en_tn waits", || w.fake.held() == 1).await;
+    post(
+        &b.app,
+        &tc_api::net::Set {
+            request: rid(81),
+            on: false,
+        },
+    )
+    .await
+    .unwrap();
+    w.fake.release_held();
+    assert_eq!(
+        ended(&b.app, job).await,
+        JobState::Failed(ApiError::NeedsInternet(NetKind::Open))
+    );
+    assert!(listed(&b.app).await.is_empty(), "no project");
+}
+
+/// The app stopped while a pinned version downloaded: the next start removes the part copy
+/// and says so, as for any open that did not finish (STORAGE §6.4 N1), and a new open works.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_open_stopped_during_the_download_is_removed_at_the_next_start() {
+    let w = <Door43 as SyncPortFixture>::world().await;
+    let a = &w.t.app;
+    internet_on(a).await;
+    sign_in(a).await;
+    synced(a, 41).await;
+    let fs = tc_store::fault::FaultFs::new();
+    let dir = tempfile::tempdir().unwrap();
+    let b = computer_on(&w, &fs, dir.path()).await;
+    w.fake.inject(FaultRule::once(
+        "GET",
+        "/unfoldingWord/en_tn/sb/",
+        Fault::HoldBody { after: 16 },
+    ));
+    post(&b.app, &open(90)).await.unwrap();
+    until("the download of en_tn waits", || w.fake.held() == 1).await;
+    // The app stops here: its open never ends. The next start is the same computer.
+    let again = computer_on(&w, &fs, dir.path()).await;
+    let view = home(&again.app).await;
+    assert_eq!(
+        view.notices,
+        vec![tc_api::home::StartNotice::OpenDoor43Removed],
+        "Home says that the open did not finish"
+    );
+    assert!(view.cards.is_empty(), "no project was added");
+    assert!(
+        matches!(
+            opened(&again.app, 91).await,
+            JobState::Done(JobOutcome::Created { .. })
+        ),
+        "a new open works"
+    );
+    assert_eq!(listed(&again.app).await.len(), 1, "one project");
+    w.fake.release_held();
+    drop(b);
 }
 
 fn git_path(service: &str) -> String {

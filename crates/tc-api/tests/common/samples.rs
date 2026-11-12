@@ -1,6 +1,7 @@
 //! One value of every refusal variant. `assert_every_variant` checks each list against the
 //! variants serde knows, so a new variant fails the tests until it has a sample here.
 
+use tc_api::refusal::PinFailure;
 use tc_api::refusal::{
     CreateRefusal, ExchangeRefusal, ExportRefusal, FeedbackRefusal, ImportRefusal, LockHolder,
     NewerFormat, OpenDoor43Refusal, OpenRefusal, PrefsRefusal, Refusal, ResourceRefusal,
@@ -201,6 +202,11 @@ pub fn open_door43() -> Vec<OpenDoor43Refusal> {
         OpenDoor43Refusal::NameExists,
         OpenDoor43Refusal::NoJournal,
         OpenDoor43Refusal::Removed,
+        pin_not_downloaded(PinFailure::NotOnDoor43),
+        pin_not_downloaded(PinFailure::NotThePinnedVersion),
+        pin_not_downloaded(PinFailure::Unreachable),
+        pin_not_downloaded(PinFailure::NotSaved),
+        pin_not_downloaded(PinFailure::Other),
     ]
 }
 
@@ -308,4 +314,16 @@ pub fn refusals() -> Vec<Refusal> {
     all.extend(prefs().into_iter().map(Refusal::Prefs));
     all.extend(upload().into_iter().map(Refusal::Upload));
     all
+}
+
+fn pin_not_downloaded(why: tc_api::refusal::PinFailure) -> OpenDoor43Refusal {
+    OpenDoor43Refusal::PinNotDownloaded {
+        pin: tc_api::resources::PinLabel {
+            repo_path: "git.door43.org/es-419_gl/es-419_twl".into(),
+            version: Some("v18".into()),
+            sha: "c2d9547ec9".repeat(4),
+        },
+        why,
+        detail: "GET /es-419_gl/es-419_twl/sb/v18.zip: not found".into(),
+    }
 }

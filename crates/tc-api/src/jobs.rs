@@ -98,6 +98,12 @@ pub enum Phase {
     Install {
         repo: String,
     },
+    /// Downloading a version that a project pins and this computer lacks, before the project
+    /// is added (#1013). `left` more versions follow it.
+    PinnedVersion {
+        pin: crate::resources::PinLabel,
+        left: u32,
+    },
     /// Planning an upgrade or a gateway change, book by book.
     Plan {
         #[cfg_attr(

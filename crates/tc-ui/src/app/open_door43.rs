@@ -16,6 +16,9 @@ pub struct OpenRefusal {
     pub code: Option<String>,
     /// What "Ask for help" adds after the sentence: the refusal as the server gave it.
     pub reason: String,
+    /// The refusal's own sentence, when it names what failed (a pinned version that was not
+    /// downloaded, #1013): no fixed sentence of a code can.
+    pub own: Option<String>,
 }
 
 /// tC4's `od`.
@@ -94,7 +97,11 @@ impl OpenForm {
     /// same request again.
     pub fn lost(&mut self, reason: String) {
         self.submit.lost(reason.clone());
-        self.error = Some(OpenRefusal { code: None, reason });
+        self.error = Some(OpenRefusal {
+            code: None,
+            reason,
+            own: None,
+        });
     }
 
     /// The run ended in a refusal: the form takes it and can be changed again, and the next
@@ -104,7 +111,43 @@ impl OpenForm {
         self.error = Some(OpenRefusal {
             code: code.map(str::to_owned),
             reason,
+            own: None,
         });
+    }
+
+    /// The run ended in a refusal that says what failed in its own `sentence`; `detail` is
+    /// what "Ask for help" adds after it.
+    pub fn refused_in_its_words(
+        &mut self,
+        code: Option<&str>,
+        sentence: String,
+        detail: String,
+        next: RequestId,
+    ) {
+        self.submit.refused(sentence.clone(), next);
+        self.error = Some(OpenRefusal {
+            code: code.map(str::to_owned),
+            reason: detail,
+            own: Some(sentence),
+        });
+    }
+}
+
+/// What the callout says for a refusal.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RefusalSentence {
+    /// The sentence the refusal's code has.
+    Of(Key),
+    /// The refusal's own sentence, which names what failed: no fixed sentence can.
+    Own(String),
+}
+
+/// The sentence for `refusal`: its own when it has one, which names the version that was
+/// not downloaded (#1013); else the sentence of its code.
+pub fn refusal_sentence(refusal: &OpenRefusal) -> RefusalSentence {
+    match &refusal.own {
+        Some(sentence) => RefusalSentence::Own(sentence.clone()),
+        None => RefusalSentence::Of(refusal_key(refusal.code.as_deref())),
     }
 }
 

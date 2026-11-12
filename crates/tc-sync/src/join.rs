@@ -2,6 +2,9 @@
 //! into a new history in a staging folder, every file of its tree is written with the
 //! store's atomic writes (never a checkout, so no line ending is touched), and the folder is
 //! placed among the projects. The open that follows mints this computer's device and folds.
+//!
+//! Between the fetch and the placement the caller's gate runs (#1013): the project is placed
+//! only when the gate lets it through, and a gate that stops the join leaves no part copy.
 
 use std::path::{Path, PathBuf};
 use tc_api::refusal::{SyncBlock, SyncRefusal};
@@ -50,14 +53,67 @@ pub struct Joined {
     pub not_written: Vec<String>,
 }
 
-/// Fetches `repo` and places it as the project `name`.
-pub async fn join(
+/// The files a join fetched, written to its staging folder and not yet placed: what the gate
+/// of [`join`] reads to decide whether the project may be added.
+#[derive(Debug)]
+pub struct Fetched<'a> {
+    files: &'a [(String, Vec<u8>)],
+}
+
+impl Fetched<'_> {
+    /// The bytes of the repository's file at `path`, when its tree holds one.
+    pub fn file(&self, path: &str) -> Option<&[u8]> {
+        self.files
+            .iter()
+            .find(|(name, _)| name == path)
+            .map(|(_, bytes)| bytes.as_slice())
+    }
+}
+
+/// Why a join added no project: the join itself failed, or its gate stopped it.
+#[derive(Debug, thiserror::Error)]
+pub enum JoinStop<E> {
+    #[error(transparent)]
+    Join(#[from] JoinError),
+    /// The gate did not let the project through. Nothing was placed, and the staging folder
+    /// was removed at once, so the next start reports no interrupted open.
+    #[error("the project was not ready to be added")]
+    Gate(E),
+}
+
+/// Fetches `repo` and places it as the project `name`, once `gate` lets it through.
+///
+/// INV-OPEN-FROM-DOOR43-IS-ALL-OR-NOTHING: `gate` runs after every file is in the staging
+/// folder and before the placement. The project is placed only when it answers `Ok`; on
+/// `Err` the staging folder is removed here, so no caller can place a project the gate
+/// refused or leave its part copy behind.
+pub async fn join<E>(
     store: &Store,
     client: &Door43Client,
     session: Option<&Session>,
     repo: &RepoRef,
     name: &str,
-) -> Result<Joined, JoinError> {
+    gate: impl AsyncFnOnce(&Fetched<'_>) -> Result<(), E>,
+) -> Result<Joined, JoinStop<E>> {
+    let (staging, files, not_written) = fetch_into_staging(store, client, session, repo).await?;
+    if let Err(stop) = gate(&Fetched { files: &files }).await {
+        store.discard_staging(&staging);
+        return Err(JoinStop::Gate(stop));
+    }
+    Ok(Joined {
+        folder: store.place(&staging, name).map_err(JoinError::from)?,
+        not_written,
+    })
+}
+
+/// The repository fetched into a new staging folder with every file of its tree written: the
+/// folder, the files, and the foreign files not written.
+async fn fetch_into_staging(
+    store: &Store,
+    client: &Door43Client,
+    session: Option<&Session>,
+    repo: &RepoRef,
+) -> Result<(PathBuf, Vec<(String, Vec<u8>)>, Vec<String>), JoinError> {
     if !client.internet().is_on() {
         return Err(JoinError::Refused(SyncRefusal::Offline));
     }
@@ -95,14 +151,11 @@ pub async fn join(
         write_file(&*vfs, &staging, ".tc/sync.json", &bytes)
     });
     written?;
-    Ok(Joined {
-        folder: store.place(&staging, name)?,
-        not_written,
-    })
+    Ok((staging, files, not_written))
 }
 
 /// The fetched repository's address, and the files of its tree by path.
-type Fetched = (String, TreeFiles);
+type FetchedTree = (String, TreeFiles);
 
 /// The fetch into a new history at `outside`, the branch set to what it fetched, and the
 /// files to write: every regular file of the tree but foreign dot paths, which stay in the
@@ -112,7 +165,7 @@ fn fetch(
     outside: &Path,
     remote: &GitRemote,
     branch: &str,
-) -> Result<Fetched, JoinError> {
+) -> Result<FetchedTree, JoinError> {
     let mut options = git2::RepositoryInitOptions::new();
     options
         .initial_head(branch)

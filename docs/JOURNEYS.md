@@ -270,11 +270,16 @@ budget in `docs/PERFORMANCE.md`). Their tC4 tests stay mapped under `specs` in `
 - Steps: on Home, "+ Add a project" · "Open a project from Door43" · type `owner/repository` or
   paste its link · "Open project" (it asks to turn the internet on first; Not now sends nothing).
 - End state: one new project whose files equal Door43's `main`, with its `origin` set and its
-  own author id; its card offers "Sync with Door43"; the first sync needs no other step.
+  own author id; its card offers "Sync with Door43"; the first sync needs no other step. Every
+  source text and helps version the project pins is on this computer: the open downloaded the
+  ones this computer lacked, with no question, before it added the project (#1013).
 - Must not: add a project after a refusal (a damaged file on Door43, a repository with no
-  translationCore project, an unsupported project); leave half a copy after a stop; make a
-  second copy of a project this computer already has.
-- Differs from tC4: a private repository opens after a sign-in (Q3); the open asks no name, and
+  translationCore project, an unsupported project); add a project when a pinned version could
+  not be downloaded; install a file of another release than the pin (J3); leave half a copy
+  after a stop; make a second copy of a project this computer already has.
+- Differs from tC4: the open downloads the versions the project pins and this computer lacks,
+  and adds no project when one of them cannot be had (#1013, `docs/DIFFERENCES.md`); a private
+  repository opens after a sign-in (Q3); the open asks no name, and
   the project keeps its one name (H14); when the project is already here, the app says so and
   offers to open it (H14); the project can also arrive as a file (J27).
 

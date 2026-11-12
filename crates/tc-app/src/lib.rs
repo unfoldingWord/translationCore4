@@ -41,6 +41,7 @@ pub mod jobs;
 mod js;
 pub mod language_search;
 mod numbering;
+pub mod pins;
 mod plans;
 pub mod ports;
 pub mod prefs;

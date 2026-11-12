@@ -12,7 +12,9 @@ use tc_api::jobs::SharePhase;
 use tc_api::shown::{Direction, Known};
 use tc_core::BookId;
 use tc_ui::app::internet::{InternetFlow, NetStep, Pending};
-use tc_ui::app::open_door43::{OpenForm, RepoError, refusal_key};
+use tc_ui::app::open_door43::{
+    OpenForm, RefusalSentence, RepoError, refusal_key, refusal_sentence,
+};
 use tc_ui::app::share::{
     Choices, ShareForm, ShareProject, ShareStep, SharedItems, Target, name_ok,
 };
@@ -55,6 +57,43 @@ fn a_change_takes_the_last_refusal_away() {
     );
     form.type_repo("anna_k/titus-team-draft2".into());
     assert_eq!(form.error, None);
+}
+
+/// #1013: a pinned version that was not downloaded is said in the refusal's own sentence,
+/// which names the version and the reason; every other refusal has the sentence of its code.
+#[test]
+fn a_version_that_was_not_downloaded_is_said_in_the_refusals_own_sentence() {
+    let mut form = od("anna_k/titus-team-draft");
+    let own = "Door43 does not have es-419_twl v18, which this project uses.";
+    // The code is read from the refusal itself, so the form and the API cannot drift apart.
+    let refusal = tc_api::refusal::OpenDoor43Refusal::PinNotDownloaded {
+        pin: tc_api::resources::PinLabel {
+            repo_path: "git.door43.org/es-419_gl/es-419_twl".into(),
+            version: Some("v18".into()),
+            sha: "c2d9547ec9".repeat(4),
+        },
+        why: tc_api::refusal::PinFailure::NotOnDoor43,
+        detail: "GET /es-419_gl/es-419_twl/sb/v18.zip: not found".into(),
+    };
+    form.refused_in_its_words(
+        tc_api::refusal::Message::code(&refusal),
+        own.into(),
+        "GET /es-419_gl/es-419_twl/sb/v18.zip: not found".into(),
+        RequestId::from_bytes([2; 16]),
+    );
+    assert_eq!(
+        form.refusal().map(refusal_sentence),
+        Some(RefusalSentence::Own(own.into()))
+    );
+    form.refused(
+        Some("open-door43.no-journal"),
+        "no journal".into(),
+        RequestId::from_bytes([3; 16]),
+    );
+    assert_eq!(
+        form.refusal().map(refusal_sentence),
+        Some(RefusalSentence::Of(keys::open_door43::refused::NO_JOURNAL))
+    );
 }
 
 /// Ruling H14: a project already here is named, Open project can be pressed again, and a new

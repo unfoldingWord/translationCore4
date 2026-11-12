@@ -120,12 +120,13 @@ impl SyncPort for ScriptedSyncPort {
         _app: App,
         _repo: RepoSource,
         _name: ProjectName,
-    ) -> BoxFuture<Result<ProjectRef, ApiError>> {
+        _ctx: crate::jobs::JobCtx,
+    ) -> BoxFuture<Result<ProjectRef, JobEnd>> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         let next = lock(&self.opens)
             .pop_front()
             .unwrap_or(Err(ApiError::Unavailable(Feature::Sync)));
-        Box::pin(async move { next })
+        Box::pin(async move { next.map_err(JobEnd::Failed) })
     }
 
     fn scripted(&self) -> Option<&ScriptedSyncPort> {
