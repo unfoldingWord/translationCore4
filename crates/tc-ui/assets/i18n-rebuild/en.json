@@ -135,6 +135,8 @@
   "newBible.burritoVersification": "The Scripture Burrito's own versification is kept.",
   "open.changeFiles": "{done} of {total} files",
   "openDoor43.alreadyHere": "You already have this project on this computer. A project has one copy on each computer.",
+  "openDoor43.cancelled": "The open was cancelled. No project was added to this computer.",
+  "openDoor43.downloading": "Downloading {pin}, which this project uses. Versions left after this one: {n}.",
   "openDoor43.openYours": "Open it",
   "openDoor43.refused.notOpened": "tC4 could not get the project from Door43. Make sure that the repository name is correct. No project was added to this computer.",
   "openDoor43.whereAny": "The project opens from {host}.",

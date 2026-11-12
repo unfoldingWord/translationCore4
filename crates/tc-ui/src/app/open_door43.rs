@@ -5,7 +5,8 @@
 //! applies too.
 
 use tc_api::door43::RepoSource;
-use tc_api::ids::{ProjectRef, RequestId};
+use tc_api::ids::{JobId, ProjectRef, RequestId};
+use tc_api::resources::PinLabel;
 
 use crate::app::submit::Submit;
 use crate::i18n::{Key, keys};
@@ -31,6 +32,33 @@ pub struct OpenForm {
     /// The repository's project is on this computer as this folder (ruling H14): no second
     /// copy is made, and the dialog offers to open this one.
     pub yours: Option<ProjectRef>,
+    /// What the open does while it runs, and whether the last one was cancelled (#1013).
+    pub step: OpenStep,
+}
+
+/// A version the open downloads now: the project pins it and this computer lacks it (#1013).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Downloading {
+    /// The open's job, which Cancel stops.
+    pub job: JobId,
+    /// The version as the dialog names it (`en_ult v91`).
+    pub pin: String,
+    /// How many versions follow it.
+    pub left: u32,
+}
+
+/// What the open is doing, as far as the dialog shows it.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum OpenStep {
+    /// Not running, or getting the project from Door43: nothing to name, and no Cancel.
+    #[default]
+    Getting,
+    /// Downloading a pinned version: the dialog names it, and Cancel stops the open.
+    Downloading(Downloading),
+    /// Cancel was pressed while this version downloaded: the open is stopping.
+    Stopping(Downloading),
+    /// The last open was cancelled: the dialog says that no project was added.
+    Cancelled,
 }
 
 /// The error under the repository field.
@@ -48,6 +76,7 @@ impl OpenForm {
             submit: Submit::new(request),
             error: None,
             yours: None,
+            step: OpenStep::Getting,
         }
     }
 
@@ -56,11 +85,72 @@ impl OpenForm {
         self.submit.busy()
     }
 
+    /// Open project pressed: the attempt's request, or `None` while an open runs. What the
+    /// last attempt left on the dialog goes.
+    pub fn press(&mut self) -> Option<RequestId> {
+        let request = self.submit.press()?;
+        self.error = None;
+        self.step = OpenStep::Getting;
+        Some(request)
+    }
+
     /// The repository typed (tC4's `onRepo`): the last refusal goes.
     pub fn type_repo(&mut self, repo: String) {
         self.repo = repo;
         self.error = None;
         self.yours = None;
+        if !self.busy() {
+            self.step = OpenStep::Getting;
+        }
+    }
+
+    /// The running open's job reports that it downloads `pin`, with `left` versions after it.
+    /// A report that comes after Cancel was pressed, or after the open ended, changes nothing.
+    pub fn downloading(&mut self, job: JobId, pin: &PinLabel, left: u32) {
+        if self.busy() && matches!(self.step, OpenStep::Getting | OpenStep::Downloading(_)) {
+            self.step = OpenStep::Downloading(Downloading {
+                job,
+                pin: pin.name(),
+                left,
+            });
+        }
+    }
+
+    /// The version the dialog names while it downloads, with how many follow it.
+    pub fn download(&self) -> Option<&Downloading> {
+        match &self.step {
+            OpenStep::Downloading(download) | OpenStep::Stopping(download) => Some(download),
+            OpenStep::Getting | OpenStep::Cancelled => None,
+        }
+    }
+
+    /// Whether Cancel stops the open now: only while a pinned version downloads.
+    pub fn can_cancel(&self) -> bool {
+        matches!(self.step, OpenStep::Downloading(_))
+    }
+
+    /// Cancel pressed: the job to stop, or `None` when there is nothing to stop.
+    pub fn cancel(&mut self) -> Option<JobId> {
+        let OpenStep::Downloading(download) = &self.step else {
+            return None;
+        };
+        let (job, download) = (download.job, download.clone());
+        self.step = OpenStep::Stopping(download);
+        Some(job)
+    }
+
+    /// The cancel did not reach the app's server: Cancel can be pressed again.
+    pub fn cancel_not_sent(&mut self) {
+        if let OpenStep::Stopping(download) = &self.step {
+            self.step = OpenStep::Downloading(download.clone());
+        }
+    }
+
+    /// The open ended cancelled: no project was added, the dialog says so, and the next
+    /// press is a new attempt with `next`.
+    pub fn cancelled(&mut self, next: RequestId) {
+        self.submit.next(next);
+        self.step = OpenStep::Cancelled;
     }
 
     /// The server found the repository's project here: the form names it, and the next press
@@ -69,6 +159,7 @@ impl OpenForm {
         self.submit.refused(String::new(), next);
         self.error = None;
         self.yours = Some(project);
+        self.step = OpenStep::Getting;
     }
 
     pub fn source(&self, host: &str) -> Option<RepoSource> {
@@ -97,6 +188,7 @@ impl OpenForm {
     /// same request again.
     pub fn lost(&mut self, reason: String) {
         self.submit.lost(reason.clone());
+        self.step = OpenStep::Getting;
         self.error = Some(OpenRefusal {
             code: None,
             reason,
@@ -104,10 +196,18 @@ impl OpenForm {
         });
     }
 
+    /// The open ended with no word on how (the page lost it, or the server restarted): the
+    /// form can be used again with `next`, and names no download.
+    pub fn ended_unsaid(&mut self, next: RequestId) {
+        self.submit.next(next);
+        self.step = OpenStep::Getting;
+    }
+
     /// The run ended in a refusal: the form takes it and can be changed again, and the next
     /// press is a new attempt with `next`.
     pub fn refused(&mut self, code: Option<&str>, reason: String, next: RequestId) {
         self.submit.refused(reason.clone(), next);
+        self.step = OpenStep::Getting;
         self.error = Some(OpenRefusal {
             code: code.map(str::to_owned),
             reason,
@@ -125,6 +225,7 @@ impl OpenForm {
         next: RequestId,
     ) {
         self.submit.refused(sentence.clone(), next);
+        self.step = OpenStep::Getting;
         self.error = Some(OpenRefusal {
             code: code.map(str::to_owned),
             reason: detail,

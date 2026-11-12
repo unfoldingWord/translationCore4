@@ -43,8 +43,10 @@ The project owner ruled on these points on 2026-10-16 (`docs/TC4-DELTA-2026-10-1
 - An open from Door43 downloads the source text and helps versions that the project pins and
   this computer lacks, before it adds the project. It asks no question about them. When a
   version cannot be downloaded, no project is added, and the refusal names the version and
-  the reason. tC4 4.0 adds the project and shows those versions as missing (#1013; the owner's
-  answers of 2026-11-12 are in that issue).
+  the reason. While it downloads, the dialog names the version and how many are left, and
+  Cancel stops the open with no project added; tC4 4.0's dialog has no Cancel while it opens.
+  tC4 4.0 adds the project and shows those versions as missing (#1013; the owner's answers of
+  2026-11-12 are in that issue).
 - A sync checks write access before it fetches. One API call reads `permissions.push`.
   Without write access the sync refuses, and nothing changes, as in tC4. Other refusals
   after the received work arrived keep that work and say so (Q8).

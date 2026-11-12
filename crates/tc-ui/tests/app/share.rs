@@ -13,7 +13,7 @@ use tc_api::shown::{Direction, Known};
 use tc_core::BookId;
 use tc_ui::app::internet::{InternetFlow, NetStep, Pending};
 use tc_ui::app::open_door43::{
-    OpenForm, RefusalSentence, RepoError, refusal_key, refusal_sentence,
+    OpenForm, OpenStep, RefusalSentence, RepoError, refusal_key, refusal_sentence,
 };
 use tc_ui::app::share::{
     Choices, ShareForm, ShareProject, ShareStep, SharedItems, Target, name_ok,
@@ -94,6 +94,83 @@ fn a_version_that_was_not_downloaded_is_said_in_the_refusals_own_sentence() {
         form.refusal().map(refusal_sentence),
         Some(RefusalSentence::Of(keys::open_door43::refused::NO_JOURNAL))
     );
+}
+
+fn pin(name: &str, version: &str) -> tc_api::resources::PinLabel {
+    tc_api::resources::PinLabel {
+        repo_path: format!("git.door43.org/unfoldingWord/{name}"),
+        version: Some(version.into()),
+        sha: "ab".repeat(20),
+    }
+}
+
+/// #1013: while the open downloads a pinned version, the dialog names it with how many follow,
+/// and Cancel stops the open. Cancel is not offered before the first download or once it was
+/// pressed, and a cancelled open says so until the next attempt.
+#[test]
+fn the_dialog_names_the_version_it_downloads_and_cancel_stops_the_open() {
+    let job = tc_api::ids::JobId::new(7);
+    let mut form = od("anna_k/titus-team-draft");
+    // Not running: a report changes nothing.
+    form.downloading(job, &pin("en_tn", "v91"), 2);
+    assert_eq!(form.step, OpenStep::Getting);
+    assert!(form.press().is_some());
+    assert!(
+        form.busy() && !form.can_cancel(),
+        "no Cancel while it gets the project"
+    );
+    assert_eq!(form.cancel(), None);
+
+    form.downloading(job, &pin("en_tn", "v91"), 2);
+    let download = form.download().expect("it names the version");
+    assert_eq!((download.pin.as_str(), download.left), ("en_tn v91", 2));
+    assert!(form.can_cancel());
+    form.downloading(job, &pin("en_ult", "v91"), 1);
+    assert_eq!(form.download().map(|d| d.pin.as_str()), Some("en_ult v91"));
+
+    assert_eq!(form.cancel(), Some(job), "Cancel stops the open's job");
+    assert!(!form.can_cancel(), "Cancel is pressed once");
+    assert_eq!(form.cancel(), None);
+    // A report that was on its way does not bring Cancel back.
+    form.downloading(job, &pin("hbo_uhb", "v3.0.0"), 0);
+    assert!(matches!(form.step, OpenStep::Stopping(_)));
+    // The cancel did not reach the server: it can be pressed again.
+    form.cancel_not_sent();
+    assert!(form.can_cancel());
+    assert_eq!(form.cancel(), Some(job));
+
+    form.cancelled(RequestId::from_bytes([3; 16]));
+    assert_eq!(form.step, OpenStep::Cancelled);
+    assert!(!form.busy(), "the form can be used again");
+    assert_eq!(form.download(), None);
+    assert!(form.press().is_some());
+    assert_eq!(
+        form.step,
+        OpenStep::Getting,
+        "a new attempt takes the note away"
+    );
+}
+
+/// #1013: an open that ends in a refusal, or with no word on how, names no download after it.
+#[test]
+fn an_open_that_ended_names_no_download() {
+    let job = tc_api::ids::JobId::new(7);
+    let next = RequestId::from_bytes([4; 16]);
+    type End = fn(&mut OpenForm, RequestId);
+    let ends: [End; 4] = [
+        |form, next| form.refused(Some("sync.offline"), "offline".into(), next),
+        |form, next| form.refused_in_its_words(None, "said".into(), "detail".into(), next),
+        |form, next| form.ended_unsaid(next),
+        |form, _| form.lost("no answer".into()),
+    ];
+    for end in ends {
+        let mut form = od("anna_k/titus-team-draft");
+        form.press();
+        form.downloading(job, &pin("en_tn", "v91"), 2);
+        end(&mut form, next);
+        assert_eq!(form.step, OpenStep::Getting);
+        assert!(!form.can_cancel());
+    }
 }
 
 /// Ruling H14: a project already here is named, Open project can be pressed again, and a new

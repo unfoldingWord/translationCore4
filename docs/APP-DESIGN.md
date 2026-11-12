@@ -1932,8 +1932,9 @@ in Chromium against the real `tc4`, with the request filter of AD11
    runs the open again.
    Pinned versions (#1013): between its fetch and its placement, `door43/open` downloads the
    versions the project pins and this computer lacks (`tc_app::pins`, one
-   `Phase::PinnedVersion` for each). `jobs/cancel` stops the download and the job ends
-   `Cancelled`; a failed download ends it with `Refused(OpenDoor43(PinNotDownloaded { pin,
+   `Phase::PinnedVersion` for each). The dialog names each version from that phase, with how
+   many follow it, and its Cancel is enabled only then. `jobs/cancel` stops the download and
+   the job ends `Cancelled`, which the dialog says; a failed download ends it with `Refused(OpenDoor43(PinNotDownloaded { pin,
    why, detail }))`, whose `why` chooses a plain sentence and whose `detail` goes to "Ask for
    help" only; the internet turned off ends it with `NeedsInternet(Open)`. In each case no
    project is added and no part copy is left (INV-OPEN-FROM-DOOR43-IS-ALL-OR-NOTHING).

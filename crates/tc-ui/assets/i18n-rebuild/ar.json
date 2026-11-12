@@ -139,6 +139,8 @@
   "newBible.burritoVersification": "يُحتفظ بتقسيم الآيات الخاص بالـ Scripture Burrito.",
   "open.changeFiles": "{done} من أصل {total} ملفات",
   "openDoor43.alreadyHere": "لديك هذا المشروع بالفعل على هذا الحاسوب. يحتفظ المشروع بنسخة واحدة على كل حاسوب.",
+  "openDoor43.cancelled": "تم إلغاء الفتح. لم تتم إضافة أي مشروع إلى هذا الحاسوب.",
+  "openDoor43.downloading": "جارٍ تنزيل {pin} الذي يستخدمه هذا المشروع. الإصدارات المتبقية بعد هذا: {n}.",
   "openDoor43.openYours": "افتحه",
   "openDoor43.refused.notOpened": "تعذر على tC4 جلب المشروع من Door43. تأكد من صحة اسم المستودع. لم تتم إضافة أي مشروع إلى هذا الحاسوب.",
   "openDoor43.whereAny": "يُفتح المشروع من {host}.",

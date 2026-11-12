@@ -14,7 +14,7 @@ import path from 'node:path';
 import { FAKE_USER } from '../../tc4-baseline/mock-server/fake-door43.mjs';
 import { DOOR43_OWNER, REPO, saveTitus, titusWords } from '../env-rust.mjs';
 import { BIBLE as BIBLE_REPO } from '../screens.mjs';
-import { browserTest, catalog, loadHome, withApp } from './kit.mjs';
+import { browserTest, catalog, loadHome, until, withApp } from './kit.mjs';
 
 const en = catalog('en');
 const rebuild = JSON.parse(fs.readFileSync(path.join(REPO, 'crates', 'tc-ui', 'assets', 'i18n-rebuild', 'en.json'), 'utf8'));
@@ -106,6 +106,51 @@ browserTest('J17 (#1013). An open from Door43 downloads the versions the project
     assert.deepEqual((await c.env.call('home/list', {})).cards, [], 'INV-OPEN-FROM-DOOR43-IS-ALL-OR-NOTHING: no project was added');
     // The form can be used again.
     assert.equal(await cPage.getByTestId('open-door43-submit').isEnabled(), true);
+    await cContext.close();
+  }, opts);
+});
+
+browserTest('J17 (#1013). While the open downloads a pinned version, the dialog names it and Cancel stops the open with no project added; Open project then opens the project', async () => {
+  await withApp(async ({ page, env, context, teammate }) => {
+    await teamCopy(page, env);
+    const c = await teammate('teammate-c');
+    const cContext = await context.browser().newContext(c.env.contextOptions);
+    await c.env.prepare(cContext);
+    const cPage = await cContext.newPage();
+    await loadHome(cPage, c.env);
+    // Door43 keeps the English notes waiting, so the dialog stays on that version.
+    await env.door43.fault({ method: 'GET', path: '/unfoldingWord/en_tn/sb/', times: 1, fault: { type: 'hold' } });
+    await cPage.getByTestId('add-project').click();
+    await cPage.getByTestId('add-project-door43').click();
+    await cPage.getByTestId('open-door43-repo').fill(`${DOOR43_OWNER}/${env.door43Repo(BIBLE_REPO)}`);
+    const submit = cPage.getByTestId('open-door43-submit');
+    const cancel = cPage.getByTestId('open-door43-cancel');
+    await submit.click();
+    await cPage.getByTestId('net-confirm').click();
+    // It names the version and how many follow it, and Cancel is at hand.
+    const progress = cPage.getByTestId('open-door43-progress');
+    await until('the dialog names en_tn v91', async () => (await progress.count()) === 1 && (await progress.textContent()).includes('en_tn v91'));
+    const [before, after] = rebuild['openDoor43.downloading'].replace('{pin}', 'en_tn v91').split('{n}');
+    const said = await progress.textContent();
+    assert.ok(said.startsWith(before) && said.endsWith(after), said);
+    assert.ok(Number(said.slice(before.length, said.length - after.length)) > 0, `versions follow en_tn: ${said}`);
+    assert.equal(await cancel.isEnabled(), true, 'Cancel is enabled while it downloads');
+    assert.equal(await submit.isEnabled(), false);
+    // Cancel: the open stops, no project is added and no part copy is left.
+    await cancel.click();
+    const cancelled = cPage.getByTestId('open-door43-cancelled');
+    await cancelled.waitFor();
+    assert.equal(await cancelled.textContent(), rebuild['openDoor43.cancelled']);
+    assert.equal(await progress.count(), 0);
+    assert.deepEqual((await c.env.call('home/list', {})).cards, [], 'INV-OPEN-FROM-DOOR43-IS-ALL-OR-NOTHING: no project was added');
+    assert.deepEqual(fs.readdirSync(c.env.projectsDir).filter((name) => name.startsWith('.staging')), [], 'no part copy');
+    await env.door43.release();
+    // Open project starts again, and this time the project is added.
+    await submit.click();
+    await cPage.getByTestId('open-door43-modal').waitFor({ state: 'detached', timeout: 100_000 });
+    const cards = (await c.env.call('home/list', {})).cards;
+    assert.equal(cards.length, 1, 'one project');
+    await cPage.getByTestId(`project-${cards[0].project}`).waitFor();
     await cContext.close();
   }, opts);
 });

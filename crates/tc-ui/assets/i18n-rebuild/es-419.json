@@ -139,6 +139,8 @@
   "newBible.burritoVersification": "Se conserva la versificación propia del Scripture Burrito.",
   "open.changeFiles": "{done} de {total} archivos",
   "openDoor43.alreadyHere": "Este proyecto ya está en esta computadora.",
+  "openDoor43.cancelled": "Se canceló la apertura. No se agregó ningún proyecto a esta computadora.",
+  "openDoor43.downloading": "Descargando {pin}, que este proyecto usa. Versiones que faltan después de esta: {n}.",
   "openDoor43.openYours": "Abrir el tuyo",
   "openDoor43.refused.notOpened": "tC4 no pudo obtener el proyecto de Door43. Asegúrate de que el nombre del repositorio sea correcto. No se agregó ningún proyecto a esta computadora.",
   "openDoor43.whereAny": "El proyecto se abre desde {host}.",

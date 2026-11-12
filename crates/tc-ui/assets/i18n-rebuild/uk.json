@@ -139,6 +139,8 @@
   "newBible.burritoVersification": "Власна версифікація Scripture Burrito зберігається.",
   "open.changeFiles": "{done} із {total} файлів",
   "openDoor43.alreadyHere": "Цей проєкт уже є на цьому комп’ютері.",
+  "openDoor43.cancelled": "Відкриття скасовано. Жодного проєкту не додано на цей комп’ютер.",
+  "openDoor43.downloading": "Завантажується {pin}, який використовує цей проєкт. Версій залишилося після цієї: {n}.",
   "openDoor43.openYours": "Відкрити ваш",
   "openDoor43.refused.notOpened": "tC4 не зміг отримати проєкт із Door43. Переконайтеся, що назва репозиторію правильна. Жодного проєкту не додано на цей комп’ютер.",
   "openDoor43.whereAny": "Проєкт відкривається з {host}.",

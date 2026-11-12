@@ -10,7 +10,7 @@ use std::sync::Arc;
 use leptos::prelude::*;
 
 use crate::app::open_door43::{
-    OpenForm, OpenRefusal, RefusalSentence, RepoError, refusal_sentence,
+    Downloading, OpenForm, OpenRefusal, OpenStep, RefusalSentence, RepoError, refusal_sentence,
 };
 use crate::app::web::{AppCtx, use_app};
 use crate::ds::{
@@ -29,6 +29,13 @@ pub fn OpenFromDoor43() -> impl IntoView {
     let account = s.server.account.clone();
     let host = Memo::new(move |_| account.with(|a| a.server.clone()));
     let busy = { Signal::derive(move || od.with(|od| od.as_ref().is_some_and(OpenForm::busy))) };
+    // Cancel closes the dialog while nothing runs, and stops the open while it downloads a
+    // pinned version (#1013); it is off while the project is fetched and while the open stops.
+    let cancel_off = {
+        Signal::derive(move || {
+            od.with(|od| od.as_ref().is_some_and(|od| od.busy() && !od.can_cancel()))
+        })
+    };
     let cant_open = {
         Signal::derive(move || {
             let host = host.get();
@@ -43,9 +50,15 @@ pub fn OpenFromDoor43() -> impl IntoView {
             view! {
                 <Button
                     variant=ButtonVariant::Secondary
-                    disabled=busy
+                    disabled=cancel_off
                     attrs=Attrs::from([("data-testid", "open-door43-cancel")])
-                    on_click=Callback::new(move |_| cancel.close_modal())
+                    on_click=Callback::new(move |_| {
+                        if busy.get_untracked() {
+                            cancel.cancel_open_door43();
+                        } else {
+                            cancel.close_modal();
+                        }
+                    })
                 >
                     {move || t(keys::open_door43::CANCEL, &[])}
                 </Button>
@@ -91,11 +104,21 @@ pub fn OpenFromDoor43() -> impl IntoView {
             };
             let yours =
                 Memo::new(move |_| od.with(|od| od.as_ref().and_then(|od| od.yours.clone())));
+            let step = Memo::new(move |_| {
+                od.with(|od| od.as_ref().map(|od| od.step.clone()).unwrap_or_default())
+            });
             let below = {
                 let actions = actions.clone();
                 move || {
                     if let Some(project) = yours.get() {
                         return already_here(&actions, project).into_any();
+                    }
+                    match step.get() {
+                        OpenStep::Downloading(download) | OpenStep::Stopping(download) => {
+                            return downloading(&download).into_any();
+                        }
+                        OpenStep::Cancelled => return cancelled().into_any(),
+                        OpenStep::Getting => {}
                     }
                     match refusal.get() {
                     Some(refusal) => refused(&actions, refusal).into_any(),
@@ -148,6 +171,26 @@ pub fn OpenFromDoor43() -> impl IntoView {
         ..Default::default()
     })
     .into_any()
+}
+
+/// The version the open downloads now, and how many follow it (#1013): said as a status, so a
+/// screen reader hears each one.
+fn downloading(download: &Downloading) -> impl IntoView + use<> {
+    let (pin, left) = (download.pin.clone(), download.left.to_string());
+    view! {
+        <Callout tone=CalloutTone::Info attrs=Attrs::from([("data-testid", "open-door43-progress"), ("role", "status")])>
+            {move || t(keys::open_door43::DOWNLOADING, &[("pin", &pin), ("n", &left)])}
+        </Callout>
+    }
+}
+
+/// The last open was cancelled (#1013): no project was added.
+fn cancelled() -> impl IntoView + use<> {
+    view! {
+        <Callout tone=CalloutTone::Info attrs=Attrs::from([("data-testid", "open-door43-cancelled"), ("role", "status")])>
+            {move || t(keys::open_door43::CANCELLED, &[])}
+        </Callout>
+    }
 }
 
 /// The repository's project is on this computer (ruling H14): no second copy, and Open it.
