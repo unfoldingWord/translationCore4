@@ -34,6 +34,7 @@ if [ "$platform" = windows-x64 ]; then
   [ "$got" = "$rcedit_want" ] || { echo "stage.sh: $TC4_RCEDIT has sha256 $got, not the pinned $rcedit_want" >&2; exit 1; }
 fi
 
+version=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version *= *"\(.*\)"/\1/p' "$repo/Cargo.toml")
 rm -rf "$out"
 mkdir -p "$out"
 if [ "$platform" = macos-arm64 ]; then
@@ -47,6 +48,9 @@ if [ "$platform" = macos-arm64 ]; then
   /usr/libexec/PlistBuddy -c 'Set :CFBundleName translationCore' -c 'Set :CFBundleDisplayName translationCore 4' \
     -c 'Set :CFBundleIdentifier org.unfoldingword.translationcore4' "$plist" 2> /dev/null \
     || /usr/libexec/PlistBuddy -c 'Add :CFBundleDisplayName string translationCore 4' "$plist"
+  # Finder's Get Info and the installer show these: the app's version, not Electronite's (#1016).
+  # CFBundleVersion holds numbers only.
+  /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $version" -c "Set :CFBundleVersion ${version%%-*}" "$plist"
   # The bundle's CFBundleIconFile is electron.icns: Finder, Launchpad and the Dock show it.
   cp "$repo/branding/icon.icns" "$resources/electron.icns"
 else
@@ -66,7 +70,6 @@ mkdir -p "$app/shell" "$app/branding" "$resources/tc4"
 cp "$repo"/shell/*.cjs "$app/shell/"
 cp "$repo/branding/icon.ico" "$repo/branding/icon-1024.png" "$app/branding/"
 cp "$repo/scripts/release/launch.cjs" "$app/launch.cjs"
-version=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version *= *"\(.*\)"/\1/p' "$repo/Cargo.toml")
 printf '{\n  "name": "translationCore4",\n  "productName": "translationCore4",\n  "version": "%s",\n  "private": true,\n  "main": "launch.cjs"\n}\n' \
   "$version" > "$app/package.json"
 if [ -n "${TC_HELP_DESK_TOKEN:-}" ] && [ -n "${TC_HELP_DESK_EMAIL:-}" ]; then

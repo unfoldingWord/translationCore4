@@ -46,6 +46,34 @@ H3, H4, H10 and H16). The pipeline is `.github/workflows/release.yml`; its scrip
 Uninstalling or updating replaces only the app. Projects and app data stay (tC4 #44); the smoke
 test checks it.
 
+A newer installer replaces the installed app (#1016). On Windows, Inno Setup finds the earlier
+install by its `AppId` and installs into the same folder; once the install has succeeded, it
+removes every file the installed build's `BUILD-MANIFEST.json` named that the newer build's does
+not, so a file the newer build no longer has (the older UI folder, a library an older Electronite
+had) does not stay, and a cancelled or failed Setup leaves the older app whole. On macOS the pkg writes only
+`/Applications/translationCore 4.app`, so its scripts (`scripts/release/macos-preinstall.sh`,
+run before and after the install) look for a translationCore 4 anywhere else: by bundle id
+through Spotlight, in Applications and the home folder of the person at the screen, and, for a
+Mac that does not index, in Applications and that person's Applications, Desktop and Downloads.
+A copy on another disk or in another person's folder is not looked for, nor is one outside
+those four folders on a Mac that does not index.
+
+- When a translationCore 4 is found, at the install location or elsewhere, the installer asks
+  before anything is replaced. *Replace* installs, then removes the copies elsewhere that it
+  listed. *Cancel*, or no answer in five minutes, installs nothing and removes nothing; Installer
+  then reports a failed installation, which is the only way a pkg script can stop.
+- With nobody to ask (`installer -pkg` in a terminal, or nobody logged in), or when the question
+  cannot be shown, it installs and removes nothing elsewhere: no copy is removed that a person
+  was not shown.
+- The tC4 4.0 beta (`translationCore4.app`, the same bundle id) is not a translationCore 4 and
+  stays beside it (H16 part 3).
+
+On Linux the translator deletes the old folder and unzips the new one.
+
+The installed bundle's `CFBundleShortVersionString` and the pkg receipt (`pkgutil --pkg-info
+org.unfoldingword.translationcore4`) carry the app's whole version, such as `4.1.0-preview2`;
+`CFBundleVersion` carries its numbers, `4.1.0`.
+
 ## Cutting a release
 
 Each release has one GitHub issue, opened from the **Release** issue template
@@ -139,6 +167,9 @@ branch, it can also be run by hand from the Actions tab on any branch.
 | the Windows installer is signed | publish | no release carries an `-unsigned` Windows installer |
 | `seal-macos.test.mjs`, `seal-macos.sh` | build (macOS) | the staged bundle passes `codesign --verify --deep --strict` with its manifest inside, and the manifest is the record of its files (#969) |
 | `package.sh` | build | only a stage whose manifest matches its files, and on macOS whose seal is valid, is packaged; a failed build job skips `smoke` and `publish` |
+| `macos-preinstall.test.mjs` | build (macOS) | the pkg's scripts find a translationCore 4 under another name or in another folder and leave the tC4 4.0 beta and other apps; Replace removes the other copies only after the install, Cancel stops it and removes nothing, and with nobody to ask nothing elsewhere is removed; the pkg records the whole version. The person's answer is a stub: the dialog itself is checked by hand (#1016) |
+| `the_installed_app_and_receipt_show_the_app_s_version` | smoke (macOS) | Finder's version and the pkg receipt are the app's version, not Electronite's (#1016) |
+| `installing_over_leaves_one_translationcore_4`, `installing_over_keeps_app_data_and_projects` | smoke (Windows, macOS) | the newest published release is installed and started, then this build is installed over it with no uninstall: one app is there, and every file the older build wrote in app data, and a file put in the projects folder, is still there; `installed_files_are_the_manifest_s` then holds for the app installed over the older one, so no file of the older build stays (#1016) |
 | `installed_manifest_is_the_build_s` | smoke | the installed manifest is the build's |
 | `installed_files_are_the_manifest_s` | smoke | every installed file has the size and sha256 the manifest records, and nothing else is there but Inno Setup's uninstaller |
 | `installed_app_seal_is_valid` | smoke (macOS) | the installed bundle passes `codesign --verify --deep --strict` (#969) |
