@@ -361,6 +361,37 @@ pub(crate) struct State {
     pub metadata_cache: HashMap<String, Option<serde_json::Value>>,
     /// `(owner, login)`: `login` may push to `owner`'s repositories as a collaborator.
     pub collaborators: Vec<(String, String)>,
+    pub pinned_exports: Vec<PinnedExport>,
+    pub pinned_commits: Vec<PinnedCommit>,
+}
+
+/// Door43's burrito export of `owner/name` at `tag`, as a project pinned it: the export
+/// declares `revision`, the commit the pin names, and holds `files`.
+///
+/// The fake's own commits have shas of their own, so a pin read from a fixture never names
+/// one of them. A pinned export answers the download of such a pin
+/// (`/<owner>/<name>/sb/<tag>.zip`): the repository's catalog entry, tags and archives stay
+/// as they were seeded, and the repository need not exist. Where the fake also holds that
+/// tag as a release of its own, the pinned export replaces that release's export for every
+/// caller, so such a fake can no longer install that tag at the fake's own commit.
+#[derive(Debug, Clone)]
+pub struct PinnedExport {
+    pub owner: String,
+    pub name: String,
+    pub tag: String,
+    pub revision: String,
+    pub files: Vec<SeedFile>,
+}
+
+/// A commit of `owner/name` under the sha a project pinned by commit only: Door43 answers
+/// the commit lookup and the archive of `pinned` with the repository's `rev`, named `pinned`.
+/// It exists for the reason [`PinnedExport`] does. The repository must exist.
+#[derive(Debug, Clone)]
+pub struct PinnedCommit {
+    pub owner: String,
+    pub name: String,
+    pub pinned: String,
+    pub rev: String,
 }
 
 /// 2026-01-01T00:00:00Z. Seeded commits are an hour apart from here, so their shas are
@@ -382,6 +413,8 @@ impl State {
             clock: CLOCK_START,
             metadata_cache: HashMap::new(),
             collaborators: Vec::new(),
+            pinned_exports: Vec::new(),
+            pinned_commits: Vec::new(),
         }
     }
 
@@ -419,6 +452,18 @@ impl State {
         self.repos
             .iter()
             .find(|r| r.owner.eq_ignore_ascii_case(owner) && r.name.eq_ignore_ascii_case(name))
+    }
+
+    /// The revision that stands for `sha` in `owner/name`, when `sha` is a pinned commit.
+    pub fn pinned_rev(&self, owner: &str, name: &str, sha: &str) -> Option<String> {
+        self.pinned_commits
+            .iter()
+            .find(|held| {
+                held.owner.eq_ignore_ascii_case(owner)
+                    && held.name.eq_ignore_ascii_case(name)
+                    && held.pinned.eq_ignore_ascii_case(sha)
+            })
+            .map(|held| held.rev.clone())
     }
 
     pub fn repo_mut(&mut self, owner: &str, name: &str) -> Option<&mut RepoRec> {
@@ -771,6 +816,33 @@ impl FakeDoor43 {
                     .collect()
             })
             .unwrap_or_default()
+    }
+
+    /// Holds `export` from now on; a later one for the same repository and tag replaces it.
+    pub fn pin_export(&self, export: PinnedExport) {
+        let mut state = self.shared.state();
+        state.pinned_exports.retain(|held| {
+            !(held.owner.eq_ignore_ascii_case(&export.owner)
+                && held.name.eq_ignore_ascii_case(&export.name)
+                && held.tag == export.tag)
+        });
+        state.pinned_exports.push(export);
+    }
+
+    /// Holds `commit` from now on; a later one for the same repository and sha replaces it.
+    pub fn pin_commit(&self, commit: PinnedCommit) {
+        let mut state = self.shared.state();
+        state.pinned_commits.retain(|held| {
+            !(held.owner.eq_ignore_ascii_case(&commit.owner)
+                && held.name.eq_ignore_ascii_case(&commit.name)
+                && held.pinned.eq_ignore_ascii_case(&commit.pinned))
+        });
+        state.pinned_commits.push(commit);
+    }
+
+    /// Whether the fake holds `owner/name`.
+    pub fn has_repo(&self, owner: &str, name: &str) -> bool {
+        self.shared.state().repo(owner, name).is_some()
     }
 
     pub fn inject(&self, rule: FaultRule) {

@@ -33,6 +33,18 @@ pub(crate) fn with_extra_file(
     Ok(writer.finish().map_err(zip_error)?.into_inner())
 }
 
+/// `files` as `git archive` would zip them, each under `<prefix>/`: what [`sb_export`] reads.
+pub(crate) fn archive_of(prefix: &str, files: &[crate::SeedFile]) -> Result<Vec<u8>, FakeError> {
+    let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
+    for file in files {
+        writer
+            .start_file(format!("{prefix}/{}", file.path), deflated())
+            .map_err(zip_error)?;
+        writer.write_all(&file.bytes)?;
+    }
+    Ok(writer.finish().map_err(zip_error)?.into_inner())
+}
+
 /// What the DCS export holds beyond the repository's files.
 pub(crate) struct SbExport<'a> {
     /// `<owner>/<repo>`, the key DCS writes under `identification.primary.dcs`.
