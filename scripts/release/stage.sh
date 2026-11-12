@@ -49,7 +49,8 @@ if [ "$platform" = macos-arm64 ]; then
     -c 'Set :CFBundleIdentifier org.unfoldingword.translationcore4' "$plist" 2> /dev/null \
     || /usr/libexec/PlistBuddy -c 'Add :CFBundleDisplayName string translationCore 4' "$plist"
   # Finder's Get Info and the installer show these: the app's version, not Electronite's (#1016).
-  /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $version" -c "Set :CFBundleVersion $version" "$plist"
+  # CFBundleVersion holds numbers only.
+  /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $version" -c "Set :CFBundleVersion ${version%%-*}" "$plist"
   # The bundle's CFBundleIconFile is electron.icns: Finder, Launchpad and the Dock show it.
   cp "$repo/branding/icon.icns" "$resources/electron.icns"
 else

@@ -235,13 +235,14 @@ jobs:
       - if: matrix.platform == 'linux-x64'
         run: sudo apt-get install -y --no-install-recommends xvfb libgtk-3-0 libnss3 libasound2t64 libgbm1
       # #1016: the newest published release is the one a translator has when they install this
-      # build. A tag's own release is a draft until it is published, so it is never this one.
+      # build. A tag's own release is left out: a rerun after it is published would install the
+      # build over itself.
       - if: matrix.platform != 'linux-x64'
         name: the previous release's installer
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tag=$(gh release list -R "$GITHUB_REPOSITORY" --exclude-drafts --limit 30 --json tagName,publishedAt --jq 'sort_by(.publishedAt) | last | .tagName')
+          tag=$(gh release list -R "$GITHUB_REPOSITORY" --exclude-drafts --limit 30 --json tagName,publishedAt --jq 'map(select((.tagName | startswith("v")) and .tagName != env.GITHUB_REF_NAME)) | sort_by(.publishedAt) | last | .tagName // ""')
           [ -n "$tag" ] || { echo "no published release to install over"; exit 1; }
           gh release download "$tag" -R "$GITHUB_REPOSITORY" --dir previous --pattern 'translationCore4-*-${{ matrix.platform }}*'
           ls -l previous

@@ -11,10 +11,11 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 mkdir -p "$work/payload" "$work/instructions" "$work/scripts"
 ditto "$app" "$work/payload/translationCore 4.app"
-# Asks before it replaces a translationCore 4 already on the Mac, and removes one that is not
-# at the install location (#1016).
+# Asks before it replaces a translationCore 4 already on the Mac, and afterwards removes one
+# that is not at the install location (#1016). One file, which reads its own name.
 cp "$repo/scripts/release/macos-preinstall.sh" "$work/scripts/preinstall"
-chmod +x "$work/scripts/preinstall"
+cp "$repo/scripts/release/macos-preinstall.sh" "$work/scripts/postinstall"
+chmod +x "$work/scripts/preinstall" "$work/scripts/postinstall"
 cp "$repo/scripts/release/README-macos.txt" "$work/instructions/README.txt"
 pkgbuild --analyze --root "$work/payload" "$work/components.plist"
 # Always replace the app where the pkg puts it, never a copy moved elsewhere.

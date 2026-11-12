@@ -73,10 +73,19 @@ if [ -n "$upgrade_from" ]; then
   "${start[@]}" --app-data "$(np "$appdata")" 2>&1 | tee smoke-logs/previous-starts.txt
   older=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).commit)' "$(np "$(find "$root" -name BUILD-MANIFEST.json | head -1)")")
   [ -d "$HOME/translationCore4/projects" ] || { echo "FAIL the_older_build_made_its_projects_folder"; exit 1; }
-  find "$appdata" "$HOME/translationCore4" -type f ! -name shell.log | sort > smoke-logs/previous-files.txt
-  [ -s smoke-logs/previous-files.txt ] || { echo "FAIL the_older_build_wrote_app_data: $appdata is empty"; exit 1; }
-  # The reported case: the older app also sits under another name, where the pkg does not write.
-  [ "$platform" != macos-arm64 ] || sudo ditto "$root" "/Applications/translationCore 4 older.app"
+  # tc4 outlives the shell for a few seconds while it stops; its files are listed once it has.
+  for _ in $(seq 30); do
+    case "$platform" in
+      macos-arm64) pgrep -x tc4 > /dev/null || break ;;
+      windows-x64) MSYS2_ARG_CONV_EXCL='*' tasklist /FI 'IMAGENAME eq tc4.exe' | grep -q tc4.exe || break ;;
+    esac
+    sleep 1
+  done
+  # The older build is only started, so it made no project: a file stands for the translator's.
+  mkdir -p "$HOME/translationCore4/projects/installed-over"
+  echo "a translator's work" > "$HOME/translationCore4/projects/installed-over/work.txt"
+  find "$appdata" "$HOME/translationCore4" -type f ! -name shell.log ! -name '*.tmp' | sort > smoke-logs/previous-files.txt
+  grep -q "^$appdata/" smoke-logs/previous-files.txt || { echo "FAIL the_older_build_wrote_app_data: $appdata is empty"; exit 1; }
   echo "ok the_previous_release_installs_and_starts: $older"
 fi
 install "$dist" first
