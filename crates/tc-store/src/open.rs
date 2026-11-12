@@ -1625,14 +1625,14 @@ impl Project {
             return Ok(());
         };
         let plan = crate::commands::Plan {
-            changes: vec![tc_journal::command::PlannedChange {
-                record: tc_journal::Record::DeviceProfile {
+            changes: vec![tc_journal::command::PlannedChange::new(
+                tc_journal::Record::DeviceProfile {
                     device: self.device,
                     value,
                 },
-                parents: Vec::new(),
-                cause: tc_journal::Cause::Edit,
-            }],
+                Vec::new(),
+                tc_journal::Cause::Edit,
+            )],
             skipped: Vec::new(),
             kept: Vec::new(),
             dropped_links: Vec::new(),
@@ -1657,13 +1657,15 @@ impl Project {
         let plan = crate::commands::Plan {
             changes: pins
                 .iter()
-                .map(|(group, value)| tc_journal::command::PlannedChange {
-                    record: tc_journal::Record::Pins {
-                        group: *group,
-                        value: value.clone(),
-                    },
-                    parents: Vec::new(),
-                    cause: tc_journal::Cause::System(tc_journal::SystemReason::CreationPins),
+                .map(|(group, value)| {
+                    tc_journal::command::PlannedChange::new(
+                        tc_journal::Record::Pins {
+                            group: *group,
+                            value: value.clone(),
+                        },
+                        Vec::new(),
+                        tc_journal::Cause::System(tc_journal::SystemReason::CreationPins),
+                    )
                 })
                 .collect(),
             skipped: Vec::new(),

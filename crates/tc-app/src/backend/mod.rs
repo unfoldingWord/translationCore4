@@ -574,7 +574,7 @@ impl StoreCommand {
         let listed = plan
             .changes
             .iter()
-            .map(|change| (change.record.key(), change.parents.clone()))
+            .map(|change| (change.record.key(), change.parents().to_vec()))
             .collect();
         Self::new(Command::ApplyUpgrade { plan }, listed)
     }

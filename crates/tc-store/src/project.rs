@@ -449,7 +449,7 @@ impl Project {
                 Change::new(ChangeBody {
                     v: FORMAT_MINOR,
                     record: p.record.clone(),
-                    parents: p.parents.clone(),
+                    parents: p.parents().to_vec(),
                     device: self.device,
                     seq: DeviceSeq(self.next_seq + i as u64),
                     at,

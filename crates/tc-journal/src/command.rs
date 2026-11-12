@@ -289,13 +289,14 @@ pub struct UpgradePlan {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlannedChange {
     pub record: Record,
-    /// The record's heads in the snapshot.
-    pub parents: Vec<ChangeId>,
+    /// The record's heads in the snapshot, in id order, each once (V5). Private, so
+    /// [`Self::new`] is the only way to make one.
+    parents: Vec<ChangeId>,
     pub cause: Cause,
 }
 
 impl PlannedChange {
-    /// A change whose parents come from somewhere that keeps no order (a token, a heads file,
+    /// The parents may come from somewhere that keeps no order (a token, a heads file,
     /// History): they are written in id order, each once, which is the only form the journal
     /// takes (V5).
     #[must_use]
@@ -307,6 +308,17 @@ impl PlannedChange {
             parents,
             cause,
         }
+    }
+
+    #[must_use]
+    pub fn parents(&self) -> &[ChangeId] {
+        &self.parents
+    }
+
+    /// The same change, made for another cause.
+    #[must_use]
+    pub fn with_cause(self, cause: Cause) -> Self {
+        Self { cause, ..self }
     }
 }
 

@@ -409,14 +409,14 @@ pub(crate) fn carry_changes(
     let cause = Cause::CarryOver { group };
     let write = |key: &CheckKey, value: CheckValue| {
         let record = RecordKey::Check(key.clone());
-        PlannedChange {
-            parents: heads(&record),
-            record: Record::Check {
+        PlannedChange::new(
+            Record::Check {
                 key: key.clone(),
                 value,
             },
-            cause: cause.clone(),
-        }
+            heads(&record),
+            cause.clone(),
+        )
     };
     let decided = |entry: &carry::Entry, item: usize| DecisionRecord {
         resource: plan.resource.clone(),
@@ -638,7 +638,7 @@ mod tests {
             "a context field only the old record holds stays"
         );
         assert_eq!(
-            change.parents,
+            change.parents(),
             heads_of(&RecordKey::Check(items[0].key.clone()))
         );
         assert_eq!(

@@ -418,7 +418,10 @@ fn a_resolution_costs_what_it_touches() {
             .expect("a candidate resolves the conflict");
         let resolving: Vec<tc_journal::Change> = planned
             .into_iter()
-            .flat_map(|p| maria.batch(vec![(p.record, p.parents)], Cause::Resolve))
+            .flat_map(|p| {
+                let parents = p.parents().to_vec();
+                maria.batch(vec![(p.record, parents)], Cause::Resolve)
+            })
             .collect();
         let n = resolving.len() as u64;
         let counts = step(&mut state, resolving);

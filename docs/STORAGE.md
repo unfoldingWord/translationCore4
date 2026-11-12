@@ -918,8 +918,10 @@ pub struct SeedSource { pub usfm: String }
 pub enum RestoreMode { KeepText, StartEmpty }
 /// §5.8: each planned change carries its record's heads in the snapshot as parents; the actor
 /// confirms every record still has them before it writes the plan as one batch.
+/// `PlannedChange::new` is the only way to make one: it writes the parents in id order, each
+/// once (V5).
 pub struct UpgradePlan { pub changes: Vec<PlannedChange> }
-pub struct PlannedChange { pub record: Record, pub parents: Vec<ChangeId>, pub cause: Cause }
+pub struct PlannedChange { pub record: Record, parents: Vec<ChangeId>, pub cause: Cause }
 /// §8.3: keep one candidate (and its side, for a grouped conflict), or values the person
 /// edited, combined or chose unit by unit, one per record.
 pub enum Choice { Candidate { head: ChangeId }, Values(Vec<Record>),

@@ -67,11 +67,7 @@ impl FoldState {
     /// One resolving change: `record` with every current head of its record as parents.
     fn resolving(&self, record: Record) -> PlannedChange {
         let parents = self.heads(&record.key());
-        PlannedChange {
-            record,
-            parents,
-            cause: Cause::Resolve,
-        }
+        PlannedChange::new(record, parents, Cause::Resolve)
     }
 
     /// The changes a choice writes (§8.3): *Keep this version* on a candidate (and its
@@ -1190,14 +1186,14 @@ impl FoldState {
             return Err(ResolveError::MissingValue(key));
         };
         Ok(vec![
-            PlannedChange {
-                record: Record::CarriedFile {
+            PlannedChange::new(
+                Record::CarriedFile {
                     path: to.clone(),
                     value,
                 },
-                parents: self.heads(&RecordKey::CarriedFile(to)),
-                cause: Cause::Resolve,
-            },
+                self.heads(&RecordKey::CarriedFile(to)),
+                Cause::Resolve,
+            ),
             self.resolving(Record::CarriedFile {
                 path: from.clone(),
                 value: CarriedValue::Removed,
@@ -1248,14 +1244,14 @@ impl FoldState {
                 path: path.clone(),
                 value: kept.clone(),
             }),
-            PlannedChange {
-                record: Record::CarriedFile {
+            PlannedChange::new(
+                Record::CarriedFile {
                     path: to,
                     value: moved.clone(),
                 },
-                parents: Vec::new(),
-                cause: Cause::Resolve,
-            },
+                Vec::new(),
+                Cause::Resolve,
+            ),
         ])
     }
 
@@ -1353,11 +1349,7 @@ impl FoldState {
                 }
             };
             match undone {
-                Some((record, cause)) => planned.push(PlannedChange {
-                    record,
-                    parents: vec![id],
-                    cause,
-                }),
+                Some((record, cause)) => planned.push(PlannedChange::new(record, vec![id], cause)),
                 None => left.push(key),
             }
         }

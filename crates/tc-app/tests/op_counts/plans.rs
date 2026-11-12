@@ -210,13 +210,15 @@ async fn with_package(s: &Scale, covers: &[BookId]) {
         );
     }
     pins.fallback = Some(fallback);
-    let write = |group: PinGroup| PlannedChange {
-        parents: read.heads(&RecordKey::Pins(group)),
-        record: Record::Pins {
-            group,
-            value: pins.group_value(group).unwrap(),
-        },
-        cause: Cause::Edit,
+    let write = |group: PinGroup| {
+        PlannedChange::new(
+            Record::Pins {
+                group,
+                value: pins.group_value(group).unwrap(),
+            },
+            read.heads(&RecordKey::Pins(group)),
+            Cause::Edit,
+        )
     };
     session
         .handle()

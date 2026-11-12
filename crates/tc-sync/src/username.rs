@@ -50,11 +50,11 @@ pub async fn record_username(
         project
             .submit(Command::ApplyUpgrade {
                 plan: UpgradePlan {
-                    changes: vec![PlannedChange {
-                        record: Record::DeviceProfile { device, value },
-                        parents: snapshot.fold().heads(&key),
-                        cause: tc_journal::Cause::Edit,
-                    }],
+                    changes: vec![PlannedChange::new(
+                        Record::DeviceProfile { device, value },
+                        snapshot.fold().heads(&key),
+                        tc_journal::Cause::Edit,
+                    )],
                 },
             })
             .await

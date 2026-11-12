@@ -422,11 +422,7 @@ impl Store {
                 changes: new
                     .records
                     .iter()
-                    .map(|record| PlannedChange {
-                        record: record.clone(),
-                        parents: Vec::new(),
-                        cause: cause.clone(),
-                    })
+                    .map(|record| PlannedChange::new(record.clone(), Vec::new(), cause.clone()))
                     .collect(),
             };
             handle

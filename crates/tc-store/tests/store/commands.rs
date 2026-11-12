@@ -250,8 +250,8 @@ pub(crate) fn rich() -> (FaultFs, PathBuf) {
             &handle,
             Command::ApplyUpgrade {
                 plan: UpgradePlan {
-                    changes: vec![PlannedChange {
-                        record: Record::CarriedFile {
+                    changes: vec![PlannedChange::new(
+                        Record::CarriedFile {
                             path: RepoPath::parse("ingredients/audio/tit-1.mp3").unwrap(),
                             value: CarriedValue::Present {
                                 oid: oid(9),
@@ -259,9 +259,9 @@ pub(crate) fn rich() -> (FaultFs, PathBuf) {
                                 md5: Md5::of(b"mp3"),
                             },
                         },
-                        parents: Vec::new(),
-                        cause: Cause::Seed,
-                    }],
+                        Vec::new(),
+                        Cause::Seed,
+                    )],
                 },
             },
         )
@@ -566,8 +566,8 @@ pub(crate) fn every_command(handle: &ProjectHandle) -> Vec<(&'static str, Comman
         "ApplyUpgrade",
         Command::ApplyUpgrade {
             plan: UpgradePlan {
-                changes: vec![PlannedChange {
-                    record: Record::Check {
+                changes: vec![PlannedChange::new(
+                    Record::Check {
                         key: tn_key(1, 2, 1),
                         value: match fold.projected(&RecordKey::Check(tn_key(1, 2, 1))) {
                             Some(Record::Check {
@@ -583,11 +583,11 @@ pub(crate) fn every_command(handle: &ProjectHandle) -> Vec<(&'static str, Comman
                             other => panic!("{other:?}"),
                         },
                     },
-                    parents: fold.heads(&RecordKey::Check(tn_key(1, 2, 1))),
-                    cause: Cause::CarryOver {
+                    fold.heads(&RecordKey::Check(tn_key(1, 2, 1))),
+                    Cause::CarryOver {
                         group: PinGroup::Primary,
                     },
-                }],
+                )],
             },
         },
     ));
