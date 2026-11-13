@@ -1432,8 +1432,25 @@ impl Actions {
                         tc_api::refusal::OpenDoor43Refusal::AlreadyHere { project },
                     ))) => this.patch_od(|od| od.already_here(project, js::random_request_id())),
                     Some(ApiError::Refused(refusal)) => {
-                        let reason = crate::i18n::refusal_text(&refusal);
-                        this.open_refused(refusal.code(), reason);
+                        let said = crate::i18n::refusal_text(&refusal);
+                        match &refusal {
+                            tc_api::Refusal::OpenDoor43(
+                                tc_api::refusal::OpenDoor43Refusal::PinNotDownloaded {
+                                    detail, ..
+                                },
+                            ) => {
+                                let (code, detail) = (refusal.code(), detail.clone());
+                                this.patch_od(|od| {
+                                    od.refused_in_its_words(
+                                        code,
+                                        said,
+                                        detail,
+                                        js::random_request_id(),
+                                    );
+                                });
+                            }
+                            _ => this.open_refused(refusal.code(), said),
+                        }
                     }
                     Some(other) => this.open_refused(None, other.to_string()),
                 },

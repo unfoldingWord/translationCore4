@@ -528,13 +528,25 @@ pub struct FixView {
 }
 
 /// A pinned resource as the guided fix names it: `es-419_tn · v66` and its commit.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "proptest", derive(proptest_derive::Arbitrary))]
 #[serde(rename_all = "camelCase")]
 pub struct PinLabel {
     pub repo_path: String,
     pub version: Option<String>,
     pub sha: String,
+}
+
+impl PinLabel {
+    /// The pin as a sentence names it: the repository's name and its version (`en_tn v91`),
+    /// or the name alone for a pin by commit only.
+    pub fn name(&self) -> String {
+        let repo = self.repo_path.rsplit('/').next().unwrap_or(&self.repo_path);
+        match &self.version {
+            Some(version) => format!("{repo} {version}"),
+            None => repo.to_owned(),
+        }
+    }
 }
 
 /// `resources/fixFetch` [fix] (job `FixFetch`): downloads the pinned resource itself, checked

@@ -8,6 +8,14 @@ pub fn book() -> impl Strategy<Value = BookId> {
     proptest::sample::select(&BookId::ALL[..])
 }
 
+/// Any value, from a strategy that is one pointer wide. A derived strategy holds the strategy
+/// of every variant and field by value, and the one for every error the API can answer
+/// (`any::<ApiError>()`) runs on a test thread's small stack: a field that brings a tree of
+/// its own goes in a box.
+pub fn boxed<T: Arbitrary + 'static>() -> BoxedStrategy<T> {
+    any::<T>().boxed()
+}
+
 /// A few values. The helps and the source panes nest lists four deep (a chapter's notes, each
 /// note's panes, each pane's lit verses, their tokens), and proptest's default of up to 100 at
 /// each level makes millions of values for one case.

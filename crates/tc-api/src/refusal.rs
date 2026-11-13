@@ -830,6 +830,35 @@ pub enum OpenDoor43Refusal {
     /// An open that did not finish before the app closed; its part copy was removed at the
     /// next start (STORAGE §6.4 N1).
     Removed,
+    /// The project pins `pin`, this computer lacks it, and its download failed (#1013, owner
+    /// ruling of 2026-11-12: a failed download means no project). No project was added and no
+    /// part copy was left. `why` chooses the sentence. `detail` is the download's own words,
+    /// which can hold Door43's words or a path on this computer: it goes to "Ask for help"
+    /// and never into the sentence (Q36).
+    PinNotDownloaded {
+        #[cfg_attr(feature = "proptest", proptest(strategy = "crate::arb::boxed()"))]
+        pin: crate::resources::PinLabel,
+        #[cfg_attr(feature = "proptest", proptest(strategy = "crate::arb::boxed()"))]
+        why: PinFailure,
+        detail: String,
+    },
+}
+
+/// Why a pinned version was not downloaded, as far as a translator can act on it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "proptest", derive(proptest_derive::Arbitrary))]
+#[serde(rename_all = "camelCase")]
+pub enum PinFailure {
+    /// Door43 has no such version: its repository or its release is gone.
+    NotOnDoor43,
+    /// What Door43 sent is not the commit the project pins, so it was not installed.
+    NotThePinnedVersion,
+    /// Door43 did not answer, or the connection broke.
+    Unreachable,
+    /// This computer could not keep the download: its disk is full or cannot be written.
+    NotSaved,
+    /// Any other cause.
+    Other,
 }
 
 impl Message for OpenDoor43Refusal {
@@ -839,6 +868,7 @@ impl Message for OpenDoor43Refusal {
             Self::NameExists => "open-door43.name-exists",
             Self::NoJournal => "open-door43.no-journal",
             Self::Removed => "open-door43.removed",
+            Self::PinNotDownloaded { .. } => "open-door43.pin-not-downloaded",
         })
     }
     fn key(&self) -> &'static str {
@@ -847,10 +877,22 @@ impl Message for OpenDoor43Refusal {
             Self::NameExists => "refusal.open-door43.name-exists",
             Self::NoJournal => "refusal.open-door43.no-journal",
             Self::Removed => "refusal.open-door43.removed",
+            Self::PinNotDownloaded { why, .. } => match why {
+                PinFailure::NotOnDoor43 => "refusal.open-door43.pin-not-on-door43",
+                PinFailure::NotThePinnedVersion => "refusal.open-door43.pin-not-the-pinned-version",
+                PinFailure::Unreachable => "refusal.open-door43.pin-unreachable",
+                PinFailure::NotSaved => "refusal.open-door43.pin-not-saved",
+                PinFailure::Other => "refusal.open-door43.pin-not-downloaded",
+            },
         }
     }
     fn vars(&self) -> Vec<(&'static str, String)> {
-        Vec::new()
+        match self {
+            Self::PinNotDownloaded { pin, .. } => vec![("pin", pin.name())],
+            Self::AlreadyHere { .. } | Self::NameExists | Self::NoJournal | Self::Removed => {
+                Vec::new()
+            }
+        }
     }
 }
 

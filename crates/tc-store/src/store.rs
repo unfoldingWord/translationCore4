@@ -316,6 +316,19 @@ impl Store {
         }
     }
 
+    /// Removes a staging folder of this store whose work was given up before it was placed,
+    /// so the next start finds nothing of it and reports no interrupted work. A removal that
+    /// fails leaves the folder to that start (§6.4 N1).
+    pub fn discard_staging(&self, staging: &Path) {
+        let ours = staging.parent() == Some(self.projects.as_path())
+            && staging
+                .file_name()
+                .is_some_and(|name| name.to_string_lossy().starts_with(STAGING));
+        if ours {
+            let _ = remove_dir_all_held(&*self.env.vfs, staging, &HeldRetry::SAVE);
+        }
+    }
+
     /// The project folders in the projects folder. A staging folder is never one, even with a
     /// `project.json`: one whose removal failed may still hold the original's device file.
     pub fn list(&self) -> Result<Vec<PathBuf>, StoreError> {

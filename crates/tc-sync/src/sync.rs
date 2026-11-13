@@ -18,8 +18,8 @@ use tc_store::{
 };
 
 /// The folder Door43's teammates' packs are in, in every tree.
-const PACKS: &str = "ingredients/tc/changes/";
-const PROJECT_JSON: &str = "ingredients/tc/project.json";
+pub(crate) const PACKS: &str = "ingredients/tc/changes/";
+pub(crate) const PROJECT_JSON: &str = "ingredients/tc/project.json";
 const TC4_JOURNAL: &str = "ingredients/checking/journal/";
 
 /// What a sync did (STORAGE §9.7).

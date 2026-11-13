@@ -20,6 +20,11 @@ use tc_sync::machine::{Ended, Received};
 use tc_sync::{Pause, SyncReport};
 use url::Url;
 
+/// A join's gate that lets every project through.
+async fn through(_: &tc_sync::Fetched<'_>) -> Result<(), std::convert::Infallible> {
+    Ok(())
+}
+
 /// Waits nothing between rounds and counts them.
 #[derive(Default)]
 pub struct NoPause;
@@ -453,6 +458,7 @@ async fn sync_confirms_only_a_made_checkpoint() {
         Some(&door43.session),
         &repo,
         "Titus",
+        through,
     )
     .await
     .unwrap();
@@ -913,6 +919,7 @@ async fn a_joined_project_holds_the_teams_work_and_syncs_both_ways() {
         Some(&door43.session),
         &repo,
         "Titus",
+        through,
     )
     .await
     .unwrap()
@@ -1190,6 +1197,7 @@ async fn three_devices_converge_with_byte_identical_derived_files() {
             Some(&door43.session),
             &repo,
             "Titus",
+            through,
         )
         .await
         .unwrap()
@@ -1417,6 +1425,7 @@ async fn a_join_skips_a_foreign_file_and_the_next_sync_keeps_it() {
         Some(&door43.session),
         &repo,
         "Titus",
+        through,
     )
     .await
     .unwrap();
@@ -1431,6 +1440,85 @@ async fn a_join_skips_a_foreign_file_and_the_next_sync_keeps_it() {
         Some(&b"short name"[..]),
         "a file not written is not a deletion"
     );
+}
+
+/// INV-OPEN-FROM-DOOR43-IS-ALL-OR-NOTHING (#1013): the gate reads the fetched files before the
+/// project is placed; a gate that stops the join adds no project and leaves no staging folder
+/// for the next start to report; the next join of the same repository makes the one project.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_gate_that_stops_the_join_adds_no_project_and_leaves_no_part_copy() {
+    let door43 = door43("titus-gate").await;
+    let dir = tempfile::tempdir().unwrap();
+    let ana = computer(dir.path(), "ana");
+    let folder_a = titus(&ana);
+    let a = open(&ana, &folder_a);
+    connect(&a, &door43, "titus-gate");
+    synced(&sync(&a, &door43).await);
+    a.close().unwrap();
+
+    let juan = computer(dir.path(), "juan");
+    let repo: tc_door43::RepoRef = format!("{}/titus-gate", seeded::USER).parse().unwrap();
+    let entries = |c: &Computer| -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(&c.projects)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
+    };
+    let before = entries(&juan);
+    let seen = std::sync::Mutex::new(None);
+    let derived = std::sync::Mutex::new(None);
+    let stopped = tc_sync::join(
+        &juan.store,
+        &door43.client,
+        Some(&door43.session),
+        &repo,
+        "Titus",
+        async |fetched: &tc_sync::Fetched<'_>| {
+            // The gate runs with the files in the staging folder and nothing placed.
+            *seen.lock().unwrap() = Some((
+                fetched.file("metadata.json").is_some(),
+                fetched.file("no/such/file").is_some(),
+                juan.projects.join("Titus").exists(),
+            ));
+            // A derived file comes from the fetched journal: for a repository nobody edited,
+            // it is the file Door43 holds, byte for byte.
+            let titus = tc_journal::fold::DerivedFile::Usfm(BookId::Titus);
+            let made = fetched.derived(&titus);
+            *derived.lock().unwrap() =
+                Some(made.is_some() && made.as_deref() == fetched.file(&titus.path()));
+            Err("not ready")
+        },
+    )
+    .await;
+    assert!(
+        matches!(stopped, Err(tc_sync::JoinStop::Gate("not ready"))),
+        "{stopped:?}"
+    );
+    assert_eq!(*seen.lock().unwrap(), Some((true, false, false)));
+    assert_eq!(
+        *derived.lock().unwrap(),
+        Some(true),
+        "the gate reads the book as the fetched journal makes it"
+    );
+    assert_eq!(
+        entries(&juan),
+        before,
+        "INV-OPEN-FROM-DOOR43-IS-ALL-OR-NOTHING: no project and no staging folder"
+    );
+
+    let joined = tc_sync::join(
+        &juan.store,
+        &door43.client,
+        Some(&door43.session),
+        &repo,
+        "Titus",
+        through,
+    )
+    .await
+    .unwrap();
+    assert_eq!(joined.folder, juan.projects.join("Titus"));
 }
 
 /// PLAN Q8: the merge fails after the teammate's work was taken in (here, before the branch
@@ -1726,6 +1814,7 @@ async fn sync_master_branch() {
         Some(&door43.session),
         &repo,
         "Titus",
+        through,
     )
     .await
     .unwrap()
@@ -1766,7 +1855,7 @@ async fn sync_private_repository() {
     .unwrap();
     synced(&sync(&a, &door43).await);
     let juan = computer(dir.path(), "juan");
-    let anonymous = tc_sync::join(&juan.store, &door43.client, None, &repo, "Titus").await;
+    let anonymous = tc_sync::join(&juan.store, &door43.client, None, &repo, "Titus", through).await;
     assert!(anonymous.is_err(), "a private repository is not public");
     let folder_b = tc_sync::join(
         &juan.store,
@@ -1774,6 +1863,7 @@ async fn sync_private_repository() {
         Some(&door43.session),
         &repo,
         "Titus",
+        through,
     )
     .await
     .unwrap()
@@ -1910,6 +2000,7 @@ async fn loss_f14_edits_during_sync_kept() {
         Some(&door43.session),
         &repo,
         "Titus",
+        through,
     )
     .await
     .unwrap()
@@ -1971,6 +2062,7 @@ async fn loss_carried_file_travels() {
         Some(&door43.session),
         &repo,
         "Titus",
+        through,
     )
     .await
     .unwrap()
@@ -2060,6 +2152,7 @@ async fn team_sync_obs_project() {
         Some(&door43.session),
         &repo,
         "Stories",
+        through,
     )
     .await
     .unwrap()
@@ -2187,6 +2280,7 @@ async fn sync_contention_three_devices_converge() {
             Some(&door43.session),
             &repo,
             "Titus",
+            through,
         )
         .await
         .unwrap()

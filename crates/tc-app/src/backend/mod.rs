@@ -45,6 +45,16 @@ pub mod store;
 /// A future a backend hands back; the caller awaits it without blocking a thread.
 pub type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
 
+/// What an open from Door43 does between its fetch and its placement (#1013): it takes the
+/// project's pin file as the fetched journal makes it (`tc_sync::Fetched::derived`), when
+/// the journal holds pins, and answers whether the project may be added. An `Err` adds no
+/// project and leaves no part copy.
+pub type JoinGate =
+    Box<dyn FnOnce(Option<Vec<u8>>) -> BoxFuture<Result<(), crate::pins::PinsStop>> + Send>;
+
+/// How an open from Door43 ended, from a store that keeps a git repository.
+pub type Joining = Result<tc_sync::Joined, tc_sync::JoinStop<crate::pins::PinsStop>>;
+
 // ---------------------------------------------------------------------------------------
 // Snapshots and tokens
 // ---------------------------------------------------------------------------------------
@@ -1158,16 +1168,18 @@ pub trait ProjectStore: Send + Sync + 'static {
     /// the projects folder: the copy offer of a read-only project (STORAGE §5.0, R7). Blocking.
     fn copy(&self, folder: &ProjectRef, name: &ProjectRef) -> Result<(), CopyFailure>;
 
-    /// The open from Door43 (E1a, unit X's `tc_sync::join`): `repo` fetched and placed as the
-    /// project `name`; its folder. `None` from a store that keeps no git repository.
+    /// The open from Door43 (E1a, unit X's `tc_sync::join`): `repo` fetched and, once `gate`
+    /// lets it through, placed as the project `name`; its folder. `None` from a store that
+    /// keeps no git repository.
     fn door43_join(
         self: Arc<Self>,
         client: tc_door43::Door43Client,
         session: Option<tc_door43::Session>,
         repo: tc_door43::RepoRef,
         name: String,
-    ) -> BoxFuture<Option<Result<tc_sync::Joined, tc_sync::JoinError>>> {
-        let _ = (client, session, repo, name);
+        gate: JoinGate,
+    ) -> BoxFuture<Option<Joining>> {
+        let _ = (client, session, repo, name, gate);
         Box::pin(async { None })
     }
 

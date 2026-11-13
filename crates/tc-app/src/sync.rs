@@ -16,7 +16,7 @@ use tc_api::shown::{Computer, PersonLabel, Who};
 use tc_journal::change::ChangeBody;
 use tc_journal::fold::{ConflictCounts, ConflictKind, ProjectKind};
 use tc_journal::{ChangeId, DeviceId};
-use tc_resources::{ProjectPins, ResourcePin};
+use tc_resources::ResourcePin;
 
 use crate::app::App;
 use crate::counters::CountingSnapshot;
@@ -348,8 +348,7 @@ fn pin_name(pin: &tc_journal::Json) -> Option<String> {
 fn missing_pins(snapshot: &CountingSnapshot, installed: &dyn Fn(&ResourcePin) -> bool) -> u32 {
     let pins = snapshot
         .render(&tc_journal::fold::DerivedFile::Resources)
-        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-        .and_then(|json| ProjectPins::from_resources_json(&json).ok());
+        .and_then(|bytes| crate::pins::pins_of_file(&bytes));
     pins.map_or(0, |pins| {
         let n = tc_resources::resolve::missing_pin_count(&pins, installed);
         u32::try_from(n).unwrap_or(u32::MAX)

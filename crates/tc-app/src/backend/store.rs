@@ -764,8 +764,17 @@ impl ProjectStore for StoreBackend {
         session: Option<tc_door43::Session>,
         repo: tc_door43::RepoRef,
         name: String,
-    ) -> BoxFuture<Option<Result<tc_sync::Joined, tc_sync::JoinError>>> {
-        join_on(self, |backend| &backend.store, client, session, repo, name)
+        gate: super::JoinGate,
+    ) -> BoxFuture<Option<super::Joining>> {
+        join_on(
+            self,
+            |backend| &backend.store,
+            client,
+            session,
+            repo,
+            name,
+            gate,
+        )
     }
 
     fn copy(&self, folder: &ProjectRef, name: &ProjectRef) -> Result<(), CopyFailure> {
@@ -1907,7 +1916,7 @@ impl Drop for StoreHandle {
 }
 
 /// `tc_sync::join` on `owner`'s tc-store, on a blocking thread: the store is borrowed for the
-/// whole fetch and placement.
+/// whole fetch and placement. `gate` gets the fetched project's pin file.
 pub(crate) fn join_on<S: Send + Sync + 'static>(
     owner: Arc<S>,
     store: fn(&S) -> &tc_store::Store,
@@ -1915,7 +1924,8 @@ pub(crate) fn join_on<S: Send + Sync + 'static>(
     session: Option<tc_door43::Session>,
     repo: tc_door43::RepoRef,
     name: String,
-) -> BoxFuture<Option<Result<tc_sync::Joined, tc_sync::JoinError>>> {
+    gate: super::JoinGate,
+) -> BoxFuture<Option<super::Joining>> {
     let runtime = tokio::runtime::Handle::current();
     let work = tokio::task::spawn_blocking(move || {
         runtime.block_on(tc_sync::join(
@@ -1924,6 +1934,11 @@ pub(crate) fn join_on<S: Send + Sync + 'static>(
             session.as_ref(),
             &repo,
             &name,
+            // The pins the project opens with are the journal's: Door43's own copy of the pin
+            // file can be gone, damaged or edited while the journal holds them.
+            async |fetched: &tc_sync::Fetched<'_>| {
+                gate(fetched.derived(&tc_journal::fold::DerivedFile::Resources)).await
+            },
         ))
     });
     Box::pin(async move { work.await.ok() })

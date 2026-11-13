@@ -630,6 +630,7 @@ pub enum Phase {
     Sync(SyncPhase),   // Checkpoint | Fetch | Intake | Integrate | MergeCommit | Push | Confirm (STORAGE:2709-2747)
     Share(SharePhase), Exchange(ExchangePhase), Install { repo: String }, Import(ImportPhase),
     Export(ExportPhase), Plan { book: Option<BookId> }, Train, Seed, Summary,
+    PinnedVersion { pin: PinLabel, left: u32 },   // a version a project pins, before it is added (#1013)
 }
 ```
 
@@ -1929,6 +1930,13 @@ in Chromium against the real `tc4`, with the request filter of AD11
 7. Private repositories (Q3, PLAN:51-54): `door43/open` fetches without credentials first; on 401
    or 404 with no session the job ends with `NeedsSignIn(PrivateRepository)`, the UI shows M12 and
    runs the open again.
+   Pinned versions (#1013): between its fetch and its placement, `door43/open` downloads the
+   versions the project pins and this computer lacks (`tc_app::pins`, one
+   `Phase::PinnedVersion` for each). `jobs/cancel` stops the download and the job ends
+   `Cancelled`; a failed download ends it with `Refused(OpenDoor43(PinNotDownloaded { pin,
+   why, detail }))`, whose `why` chooses a plain sentence and whose `detail` goes to "Ask for
+   help" only; the internet turned off ends it with `NeedsInternet(Open)`. In each case no
+   project is added and no part copy is left (INV-OPEN-FROM-DOOR43-IS-ALL-OR-NOTHING).
 8. Links to a profile, a repository or help ask the question first, then `account/profileLink`,
    `repoLink` or `helpLink` gives the URL and the shell opens it with `openExternal`
    (`window.open` in a browser).

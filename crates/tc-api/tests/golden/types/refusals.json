@@ -1165,6 +1165,121 @@
   },
   {
     "wire": {
+      "type": "openDoor43",
+      "value": {
+        "type": "pinNotDownloaded",
+        "value": {
+          "pin": {
+            "repoPath": "git.door43.org/es-419_gl/es-419_twl",
+            "version": "v18",
+            "sha": "c2d9547ec9c2d9547ec9c2d9547ec9c2d9547ec9"
+          },
+          "why": "notOnDoor43",
+          "detail": "GET /es-419_gl/es-419_twl/sb/v18.zip: not found"
+        }
+      }
+    },
+    "code": "open-door43.pin-not-downloaded",
+    "key": "refusal.open-door43.pin-not-on-door43",
+    "vars": {
+      "pin": "es-419_twl v18"
+    },
+    "detail": null
+  },
+  {
+    "wire": {
+      "type": "openDoor43",
+      "value": {
+        "type": "pinNotDownloaded",
+        "value": {
+          "pin": {
+            "repoPath": "git.door43.org/es-419_gl/es-419_twl",
+            "version": "v18",
+            "sha": "c2d9547ec9c2d9547ec9c2d9547ec9c2d9547ec9"
+          },
+          "why": "notThePinnedVersion",
+          "detail": "GET /es-419_gl/es-419_twl/sb/v18.zip: not found"
+        }
+      }
+    },
+    "code": "open-door43.pin-not-downloaded",
+    "key": "refusal.open-door43.pin-not-the-pinned-version",
+    "vars": {
+      "pin": "es-419_twl v18"
+    },
+    "detail": null
+  },
+  {
+    "wire": {
+      "type": "openDoor43",
+      "value": {
+        "type": "pinNotDownloaded",
+        "value": {
+          "pin": {
+            "repoPath": "git.door43.org/es-419_gl/es-419_twl",
+            "version": "v18",
+            "sha": "c2d9547ec9c2d9547ec9c2d9547ec9c2d9547ec9"
+          },
+          "why": "unreachable",
+          "detail": "GET /es-419_gl/es-419_twl/sb/v18.zip: not found"
+        }
+      }
+    },
+    "code": "open-door43.pin-not-downloaded",
+    "key": "refusal.open-door43.pin-unreachable",
+    "vars": {
+      "pin": "es-419_twl v18"
+    },
+    "detail": null
+  },
+  {
+    "wire": {
+      "type": "openDoor43",
+      "value": {
+        "type": "pinNotDownloaded",
+        "value": {
+          "pin": {
+            "repoPath": "git.door43.org/es-419_gl/es-419_twl",
+            "version": "v18",
+            "sha": "c2d9547ec9c2d9547ec9c2d9547ec9c2d9547ec9"
+          },
+          "why": "notSaved",
+          "detail": "GET /es-419_gl/es-419_twl/sb/v18.zip: not found"
+        }
+      }
+    },
+    "code": "open-door43.pin-not-downloaded",
+    "key": "refusal.open-door43.pin-not-saved",
+    "vars": {
+      "pin": "es-419_twl v18"
+    },
+    "detail": null
+  },
+  {
+    "wire": {
+      "type": "openDoor43",
+      "value": {
+        "type": "pinNotDownloaded",
+        "value": {
+          "pin": {
+            "repoPath": "git.door43.org/es-419_gl/es-419_twl",
+            "version": "v18",
+            "sha": "c2d9547ec9c2d9547ec9c2d9547ec9c2d9547ec9"
+          },
+          "why": "other",
+          "detail": "GET /es-419_gl/es-419_twl/sb/v18.zip: not found"
+        }
+      }
+    },
+    "code": "open-door43.pin-not-downloaded",
+    "key": "refusal.open-door43.pin-not-downloaded",
+    "vars": {
+      "pin": "es-419_twl v18"
+    },
+    "detail": null
+  },
+  {
+    "wire": {
       "type": "signIn",
       "value": {
         "type": "authFailed"

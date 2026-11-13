@@ -23,8 +23,8 @@
 //! tags those fixtures name ([`tc3_original_languages`]).
 
 use crate::{
-    CommitSeed, FakeDoor43, FakeError, FakeOrg, FakeUser, OrgMember, ReleaseKind, RepoSeed,
-    SeedFile,
+    CommitSeed, FakeDoor43, FakeError, FakeOrg, FakeUser, OrgMember, PinnedCommit, PinnedExport,
+    ReleaseKind, RepoSeed, SeedFile,
 };
 use std::path::PathBuf;
 
@@ -266,6 +266,127 @@ pub async fn unfolding_word_resources(fake: &FakeDoor43) -> Result<(), FakeError
         )],
     ))
     .await?;
+    Ok(())
+}
+
+/// The pin files of the parity samples (`fixtures/tc4/sample-burrito` and
+/// `sample-burrito-obs`), which every project made from a sample carries.
+fn sample_pin_files() -> [PathBuf; 2] {
+    let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/tc4");
+    ["sample-burrito", "sample-burrito-obs"].map(|sample| {
+        fixtures
+            .join(sample)
+            .join("ingredients/checking/resources.json")
+    })
+}
+
+/// A pin as a pin file names it: the owner, the repository, the tag when it has one, and the
+/// commit.
+type FilePin = (String, String, Option<String>, String);
+
+fn file_pin(value: &serde_json::Value) -> Option<FilePin> {
+    let text = |key: &str| value.get(key).and_then(serde_json::Value::as_str);
+    let mut parts = text("repoPath")?.rsplit('/');
+    let (name, owner) = (parts.next()?, parts.next()?);
+    Some((
+        owner.to_owned(),
+        name.to_owned(),
+        text("version").map(str::to_owned),
+        text("sha")?.to_owned(),
+    ))
+}
+
+/// The pins of a pin file that a download installs: each pin of both language sets, the
+/// original-language pins and each source pane (the app's `missing_pin_count`; lexicons are
+/// left out).
+fn downloadable_pins(file: &serde_json::Value) -> Vec<FilePin> {
+    let members = |value: Option<&serde_json::Value>| -> Vec<serde_json::Value> {
+        match value {
+            Some(serde_json::Value::Object(map)) => map.values().cloned().collect(),
+            Some(serde_json::Value::Array(list)) => list.clone(),
+            _ => Vec::new(),
+        }
+    };
+    let mut pins = Vec::new();
+    for set in members(file.get("languageSets")) {
+        pins.extend(members(Some(&set)));
+    }
+    pins.extend(members(file.pointer("/resources/originalLanguage")));
+    pins.extend(members(file.get("extraScripture")));
+    pins.iter().filter_map(file_pin).collect()
+}
+
+/// The files that stand for `name` at `tag`: the fixture of that release when the fixtures
+/// hold its Titus, else the nearest they have (the word links of `v86`, the notes of `v91`
+/// for another helps repository, the literal text of `v89` for anything else).
+fn stand_in(name: &str, tag: Option<&str>) -> Result<Vec<SeedFile>, FakeError> {
+    if let Some(tag) = tag {
+        let own = format!("{name}@{tag}");
+        for book in ["TIT.tsv", "TIT.usfm"] {
+            if resources_dir().join(&own).join(book).is_file() {
+                return burrito(&own, &[(book, book)]);
+            }
+        }
+    }
+    let helps = |suffix: &str| name.ends_with(suffix);
+    if helps("_twl") {
+        burrito("en_twl@v86", &[("TIT.tsv", "TIT.tsv")])
+    } else if helps("_tn") || helps("_tw") || helps("_ta") || helps("_tq") {
+        burrito("en_tn@v91", &[("TIT.tsv", "TIT.tsv")])
+    } else {
+        burrito("en_ult@v89", &[("TIT.usfm", "TIT.usfm")])
+    }
+}
+
+/// Door43 as a team's second computer needs it (#1013): it gives every version the parity
+/// samples pin, each at the commit the sample pins. An open from Door43 downloads the versions
+/// the project pins and the computer lacks, and adds no project when one cannot be had;
+/// without these a sample could be opened only where every version is installed already.
+///
+/// A pin with a tag is a [`PinnedExport`]. A pin by commit only (the story pictures) is a
+/// [`PinnedCommit`] of a repository made here when the fake does not hold it. A fake that
+/// does not call this gives none of them, as the tests of a missing version need.
+pub async fn sample_pins(fake: &FakeDoor43) -> Result<(), FakeError> {
+    for path in sample_pin_files() {
+        let invalid = |e: &dyn std::fmt::Display| {
+            FakeError::Invalid(format!("fixture {}: {e}", path.display()))
+        };
+        let bytes = std::fs::read(&path).map_err(|e| invalid(&e))?;
+        let file: serde_json::Value = serde_json::from_slice(&bytes).map_err(|e| invalid(&e))?;
+        for (owner, name, tag, commit) in downloadable_pins(&file) {
+            let files = stand_in(&name, tag.as_deref())?;
+            match tag {
+                Some(tag) => fake.pin_export(PinnedExport {
+                    owner,
+                    name,
+                    tag,
+                    revision: commit,
+                    files,
+                }),
+                None => {
+                    if !fake.has_repo(&owner, &name) {
+                        let stand_in = CommitSeed {
+                            message: "A pinned commit".to_owned(),
+                            files,
+                            tag: None,
+                            release: None,
+                        };
+                        fake.add_repo(RepoSeed {
+                            topics: Vec::new(),
+                            ..resource(&owner, &name, "Resource", "en", vec![stand_in])
+                        })
+                        .await?;
+                    }
+                    fake.pin_commit(PinnedCommit {
+                        owner,
+                        name,
+                        pinned: commit,
+                        rev: "HEAD".to_owned(),
+                    });
+                }
+            }
+        }
+    }
     Ok(())
 }
 

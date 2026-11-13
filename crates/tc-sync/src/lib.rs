@@ -15,7 +15,7 @@ pub mod sync;
 pub mod username;
 
 pub use connect::{ConnectError, connect};
-pub use join::{JoinError, Joined, join};
+pub use join::{Fetched, JoinError, JoinStop, Joined, join};
 pub use share::{ShareError, share};
 pub use sync::{Backoff, OtherToolCommit, Pause, SyncReport, sync};
 pub use username::{UsernameError, record_username};

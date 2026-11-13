@@ -135,6 +135,9 @@ export async function startDoor43Fake(bin) {
     addRepo: (owner, name, replace = false) => control('POST', '/repos', { owner, name, replace }),
     /** A teammate: another user, a member of `org` who may push there (E1a). */
     addUser: (login, password, org) => control('POST', '/users', { login, password, org }),
+    /** Door43 gives the versions the sample pins from now on: an open from Door43 downloads the
+     *  ones a computer lacks, and adds no project when one cannot be had (#1013). */
+    giveSamplePins: () => control('POST', '/sample-pins', {}),
     /** `branch`'s commit, moved to `sha` first when it is given. */
     branch: async (owner, name, branch, sha = null) => (await control('POST', '/branch', { owner, name, branch, sha })).sha,
     async close() {
@@ -463,6 +466,8 @@ export async function saveTitus(call, project, chapter, verse, words) {
 export async function startTeammate({ tc4, ui, door43, name = 'teammate' }) {
   const password = `${name}-password`;
   await door43.addUser(name, password, DOOR43_OWNER);
+  // A teammate opens the team's project from Door43, which downloads the versions it pins.
+  await door43.giveSamplePins();
   const env = await startRustEnv({
     scenario: 'store', tc4, ui, door43, realSync: true,
     runDir: path.join(REPO, 'target', 'parity-rust', `${process.pid}-${Date.now()}-${name}`),

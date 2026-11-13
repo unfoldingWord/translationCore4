@@ -18,6 +18,7 @@
 //! | `POST /faults` | `{"method": "GET" or null, "path": <prefix>, "times": n or null, "fault": {"type": "status", "status", "message"} or {"type": "delay", "ms"} or {"type": "rateLimited", "retryAfterSecs"} or {"type": "hold"}}` | `{}` |
 //! | `POST /release` | — | `{}`: the oldest held request goes on |
 //! | `POST /tokens` | `{"login", "name", "scopes": [...]}` | `{"secret"}`: a token as if minted earlier |
+//! | `POST /sample-pins` | — | `{}`: Door43 gives the versions the parity samples pin |
 //! | `GET /tokens/{login}` | — | `[{"id", "name", "scopes"}]` |
 //! | `GET /secret/{login}/{name}` | — | `{"secret": <text> or null}` |
 
@@ -125,6 +126,7 @@ fn control_router(fake: Arc<FakeDoor43>) -> Router {
         .route("/repos", post(add_repo))
         .route("/users", post(add_user))
         .route("/branch", post(branch))
+        .route("/sample-pins", post(sample_pins))
         .route("/tokens/{login}", get(tokens_of))
         .route("/secret/{login}/{name}", get(secret))
         .with_state(fake)
@@ -220,6 +222,15 @@ async fn add_fault(State(fake): Fake, body: axum::body::Bytes) -> Response {
 async fn release(State(fake): Fake) -> Response {
     fake.release_held();
     axum::Json(json!({})).into_response()
+}
+
+/// Door43 gives the versions the parity samples pin from now on ([`seeded::sample_pins`]): a
+/// journey whose teammate opens a sample from Door43 asks for it (#1013).
+async fn sample_pins(State(fake): Fake) -> Response {
+    match seeded::sample_pins(&fake).await {
+        Ok(()) => axum::Json(json!({})).into_response(),
+        Err(error) => bad(error.to_string()),
+    }
 }
 
 async fn held(State(fake): Fake) -> Response {

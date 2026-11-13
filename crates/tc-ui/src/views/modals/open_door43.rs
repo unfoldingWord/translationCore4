@@ -9,7 +9,9 @@ use std::sync::Arc;
 
 use leptos::prelude::*;
 
-use crate::app::open_door43::{OpenForm, OpenRefusal, RepoError, refusal_key};
+use crate::app::open_door43::{
+    OpenForm, OpenRefusal, RefusalSentence, RepoError, refusal_sentence,
+};
 use crate::app::web::{AppCtx, use_app};
 use crate::ds::{
     Attrs, Button, ButtonVariant, Callout, CalloutTone, Field, Input, Size, Text, TextRole,
@@ -174,14 +176,28 @@ fn already_here(
 
 /// tC4's artboard g: the refusal, its code, "No project was added", and Ask for help.
 fn refused(actions: &crate::app::web::Actions, refusal: OpenRefusal) -> impl IntoView + use<> {
-    let key = refusal_key(refusal.code.as_deref());
+    let sentence = refusal_sentence(&refusal);
+    let said = {
+        let sentence = sentence.clone();
+        move || match &sentence {
+            RefusalSentence::Of(key) => t(*key, &[]),
+            RefusalSentence::Own(text) => text.clone(),
+        }
+    };
     let code = refusal.code.clone().unwrap_or_default();
     let help = actions.clone();
     let on_help = {
         let refusal = refusal.clone();
         Callback::new(move |_| {
-            let text = t(key, &[]);
-            let text = format!("{text}\n\n{}", refusal.reason).trim().to_owned();
+            let text = match &sentence {
+                RefusalSentence::Of(key) => {
+                    let text = t(*key, &[]);
+                    format!("{text}\n\n{}", refusal.reason).trim().to_owned()
+                }
+                RefusalSentence::Own(text) => {
+                    format!("{text}\n\n{}", refusal.reason).trim().to_owned()
+                }
+            };
             help.ask_for_help(crate::app::feedback::HelpRequest {
                 code: refusal.code.clone().unwrap_or_default(),
                 text,
@@ -197,7 +213,7 @@ fn refused(actions: &crate::app::web::Actions, refusal: OpenRefusal) -> impl Int
         >
             <div style="display: flex; flex-direction: column; gap: 6px;">
                 <Text role=TextRole::Strong>{move || t(keys::open_door43::REFUSED_TITLE, &[])}</Text>
-                <span>{move || t(key, &[])}</span>
+                <span data-testid="open-door43-refusal">{said}</span>
                 <span>
                     {shown_code.map(|code| view! { <code>{code}</code> " · " })}
                     {move || t(keys::open_door43::NOTHING_WRITTEN, &[])}

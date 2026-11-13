@@ -1104,12 +1104,18 @@ async fn one_commit(
     let caller = authenticate(&shared, &headers, &params)?;
     let rec = visible_repo(&shared, &caller, &owner, &name)?;
     let dir = shared.git.repo_dir(&rec.owner, &rec.name);
+    let pinned = shared.state().pinned_rev(&rec.owner, &rec.name, &sha);
     let commit = shared
         .git
-        .resolve(&dir, &sha)
+        .resolve(&dir, pinned.as_deref().unwrap_or(&sha))
         .await
         .map_err(|_| ApiError::not_found())?;
-    let info = shared.git.commit_info(&dir, &commit).await?;
+    let mut info = shared.git.commit_info(&dir, &commit).await?;
+    if pinned.is_some() {
+        // A pinned commit is answered under the sha the project pinned, with the tree of
+        // the commit that stands for it.
+        info.sha = sha.to_ascii_lowercase();
+    }
     Ok(json_response(
         StatusCode::OK,
         json::commit(&shared.url, &rec, &info),
@@ -1140,12 +1146,17 @@ async fn archive(
         ));
     };
     let dir = shared.git.repo_dir(&rec.owner, &rec.name);
+    let pinned = shared.state().pinned_rev(&rec.owner, &rec.name, git_ref);
     let commit = shared
         .git
-        .resolve(&dir, git_ref)
+        .resolve(&dir, pinned.as_deref().unwrap_or(git_ref))
         .await
         .map_err(|_| ApiError::not_found())?;
     let mut bytes = shared.git.archive(&dir, &commit, format, &rec.name).await?;
+    if pinned.is_some() && format == "zip" {
+        // `git archive` wrote the id of the commit that stands for the pinned one.
+        bytes = zipping::with_comment(bytes, &git_ref.to_ascii_lowercase())?;
+    }
     let faults = shared.take_faults(method.as_str(), uri.path(), uri.query(), false);
     for fault in &faults {
         match fault {
@@ -1213,17 +1224,36 @@ async fn sb_export(
 ) -> ApiResult {
     let params = Params(params);
     let caller = authenticate(&shared, &request_headers, &params)?;
-    let rec = visible_repo(&shared, &caller, &owner, &name)?;
     let tag = file.strip_suffix(".zip").ok_or_else(ApiError::not_found)?;
-    let dir = shared.git.repo_dir(&rec.owner, &rec.name);
-    let tags = shared.git.tags(&dir).await?;
-    let commit = tags
+    let pinned = shared
+        .state()
+        .pinned_exports
         .iter()
-        .find(|t| t.name == tag)
-        .map(|t| t.commit.clone())
-        .ok_or_else(ApiError::not_found)?;
-    let archive = shared.git.archive(&dir, &commit, "zip", &rec.name).await?;
-    let mut revision = commit.clone();
+        .find(|held| {
+            held.owner.eq_ignore_ascii_case(&owner)
+                && held.name.eq_ignore_ascii_case(&name)
+                && held.tag == tag
+        })
+        .cloned();
+    // A pinned export is answered as held; any other tag is exported from its commit.
+    let (repo_owner, repo_name, archive, mut revision) = match pinned {
+        Some(held) => {
+            let archive = zipping::archive_of(&held.name, &held.files)?;
+            (held.owner, held.name, archive, held.revision)
+        }
+        None => {
+            let rec = visible_repo(&shared, &caller, &owner, &name)?;
+            let dir = shared.git.repo_dir(&rec.owner, &rec.name);
+            let tags = shared.git.tags(&dir).await?;
+            let commit = tags
+                .iter()
+                .find(|t| t.name == tag)
+                .map(|t| t.commit.clone())
+                .ok_or_else(ApiError::not_found)?;
+            let archive = shared.git.archive(&dir, &commit, "zip", &rec.name).await?;
+            (rec.owner, rec.name, archive, commit)
+        }
+    };
     let mut corrupt = Vec::new();
     let faults = shared.take_faults(method.as_str(), uri.path(), uri.query(), false);
     for fault in &faults {
@@ -1233,7 +1263,7 @@ async fn sb_export(
             _ => {}
         }
     }
-    let dcs_key = format!("{}/{}", rec.owner, rec.name);
+    let dcs_key = format!("{repo_owner}/{repo_name}");
     let timestamp = json::rfc3339(shared.state().tick());
     let export = SbExport {
         dcs_key: &dcs_key,
@@ -1241,7 +1271,7 @@ async fn sb_export(
         timestamp: &timestamp,
         corrupt: &corrupt,
     };
-    let bytes = zipping::sb_export(&archive, &rec.name, &export)?.ok_or_else(|| {
+    let bytes = zipping::sb_export(&archive, &repo_name, &export)?.ok_or_else(|| {
         ApiError::new(
             StatusCode::NOT_FOUND,
             "the fake exports only repositories that hold a metadata.json",

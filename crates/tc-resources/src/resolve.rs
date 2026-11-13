@@ -303,6 +303,21 @@ pub fn missing_pin_count(pins: &ProjectPins, installed: &dyn Fn(&ResourcePin) ->
         .count()
 }
 
+/// The versions [`missing_pin_count`] counts, each once however many places pin it, in the
+/// order a download takes them: what must be installed for the count to reach 0 (#1013).
+pub fn missing_versions<'a>(
+    pins: &'a ProjectPins,
+    installed: &dyn Fn(&ResourcePin) -> bool,
+) -> Vec<&'a ResourcePin> {
+    let mut missing: Vec<&ResourcePin> = Vec::new();
+    for pin in downloadable_pins(pins).filter(|pin| !installed(pin)) {
+        if !missing.iter().any(|seen| seen.same_identity(pin)) {
+            missing.push(pin);
+        }
+    }
+    missing
+}
+
 /// The project's pin of `repo` that no install on this machine satisfies: the version a
 /// download of that repository from Source texts must fetch, instead of the catalogue's
 /// latest (tC4 `unsatisfiedProjectPinFor`, `src/data/installed.ts:328`, D58). The primary
