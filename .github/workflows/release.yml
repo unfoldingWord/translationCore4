@@ -35,6 +35,8 @@ jobs:
   # INV-NO-UNTRANSLATED-STRING-SHIPS (rulings/2026-10-22-H10.md rule 2): a tag builds nothing while
   # a rebuild key is untranslated; other runs still build, to test the pipeline. A `-preview` tag
   # is for testers and may show pending keys in English (#848); a final release may not.
+  # INV-A-RELEASE-TAG-IS-ITS-VERSION (#966): a tag, preview or not, builds nothing unless it is `v`
+  # and Cargo.toml's version.
   translations:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
