@@ -126,7 +126,7 @@ result.helpSwitch = await withApp(async ({ page }) => {
   await page.getByTestId('account-help').click();
   const frame = page.frameLocator('[data-testid="help-frame"]');
   await until('the help home', async () => (await frame.getByRole('heading', { level: 1 }).textContent().catch(() => null)) === 'translationCore 4 Help');
-  const topics = ['section-bible-projects.html', 'bp-new-bible.html', 'bp-open-book.html', 'bp-import.html', 'bp-export-pdf.html'];
+  const topics = ['section-bible-projects', 'bp-new-bible', 'bp-open-book', 'bp-import', 'bp-export-pdf'];
   const times = [];
   for (let i = 0; i < runs; i++) {
     const href = topics[i % topics.length];
