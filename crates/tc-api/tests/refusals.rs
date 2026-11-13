@@ -620,3 +620,37 @@ fn release_has_no_pending_translation() {
         );
     }
 }
+
+/// Why a release tag is refused, or `None` when it is `v` and the version: the release is
+/// titled from the tag, while About, the installer names and the manifest carry the version.
+fn tag_refusal(tag: &str, version: &str) -> Option<String> {
+    (tag.strip_prefix('v') != Some(version)).then(|| {
+        format!(
+            "INV-A-RELEASE-TAG-IS-ITS-VERSION: the tag is {tag}, but [workspace.package] version in Cargo.toml is {version}; set the version to the tag's on main, then tag that commit (docs/RELEASE.md \"Cutting a release\")"
+        )
+    })
+}
+
+#[test]
+fn a_tag_is_refused_unless_it_is_v_and_the_version() {
+    assert_eq!(tag_refusal("v4.1.0-preview", "4.1.0-preview"), None);
+    for tag in ["v4.1.1", "4.1.0-preview", "v4.1.0-preview2"] {
+        let refusal = tag_refusal(tag, "4.1.0-preview").expect(tag);
+        assert!(
+            refusal.contains(&format!("is {tag},")) && refusal.contains("is 4.1.0-preview;"),
+            "{tag}: the refusal names the tag and the version: {refusal:?}"
+        );
+    }
+}
+
+/// A tag run builds nothing unless its tag is the version About shows (#966).
+#[test]
+fn tag_is_the_version_about_shows() {
+    if std::env::var("GITHUB_REF_TYPE").as_deref() != Ok("tag") {
+        return;
+    }
+    let tag = std::env::var("GITHUB_REF_NAME").expect("GitHub names the tag of a tag run");
+    if let Some(refusal) = tag_refusal(&tag, tc_api::app::BUILD_VERSION) {
+        panic!("{refusal}");
+    }
+}

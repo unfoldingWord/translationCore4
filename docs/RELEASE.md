@@ -82,11 +82,18 @@ steps below and for what the pipeline does not check: the translations handed to
 help pages re-vendored from tc-website, the download page, the installed check by a person, and
 the evidence written afterwards. A box is ticked only with a link to its evidence.
 
-1. On the default branch, when the release is ready, the owner (or someone the owner names)
-   pushes the tag: `git tag v4.1.0-preview2 && git push origin v4.1.0-preview2`. Nobody else pushes release tags.
-2. The tag runs `release`. It builds nothing for a tag while any interface string is untranslated
-   (job `translations`, `cargo test --release -p tc-api --test refusals`; rulings/2026-10-22-H10.md).
-   A `-preview` tag skips that one check, so testers see any pending string in English (#848).
+1. Set `[workspace.package] version` in `Cargo.toml` to the tag's, less its `v`, by pull request
+   (`Cargo.lock` changes with it). About, the installer names and `BUILD-MANIFEST.json` carry
+   that version; the release is titled from the tag. Then, on the default branch, the owner (or
+   someone the owner names) pushes the tag:
+   `git tag v4.1.0-preview2 && git push origin v4.1.0-preview2`. Nobody else pushes release tags.
+2. The tag runs `release`. It builds nothing for a tag that is not `v` and that version, or
+   while any interface string is untranslated (job `translations`,
+   `cargo test --release -p tc-api --test refusals`; rulings/2026-10-22-H10.md). A `-preview` tag
+   skips the translation check only, so testers see any pending string in English (#848).
+   Running a refused tag again changes nothing: it still names the same commit. Fix what the
+   refusal names by pull request, then the owner deletes the tag and pushes it from the new
+   commit.
 3. Each platform is built, installed on a fresh runner of its own system and smoke-tested there.
    Only when every job passed does `publish` make a **draft** GitHub release with the installers
    and manifests.

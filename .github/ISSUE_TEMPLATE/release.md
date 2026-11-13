@@ -119,8 +119,8 @@ release"); here, say what changed and link the run that checked it. -->
 ### Version
 
 - [ ] `[workspace.package] version` in `Cargo.toml` equals the tag without its `v`, on `main`,
-      before the tag is pushed (#966: nothing checks this yet). About, the installer names and
-      `BUILD-MANIFEST.json` all read it.
+      before the tag is pushed (the tag's `translations` job refuses a tag that differs, #966).
+      About, the installer names and `BUILD-MANIFEST.json` all read it.
 - [ ] The release notes draft names the previous version and the project format, so a
       translator who goes back knows which version to take and what it can open
       (`docs/RELEASE.md` "Rolling back").
