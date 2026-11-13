@@ -751,6 +751,12 @@
           "J26 [G1]. Three computers: B and C change verses, A takes their work in by name, and every computer ends with the same text",
           "J26 [G6]. A and B change the same verse: both versions are kept, and the sync on A counts one verse conflict to review"
         ]
+      },
+      {
+        "file": "parity/app/journeys/sync-downloads.test.mjs",
+        "tests": [
+          "J26 (#1013). A sync downloads the versions the project pins: the card names each with a bar and Cancel; Cancel and a version Door43 cannot give leave the sync done and say why; the next sync gets the rest"
+        ]
       }
     ],
     "language-suggestions.spec.ts": {

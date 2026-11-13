@@ -115,6 +115,8 @@ pub fn synced_view(
         format_restored: false,
         replaced,
         hand_edited: Vec::new(),
+        not_downloaded: Vec::new(),
+        download_stopped: None,
     }
 }
 
@@ -344,12 +346,16 @@ fn pin_name(pin: &tc_journal::Json) -> Option<String> {
     })
 }
 
+/// The project's pins, as its pin file renders from the fold; `None` when they cannot be read.
+fn pins_of(snapshot: &CountingSnapshot) -> Option<tc_resources::ProjectPins> {
+    snapshot
+        .render(&tc_journal::fold::DerivedFile::Resources)
+        .and_then(|bytes| crate::pins::pins_of_file(&bytes))
+}
+
 /// tC4's `missingPinsAfterSync`: 0 when the pins cannot be read.
 fn missing_pins(snapshot: &CountingSnapshot, installed: &dyn Fn(&ResourcePin) -> bool) -> u32 {
-    let pins = snapshot
-        .render(&tc_journal::fold::DerivedFile::Resources)
-        .and_then(|bytes| crate::pins::pins_of_file(&bytes));
-    pins.map_or(0, |pins| {
+    pins_of(snapshot).map_or(0, |pins| {
         let n = tc_resources::resolve::missing_pin_count(&pins, installed);
         u32::try_from(n).unwrap_or(u32::MAX)
     })
@@ -371,9 +377,17 @@ impl App {
     }
 
     /// One sync of `folder`, after the checkpoint of the project just left (tC4 `syncRun`).
-    async fn sync_job(&self, folder: ProjectRef) -> Result<SyncResultView, JobEnd> {
+    async fn sync_job(
+        &self,
+        folder: ProjectRef,
+        ctx: crate::jobs::JobCtx,
+    ) -> Result<SyncResultView, JobEnd> {
         self.inner.sessions.settled(&folder).await;
-        let view = self.inner.sync.sync(self.clone(), folder.clone()).await?;
+        let view = self
+            .inner
+            .sync
+            .sync(self.clone(), folder.clone(), ctx)
+            .await?;
         crate::app::lock(&self.inner.last_sync).insert(folder.clone(), view.clone());
         self.inner
             .bus
@@ -384,7 +398,17 @@ impl App {
     /// One real sync of `folder` with its Door43 repository (E1a): unit X's `tc_sync::sync` on
     /// the project's store, then the toast's view of what came in. A sync that fails after
     /// intake keeps what came in, and the card is told either way.
-    pub(crate) async fn door43_sync(&self, folder: ProjectRef) -> Result<SyncResultView, JobEnd> {
+    ///
+    /// INV-A-SYNC-LEAVES-NO-PIN-MISSING (#1013): once the sync is done, it downloads the
+    /// versions the project pins and this computer lacks, with no question, and the result
+    /// counts only what is still missing. Nothing that happens to the download holds back or
+    /// undoes the sync (owner ruling of 2026-11-12): a cancel or a failed version is said in
+    /// the result, and the sync stands.
+    pub(crate) async fn door43_sync(
+        &self,
+        folder: ProjectRef,
+        ctx: crate::jobs::JobCtx,
+    ) -> Result<SyncResultView, JobEnd> {
         let client = self.door43().map_err(JobEnd::Failed)?.clone();
         let session = self.door43_session().await.map_err(JobEnd::Failed)?;
         let progress = crate::jobs::ProgressSink::new(Phase::Sync(tc_api::jobs::SyncPhase::Fetch));
@@ -422,7 +446,7 @@ impl App {
                 0,
             ),
         };
-        let view = {
+        let (mut view, pins) = {
             let session = lease.session();
             let facts = session.handle().facts();
             let snapshot = session.read();
@@ -437,15 +461,44 @@ impl App {
             );
             view.recreated = recreated;
             view.format_restored = format_restored;
-            view
+            (view, pins_of(&snapshot))
         };
+        // The project is free before the download, which can take minutes: saves go on.
         drop(lease);
         self.inner.sessions.settled(&folder).await;
         self.inner
             .bus
             .publish(tc_api::event::Event::HomeCard { project: folder });
         match ended {
-            Ok(()) => Ok(view),
+            Ok(()) => {
+                if let Some(pins) = pins {
+                    let end = self
+                        .install_missing_pins(&pins, &ctx, crate::pins::OnFailure::GoOn)
+                        .await;
+                    let resources = &self.inner.resources;
+                    let left = tc_resources::resolve::missing_pin_count(&pins, &|pin| {
+                        resources.has_dcs(pin)
+                    });
+                    view.missing_pins = u32::try_from(left).unwrap_or(u32::MAX);
+                    view.not_downloaded = end
+                        .failed
+                        .into_iter()
+                        .map(|failed| tc_api::jobs::NotDownloadedView {
+                            pin: failed.pin,
+                            why: failed.why,
+                        })
+                        .collect();
+                    view.download_stopped = end.halted.map(|halted| match halted {
+                        crate::pins::PinsHalt::Cancelled => {
+                            tc_api::jobs::DownloadStopped::Cancelled
+                        }
+                        crate::pins::PinsHalt::Offline => {
+                            tc_api::jobs::DownloadStopped::InternetOff
+                        }
+                    });
+                }
+                Ok(view)
+            }
             // Door43 refused the token: both copies are forgotten and the person signs in again
             // (DELTA §3.15.1 item 6).
             Err(ApiError::Refused(tc_api::Refusal::Sync(
@@ -639,8 +692,8 @@ impl Handle<SyncProject> for App {
         Ok(self
             .inner
             .jobs
-            .start_typed::<SyncProject, _, _>(spec, move |_ctx| async move {
-                app.sync_job(req.project).await
+            .start_typed::<SyncProject, _, _>(spec, move |ctx| async move {
+                app.sync_job(req.project, ctx).await
             }))
     }
 }

@@ -263,6 +263,8 @@ pub struct AppState {
     pub start_notice_closed: ArcRwSignal<bool>,
     /// The project a sync runs for (tC4 `syncing`).
     pub syncing: ArcRwSignal<Option<ProjectRef>>,
+    /// The version the running sync downloads, for its card (#1013).
+    pub sync_download: ArcRwSignal<Option<(ProjectRef, crate::app::pin_download::PinDownload)>>,
     /// The result of the last sync, which Home shows (tC4 `syncResult`). Never stored.
     pub sync_result: ArcRwSignal<Option<SyncToast>>,
     /// The toast of a finished import (F1 sets it).
@@ -505,6 +507,7 @@ impl AppState {
             book_error: ArcRwSignal::new(None),
             start_notice_closed: ArcRwSignal::new(false),
             syncing: ArcRwSignal::new(None),
+            sync_download: ArcRwSignal::new(None),
             sync_result: ArcRwSignal::new(None),
             import_toast: ArcRwSignal::new(None),
             outside_reports: ArcRwSignal::new(Vec::new()),
@@ -1385,10 +1388,10 @@ impl Actions {
                         // The versions the project pins and this computer lacks, one at a time:
                         // the dialog names each and offers Cancel (#1013).
                         |progress| {
-                            if let tc_api::jobs::Phase::PinnedVersion { pin, left } =
-                                &progress.phase
+                            if let Some(download) =
+                                crate::app::pin_download::Downloading::of(job, progress)
                             {
-                                this.patch_od(|od| od.downloading(job, pin, *left));
+                                this.patch_od(|od| od.downloading(download));
                             }
                         },
                         || true,
@@ -1536,7 +1539,28 @@ impl Actions {
             };
             let started = this.run_net(Pending::Sync(project.clone()), &request).await;
             let ended = match started {
-                NetEnd::Ok(job) => this.follow::<SyncProject>(job, |_| {}, || true).await,
+                NetEnd::Ok(job) => {
+                    // The versions the project pins and this computer lacks, which the sync
+                    // downloads once it is done: the card names each and offers Cancel (#1013).
+                    let on_progress = |progress: &tc_api::jobs::Progress| {
+                        let Some(newer) = crate::app::pin_download::Downloading::of(job, progress)
+                        else {
+                            return;
+                        };
+                        this.s().sync_download.try_update(|now| match now {
+                            Some((shown, download)) if *shown == project => download.report(newer),
+                            _ => {
+                                *now = Some((
+                                    project.clone(),
+                                    crate::app::pin_download::PinDownload::Running(newer),
+                                ));
+                            }
+                        });
+                    };
+                    let ended = this.follow::<SyncProject>(job, on_progress, || true).await;
+                    this.s().sync_download.try_set(None);
+                    ended
+                }
                 NetEnd::Failed(error) => JobEnd::Failed(error),
                 NetEnd::Asked => {
                     this.sync_attempt(&project, |submit| submit.next(js::random_request_id()));
@@ -1581,6 +1605,34 @@ impl Actions {
             this.s()
                 .sync_result
                 .try_set(Some(SyncToast { project, end }));
+        });
+    }
+
+    /// Cancel on a syncing card while its download runs (#1013): the sync's job stops the
+    /// download, and the sync stands. A cancel that did not reach the app's server leaves
+    /// Cancel to be pressed again.
+    pub fn cancel_sync_download(&self) {
+        let job = self
+            .s()
+            .sync_download
+            .try_update(|now| now.as_mut()?.1.cancel())
+            .flatten();
+        let Some(job) = job else {
+            return;
+        };
+        let this = self.clone();
+        spawn_local(async move {
+            let cancel = tc_api::jobs::Cancel {
+                request: js::random_request_id(),
+                job,
+            };
+            if this.runtime().api().call(&cancel).await.is_err() {
+                this.s().sync_download.try_update(|now| {
+                    if let Some((_, download)) = now {
+                        download.cancel_not_sent();
+                    }
+                });
+            }
         });
     }
 

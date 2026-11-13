@@ -1938,6 +1938,17 @@ in Chromium against the real `tc4`, with the request filter of AD11
    why, detail }))`, whose `why` chooses a plain sentence and whose `detail` goes to "Ask for
    help" only; the internet turned off ends it with `NeedsInternet(Open)`. In each case no
    project is added and no part copy is left (INV-OPEN-FROM-DOOR43-IS-ALL-OR-NOTHING).
+   `door43/sync` (#1013): once the sync is done, the real port frees the project and downloads
+   the versions its pins name and this computer lacks, through the same machine, with
+   `OnFailure::GoOn`: a failure of that one version (`Reach::ThisVersion`: Door43 does not have
+   it, sent another commit, or failed on its archive) is passed over, and a failure that would
+   fail every version (`Reach::EveryVersion`: no answer, a full disk) ends the download. The
+   card names each version from
+   `Phase::PinnedVersion`, with a bar for its bytes and Cancel. The job still ends
+   `Done(Synced)`: `SyncResultView.not_downloaded` lists each version not got with its
+   `PinFailure`, `download_stopped` says `Cancelled` or `InternetOff`, and `missing_pins` counts
+   what is still missing (INV-A-SYNC-LEAVES-NO-PIN-MISSING). The scripted port downloads
+   nothing.
 8. Links to a profile, a repository or help ask the question first, then `account/profileLink`,
    `repoLink` or `helpLink` gives the URL and the shell opens it with `openExternal`
    (`window.open` in a browser).

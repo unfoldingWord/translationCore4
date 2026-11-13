@@ -191,6 +191,35 @@ impl SyncToast {
         .collect()
     }
 
+    /// What the sync's download of the versions the project pins did not get, and why it
+    /// stopped (#1013): one sentence each. The sync itself is done.
+    pub fn download_notes(&self) -> Vec<Counted> {
+        let Some(view) = self.synced() else {
+            return Vec::new();
+        };
+        let failed = view.not_downloaded.iter().map(|failed| Counted {
+            test_id: "sync-not-downloaded",
+            n: 1,
+            text: t_dyn(failed.why.key(), &[("pin", &failed.pin.name())], None),
+        });
+        let stopped = view.download_stopped.map(|stopped| Counted {
+            test_id: "sync-download-stopped",
+            n: 1,
+            text: t(
+                match stopped {
+                    tc_api::jobs::DownloadStopped::Cancelled => {
+                        keys::sync_result::DOWNLOAD_CANCELLED
+                    }
+                    tc_api::jobs::DownloadStopped::InternetOff => {
+                        keys::sync_result::DOWNLOAD_INTERNET_OFF
+                    }
+                },
+                &[],
+            ),
+        });
+        failed.chain(stopped).collect()
+    }
+
     /// Review: a verse or frame conflict, or a verse with two alignments, waits for the person.
     pub fn review(&self) -> bool {
         self.synced()

@@ -112,7 +112,9 @@
             }
           }
         ],
-        "handEdited": []
+        "handEdited": [],
+        "notDownloaded": [],
+        "downloadStopped": null
       }
     }
   },

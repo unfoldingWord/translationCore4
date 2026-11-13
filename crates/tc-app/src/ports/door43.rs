@@ -12,8 +12,13 @@ use crate::jobs::{JobCtx, JobEnd, ProgressSink};
 pub struct Door43Sync;
 
 impl SyncPort for Door43Sync {
-    fn sync(&self, app: App, folder: ProjectRef) -> BoxFuture<Result<SyncResultView, JobEnd>> {
-        Box::pin(async move { app.door43_sync(folder).await })
+    fn sync(
+        &self,
+        app: App,
+        folder: ProjectRef,
+        ctx: JobCtx,
+    ) -> BoxFuture<Result<SyncResultView, JobEnd>> {
+        Box::pin(async move { app.door43_sync(folder, ctx).await })
     }
 
     fn share(

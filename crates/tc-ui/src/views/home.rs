@@ -459,6 +459,52 @@ fn share_meta(card: Signal<Option<HomeCard>>, project: &ProjectRef) -> impl Into
     }
 }
 
+/// While the card's sync downloads a version the project pins (#1013): the version, how many
+/// follow it, its bar, and Cancel, which stops the download and leaves the sync done.
+fn sync_download(s: &AppState, actions: &Actions, project: &ProjectRef) -> impl IntoView + use<> {
+    let shown = {
+        let (download, project) = (s.sync_download.clone(), project.clone());
+        Memo::new(move |_| {
+            download.with(|now| {
+                now.as_ref()
+                    .filter(|(shown, _)| *shown == project)
+                    .map(|(_, download)| download.clone())
+            })
+        })
+    };
+    let actions = actions.clone();
+    let (row, cancel_id) = (
+        format!("sync-download-{project}"),
+        format!("sync-download-cancel-{project}"),
+    );
+    move || {
+        shown.get().map(|download| {
+            let off = !download.can_cancel();
+            let cancel = actions.clone();
+            let status =
+                crate::views::pin_download::download_status(download.download(), "sync-download-bar");
+            view! {
+                <div
+                    data-testid=row.clone()
+                    role="status"
+                    style="display: flex; align-items: center; gap: 12px; margin-top: 6px; font-size: var(--fs-ui-sm); color: var(--text-secondary);"
+                >
+                    <div style="flex: 1; min-width: 0;">{status}</div>
+                    <Button
+                        variant=ButtonVariant::Secondary
+                        size=Size::Sm
+                        disabled=Signal::derive(move || off)
+                        attrs=Attrs::new().with("data-testid", cancel_id.clone())
+                        on_click=Callback::new(move |_| cancel.cancel_sync_download())
+                    >
+                        {move || t(keys::home::CANCEL_DOWNLOAD, &[])}
+                    </Button>
+                </div>
+            }
+        })
+    }
+}
+
 /// The Share action: "Share on Door43", or "Sync with Door43" for a shared project (PLAN Q2).
 fn share_action(
     s: &AppState,
@@ -789,6 +835,7 @@ fn header(
                     {share_meta(card, project)}
                     {last_sync_link(actions, project)}
                 </span>
+                {sync_download(s, actions, project)}
             </div>
             {share_action(s, actions, card, project)}
             {exchange_menu(actions, card, project)}

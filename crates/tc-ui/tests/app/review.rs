@@ -471,6 +471,8 @@ fn the_toasts_review_opens_where_something_waits() {
             recreated: false,
             format_restored: false,
             hand_edited: Vec::new(),
+            not_downloaded: Vec::new(),
+            download_stopped: None,
             replaced: Vec::new(),
         }),
     };

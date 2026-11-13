@@ -374,11 +374,17 @@ budget in `docs/PERFORMANCE.md`). Their tC4 tests stay mapped under `specs` in `
   4. B and C sync, and get A's choice with no conflict.
 - End state: the three projects hold the same project files; each one's text equals Door43's
   `main`; no verse conflict stays open; every change any translator made is on Door43 or in
-  History.
+  History. Every source text and helps version the project pins is on each computer: once a
+  sync is done, it downloads the ones that computer lacks, with no question; its card names
+  each version with a bar and Cancel, and the result says which versions it could not get and
+  why (#1013).
 - Must not: lose any translator's change; show a check, alignment or setting difference as a
-  conflict; leave a verse conflict open after A keeps a version.
+  conflict; leave a verse conflict open after A keeps a version; hold back or undo a sync because
+  a download was cancelled or failed; install a file of another release than the pin (J3).
 - Differs from tC4: saves continue while a sync runs, and a save made during a sync is sent by the
-  next one; any default branch works; a dropped connection keeps what was received and says so.
+  next one; any default branch works; a dropped connection keeps what was received and says so;
+  the sync downloads the versions the project pins and the computer lacks (#1013,
+  `docs/DIFFERENCES.md`).
 
 ### J27 Exchange a project by file, with no internet
 

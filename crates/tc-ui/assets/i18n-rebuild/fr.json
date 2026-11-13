@@ -173,11 +173,11 @@
   "readOnly.unsafeDrive": "Ce lecteur ne peut pas garantir la sécurité du projet en cas de panne de courant. Copier le projet sur cet ordinateur ?",
   "refusal.export.write-failed": "L’application n’a pas pu enregistrer le fichier d’exportation, rien n’a donc été exporté. Le projet n’a pas changé. Vérifiez l’espace disque libre et réessayez l’exportation.",
   "refusal.open-door43.already-here": "Ce projet est déjà sur cet ordinateur, aucune deuxième copie n’a donc été créée. Ouvrez celle dont vous disposez.",
-  "refusal.open-door43.pin-not-downloaded": "tC4 n’a pas pu télécharger {pin}, que ce projet utilise. Aucun projet n’a été ajouté à cet ordinateur.",
-  "refusal.open-door43.pin-not-on-door43": "Door43 n’a pas {pin}, que ce projet utilise. Aucun projet n’a été ajouté à cet ordinateur.",
-  "refusal.open-door43.pin-not-saved": "tC4 n’a pas pu enregistrer {pin}, que ce projet utilise, sur cet ordinateur. Assurez-vous que le disque a de l’espace libre, puis réessayez. Aucun projet n’a été ajouté à cet ordinateur.",
-  "refusal.open-door43.pin-not-the-pinned-version": "Door43 a envoyé pour {pin} un fichier qui n’est pas la version que ce projet utilise ; tC4 ne l’a donc pas installé. Aucun projet n’a été ajouté à cet ordinateur.",
-  "refusal.open-door43.pin-unreachable": "tC4 n’a pas pu télécharger {pin}, que ce projet utilise, car Door43 n’a pas répondu. Réessayez. Aucun projet n’a été ajouté à cet ordinateur.",
+  "refusal.open-door43.pin-not-downloaded": "tC4 n’a pas pu télécharger {pin}, que ce projet utilise.",
+  "refusal.open-door43.pin-not-on-door43": "Door43 n’a pas {pin}, que ce projet utilise.",
+  "refusal.open-door43.pin-not-saved": "tC4 n’a pas pu enregistrer {pin}, que ce projet utilise, sur cet ordinateur. Assurez-vous que le disque a de l’espace libre, puis réessayez.",
+  "refusal.open-door43.pin-not-the-pinned-version": "Door43 a envoyé pour {pin} un fichier qui n’est pas la version que ce projet utilise ; tC4 ne l’a donc pas installé.",
+  "refusal.open-door43.pin-unreachable": "tC4 n’a pas pu télécharger {pin}, que ce projet utilise, car Door43 n’a pas répondu. Réessayez.",
   "refusal.open.lock-held": "Un autre programme utilise ce projet (processus {pid} sur {host}). Fermez-le ou redémarrez l’ordinateur, puis rouvrez le projet. Rien n’a été modifié.",
   "refusal.open.lock-held-unnamed": "Un autre programme utilise ce projet. Fermez-le ou redémarrez l’ordinateur, puis rouvrez le projet. Rien n’a été modifié.",
   "refusal.open.newer-format": "Ce projet a été enregistré par une version plus récente de translationCore (format de projet {format}). Mettez à jour translationCore, puis rouvrez le projet. Rien n’a été modifié.",
@@ -373,5 +373,8 @@
   "upgrade.checkFailedServer": "Impossible de vérifier les mises à jour : Door43 n’a pas répondu correctement. Réessayez plus tard.",
   "upgrade.checkFailedUnreachable": "Impossible de vérifier les mises à jour : Door43 est inaccessible. Vérifiez la connexion et réessayez.",
   "upload.notWritten": "Le fichier n’a pas pu être copié dans translationCore : {reason}. Rien n’a été modifié.",
-  "wizard.codeNotHeld": "Un projet ne peut pas conserver le code de langue {code}, rien n’a donc été créé. Choisissez un autre code."
+  "wizard.codeNotHeld": "Un projet ne peut pas conserver le code de langue {code}, rien n’a donc été créé. Choisissez un autre code.",
+  "home.cancelDownload": "Annuler le téléchargement",
+  "syncResult.downloadCancelled": "Vous avez annulé le téléchargement des versions que ce projet utilise.",
+  "syncResult.downloadInternetOff": "Internet a été désactivé ; le téléchargement des versions que ce projet utilise s’est donc arrêté."
 }

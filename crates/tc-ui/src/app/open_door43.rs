@@ -6,8 +6,8 @@
 
 use tc_api::door43::RepoSource;
 use tc_api::ids::{JobId, ProjectRef, RequestId};
-use tc_api::resources::PinLabel;
 
+use crate::app::pin_download::{Downloading, PinDownload};
 use crate::app::submit::Submit;
 use crate::i18n::{Key, keys};
 
@@ -36,27 +36,15 @@ pub struct OpenForm {
     pub step: OpenStep,
 }
 
-/// A version the open downloads now: the project pins it and this computer lacks it (#1013).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Downloading {
-    /// The open's job, which Cancel stops.
-    pub job: JobId,
-    /// The version as the dialog names it (`en_ult v91`).
-    pub pin: String,
-    /// How many versions follow it.
-    pub left: u32,
-}
-
 /// What the open is doing, as far as the dialog shows it.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum OpenStep {
     /// Not running, or getting the project from Door43: nothing to name, and no Cancel.
     #[default]
     Getting,
-    /// Downloading a pinned version: the dialog names it, and Cancel stops the open.
-    Downloading(Downloading),
-    /// Cancel was pressed while this version downloaded: the open is stopping.
-    Stopping(Downloading),
+    /// Downloading a version the project pins (#1013): the dialog names it, and Cancel stops
+    /// the open until it was pressed.
+    Download(PinDownload),
     /// The last open was cancelled: the dialog says that no project was added.
     Cancelled,
 }
@@ -104,45 +92,45 @@ impl OpenForm {
         }
     }
 
-    /// The running open's job reports that it downloads `pin`, with `left` versions after it.
-    /// A report that comes after Cancel was pressed, or after the open ended, changes nothing.
-    pub fn downloading(&mut self, job: JobId, pin: &PinLabel, left: u32) {
-        if self.busy() && matches!(self.step, OpenStep::Getting | OpenStep::Downloading(_)) {
-            self.step = OpenStep::Downloading(Downloading {
-                job,
-                pin: pin.name(),
-                left,
-            });
+    /// The running open's job reports the version it downloads. A report that comes after
+    /// the open ended changes nothing, and one that comes after Cancel was pressed does not
+    /// bring Cancel back.
+    pub fn downloading(&mut self, newer: Downloading) {
+        if !self.busy() {
+            return;
+        }
+        match &mut self.step {
+            OpenStep::Download(download) => download.report(newer),
+            OpenStep::Getting => self.step = OpenStep::Download(PinDownload::Running(newer)),
+            OpenStep::Cancelled => {}
         }
     }
 
     /// The version the dialog names while it downloads, with how many follow it.
     pub fn download(&self) -> Option<&Downloading> {
         match &self.step {
-            OpenStep::Downloading(download) | OpenStep::Stopping(download) => Some(download),
+            OpenStep::Download(download) => Some(download.download()),
             OpenStep::Getting | OpenStep::Cancelled => None,
         }
     }
 
     /// Whether Cancel stops the open now: only while a pinned version downloads.
     pub fn can_cancel(&self) -> bool {
-        matches!(self.step, OpenStep::Downloading(_))
+        matches!(&self.step, OpenStep::Download(download) if download.can_cancel())
     }
 
     /// Cancel pressed: the job to stop, or `None` when there is nothing to stop.
     pub fn cancel(&mut self) -> Option<JobId> {
-        let OpenStep::Downloading(download) = &self.step else {
-            return None;
-        };
-        let (job, download) = (download.job, download.clone());
-        self.step = OpenStep::Stopping(download);
-        Some(job)
+        match &mut self.step {
+            OpenStep::Download(download) => download.cancel(),
+            OpenStep::Getting | OpenStep::Cancelled => None,
+        }
     }
 
     /// The cancel did not reach the app's server: Cancel can be pressed again.
     pub fn cancel_not_sent(&mut self) {
-        if let OpenStep::Stopping(download) = &self.step {
-            self.step = OpenStep::Downloading(download.clone());
+        if let OpenStep::Download(download) = &mut self.step {
+            download.cancel_not_sent();
         }
     }
 

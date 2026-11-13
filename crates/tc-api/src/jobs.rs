@@ -255,6 +255,35 @@ pub struct SyncResultView {
     /// has none): the Received sheet says so once.
     #[serde(default)]
     pub hand_edited: Vec<crate::exchange::HandEdited>,
+    /// The versions the project pins that the sync's download did not get, each with why
+    /// (#1013). The sync stands either way; `missing_pins` counts what is still missing.
+    #[serde(default)]
+    #[cfg_attr(feature = "proptest", proptest(strategy = "crate::arb::few()"))]
+    pub not_downloaded: Vec<NotDownloadedView>,
+    /// Why the sync's download stopped before it asked for every version (#1013).
+    #[serde(default)]
+    #[cfg_attr(feature = "proptest", proptest(strategy = "crate::arb::boxed()"))]
+    pub download_stopped: Option<DownloadStopped>,
+}
+
+/// A version the project pins that a sync's download did not get, and why (#1013).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "proptest", derive(proptest_derive::Arbitrary))]
+#[serde(rename_all = "camelCase")]
+pub struct NotDownloadedView {
+    pub pin: crate::resources::PinLabel,
+    pub why: crate::refusal::PinFailure,
+}
+
+/// Why a sync's download stopped before it asked for every version (#1013).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "proptest", derive(proptest_derive::Arbitrary))]
+#[serde(rename_all = "camelCase")]
+pub enum DownloadStopped {
+    /// The person pressed Cancel.
+    Cancelled,
+    /// The internet was turned off.
+    InternetOff,
 }
 
 /// The versions of one kind of `whose` that the newer changes of `by` replaced: `place` is

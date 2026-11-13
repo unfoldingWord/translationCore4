@@ -142,7 +142,18 @@
                 "was": null
               }
             ],
-            "handEdited": []
+            "handEdited": [],
+            "notDownloaded": [
+              {
+                "pin": {
+                  "repoPath": "git.door43.org/unfoldingWord/en_tq",
+                  "version": "v91",
+                  "sha": "8be02772588be02772588be02772588be0277258"
+                },
+                "why": "notOnDoor43"
+              }
+            ],
+            "downloadStopped": "cancelled"
           }
         }
       }
@@ -200,7 +211,9 @@
                 "path": "ingredients/TIT.usfm",
                 "outcome": "notTakenIn"
               }
-            ]
+            ],
+            "notDownloaded": [],
+            "downloadStopped": null
           }
         }
       }

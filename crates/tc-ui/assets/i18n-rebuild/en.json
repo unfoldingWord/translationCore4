@@ -169,11 +169,11 @@
   "readOnly.unsafeDrive": "This drive cannot keep the project safe if the power fails. Copy the project to this computer?",
   "refusal.export.write-failed": "The app could not save the export file, so it exported nothing. The project did not change. Check that the computer has free space, then try the export again.",
   "refusal.open-door43.already-here": "This project is already on this computer, so no second copy was made. Open the one you have.",
-  "refusal.open-door43.pin-not-downloaded": "tC4 could not download {pin}, which this project uses. No project was added to this computer.",
-  "refusal.open-door43.pin-not-on-door43": "Door43 does not have {pin}, which this project uses. No project was added to this computer.",
-  "refusal.open-door43.pin-not-saved": "tC4 could not save {pin}, which this project uses, on this computer. Make sure that the disk has free space, then try again. No project was added to this computer.",
-  "refusal.open-door43.pin-not-the-pinned-version": "Door43 sent a file for {pin} that is not the version this project uses, so tC4 did not install it. No project was added to this computer.",
-  "refusal.open-door43.pin-unreachable": "tC4 could not download {pin}, which this project uses, because Door43 did not answer. Try again. No project was added to this computer.",
+  "refusal.open-door43.pin-not-downloaded": "tC4 could not download {pin}, which this project uses.",
+  "refusal.open-door43.pin-not-on-door43": "Door43 does not have {pin}, which this project uses.",
+  "refusal.open-door43.pin-not-saved": "tC4 could not save {pin}, which this project uses, on this computer. Make sure that the disk has free space, then try again.",
+  "refusal.open-door43.pin-not-the-pinned-version": "Door43 sent a file for {pin} that is not the version this project uses, so tC4 did not install it.",
+  "refusal.open-door43.pin-unreachable": "tC4 could not download {pin}, which this project uses, because Door43 did not answer. Try again.",
   "refusal.open.lock-held": "Another program is using this project (process {pid} on {host}). Close it, or restart the computer, then open the project again. Nothing was changed.",
   "refusal.open.lock-held-unnamed": "Another program is using this project. Close it, or restart the computer, then open the project again. Nothing was changed.",
   "refusal.open.newer-format": "This project was saved by a newer translationCore (project format {format}). Update translationCore, then open the project again. Nothing was changed.",
@@ -373,5 +373,8 @@
   "about.thirdPartyLoading": "Reading the licenses…",
   "about.thirdPartyMissing": "The third-party licenses are not available in this run. An installed app shows THIRD-PARTY-NOTICES.txt here.",
   "understand.academyArticle": "{title} →",
-  "understand.introduction": "Introduction"
+  "understand.introduction": "Introduction",
+  "home.cancelDownload": "Cancel download",
+  "syncResult.downloadCancelled": "You cancelled the download of the versions this project uses.",
+  "syncResult.downloadInternetOff": "The internet was turned off, so the download of the versions this project uses stopped."
 }
