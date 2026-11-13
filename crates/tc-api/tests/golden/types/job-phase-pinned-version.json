@@ -1,0 +1,13 @@
+[
+  {
+    "type": "pinnedVersion",
+    "value": {
+      "pin": {
+        "repoPath": "git.door43.org/unfoldingWord/en_ult",
+        "version": "v91",
+        "sha": "35d215957f35d215957f35d215957f35d215957f"
+      },
+      "left": 3
+    }
+  }
+]

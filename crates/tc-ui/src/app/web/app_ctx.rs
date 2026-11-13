@@ -1350,8 +1350,7 @@ impl Actions {
     pub fn open_door43_run(&self) {
         let ready = self.s().layers.dialog.try_update(|dialog| {
             let od = open_form(dialog)?;
-            od.submit.press()?;
-            od.error = None;
+            od.press()?;
             Some(())
         });
         if ready.flatten().is_some() {
@@ -1380,7 +1379,22 @@ impl Actions {
                 repo,
             };
             let ended = match this.run_net(Pending::OpenDoor43, &request).await {
-                NetEnd::Ok(job) => this.follow::<OpenDoor43>(job, |_| {}, || true).await,
+                NetEnd::Ok(job) => {
+                    this.follow::<OpenDoor43>(
+                        job,
+                        // The versions the project pins and this computer lacks, one at a time:
+                        // the dialog names each and offers Cancel (#1013).
+                        |progress| {
+                            if let tc_api::jobs::Phase::PinnedVersion { pin, left } =
+                                &progress.phase
+                            {
+                                this.patch_od(|od| od.downloading(job, pin, *left));
+                            }
+                        },
+                        || true,
+                    )
+                    .await
+                }
                 // The question or the sign-in step took over: the open after it is a new attempt.
                 NetEnd::Asked => {
                     this.patch_od(|od| od.submit.next(js::random_request_id()));
@@ -1420,14 +1434,19 @@ impl Actions {
                     this.s().imported_repo.try_set(Some(project));
                     this.refresh_projects();
                 }
-                // The open ended without a word on how (cancelled, or the server restarted):
-                // no failure is shown; the project list says whether it took effect.
-                JobEnd::Cancelled | JobEnd::Lost | JobEnd::Left => {
-                    this.patch_od(|od| od.submit.next(js::random_request_id()));
+                // Cancelled: no project was added, and the dialog says so (#1013).
+                JobEnd::Cancelled => {
+                    this.patch_od(|od| od.cancelled(js::random_request_id()));
+                    this.refresh_projects();
+                }
+                // The open ended without a word on how (the server restarted): no failure is
+                // shown; the project list says whether it took effect.
+                JobEnd::Lost | JobEnd::Left => {
+                    this.patch_od(|od| od.ended_unsaid(js::random_request_id()));
                     this.refresh_projects();
                 }
                 JobEnd::Failed(error) => match this.net_refusal(Pending::OpenDoor43, error) {
-                    None => this.patch_od(|od| od.submit.next(js::random_request_id())),
+                    None => this.patch_od(|od| od.ended_unsaid(js::random_request_id())),
                     Some(ApiError::Refused(tc_api::Refusal::OpenDoor43(
                         tc_api::refusal::OpenDoor43Refusal::AlreadyHere { project },
                     ))) => this.patch_od(|od| od.already_here(project, js::random_request_id())),
@@ -1454,6 +1473,31 @@ impl Actions {
                     }
                     Some(other) => this.open_refused(None, other.to_string()),
                 },
+            }
+        });
+    }
+
+    /// Cancel while the open downloads a pinned version (#1013): the open's job is asked to
+    /// stop, and its end says that no project was added. A cancel that did not reach the
+    /// app's server leaves Cancel to be pressed again.
+    pub fn cancel_open_door43(&self) {
+        let job = self
+            .s()
+            .layers
+            .dialog
+            .try_update(|dialog| open_form(dialog)?.cancel())
+            .flatten();
+        let Some(job) = job else {
+            return;
+        };
+        let this = self.clone();
+        spawn_local(async move {
+            let cancel = tc_api::jobs::Cancel {
+                request: js::random_request_id(),
+                job,
+            };
+            if this.runtime().api().call(&cancel).await.is_err() {
+                this.patch_od(OpenForm::cancel_not_sent);
             }
         });
     }

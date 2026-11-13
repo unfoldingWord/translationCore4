@@ -4295,6 +4295,18 @@ fn shared_types_have_golden_json() {
         ),
         ("types/check-units.json", wire_samples(&check_units())),
         (
+            // What the open dialog reads to name the version it downloads (#1013).
+            "types/job-phase-pinned-version.json",
+            plain_samples(&[Phase::PinnedVersion {
+                pin: tc_api::resources::PinLabel {
+                    repo_path: "git.door43.org/unfoldingWord/en_ult".into(),
+                    version: Some("v91".into()),
+                    sha: "35d215957f".repeat(4),
+                },
+                left: 3,
+            }]),
+        ),
+        (
             "types/check-lists.json",
             plain_samples(
                 &[Tool::TranslationNotes, Tool::TranslationWords]
@@ -4346,6 +4358,7 @@ fn no_golden_file_is_left_without_its_endpoint_or_type() {
         "suggest-statuses",
         "check-places",
         "check-units",
+        "job-phase-pinned-version",
         "check-lists",
         "buffer",
         "review",

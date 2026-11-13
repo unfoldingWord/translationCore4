@@ -139,6 +139,8 @@
   "newBible.burritoVersification": "Cách phân câu riêng của Scripture Burrito được giữ nguyên.",
   "open.changeFiles": "{done} trên {total} tập tin",
   "openDoor43.alreadyHere": "Bạn đã có dự án này trên máy tính này. Một dự án chỉ có một bản sao trên mỗi máy tính.",
+  "openDoor43.cancelled": "Đã hủy việc mở. Không có dự án nào được thêm vào máy tính này.",
+  "openDoor43.downloading": "Đang tải xuống {pin} mà dự án này sử dụng. Số phiên bản còn lại sau phiên bản này: {n}.",
   "openDoor43.openYours": "Mở dự án",
   "openDoor43.refused.notOpened": "tC4 không thể lấy dự án từ Door43. Hãy đảm bảo tên kho lưu trữ là chính xác. Không có dự án nào được thêm vào máy tính này.",
   "openDoor43.whereAny": "Dự án được mở từ {host}.",

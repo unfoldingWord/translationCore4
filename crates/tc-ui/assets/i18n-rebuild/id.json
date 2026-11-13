@@ -139,6 +139,8 @@
   "newBible.burritoVersification": "Versifikasi milik Scripture Burrito ini tetap dipakai.",
   "open.changeFiles": "{done} dari {total} berkas",
   "openDoor43.alreadyHere": "Proyek ini sudah ada di komputer ini.",
+  "openDoor43.cancelled": "Pembukaan dibatalkan. Tidak ada proyek yang ditambahkan ke komputer ini.",
+  "openDoor43.downloading": "Mengunduh {pin}, yang digunakan proyek ini. Versi yang tersisa setelah ini: {n}.",
   "openDoor43.openYours": "Buka milik Anda",
   "openDoor43.refused.notOpened": "tC4 tidak dapat mengambil proyek dari Door43. Pastikan nama repositori sudah benar. Tidak ada proyek yang ditambahkan ke komputer ini.",
   "openDoor43.whereAny": "Proyek dibuka dari {host}.",
