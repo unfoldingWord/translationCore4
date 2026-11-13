@@ -1,8 +1,8 @@
 {
-  "generated": "2026-10-16",
-  "target_build": "2545c2e",
-  "target_label": "build 2545c2e, which includes v4.0.0-rc.2 plus later fixes",
-  "latest_release": "v4.0.0-rc.2",
+  "generated": "2026-11-13",
+  "target_build": "31fb5180",
+  "target_label": "build 31fb5180, translationCore4 main after 4.1.0-preview2",
+  "latest_release": "4.1",
   "feature_count": 66,
   "by_section_status": {
     "getting-started": {
@@ -59,14 +59,14 @@
       "screenshots": [
         {
           "n": 1,
-          "file": "img/gs-install-1.png",
-          "caption": "Home the first time tC4 starts: the heading Your projects, the + Add a project button, and the message No projects yet. Select + Add a project to start.",
+          "file": "img/gs-install-2.png",
+          "caption": "The small window Preparing translationCore4 on the first start: Getting resources ready for offline use. Preparing resources: 2 of 16.",
           "exists": true
         },
         {
           "n": 2,
-          "file": "img/gs-install-2.png",
-          "caption": "The small window Preparing translationCore4 on the first start: Getting resources ready for offline use. Preparing resources: 2 of 16.",
+          "file": "img/gs-install-1.png",
+          "caption": "Home the first time tC4 starts: the heading Your projects, the + Add a project button, and the message No projects yet. Select + Add a project to start.",
           "exists": true
         }
       ],
@@ -105,13 +105,13 @@
         {
           "n": 1,
           "file": "img/gs-home-1.png",
-          "caption": "The Home screen with one project, Sample Titus. Labels point to the translationCore logo, Resume, + Add a project, the Door43 account menu, a book tile, Add a book, Share on Door43 and Settings.",
+          "caption": "The Home screen with one Bible project. Labels point to the translationCore logo, Resume, + Add a project, the Door43 account menu (Sign in, internet, Help and guides, App language, Report a problem, About), a book tile, Add a book, Sync with Door43 and Settings.",
           "exists": true
         },
         {
           "n": 2,
           "file": "img/gs-home-2.png",
-          "caption": "The Add a project dialog with three numbered choices: 1 New Bible, 2 New Open Bible Stories, 3 Import a project.",
+          "caption": "The Add a project dialog with five numbered choices: 1 New Bible, 2 New Open Bible Stories, 3 Import a project, 4 Open a project from Door43, 5 Receive work from a file.",
           "exists": true
         },
         {
@@ -249,15 +249,19 @@
       "status": "shipped",
       "since": "alpha.1",
       "where": "",
-      "summary": "Create a new, empty Bible translation project. You add books right after.",
+      "summary": "Start a new Bible translation project: blank, from USFM files, or from a Scripture Burrito. You add books right after.",
       "ui_labels": [
         "+ Add a project",
         "Add a book",
         "Bible name",
+        "Blank",
         "Cancel",
         "Checking language",
         "Code",
         "Create Bible →",
+        "From USFM files",
+        "From a Scripture Burrito",
+        "How do you want to start?",
         "Language name",
         "Left to right",
         "New Bible",
@@ -271,13 +275,37 @@
         {
           "n": 1,
           "file": "img/bp-new-bible-1.png",
-          "caption": "The Add a project dialog. New Bible, the first card, is marked 1.",
+          "caption": "The Add a project dialog with five cards: New Bible, marked 1, New Open Bible Stories, Import a project, Open a project from Door43 and Receive work from a file.",
           "exists": true
         },
         {
           "n": 2,
           "file": "img/bp-new-bible-2.png",
-          "caption": "The empty New Bible dialog: Bible name, Language name and Code, Text direction (Left to right selected), Checking language English, recommended and installed with the app, Script font Noto Sans (default), Versification folded away, and Cancel and Create Bible →.",
+          "caption": "New Bible, How do you want to start?: Blank, Name the project, then add the books you will translate, marked 1; From USFM files, .usfm, .sfm or .txt · one or many, marked 2; From a Scripture Burrito, .zip · one Bible, marked 3.",
+          "exists": true
+        },
+        {
+          "n": 3,
+          "file": "img/bp-new-bible-3.png",
+          "caption": "The empty New Bible form: Bible name, Language name and Code, Text direction (Left to right selected), Checking language English, recommended and installed with the app, Script font Noto Sans (default), Versification folded away, and Cancel and Create Bible →.",
+          "exists": true
+        },
+        {
+          "n": 4,
+          "file": "img/bp-new-bible-4.png",
+          "caption": "New Bible from USFM files: the drop zone, then three rows. TIT.usfm, Adds Titus, and sample-JON-span.usfm, Adds Jonah, have green dots. GEN-draft.usfm has an orange dot and says GEN-draft.usfm cannot be added: line 4: chapter 1 appears twice, marked 1. Back and a greyed-out Next →.",
+          "exists": true
+        },
+        {
+          "n": 5,
+          "file": "img/bp-new-bible-5.png",
+          "caption": "The New Bible form after From USFM files, scrolled down: Kanuri Bible, Kanuri, knc, Versification open with eng (default), Books from your files: Titus, Jonah, marked 1, and The books’ verse counts fit eng, marked 2. Cancel and Create Bible →.",
+          "exists": true
+        },
+        {
+          "n": 6,
+          "file": "img/bp-new-bible-6.png",
+          "caption": "The New Bible form filled from a Scripture Burrito: Bible name Biblia Ejemplo, Language name Spanish (Latin America), Code es-419, Left to right, Checking language English, Script font Noto Sans (default). Books from the Scripture Burrito: Jonah, Titus is marked 1, then The Scripture Burrito’s own versification is kept. Cancel and Create Bible →.",
           "exists": true
         }
       ],
@@ -344,13 +372,13 @@
     },
     {
       "id": "bp-import",
-      "title": "Import a project (translationCore 3, USFM or Scripture Burrito)",
+      "title": "Import a translationCore 3 project",
       "section": "bible-projects",
       "section_title": "Bible projects",
       "status": "shipped",
       "since": "rc.1",
       "where": "",
-      "summary": "Bring existing work into tC4 as a new project, from translationCore 3 project zips, USFM files or a Scripture Burrito zip.",
+      "summary": "Bring translationCore 3 work into tC4 as a new project, from the project zips translationCore 3 exported.",
       "ui_labels": [
         "+ Add a project",
         "Add books from USFM files",
@@ -373,13 +401,13 @@
         {
           "n": 1,
           "file": "img/bp-import-1.png",
-          "caption": "The Add a project dialog with three cards: New Bible, New Open Bible Stories, and Import a project, marked 1.",
+          "caption": "The Add a project dialog with five cards: New Bible, New Open Bible Stories, Import a project, marked 1, Open a project from Door43 and Receive work from a file.",
           "exists": true
         },
         {
           "n": 2,
           "file": "img/bp-import-2.png",
-          "caption": "Import, step 1 of 3: choose the kind of file you have, translationCore 3 project, USFM files or Scripture Burrito. Each import creates a new Bible. Nothing on this computer is changed until you confirm.",
+          "caption": "Import, step 1 of 3: Import a project, Choose the kind of file you have. translationCore 3 project, .zip · one or many, is marked 1. USFM files and Scripture Burrito are greyed out with Arrives with its importer. Each import creates a new Bible. Nothing on this computer is changed until you confirm.",
           "exists": true
         },
         {
@@ -585,13 +613,13 @@
         {
           "n": 1,
           "file": "img/tr-draft-section-1.png",
-          "caption": "An empty section row: TITUS 3:4–5 on the left, the verse numbers 4 5 on the right, and Draft section 4–5 at its top right, marked 1.",
+          "caption": "An empty section row: TITUS 2:9–10 on the left, and Draft section 9–10 at its top right, marked 1.",
           "exists": true
         },
         {
           "n": 2,
           "file": "img/tr-draft-section-2.png",
-          "caption": "The section editor open beside the source: DRAFTING 4–5, with Type selected, the hint Enter for paragraph, Tab for poetry, Spanish text typed in, and Save section and Cancel.",
+          "caption": "The section editor open beside the source for Titus 2:9–10: DRAFTING 9–10, with Type selected, the hint Enter for paragraph, Tab for poetry, the typed verses 9 and 10, and Save section and Cancel. The card is as tall as the source passage beside it.",
           "exists": true
         }
       ],
@@ -619,13 +647,13 @@
         {
           "n": 1,
           "file": "img/tr-place-verse-numbers-1.png",
-          "caption": "Place verse numbers mode for Titus 3:4–5. Verse 4 is fixed at the start of the text, and the number 5 waits in the To place box with the hint Pick a number up, then click the word it begins at.",
+          "caption": "Place verse numbers mode for Titus 2:9–10. Verse 9 is fixed at the start of the text, and the number 10 waits in the To place box, marked 1, with the hint Click a verse number, then click the word that begins the verse.",
           "exists": true
         },
         {
           "n": 2,
           "file": "img/tr-place-verse-numbers-2.png",
-          "caption": "Place verse numbers mode for Titus 1:1–3 with verse 3 picked up. The To place box says Click the word where verse 3 begins, and the words where verse 3 may begin are highlighted.",
+          "caption": "The same section after clicking the 10: the To place box says Click the word where verse 10 begins.",
           "exists": true
         }
       ],
@@ -653,7 +681,7 @@
         {
           "n": 1,
           "file": "img/tr-verse-spans-1.png",
-          "caption": "Place verse numbers mode for Titus 1:1–3. Verse 3 has been picked up and is held next to verse 2 on the word con, so the two numbers sit side by side.",
+          "caption": "Place verse numbers mode for Titus 2:9–10 after joining: the numbers 9 and 10 sit side by side on the first word, Exhorta, so the two verses are one span.",
           "exists": true
         }
       ],
@@ -714,7 +742,13 @@
         {
           "n": 1,
           "file": "img/tr-formatting-1.png",
-          "caption": "The section editor for Titus 3:4–5 in Type mode. The hint reads Enter for paragraph, Tab for poetry. Two lines of the Spanish text start further in because Tab was pressed.",
+          "caption": "The section editor for Titus 2:9–10 in Type mode. The hint reads Enter for paragraph, Tab for poetry. Lines that start further in are indented poetry lines; two are marked 1 and 2.",
+          "exists": true
+        },
+        {
+          "n": 2,
+          "file": "img/tr-formatting-2.png",
+          "caption": "The verse editor open on Psalms 9:1: both lines of the poem are in the editor, and the second line starts further in because it is a second-level poetry line.",
           "exists": true
         }
       ],
@@ -728,7 +762,7 @@
       "status": "shipped",
       "since": "alpha.4",
       "where": "",
-      "summary": "While you draft, the helps panel shows the notes, word links, questions, simplified text and your own comments for the verses in focus.",
+      "summary": "While you draft, the helps panel shows notes grouped under verse headings, word cards with article intros, questions, simplified text and your comments.",
       "ui_labels": [
         "Comments",
         "GST",
@@ -749,7 +783,7 @@
         {
           "n": 1,
           "file": "img/tr-helps-panel-1.png",
-          "caption": "The helps panel on Titus 1 with the Words tab selected. The tabs are Notes, Words, Questions, UST and Comments. Each card is a key word (Paul, a servant, of God, an apostle) with Read the article →.",
+          "caption": "The helps panel on Titus 1 with the Words tab selected. Each word card shows the first paragraph of its Translation Words article and a Read the article → link. There are no KEY WORD badges.",
           "exists": true
         }
       ],
@@ -846,7 +880,7 @@
         {
           "n": 1,
           "file": "img/un-notes-1.png",
-          "caption": "The Notes tab in Understand on Titus 1. The chapter introduction card is at the top with Show more, and the Translation Academy article Abstract Nouns is open below it with a close button (✕).",
+          "caption": "The Notes tab in Understand on Titus 1. Notes are grouped under INTRODUCTION and VERSE 1. Article links use the real name, such as Abstract Nouns →. There are no NOTE badges.",
           "exists": true
         }
       ],
@@ -872,7 +906,7 @@
         {
           "n": 1,
           "file": "img/un-word-links-1.png",
-          "caption": "Understand on Titus 1:1–3 with the Words tab open. The key word card Paul is selected, marked 1, and Paul is highlighted in the passage. The article Paul, Saul is open under the cards, marked 2.",
+          "caption": "Understand on Titus 1 with the Words tab open. Each card shows the first paragraph of its article and Read the article →. There are no KEY WORD badges.",
           "exists": true
         }
       ],
@@ -986,7 +1020,7 @@
         {
           "n": 1,
           "file": "img/ck-tool-picker-1.png",
-          "caption": "Choose a checking tool for Sample Titus. Labels point to the Modes switch with Check selected, the four tool cards (Translation Words, Translation Notes, Align and Community Checking), the save status, a card's progress line and Start checking link, the Align card's verse count and the Community Checking card.",
+          "caption": "Choose a checking tool for Sample Titus. Labels point to the Modes switch with Check selected, the four tool cards (Translation Words, Translation Notes, Align and Community Checking), the save status, a card&#x27;s progress line and Start checking link, the Align card&#x27;s verse count and the Community Checking card.",
           "exists": true
         }
       ],
@@ -1025,7 +1059,7 @@
         {
           "n": 1,
           "file": "img/ck-translation-notes-1.png",
-          "caption": "Translation Notes for Sample Titus, item 1 of 157: the quote “for the faith of the chosen people of God and knowledge of the truth” in Titus 1:1. Labels point to All checking tools, Sort, the quote, What to check, Previous and Next, Back to translating, the check list in verse order, the decision buttons, Add a comment and Your translation.",
+          "caption": "Translation Notes for Titus, item 1 of 157: the quote “for the faith of the chosen people of God and knowledge of the truth” in Titus 1:1. Labels point to All checking tools, Sort, the quote, What to check, the Greek, the literal gateway text, the simplified text (UST), Back to translating, the check list, your decision, Previous and Next, Your translation and Add a comment.",
           "exists": true
         }
       ],
@@ -1065,7 +1099,7 @@
         {
           "n": 1,
           "file": "img/ck-translation-words-1.png",
-          "caption": "Translation Words for Titus (English project), en_twl v91, item 1 of 182: “Paul” in Titus 1:1. Labels point to All checking tools, Learn more, the gateway text with Paul highlighted, the Greek of the verse, Previous and Next, the filters, Back to translating, the check list grouped by word with Paul selected, the decision buttons (Mark valid, Invalid, To do), Your translation, and Add a comment.",
+          "caption": "Translation Words for Titus, item 1 of 182: “Paul” in Titus 1:1. Labels point to All checking tools, the filters, the word, Learn more, the Greek, the literal gateway text, the simplified text (UST), Back to translating, the check list grouped by word, your decision, Previous and Next, Your translation and Add a comment.",
           "exists": true
         }
       ],
@@ -1096,13 +1130,19 @@
         {
           "n": 1,
           "file": "img/ck-decide-1.png",
-          "caption": "A Translation Words item, Paul in Titus 1:1. Your translation is marked 1, with the hint Tap the word(s) in your translation that render the highlighted quote. The buttons ✓ Mark valid, Invalid and To do are marked 2, and the → Next item arrow at the top right is marked 3.",
+          "caption": "A Translation Words item, Paul in Titus 1:1. Above Your translation are three source cards: the Greek, the unfoldingWord Literal Text and the UST, each with Paul highlighted. Your translation is marked 1, ✓ Mark valid is marked 2 and Next is marked 3.",
           "exists": true
         },
         {
           "n": 2,
           "file": "img/ck-decide-2.png",
-          "caption": "A Translation Notes item in build 4.0.0-rc.2, Titus 1:1. A drag across your translation selected la fe de los escogidos, shown in yellow like the quote in the source.",
+          "caption": "Pablo is selected in yellow under Your translation (1) but not marked yet. ✓ Mark valid is marked 2. Previous and Next are greyed out, marked 3.",
+          "exists": true
+        },
+        {
+          "n": 3,
+          "file": "img/ck-decide-3.png",
+          "caption": "The question The selected words are not saved: Only a mark saves the words you selected. If you leave this check now, they are unselected. Buttons Stay and Leave without them.",
           "exists": true
         }
       ],
@@ -1127,7 +1167,7 @@
         {
           "n": 1,
           "file": "img/ck-bookmarks-1.png",
-          "caption": "Translation Words with the Bookmarked · 1 filter selected. The list shows only Paul (1:1) with a small orange flag, and the button under the decision buttons now reads Bookmarked, marked 1.",
+          "caption": "Translation Words on Paul in Titus 1:1 after Bookmark was clicked: the button under the decision buttons now reads Bookmarked, marked 1, and the filter reads Bookmarked · 2.",
           "exists": true
         }
       ],
@@ -1235,7 +1275,7 @@
         {
           "n": 1,
           "file": "img/ck-community-checking-1.png",
-          "caption": "Community Checking for Sample Titus. Labels point to the large chapter number (drop cap), the book title, All checking tools, Export, the page preview, the verses not yet drafted, Page setup and the Incomplete draft note.",
+          "caption": "Community Checking for Titus. Labels point to the large chapter number (drop cap) with no small verse 1 number beside it, the book title, All checking tools, Export, the page preview, the verses not yet drafted, Page setup and the Incomplete draft note.",
           "exists": true
         }
       ],
@@ -1268,7 +1308,13 @@
         {
           "n": 1,
           "file": "img/al-open-1.png",
-          "caption": "The Align tool for Sample Titus, Titus 1:1. Labels point to All checking tools, How alignment works, the Align to switch (Gateway · ULT or Original · Greek), Suggest links (off), Previous and Next, Back to translating, the verse list, Mark valid, the word cards and the word bank.",
+          "caption": "The Align tool for a sample Spanish Titus, Titus 1:1. Labels point to All checking tools, How alignment works, the Align to switch (Gateway · ULT or Original · Greek), Suggest links (off), Previous and Next beside Mark valid, Back to translating, the verse list, Mark valid, the word cards and the word bank.",
+          "exists": true
+        },
+        {
+          "n": 2,
+          "file": "img/al-open-2.png",
+          "caption": "A verse in Align from a book that was added from an aligned USFM file. The notice says This verse already holds an alignment. Titus was added from a file that already holds alignments. tC4 keeps this verse&#x27;s alignment as it is. You cannot change it in tC4 yet.",
           "exists": true
         }
       ],
@@ -1300,14 +1346,14 @@
         },
         {
           "n": 2,
-          "file": "img/al-link-words-2.png",
-          "caption": "The word bank for Titus 1:1 in build 4.0.0-rc.2. Words that appear more than once in the verse carry a small number: de¹ to de⁵, y¹ and y², la¹ to la³. The cards of God show Dios¹ under Θεοῦ¹ and Dios² under Θεοῦ².",
+          "file": "img/al-link-words-3.png",
+          "caption": "After la¹, fe and los were selected together and placed on the card the faith (πίστιν) in one move, the card shows them in verse order: la¹ fe los.",
           "exists": true
         },
         {
           "n": 3,
-          "file": "img/al-link-words-3.png",
-          "caption": "After la¹, fe and los were selected together and placed on the card the faith (πίστιν) in one move, the card shows them in verse order: la¹ fe los.",
+          "file": "img/al-link-words-2.png",
+          "caption": "The word bank for Titus 1:1. Words that appear more than once in the verse carry a small number: de¹ to de⁵, y¹ and y², la¹ to la³. The cards of God show Dios¹ under Θεοῦ¹ and Dios² under Θεοῦ².",
           "exists": true
         }
       ],
@@ -1403,7 +1449,7 @@
       "status": "shipped",
       "since": "alpha.2",
       "where": "",
-      "summary": "When a verse is aligned, mark it valid. It counts toward the verses-aligned progress.",
+      "summary": "Mark a verse alignment valid, or clear every placed word back to the word bank.",
       "ui_labels": [
         "✓ Mark valid"
       ],
@@ -1413,7 +1459,13 @@
         {
           "n": 1,
           "file": "img/al-mark-valid-1.png",
-          "caption": "The bottom of a verse in Align: the last source card, godliness, and the ✓ Mark valid button under the cards.",
+          "caption": "The Align footer row: ← Previous, ✓ Mark valid, Next →, and Clear alignments.",
+          "exists": true
+        },
+        {
+          "n": 2,
+          "file": "img/al-mark-valid-2.png",
+          "caption": "Confirmation dialog: Clear the alignments of Titus 1:1? with Cancel and a red Clear alignments button.",
           "exists": true
         }
       ],
@@ -1452,7 +1504,7 @@
         {
           "n": 2,
           "file": "img/obs-create-2.png",
-          "caption": "Home with the new Sample Stories card: OBS and LTR badges, es · 50 stories · 0 in progress · 0% drafted · Only on this computer, and tiles for stories 1–3. The tile 1 · The Creation is marked 1.",
+          "caption": "An Open Bible Stories card on Home: OBS and LTR badges, the line with 50 stories and Only on this computer, Share on Door43, Save or receive work by USB and Settings, and tiles for stories 1–3. The tile 1 · La Creación is marked 1.",
           "exists": true
         }
       ],
@@ -1479,13 +1531,13 @@
         {
           "n": 1,
           "file": "img/obs-story-tiles-1.png",
-          "caption": "The Sample Stories card on Home with tiles 1 · The Creation, 2 · Sin Enters the World and 3 · The Flood, each at 0%. Show all 50 stories → is marked 1.",
+          "caption": "An Open Bible Stories card on Home with tiles 1 · La Creación, Story 2 and Story 3. Show all 50 stories → is marked 1.",
           "exists": true
         },
         {
           "n": 2,
           "file": "img/obs-story-tiles-2.png",
-          "caption": "The same card after Show all 50 stories →: a grid of story tiles, from 1 · The Creation to 18 · The Divided Kingdom on this screen, each with its percent drafted.",
+          "caption": "The same card after Show all 50 stories →: a grid of all 50 story tiles, each with its percent drafted.",
           "exists": true
         }
       ],
@@ -1519,7 +1571,7 @@
         {
           "n": 2,
           "file": "img/obs-translate-2.png",
-          "caption": "Frame 2 open for drafting. The box is headed Drafting frame 2 and holds Entonces Dios dijo: «¡Que haya luz!». Y hubo luz. Save is marked 1, next to Cancel.",
+          "caption": "Frame 2 open for drafting beside the English frame text. The box is headed Drafting frame 2, is as tall as the frame beside it, and holds Entonces Dios dijo: «¡Que haya luz!». Y hubo luz. Save is marked 1, next to Cancel.",
           "exists": true
         }
       ],
@@ -1546,7 +1598,7 @@
         {
           "n": 1,
           "file": "img/obs-understand-1.png",
-          "caption": "Story 1 in Understand. The Stories list on the left shows 1 · The Creation with frame numbers 1–16. In the middle are the story title and frame 1 with its picture and the gateway story; the comment box under frame 1 is marked 1. The helps panel on the right shows Notes for frame 1: “the beginning”, “created”, “the universe”.",
+          "caption": "Story 1 in Understand with frame 2 clicked, marked 1. The helps panel on the right, marked 2, shows only frame 2’s notes: God said, Then God said, “Let there be light!”, Let there be light!, light and was good.",
           "exists": true
         }
       ],
@@ -1700,7 +1752,7 @@
         {
           "n": 1,
           "file": "img/rs-source-texts-1.png",
-          "caption": "Get source texts. Pinned resources with Check for updates, then Choose your gateway language: English (unfoldingWord), Español (Latinoamérica) (es-419_gl, marked 1), two rows named Français (Xenizo and MVHS), and Русский.",
+          "caption": "Get source texts. Pinned resources with Check for updates, then Choose your gateway language: English (unfoldingWord, notes v91, words v91, academy v91), Español (Latinoamérica) (es-419_gl, marked 1), two rows named Français (Xenizo and MVHS), and Русский.",
           "exists": true
         }
       ],
@@ -1732,7 +1784,7 @@
         {
           "n": 2,
           "file": "img/rs-checking-language-2.png",
-          "caption": "The confirmation from an earlier build: Change checking language to Spanish (Latin American)? 3 decisions in Titus were made against the notes you are leaving. Titus · Translation Notes: 0 carried over, 3 to check again. Keep en, and Change to Spanish (Latin American).",
+          "caption": "The confirmation: Change checking language to English? 4 decisions in Titus were made against the notes you are leaving. Titus · Translation Words: 2 carried over, 0 to check again. Titus · Translation Notes: 0 carried over, 1 to check again. Keep Español (Latinoamérica), and Change to English.",
           "exists": true
         }
       ],
@@ -1769,7 +1821,7 @@
         {
           "n": 2,
           "file": "img/rs-upgrade-helps-2.png",
-          "caption": "From an earlier build, after Check for updates for a project made with older helps: Primary set · en and Fallback set · en each offer Upgrade 4 resource(s), en_tn v86 → v91, en_tw v87 → v91, en_ta v86 → v91, en_tq v89 → v91. Scripture texts below.",
+          "caption": "After Check for updates for a project made with older helps: Primary set · en and Fallback set · en each offer Upgrade 4 resource(s), en_tn v86 → v91, en_tw v87 → v91, en_ta v86 → v91, en_tq v89 → v91. Scripture texts below.",
           "exists": true
         }
       ],
@@ -1806,7 +1858,7 @@
         {
           "n": 2,
           "file": "img/rs-upgrade-texts-2.png",
-          "caption": "From an earlier build, the Scripture texts list after Check for updates: Original-language text hbo_uhb v2.1.30 → v3.0.0, and Gateway Bible en_ult and en_ust v89 → v91, each with Upgrade.",
+          "caption": "The Scripture texts list after Check for updates: Original-language text hbo_uhb v2.1.30 → v3.0.0, and Gateway Bible en_ult and en_ust v89 → v91, each with Upgrade.",
           "exists": true
         }
       ],
@@ -1835,7 +1887,7 @@
         {
           "n": 1,
           "file": "img/rs-guided-fix-1.png",
-          "caption": "From an earlier build: Translation Notes needs a resource that is not on this computer. The project pins en_tn v87. 1 · Download the pinned version, with Download it greyed out offline. 2 · Use a version that is installed, with en_tn v91 installed. 3 · Sideload it from a file.",
+          "caption": "Translation Words needs a resource that is not on this computer. The project pins es-419_twl · v18 for Titus. 1 · Download the pinned version, with Download it. 2 · Use a version that is installed: no other version of es-419_twl is installed on this computer. 3 · Sideload it from a file, with a drop zone for the zip. Close.",
           "exists": true
         }
       ],
@@ -1867,7 +1919,7 @@
         {
           "n": 2,
           "file": "img/rs-offline-2.png",
-          "caption": "The account menu: Sign in to Door43, Use the internet with its switch off (marked 1) and the line Off. A step that needs the internet asks first., App language, Report a problem, About translationCore.",
+          "caption": "The account menu: the Door43 account, Use the internet with its switch off (marked 1) and the line Off. A step that needs the internet asks first., Help and guides, App language, Report a problem, About translationCore.",
           "exists": true
         }
       ],
@@ -1921,7 +1973,7 @@
         {
           "n": 1,
           "file": "img/st-where-projects-live-1.png",
-          "caption": "The Sample Titus card on Home. The line es · 1 book · 1 in progress · Only on this computer is marked 1.",
+          "caption": "A Bible project card on Home. The line es-419 · 2 books · 2 in progress · Only on this computer is marked 1. Share on Door43, Save or receive work by USB and Settings are on the right.",
           "exists": true
         }
       ],
@@ -1952,7 +2004,7 @@
         {
           "n": 1,
           "file": "img/st-app-language-1.png",
-          "caption": "The account menu, open. Badge 1 is on the round person icon at the top right. Badge 2 is on App language, which shows English.",
+          "caption": "The account menu, open while signed in to Door43: the Door43 account name, Use the internet (on), Help and guides, App language (English), Report a problem, About translationCore and Sign out of Door43. Badge 1 is on the round person icon at the top right. Badge 2 is on App language.",
           "exists": true
         },
         {
@@ -1964,7 +2016,7 @@
         {
           "n": 3,
           "file": "img/st-app-language-3.png",
-          "caption": "Home behind the App language dialog after choosing Español (Latinoamérica). The whole screen has already switched to Spanish, and the dialog's buttons now read Cancelar and Aplicar.",
+          "caption": "Home behind the App language dialog after choosing Español (Latinoamérica). The whole screen has already switched to Spanish, and the dialog&#x27;s buttons now read Cancelar and Aplicar.",
           "exists": true
         }
       ],
@@ -2019,7 +2071,7 @@
         {
           "n": 1,
           "file": "img/ts-protect-messages-1.png",
-          "caption": "An import review for a USFM file with no \\id line. A red box says This file cannot be imported, no-id.sfm has no \\id line, so the book is not known, with the code import.damaged.usfm-parse and Nothing will be created from this file.",
+          "caption": "Import step 3 of 3, Review what was found, for a translationCore 3 zip that was cut off. A red box says This file cannot be imported, titus-project.zip is not a complete zip file, with the code import.damaged.truncated and Nothing will be created from this file. ← Choose other files, Cancel, and a greyed-out Import as a new Bible.",
           "exists": true
         }
       ],
@@ -2041,7 +2093,7 @@
         {
           "n": 1,
           "file": "img/ts-crash-recovery-1.png",
-          "caption": "From an earlier build: the Window menu of the desktop app, with Reload Ctrl+R, Force Reload Ctrl+Shift+R and Toggle Developer Tools Ctrl+Shift+I.",
+          "caption": "The Window menu of the desktop app, with Reload Ctrl+R, Force Reload Ctrl+Shift+R and Toggle Developer Tools Ctrl+Shift+I.",
           "exists": true
         }
       ],
@@ -2083,7 +2135,7 @@
         {
           "n": 1,
           "file": "img/ts-share-door43-1.png",
-          "caption": "The Sample Titus card on Home. Share on Door43 is marked 1, next to Settings.",
+          "caption": "A Bible project card on Home. Share on Door43 is marked 1, next to Save or receive work by USB and Settings.",
           "exists": true
         },
         {
@@ -2109,18 +2161,109 @@
       ],
       "steps": [],
       "expected": [],
-      "screenshots": [],
+      "screenshots": [
+        {
+          "n": 1,
+          "file": "img/ts-team-sync-1.png",
+          "caption": "Project card for Equipo Ejemplo — Tito y Jonás with the ON DOOR43 badge, Shared at facilitator-zq/sample_burrito, and the buttons Sync with Door43, Save or receive work by USB and Settings, and the Jonah and Titus books.",
+          "exists": true
+        },
+        {
+          "n": 2,
+          "file": "img/ts-team-sync-4.png",
+          "caption": "The Open a project from Door43 dialog: The project opens from git.door43.org, the Door43 repository facilitator-zq/sample_burrito, and the note that tC4 checks every file before it adds the project. Buttons Cancel and Open project.",
+          "exists": true
+        },
+        {
+          "n": 3,
+          "file": "img/ts-team-sync-3.png",
+          "caption": "Turn on the internet? This step needs the internet to get a full copy of the project from Door43 and check its files. Nothing from your projects is sent. Buttons Not now and Turn on internet.",
+          "exists": true
+        },
+        {
+          "n": 4,
+          "file": "img/ts-team-sync-9.png",
+          "caption": "The dialog while it opens: Downloading en_tn v91, which this project uses. Versions left after this one: 8, with a progress bar under it. Cancel is available and Open project reads Opening….",
+          "exists": true
+        },
+        {
+          "n": 5,
+          "file": "img/ts-team-sync-10.png",
+          "caption": "The dialog after Cancel: The open was cancelled. No project was added to this computer.",
+          "exists": true
+        },
+        {
+          "n": 6,
+          "file": "img/ts-team-sync-11.png",
+          "caption": "The dialog for a project that is already here: You already have this project on this computer. A project has one copy on each computer. Button Open it.",
+          "exists": true
+        },
+        {
+          "n": 7,
+          "file": "img/ts-team-sync-12.png",
+          "caption": "The dialog when a version could not be downloaded: This project cannot be opened. tC4 could not download en_tn v91, which this project uses, because Door43 did not answer. Try again. Code open-door43.pin-not-downloaded · No project was added. Ask for help.",
+          "exists": true
+        },
+        {
+          "n": 8,
+          "file": "img/ts-team-sync-2.png",
+          "caption": "Sync result: Synced with Door43 · 0 changes from teammates · 0 conflicts kept the newest version · 0 verse conflicts to review.",
+          "exists": true
+        },
+        {
+          "n": 9,
+          "file": "img/ts-team-sync-13.png",
+          "caption": "Project card while the sync downloads: Downloading es-419_twl v18, which this project uses. Versions left after this one: 4, a progress bar, and Cancel download. The card button reads Syncing….",
+          "exists": true
+        },
+        {
+          "n": 10,
+          "file": "img/ts-team-sync-14.png",
+          "caption": "Sync result after Cancel download: Synced with Door43 · 0 changes from teammates · 0 conflicts kept the newest version · 0 verse conflicts to review. This project now uses 5 resource versions that are not on this computer. You cancelled the download of the versions this project uses. Download.",
+          "exists": true
+        },
+        {
+          "n": 11,
+          "file": "img/ts-team-sync-15.png",
+          "caption": "Sync result when Door43 lacks a version: This project now uses 1 resource version that is not on this computer. Door43 does not have es-419_tw v37, which this project uses. Download.",
+          "exists": true
+        },
+        {
+          "n": 12,
+          "file": "img/ts-team-sync-5.png",
+          "caption": "Sync toast: Synced with Door43 · 1 change from teammates · 0 conflicts kept the newest version · 1 frame conflict to review. Changes from: teammate-b, with a Review link.",
+          "exists": true
+        },
+        {
+          "n": 13,
+          "file": "img/ts-team-sync-6.png",
+          "caption": "Home story card with an amber 1 conflict · Review chip.",
+          "exists": true
+        },
+        {
+          "n": 14,
+          "file": "img/ts-team-sync-7.png",
+          "caption": "Sync toast naming a newer project format that this version cannot save to.",
+          "exists": true
+        },
+        {
+          "n": 15,
+          "file": "img/ts-team-sync-8.png",
+          "caption": "Sync toast: Synced with Door43 · 0 changes from teammates · 0 conflicts kept the newest version · 0 verse conflicts to review. A project file was deleted or damaged on Door43, so tC4 put your copy back.",
+          "exists": true
+        }
+      ],
       "page": "ts-team-sync.html"
     },
     {
       "id": "ts-not-yet",
-      "title": "Features not built yet",
+      "title": "Features tC4 doesn’t have",
       "section": "troubleshooting",
       "section_title": "Troubleshooting and known limits",
       "status": "not-yet",
       "since": "",
       "where": "",
-      "summary": "Things people often ask for that tC4 doesn’t do yet.",
+      "summary": "Things people often ask for that this version of tC4 doesn’t do.",
       "ui_labels": [
         "Add books from USFM files",
         "Check for updates"
@@ -2176,6 +2319,11 @@
       "id": "wn-rc2",
       "title": "What's new in 4.0 rc.2",
       "page": "wn-rc2.html"
+    },
+    {
+      "id": "wn-4.1",
+      "title": "What's new in 4.1",
+      "page": "wn-4.1.html"
     }
   ]
 }

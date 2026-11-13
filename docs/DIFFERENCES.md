@@ -71,8 +71,12 @@ Under AGENTS.md "Matching tC4" (2026-10-19):
 - The help pages name this app's projects folder, `~/translationCore4/projects`, and its
   download page, https://translationcore.com/desktop/ (#1031), where tC4's pages name
   `~/pankosmia/tc4-projects` and tC4's GitHub releases (H16 parts 2 and 3). The vendored pages
-  stay tc-website's bytes; `tc4 serve` makes the change as it serves them (tc-server
+  stay the bytes `help-pages.txt` lists; `tc4 serve` makes the change as it serves them (tc-server
   `HELP_OVERLAY`, REF1).
+- Help and guides shows translationcore.com's help, vendored from translationCore-Suite-website's
+  `public/tc-help/`, where tC4 4.0 shows tc-website's `tc-help/`, which is retired (#1031). The
+  pages' links to translationcore.com (the top bar's and the footer's) open in the browser after
+  the internet question, and their logo opens the help home in the panel.
 
 - A footnote, cross reference, figure or any other marker the shown text leaves out (`\va`,
   `\vp`, `\ca`, `\rq`, `\cat`, `\ts\*` …) between two words keeps the space after it, so the

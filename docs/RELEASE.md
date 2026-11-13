@@ -11,7 +11,7 @@ H3, H4, H10 and H16). The pipeline is `.github/workflows/release.yml`; its scrip
   project or sync peer.
 - **Names (H16 part 3):** the app shows itself as **translationCore**; it is installed as
   **translationCore 4** (install folder, Start menu, Applications). The download page is
-  https://translationcore.com/tc4.
+  https://translationcore.com/desktop/ (#1031); its first address, /tc4, redirects there.
 - **Platforms (H3):** Windows 10 x64 and later, macOS 13 and later on Apple silicon, Ubuntu 22.04
   x64 and later. The runners that build and test them are windows-2025, macos-15 and ubuntu-24.04.
 - **Files:** `translationCore4-<version>-windows-x64.exe` (`-unsigned` when not signed), a per-user
@@ -79,7 +79,7 @@ org.unfoldingword.translationcore4`) carry the app's whole version, such as `4.1
 Each release has one GitHub issue, opened from the **Release** issue template
 (`.github/ISSUE_TEMPLATE/release.md`), titled `Release v<version>`. It is the checklist for the
 steps below and for what the pipeline does not check: the translations handed to the owner, the
-help pages re-vendored from tc-website, the download page, the installed check by a person, and
+help pages re-vendored from translationCore-Suite-website, the download page, the installed check by a person, and
 the evidence written afterwards. A box is ticked only with a link to its evidence.
 
 1. Set `[workspace.package] version` in `Cargo.toml` to the tag's, less its `v`, by pull request

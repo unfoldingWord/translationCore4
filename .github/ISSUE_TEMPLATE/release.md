@@ -83,24 +83,28 @@ public tag while any key is pending. -->
 
 ### Help in the app
 
-<!-- The help pages are tc-website's `tc-help/`, copied byte for byte by
+<!-- The help pages are translationCore-Suite-website's `public/tc-help/` (the help of
+https://translationcore.com/tc-help/), copied byte for byte by
 `crates/tc-ui/vendor-help.sh [REV]` and listed with their blob ids in
-`crates/tc-ui/help-pages.txt` (APP-DESIGN AD29). `cargo test -p tc-ui` (`tests/help_pages.rs`)
-checks every byte. Order: change the pages in tc-website first, then re-vendor, then test; a
-page cannot be edited in this repository. -->
+`crates/tc-ui/help-pages.txt` (APP-DESIGN AD29, #1031). `cargo test -p tc-ui`
+(`tests/help_pages.rs`) checks every byte, and `cargo test -p tc-server --test help_links` checks
+that every link resolves in the app. Order: change the pages in translationCore-Suite-website
+first, then re-vendor, then test; a page cannot be edited in this repository. tc-website's
+`tc-help/` is retired. -->
 
-- [ ] Every screen or flow this release adds or changes has its help page in tc-website, and
-      "What's new" (`section-whats-new.html`) describes this release's changes. Link the
-      tc-website pull request.
-- [ ] `crates/tc-ui/vendor-help.sh <commit>` was run at the tc-website commit above;
-      `help-pages.txt` records that commit; `HELP_PIN` in `crates/tc-ui/tests/help_pages.rs`
-      is set to it; `cargo test -p tc-ui` passes.
+- [ ] Every screen or flow this release adds or changes has its help page in
+      translationCore-Suite-website, and "What's new" (`section-whats-new`) describes this
+      release's changes. Link the translationCore-Suite-website pull request.
+- [ ] `crates/tc-ui/vendor-help.sh <commit>` was run at the translationCore-Suite-website
+      commit above; `help-pages.txt` records that commit; `HELP_PIN` in
+      `crates/tc-ui/tests/help_pages.rs` is set to it; `cargo test -p tc-ui` and
+      `cargo test -p tc-server --test help_links --test help_overlay` pass.
 - [ ] Help names no tC4 build, so it cannot disagree with About (journey
       `help_home_shows_no_rc1_build_text_offline` is green). What Help may say about its own
       version is still the owner's open question Q31 (`docs/TC4-DELTA-2026-10-19.md`); if it is
       answered for this release, link the answer.
-- [ ] The licence record in the header of `help-pages.txt` is still what the owner was asked to
-      confirm (APP-DESIGN Q-19); if the owner has answered since, the header says so.
+- [ ] The licence record in the header of `help-pages.txt` still says CC BY-SA 4.0, as the owner
+      decided (APP-DESIGN Q-19, #1031).
 
 ### Pins and third parties
 
@@ -207,7 +211,8 @@ from the draft as a translator would, before the owner publishes. -->
 
 <!-- The app does not check for new versions; the download page and the notes are the only ways
 to reach translators (`docs/RELEASE.md` "What the app does not do"). The page is
-https://translationcore.com/tc4 (ruling H16 part 3), in tc-website. -->
+https://translationcore.com/desktop/ (ruling H16 part 3; its first address, /tc4, redirects there,
+#1031), in translationCore-Suite-website. -->
 
 - [ ] *(public only)* The download page offers this version's three files and names the
       version; the links resolve to the published release's assets.

@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What&#x27;s new in 4.1 · translationCore 4 Help</title>
+<meta name="description" content="Helps cards grouped by verse with named Translation Academy links and word intros, Clear alignments on Align, story frame conflicts on sync, project-format sync guards, and an app language that follows the computer until you choose.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="assets/tc_logo.png">
+<link rel="apple-touch-icon" href="assets/tc_logo.png">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="topbar">
+  <button class="menu-btn" id="menu-btn" aria-label="Show topics" aria-controls="sidebar" aria-expanded="false">☰</button>
+  <a class="brand" href="/tc-help/" aria-label="translationCore Help home"><img class="brand-logo" src="assets/translationcore-logo.png" alt="" width="25" height="28"><span class="wordmark">translationCore<span class="reg">®</span></span><span class="brand-rule" aria-hidden="true"></span><span class="brand-text">Help</span></a>
+  <form class="search" action="search" method="get" role="search" autocomplete="off">
+    <input id="q" name="q" type="search" placeholder="Search help (press /)" aria-label="Search help">
+    <div class="search-results" id="search-results" role="listbox" hidden></div>
+  </form>
+  <a class="site-link" href="/">translationcore.com</a>
+</header>
+<div class="shell">
+<nav class="sidebar" id="sidebar" aria-label="Help topics">
+<details class="nav-group"><summary><a href="section-getting-started">Getting started</a></summary><ul>
+<li><a href="gs-install">Install and start tC4</a></li>
+<li><a href="gs-home">The Home screen</a></li>
+<li><a href="gs-modes">Understand, Translate and Check — the three modes</a></li>
+<li><a href="gs-save">Saving and checkpoints</a></li>
+<li><a href="gs-resume">Resume where you left off</a></li>
+<li><a href="gs-switch-project">Switch project or go back Home</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-bible-projects">Bible projects</a></summary><ul>
+<li><a href="bp-new-bible">Create a Bible project</a></li>
+<li><a href="bp-add-book">Add a book</a></li>
+<li><a href="bp-open-book">Open a book and move between chapters</a></li>
+<li><a href="bp-import">Import a translationCore 3 project</a></li>
+<li><a href="bp-export-pdf">Export a book as PDF</a></li>
+<li><a href="bp-export-usfm">Export a book as USFM (aligned or plain)</a></li>
+<li><a href="bp-export-burrito">Export a project as a Scripture Burrito</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-translate">Translate</a></summary><ul>
+<li><a href="tr-screen">The Translate screen</a></li>
+<li><a href="tr-source-texts">Source tabs — gateway texts and the original language</a></li>
+<li><a href="tr-draft-section">Draft a section</a></li>
+<li><a href="tr-place-verse-numbers">Place verse numbers</a></li>
+<li><a href="tr-verse-spans">Make or break a verse span</a></li>
+<li><a href="tr-verse-by-verse">Draft or revise one verse</a></li>
+<li><a href="tr-formatting">Paragraphs and poetry</a></li>
+<li><a href="tr-helps-panel">The helps panel in Translate</a></li>
+<li><a href="tr-edit-after-check">Editing a verse you already checked or aligned</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-understand">Understand</a></summary><ul>
+<li><a href="un-read-passage">Read a passage before you translate</a></li>
+<li><a href="un-notes">Translation notes and Translation Academy articles</a></li>
+<li><a href="un-word-links">Word links (Translation Words)</a></li>
+<li><a href="un-questions">Translation questions</a></li>
+<li><a href="un-simplified">The simplified text tab</a></li>
+<li><a href="un-user-comments">Write a user comment</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-check">Check</a></summary><ul>
+<li><a href="ck-tool-picker">Choose a checking tool</a></li>
+<li><a href="ck-translation-notes">Check with Translation Notes</a></li>
+<li><a href="ck-translation-words">Check with Translation Words</a></li>
+<li><a href="ck-decide">Decide on a check item (valid, invalid, to do)</a></li>
+<li><a href="ck-bookmarks">Bookmark a check</a></li>
+<li><a href="ck-comments">Write a check comment</a></li>
+<li><a href="ck-filter-sort">Filter and sort check items</a></li>
+<li><a href="ck-community-checking">Community Checking preview</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-align">Align</a></summary><ul>
+<li><a href="al-open">Open the Align tool</a></li>
+<li><a href="al-link-words">Link your words to the source</a></li>
+<li><a href="al-phrases">Align a phrase (merge and split cards)</a></li>
+<li><a href="al-modes">Align to the gateway text or the original language</a></li>
+<li><a href="al-suggestions">Alignment suggestions</a></li>
+<li><a href="al-mark-valid">Mark an alignment done</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-obs">Open Bible Stories</a></summary><ul>
+<li><a href="obs-create">Start an Open Bible Stories project</a></li>
+<li><a href="obs-story-tiles">Find a story on Home</a></li>
+<li><a href="obs-translate">Translate a story</a></li>
+<li><a href="obs-understand">Understand a story</a></li>
+<li><a href="obs-check">Check a story</a></li>
+<li><a href="obs-community-checking">Story preview and export</a></li>
+<li><a href="obs-export-markdown-pdf">Export stories as PDF or Markdown</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-resources">Resources and offline</a></summary><ul>
+<li><a href="rs-whats-included">What comes with the app</a></li>
+<li><a href="rs-source-texts">Download source texts</a></li>
+<li><a href="rs-checking-language">Change the checking language</a></li>
+<li><a href="rs-upgrade-helps">Update pinned helps</a></li>
+<li><a href="rs-upgrade-texts">Update scripture texts</a></li>
+<li><a href="rs-guided-fix">Fix a missing resource</a></li>
+<li><a href="rs-offline">Working offline</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-settings">Settings</a></summary><ul>
+<li><a href="st-project-settings">Project settings</a></li>
+<li><a href="st-where-projects-live">Where your projects are stored</a></li>
+<li><a href="st-app-language">Change the app language</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-troubleshooting">Troubleshooting and known limits</a></summary><ul>
+<li><a href="ts-save-problems">When a save fails</a></li>
+<li><a href="ts-protect-messages">Messages that protect your project</a></li>
+<li><a href="ts-crash-recovery">If the app closed unexpectedly or the window went blank</a></li>
+<li><a href="ts-platform">Windows, macOS and Linux notes</a></li>
+<li><a href="ts-share-door43">Share to Door43</a></li>
+<li><a href="ts-team-sync">Working as a team on several computers</a></li>
+<li><a href="ts-not-yet">Features tC4 doesn’t have</a></li>
+</ul></details>
+<details class="nav-group" open><summary><a href="section-whats-new">Release notes</a></summary><ul>
+<li><a href="wn-alpha1">alpha.1 — First public build</a></li>
+<li><a href="wn-alpha2">alpha.2 — Check and align</a></li>
+<li><a href="wn-alpha4">alpha.4 — Open and resume</a></li>
+<li><a href="wn-alpha5">alpha.5 — Drafting for real</a></li>
+<li><a href="wn-alpha6">alpha.6 — Suggestions and resources</a></li>
+<li><a href="wn-alpha7">alpha.7 — Open Bible Stories</a></li>
+<li><a href="wn-add-a-project">Sep 27, 2026 — one + Add a project button on Home</a></li>
+<li><a href="wn-rc1">What&#x27;s new in 4.0 rc.1</a></li>
+<li><a href="wn-rc2">What&#x27;s new in 4.0 rc.2</a></li>
+<li><a href="wn-4.1" class="current" aria-current="page">What&#x27;s new in 4.1</a></li>
+</ul></details>
+</nav>
+<main id="main" class="content">
+<p class="crumbs"><a href="/tc-help/">Help</a> › <a href="section-whats-new">Release notes</a></p>
+<h1>What&#x27;s new in 4.1</h1>
+<p class="lede">Helps cards grouped by verse with named Translation Academy links and word intros, Clear alignments on Align, story frame conflicts on sync, project-format sync guards, and an app language that follows the computer until you choose.</p>
+<p>translationCore 4.1 builds on the 4.0 rc.2 public beta. These are the main changes translators see.</p>
+<h2 id="new-bible">Start a Bible from files</h2>
+<ul><li><span class="ui">New Bible</span> first asks <span class="ui">How do you want to start?</span>: <span class="ui">Blank</span>, <span class="ui">From USFM files</span> or <span class="ui">From a Scripture Burrito</span>.</li><li>From USFM files, each file is checked first and its row says which book it adds, or why it can't be used. The form then suggests the versification the books fit.</li><li>From a Scripture Burrito, the form fills in from the Burrito and lists its books.</li></ul>
+<p>See <a href="bp-new-bible">Create a Bible project</a>.</p>
+<h2 id="editors">Drafting boxes</h2>
+<ul><li>The section editor in Translate and the frame editor for stories are as tall as the source beside them. Longer text scrolls inside the box; drag its corner to make it taller.</li><li>Highlights for a note or word now land on the right words where the gateway text joins two verses into one (a verse span).</li></ul>
+<p>See <a href="tr-draft-section">Draft a section</a> and <a href="obs-translate">Translate a story</a>.</p>
+<h2 id="about">About and other changes</h2>
+<ul><li><span class="ui">About translationCore</span> shows the version number, the translationCore® trademark statement on the copyright line, and <span class="ui">Third-party licenses</span>.</li><li>Menus and buttons in Hindi use a Devanagari font.</li><li>File pickers open in the folder you used last.</li></ul>
+<h2 id="helps">Helps</h2>
+<ul>
+<li><strong>Notes are grouped under verse headings.</strong> Cards sit under uppercase headings such as <span class="ui">INTRODUCTION</span> and <span class="ui">VERSE 1</span>. The old NOTE / KEY WORD badges and verse pills are gone.</li>
+<li><strong>Article links use the real name.</strong> A note that opens Translation Academy now says <span class="ui">Abstract Nouns →</span> (or the article&#x27;s own title), not a generic <span class="ui">Translation Academy →</span>.</li>
+<li><strong>Word cards show the first paragraph</strong> of the Translation Words article, then <span class="ui">Read the article →</span>.</li>
+<li><strong>Click a word card to highlight every occurrence</strong> of that word across the section.</li>
+<li><strong>Articles render cleanly</strong> — line breaks, superscripts and underlines from the source no longer show as raw tags. A floating close control sits above a divider.</li>
+</ul>
+<p>See <a href="tr-helps-panel">The helps panel in Translate</a>, <a href="un-notes">Translation notes</a> and <a href="un-word-links">Word links</a>.</p>
+<h2 id="align">Align</h2>
+<ul>
+<li><strong>Clear alignments</strong> sits on the same footer row as <span class="ui">✓ Mark valid</span>. It asks first, then sends every placed word on that verse back to the word bank. Cards keep their original words.</li>
+</ul>
+<p>See <a href="al-mark-valid">Mark an alignment done</a>.</p>
+<h2 id="team-sync-and-stories">Team sync and stories</h2>
+<ul>
+<li><strong>Story frame conflicts.</strong> When two teammates both change a frame, sync reports <span class="ui">1 frame conflict to review</span>, and Home and Translate show an amber <span class="ui">1 conflict · Review</span> chip.</li>
+<li><strong>Newer project format.</strong> If a teammate&#x27;s newer translationCore saved the project in a format this version cannot save to, sync stops and names their format.</li>
+<li><strong>Repaired Door43 files.</strong> If <code>format.json</code> was deleted or damaged on Door43, tC4 puts this computer&#x27;s copy back and tells you.</li>
+</ul>
+<p>See <a href="ts-team-sync">Working as a team on several computers</a> and <a href="obs-story-tiles">Find a story on Home</a>.</p>
+<h2 id="language">Language</h2>
+<ul>
+<li><strong>App language follows the computer</strong> until you choose one in <span class="ui">App language</span>. After you pick, tC4 keeps your choice.</li>
+<li><strong>Change checking language</strong> no longer offers the language already in use, and the confirm actions sit side by side.</li>
+</ul>
+<p>See <a href="st-app-language">Change the app language</a> and <a href="rs-checking-language">Change the checking language</a>.</p>
+<h2 id="since-preview2">Added after 4.1.0-preview2</h2>
+<p>These changes came after the 4.1.0-preview2 test build. They are part of 4.1.</p>
+<ul><li><strong>Check:</strong> the source cards add the simplified text (UST, or GST such as the Indonesian one) beside the original and the literal text. See <a href="ck-translation-notes">Check with Translation Notes</a>.</li><li><strong>Check:</strong> only a mark saves the words you selected. Changing the words takes the mark away, <span class="ui">Previous</span> and <span class="ui">Next</span> wait until you mark or unselect, and leaving asks <span class="ui">Stay</span> or <span class="ui">Leave without them</span>. See <a href="ck-decide">Decide on a check item</a>.</li><li><strong>Helps:</strong> the helps stay on the section, verse or story frame you clicked, also after <span class="ui">Save</span>. See <a href="tr-helps-panel">The helps panel in Translate</a>.</li><li><strong>Open a project from Door43:</strong> tC4 downloads the versions the project uses that your computer lacks, names each one, and <span class="ui">Cancel</span> stops the open cleanly. If a version can't be had, no project is added. See <a href="ts-team-sync">Working as a team on several computers</a>.</li><li><strong>Sync with Door43:</strong> after the sync, tC4 downloads the versions the project uses that this computer lacks, with a line, a bar and <span class="ui">Cancel download</span> on the project card. A cancelled or failed download leaves the sync done, and the result says which versions are still missing and why. See <a href="ts-team-sync#sync-downloads">Versions the project uses</a>.</li><li><strong>Get source texts:</strong> a download keeps its line and <span class="ui">Cancel</span> until it ends; upgrades and their confirmations belong to the project where you started them. See <a href="rs-source-texts">Download source texts</a>.</li><li><strong>Community Checking:</strong> with drop caps, verse 1 shows no small number beside the large chapter number. See <a href="ck-community-checking">Community Checking</a>.</li><li><strong>Installers:</strong> a newer build replaces the installed translationCore 4 on macOS (it asks first) and Windows, keeping projects and settings. See <a href="gs-install">Install and start tC4</a>.</li></ul>
+<h2 id="related">Related topics</h2><ul class="related"><li><a href="wn-rc2">What&#x27;s new in 4.0 rc.2</a></li><li><a href="wn-rc1">What&#x27;s new in 4.0 rc.1</a></li><li><a href="tr-helps-panel">The helps panel in Translate</a></li><li><a href="al-mark-valid">Mark an alignment done</a></li><li><a href="ts-team-sync">Working as a team on several computers</a></li></ul>
+</main>
+</div>
+<footer class="sitefoot">The app is the source of truth: if this page and the app disagree, the app is right — please tell us. <a href="section-whats-new">Release notes</a> · <a href="/">translationcore.com</a></footer>
+<script src="search-index.js"></script>
+<script src="assets/search.js"></script>
+<script src="assets/page-toc.js"></script>
+</body>
+</html>

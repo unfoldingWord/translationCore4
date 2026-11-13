@@ -1,7 +1,7 @@
-//! The help pages under `help/` are tc-website's `tc-help/` at the commit tC4 pins, byte for
-//! byte (`vendor-help.sh`, APP-DESIGN AD29). `help-pages.txt` names each file by its git blob
-//! id in tc-website, so `git ls-tree -r <commit> tc-help` there confirms the list (tC4 #741's
-//! "help sha-list check").
+//! The help pages under `help/` are translationCore-Suite-website's `public/tc-help/` at the
+//! commit this build pins, byte for byte (`vendor-help.sh`, APP-DESIGN AD29, #1031).
+//! `help-pages.txt` names each file by its git blob id there, so
+//! `git ls-tree -r <commit> public/tc-help` confirms the list (tC4 #741's "help sha-list check").
 #![cfg(not(target_arch = "wasm32"))]
 #![allow(
     clippy::unwrap_used,
@@ -15,8 +15,8 @@ use std::path::{Path, PathBuf};
 
 use sha1::{Digest, Sha1};
 
-/// The pin of tC4's `scripts/fetch-help.mjs` at d25b7871, the rebuild's reference.
-const HELP_PIN: &str = "dbb7cd03c657637ec97ee4c0f00ed7bae44698d9";
+/// The merge of translationCore-Suite-website's 4.1 help refresh (its PR #10, #1031).
+const HELP_PIN: &str = "c8ec5fea9ef3119dc8bac280d310fdca11ed0a1a";
 
 fn crate_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -74,11 +74,11 @@ fn files_under(dir: &Path, base: &Path, out: &mut BTreeSet<String>) {
 }
 
 #[test]
-fn every_help_page_has_the_bytes_tc_website_has_at_the_pin() {
+fn every_help_page_has_the_bytes_the_site_has_at_the_pin() {
     let list = list();
     assert_eq!(
         list.repository,
-        "https://github.com/unfoldingWord/tc-website.git"
+        "https://github.com/unfoldingWord/translationCore-Suite-website.git"
     );
     assert_eq!(list.commit, HELP_PIN);
     let help = crate_dir().join("help");
@@ -86,11 +86,7 @@ fn every_help_page_has_the_bytes_tc_website_has_at_the_pin() {
     for (blob, path) in &list.files {
         let bytes = std::fs::read(help.join(path))
             .unwrap_or_else(|e| panic!("help/{path} is listed but cannot be read: {e}"));
-        assert_eq!(
-            &git_blob_id(&bytes),
-            blob,
-            "help/{path} is not tc-website's"
-        );
+        assert_eq!(&git_blob_id(&bytes), blob, "help/{path} is not the site's");
         assert!(listed.insert(path.clone()), "help/{path} is listed twice");
     }
     let mut present = BTreeSet::new();
@@ -100,7 +96,11 @@ fn every_help_page_has_the_bytes_tc_website_has_at_the_pin() {
         unlisted.is_empty(),
         "files under help/ that help-pages.txt does not list: {unlisted:?}"
     );
-    assert_eq!(list.files.len(), 189, "tc-help/ at the pin holds 189 files");
+    assert_eq!(
+        list.files.len(),
+        210,
+        "public/tc-help/ at the pin holds 210 files"
+    );
 }
 
 #[test]
