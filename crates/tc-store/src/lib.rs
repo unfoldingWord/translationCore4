@@ -77,7 +77,7 @@ pub use handle::{
 pub use hooks::{Failure, Hooks, Point};
 pub use kept::{ImportReport, Kept, KeptBase, KeptWhy, WaitingBook};
 pub use notices::StoreNotice;
-pub use open::{LockHolder, OpenError, OpenOptions};
+pub use open::{LockHolder, OpenError, OpenOptions, project_identity};
 pub use packs::{PackRead, pack_sealer, read_received_pack};
 pub use platform::{FakePlatform, FolderFacts, Platform, StdPlatform, UnsafeFolder};
 pub use progress::{Phase, Progress, ProgressSink};

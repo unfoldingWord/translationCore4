@@ -1468,6 +1468,7 @@ async fn a_gate_that_stops_the_join_adds_no_project_and_leaves_no_part_copy() {
     };
     let before = entries(&juan);
     let seen = std::sync::Mutex::new(None);
+    let derived = std::sync::Mutex::new(None);
     let stopped = tc_sync::join(
         &juan.store,
         &door43.client,
@@ -1481,6 +1482,12 @@ async fn a_gate_that_stops_the_join_adds_no_project_and_leaves_no_part_copy() {
                 fetched.file("no/such/file").is_some(),
                 juan.projects.join("Titus").exists(),
             ));
+            // A derived file comes from the fetched journal: for a repository nobody edited,
+            // it is the file Door43 holds, byte for byte.
+            let titus = tc_journal::fold::DerivedFile::Usfm(BookId::Titus);
+            let made = fetched.derived(&titus);
+            *derived.lock().unwrap() =
+                Some(made.is_some() && made.as_deref() == fetched.file(&titus.path()));
             Err("not ready")
         },
     )
@@ -1490,6 +1497,11 @@ async fn a_gate_that_stops_the_join_adds_no_project_and_leaves_no_part_copy() {
         "{stopped:?}"
     );
     assert_eq!(*seen.lock().unwrap(), Some((true, false, false)));
+    assert_eq!(
+        *derived.lock().unwrap(),
+        Some(true),
+        "the gate reads the book as the fetched journal makes it"
+    );
     assert_eq!(
         entries(&juan),
         before,

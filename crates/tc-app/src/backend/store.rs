@@ -1928,15 +1928,16 @@ pub(crate) fn join_on<S: Send + Sync + 'static>(
 ) -> BoxFuture<Option<super::Joining>> {
     let runtime = tokio::runtime::Handle::current();
     let work = tokio::task::spawn_blocking(move || {
-        let pins = tc_journal::fold::DerivedFile::Resources.path();
         runtime.block_on(tc_sync::join(
             store(&owner),
             &client,
             session.as_ref(),
             &repo,
             &name,
+            // The pins the project opens with are the journal's: Door43's own copy of the pin
+            // file can be gone, damaged or edited while the journal holds them.
             async |fetched: &tc_sync::Fetched<'_>| {
-                gate(fetched.file(&pins).map(<[u8]>::to_vec)).await
+                gate(fetched.derived(&tc_journal::fold::DerivedFile::Resources)).await
             },
         ))
     });

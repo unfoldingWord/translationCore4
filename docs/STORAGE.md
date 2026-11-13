@@ -4058,7 +4058,9 @@ Refusals: the name exists; offline; auth failed; create rejected (with Door43's 
    another tool's commits instead, §9.2 N4).
 5. Rename the staging folder into `<projects>/` (§6.4 N1, N2). Before this rename, with every
    file of step 3 written, the caller's gate runs (#1013): the app downloads the versions that
-   the fetched pin file names and this computer lacks. A gate that stops the join (a cancel, a
+   the fetched journal pins and this computer lacks. The gate reads the pins as the fold of
+   the fetched packs makes them, never Door43's own copy of the pin file, which can be gone,
+   damaged or edited while the journal is whole. A gate that stops the join (a cancel, a
    failed download) removes the staging folder at once, so no project is added and the next
    start has no interrupted join to report.
 

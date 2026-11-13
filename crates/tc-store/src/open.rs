@@ -169,6 +169,13 @@ impl ProjectJson {
     }
 }
 
+/// The project a `project.json` names, and whether it is a Bible or stories; `None` for bytes
+/// this app does not read as one. For a caller that holds a project's files before the project
+/// exists on this computer (a join's gate, #1013).
+pub fn project_identity(bytes: &[u8]) -> Option<(ProjectId, ProjectKind)> {
+    ProjectJson::parse(bytes)
+}
+
 /// `.tc/lock`'s content (§3.6): who holds the project open.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct LockContent {

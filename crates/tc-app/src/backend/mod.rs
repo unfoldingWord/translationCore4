@@ -46,8 +46,9 @@ pub mod store;
 pub type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
 
 /// What an open from Door43 does between its fetch and its placement (#1013): it takes the
-/// fetched project's pin file, when the repository holds one, and answers whether the
-/// project may be added. An `Err` adds no project and leaves no part copy.
+/// project's pin file as the fetched journal makes it (`tc_sync::Fetched::derived`), when
+/// the journal holds pins, and answers whether the project may be added. An `Err` adds no
+/// project and leaves no part copy.
 pub type JoinGate =
     Box<dyn FnOnce(Option<Vec<u8>>) -> BoxFuture<Result<(), crate::pins::PinsStop>> + Send>;
 
