@@ -28,6 +28,7 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "io-
 # The workspace builds tc-api with its test hooks in every test and `--all-targets` build,
 # so this crate's hooks are on there too and the three agree. A plain build has none.
 tc-server = { path = ".", features = ["test-hooks"] }
+regex.workspace = true
 tempfile.workspace = true
 
 [lints]

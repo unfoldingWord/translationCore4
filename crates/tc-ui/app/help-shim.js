@@ -2,7 +2,9 @@
 // tC4's `swapPages`, the help panel's watcher and link handler (tC4:src/views/AccountMenu.jsx:
 // 182-274) and `readHelpPage` (tC4:src/data/helpPages.ts), kept line for line in tC4's own
 // language. It runs in the page, on the frame's documents, as tC4's panel does; the server
-// serves the vendored help pages unchanged, so help-pages.txt can check every byte.
+// changes the vendored pages only as it serves them (tc-server HELP_OVERLAY and site links), so
+// help-pages.txt can check every byte on disk. A page's `href="/…"` reaches this file already
+// rewritten: into the help folder, or to translationcore.com, which opens in the browser (#1031).
 // wasm-bindgen copies this file beside the glue (`#[wasm_bindgen(module = ...)]` in
 // src/views/help_panel.rs), inside `ui/<build>/`, where the page's CSP allows scripts.
 //

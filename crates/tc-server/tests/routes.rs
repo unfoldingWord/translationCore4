@@ -74,6 +74,34 @@ fn a_help_page_with_a_query_is_the_page() {
     );
 }
 
+/// translationcore.com's pages link to `gs-install`, not `gs-install.html` (#1031): the app
+/// answers with the file, its overlay and its type, at that address, with no redirect.
+#[test]
+fn an_extensionless_help_link_serves_its_html_page() {
+    let server = TestServer::start(stub());
+    let page = server.get("/help/gs-install");
+    assert_eq!(page.status, 200);
+    assert!(page.header("location").is_none());
+    assert_eq!(
+        page.header("content-type"),
+        Some("text/html; charset=utf-8")
+    );
+    assert_eq!(page.body, server.get("/help/gs-install.html").body);
+    // The page's own links were rewritten as it was served.
+    assert_eq!(
+        page.text(),
+        "<a href=\"https://translationcore.com/\">site</a> <a href=\"index.html\">home</a>"
+    );
+    // A dot in the name is not an extension.
+    assert_eq!(server.get("/help/wn-4.1").body, b"<p>4.1</p>");
+    let search = server.get("/help/sub/page?q=offline");
+    assert_eq!(search.status, 200);
+    assert_eq!(search.body, b"<p>Sub</p>");
+    for path in ["/help/missing", "/help/sub", "/help/index.html.html"] {
+        assert_eq!(server.get(path).status, 404, "GET {path}");
+    }
+}
+
 #[test]
 fn static_paths_never_leave_the_ui_dir() {
     let server = TestServer::start(stub());

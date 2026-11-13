@@ -47,11 +47,28 @@ pub(crate) async fn ui(State(shared): State<Arc<Shared>>, Path(path): Path<Strin
 
 /// Help pages never redirect: tower-http's `ServeDir` answers a directory with one, which
 /// would send the help window to a URL the page-swap shim does not know (DELTA §3.15.8).
+///
+/// The pages link to each other without `.html` (`gs-install`), as translationcore.com serves
+/// them, while the vendored files keep their names (#1031). A path with no file of its own is
+/// answered with the file that adds `.html`, at the address the page asked for.
 pub(crate) async fn help(State(shared): State<Arc<Shared>>, Path(path): Path<String>) -> Response {
-    match under(&shared.ui_dir.join("help"), &path) {
-        Some(file) => serve_as(&file, "no-cache", |bytes| help_overlay(&path, bytes)).await,
-        None => StatusCode::NOT_FOUND.into_response(),
-    }
+    let Some(file) = under(&shared.ui_dir.join("help"), &path) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let (file, page) = if is_file(&file).await {
+        (file, path)
+    } else {
+        let mut with_html = file.into_os_string();
+        with_html.push(".html");
+        (PathBuf::from(with_html), format!("{path}.html"))
+    };
+    serve_as(&file, "no-cache", |bytes| help_overlay(&page, bytes)).await
+}
+
+async fn is_file(file: &FsPath) -> bool {
+    tokio::fs::metadata(file)
+        .await
+        .is_ok_and(|meta| meta.is_file())
 }
 
 /// The one file `--notices` names (#606): no path from the request reaches the disk.
@@ -63,8 +80,9 @@ pub(crate) async fn notices(State(shared): State<Arc<Shared>>) -> Response {
 }
 
 /// Where a help page describes tC4 4.0 and not this app (H16 parts 2 and 3): `(page, tC4's
-/// words, this app's)`. The vendored pages stay tc-website's bytes (`help-pages.txt`), so the
-/// change is made as they are served.
+/// words, this app's)`. The vendored pages stay the bytes `help-pages.txt` lists, so the
+/// change is made as they are served. The download page is translationcore.com's `/desktop/`:
+/// its old address `/tc4` redirects there (#1031).
 pub const HELP_OVERLAY: &[(&str, &str, &str)] = &[
     (
         "st-where-projects-live.html",
@@ -79,17 +97,27 @@ pub const HELP_OVERLAY: &[(&str, &str, &str)] = &[
     (
         "gs-install.html",
         "https://github.com/unfoldingWord/translationCore4/releases\">tC4 releases page",
-        "https://translationcore.com/tc4\">translationCore download page",
+        "https://translationcore.com/desktop/\">translationCore download page",
     ),
 ];
 
-/// A help file as this app serves it: tc-website's bytes with [`HELP_OVERLAY`] applied.
+/// The site the help pages are published on, below [`HELP_SITE_FOLDER`]. A page's link that
+/// starts with `/` names a page of this site.
+pub const HELP_SITE: &str = "https://translationcore.com";
+
+/// The help pages' folder on [`HELP_SITE`], which the app serves as `/help/`.
+pub const HELP_SITE_FOLDER: &str = "/tc-help";
+
+/// A help file as this app serves it: the vendored bytes with [`HELP_OVERLAY`] applied, and in
+/// a page (`*.html`) each `href="/…"` made a link that works in the Help panel
+/// ([`site_links`]).
 pub fn help_overlay(path: &str, bytes: Vec<u8>) -> Vec<u8> {
     let rules: Vec<_> = HELP_OVERLAY
         .iter()
         .filter(|(page, _, _)| *page == path)
         .collect();
-    if rules.is_empty() {
+    let page = path.ends_with(".html");
+    if rules.is_empty() && !page {
         return bytes;
     }
     // Help pages and their index are UTF-8 text; a file that is not is served as it is.
@@ -100,7 +128,62 @@ pub fn help_overlay(path: &str, bytes: Vec<u8>) -> Vec<u8> {
     for (_, from, to) in rules {
         text = text.replace(from, to);
     }
+    if page {
+        text = site_links(path, &text);
+    }
     text.into_bytes()
+}
+
+/// The page at `path` with each `href="/…"` rewritten (#1031). Served in the app, such a link
+/// would load the app's own root, or a page the app does not have, inside the Help panel. A
+/// link into the help folder becomes relative to the page, so it stays in the panel; any other
+/// names translationcore.com, which the panel opens in the browser after the internet question.
+fn site_links(path: &str, text: &str) -> String {
+    const ATTRIBUTE: &str = "href=\"/";
+    let up = "../".repeat(path.matches('/').count());
+    let mut out = String::with_capacity(text.len() + 1024);
+    let mut rest = text;
+    while let Some(at) = rest.find(ATTRIBUTE) {
+        // Up to and including `href="`; the value starts with its `/`.
+        let (before, after) = rest.split_at(at + ATTRIBUTE.len() - 1);
+        out.push_str(before);
+        // `data-href="/"` and the like are not links.
+        let space = at.checked_sub(1).and_then(|i| before.as_bytes().get(i));
+        if !space.is_some_and(u8::is_ascii_whitespace) {
+            rest = after;
+            continue;
+        }
+        let end = after.find('"').unwrap_or(after.len());
+        let (value, tail) = after.split_at(end);
+        out.push_str(&site_link(&up, value));
+        rest = tail;
+    }
+    out.push_str(rest);
+    out
+}
+
+/// `value`, a link that starts with `/`, as a page `up` below the help folder must name it.
+fn site_link(up: &str, value: &str) -> String {
+    // `//host/…` already names another site.
+    if value.starts_with("//") {
+        return value.to_owned();
+    }
+    let in_help = value
+        .strip_prefix(HELP_SITE_FOLDER)
+        .filter(|rest| rest.is_empty() || rest.starts_with(['/', '#', '?']));
+    match in_help {
+        Some(rest) => {
+            let page = rest.strip_prefix('/').unwrap_or(rest);
+            // The folder itself is its index: `/help/` is not a page (`help_never_redirects`).
+            let page = if page.is_empty() || page.starts_with(['#', '?']) {
+                format!("index.html{page}")
+            } else {
+                page.to_owned()
+            };
+            format!("{up}{page}")
+        }
+        None => format!("{HELP_SITE}{value}"),
+    }
 }
 
 /// `path` below `root`, or `None` for a path that could leave it. An empty segment, `.`,
