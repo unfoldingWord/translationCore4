@@ -21,6 +21,7 @@ pub mod item_nav;
 pub mod modals;
 pub mod open_progress;
 pub mod panel_icons;
+pub mod pin_download;
 pub mod rail_chrome;
 pub mod review;
 pub mod section_editor;

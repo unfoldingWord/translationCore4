@@ -128,6 +128,10 @@ pub trait Write: Endpoint {
 pub trait StartsJob: Write {
     type Outcome;
     /// The outcome of this row's job, or the outcome back when it is of another kind.
+    #[allow(
+        clippy::result_large_err,
+        reason = "the Err hands the caller's own outcome back, moved; no error is built or carried"
+    )]
     fn outcome(outcome: JobOutcome) -> Result<Self::Outcome, JobOutcome>;
     fn wrap(outcome: Self::Outcome) -> JobOutcome;
 }

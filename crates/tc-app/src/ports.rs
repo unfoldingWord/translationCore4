@@ -28,8 +28,14 @@ pub mod usb;
 /// Sync, share and open from Door43 (E1a, E1b).
 pub trait SyncPort: Send + Sync {
     /// One sync of `folder`, after its checkpoint. `app` is the app the sync's intake writes
-    /// the received changes through.
-    fn sync(&self, app: App, folder: ProjectRef) -> BoxFuture<Result<SyncResultView, JobEnd>>;
+    /// the received changes through. `ctx` is the sync job's: the download of the versions the
+    /// project pins and this computer lacks reports there and stops on its cancel (#1013).
+    fn sync(
+        &self,
+        app: App,
+        folder: ProjectRef,
+        ctx: JobCtx,
+    ) -> BoxFuture<Result<SyncResultView, JobEnd>>;
 
     /// The first share of `folder`: its checkpoint, the repository `name` under `owner`, the
     /// push. Each step goes to `progress` as a `SharePhase` when it begins.

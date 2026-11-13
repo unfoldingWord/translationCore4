@@ -300,6 +300,8 @@ async fn teammates_a_sync_receives_stand_as_one_verse_conflict_on_the_toast_the_
             recreated: false,
             format_restored: false,
             hand_edited: Vec::new(),
+            not_downloaded: Vec::new(),
+            download_stopped: None,
             replaced: Vec::new(),
         }
     );
@@ -320,6 +322,8 @@ async fn teammates_a_sync_receives_stand_as_one_verse_conflict_on_the_toast_the_
             recreated: false,
             format_restored: false,
             hand_edited: Vec::new(),
+            not_downloaded: Vec::new(),
+            download_stopped: None,
             replaced: Vec::new(),
         }
     );

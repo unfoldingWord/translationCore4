@@ -625,6 +625,8 @@ impl Example for tc_api::door43::LastSyncView {
                 recreated: false,
                 format_restored: false,
                 hand_edited: Vec::new(),
+                not_downloaded: Vec::new(),
+                download_stopped: None,
                 replaced: vec![
                     setting(
                         ReplacedKind::Setting,
@@ -4007,6 +4009,15 @@ fn events() -> Vec<Event> {
                 recreated: false,
                 format_restored: false,
                 hand_edited: Vec::new(),
+                not_downloaded: vec![tc_api::jobs::NotDownloadedView {
+                    pin: tc_api::resources::PinLabel {
+                        repo_path: "git.door43.org/unfoldingWord/en_tq".into(),
+                        version: Some("v91".into()),
+                        sha: "8be0277258".repeat(4),
+                    },
+                    why: tc_api::refusal::PinFailure::NotOnDoor43,
+                }],
+                download_stopped: Some(tc_api::jobs::DownloadStopped::Cancelled),
                 replaced: vec![tc_api::jobs::ReplacedView {
                     by: PersonLabel {
                         who: Who::Teammate(1),
@@ -4056,6 +4067,8 @@ fn events() -> Vec<Event> {
                     path: "ingredients/TIT.usfm".into(),
                     outcome: HandEditOutcome::NotTakenIn,
                 }],
+                not_downloaded: Vec::new(),
+                download_stopped: None,
             })),
         }),
         Event::Job(JobView {

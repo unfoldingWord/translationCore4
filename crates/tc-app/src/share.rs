@@ -337,7 +337,9 @@ impl App {
             Box::new(move |file: Option<Vec<u8>>| {
                 Box::pin(async move {
                     if let Some(pins) = file.as_deref().and_then(crate::pins::pins_of_file) {
-                        app.install_missing_pins(&pins, &ctx).await?;
+                        app.install_missing_pins(&pins, &ctx, crate::pins::OnFailure::Stop)
+                            .await
+                            .all_here()?;
                     }
                     // A cancel that came at any moment before the placement adds no project,
                     // also when nothing was left to download.

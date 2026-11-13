@@ -105,6 +105,7 @@ pub fn SyncResult(
         view! { <span data-testid="sync-received-from" style=note_style()>{names}</span> }
     });
     let notes = toast.notes().into_iter().map(note).collect_view();
+    let downloads = toast.download_notes().into_iter().map(note).collect_view();
     // tC4's list of replaced alignments (#791), one item per record, right after "Changes
     // from"; it scrolls so the toast's line and buttons stay on screen.
     let replaced = toast.replaced();
@@ -164,6 +165,7 @@ pub fn SyncResult(
                 {from}
                 {replaced}
                 {notes}
+                {downloads}
             </div>
             {review}
             {download}

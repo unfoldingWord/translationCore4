@@ -173,11 +173,11 @@
   "readOnly.unsafeDrive": "Esta unidade não pode manter o projeto seguro em caso de falha de energia. Copiar o projeto para este computador?",
   "refusal.export.write-failed": "O aplicativo não pôde salvar o arquivo de exportação, por isso nada foi exportado. O projeto não mudou. Verifique se o computador tem espaço livre e tente exportar novamente.",
   "refusal.open-door43.already-here": "Este projeto já está neste computador, por isso nenhuma segunda cópia foi feita. Abra a que você já tem.",
-  "refusal.open-door43.pin-not-downloaded": "O tC4 não pôde baixar {pin}, que este projeto usa. Nenhum projeto foi adicionado a este computador.",
-  "refusal.open-door43.pin-not-on-door43": "O Door43 não tem {pin}, que este projeto usa. Nenhum projeto foi adicionado a este computador.",
-  "refusal.open-door43.pin-not-saved": "O tC4 não pôde salvar {pin}, que este projeto usa, neste computador. Certifique-se de que o disco tenha espaço livre e tente novamente. Nenhum projeto foi adicionado a este computador.",
-  "refusal.open-door43.pin-not-the-pinned-version": "O Door43 enviou um arquivo de {pin} que não é a versão que este projeto usa, por isso o tC4 não o instalou. Nenhum projeto foi adicionado a este computador.",
-  "refusal.open-door43.pin-unreachable": "O tC4 não pôde baixar {pin}, que este projeto usa, porque o Door43 não respondeu. Tente novamente. Nenhum projeto foi adicionado a este computador.",
+  "refusal.open-door43.pin-not-downloaded": "O tC4 não pôde baixar {pin}, que este projeto usa.",
+  "refusal.open-door43.pin-not-on-door43": "O Door43 não tem {pin}, que este projeto usa.",
+  "refusal.open-door43.pin-not-saved": "O tC4 não pôde salvar {pin}, que este projeto usa, neste computador. Certifique-se de que o disco tenha espaço livre e tente novamente.",
+  "refusal.open-door43.pin-not-the-pinned-version": "O Door43 enviou um arquivo de {pin} que não é a versão que este projeto usa, por isso o tC4 não o instalou.",
+  "refusal.open-door43.pin-unreachable": "O tC4 não pôde baixar {pin}, que este projeto usa, porque o Door43 não respondeu. Tente novamente.",
   "refusal.open.lock-held": "Outro programa está usando este projeto (processo {pid} em {host}). Feche-o ou reinicie o computador, depois abra o projeto novamente. Nada foi alterado.",
   "refusal.open.lock-held-unnamed": "Outro programa está usando este projeto. Feche-o ou reinicie o computador, depois abra o projeto novamente. Nada foi alterado.",
   "refusal.open.newer-format": "Este projeto foi salvo por uma versão mais recente do translationCore (formato de projeto {format}). Atualize o translationCore e abra o projeto novamente. Nada foi alterado.",
@@ -373,5 +373,8 @@
   "upgrade.checkFailedServer": "Não foi possível verificar atualizações: o Door43 não respondeu adequadamente. Tente novamente mais tarde.",
   "upgrade.checkFailedUnreachable": "Não foi possível verificar atualizações: não foi possível conectar ao Door43. Verifique a conexão e tente novamente.",
   "upload.notWritten": "O arquivo não pôde ser copiado para o translationCore: {reason}. Nada foi alterado.",
-  "wizard.codeNotHeld": "Um projeto não pode conter o código de idioma {code}, por isso nada foi criado. Escolha outro código."
+  "wizard.codeNotHeld": "Um projeto não pode conter o código de idioma {code}, por isso nada foi criado. Escolha outro código.",
+  "home.cancelDownload": "Cancelar o download",
+  "syncResult.downloadCancelled": "Você cancelou o download das versões que este projeto usa.",
+  "syncResult.downloadInternetOff": "A internet foi desligada, por isso o download das versões que este projeto usa parou."
 }

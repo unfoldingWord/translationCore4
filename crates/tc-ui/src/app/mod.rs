@@ -40,6 +40,7 @@ pub mod net;
 pub mod offer;
 pub mod open_door43;
 pub mod outside;
+pub mod pin_download;
 pub mod print;
 pub mod q9;
 pub mod recovery;

@@ -77,7 +77,14 @@ impl ScriptedSyncPort {
 }
 
 impl SyncPort for ScriptedSyncPort {
-    fn sync(&self, app: App, folder: ProjectRef) -> BoxFuture<Result<SyncResultView, JobEnd>> {
+    // A scripted sync stands for Door43's answer only: it downloads nothing, so the tests and
+    // captures that script a sync keep the count of the versions this computer lacks.
+    fn sync(
+        &self,
+        app: App,
+        folder: ProjectRef,
+        _ctx: crate::jobs::JobCtx,
+    ) -> BoxFuture<Result<SyncResultView, JobEnd>> {
         let next = lock(&self.syncs).remove(&folder);
         let held = self.hold.swap(false, Ordering::SeqCst);
         let released = self.released.clone();

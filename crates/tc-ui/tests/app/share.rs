@@ -15,6 +15,7 @@ use tc_ui::app::internet::{InternetFlow, NetStep, Pending};
 use tc_ui::app::open_door43::{
     OpenForm, OpenStep, RefusalSentence, RepoError, refusal_key, refusal_sentence,
 };
+use tc_ui::app::pin_download::{Downloading, PinDownload};
 use tc_ui::app::share::{
     Choices, ShareForm, ShareProject, ShareStep, SharedItems, Target, name_ok,
 };
@@ -104,6 +105,17 @@ fn pin(name: &str, version: &str) -> tc_api::resources::PinLabel {
     }
 }
 
+/// The job's report that it downloads `pin`, with `left` versions after it.
+fn report(job: tc_api::ids::JobId, pin: tc_api::resources::PinLabel, left: u32) -> Downloading {
+    let progress = tc_api::jobs::Progress {
+        phase: tc_api::jobs::Phase::PinnedVersion { pin, left },
+        done: 0,
+        total: None,
+        item: None,
+    };
+    Downloading::of(job, &progress).unwrap()
+}
+
 /// #1013: while the open downloads a pinned version, the dialog names it with how many follow,
 /// and Cancel stops the open. Cancel is not offered before the first download or once it was
 /// pressed, and a cancelled open says so until the next attempt.
@@ -112,7 +124,7 @@ fn the_dialog_names_the_version_it_downloads_and_cancel_stops_the_open() {
     let job = tc_api::ids::JobId::new(7);
     let mut form = od("anna_k/titus-team-draft");
     // Not running: a report changes nothing.
-    form.downloading(job, &pin("en_tn", "v91"), 2);
+    form.downloading(report(job, pin("en_tn", "v91"), 2));
     assert_eq!(form.step, OpenStep::Getting);
     assert!(form.press().is_some());
     assert!(
@@ -121,19 +133,22 @@ fn the_dialog_names_the_version_it_downloads_and_cancel_stops_the_open() {
     );
     assert_eq!(form.cancel(), None);
 
-    form.downloading(job, &pin("en_tn", "v91"), 2);
+    form.downloading(report(job, pin("en_tn", "v91"), 2));
     let download = form.download().expect("it names the version");
     assert_eq!((download.pin.as_str(), download.left), ("en_tn v91", 2));
     assert!(form.can_cancel());
-    form.downloading(job, &pin("en_ult", "v91"), 1);
+    form.downloading(report(job, pin("en_ult", "v91"), 1));
     assert_eq!(form.download().map(|d| d.pin.as_str()), Some("en_ult v91"));
 
     assert_eq!(form.cancel(), Some(job), "Cancel stops the open's job");
     assert!(!form.can_cancel(), "Cancel is pressed once");
     assert_eq!(form.cancel(), None);
     // A report that was on its way does not bring Cancel back.
-    form.downloading(job, &pin("hbo_uhb", "v3.0.0"), 0);
-    assert!(matches!(form.step, OpenStep::Stopping(_)));
+    form.downloading(report(job, pin("hbo_uhb", "v3.0.0"), 0));
+    assert!(matches!(
+        form.step,
+        OpenStep::Download(PinDownload::Stopping(_))
+    ));
     // The cancel did not reach the server: it can be pressed again.
     form.cancel_not_sent();
     assert!(form.can_cancel());
@@ -166,7 +181,7 @@ fn an_open_that_ended_names_no_download() {
     for end in ends {
         let mut form = od("anna_k/titus-team-draft");
         form.press();
-        form.downloading(job, &pin("en_tn", "v91"), 2);
+        form.downloading(report(job, pin("en_tn", "v91"), 2));
         end(&mut form, next);
         assert_eq!(form.step, OpenStep::Getting);
         assert!(!form.can_cancel());
@@ -541,4 +556,47 @@ fn a_push_refused_after_the_repository_was_made_never_offers_a_second_share() {
         "another name would move the project to a second repository"
     );
     assert_eq!(form.run(), None);
+}
+
+/// #1013: the bar of a version's download follows its bytes, has no end while Door43 announced
+/// no size, and a report after Cancel moves the bar without bringing Cancel back.
+#[test]
+fn a_downloads_bar_follows_its_bytes_and_cancel_is_pressed_once() {
+    let job = tc_api::ids::JobId::new(9);
+    let at = |done, total| {
+        let progress = tc_api::jobs::Progress {
+            phase: tc_api::jobs::Phase::PinnedVersion {
+                pin: pin("en_tn", "v91"),
+                left: 3,
+            },
+            done,
+            total,
+            item: None,
+        };
+        Downloading::of(job, &progress).unwrap()
+    };
+    assert_eq!(at(0, None).percent(), None, "no size: a bar with no end");
+    assert_eq!(at(250, Some(1000)).percent(), Some(25.0));
+    assert_eq!(at(2000, Some(1000)).percent(), Some(100.0));
+    let mut download = PinDownload::Running(at(0, Some(1000)));
+    assert_eq!(download.cancel(), Some(job));
+    assert_eq!(download.cancel(), None, "Cancel is pressed once");
+    download.report(at(500, Some(1000)));
+    assert!(!download.can_cancel());
+    assert_eq!(download.download().percent(), Some(50.0));
+    download.cancel_not_sent();
+    assert!(download.can_cancel());
+    let other = tc_api::jobs::Progress {
+        phase: tc_api::jobs::Phase::Install {
+            repo: "en_tn".into(),
+        },
+        done: 0,
+        total: None,
+        item: None,
+    };
+    assert_eq!(
+        Downloading::of(job, &other),
+        None,
+        "only a pinned version's report"
+    );
 }

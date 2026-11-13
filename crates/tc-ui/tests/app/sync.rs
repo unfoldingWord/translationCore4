@@ -41,6 +41,8 @@ fn ok_sync() -> SyncResultView {
         recreated: false,
         format_restored: false,
         hand_edited: Vec::new(),
+        not_downloaded: Vec::new(),
+        download_stopped: None,
         replaced: Vec::new(),
     }
 }
@@ -136,6 +138,8 @@ fn a_sync_with_no_teammate_change_still_gives_all_three_as_0_and_no_restored_lin
         recreated: false,
         format_restored: false,
         hand_edited: Vec::new(),
+        not_downloaded: Vec::new(),
+        download_stopped: None,
         replaced: Vec::new(),
     });
     assert_eq!(
@@ -187,6 +191,8 @@ fn a_version_this_computer_lacks_offers_download() {
     let toast = synced(SyncResultView {
         missing_pins: 2,
         hand_edited: Vec::new(),
+        not_downloaded: Vec::new(),
+        download_stopped: None,
         replaced: Vec::new(),
         ..ok_sync()
     });
@@ -210,6 +216,8 @@ fn a_version_this_computer_lacks_offers_download() {
         recreated: false,
         format_restored: false,
         hand_edited: Vec::new(),
+        not_downloaded: Vec::new(),
+        download_stopped: None,
         replaced: Vec::new(),
     });
     assert_eq!(only_pins.dot(), Dot::Kindle);
@@ -217,6 +225,58 @@ fn a_version_this_computer_lacks_offers_download() {
         only_pins.notes()[0].text,
         "This project now uses 5 resource versions that are not on this computer."
     );
+}
+
+/// #1013 (owner ruling of 2026-11-12, "Yes, sync stands"): the versions the sync's download did
+/// not get are each named with why, then why the download stopped; the count of what is still
+/// missing and Download stay. With nothing of that, the toast says none of it.
+#[test]
+fn the_versions_a_sync_did_not_download_are_named_with_why() {
+    assert!(synced(ok_sync()).download_notes().is_empty());
+    let label = |repo: &str, version: &str| tc_api::resources::PinLabel {
+        repo_path: format!("git.door43.org/unfoldingWord/{repo}"),
+        version: Some(version.into()),
+        sha: "93".repeat(20),
+    };
+    let toast = synced(SyncResultView {
+        missing_pins: 2,
+        not_downloaded: vec![
+            tc_api::jobs::NotDownloadedView {
+                pin: label("en_tn", "v93"),
+                why: tc_api::refusal::PinFailure::NotOnDoor43,
+            },
+            tc_api::jobs::NotDownloadedView {
+                pin: label("en_ult", "v92"),
+                why: tc_api::refusal::PinFailure::NotSaved,
+            },
+        ],
+        download_stopped: Some(tc_api::jobs::DownloadStopped::Cancelled),
+        ..ok_sync()
+    });
+    let said: Vec<(&str, String)> = toast
+        .download_notes()
+        .into_iter()
+        .map(|note| (note.test_id, note.text))
+        .collect();
+    assert_eq!(
+        said,
+        [
+            (
+                "sync-not-downloaded",
+                "Door43 does not have en_tn v93, which this project uses.".to_owned()
+            ),
+            (
+                "sync-not-downloaded",
+                "tC4 could not save en_ult v92, which this project uses, on this computer. Make sure that the disk has free space, then try again.".to_owned()
+            ),
+            (
+                "sync-download-stopped",
+                "You cancelled the download of the versions this project uses.".to_owned()
+            ),
+        ]
+    );
+    assert!(toast.download(), "Download stays for what is still missing");
+    assert_eq!(toast.dot(), Dot::Kindle);
 }
 
 /// Owner ruling of 2026-10-24: a sync that put the project back on Door43 says so in one
@@ -235,6 +295,8 @@ fn a_project_put_back_on_door43_says_so_with_a_kindle_dot_and_no_button() {
         recreated: true,
         format_restored: false,
         hand_edited: Vec::new(),
+        not_downloaded: Vec::new(),
+        download_stopped: None,
         replaced: Vec::new(),
     });
     assert_eq!(notes(&toast), [("sync-recreated", 1)]);
@@ -269,6 +331,8 @@ fn a_format_file_put_back_on_door43_says_so() {
         recreated: false,
         format_restored: true,
         hand_edited: Vec::new(),
+        not_downloaded: Vec::new(),
+        download_stopped: None,
         replaced: Vec::new(),
     });
     assert_eq!(notes(&toast), [("sync-format-restored", 1)]);

@@ -844,6 +844,20 @@ pub enum OpenDoor43Refusal {
     },
 }
 
+impl PinFailure {
+    /// The catalog key of the sentence that says it, with the version as `{pin}`: the open's
+    /// refusal and the sync's result say it the same way (#1013).
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::NotOnDoor43 => "refusal.open-door43.pin-not-on-door43",
+            Self::NotThePinnedVersion => "refusal.open-door43.pin-not-the-pinned-version",
+            Self::Unreachable => "refusal.open-door43.pin-unreachable",
+            Self::NotSaved => "refusal.open-door43.pin-not-saved",
+            Self::Other => "refusal.open-door43.pin-not-downloaded",
+        }
+    }
+}
+
 /// Why a pinned version was not downloaded, as far as a translator can act on it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "proptest", derive(proptest_derive::Arbitrary))]
@@ -877,13 +891,7 @@ impl Message for OpenDoor43Refusal {
             Self::NameExists => "refusal.open-door43.name-exists",
             Self::NoJournal => "refusal.open-door43.no-journal",
             Self::Removed => "refusal.open-door43.removed",
-            Self::PinNotDownloaded { why, .. } => match why {
-                PinFailure::NotOnDoor43 => "refusal.open-door43.pin-not-on-door43",
-                PinFailure::NotThePinnedVersion => "refusal.open-door43.pin-not-the-pinned-version",
-                PinFailure::Unreachable => "refusal.open-door43.pin-unreachable",
-                PinFailure::NotSaved => "refusal.open-door43.pin-not-saved",
-                PinFailure::Other => "refusal.open-door43.pin-not-downloaded",
-            },
+            Self::PinNotDownloaded { why, .. } => why.key(),
         }
     }
     fn vars(&self) -> Vec<(&'static str, String)> {

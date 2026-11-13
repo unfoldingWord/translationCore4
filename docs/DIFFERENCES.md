@@ -47,6 +47,15 @@ The project owner ruled on these points on 2026-10-16 (`docs/TC4-DELTA-2026-10-1
   Cancel stops the open with no project added; tC4 4.0's dialog has no Cancel while it opens.
   tC4 4.0 adds the project and shows those versions as missing (#1013; the owner's answers of
   2026-11-12 are in that issue).
+- Once a sync is done, it downloads the source text and helps versions that the project pins
+  and this computer lacks, with no question. While it downloads, the project's card names the
+  version, says how many are left, draws a bar and offers Cancel. A cancelled or failed
+  download leaves the sync done: the result names each version it could not get and why, says
+  when the download was cancelled or the internet was turned off, and keeps the count of what
+  is missing and Download. A version Door43 cannot give does not keep the others from being
+  downloaded; when Door43 does not answer, the download stops at that version. The next sync
+  tries again. tC4 4.0's sync counts the missing versions and
+  offers Download only (D88 point 6; #1013).
 - A sync checks write access before it fetches. One API call reads `permissions.push`.
   Without write access the sync refuses, and nothing changes, as in tC4. Other refusals
   after the received work arrived keep that work and say so (Q8).

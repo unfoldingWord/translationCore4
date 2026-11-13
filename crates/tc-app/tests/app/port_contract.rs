@@ -157,6 +157,11 @@ async fn save_titus_open(
 
 /// Titus 1:1's words in `project`, as the project holds them now.
 async fn titus_1_1(app: &App, project: &ProjectRef) -> Option<String> {
+    titus_verse(app, project, 1).await
+}
+
+/// Titus 1:`verse`'s words in `project`, read through an open of its own.
+async fn titus_verse(app: &App, project: &ProjectRef, verse: u16) -> Option<String> {
     let at = app
         .sessions()
         .open_screen(project, open_progress())
@@ -168,7 +173,7 @@ async fn titus_1_1(app: &App, project: &ProjectRef) -> Option<String> {
         .reader(&at)
         .unwrap()
         .read()
-        .projected(&tit(1, 1));
+        .projected(&tit(1, verse));
     post(
         app,
         &Close {
@@ -1599,6 +1604,529 @@ async fn an_open_stopped_during_the_download_is_removed_at_the_next_start() {
 
 /// Door43's copy of `path` in the sample's repository, as another tool leaves it: gone, or
 /// holding `bytes`.
+/// INV-A-SYNC-LEAVES-NO-PIN-MISSING (#1013, owner ruling of 2026-11-12: a sync downloads the
+/// versions the project pins and this computer lacks, with no question): after a sync the
+/// result counts none missing, and every version the project pins is installed. The scenario
+/// computer starts without some of them, and its next sync asks Door43 for none.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_sync_downloads_the_pinned_versions_this_computer_lacks() {
+    let w = <Door43 as SyncPortFixture>::world().await;
+    let a = &w.t.app;
+    internet_on(a).await;
+    sign_in(a).await;
+    let first = synced(a, 41).await;
+    assert_eq!(
+        first.missing_pins, 0,
+        "INV-A-SYNC-LEAVES-NO-PIN-MISSING: the result counts a missing version"
+    );
+    let installed = installed_on(w.t.app_data.parent().unwrap());
+    for version in sample_versions() {
+        assert!(installed.contains(&version), "J3: {version} is installed");
+    }
+    w.fake.clear_requests();
+    let second = synced(a, 42).await;
+    assert_eq!(second.missing_pins, 0);
+    assert_eq!(
+        resource_requests(&w.fake),
+        Vec::<String>::new(),
+        "INV-OPEN-DOWNLOADS-ONLY-WHAT-IS-MISSING: a sync asks for no version that is here"
+    );
+}
+
+/// The sample's pin of `slot` in `group`, moved by computer `app` to `tag` at `sha`: what a
+/// teammate's release upgrade does. Door43 then gives that version as `files` (#1013).
+async fn move_pin(
+    w: &World,
+    app: &App,
+    n: u8,
+    (group, slot): (tc_journal::PinGroup, Option<tc_resources::SetSlot>),
+    (repo, tag, sha): (&str, &str, &str),
+    served: bool,
+) {
+    let at = app
+        .sessions()
+        .open_screen(&folder(SAMPLE), open_progress())
+        .await
+        .unwrap()
+        .at;
+    {
+        let reader = app.sessions().reader(&at).unwrap();
+        let handle = reader.handle();
+        let key = tc_journal::RecordKey::Pins(group);
+        let snapshot = handle.snapshot();
+        let Some(Record::Pins { value, .. }) = snapshot.fold().projected(&key) else {
+            panic!("the sample pins {group:?}");
+        };
+        let mut pins = tc_resources::ProjectPins::default();
+        pins.set_group_value(group, &value).unwrap();
+        let pin = match slot {
+            Some(slot) => pins.fallback.as_mut().unwrap().pins.get_mut(&slot).unwrap(),
+            None => &mut pins.extra_scripture[0].pin,
+        };
+        assert!(pin.repo.to_string().ends_with(repo), "{pin:?}");
+        pin.version = Some(tag.parse().unwrap());
+        pin.sha = sha.parse().unwrap();
+        let change = tc_journal::command::PlannedChange::new(
+            Record::Pins {
+                group,
+                value: pins.group_value(group).unwrap(),
+            },
+            snapshot.fold().heads(&key),
+            tc_journal::Cause::Edit,
+        );
+        handle
+            .submit(tc_app::backend::StoreCommand::apply_upgrade(
+                tc_journal::command::UpgradePlan {
+                    changes: vec![change],
+                },
+            ))
+            .await
+            .unwrap();
+    }
+    post(
+        app,
+        &Close {
+            at,
+            request: rid(n),
+        },
+    )
+    .await
+    .unwrap();
+    if served {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/tc4/test-fixtures/resources/en_tn@v86");
+        let file = |name: &str| std::fs::read(dir.join(name)).unwrap();
+        w.fake.pin_export(tc_door43_fake::PinnedExport {
+            owner: "unfoldingWord".to_owned(),
+            name: repo.to_owned(),
+            tag: tag.to_owned(),
+            revision: sha.to_owned(),
+            files: vec![
+                tc_door43_fake::SeedFile::regular("metadata.json", file("metadata.json")),
+                tc_door43_fake::SeedFile::regular("ingredients/TIT.tsv", file("TIT.tsv")),
+            ],
+        });
+    }
+}
+
+const NOTES: (tc_journal::PinGroup, Option<tc_resources::SetSlot>) = (
+    tc_journal::PinGroup::Fallback,
+    Some(tc_resources::SetSlot::TranslationNotes),
+);
+const LITERAL: (tc_journal::PinGroup, Option<tc_resources::SetSlot>) =
+    (tc_journal::PinGroup::ExtraScripture, None);
+const NEW_NOTES: (&str, &str, &str) = ("en_tn", "v92", "9292929292929292929292929292929292929292");
+
+/// B's sync of its project; the result.
+async fn b_synced(b: &Teammate, n: u8) -> tc_api::jobs::SyncResultView {
+    sign_in_again(&b.t.app, n).await;
+    let job = post(
+        &b.t.app,
+        &SyncProject {
+            request: rid(n + 1),
+            project: b.project.clone(),
+        },
+    )
+    .await
+    .unwrap();
+    match ended(&b.t.app, job).await {
+        JobState::Done(JobOutcome::Synced(view)) => view,
+        other => panic!("B syncs: {other:?}"),
+    }
+}
+
+/// The project's pin file as B's project holds it, and as Door43's main holds it.
+async fn pin_files(w: &World, b: &Teammate) -> (Vec<u8>, Vec<u8>) {
+    const PINS: &str = "ingredients/checking/resources.json";
+    let app = &b.t.app;
+    let at = app
+        .sessions()
+        .open_screen(&b.project, open_progress())
+        .await
+        .unwrap()
+        .at;
+    let on_b = app
+        .sessions()
+        .reader(&at)
+        .unwrap()
+        .read()
+        .render(&tc_journal::fold::DerivedFile::Resources)
+        .unwrap();
+    post(
+        app,
+        &Close {
+            at,
+            request: rid(99),
+        },
+    )
+    .await
+    .unwrap();
+    let bare = git2::Repository::open(w.fake.git_dir(PARITY_USER, REPO)).unwrap();
+    let tree = bare
+        .find_reference("refs/heads/master")
+        .unwrap()
+        .peel_to_tree()
+        .unwrap();
+    let blob = tree
+        .get_path(std::path::Path::new(PINS))
+        .unwrap()
+        .to_object(&bare)
+        .unwrap();
+    (on_b, blob.as_blob().unwrap().content().to_vec())
+}
+
+/// INV-A-SYNC-LEAVES-NO-PIN-MISSING (#1013): a teammate moved a pin to a version this computer
+/// lacks; the next sync installs exactly that commit before its result shows, asks Door43 for
+/// nothing else, keeps the pin file as Door43 has it, and counts none missing.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_teammates_new_pin_is_downloaded_by_the_next_sync() {
+    let w = <Door43 as SyncPortFixture>::world().await;
+    let a = &w.t.app;
+    internet_on(a).await;
+    sign_in(a).await;
+    synced(a, 41).await;
+    let b = teammate_b(&w).await;
+    move_pin(&w, a, 42, NOTES, NEW_NOTES, true).await;
+    sign_in_again(a, 43).await;
+    synced(a, 44).await;
+    w.fake.clear_requests();
+    let view = b_synced(&b, 50).await;
+    assert_eq!(view.missing_pins, 0, "INV-A-SYNC-LEAVES-NO-PIN-MISSING");
+    assert!(view.not_downloaded.is_empty(), "{:?}", view.not_downloaded);
+    assert_eq!(view.download_stopped, None);
+    assert!(
+        installed_on(b._dir.path()).contains(&format!(
+            "git.door43.org/unfoldingWord/en_tn {}",
+            NEW_NOTES.2
+        )),
+        "J3: the pinned commit is installed"
+    );
+    assert_eq!(
+        resource_requests(&w.fake),
+        ["/unfoldingWord/en_tn/sb/v92.zip"],
+        "INV-OPEN-DOWNLOADS-ONLY-WHAT-IS-MISSING: one request, for the new version"
+    );
+    let (on_b, on_door43) = pin_files(&w, &b).await;
+    assert_eq!(
+        on_b, on_door43,
+        "the pins do not change: B's file is Door43's"
+    );
+}
+
+/// Owner ruling of 2026-11-12 ("Yes, sync stands"): a cancel during the sync's download
+/// leaves the sync in place. The teammate's change is in the project, B's own change reached
+/// Door43, nothing of the cancelled version is installed, and the result says why the
+/// version is still missing.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_cancel_during_the_syncs_download_leaves_the_sync_in_place() {
+    let w = <Door43 as SyncPortFixture>::world().await;
+    let a = &w.t.app;
+    internet_on(a).await;
+    sign_in(a).await;
+    synced(a, 41).await;
+    let b = teammate_b(&w).await;
+    const FROM_A: &str = "Pablo, siervo de Dios, como A lo escribio";
+    const FROM_B: &str = "Lo que B escribio en el versiculo dos";
+    save_titus_1_1(a, &folder(SAMPLE), 42, FROM_A).await;
+    move_pin(&w, a, 43, NOTES, NEW_NOTES, true).await;
+    sign_in_again(a, 44).await;
+    synced(a, 45).await;
+    save_titus(&b.t.app, &b.project, 2, 46, FROM_B).await;
+    w.fake.inject(FaultRule::once(
+        "GET",
+        "/unfoldingWord/en_tn/sb/",
+        Fault::HoldBody { after: 16 },
+    ));
+    sign_in_again(&b.t.app, 47).await;
+    let job = post(
+        &b.t.app,
+        &SyncProject {
+            request: rid(48),
+            project: b.project.clone(),
+        },
+    )
+    .await
+    .unwrap();
+    until("B's download of en_tn waits", || w.fake.held() == 1).await;
+    // The card's bar: the job reports the bytes received so far and the size Door43
+    // announced for this version.
+    let mut bar = None;
+    for () in crate::store_world::for_a_minute() {
+        let view = post(&b.t.app, &tc_api::jobs::Get { job }).await.unwrap();
+        if let Some(JobState::Running(progress)) = view.map(|view| view.state)
+            && let tc_api::jobs::Phase::PinnedVersion { pin, .. } = &progress.phase
+            && pin.name() == "en_tn v92"
+            && progress.done > 0
+        {
+            bar = Some((progress.done, progress.total));
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    let (done, total) = bar.expect("the job reports the bytes of en_tn v92");
+    assert!(
+        total.is_some_and(|total| total > done),
+        "the bar has an end: {done} of {total:?}"
+    );
+    post(
+        &b.t.app,
+        &tc_api::jobs::Cancel {
+            request: rid(49),
+            job,
+        },
+    )
+    .await
+    .unwrap();
+    let view = match ended(&b.t.app, job).await {
+        JobState::Done(JobOutcome::Synced(view)) => view,
+        other => panic!("the sync stands after a cancel: {other:?}"),
+    };
+    w.fake.release_held();
+    assert_eq!(
+        view.download_stopped,
+        Some(tc_api::jobs::DownloadStopped::Cancelled)
+    );
+    assert_eq!(
+        view.missing_pins, 1,
+        "the cancelled version is still missing"
+    );
+    assert_eq!(
+        titus_1_1(&b.t.app, &b.project).await.as_deref(),
+        Some(FROM_A),
+        "the teammate's change is in B's project"
+    );
+    assert!(
+        !installed_on(b._dir.path())
+            .iter()
+            .any(|v| v.ends_with(NEW_NOTES.2)),
+        "nothing of the cancelled version is installed"
+    );
+    sign_in_again(a, 50).await;
+    synced(a, 51).await;
+    let at = a
+        .sessions()
+        .open_screen(&folder(SAMPLE), open_progress())
+        .await
+        .unwrap()
+        .at;
+    post(
+        a,
+        &Close {
+            at,
+            request: rid(52),
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        titus_verse(a, &folder(SAMPLE), 2).await.as_deref(),
+        Some(FROM_B),
+        "B's own change reached Door43"
+    );
+}
+
+/// Owner ruling of 2026-11-12 ("Yes, sync stands"): a version Door43 cannot give is passed
+/// over. The sync stands, the versions after it are downloaded, and the result names it and
+/// why.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_version_door43_cannot_give_is_named_and_the_rest_are_downloaded() {
+    let w = <Door43 as SyncPortFixture>::world().await;
+    let a = &w.t.app;
+    internet_on(a).await;
+    sign_in(a).await;
+    synced(a, 41).await;
+    let b = teammate_b(&w).await;
+    const GONE: (&str, &str, &str) = ("en_tn", "v93", "9393939393939393939393939393939393939393");
+    const NEW_LITERAL: (&str, &str, &str) =
+        ("en_ult", "v92", "9292929292929292929292929292929292929292");
+    // The notes come first in the download's order, so the literal text comes after the gap.
+    move_pin(&w, a, 42, NOTES, GONE, false).await;
+    move_pin(&w, a, 43, LITERAL, NEW_LITERAL, true).await;
+    sign_in_again(a, 44).await;
+    synced(a, 45).await;
+    let view = b_synced(&b, 50).await;
+    assert_eq!(view.download_stopped, None);
+    assert_eq!(
+        *view.not_downloaded,
+        [tc_api::jobs::NotDownloadedView {
+            pin: tc_api::resources::PinLabel {
+                repo_path: "git.door43.org/unfoldingWord/en_tn".into(),
+                version: Some("v93".into()),
+                sha: GONE.2.into(),
+            },
+            why: PinFailure::NotOnDoor43,
+        }]
+    );
+    assert_eq!(view.missing_pins, 1, "only the version Door43 cannot give");
+    assert!(
+        installed_on(b._dir.path()).contains(&format!(
+            "git.door43.org/unfoldingWord/en_ult {}",
+            NEW_LITERAL.2
+        )),
+        "the version after the gap is installed"
+    );
+}
+
+/// Door43 does not answer for a version: the sync's download ends there, asks for no further
+/// version and names only that one; the sync stands, and the next sync tries again.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_sync_ends_its_download_when_door43_does_not_answer() {
+    let w = <Door43 as SyncPortFixture>::world().await;
+    let a = &w.t.app;
+    internet_on(a).await;
+    sign_in(a).await;
+    synced(a, 41).await;
+    let b = teammate_b(&w).await;
+    const NEW_LITERAL: (&str, &str, &str) =
+        ("en_ult", "v92", "9292929292929292929292929292929292929292");
+    move_pin(&w, a, 42, NOTES, NEW_NOTES, true).await;
+    move_pin(&w, a, 43, LITERAL, NEW_LITERAL, true).await;
+    sign_in_again(a, 44).await;
+    synced(a, 45).await;
+    // The notes come first in the download's order; their connection breaks.
+    w.fake.inject(FaultRule::once(
+        "GET",
+        "/unfoldingWord/en_tn/sb/",
+        Fault::BreakOff { after: 16 },
+    ));
+    w.fake.clear_requests();
+    let view = b_synced(&b, 50).await;
+    assert_eq!(view.download_stopped, None);
+    assert_eq!(
+        view.not_downloaded
+            .iter()
+            .map(|failed| (failed.pin.name(), failed.why))
+            .collect::<Vec<_>>(),
+        [("en_tn v92".to_owned(), PinFailure::Unreachable)]
+    );
+    assert_eq!(view.missing_pins, 2, "both new versions are still missing");
+    assert_eq!(
+        resource_requests(&w.fake),
+        ["/unfoldingWord/en_tn/sb/v92.zip"],
+        "no further version is asked for"
+    );
+    let next = b_synced(&b, 52).await;
+    assert_eq!(next.missing_pins, 0, "the next sync tries again");
+}
+
+/// The internet turned off while the sync downloads: the sync stands, and the result says
+/// that the download stopped.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_internet_turned_off_during_the_syncs_download_leaves_the_sync_in_place() {
+    let w = <Door43 as SyncPortFixture>::world().await;
+    let a = &w.t.app;
+    internet_on(a).await;
+    sign_in(a).await;
+    synced(a, 41).await;
+    let b = teammate_b(&w).await;
+    move_pin(&w, a, 42, NOTES, NEW_NOTES, true).await;
+    sign_in_again(a, 43).await;
+    synced(a, 44).await;
+    w.fake.inject(FaultRule::once(
+        "GET",
+        "/unfoldingWord/en_tn/sb/",
+        Fault::HoldBody { after: 16 },
+    ));
+    sign_in_again(&b.t.app, 45).await;
+    let job = post(
+        &b.t.app,
+        &SyncProject {
+            request: rid(46),
+            project: b.project.clone(),
+        },
+    )
+    .await
+    .unwrap();
+    until("B's download of en_tn waits", || w.fake.held() == 1).await;
+    post(
+        &b.t.app,
+        &tc_api::net::Set {
+            request: rid(47),
+            on: false,
+        },
+    )
+    .await
+    .unwrap();
+    w.fake.release_held();
+    match ended(&b.t.app, job).await {
+        JobState::Done(JobOutcome::Synced(view)) => {
+            assert_eq!(
+                view.download_stopped,
+                Some(tc_api::jobs::DownloadStopped::InternetOff)
+            );
+            assert_eq!(view.missing_pins, 1);
+        }
+        other => panic!("the sync stands: {other:?}"),
+    }
+}
+
+/// The app stopped during the sync's download: at the next start the sync's changes are in
+/// the project and nothing of the version is installed; the next sync gets it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_app_stopped_during_the_syncs_download_keeps_the_sync() {
+    let w = <Door43 as SyncPortFixture>::world().await;
+    let a = &w.t.app;
+    internet_on(a).await;
+    sign_in(a).await;
+    synced(a, 41).await;
+    let fs = tc_store::fault::FaultFs::new();
+    let dir = tempfile::tempdir().unwrap();
+    let b = computer_on(&w, &fs, dir.path()).await;
+    let JobState::Done(JobOutcome::Created { project }) = opened(&b.app, 42).await else {
+        panic!("B opens the sample from Door43");
+    };
+    const FROM_A: &str = "Pablo, siervo de Dios, como A lo escribio";
+    save_titus_1_1(a, &folder(SAMPLE), 43, FROM_A).await;
+    move_pin(&w, a, 44, NOTES, NEW_NOTES, true).await;
+    sign_in_again(a, 45).await;
+    synced(a, 46).await;
+    w.fake.inject(FaultRule::once(
+        "GET",
+        "/unfoldingWord/en_tn/sb/",
+        Fault::HoldBody { after: 16 },
+    ));
+    sign_in_again(&b.app, 47).await;
+    post(
+        &b.app,
+        &SyncProject {
+            request: rid(48),
+            project: project.clone(),
+        },
+    )
+    .await
+    .unwrap();
+    until("B's download of en_tn waits", || w.fake.held() == 1).await;
+    // The app stops here: its sync never ends. The next start is the same computer.
+    drop(b);
+    let again = computer_on(&w, &fs, dir.path()).await;
+    assert_eq!(
+        titus_1_1(&again.app, &project).await.as_deref(),
+        Some(FROM_A),
+        "the sync's changes are in the project"
+    );
+    assert!(
+        !installed_on(dir.path())
+            .iter()
+            .any(|v| v.ends_with(NEW_NOTES.2)),
+        "nothing of the version is installed"
+    );
+    w.fake.release_held();
+    sign_in_again(&again.app, 49).await;
+    let job = post(
+        &again.app,
+        &SyncProject {
+            request: rid(50),
+            project,
+        },
+    )
+    .await
+    .unwrap();
+    match ended(&again.app, job).await {
+        JobState::Done(JobOutcome::Synced(view)) => assert_eq!(view.missing_pins, 0),
+        other => panic!("the next sync: {other:?}"),
+    }
+}
+
 fn web_edit(w: &World, path: &str, bytes: Option<&[u8]>) {
     let bare = git2::Repository::open(w.fake.git_dir(PARITY_USER, REPO)).unwrap();
     let head = bare

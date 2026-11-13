@@ -10,8 +10,9 @@ use std::sync::Arc;
 use leptos::prelude::*;
 
 use crate::app::open_door43::{
-    Downloading, OpenForm, OpenRefusal, OpenStep, RefusalSentence, RepoError, refusal_sentence,
+    OpenForm, OpenRefusal, OpenStep, RefusalSentence, RepoError, refusal_sentence,
 };
+use crate::app::pin_download::Downloading;
 use crate::app::web::{AppCtx, use_app};
 use crate::ds::{
     Attrs, Button, ButtonVariant, Callout, CalloutTone, Field, Input, Size, Text, TextRole,
@@ -114,8 +115,8 @@ pub fn OpenFromDoor43() -> impl IntoView {
                         return already_here(&actions, project).into_any();
                     }
                     match step.get() {
-                        OpenStep::Downloading(download) | OpenStep::Stopping(download) => {
-                            return downloading(&download).into_any();
+                        OpenStep::Download(download) => {
+                            return downloading(download.download()).into_any();
                         }
                         OpenStep::Cancelled => return cancelled().into_any(),
                         OpenStep::Getting => {}
@@ -176,10 +177,10 @@ pub fn OpenFromDoor43() -> impl IntoView {
 /// The version the open downloads now, and how many follow it (#1013): said as a status, so a
 /// screen reader hears each one.
 fn downloading(download: &Downloading) -> impl IntoView + use<> {
-    let (pin, left) = (download.pin.clone(), download.left.to_string());
+    let status = crate::views::pin_download::download_status(download, "open-door43-bar");
     view! {
         <Callout tone=CalloutTone::Info attrs=Attrs::from([("data-testid", "open-door43-progress"), ("role", "status")])>
-            {move || t(keys::open_door43::DOWNLOADING, &[("pin", &pin), ("n", &left)])}
+            {status}
         </Callout>
     }
 }

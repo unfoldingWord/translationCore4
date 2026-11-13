@@ -224,6 +224,8 @@ fn a_receive_confirms_the_files_project_then_shows_what_it_brought() {
                 path: "ingredients/TIT.usfm".into(),
                 outcome: HandEditOutcome::NotTakenIn,
             }],
+            not_downloaded: Vec::new(),
+            download_stopped: None,
         }),
         rid(3),
     );
@@ -267,6 +269,8 @@ fn a_received_story_names_its_frame_conflicts() {
             recreated: false,
             format_restored: false,
             hand_edited: Vec::new(),
+            not_downloaded: Vec::new(),
+            download_stopped: None,
         }),
         rid(3),
     );
