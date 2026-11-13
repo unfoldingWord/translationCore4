@@ -626,7 +626,7 @@ fn release_has_no_pending_translation() {
 fn tag_refusal(tag: &str, version: &str) -> Option<String> {
     (tag.strip_prefix('v') != Some(version)).then(|| {
         format!(
-            "INV-A-RELEASE-TAG-IS-ITS-VERSION: the tag is {tag}, but [workspace.package] version in Cargo.toml is {version}; set the version to the tag's on main before pushing the tag"
+            "INV-A-RELEASE-TAG-IS-ITS-VERSION: the tag is {tag}, but [workspace.package] version in Cargo.toml is {version}; set the version to the tag's on main, then tag that commit (docs/RELEASE.md \"Cutting a release\")"
         )
     })
 }

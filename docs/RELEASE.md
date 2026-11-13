@@ -91,6 +91,9 @@ the evidence written afterwards. A box is ticked only with a link to its evidenc
    while any interface string is untranslated (job `translations`,
    `cargo test --release -p tc-api --test refusals`; rulings/2026-10-22-H10.md). A `-preview` tag
    skips the translation check only, so testers see any pending string in English (#848).
+   Running a refused tag again changes nothing: it still names the same commit. Fix what the
+   refusal names by pull request, then the owner deletes the tag and pushes it from the new
+   commit.
 3. Each platform is built, installed on a fresh runner of its own system and smoke-tested there.
    Only when every job passed does `publish` make a **draft** GitHub release with the installers
    and manifests.
