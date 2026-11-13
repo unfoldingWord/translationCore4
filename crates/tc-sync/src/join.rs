@@ -68,6 +68,26 @@ impl Fetched<'_> {
             .find(|(name, _)| name == path)
             .map(|(_, bytes)| bytes.as_slice())
     }
+
+    /// The derived file `file` as the project's journal makes it: rendered from the fold of
+    /// the fetched journal packs, which is what the project opens with. `None` when the
+    /// repository holds no project file this app reads, or its journal makes no such file.
+    ///
+    /// Never read a derived file with [`Fetched::file`] to decide about the project.
+    /// Door43's copy of one can be gone, damaged or edited by another tool while the journal
+    /// is whole, and the project then opens with what the journal holds, not with that copy
+    /// (the review of #1025: a gate that read the copy let a project in with every pinned
+    /// version missing).
+    pub fn derived(&self, file: &tc_journal::fold::DerivedFile) -> Option<Vec<u8>> {
+        let (project, kind) = tc_store::project_identity(self.file(crate::sync::PROJECT_JSON)?)?;
+        let inputs = self
+            .files
+            .iter()
+            .filter(|(path, _)| path.starts_with(crate::sync::PACKS))
+            .flat_map(|(path, bytes)| tc_store::read_received_pack(path, bytes, project).changes)
+            .map(tc_journal::fold::FoldInput::from);
+        tc_journal::fold::FoldState::fold(kind, inputs).render(file)
+    }
 }
 
 /// Why a join added no project: the join itself failed, or its gate stopped it.

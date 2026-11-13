@@ -1597,6 +1597,100 @@ async fn an_open_stopped_during_the_download_is_removed_at_the_next_start() {
     drop(b);
 }
 
+/// Door43's copy of `path` in the sample's repository, as another tool leaves it: gone, or
+/// holding `bytes`.
+fn web_edit(w: &World, path: &str, bytes: Option<&[u8]>) {
+    let bare = git2::Repository::open(w.fake.git_dir(PARITY_USER, REPO)).unwrap();
+    let head = bare
+        .find_reference("refs/heads/master")
+        .unwrap()
+        .peel_to_commit()
+        .unwrap();
+    let mut update = git2::build::TreeUpdateBuilder::new();
+    match bytes {
+        Some(bytes) => {
+            let blob = bare.blob(bytes).unwrap();
+            update.upsert(path, blob, git2::FileMode::Blob);
+        }
+        None => {
+            update.remove(path);
+        }
+    }
+    let tree = bare
+        .find_tree(update.create_updated(&bare, &head.tree().unwrap()).unwrap())
+        .unwrap();
+    let sig = git2::Signature::now("owner", "owner@example.org").unwrap();
+    bare.commit(
+        Some("refs/heads/master"),
+        &sig,
+        &sig,
+        "web edit",
+        &tree,
+        &[&head],
+    )
+    .unwrap();
+}
+
+/// INV-OPEN-FROM-DOOR43-LEAVES-NO-PIN-MISSING (#1013; the review of #1025): the pins a project
+/// opens with are its journal's. Door43's own copy of the pin file can be gone, damaged, or
+/// edited by another tool while the journal holds the pins; the open then still downloads
+/// every version the journal pins, and the sync counts none missing.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_open_downloads_what_the_journal_pins_whatever_door43s_pin_file_holds() {
+    const PINS: &str = "ingredients/checking/resources.json";
+    let sample = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../fixtures/tc4/sample-burrito")
+        .join(PINS);
+    // Another tool's edit: the file no longer pins the translation questions.
+    let mut edited: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(sample).unwrap()).unwrap();
+    edited["languageSets"]["fallback"]
+        .as_object_mut()
+        .unwrap()
+        .remove("translationQuestions")
+        .expect("the sample pins translation questions");
+    let edited = serde_json::to_vec_pretty(&edited).unwrap();
+    let cases: [(&str, Option<&[u8]>); 3] = [
+        ("the pin file is gone", None),
+        ("the pin file is damaged", Some(b"{ not json")),
+        ("the pin file lost a pin", Some(&edited)),
+    ];
+    for (n, (case, bytes)) in (0u8..).zip(cases) {
+        let w = <Door43 as SyncPortFixture>::world().await;
+        let a = &w.t.app;
+        internet_on(a).await;
+        sign_in(a).await;
+        synced(a, 41).await;
+        web_edit(&w, PINS, bytes);
+        let (b, dir) = computer_b(&w).await;
+        let JobState::Done(JobOutcome::Created { project }) = opened(&b.app, 50 + n).await else {
+            panic!("{case}: B opens the sample from Door43");
+        };
+        assert_eq!(
+            installed_on(dir.path()),
+            sample_versions(),
+            "{case}: every version the journal pins is installed"
+        );
+        sign_in_again(&b.app, 60 + n).await;
+        let job = post(
+            &b.app,
+            &SyncProject {
+                request: rid(70 + n),
+                project,
+            },
+        )
+        .await
+        .unwrap();
+        let JobState::Done(JobOutcome::Synced(view)) = ended(&b.app, job).await else {
+            panic!("{case}: B syncs");
+        };
+        assert_eq!(
+            view.missing_pins, 0,
+            "INV-OPEN-FROM-DOOR43-LEAVES-NO-PIN-MISSING: {case}, and the fold counts a missing version"
+        );
+    }
+}
+
 fn git_path(service: &str) -> String {
     format!("/{PARITY_USER}/{REPO}.git/git-{service}")
 }
