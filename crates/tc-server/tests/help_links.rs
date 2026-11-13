@@ -48,13 +48,22 @@ enum Want {
     Page,
 }
 
-/// `target` as named in the file at `from`, below `/help/`: `Ok(path)` to fetch, `Ok(None)`
-/// for a link that leaves the page in place or goes to another site the walk allows, or
-/// `Err(why)`.
-fn resolve(from: &str, target: &str) -> Result<Option<String>, String> {
+/// Where a target leads, as the Help panel sees it.
+#[derive(Debug, PartialEq, Eq)]
+enum Target {
+    /// Nowhere new: a place on the same page, or inline data.
+    Stays,
+    /// A file below `/help/`, to fetch.
+    Help(String),
+    /// Another site: a link opens it in the browser; anything else would load it.
+    Away,
+}
+
+/// `target` as named in the file at `from`, below `/help/`, or why the app cannot follow it.
+fn resolve(from: &str, target: &str) -> Result<Target, String> {
     let target = target.trim();
     if target.is_empty() || target.starts_with('#') {
-        return Ok(None);
+        return Ok(Target::Stays);
     }
     if target.starts_with("//") {
         return Err("names another site without its scheme".to_owned());
@@ -68,14 +77,15 @@ fn resolve(from: &str, target: &str) -> Result<Option<String>, String> {
             .all(|c| c.is_ascii_alphanumeric() || "+-.".contains(c))
     {
         return match scheme.to_ascii_lowercase().as_str() {
-            "https" | "http" | "mailto" => site_page(target).map(|()| None),
-            "data" => Ok(None),
+            "https" | "http" => site_page(target).map(|()| Target::Away),
+            "mailto" => Ok(Target::Away),
+            "data" => Ok(Target::Stays),
             other => Err(format!("a `{other}:` link")),
         };
     }
     let path = target.split(['#', '?']).next().unwrap_or_default();
     if path.is_empty() {
-        return Ok(None);
+        return Ok(Target::Stays);
     }
     let mut parts: Vec<&str> = from.split('/').collect();
     parts.pop();
@@ -90,22 +100,36 @@ fn resolve(from: &str, target: &str) -> Result<Option<String>, String> {
             name => parts.push(name),
         }
     }
-    Ok(Some(parts.join("/")))
+    Ok(Target::Help(parts.join("/")))
 }
 
-/// A translationcore.com address must be one [`CHECKED_SITE_PAGES`] lists.
+/// An address on translationcore.com, or on any of its hosts, must be `https://` on the bare
+/// host and a page [`CHECKED_SITE_PAGES`] lists: any other form may redirect.
 fn site_page(url: &str) -> Result<(), String> {
-    let Some(rest) = url.strip_prefix(HELP_SITE) else {
+    let (scheme, rest) = url.split_once("://").unwrap_or(("", url));
+    let host_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let (host, path) = rest.split_at(host_end);
+    let host = host.to_ascii_lowercase();
+    let site = HELP_SITE.trim_start_matches("https://");
+    if host != site && !host.ends_with(&format!(".{site}")) {
         return Ok(());
-    };
-    let path = rest.split(['#', '?']).next().unwrap_or_default();
-    if CHECKED_SITE_PAGES.contains(&path) {
+    }
+    let path = path.split(['#', '?']).next().unwrap_or_default();
+    let path = if path.is_empty() { "/" } else { path };
+    if scheme.eq_ignore_ascii_case("https") && host == site && CHECKED_SITE_PAGES.contains(&path) {
         Ok(())
     } else {
         Err(format!(
-            "names {HELP_SITE}{path}, which CHECKED_SITE_PAGES does not list"
+            "names {url}, which is not {HELP_SITE} with a page CHECKED_SITE_PAGES lists"
         ))
     }
+}
+
+/// The URLs a `srcset` names: each candidate's first word.
+fn srcset_urls(value: &str) -> impl Iterator<Item = &str> {
+    value
+        .split(',')
+        .filter_map(|candidate| candidate.split_whitespace().next())
 }
 
 #[test]
@@ -116,25 +140,31 @@ fn every_help_link_image_and_style_sheet_resolves_in_the_app() {
     files_under(&help, &help, &mut files);
 
     let tag = Regex::new(r"(?is)<([a-z][a-z0-9-]*)\b([^>]*)>").unwrap();
-    let attribute =
-        Regex::new(r#"(?is)\s(href|src|action)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))"#)
-            .unwrap();
+    let attribute = Regex::new(
+        r#"(?is)\s(href|src|srcset|action|poster|data)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))"#,
+    )
+    .unwrap();
     let css_url = Regex::new(r#"(?i)url\(\s*["']?([^"')]+)["']?\s*\)"#).unwrap();
 
     // target path -> (what it must be, where it was named)
     let mut targets: BTreeMap<String, (Want, String)> = BTreeMap::new();
     let mut problems = Vec::new();
     let mut named = 0;
-    let mut want = |from: &str, value: &str, kind: Want, problems: &mut Vec<String>| {
+    // `link`: the element is one a person clicks (`a`, `area`), which may go to another site;
+    // anything else there would load it with the internet off.
+    let mut want = |from: &str, value: &str, kind: Want, link: bool, problems: &mut Vec<String>| {
         named += 1;
         match resolve(from, value) {
-            Ok(Some(path)) => {
+            Ok(Target::Help(path)) => {
                 let entry = targets
                     .entry(path)
                     .or_insert((kind, format!("{from} → {value}")));
                 entry.0 = entry.0.max(kind);
             }
-            Ok(None) => {}
+            Ok(Target::Away) if !link => problems.push(format!(
+                "help/{from}: {value:?} loads something from another site"
+            )),
+            Ok(Target::Stays | Target::Away) => {}
             Err(why) => problems.push(format!("help/{from}: {value:?} {why}")),
         }
     };
@@ -152,33 +182,44 @@ fn every_help_link_image_and_style_sheet_resolves_in_the_app() {
             pages += 1;
             for element in tag.captures_iter(&text) {
                 let name = element[1].to_ascii_lowercase();
+                let link = matches!(name.as_str(), "a" | "area");
+                // A link may open a screenshot full size; a form's answer is a page.
+                let kind = if name == "form" {
+                    Want::Page
+                } else {
+                    Want::File
+                };
                 for found in attribute.captures_iter(&element[2]) {
                     let value = (2..=4).find_map(|i| found.get(i)).unwrap().as_str();
-                    // A link may open a screenshot full size; a form's answer is a page.
-                    let kind = if name == "form" {
-                        Want::Page
+                    if found[1].eq_ignore_ascii_case("srcset") {
+                        for url in srcset_urls(value) {
+                            want(file, url, Want::File, false, &mut problems);
+                        }
                     } else {
-                        Want::File
-                    };
-                    want(file, value, kind, &mut problems);
+                        want(file, value, kind, link, &mut problems);
+                    }
                 }
             }
-        } else {
-            for found in css_url.captures_iter(&text) {
-                want(file, &found[1], Want::File, &mut problems);
-            }
+        }
+        // A style sheet, a <style> block or a style attribute.
+        for found in css_url.captures_iter(&text) {
+            want(file, &found[1], Want::File, false, &mut problems);
         }
     }
 
-    // The search box and the search page build their result links from the index as the
-    // script runs; no page holds them.
-    let index: serde_json::Value = server.get("/help/search-index.json").json();
-    let docs = index["docs"]
-        .as_array()
-        .expect("search-index.json has docs");
+    // The search box and the search page build their result links from the index the page
+    // loads, `search-index.js`, as the script runs; no page holds them.
+    let script = server.get("/help/search-index.js").text();
+    let json = script
+        .find('{')
+        .zip(script.rfind('}'))
+        .map(|(start, end)| &script[start..=end])
+        .expect("search-index.js holds the index as JSON");
+    let index: serde_json::Value = serde_json::from_str(json).unwrap();
+    let docs = index["docs"].as_array().expect("search-index.js has docs");
     for doc in docs {
         let url = doc["url"].as_str().expect("each search result has a url");
-        want("search.html", url, Want::Page, &mut problems);
+        want("search.html", url, Want::Page, true, &mut problems);
     }
 
     for (path, (kind, from)) in &targets {
@@ -212,18 +253,17 @@ fn every_help_link_image_and_style_sheet_resolves_in_the_app() {
 /// The walk itself: a link it should refuse is refused, and one it should follow is followed.
 #[test]
 fn the_help_link_walk_refuses_what_the_app_cannot_serve() {
-    assert_eq!(resolve("a.html", "b"), Ok(Some("b".to_owned())));
+    let help = |path: &str| Ok(Target::Help(path.to_owned()));
+    assert_eq!(resolve("a.html", "b"), help("b"));
+    assert_eq!(resolve("a.html", "img/x.png?v=1#y"), help("img/x.png"));
+    assert_eq!(resolve("sub/a.html", "../b"), help("b"));
+    assert_eq!(resolve("a.html", "#main"), Ok(Target::Stays));
+    assert_eq!(resolve("a.html", "https://example.org/x"), Ok(Target::Away));
     assert_eq!(
-        resolve("a.html", "img/x.png?v=1#y"),
-        Ok(Some("img/x.png".to_owned()))
+        resolve("a.html", &format!("{HELP_SITE}/desktop/#mac")),
+        Ok(Target::Away)
     );
-    assert_eq!(resolve("sub/a.html", "../b"), Ok(Some("b".to_owned())));
-    assert_eq!(resolve("a.html", "#main"), Ok(None));
-    assert_eq!(resolve("a.html", "https://example.org/x"), Ok(None));
-    assert_eq!(
-        resolve("a.html", &format!("{HELP_SITE}/desktop/")),
-        Ok(None)
-    );
+    assert_eq!(resolve("a.html", HELP_SITE), Ok(Target::Away));
     for bad in [
         "/",
         "/tc-help/",
@@ -231,7 +271,14 @@ fn the_help_link_walk_refuses_what_the_app_cannot_serve() {
         "../x",
         "javascript:alert(1)",
         "https://translationcore.com/tc4",
+        "http://translationcore.com/",
+        "https://www.translationcore.com/desktop/",
+        "HTTPS://TRANSLATIONCORE.COM/pricing",
     ] {
         assert!(resolve("a.html", bad).is_err(), "{bad} was not refused");
     }
+    assert_eq!(
+        srcset_urls("img/a.png 1x, img/b.png 2x,img/c.png").collect::<Vec<_>>(),
+        ["img/a.png", "img/b.png", "img/c.png"]
+    );
 }

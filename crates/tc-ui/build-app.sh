@@ -14,7 +14,8 @@
 #   index.html              the page, with the build's folder name in its links (no-store)
 #   prepare.html            the first-launch window, app/prepare.html as it is (APP-DESIGN 5.3)
 #   help/                   tc-website's help pages as vendor-help.sh copied them (AD29), served
-#                           at /help/ unchanged and outside the hashed folder
+#                           at /help/ outside the hashed folder; tc-server's HELP_OVERLAY and site
+#                           links change them only as it serves them
 #   ui/<build>/             everything else; <build> is 16 hex digits of a SHA-256 over every
 #                           file's path and bytes
 #

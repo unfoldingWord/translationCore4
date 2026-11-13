@@ -217,9 +217,8 @@ async fn serve_as(
     change: impl FnOnce(Vec<u8>) -> Vec<u8>,
 ) -> Response {
     // Only a regular file: a directory is a 404, never a redirect or a listing.
-    match tokio::fs::metadata(file).await {
-        Ok(meta) if meta.is_file() => {}
-        _ => return StatusCode::NOT_FOUND.into_response(),
+    if !is_file(file).await {
+        return StatusCode::NOT_FOUND.into_response();
     }
     let Ok(bytes) = tokio::fs::read(file).await else {
         return StatusCode::NOT_FOUND.into_response();

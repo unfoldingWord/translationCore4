@@ -60,8 +60,8 @@ fn static_routes_serve_the_ui_dir() {
     );
 }
 
-/// The help search form submits to `search.html?q=…`, and the page-swap shim fetches that
-/// address: a query names the same file.
+/// The help search form submits to `search.html?q=…` (or `search?q=…`), and the page-swap
+/// shim fetches that address: a query names the same file.
 #[test]
 fn a_help_page_with_a_query_is_the_page() {
     let server = TestServer::start(stub());
@@ -87,10 +87,11 @@ fn an_extensionless_help_link_serves_its_html_page() {
         Some("text/html; charset=utf-8")
     );
     assert_eq!(page.body, server.get("/help/gs-install.html").body);
-    // The page's own links were rewritten as it was served.
+    // The page's own links were rewritten as it was served, and its overlay applied.
     assert_eq!(
         page.text(),
-        "<a href=\"https://translationcore.com/\">site</a> <a href=\"index.html\">home</a>"
+        "<a href=\"https://translationcore.com/\">site</a> <a href=\"index.html\">home</a> \
+         <a href=\"https://translationcore.com/desktop/\">translationCore download page</a>"
     );
     // A dot in the name is not an extension.
     assert_eq!(server.get("/help/wn-4.1").body, b"<p>4.1</p>");
