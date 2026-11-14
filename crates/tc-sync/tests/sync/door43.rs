@@ -86,7 +86,22 @@ pub fn computer_on(dir: &Path, name: &str, platform: FakePlatform) -> Computer {
             return Vec::new();
         }
         let ended = by_hand().get(folder).cloned();
-        let context = look_context(folder, &found, began.as_deref(), ended.as_deref());
+        let respelled = Respelled::read(folder, &found);
+        // Nor is a folder the test renamed by hand before the window's look at it (#1028).
+        // The watcher tells the rename, but only that look relists the folder (#994), so a
+        // write in between leaves the list as it was. Only the ledger proves that state: a
+        // list the app wrote wrong after it learned the disk's names is still counted.
+        let renaming = matches!(
+            ended,
+            Some(HandRename {
+                stage: Stage::Begun,
+                ..
+            })
+        );
+        if renaming && unseen_rename(&found, &respelled) {
+            return Vec::new();
+        }
+        let context = look_context(&respelled, began.as_ref(), ended.as_ref());
         found
             .iter()
             .map(|p| format!("{p:?}"))
@@ -103,64 +118,156 @@ fn edited_outside() -> std::sync::MutexGuard<'static, std::collections::BTreeSet
     FOLDERS.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// What a test last did by hand to a project folder that is not an edit of a file (a folder
-/// renamed in Explorer), by folder.
-fn by_hand() -> std::sync::MutexGuard<'static, std::collections::BTreeMap<PathBuf, String>> {
-    static STEPS: std::sync::Mutex<std::collections::BTreeMap<PathBuf, String>> =
+/// A folder of the project that a test renames by hand, as in Explorer.
+#[derive(Clone)]
+struct HandRename {
+    /// "ingredients/audio to Audio".
+    rename: String,
+    stage: Stage,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Stage {
+    /// The test began the rename; the app's look at the folder has not returned.
+    Begun,
+    /// Windows refused the rename.
+    Refused,
+    /// The folder is renamed and the app's look at it returned.
+    Looked,
+}
+
+/// The last rename by hand of each project folder.
+fn by_hand() -> std::sync::MutexGuard<'static, std::collections::BTreeMap<PathBuf, HandRename>> {
+    static RENAMES: std::sync::Mutex<std::collections::BTreeMap<PathBuf, HandRename>> =
         std::sync::Mutex::new(std::collections::BTreeMap::new());
-    STEPS.lock().unwrap_or_else(|e| e.into_inner())
+    RENAMES.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// The keys of object `field` in the JSON file `rel` of the folder, each with its value.
-fn json_entries(folder: &Path, rel: &str, field: &str) -> Vec<(String, serde_json::Value)> {
-    std::fs::read(folder.join(rel))
-        .ok()
-        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
-        .and_then(|doc| Some(doc[field].as_object()?.clone().into_iter().collect()))
-        .unwrap_or_default()
+/// The keys of object `field` in the JSON file `rel` of the folder, each with its value;
+/// `None` when the file cannot be read as that.
+fn json_entries(folder: &Path, rel: &str, field: &str) -> Option<Vec<(String, serde_json::Value)>> {
+    let bytes = std::fs::read(folder.join(rel)).ok()?;
+    let doc: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+    Some(doc[field].as_object()?.clone().into_iter().collect())
 }
 
-/// What tells a state the app wrote from one a person made, for a look that found problems
-/// (#1028): for each file `metadata.json` lists under another letter case than the disk
-/// holds it, the name the app's ledger has for it. The ledger learns a spelling when the app
-/// looks at the folder. A ledger that still has the listed name is a rename the app has not
-/// seen (the person's state); a ledger that has the disk's name beside a list that does not
-/// is a list the app wrote wrong. The test's steps by hand say when the look was made, not
-/// which of the two: the probe of the app's own look runs before the test can note it.
+/// A file the disk holds under another letter case than `metadata.json` names it, with the
+/// name the app's ledger has for it. The ledger learns a spelling when the app looks at the
+/// folder (#988).
+#[derive(Debug, PartialEq)]
+struct Respelled {
+    on_disk: String,
+    listed: String,
+    ledger: Option<String>,
+}
+
+impl Respelled {
+    /// Those among the unlisted files of `found`, from the folder's list and ledger as they
+    /// are after the look. None when either cannot be read.
+    fn read(folder: &Path, found: &[tc_burrito::Problem]) -> Vec<Self> {
+        let (Some(listed), Some(ledger)) = (
+            json_entries(folder, "metadata.json", "ingredients"),
+            json_entries(folder, ".tc/materialized.json", "paths"),
+        ) else {
+            return Vec::new();
+        };
+        let listed: Vec<String> = listed.into_iter().map(|(path, _)| path).collect();
+        let ledger: Vec<String> = ledger
+            .into_iter()
+            .map(|(path, entry)| entry["spelled"].as_str().map_or(path, str::to_owned))
+            .collect();
+        Self::among(found, &listed, &ledger)
+    }
+
+    fn among(found: &[tc_burrito::Problem], listed: &[String], ledger: &[String]) -> Vec<Self> {
+        let same = |a: &str, b: &str| a.to_lowercase() == b.to_lowercase();
+        found
+            .iter()
+            .filter_map(|problem| match problem {
+                tc_burrito::Problem::UnlistedFile { path } => Some(path),
+                _ => None,
+            })
+            .filter_map(|on_disk| {
+                let listed = listed.iter().find(|l| *l != on_disk && same(l, on_disk))?;
+                Some(Self {
+                    on_disk: on_disk.clone(),
+                    listed: listed.clone(),
+                    ledger: ledger.iter().find(|l| same(l, on_disk)).cloned(),
+                })
+            })
+            .collect()
+    }
+}
+
+/// Whether a look found only a folder renamed by hand that the app has not looked at since:
+/// every problem is a file the list names under another letter case, and the ledger still
+/// has the listed name for each. A ledger that has the disk's name beside a list that does
+/// not is a list the app wrote wrong, and is no such look.
+fn unseen_rename(found: &[tc_burrito::Problem], respelled: &[Respelled]) -> bool {
+    respelled.len() == found.len()
+        && respelled
+            .iter()
+            .all(|file| file.ledger.as_ref() == Some(&file.listed))
+}
+
+/// What a look that found problems adds to them (#1028): the files the list spells
+/// otherwise than the disk, and the test's rename by hand when the look began and when it
+/// ended. The rename says when the look was made, not whose state it saw: the probe of the
+/// app's own look runs before the test can note that the look returned.
 fn look_context(
-    folder: &Path,
-    found: &[tc_burrito::Problem],
-    began: Option<&str>,
-    ended: Option<&str>,
+    respelled: &[Respelled],
+    began: Option<&HandRename>,
+    ended: Option<&HandRename>,
 ) -> String {
-    let same = |a: &str, b: &str| a.to_lowercase() == b.to_lowercase();
-    let listed = json_entries(folder, "metadata.json", "ingredients");
-    let ledger: Vec<String> = json_entries(folder, ".tc/materialized.json", "paths")
-        .into_iter()
-        .map(|(path, entry)| entry["spelled"].as_str().map_or(path, str::to_owned))
-        .collect();
-    let respelled: Vec<String> = found
-        .iter()
-        .filter_map(|problem| match problem {
-            tc_burrito::Problem::UnlistedFile { path } => Some(path),
-            _ => None,
+    let shown = |by_hand: Option<&HandRename>| {
+        by_hand.map_or("none".to_owned(), |by_hand| {
+            format!("{} ({:?})", by_hand.rename, by_hand.stage)
         })
-        .filter_map(|on_disk| {
-            let (as_listed, _) = listed
-                .iter()
-                .find(|(l, _)| l != on_disk && same(l, on_disk))?;
-            let in_ledger = ledger.iter().find(|l| same(l, on_disk));
-            Some(format!(
-                "the disk holds {on_disk}, the list names {as_listed}, the ledger has {in_ledger:?}"
-            ))
-        })
-        .collect();
+    };
     format!(
-        "the test's last step by hand when the look began: {}; when it ended: {}; \
+        "the test's rename by hand when the look began: {}; when it ended: {}; \
          read after the look: {respelled:?}",
-        began.unwrap_or("none"),
-        ended.unwrap_or("none"),
+        shown(began),
+        shown(ended),
     )
+}
+
+#[test]
+fn only_a_look_at_a_rename_the_app_has_not_seen_is_set_aside() {
+    let unlisted = |path: &str| tc_burrito::Problem::UnlistedFile { path: path.into() };
+    let names = |names: &[&str]| -> Vec<String> { names.iter().map(|n| (*n).into()).collect() };
+    let found = [
+        unlisted("ingredients/audio/Intro.mp3"),
+        unlisted("ingredients/audio/notes.mp3"),
+    ];
+    let listed = names(&["ingredients/Audio/Intro.mp3", "ingredients/Audio/notes.mp3"]);
+    let set_aside = |found: &[tc_burrito::Problem], ledger: &[&str]| {
+        unseen_rename(found, &Respelled::among(found, &listed, &names(ledger)))
+    };
+    // The nightly's look of 2026-11-13: the ledger still has the names the list has.
+    assert!(set_aside(
+        &found,
+        &["ingredients/Audio/Intro.mp3", "ingredients/Audio/notes.mp3"]
+    ));
+    // The app looked and learned the disk's names, and the list does not have them.
+    assert!(!set_aside(
+        &found,
+        &["ingredients/audio/Intro.mp3", "ingredients/audio/notes.mp3"]
+    ));
+    // The ledger has one of the files under neither spelling.
+    assert!(!set_aside(&found, &["ingredients/Audio/Intro.mp3"]));
+    // A problem that is no respelled file is counted with the rest.
+    let more = [
+        unlisted("ingredients/audio/Intro.mp3"),
+        unlisted("ingredients/audio/notes.mp3"),
+        unlisted("ingredients/audio/other.mp3"),
+    ];
+    assert!(!set_aside(
+        &more,
+        &["ingredients/Audio/Intro.mp3", "ingredients/Audio/notes.mp3"]
+    ));
+    // A list or a ledger that cannot be read gives no respelled file.
+    assert!(!unseen_rename(&found, &[]));
 }
 
 /// Another program writes `rel` in the project folder, and the person comes back to the app.
@@ -2657,10 +2764,13 @@ async fn carried_files_in_folders_that_differ_only_in_case_stay_two_paths() {
             .find(|name| name.to_lowercase() == "audio")
             .unwrap();
         let other = if spelled == "audio" { "Audio" } else { "audio" };
-        let did = |step: String| by_hand().insert(folder_b.clone(), step);
+        let did = |rename: &str, stage: Stage| {
+            let rename = rename.to_owned();
+            by_hand().insert(folder_b.clone(), HandRename { rename, stage })
+        };
         for (from, to) in [(spelled.as_str(), other), (other, spelled.as_str())] {
             let rename = format!("ingredients/{from} to {to}");
-            did(format!("began to rename {rename}"));
+            did(&rename, Stage::Begun);
             let renamed = std::fs::rename(
                 folder_b.join("ingredients").join(from),
                 folder_b.join("ingredients").join(to),
@@ -2668,12 +2778,19 @@ async fn carried_files_in_folders_that_differ_only_in_case_stay_two_paths() {
             // Windows may refuse to rename a folder of an open project; a person then cannot
             // make this state either.
             if cfg!(windows) && renamed.is_err() {
-                did(format!("was refused the rename of {rename}"));
+                did(&rename, Stage::Refused);
                 break;
             }
             renamed.unwrap();
+            // A look at the folder now, before the app's look, is one the probe sets aside:
+            // read from the real list and ledger, it is the rename the app has not seen.
+            let found = tc_burrito::validate_dir(&folder_b);
+            assert!(
+                found.is_empty() || unseen_rename(&found, &Respelled::read(&folder_b, &found)),
+                "{found:?}"
+            );
             settled(&b);
-            did(format!("renamed {rename}, and the app's look returned"));
+            did(&rename, Stage::Looked);
             let on_disk = audio(ingredient_paths(&folder_b));
             assert_eq!(on_disk.len(), 2, "{on_disk:?}");
             assert!(
