@@ -1,15 +1,24 @@
 // Help and guides (S13, tC4 #519, #632, #729): tC4's e2e/help.spec.ts, cases a to i, with the
-// in-project half of a left to B3 (A5 D18). The pages are tc-website's, vendored (AD29), served
-// by `tc4 serve` at /help/; the page swap and the link rules run in the page (app/help-shim.js).
+// in-project half of a left to B3 (A5 D18), and the site's own links, j and k (#1031). The pages
+// are translationCore-Suite-website's (https://translationcore.com/tc-help/), vendored (AD29),
+// served by `tc4 serve` at /help/, where an extensionless link (`gs-install`) finds its `.html`
+// file and a link to `/` names translationcore.com; the page swap and the link rules run in the
+// page (app/help-shim.js).
+//
+// HELP_SHOTS=<folder> keeps case b's screenshots: the help home, a search and its first result.
 //
 //   TC4_BIN=target/debug/tc4 TC4_UI=target/tc-ui-app node --test parity/app/journeys/help.test.mjs
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import http from 'node:http';
+import path from 'node:path';
 import { browserTest, focused, openMenu, panel, recordRequests, sleep, trigger, until, withApp } from './kit.mjs';
 
 // The install page's download link, as this app serves it (H16 part 3, #1031; tc-server HELP_OVERLAY).
 const DOWNLOAD = 'https://translationcore.com/desktop/';
+// The top bar's and the footer's translationcore.com link (`href="/"` in the vendored pages).
+const SITE = 'https://translationcore.com/';
+const HOME = 'translationCore 4 Help';
 const helpPanel = (page) => page.getByTestId('help-panel');
 const frame = (page) => page.frameLocator('[data-testid="help-frame"]');
 const h1 = (page) => frame(page).getByRole('heading', { level: 1 });
@@ -30,8 +39,14 @@ async function expectPage(page, file, title) {
 }
 
 async function openInstallPage(page) {
-  await frame(page).locator('a[href="gs-install.html"]:visible').first().click();
-  await expectPage(page, 'gs-install.html', 'Install and start tC4');
+  await frame(page).locator('a[href="gs-install"]:visible').first().click();
+  await expectPage(page, 'gs-install', 'Install and start tC4');
+}
+
+async function shot(page, name) {
+  if (!process.env.HELP_SHOTS) return;
+  fs.mkdirSync(process.env.HELP_SHOTS, { recursive: true });
+  await page.screenshot({ path: path.join(process.env.HELP_SHOTS, `${name}.png`) });
 }
 
 async function expectClosed(page) {
@@ -61,21 +76,29 @@ browserTest('b. with every other origin refused, the pages, their images and the
   await withApp(async ({ page, env }) => {
     const requests = recordRequests(page);
     await openHelp(page);
+    await shot(page, 'help-home');
     await frame(page).locator('#q').fill('offline');
-    const results = frame(page).locator('#search-results a');
+    const results = frame(page).locator('#search-results a[role="option"]');
     await results.first().waitFor();
     assert.ok((await results.count()) > 0);
-    await frame(page).locator('a[href="section-align.html"]:visible').first().click();
-    await frame(page).locator('a[href="al-link-words.html"]:visible').first().waitFor();
-    await frame(page).locator('a[href="al-link-words.html"]:visible').first().click();
-    await until('the URL moves', async () => onPage(page, 'al-link-words.html'));
+    await shot(page, 'help-search');
+    // A result opens its page in the panel (#1031).
+    const first = results.first();
+    const [href, title] = [await first.getAttribute('href'), await first.locator('.sr-title').textContent()];
+    await first.click();
+    await expectPage(page, href, title);
+    await shot(page, 'help-search-result');
+    await frame(page).locator('a[href="section-align"]:visible').first().click();
+    await frame(page).locator('a[href="al-link-words"]:visible').first().waitFor();
+    await frame(page).locator('a[href="al-link-words"]:visible').first().click();
+    await until('the URL moves', async () => onPage(page, 'al-link-words'));
     await until('the page is swapped in', async () => (await h1(page).textContent()) === 'Link your words to the source');
     for (const img of [frame(page).locator('img.brand-logo'), frame(page).locator('img[src^="img/"]').first()]) {
       await img.scrollIntoViewIfNeeded();
       await until('the image loads', () => img.evaluate((el) => el.complete && el.naturalWidth > 0));
     }
     assert.deepEqual(env.refused(), []);
-    assert.ok(requests.all.some((r) => new URL(r.url).pathname.endsWith('/help/al-link-words.html')));
+    assert.ok(requests.all.some((r) => new URL(r.url).pathname.endsWith('/help/al-link-words')));
   });
 });
 
@@ -111,7 +134,7 @@ browserTest('c. with the internet off, the download link asks first; Not now ope
     await until('the question closes', async () => (await ask.count()) === 0);
     await sleep(500);
     assert.equal(pages, 0, 'no window opened');
-    await expectPage(page, 'gs-install.html', 'Install and start tC4');
+    await expectPage(page, 'gs-install', 'Install and start tC4');
     assert.equal(await trigger(page).getAttribute('data-internet'), 'off');
     assert.equal(requests.api().filter((p) => p === '/api/v1/account/helpLink').length, 0, 'nothing asked of the server');
     assert.deepEqual(env.refused(), []);
@@ -132,7 +155,7 @@ browserTest('d. with the internet on, the download link opens a window at its ad
     assert.equal(popup.url(), DOWNLOAD);
     await popup.close();
     assert.equal(await page.getByTestId('net-ask').count(), 0);
-    await expectPage(page, 'gs-install.html', 'Install and start tC4');
+    await expectPage(page, 'gs-install', 'Install and start tC4');
   }, {
     // The window would load translationcore.com: a stub answers it, so the run stays on this machine.
     init: (context) => context.route(DOWNLOAD, (route) => route.fulfill({ contentType: 'text/html', body: '<title>stub</title>' })),
@@ -165,11 +188,11 @@ browserTest('f. Ctrl, Shift, Meta and middle clicks on a help link open no windo
       await page.goto(`${env.origin}/#t=${env.token}`);
       await trigger(page).waitFor();
       await openHelp(page);
-      await frame(page).locator('summary > a[href="section-getting-started.html"]').click(options);
+      await frame(page).locator('summary > a[href="section-getting-started"]').click(options);
       await sleep(500);
       assert.equal(pages - before, 0, `${name}: no window`);
       assert.equal(await helpPanel(page).count(), 1);
-      await expectPage(page, 'section-getting-started.html', 'Getting started');
+      await expectPage(page, 'section-getting-started', 'Getting started');
     }
   });
 });
@@ -212,7 +235,7 @@ browserTest('g. a topic switch reloads nothing and paints no blank frame; of two
     };
     const rows = [];
     try {
-      for (const href of ['section-bible-projects.html', 'bp-new-bible.html', 'bp-open-book.html', 'bp-import.html', 'bp-export-pdf.html']) {
+      for (const href of ['section-bible-projects', 'bp-new-bible', 'bp-open-book', 'bp-import', 'bp-export-pdf']) {
         const before = await h1(page).textContent();
         shots = [];
         await cdp.send('Page.startScreencast', { format: 'png' });
@@ -238,29 +261,29 @@ browserTest('g. a topic switch reloads nothing and paints no blank frame; of two
     assert.deepEqual(rows.filter((r) => r.blank > 0), [], 'no blank frame');
 
     // A second topic while the first still loads (held half a second): the second wins.
-    await page.route('**/help/bp-add-book.html', async (route) => {
+    await page.route('**/help/bp-add-book', async (route) => {
       await sleep(500);
       await route.continue().catch(() => {});
     });
-    await frame(page).locator('nav a[href="bp-add-book.html"]:visible').click({ noWaitAfter: true });
-    await frame(page).locator('nav a[href="bp-import.html"]:visible').click();
-    await until('Import shows', async () => /^Import a project/.test(await h1(page).textContent()));
+    await frame(page).locator('nav a[href="bp-add-book"]:visible').click({ noWaitAfter: true });
+    await frame(page).locator('nav a[href="bp-import"]:visible').click();
+    await until('Import shows', async () => /^Import a translationCore 3 project/.test(await h1(page).textContent()));
     await sleep(700);
-    assert.match(helpFrame(page).url(), /\/help\/bp-import\.html$/);
-    assert.match(await h1(page).textContent(), /^Import a project/);
+    assert.match(helpFrame(page).url(), /\/help\/bp-import$/);
+    assert.match(await h1(page).textContent(), /^Import a translationCore 3 project/);
     assert.equal(await sameDocument(), true);
 
     // The search page builds its list from its own address when its script runs.
     await frame(page).locator('#q').fill('offline');
     await frame(page).locator('#q').press('Enter');
-    await until('the search page', async () => helpFrame(page).url().includes('/help/search.html?q=offline'));
+    await until('the search page', async () => helpFrame(page).url().includes('/help/search?q=offline'));
     await frame(page).locator('#search-page-results li').first().waitFor();
     assert.equal(await sameDocument(), true);
   });
 });
 
 browserTest('h. a read that ends outside help/ or is not HTML is not swapped in and runs no script; the frame loads the page', async () => {
-  const topic = 'section-bible-projects.html';
+  const topic = 'section-bible-projects';
   const injected = '<!doctype html><title>Injected</title><h1>Injected</h1><script>parent.tc4Injected = 1;</script>';
   const other = http.createServer((_req, res) => {
     res.writeHead(200, { 'content-type': 'text/html', 'access-control-allow-origin': '*' });
@@ -303,7 +326,7 @@ browserTest('h. a read that ends outside help/ or is not HTML is not swapped in 
 browserTest('i. Escape while a page loads closes the panel and the next open shows the home; a page the server lacks shows in the frame', async () => {
   await withApp(async ({ page, allow }) => {
     allow(/status of 404/);
-    const topic = 'section-bible-projects.html';
+    const topic = 'section-bible-projects';
     await openHelp(page);
     await page.route(`**/help/${topic}`, async (route) => {
       await sleep(1500);
@@ -322,5 +345,54 @@ browserTest('i. Escape while a page loads closes the panel and the next open sho
     assert.equal(await helpPanel(page).count(), 1);
     await page.getByTestId('help-close').click();
     await expectClosed(page);
+  });
+});
+
+browserTest('j. (#1031) the logo opens the help home in the panel; with the internet off, a translationcore.com link asks first, and Not now opens nothing', async () => {
+  await withApp(async ({ page, context, env }) => {
+    const requests = recordRequests(page);
+    let pages = 0;
+    context.on('page', () => { pages += 1; });
+    await openHelp(page);
+    const mark = requests.mark();
+    await openInstallPage(page);
+    await frame(page).locator('header a.brand').click();
+    await expectPage(page, 'index.html', HOME);
+    for (const link of ['header a.site-link', 'footer.sitefoot a']) {
+      const a = frame(page).locator(link).last();
+      assert.equal(await a.getAttribute('href'), SITE, `${link} names the site`);
+      await a.click();
+      const ask = page.getByTestId('net-ask');
+      await ask.waitFor();
+      assert.equal(await ask.getAttribute('data-kind'), 'helpLink');
+      await page.getByTestId('net-cancel').click();
+      await until('the question closes', async () => (await ask.count()) === 0);
+      await expectPage(page, 'index.html', HOME);
+    }
+    await sleep(500);
+    assert.equal(pages, 0, 'no window opened');
+    assert.equal(await helpPanel(page).count(), 1);
+    assert.ok(requests.since(mark).every((r) => new URL(r.url).pathname !== '/' || r.type !== 'document'), 'the frame never loaded the app root');
+    assert.deepEqual(env.refused(), []);
+  });
+});
+
+browserTest('k. (#1031) with the internet on, the translationcore.com link opens a window there and asks nothing; the frame stays', async () => {
+  await withApp(async ({ page }) => {
+    await openMenu(page);
+    await page.getByTestId('account-internet').click();
+    await until('on', async () => (await trigger(page).getAttribute('data-internet')) === 'on');
+    await page.keyboard.press('Escape');
+    await openHelp(page);
+    const opened = page.waitForEvent('popup');
+    await frame(page).locator('header a.site-link').click();
+    const popup = await opened;
+    assert.equal(popup.url(), SITE);
+    await popup.close();
+    assert.equal(await page.getByTestId('net-ask').count(), 0);
+    await expectPage(page, 'index.html', HOME);
+  }, {
+    // The window would load translationcore.com: a stub answers it, so the run stays on this machine.
+    init: (context) => context.route(SITE, (route) => route.fulfill({ contentType: 'text/html', body: '<title>stub</title>' })),
   });
 });

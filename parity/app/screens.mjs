@@ -231,7 +231,7 @@ export const SCREEN_LIST = [
   {
     name: 'help', scenario: 'sample', view: 'home', modal: 'help and guides (full-window panel)',
     steps: ['Home', 'Account button', 'Help and guides'],
-    shows: 'Help and guides: the full-window panel with the help pages of the build (tc-website tc-help/ at the commit tC4 pins) open on their index',
+    shows: 'Help and guides: the full-window panel with the help pages the build vendors at its pinned commit, open on their index',
     run: async (app) => {
       const { page } = app;
       await app.home(); await page.getByTestId('account-menu').click();

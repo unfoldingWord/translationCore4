@@ -389,7 +389,7 @@ the rebuild fixed it or does as tC4 does:
 | Issue | Title | Status | Unit or crate | Regression test | Action |
 |---|---|---|---|---|---|
 | #743 | A window from the click until the main window opens | covered | G1; APP-DESIGN §5.3, A9 D10 | `window_is_painted_within_1_s_of_the_click`; `closing_the_window_while_preparing_leaves_no_tc4_process` | Create the window at Electron `ready`; §5.3 picks the page, not whether a window shows. Fix the §5.3 and D10 wording now. |
-| #741 | Help page wordmark | covered | A5 | `every_help_page_has_the_bytes_tc_website_has_at_the_pin` (help sha-list check) | Vendor the help pages byte for byte; vendor again when tc-website ships the fix. |
+| #741 | Help page wordmark | covered | A5 | `every_help_page_has_the_bytes_the_site_has_at_the_pin` (help sha-list check) | Vendor the help pages byte for byte; vendor again when tc-website ships the fix. |
 | #731 | Is the Report a problem attachment translated? | covered | A5; FIX-R | `the_attachment_is_english_in_every_app_language`; `platform_line_names_the_os_and_the_architecture` | Compose it in English, as tC4 does. An optional translated line explaining why is a declared difference. The platform line comes from Rust's OS and architecture constants. |
 | #751 | Duplicate work in Windows install and start | unit todo | G1, G2 | G2 budget row `first_launch_under_60_s` (five runs) | Install from archives; measure on the reference laptop with Defender. |
 | #740 | First launch in under a minute | unit todo | G1, G2 | keep `repeat_launch_reads_no_resource_content_file`; add the Windows measurement | The code half is covered. The Windows 60 s goal is not shown yet; merge with #751. |

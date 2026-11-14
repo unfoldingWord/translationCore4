@@ -128,7 +128,7 @@
       box.innerHTML = res.map(function (r) {
         return '<a role="option" href="' + r.doc.url + '"><span class="sr-title">' + escapeHtml(r.doc.title) +
           '</span><span class="sr-sec">' + escapeHtml(r.doc.section) + '</span><span class="sr-snip">' + snippet(r.doc, q) + '</span></a>';
-      }).join('') + '<a href="search.html?q=' + encodeURIComponent(q) + '"><span class="sr-sec">See all results →</span></a>';
+      }).join('') + '<a href="search?q=' + encodeURIComponent(q) + '"><span class="sr-sec">See all results →</span></a>';
     }
     box.hidden = false;
   }
