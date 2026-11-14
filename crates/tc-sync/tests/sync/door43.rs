@@ -111,20 +111,34 @@ fn by_hand() -> std::sync::MutexGuard<'static, std::collections::BTreeMap<PathBu
     STEPS.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// The keys of object `field` in the JSON file `rel` of the folder, each with its value.
+fn json_entries(folder: &Path, rel: &str, field: &str) -> Vec<(String, serde_json::Value)> {
+    std::fs::read(folder.join(rel))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+        .and_then(|doc| Some(doc[field].as_object()?.clone().into_iter().collect()))
+        .unwrap_or_default()
+}
+
 /// What tells a state the app wrote from one a person made, for a look that found problems
-/// (#1028): what the test was doing by hand when the look began and when it ended, and each
-/// file `metadata.json` lists under another letter case than the disk holds it.
+/// (#1028): for each file `metadata.json` lists under another letter case than the disk
+/// holds it, the name the app's ledger has for it. The ledger learns a spelling when the app
+/// looks at the folder. A ledger that still has the listed name is a rename the app has not
+/// seen (the person's state); a ledger that has the disk's name beside a list that does not
+/// is a list the app wrote wrong. The test's steps by hand say when the look was made, not
+/// which of the two: the probe of the app's own look runs before the test can note it.
 fn look_context(
     folder: &Path,
     found: &[tc_burrito::Problem],
     began: Option<&str>,
     ended: Option<&str>,
 ) -> String {
-    let listed: Vec<String> = std::fs::read(folder.join("metadata.json"))
-        .ok()
-        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
-        .and_then(|doc| Some(doc["ingredients"].as_object()?.keys().cloned().collect()))
-        .unwrap_or_default();
+    let same = |a: &str, b: &str| a.to_lowercase() == b.to_lowercase();
+    let listed = json_entries(folder, "metadata.json", "ingredients");
+    let ledger: Vec<String> = json_entries(folder, ".tc/materialized.json", "paths")
+        .into_iter()
+        .map(|(path, entry)| entry["spelled"].as_str().map_or(path, str::to_owned))
+        .collect();
     let respelled: Vec<String> = found
         .iter()
         .filter_map(|problem| match problem {
@@ -132,17 +146,20 @@ fn look_context(
             _ => None,
         })
         .filter_map(|on_disk| {
-            let as_listed = listed
+            let (as_listed, _) = listed
                 .iter()
-                .find(|l| *l != on_disk && l.to_lowercase() == on_disk.to_lowercase())?;
-            Some(format!("{on_disk} is listed as {as_listed}"))
+                .find(|(l, _)| l != on_disk && same(l, on_disk))?;
+            let in_ledger = ledger.iter().find(|l| same(l, on_disk));
+            Some(format!(
+                "the disk holds {on_disk}, the list names {as_listed}, the ledger has {in_ledger:?}"
+            ))
         })
         .collect();
     format!(
-        "what the test had done by hand when the look began: {}; when it ended: {}; \
-         listed under another letter case: {respelled:?}",
-        began.unwrap_or("nothing"),
-        ended.unwrap_or("nothing"),
+        "the test's last step by hand when the look began: {}; when it ended: {}; \
+         read after the look: {respelled:?}",
+        began.unwrap_or("none"),
+        ended.unwrap_or("none"),
     )
 }
 
@@ -2643,7 +2660,7 @@ async fn carried_files_in_folders_that_differ_only_in_case_stay_two_paths() {
         let did = |step: String| by_hand().insert(folder_b.clone(), step);
         for (from, to) in [(spelled.as_str(), other), (other, spelled.as_str())] {
             let rename = format!("ingredients/{from} to {to}");
-            did(format!("renamed {rename}; the app has not looked yet"));
+            did(format!("began to rename {rename}"));
             let renamed = std::fs::rename(
                 folder_b.join("ingredients").join(from),
                 folder_b.join("ingredients").join(to),
@@ -2651,12 +2668,12 @@ async fn carried_files_in_folders_that_differ_only_in_case_stay_two_paths() {
             // Windows may refuse to rename a folder of an open project; a person then cannot
             // make this state either.
             if cfg!(windows) && renamed.is_err() {
-                did(format!("tried to rename {rename}; refused"));
+                did(format!("was refused the rename of {rename}"));
                 break;
             }
             renamed.unwrap();
             settled(&b);
-            did(format!("renamed {rename}; the app has looked"));
+            did(format!("renamed {rename}, and the app's look returned"));
             let on_disk = audio(ingredient_paths(&folder_b));
             assert_eq!(on_disk.len(), 2, "{on_disk:?}");
             assert!(
