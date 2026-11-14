@@ -349,6 +349,10 @@ pub struct Run {
     app_wrote: BTreeMap<&'static str, Vec<u8>>,
     /// What the run last saw at each path.
     last_seen: BTreeMap<&'static str, Option<Vec<u8>>>,
+    /// The puts at each path a check credited (their values recorded in History, shown by
+    /// the project or held by HEAD) since the run last saw the app write the path or lose
+    /// its placement: the same bytes put back there are bytes the app took in already.
+    taken_in: BTreeMap<&'static str, Vec<Vec<u8>>>,
     /// Every version the run saw the app write at each path.
     app_versions: BTreeMap<&'static str, Vec<Vec<u8>>>,
     /// Paths the app keeps no placement of since another program deleted them or the
@@ -432,6 +436,7 @@ impl Run {
             observed_copies: Vec::new(),
             versions: BTreeMap::new(),
             app_wrote: BTreeMap::new(),
+            taken_in: BTreeMap::new(),
             last_seen: BTreeMap::new(),
             app_versions: BTreeMap::new(),
             unplaced: std::collections::BTreeSet::new(),
@@ -556,6 +561,7 @@ impl Run {
                     .is_some_and(|seen| seen.contains(bytes))
             {
                 self.app_wrote.insert(rel, bytes.clone());
+                self.taken_in.remove(rel);
                 self.last_seen.insert(rel, now);
             }
         }
@@ -730,6 +736,7 @@ impl Run {
             // The folder showing the projection is converged (R2): the app places those bytes.
             if fs.peek(&self.path(USFM)).as_ref() == Some(book) {
                 self.app_wrote.insert(USFM, book.clone());
+                self.taken_in.remove(USFM);
             }
         }
         self.observe_live_metadata(&fs);
@@ -1144,8 +1151,13 @@ impl Run {
             }
         });
         // The app's own bytes back again: the app finds the file converged and writes it
-        // from the project, which holds all they show (R2).
-        let retired = self.app_wrote.get(rel) == Some(&bytes);
+        // from the project, which holds all they show (R2). Or bytes it took in and has not
+        // written over: it finds nothing new, whatever HEAD and the project show by now.
+        let retired = self.app_wrote.get(rel) == Some(&bytes)
+            || self
+                .taken_in
+                .get(rel)
+                .is_some_and(|taken| taken.contains(&bytes));
         let shows = shown_by(rel, self.app_wrote.get(rel).map(Vec::as_slice), &bytes);
         self.puts.push(Put {
             rel,
@@ -1244,6 +1256,7 @@ impl Run {
             let _ = fs.delete(&path);
         });
         self.unplaced.insert(file.rel());
+        self.taken_in.remove(file.rel());
         self.settle_put(true)
     }
 
@@ -1346,6 +1359,7 @@ impl Run {
                 self.outside = true;
                 if !heads {
                     self.unplaced.extend([USFM, META]);
+                    self.taken_in.clear();
                     for put in &mut self.puts {
                         put.unplaced |= !put.retired;
                     }
@@ -1895,6 +1909,10 @@ impl Run {
                 // own copy of what the app wrote (`app_wrote`) changes only when the app is
                 // seen to write, or the folder to show the projection.
                 put.retired = true;
+                self.taken_in
+                    .entry(put.rel)
+                    .or_default()
+                    .push(put.bytes.clone());
                 continue;
             }
             let on_disk =
@@ -1962,6 +1980,7 @@ impl Run {
                     && !self.puts.iter().any(|p| p.rel == rel && p.bytes == *bytes)
                 {
                     self.app_wrote.insert(rel, bytes.clone());
+                    self.taken_in.remove(rel);
                     self.app_versions
                         .entry(rel)
                         .or_default()
@@ -4891,4 +4910,65 @@ fn a_metadata_json_recorded_over_two_heads_of_one_name_is_kept() {
     for _ in 0..12 {
         assert_kept(&a_metadata_json_recorded_over_two_heads_of_one_name());
     }
+}
+
+/// #1027, the nightly of 2026-11-13 (run 43386175289; the model keeps no seed, so this is the
+/// history the run printed, its last save not killed: the kill point the run named falls
+/// elsewhere on another platform, and the save has to last). After a cut pack and a deleted
+/// book file, a backup tool puts back a book file that shows nothing HEAD lacks, at a path
+/// the app keeps no placement of: the app takes it as it is (R14), and cannot write the
+/// file again while `metadata.json` cannot be read. Another program edits the file and the
+/// backup tool puts the same bytes back before the app looks, so the app finds the bytes it
+/// took in and writes the person's save over them (R8).
+fn a_book_file_put_back_twice_while_the_app_cannot_write_it() -> Vec<Step> {
+    let put_back = Step::RevertKeepTime {
+        file: File::Usfm,
+        back: 2,
+    };
+    vec![
+        Step::KillAfterRename { file: File::Usfm },
+        act(Act::Save(2)),
+        act(Act::Leave),
+        lock(Holdable::File(File::Usfm), true),
+        Step::Open,
+        act(Act::Save(1)),
+        lock(Holdable::File(File::Usfm), false),
+        act(Act::Save(1)),
+        act(Act::Leave),
+        crash(),
+        Step::Open,
+        Step::Cut {
+            journal: Journal::Pack,
+            which: 0,
+            keep: 0,
+            at_line: false,
+        },
+        Step::Focus,
+        Step::Delete { file: File::Usfm },
+        act(Act::Leave),
+        Step::DenyRead {
+            file: File::Meta,
+            on: true,
+        },
+        crash(),
+        put_back.clone(),
+        Step::KillAfterRename { file: File::Usfm },
+        act(Act::Save(1)),
+        act(Act::Leave),
+        lock(Holdable::File(File::Usfm), true),
+        Step::Open,
+        act(Act::Save(1)),
+        lock(Holdable::File(File::Usfm), false),
+        Step::Edit {
+            verse: 1,
+            told: false,
+        },
+        act(Act::Save(1)),
+        put_back,
+    ]
+}
+
+#[test]
+fn a_book_file_put_back_twice_while_the_app_cannot_write_it_is_kept() {
+    assert_kept(&a_book_file_put_back_twice_while_the_app_cannot_write_it());
 }
