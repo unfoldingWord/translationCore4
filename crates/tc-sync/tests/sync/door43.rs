@@ -2782,6 +2782,13 @@ async fn carried_files_in_folders_that_differ_only_in_case_stay_two_paths() {
                 break;
             }
             renamed.unwrap();
+            // A look at the folder now, before the app's look, is one the probe sets aside:
+            // read from the real list and ledger, it is the rename the app has not seen.
+            let found = tc_burrito::validate_dir(&folder_b);
+            assert!(
+                found.is_empty() || unseen_rename(&found, &Respelled::read(&folder_b, &found)),
+                "{found:?}"
+            );
             settled(&b);
             did(&rename, Stage::Looked);
             let on_disk = audio(ingredient_paths(&folder_b));
