@@ -78,13 +78,20 @@ pub fn computer_on(dir: &Path, name: &str, platform: FakePlatform) -> Computer {
     .unwrap();
     store.wait_cleanup();
     store.hooks().check_burrito(|folder: &Path| {
+        let began = by_hand().get(folder).cloned();
         let found = tc_burrito::validate_dir(folder);
         // A look that overlaps the test's own edit of a file reads bytes the app has not
         // been shown yet (#1006): that is the person's edit, not a state the app wrote.
-        if edited_outside().contains(folder) {
+        if found.is_empty() || edited_outside().contains(folder) {
             return Vec::new();
         }
-        found.into_iter().map(|p| format!("{p:?}")).collect()
+        let ended = by_hand().get(folder).cloned();
+        let context = look_context(folder, &found, began.as_deref(), ended.as_deref());
+        found
+            .iter()
+            .map(|p| format!("{p:?}"))
+            .chain([context])
+            .collect()
     });
     Computer { store, projects }
 }
@@ -94,6 +101,49 @@ fn edited_outside() -> std::sync::MutexGuard<'static, std::collections::BTreeSet
     static FOLDERS: std::sync::Mutex<std::collections::BTreeSet<PathBuf>> =
         std::sync::Mutex::new(std::collections::BTreeSet::new());
     FOLDERS.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// What a test last did by hand to a project folder that is not an edit of a file (a folder
+/// renamed in Explorer), by folder.
+fn by_hand() -> std::sync::MutexGuard<'static, std::collections::BTreeMap<PathBuf, String>> {
+    static STEPS: std::sync::Mutex<std::collections::BTreeMap<PathBuf, String>> =
+        std::sync::Mutex::new(std::collections::BTreeMap::new());
+    STEPS.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// What tells a state the app wrote from one a person made, for a look that found problems
+/// (#1028): what the test was doing by hand when the look began and when it ended, and each
+/// file `metadata.json` lists under another letter case than the disk holds it.
+fn look_context(
+    folder: &Path,
+    found: &[tc_burrito::Problem],
+    began: Option<&str>,
+    ended: Option<&str>,
+) -> String {
+    let listed: Vec<String> = std::fs::read(folder.join("metadata.json"))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+        .and_then(|doc| Some(doc["ingredients"].as_object()?.keys().cloned().collect()))
+        .unwrap_or_default();
+    let respelled: Vec<String> = found
+        .iter()
+        .filter_map(|problem| match problem {
+            tc_burrito::Problem::UnlistedFile { path } => Some(path),
+            _ => None,
+        })
+        .filter_map(|on_disk| {
+            let as_listed = listed
+                .iter()
+                .find(|l| *l != on_disk && l.to_lowercase() == on_disk.to_lowercase())?;
+            Some(format!("{on_disk} is listed as {as_listed}"))
+        })
+        .collect();
+    format!(
+        "what the test had done by hand when the look began: {}; when it ended: {}; \
+         listed under another letter case: {respelled:?}",
+        began.unwrap_or("nothing"),
+        ended.unwrap_or("nothing"),
+    )
 }
 
 /// Another program writes `rel` in the project folder, and the person comes back to the app.
@@ -2590,7 +2640,10 @@ async fn carried_files_in_folders_that_differ_only_in_case_stay_two_paths() {
             .find(|name| name.to_lowercase() == "audio")
             .unwrap();
         let other = if spelled == "audio" { "Audio" } else { "audio" };
+        let did = |step: String| by_hand().insert(folder_b.clone(), step);
         for (from, to) in [(spelled.as_str(), other), (other, spelled.as_str())] {
+            let rename = format!("ingredients/{from} to {to}");
+            did(format!("renamed {rename}; the app has not looked yet"));
             let renamed = std::fs::rename(
                 folder_b.join("ingredients").join(from),
                 folder_b.join("ingredients").join(to),
@@ -2598,10 +2651,12 @@ async fn carried_files_in_folders_that_differ_only_in_case_stay_two_paths() {
             // Windows may refuse to rename a folder of an open project; a person then cannot
             // make this state either.
             if cfg!(windows) && renamed.is_err() {
+                did(format!("tried to rename {rename}; refused"));
                 break;
             }
             renamed.unwrap();
             settled(&b);
+            did(format!("renamed {rename}; the app has looked"));
             let on_disk = audio(ingredient_paths(&folder_b));
             assert_eq!(on_disk.len(), 2, "{on_disk:?}");
             assert!(
