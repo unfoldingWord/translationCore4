@@ -3908,6 +3908,7 @@ dependencies = [
  "getrandom 0.3.4",
  "http-body",
  "percent-encoding",
+ "regex",
  "serde",
  "serde_json",
  "subtle",

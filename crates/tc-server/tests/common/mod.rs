@@ -83,6 +83,12 @@ pub fn seed_ui(root: &std::path::Path) -> std::path::PathBuf {
         ("help/index.html", b"<p>Help</p>"),
         ("help/sub/page.html", b"<p>Sub</p>"),
         (
+            "help/gs-install.html",
+            b"<a href=\"/\">site</a> <a href=\"/tc-help/\">home</a> \
+              <a href=\"https://github.com/unfoldingWord/translationCore4/releases\">tC4 releases page</a>",
+        ),
+        ("help/wn-4.1.html", b"<p>4.1</p>"),
+        (
             "help/st-where-projects-live.html",
             b"<code>~/pankosmia/tc4-projects</code>",
         ),

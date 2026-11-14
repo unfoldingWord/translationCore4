@@ -8,8 +8,8 @@ import fs from 'node:fs';
 import http from 'node:http';
 import { browserTest, focused, openMenu, panel, recordRequests, sleep, trigger, until, withApp } from './kit.mjs';
 
-// The install page's download link, as this app serves it (H16 part 3; tc-server HELP_OVERLAY).
-const DOWNLOAD = 'https://translationcore.com/tc4';
+// The install page's download link, as this app serves it (H16 part 3, #1031; tc-server HELP_OVERLAY).
+const DOWNLOAD = 'https://translationcore.com/desktop/';
 const helpPanel = (page) => page.getByTestId('help-panel');
 const frame = (page) => page.frameLocator('[data-testid="help-frame"]');
 const h1 = (page) => frame(page).getByRole('heading', { level: 1 });
