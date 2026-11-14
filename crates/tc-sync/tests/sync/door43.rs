@@ -78,13 +78,20 @@ pub fn computer_on(dir: &Path, name: &str, platform: FakePlatform) -> Computer {
     .unwrap();
     store.wait_cleanup();
     store.hooks().check_burrito(|folder: &Path| {
+        let began = by_hand().get(folder).cloned();
         let found = tc_burrito::validate_dir(folder);
         // A look that overlaps the test's own edit of a file reads bytes the app has not
         // been shown yet (#1006): that is the person's edit, not a state the app wrote.
-        if edited_outside().contains(folder) {
+        if found.is_empty() || edited_outside().contains(folder) {
             return Vec::new();
         }
-        found.into_iter().map(|p| format!("{p:?}")).collect()
+        let ended = by_hand().get(folder).cloned();
+        let context = look_context(folder, &found, began.as_deref(), ended.as_deref());
+        found
+            .iter()
+            .map(|p| format!("{p:?}"))
+            .chain([context])
+            .collect()
     });
     Computer { store, projects }
 }
@@ -94,6 +101,66 @@ fn edited_outside() -> std::sync::MutexGuard<'static, std::collections::BTreeSet
     static FOLDERS: std::sync::Mutex<std::collections::BTreeSet<PathBuf>> =
         std::sync::Mutex::new(std::collections::BTreeSet::new());
     FOLDERS.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// What a test last did by hand to a project folder that is not an edit of a file (a folder
+/// renamed in Explorer), by folder.
+fn by_hand() -> std::sync::MutexGuard<'static, std::collections::BTreeMap<PathBuf, String>> {
+    static STEPS: std::sync::Mutex<std::collections::BTreeMap<PathBuf, String>> =
+        std::sync::Mutex::new(std::collections::BTreeMap::new());
+    STEPS.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// The keys of object `field` in the JSON file `rel` of the folder, each with its value.
+fn json_entries(folder: &Path, rel: &str, field: &str) -> Vec<(String, serde_json::Value)> {
+    std::fs::read(folder.join(rel))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+        .and_then(|doc| Some(doc[field].as_object()?.clone().into_iter().collect()))
+        .unwrap_or_default()
+}
+
+/// What tells a state the app wrote from one a person made, for a look that found problems
+/// (#1028): for each file `metadata.json` lists under another letter case than the disk
+/// holds it, the name the app's ledger has for it. The ledger learns a spelling when the app
+/// looks at the folder. A ledger that still has the listed name is a rename the app has not
+/// seen (the person's state); a ledger that has the disk's name beside a list that does not
+/// is a list the app wrote wrong. The test's steps by hand say when the look was made, not
+/// which of the two: the probe of the app's own look runs before the test can note it.
+fn look_context(
+    folder: &Path,
+    found: &[tc_burrito::Problem],
+    began: Option<&str>,
+    ended: Option<&str>,
+) -> String {
+    let same = |a: &str, b: &str| a.to_lowercase() == b.to_lowercase();
+    let listed = json_entries(folder, "metadata.json", "ingredients");
+    let ledger: Vec<String> = json_entries(folder, ".tc/materialized.json", "paths")
+        .into_iter()
+        .map(|(path, entry)| entry["spelled"].as_str().map_or(path, str::to_owned))
+        .collect();
+    let respelled: Vec<String> = found
+        .iter()
+        .filter_map(|problem| match problem {
+            tc_burrito::Problem::UnlistedFile { path } => Some(path),
+            _ => None,
+        })
+        .filter_map(|on_disk| {
+            let (as_listed, _) = listed
+                .iter()
+                .find(|(l, _)| l != on_disk && same(l, on_disk))?;
+            let in_ledger = ledger.iter().find(|l| same(l, on_disk));
+            Some(format!(
+                "the disk holds {on_disk}, the list names {as_listed}, the ledger has {in_ledger:?}"
+            ))
+        })
+        .collect();
+    format!(
+        "the test's last step by hand when the look began: {}; when it ended: {}; \
+         read after the look: {respelled:?}",
+        began.unwrap_or("none"),
+        ended.unwrap_or("none"),
+    )
 }
 
 /// Another program writes `rel` in the project folder, and the person comes back to the app.
@@ -2590,7 +2657,10 @@ async fn carried_files_in_folders_that_differ_only_in_case_stay_two_paths() {
             .find(|name| name.to_lowercase() == "audio")
             .unwrap();
         let other = if spelled == "audio" { "Audio" } else { "audio" };
+        let did = |step: String| by_hand().insert(folder_b.clone(), step);
         for (from, to) in [(spelled.as_str(), other), (other, spelled.as_str())] {
+            let rename = format!("ingredients/{from} to {to}");
+            did(format!("began to rename {rename}"));
             let renamed = std::fs::rename(
                 folder_b.join("ingredients").join(from),
                 folder_b.join("ingredients").join(to),
@@ -2598,10 +2668,12 @@ async fn carried_files_in_folders_that_differ_only_in_case_stay_two_paths() {
             // Windows may refuse to rename a folder of an open project; a person then cannot
             // make this state either.
             if cfg!(windows) && renamed.is_err() {
+                did(format!("was refused the rename of {rename}"));
                 break;
             }
             renamed.unwrap();
             settled(&b);
+            did(format!("renamed {rename}, and the app's look returned"));
             let on_disk = audio(ingredient_paths(&folder_b));
             assert_eq!(on_disk.len(), 2, "{on_disk:?}");
             assert!(
