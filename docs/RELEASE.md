@@ -86,7 +86,7 @@ the evidence written afterwards. A box is ticked only with a link to its evidenc
    (`Cargo.lock` changes with it). About, the installer names and `BUILD-MANIFEST.json` carry
    that version; the release is titled from the tag. Then, on the default branch, the owner (or
    someone the owner names) pushes the tag:
-   `git tag v4.1.0-preview2 && git push origin v4.1.0-preview2`. Nobody else pushes release tags.
+   `git tag v4.1.0 && git push origin v4.1.0`. Nobody else pushes release tags.
 2. The tag runs `release`. It builds nothing for a tag that is not `v` and that version, or
    while any interface string is untranslated (job `translations`,
    `cargo test --release -p tc-api --test refusals`; rulings/2026-10-22-H10.md). A `-preview` tag
@@ -146,7 +146,7 @@ their signature. Any other run builds unsigned and its file names say `-unsigned
 signature in PowerShell:
 
 ```powershell
-Get-AuthenticodeSignature .\translationCore4-4.1.0-preview2-windows-x64.exe | Format-List Status,SignerCertificate,TimeStamperCertificate
+Get-AuthenticodeSignature .\translationCore4-4.1.0-windows-x64.exe | Format-List Status,SignerCertificate,TimeStamperCertificate
 ```
 
 ## Secrets
