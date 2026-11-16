@@ -64,7 +64,10 @@ impl Seek for OsFile {
 
 impl StickFile for OsFile {
     fn sync_all(self: Box<Self>) -> std::io::Result<Written> {
-        let file = self.0.into_inner().map_err(std::io::IntoInnerError::into_error)?;
+        let file = self
+            .0
+            .into_inner()
+            .map_err(std::io::IntoInnerError::into_error)?;
         file.sync_all()?;
         Ok(self.1)
     }
