@@ -2,9 +2,8 @@
 //! last commit as a Scripture Burrito zip, verified after it is written; "Receive work from a
 //! file" takes the zip's packs in through the store, as a sync's intake does, and commits.
 //!
-//! Not built yet: E5's read-back bypassing the page cache (the file is read back and checked
-//! through the cache), and R7's `.tc/intake.json` marker (each pack is taken whole, and
-//! receiving a file again adds nothing).
+//! Not built yet: R7's `.tc/intake.json` marker (each pack is taken whole, and receiving a
+//! file again adds nothing).
 
 use std::collections::BTreeMap;
 use std::io::Write;
@@ -13,6 +12,7 @@ use tc_journal::fold::{ConflictId, DerivedFile, PersonLabel};
 use tc_store::{CheckpointReason, IntakeReport, ProjectHandle, ReceivedPack};
 
 use crate::checkpoint::{committed, skip_words};
+use crate::stick::{OsStick, ReadFrom, Stick};
 
 const PACKS: &str = "ingredients/tc/changes/";
 const PROJECT_JSON: &str = "ingredients/tc/project.json";
@@ -87,7 +87,27 @@ pub async fn export(
     project: &ProjectHandle,
     destination: &Path,
     person: &str,
-) -> Result<PathBuf, ExchangeError> {
+) -> Result<Exported, ExchangeError> {
+    export_on(project, destination, person, std::sync::Arc::new(OsStick)).await
+}
+
+/// An exchange file written and checked.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Exported {
+    pub path: PathBuf,
+    /// Where the bytes the check read came from. Only [`ReadFrom::Device`] shows what the
+    /// stick holds, so only then may the person be told the stick can be removed
+    /// (INV-STICK-SENTENCE-AFTER-DEVICE-READ).
+    pub read_from: ReadFrom,
+}
+
+/// [`export`] onto `stick`.
+pub async fn export_on(
+    project: &ProjectHandle,
+    destination: &Path,
+    person: &str,
+    stick: std::sync::Arc<dyn Stick>,
+) -> Result<Exported, ExchangeError> {
     // The file holds the last commit: a checkpoint that could not commit the latest saves
     // stops the export, so a teammate never gets less than the person sees.
     committed(project, CheckpointReason::BeforeExport)
@@ -99,8 +119,10 @@ pub async fn export(
     let person = person.to_owned();
     let device = facts.device.to_string();
     let id = facts.id;
-    tokio::task::spawn_blocking(move || write_export(&git_dir, &destination, &person, &device, id))
-        .await?
+    tokio::task::spawn_blocking(move || {
+        write_export(&git_dir, &destination, &person, &device, id, &*stick)
+    })
+    .await?
 }
 
 fn write_export(
@@ -109,7 +131,8 @@ fn write_export(
     person: &str,
     device: &str,
     id: tc_journal::ProjectId,
-) -> Result<PathBuf, ExchangeError> {
+    stick: &dyn Stick,
+) -> Result<Exported, ExchangeError> {
     let project = id.to_string();
     let project = project.as_str();
     let repo = git2::Repository::open(git_dir)?;
@@ -152,8 +175,8 @@ fn write_export(
         ".~{file_name}.{}.tmp",
         tc_store::random::hex::<8>()
     ));
-    let written = (|| -> Result<(), ExchangeError> {
-        let file = std::fs::File::create(&temp).map_err(io(&temp))?;
+    let written = (|| -> Result<crate::stick::Written, ExchangeError> {
+        let file = stick.create(&temp).map_err(io(&temp))?;
         let mut zip = zip::ZipWriter::new(file);
         let options = zip::write::SimpleFileOptions::default()
             .compression_method(zip::CompressionMethod::Deflated)
@@ -194,13 +217,15 @@ fn write_export(
         ))
         .map_err(zip_error(&temp))?;
         let file = zip.finish().map_err(zip_error(&temp))?;
-        file.sync_all().map_err(io(&temp))?;
-        Ok(())
+        file.sync_all().map_err(io(&temp))
     })();
-    if let Err(e) = written {
-        let _ = std::fs::remove_file(&temp);
-        return Err(e);
-    }
+    let written = match written {
+        Ok(written) => written,
+        Err(e) => {
+            let _ = std::fs::remove_file(&temp);
+            return Err(e);
+        }
+    };
     let path = destination.join(&file_name);
     if path.exists() {
         let _ = std::fs::remove_file(&temp);
@@ -216,17 +241,24 @@ fn write_export(
     if let Ok(dir) = std::fs::File::open(destination) {
         let _ = dir.sync_all();
     }
-    if let Err(e) = verify(&path, id) {
-        let _ = std::fs::remove_file(&path);
-        return Err(e);
+    let verified = stick
+        .read_from_device(&path, written)
+        .map_err(|e| ExchangeError::NotVerified(e.to_string()))
+        .and_then(|(bytes, read_from)| verify(bytes, id).map(|()| read_from));
+    match verified {
+        Ok(read_from) => Ok(Exported { path, read_from }),
+        Err(e) => {
+            let _ = std::fs::remove_file(&path);
+            Err(e)
+        }
     }
-    Ok(path)
 }
 
-/// E5: every entry inflates to its CRC, the burrito's metadata lists exactly its
-/// ingredients, and every pack verifies.
-fn verify(path: &Path, id: tc_journal::ProjectId) -> Result<(), ExchangeError> {
-    let zip = read_zip(path)?;
+/// E5: every entry of the file's `bytes` inflates to its CRC, the burrito's metadata lists
+/// exactly its ingredients, and every pack verifies.
+fn verify(bytes: Vec<u8>, id: tc_journal::ProjectId) -> Result<(), ExchangeError> {
+    let zip = read_zip_from(std::io::Cursor::new(bytes))
+        .map_err(|e| ExchangeError::NotVerified(e.to_string()))?;
     let unverified_pack = zip
         .files
         .iter()
@@ -284,7 +316,11 @@ fn gate_file(zip: &ReadZip) -> Result<(), ExchangeError> {
 
 fn read_zip(path: &Path) -> Result<ReadZip, ExchangeError> {
     let file = std::fs::File::open(path).map_err(io(path))?;
-    let entries = tc_burrito::read_zip(std::io::BufReader::new(file), tc_burrito::ZIP_LIMITS)
+    read_zip_from(std::io::BufReader::new(file))
+}
+
+fn read_zip_from(reader: impl std::io::Read + std::io::Seek) -> Result<ReadZip, ExchangeError> {
+    let entries = tc_burrito::read_zip(reader, tc_burrito::ZIP_LIMITS)
         .map_err(|e| ExchangeError::Damaged(e.to_string()))?;
     let mut files = BTreeMap::new();
     let mut damaged = Vec::new();

@@ -1,0 +1,25 @@
+ProductName:		macOS ProductVersion:		26.5.1 BuildVersion:		25F80 
+== ExFAT
+macos aarch64
+write Plain, read Plain: 38400 of 38400 copies found and changed on the device; 38400 of 38400 copies stale: read from the cache
+write Export, read Export: (the export says: read from the device) 38400 of 38400 copies found and changed on the device; 0 of 38400 copies stale: READ FROM THE DEVICE
+write Plain, read NoCache: 38400 of 38400 copies found and changed on the device; 38400 of 38400 copies stale: read from the cache
+write NoCache, read Plain: 38400 of 38400 copies found and changed on the device; 0 of 38400 copies stale: READ FROM THE DEVICE
+write NoCache, read NoCache: 38400 of 38400 copies found and changed on the device; 0 of 38400 copies stale: READ FROM THE DEVICE
+after re-mount  probe-TCPROBE00-000000000000000018e863.zip: 0 of 38400 copies as written
+after re-mount  probe-TCPROBE01-000000000000000018e863.zip: 0 of 38400 copies as written
+after re-mount  probe-TCPROBE02-000000000000000018e863.zip: 0 of 38400 copies as written
+after re-mount  probe-TCPROBE03-000000000000000018e863.zip: 0 of 38400 copies as written
+after re-mount  probe-TCPROBE04-000000000000000018e863.zip: 0 of 38400 copies as written
+== MS-DOS FAT32
+macos aarch64
+write Plain, read Plain: 38400 of 38400 copies found and changed on the device; 38400 of 38400 copies stale: read from the cache
+write Export, read Export: (the export says: read from the device) 38400 of 38400 copies found and changed on the device; 0 of 38400 copies stale: READ FROM THE DEVICE
+write Plain, read NoCache: 38400 of 38400 copies found and changed on the device; 38400 of 38400 copies stale: read from the cache
+write NoCache, read Plain: 38400 of 38400 copies found and changed on the device; 0 of 38400 copies stale: READ FROM THE DEVICE
+write NoCache, read NoCache: 38400 of 38400 copies found and changed on the device; 0 of 38400 copies stale: READ FROM THE DEVICE
+after re-mount  probe-TCPROBE00-000000000000000018e863.zip: 0 of 38400 copies as written
+after re-mount  probe-TCPROBE01-000000000000000018e863.zip: 0 of 38400 copies as written
+after re-mount  probe-TCPROBE02-000000000000000018e863.zip: 0 of 38400 copies as written
+after re-mount  probe-TCPROBE03-000000000000000018e863.zip: 0 of 38400 copies as written
+after re-mount  probe-TCPROBE04-000000000000000018e863.zip: 0 of 38400 copies as written

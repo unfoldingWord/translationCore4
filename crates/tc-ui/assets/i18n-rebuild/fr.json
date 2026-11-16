@@ -81,6 +81,7 @@
   "exchange.save.cancel": "Annuler",
   "exchange.save.chooseFolder": "Choisir un dossier",
   "exchange.save.done": "Enregistré sous {path}",
+  "exchange.save.doneUnchecked": "Le fichier {path} a été enregistré. Cet ordinateur n’a pas pu le vérifier sur le lecteur lui-même. Pour en être sûr, retirez la clé USB, rebranchez-la et ouvrez le fichier.",
   "exchange.save.folder": "Dossier : {path}",
   "exchange.save.subtitle": "Écrire {name} sur une clé USB ou dans un dossier pour qu’un coéquipier le reçoive.",
   "exchange.save.title": "Enregistrer le travail pour un coéquipier",

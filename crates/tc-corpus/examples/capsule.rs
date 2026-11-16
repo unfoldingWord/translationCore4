@@ -547,14 +547,14 @@ fn exchanged(ana: &Computer, work: &Path, runtime: &tokio::runtime::Runtime) -> 
     let folder_a = titus(ana, "exchanged");
     let a = ana.open(&folder_a);
     save_verse(&a, 1, 1, "Paul, as Ana has it");
-    let from_ana = runtime.block_on(export(&a, &stick, "Ana")).unwrap();
+    let from_ana = runtime.block_on(export(&a, &stick, "Ana")).unwrap().path;
     let juan = Computer::new(work, "exchanged-juan");
     let folder_b = juan.projects.join("exchanged");
     copy_project(&folder_a, &folder_b);
     let b = juan.open(&folder_b);
     runtime.block_on(receive(&b, &from_ana, "Ana")).unwrap();
     save_verse(&b, 1, 2, "in hope, as Juan has it");
-    let from_juan = runtime.block_on(export(&b, &stick, "Juan")).unwrap();
+    let from_juan = runtime.block_on(export(&b, &stick, "Juan")).unwrap().path;
     b.close().unwrap();
     runtime.block_on(receive(&a, &from_juan, "Juan")).unwrap();
     assert_eq!(words(&a, 1, 2).as_deref(), Some("in hope, as Juan has it"));

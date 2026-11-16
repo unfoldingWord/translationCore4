@@ -20,6 +20,10 @@ tokio = { workspace = true, features = ["rt", "time"] }
 url.workspace = true
 zip.workspace = true
 
+[target.'cfg(unix)'.dependencies]
+# The export's read from the device (STORAGE §10.1 E5): `F_NOCACHE`, `posix_fadvise`.
+rustix.workspace = true
+
 [dev-dependencies]
 proptest.workspace = true
 tc-door43-fake = { path = "../tc-door43-fake" }

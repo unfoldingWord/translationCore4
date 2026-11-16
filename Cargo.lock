@@ -3957,6 +3957,7 @@ version = "4.1.0"
 dependencies = [
  "git2",
  "proptest",
+ "rustix",
  "serde_json",
  "tc-api",
  "tc-burrito",

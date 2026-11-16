@@ -1524,7 +1524,10 @@ async fn foreign_files_windows_cannot_write_are_carried_and_not_written() {
     synced(&sync(&a, &door43).await);
     let stick = dir.path().join("stick");
     std::fs::create_dir_all(&stick).unwrap();
-    let exported = tc_sync::exchange::export(&a, &stick, "Ana").await.unwrap();
+    let exported = tc_sync::exchange::export(&a, &stick, "Ana")
+        .await
+        .unwrap()
+        .path;
     a.close().unwrap();
 
     let mut zip = zip::ZipArchive::new(std::fs::File::open(&exported).unwrap()).unwrap();
@@ -1548,7 +1551,10 @@ async fn foreign_files_windows_cannot_write_are_carried_and_not_written() {
     // The new project keeps them in its history: a later export (which checkpoints first)
     // carries all three again, byte for byte, and the folder still lacks them.
     save(&b, 1, 2, "in hope");
-    let again = tc_sync::exchange::export(&b, &stick, "Juan").await.unwrap();
+    let again = tc_sync::exchange::export(&b, &stick, "Juan")
+        .await
+        .unwrap()
+        .path;
     let missing: Vec<_> = b
         .notices()
         .into_iter()

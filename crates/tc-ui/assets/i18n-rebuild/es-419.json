@@ -81,6 +81,7 @@
   "exchange.save.cancel": "Cancelar",
   "exchange.save.chooseFolder": "Elegir carpeta",
   "exchange.save.done": "Guardado en {path}",
+  "exchange.save.doneUnchecked": "El archivo {path} se guardó. Esta computadora no pudo comprobarlo en la unidad misma. Para estar seguro, saca la memoria USB, vuelve a conectarla y abre el archivo.",
   "exchange.save.folder": "Carpeta: {path}",
   "exchange.save.subtitle": "Escribe {name} en una memoria USB o carpeta para que un compañero de equipo lo reciba.",
   "exchange.save.title": "Guardar trabajo para un compañero de equipo",

@@ -359,7 +359,10 @@ impl ExchangePort for ScriptedExchangePort {
         let next = lock(&self.exports).remove(&project);
         Box::pin(async move {
             match next {
-                Some(Ok(path)) => Ok(ExportedView { path }),
+                Some(Ok(path)) => Ok(ExportedView {
+                    path,
+                    read_from: tc_api::exchange::ReadFrom::Device,
+                }),
                 Some(Err(refusal)) => Err(refused(refusal)),
                 None => Err(JobEnd::Failed(ApiError::Unavailable(Feature::Exchange))),
             }
