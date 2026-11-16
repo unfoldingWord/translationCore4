@@ -8,9 +8,13 @@ cargo build -q -p tc-sync --example usbprobe
 probe="$PWD/target/debug/examples/usbprobe"
 work=$(mktemp -d)
 sw_vers | tr '\n' ' '; echo
-for fs in "ExFAT" "MS-DOS FAT32"; do
+for fs in "ExFAT" "MS-DOS FAT32" "APFS" "HFS+"; do
   echo "== $fs"
-  hdiutil create -quiet -size 64m -fs "$fs" -volname TCPROBE -layout NONE "$work/stick.dmg"
+  case $fs in
+    # APFS and HFS+ need a partition map; the probe finds the file's bytes wherever they are.
+    APFS | HFS+) hdiutil create -quiet -size 64m -fs "$fs" -volname TCPROBE "$work/stick.dmg" ;;
+    *) hdiutil create -quiet -size 64m -fs "$fs" -volname TCPROBE -layout NONE "$work/stick.dmg" ;;
+  esac
   hdiutil attach -nobrowse "$work/stick.dmg" >/dev/null
   "$probe" /Volumes/TCPROBE "$work/stick.dmg"
   hdiutil detach -quiet /Volumes/TCPROBE

@@ -11,7 +11,8 @@ macOS and on Linux. **Not run on Windows.**
 - **Linux:** kernel 7.0.12 (the Linux VM of Docker Desktop on the same Mac, arm64), in a
   privileged `rust:1-bookworm` container, `probe-linux.sh`, output `linux.txt`.
 - **The stick:** a disk image (macOS) or a file behind a loop device (Linux), 64 MB, formatted
-  as a stick is: ExFAT and FAT32, and ext4 on Linux. **No physical USB stick was used.**
+  as a stick is, ExFAT and FAT32, and as the computers' own disks are: APFS and HFS+ on macOS,
+  ext4 on Linux. **No physical USB stick was used.**
 
 ## Method
 
@@ -50,6 +51,9 @@ Controls, in every run:
 | macOS, ExFAT and FAT32 | `F_NOCACHE` on the writing handle | plainly | 0 | the device |
 | macOS, ExFAT and FAT32 | `F_NOCACHE` on the writing handle | `F_NOCACHE` on the reading handle | 0 | the device |
 | macOS, ExFAT and FAT32 | **the export's writer** | **the export's read-back** | 0 | the device |
+| macOS, HFS+ | each of the five ways above | | as above | as above |
+| macOS, APFS | plainly | plainly, or `F_NOCACHE` on the reading handle | 38,400 | the cache |
+| macOS, APFS | `F_NOCACHE` on the writing handle, or **the export's writer** | any | 1 (see below) | the device |
 | Linux, vfat, exfat and ext4 | plainly | plainly (what `verify` did until this change) | 38,400 | the cache |
 | Linux, vfat, exfat and ext4 | plainly | `posix_fadvise(DONTNEED)`, then plainly | 0 | the device |
 | Linux, vfat, exfat and ext4 | plainly | `O_DIRECT` | 0 | the device |
@@ -57,15 +61,21 @@ Controls, in every run:
 
 `macos.txt` and `linux.txt` are one run each, of the program as committed. Runs whose output
 was not kept, on 2026-11-15, before the export's writer was buffered and before the probe
-printed write times: the macOS script seven more times (14 volumes) and the Linux script twice.
+printed write times, with ExFAT and FAT32 only: the macOS script seven more times (14 volumes)
+and the Linux script twice.
 The export's rows read from the device on every volume. On macOS the plain row read from the
 cache on 12 of those 14 volumes and from the device on 2, and once, in a run of an earlier
 version of the probe, partly from the cache (1,746 copies stale). What the cache still holds
 is the system's choice, so a plain read proves nothing either way.
 
+On APFS one copy of each file's 38,400 was not changed in the image: after the re-mount every
+APFS file, the plainly written ones too, reads 1 copy as written. The file is in more than one
+piece there, and a copy cut by the end of a piece is not found as 32 bytes in a row. So the 1
+stale copy of the APFS rows is that unchanged copy, read from the device like the rest.
+
 The export's writer is buffered (1 MiB): a write kept out of the cache goes to the device as
-it is made. On the disk images the export's writer took 185 ms (ExFAT) and 327 ms (FAT32)
-against 330 and 540 ms for the plain writer and 448 and 701 ms for an unbuffered `F_NOCACHE`
+it is made. On the disk images the export's writer took 179 ms (ExFAT) and 302 ms (FAT32)
+against 388 and 551 ms for the plain writer and 465 and 691 ms for an unbuffered `F_NOCACHE`
 writer (`macos.txt`; one run, a disk image on an SSD, not a stick).
 
 ## What follows
@@ -95,6 +105,9 @@ writer (`macos.txt`; one run, a disk image on an SSD, not a stick).
 - A disk image and a loop device, not a USB stick, its controller or its own write cache. The
   probe shows the operating system's cache is passed. It does not show what a stick that lies
   about a flush does.
+- Network folders (SMB, NFS) and folders a cloud program syncs were not probed on any
+  platform. On macOS `F_NOCACHE` is accepted there too, and the export then says it read the
+  device; whether it did is not known.
 - Linux ran in Docker Desktop's VM on arm64, with the backing file in the container's own
   `/tmp`. It is one kernel (7.0.12). A file system served by a FUSE program (some exFAT and NTFS
   drivers on older systems) was not probed: `O_DIRECT` there passes the kernel's cache of the
