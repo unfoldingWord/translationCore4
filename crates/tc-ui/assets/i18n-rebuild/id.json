@@ -81,6 +81,7 @@
   "exchange.save.cancel": "Batal",
   "exchange.save.chooseFolder": "Pilih folder",
   "exchange.save.done": "Disimpan ke {path}",
+  "exchange.save.doneUnchecked": "Berkas {path} telah disimpan. Komputer ini tidak dapat memeriksanya langsung pada drive. Untuk memastikan, cabut flashdisk, pasang kembali, lalu buka berkasnya.",
   "exchange.save.folder": "Folder: {path}",
   "exchange.save.subtitle": "Tulis {name} ke flashdisk USB atau folder, untuk diterima oleh rekan tim.",
   "exchange.save.title": "Simpan pekerjaan untuk rekan tim",

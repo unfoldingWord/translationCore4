@@ -1859,8 +1859,9 @@ in Chromium against the real `tc4`, with the request filter of AD11
   file in `downloads/` and registers it (`Downloads::add`); the route answers only an id that is
   registered, with the name it was registered under, and streams the file. *(A2)*
 - **USB export** is not a download. `tc4Shell.chooseFolder()` gives the destination; the job
-  writes, then verifies from the device; "You can remove the stick" shows only after the verify
-  (STORAGE:3010-3017).
+  writes, then verifies from the device; "You can remove the stick" shows only after a verify
+  that read the device. Where the drive refuses that read the file is kept and the dialog says
+  it was not checked on the drive (STORAGE §10.1 E5).
 - **PDF.** `export/run { producer: PrintHtml, print: { setup, title, words } }` makes print HTML
   with OBS pictures inlined as `data:` URLs (`tC4:src/data/export/pdf.ts:76-87`) and ends with
   `Print { file_name }`; `GET /print/<job>` serves that document once the job is done. Its

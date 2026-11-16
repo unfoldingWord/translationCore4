@@ -81,6 +81,7 @@
   "exchange.save.cancel": "Скасувати",
   "exchange.save.chooseFolder": "Вибрати папку",
   "exchange.save.done": "Збережено у {path}",
+  "exchange.save.doneUnchecked": "Файл {path} збережено. Цей комп’ютер не зміг перевірити його на самому накопичувачі. Щоб переконатися, вийміть флешку, вставте її знову та відкрийте файл.",
   "exchange.save.folder": "Папка: {path}",
   "exchange.save.subtitle": "Записати {name} на USB-накопичувач або в папку для передачі колезі.",
   "exchange.save.title": "Зберегти роботу для колеги",

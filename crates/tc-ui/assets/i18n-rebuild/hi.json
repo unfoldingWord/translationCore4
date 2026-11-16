@@ -81,6 +81,7 @@
   "exchange.save.cancel": "रद्द करें",
   "exchange.save.chooseFolder": "फ़ोल्डर चुनें…",
   "exchange.save.done": "फ़ाइल {path} सहेजी गई और जाँची गई। आप स्टिक निकाल सकते हैं।",
+  "exchange.save.doneUnchecked": "फ़ाइल {path} सहेजी गई। यह कंप्यूटर ड्राइव पर ही इसकी जाँच नहीं कर सका। पक्का करने के लिए, स्टिक निकालें, उसे वापस लगाएँ और फ़ाइल खोलें।",
   "exchange.save.folder": "फ़ोल्डर: {path}",
   "exchange.save.subtitle": "टीम के साथी के प्राप्त करने के लिए {name} को USB स्टिक या फ़ोल्डर में लिखें।",
   "exchange.save.title": "साथी के लिए कार्य सहेजें",

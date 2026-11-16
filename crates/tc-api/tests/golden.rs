@@ -697,6 +697,7 @@ impl Example for ExportedView {
     fn example() -> Self {
         ExportedView {
             path: "/media/stick/tit-2026-10-25-ana.zip".into(),
+            read_from: tc_api::exchange::ReadFrom::Device,
         }
     }
 }

@@ -393,7 +393,8 @@ budget in `docs/PERFORMANCE.md`). Their tC4 tests stay mapped under `specs` in `
   gets a new project · B writes a verse and saves a file back · A receives B's file into the same
   project · C receives B's file as a new project.
 - End state: every computer holds every change it received; A's project has B's verse; each file
-  is verified when it is made, or deleted. A receive is whole or not at all.
+  is verified from the device when it is made, or deleted; where the drive refuses that read
+  the file is kept and the person is told it was not checked there. A receive is whole or not at all.
 - Must not: lose a change on either side; take in anything the file does not hold; run while a
   sync of the same project runs (the receive waits).
 

@@ -171,7 +171,8 @@ async fn juans_file_with(w: &UsbWorld, before_open: impl FnOnce(&Path)) -> PathB
     std::fs::create_dir_all(&stick).unwrap();
     let exported = tc_sync::exchange::export(&handle, &stick, "juan")
         .await
-        .unwrap();
+        .unwrap()
+        .path;
     handle.close().unwrap();
     // P5/INV-VALID-BURRITO on Juan's folder, which no FaultFs watch sees.
     assert_valid_burrito_files(&files_on_disk(&folder));

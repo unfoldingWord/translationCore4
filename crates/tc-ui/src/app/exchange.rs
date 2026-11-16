@@ -1,13 +1,15 @@
 //! USB exchange (unit E2; STORAGE §10, APP-DESIGN "E2 USB exchange"): the two dialogs' states,
 //! kept pure so the host tests drive them. "Save work for a teammate" writes an exchange file
 //! into a folder and says "You can remove the stick" only once the file read back from the
-//! device (INV-REMOVE-THE-STICK-ONLY-AFTER-VERIFY). "Receive work from a file" names the
+//! device (INV-REMOVE-THE-STICK-ONLY-AFTER-VERIFY, INV-STICK-SENTENCE-AFTER-DEVICE-READ); a
+//! file that could only be checked through the operating system's cache is kept, and the
+//! dialog says what was not checked. "Receive work from a file" names the
 //! file's project, asks to confirm, and shows what the receive brought.
 
 use tc_api::ApiError;
 use tc_api::door43::ProjectName;
 use tc_api::error::Flow;
-use tc_api::exchange::{ExchangeFile, ExportedView, IdentifyView, ReceivedView};
+use tc_api::exchange::{ExchangeFile, ExportedView, IdentifyView, ReadFrom, ReceivedView};
 use tc_api::ids::{ProjectRef, RequestId};
 use tc_api::jobs::ExchangePhase;
 use tc_api::refusal::Refusal;
@@ -124,10 +126,27 @@ impl ExportForm {
         };
     }
 
-    /// "You can remove the stick": only after the verify (never while working or failed).
+    /// "You can remove the stick": only after a verify that read the file from the device
+    /// (never while working, after a failure, or on the word of the operating system's cache:
+    /// INV-STICK-SENTENCE-AFTER-DEVICE-READ).
     pub fn stick_sentence(&self) -> Option<String> {
         match &self.step {
-            ExportStep::Done(view) => Some(t(keys::exchange::save::DONE, &[("path", &view.path)])),
+            ExportStep::Done(view) if view.read_from == ReadFrom::Device => {
+                Some(t(keys::exchange::save::DONE, &[("path", &view.path)]))
+            }
+            _ => None,
+        }
+    }
+
+    /// The file was saved, and the drive refused the read that would have checked it there
+    /// (owner, 2026-11-15, issue 867): the file stays and the person is told what was not
+    /// checked and how to be sure, never that the stick can be removed.
+    pub fn unchecked_sentence(&self) -> Option<String> {
+        match &self.step {
+            ExportStep::Done(view) if view.read_from == ReadFrom::Cache => Some(t(
+                keys::exchange::save::DONE_UNCHECKED,
+                &[("path", &view.path)],
+            )),
             _ => None,
         }
     }

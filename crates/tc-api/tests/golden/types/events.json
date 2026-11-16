@@ -170,7 +170,8 @@
         "value": {
           "type": "exported",
           "value": {
-            "path": "/media/stick/tit-2026-10-25-ana.zip"
+            "path": "/media/stick/tit-2026-10-25-ana.zip",
+            "readFrom": "device"
           }
         }
       }

@@ -4,7 +4,8 @@ use crate::door43::{computer, computer_on, copy_to, open, save, titus, words};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use tc_api::refusal::NewerFormat;
-use tc_sync::exchange::{ExchangeError, export, receive};
+use tc_sync::exchange::{ExchangeError, export, export_on, receive};
+use tc_sync::stick::{OsStick, ReadFrom, Stick, StickFile, Written};
 
 fn usb(dir: &Path) -> PathBuf {
     let stick = dir.join("stick");
@@ -27,12 +28,12 @@ async fn usb_both_directions() {
     let b = open(&juan, &folder_b);
     save(&a, 1, 1, "Paul, as Ana has it");
     save(&b, 1, 2, "in hope, as Juan has it");
-    let from_ana = export(&a, &stick, "Ana").await.unwrap();
+    let from_ana = export(&a, &stick, "Ana").await.unwrap().path;
     let report = receive(&b, &from_ana, "Ana (file of today)").await.unwrap();
     assert!(report.intake.packs > 0, "{report:?}");
     assert!(report.received_by.values().sum::<u32>() > 0, "{report:?}");
     assert_eq!(words(&b, 1, 1).as_deref(), Some("Paul, as Ana has it"));
-    let from_juan = export(&b, &stick, "Juan").await.unwrap();
+    let from_juan = export(&b, &stick, "Juan").await.unwrap().path;
     receive(&a, &from_juan, "Juan (file of today)")
         .await
         .unwrap();
@@ -61,7 +62,7 @@ async fn exchange_idempotent_and_relayed() {
     let folder_c = copy_to(&folder_a, &maria);
     let a = open(&ana, &folder_a);
     save(&a, 1, 1, "Paul, as Ana has it");
-    let from_ana = export(&a, &stick, "Ana").await.unwrap();
+    let from_ana = export(&a, &stick, "Ana").await.unwrap().path;
     let b = open(&juan, &folder_b);
     receive(&b, &from_ana, "Ana").await.unwrap();
     let again = receive(&b, &from_ana, "Ana").await.unwrap();
@@ -69,7 +70,7 @@ async fn exchange_idempotent_and_relayed() {
     assert!(again.received_by.is_empty(), "{again:?}");
     assert!(again.new_conflicts.is_empty(), "{again:?}");
     save(&b, 1, 2, "in hope, as Juan has it");
-    let relayed = export(&b, &stick, "Juan").await.unwrap();
+    let relayed = export(&b, &stick, "Juan").await.unwrap().path;
     let c = open(&maria, &folder_c);
     receive(&c, &relayed, "Juan").await.unwrap();
     assert_eq!(words(&c, 1, 1).as_deref(), Some("Paul, as Ana has it"));
@@ -92,7 +93,7 @@ async fn a_hand_edited_file_in_an_exchange_file_is_not_taken_in_and_named_once()
     let folder_b = copy_to(&folder_a, &juan);
     let a = open(&ana, &folder_a);
     save(&a, 1, 1, "Paul, as Ana has it");
-    let exported = export(&a, &stick, "Ana").await.unwrap();
+    let exported = export(&a, &stick, "Ana").await.unwrap().path;
     // Someone edits the book inside the file with another program.
     let edited = stick.join("edited.zip");
     rewrite_entry(&exported, &edited, "ingredients/TIT.usfm", |text| {
@@ -125,7 +126,7 @@ async fn a_file_of_another_project_is_refused() {
     let ana = computer(dir.path(), "ana");
     let folder_a = titus(&ana);
     let a = open(&ana, &folder_a);
-    let exported = export(&a, &stick, "Ana").await.unwrap();
+    let exported = export(&a, &stick, "Ana").await.unwrap().path;
     a.close().unwrap();
     let juan = computer(dir.path(), "juan");
     let other = titus(&juan);
@@ -147,7 +148,7 @@ async fn usb_export_is_a_burrito_with_metadata_first() {
     let ana = computer(dir.path(), "ana");
     let folder = titus(&ana);
     let a = open(&ana, &folder);
-    let exported = export(&a, &stick, "Ana P\u{e9}rez").await.unwrap();
+    let exported = export(&a, &stick, "Ana P\u{e9}rez").await.unwrap().path;
     a.close().unwrap();
     let name = exported.file_name().unwrap().to_str().unwrap().to_owned();
     assert!(name.ends_with("-AnaPérez.zip"), "{name}");
@@ -225,7 +226,7 @@ async fn loss_usb_one_bad_pack_rest_taken() {
         .await
         .unwrap();
     save(&a, 1, 2, "in hope, as Ana has it");
-    let exported = export(&a, &stick, "Ana").await.unwrap();
+    let exported = export(&a, &stick, "Ana").await.unwrap().path;
     let mut zip = zip::ZipArchive::new(std::fs::File::open(&exported).unwrap()).unwrap();
     let mut packs: Vec<String> = (0..zip.len())
         .map(|i| zip.by_index(i).unwrap().name().to_owned())
@@ -274,7 +275,7 @@ async fn a_file_received_into_a_read_only_project_is_refused() {
     let folder_a = titus(&ana);
     let a = open(&ana, &folder_a);
     save(&a, 1, 1, "Paul, as Ana has it");
-    let exported = export(&a, &stick, "Ana").await.unwrap();
+    let exported = export(&a, &stick, "Ana").await.unwrap().path;
     a.close().unwrap();
     let juan = computer_on(
         dir.path(),
@@ -311,7 +312,7 @@ async fn a_newcomer_creates_the_project_from_a_file() {
     let folder_a = titus(&ana);
     let a = open(&ana, &folder_a);
     save(&a, 1, 1, "Paul, as Ana has it");
-    let exported = export(&a, &stick, "Ana").await.unwrap();
+    let exported = export(&a, &stick, "Ana").await.unwrap().path;
     let juan = computer(dir.path(), "juan");
     let folder_b = tc_sync::exchange::receive_new(&juan.store, &exported, "Titus")
         .unwrap()
@@ -320,7 +321,7 @@ async fn a_newcomer_creates_the_project_from_a_file() {
     assert_eq!(words(&b, 1, 1).as_deref(), Some("Paul, as Ana has it"));
     assert_ne!(b.facts().device, a.facts().device);
     save(&b, 1, 2, "in hope, as Juan has it");
-    let from_juan = export(&b, &stick, "Juan").await.unwrap();
+    let from_juan = export(&b, &stick, "Juan").await.unwrap().path;
     receive(&a, &from_juan, "Juan").await.unwrap();
     assert_eq!(words(&a, 1, 2).as_deref(), Some("in hope, as Juan has it"));
     a.close().unwrap();
@@ -351,7 +352,7 @@ async fn loss_usb_damaged_carried_entry_not_recorded() {
     tokio::task::block_in_place(|| a.focus().wait().unwrap());
     a.wait_idle();
     save(&a, 1, 1, "Paul, as Ana has it");
-    let exported = export(&a, &stick, "Ana").await.unwrap();
+    let exported = export(&a, &stick, "Ana").await.unwrap().path;
     // The same file with the audio stored as it is, so one byte of it can be flipped.
     let stored = stick.join("stored.zip");
     {
@@ -434,7 +435,7 @@ async fn a_receive_counts_a_teammates_verse_not_their_pins() {
     })
     .wait()
     .unwrap();
-    let from_juan = export(&b, &stick, "Juan").await.unwrap();
+    let from_juan = export(&b, &stick, "Juan").await.unwrap().path;
     let a = open(&ana, &folder_a);
     let report = receive(&a, &from_juan, "Juan").await.unwrap();
     assert_eq!(
@@ -477,7 +478,7 @@ async fn a_recording_changed_on_both_sides_keeps_both_files_after_a_receive() {
     std::fs::write(folder_b.join(song), &theirs).unwrap();
     tokio::task::block_in_place(|| b.focus().wait().unwrap());
     b.wait_idle();
-    let from_juan = export(&b, &stick, "Juan").await.unwrap();
+    let from_juan = export(&b, &stick, "Juan").await.unwrap().path;
     receive(&a, &from_juan, "Juan").await.unwrap();
     a.wait_idle();
     let audio: Vec<(String, Vec<u8>)> = std::fs::read_dir(folder_a.join("ingredients/audio"))
@@ -578,7 +579,7 @@ async fn an_export_while_a_book_file_is_undecided_is_a_valid_burrito() {
     fs.set_unreadable(&usfm, true);
     let a = open(&ana, &folder);
     save(&a, 1, 1, "third save");
-    let exported = export(&a, &stick, "Ana").await.unwrap();
+    let exported = export(&a, &stick, "Ana").await.unwrap().path;
     let mut zip = zip::ZipArchive::new(std::fs::File::open(&exported).unwrap()).unwrap();
     let mut project = tc_burrito::MemProject::new();
     let mut metadata = Vec::new();
@@ -632,6 +633,148 @@ async fn a_failed_export_or_receive_names_the_file() {
     a.close().unwrap();
 }
 
+/// What a platform needs before a read comes from the device, as the probe found them
+/// (`docs/evidence/usb-verify-2026-11-15.md`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Bypass {
+    /// Linux, Windows: the read itself goes around the cache.
+    OnRead,
+    /// macOS: only a file whose writer kept it out of the cache is read from the device.
+    OnWrite,
+    /// No call reaches the device.
+    Never,
+}
+
+/// A stick with a cache in front of it. The cache holds the bytes written (the real file);
+/// the device holds them with one byte changed when `failing`.
+struct CachedStick {
+    bypass: Bypass,
+    failing: bool,
+    /// The file was made through this stick, not beside it.
+    created: std::sync::atomic::AtomicBool,
+}
+
+impl CachedStick {
+    fn new(bypass: Bypass, failing: bool) -> std::sync::Arc<Self> {
+        std::sync::Arc::new(Self {
+            bypass,
+            failing,
+            created: std::sync::atomic::AtomicBool::new(false),
+        })
+    }
+}
+
+/// The stick's file: its writer keeps the bytes out of the cache where the platform does so
+/// at the write, and says which it did.
+struct CachedFile(Box<dyn StickFile>, Written);
+
+impl Write for CachedFile {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.write(buf)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.0.flush()
+    }
+}
+
+impl std::io::Seek for CachedFile {
+    fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
+        self.0.seek(pos)
+    }
+}
+
+impl StickFile for CachedFile {
+    fn sync_all(self: Box<Self>) -> std::io::Result<Written> {
+        self.0.sync_all()?;
+        Ok(self.1)
+    }
+}
+
+impl Stick for CachedStick {
+    fn create(&self, path: &Path) -> std::io::Result<Box<dyn StickFile>> {
+        self.created
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        let written = match self.bypass {
+            Bypass::OnWrite => Written::OutOfCache,
+            Bypass::OnRead | Bypass::Never => Written::ThroughCache,
+        };
+        Ok(Box::new(CachedFile(OsStick.create(path)?, written)))
+    }
+
+    fn read_from_device(
+        &self,
+        path: &Path,
+        written: Written,
+    ) -> std::io::Result<(Vec<u8>, ReadFrom)> {
+        let cache = std::fs::read(path)?;
+        let mut device = cache.clone();
+        if self.failing {
+            let middle = device.len() / 2;
+            device[middle] ^= 0xFF;
+        }
+        let kept_out = written == Written::OutOfCache
+            && self.created.load(std::sync::atomic::Ordering::SeqCst);
+        Ok(match self.bypass {
+            Bypass::Never => (cache, ReadFrom::Cache),
+            Bypass::OnRead => (device, ReadFrom::Device),
+            Bypass::OnWrite if kept_out => (device, ReadFrom::Device),
+            // The writer left the bytes in the cache: the read is served from it.
+            Bypass::OnWrite => (cache, ReadFrom::Cache),
+        })
+    }
+}
+
+fn zips(stick: &Path) -> Vec<String> {
+    walk(stick)
+        .into_iter()
+        .filter(|name| name.ends_with(".zip") || name.ends_with(".tmp"))
+        .collect()
+}
+
+/// INV-STICK-SENTENCE-AFTER-DEVICE-READ (STORAGE §10.1 E5, §15 L85): the export's check reads
+/// the stick, not the cache. A failing stick whose cache still shows the bytes written ends
+/// refused with the file deleted, on a platform that bypasses the cache at the read and on
+/// one that bypasses it at the write; a check that could only read the cache says so, so the
+/// person is never told the stick can be removed on its word.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn usb_export_verify_reads_device() {
+    let dir = tempfile::tempdir().unwrap();
+    let ana = computer(dir.path(), "ana");
+    let folder = titus(&ana);
+    let a = open(&ana, &folder);
+    save(&a, 1, 1, "Paul, as Ana has it");
+    for bypass in [Bypass::OnRead, Bypass::OnWrite] {
+        let stick = usb(&dir.path().join(format!("failing-{bypass:?}")));
+        let exported = export_on(&a, &stick, "Ana", CachedStick::new(bypass, true)).await;
+        assert!(
+            matches!(exported, Err(ExchangeError::NotVerified(_))),
+            "INV-STICK-SENTENCE-AFTER-DEVICE-READ: {bypass:?}: the stick holds other bytes \
+             than the cache, and the export ended {exported:?}"
+        );
+        assert_eq!(zips(&stick), Vec::<String>::new(), "{bypass:?}: deleted");
+
+        let stick = usb(&dir.path().join(format!("sound-{bypass:?}")));
+        let exported = export_on(&a, &stick, "Ana", CachedStick::new(bypass, false))
+            .await
+            .unwrap();
+        assert_eq!(exported.read_from, ReadFrom::Device, "{bypass:?}");
+        assert_eq!(zips(&stick).len(), 1, "{bypass:?}");
+    }
+    // Where no call reaches the device the file stays, and the result says what was read.
+    let stick = usb(&dir.path().join("cache-only"));
+    let exported = export_on(&a, &stick, "Ana", CachedStick::new(Bypass::Never, true))
+        .await
+        .unwrap();
+    assert_eq!(
+        exported.read_from,
+        ReadFrom::Cache,
+        "INV-STICK-SENTENCE-AFTER-DEVICE-READ"
+    );
+    assert_eq!(zips(&stick).len(), 1, "the file is kept");
+    assert!(exported.path.exists(), "{exported:?}");
+    a.close().unwrap();
+}
+
 /// A newer major whose other fields this app cannot parse (INV-FORMAT-HEADER-FROZEN).
 const FORMAT_2_RESHAPED: &str = r#"{"format":"tc-project","major":2,"minor":0,"minReaderMinor":0,"derivations":"moved","derivedPaths":{}}"#;
 
@@ -650,7 +793,7 @@ async fn file_of_format(dir: &Path, format: String) -> (crate::door43::Computer,
     let ana = computer(dir, "ana");
     let folder_a = titus(&ana);
     let a = open(&ana, &folder_a);
-    let exported = export(&a, &stick, "Ana").await.unwrap();
+    let exported = export(&a, &stick, "Ana").await.unwrap().path;
     a.close().unwrap();
     let newer = stick.join("newer.zip");
     rewrite_entry(&exported, &newer, "ingredients/tc/format.json", |_| {

@@ -5,7 +5,7 @@
 use tc_api::ApiError;
 use tc_api::error::Flow;
 use tc_api::exchange::{
-    ExchangeFile, ExportedView, HandEditOutcome, HandEdited, IdentifyView, ReceivedView,
+    ExchangeFile, ExportedView, HandEditOutcome, HandEdited, IdentifyView, ReadFrom, ReceivedView,
 };
 use tc_api::ids::{ProjectRef, RequestId};
 use tc_api::jobs::ExchangePhase;
@@ -32,6 +32,7 @@ fn titus() -> ExchangeProject {
 fn exported() -> ExportedView {
     ExportedView {
         path: "/media/stick/tit-2026-10-25-ana.zip".into(),
+        read_from: ReadFrom::Device,
     }
 }
 
@@ -58,6 +59,34 @@ fn the_stick_sentence_needs_a_verified_export() {
     ex.ended(rid(2), JobEnd::Done(exported()), rid(3));
     let sentence = ex.stick_sentence().unwrap();
     assert!(sentence.contains("remove the stick"), "{sentence}");
+    assert!(sentence.contains("tit-2026-10-25-ana.zip"), "{sentence}");
+    assert_eq!(ex.unchecked_sentence(), None);
+}
+
+/// INV-STICK-SENTENCE-AFTER-DEVICE-READ: an export whose check could only read the operating
+/// system's cache keeps the file and says what was not checked; it never says the stick can
+/// be removed.
+#[test]
+fn an_export_checked_only_in_the_cache_never_says_remove_the_stick() {
+    let mut ex = ExportForm::open(titus(), rid(1));
+    ex.chose_folder(Some("/media/stick".into()), rid(2));
+    ex.press().unwrap();
+    ex.ended(
+        rid(2),
+        JobEnd::Done(ExportedView {
+            read_from: ReadFrom::Cache,
+            ..exported()
+        }),
+        rid(3),
+    );
+    assert_eq!(
+        ex.stick_sentence(),
+        None,
+        "INV-STICK-SENTENCE-AFTER-DEVICE-READ"
+    );
+    let sentence = ex.unchecked_sentence().unwrap();
+    assert!(sentence.contains("could not check"), "{sentence}");
+    assert!(!sentence.contains("remove the stick"), "{sentence}");
     assert!(sentence.contains("tit-2026-10-25-ana.zip"), "{sentence}");
 }
 

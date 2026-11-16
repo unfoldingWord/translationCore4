@@ -11,6 +11,7 @@ pub mod join;
 pub mod machine;
 mod names;
 pub mod share;
+pub mod stick;
 pub mod sync;
 pub mod username;
 

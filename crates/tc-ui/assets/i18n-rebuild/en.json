@@ -77,6 +77,7 @@
   "exchange.save.cancel": "Cancel",
   "exchange.save.chooseFolder": "Choose a folder…",
   "exchange.save.done": "The file {path} was saved and checked. You can remove the stick.",
+  "exchange.save.doneUnchecked": "The file {path} was saved. This computer could not check it on the drive itself. To be sure, take the stick out, put it back in, and open the file.",
   "exchange.save.folder": "Folder: {path}",
   "exchange.save.subtitle": "Write {name} to a USB stick or a folder, for a teammate to receive.",
   "exchange.save.title": "Save work for a teammate",

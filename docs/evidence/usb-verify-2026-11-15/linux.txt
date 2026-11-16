@@ -1,0 +1,34 @@
+Linux 7.0.12-linuxkit
+== vfat
+linux aarch64
+write Plain (11 ms), read Plain: 38400 of 38400 copies found and changed on the device; 38400 of 38400 copies stale: read from the cache
+write Export (41 ms), read Export: (the export says: read from the device) 38400 of 38400 copies found and changed on the device; 0 of 38400 copies stale: READ FROM THE DEVICE
+write Plain (14 ms), read DontNeed: 38400 of 38400 copies found and changed on the device; 0 of 38400 copies stale: READ FROM THE DEVICE
+write Plain (34 ms), read Direct: 38400 of 38400 copies found and changed on the device; 0 of 38400 copies stale: READ FROM THE DEVICE
+after re-mount  probe-TCPROBE00-000000000000000018e865.zip: 0 of 38400 copies as written
+after re-mount  probe-TCPROBE01-000000000000000018e865.zip: 0 of 38400 copies as written
+after re-mount  probe-TCPROBE02-000000000000000018e865.zip: 0 of 38400 copies as written
+after re-mount  probe-TCPROBE03-000000000000000018e865.zip: 0 of 38400 copies as written
+== exfat
+linux aarch64
+write Plain (13 ms), read Plain: 38400 of 38400 copies found and changed on the device; 38400 of 38400 copies stale: read from the cache
+write Export (8 ms), read Export: (the export says: read from the device) 38400 of 38400 copies found and changed on the device; 0 of 38400 copies stale: READ FROM THE DEVICE
+write Plain (10 ms), read DontNeed: 38400 of 38400 copies found and changed on the device; 0 of 38400 copies stale: READ FROM THE DEVICE
+write Plain (8 ms), read Direct: 38400 of 38400 copies found and changed on the device; 0 of 38400 copies stale: READ FROM THE DEVICE
+after re-mount  probe-TCPROBE00-000000000000000018e865.zip: 0 of 38400 copies as written
+after re-mount  probe-TCPROBE01-000000000000000018e865.zip: 0 of 38400 copies as written
+after re-mount  probe-TCPROBE02-000000000000000018e865.zip: 0 of 38400 copies as written
+after re-mount  probe-TCPROBE03-000000000000000018e865.zip: 0 of 38400 copies as written
+== ext4
+linux aarch64
+write Plain (8 ms), read Plain: 38401 of 38400 copies found and changed on the device; 38400 of 38400 copies stale: read from the cache
+write Export (9 ms), read Export: (the export says: read from the device) 38401 of 38400 copies found and changed on the device; 0 of 38400 copies stale: READ FROM THE DEVICE
+write Plain (14 ms), read DontNeed: 38401 of 38400 copies found and changed on the device; 0 of 38400 copies stale: READ FROM THE DEVICE
+write Plain (18 ms), read Direct: 38401 of 38400 copies found and changed on the device; 0 of 38400 copies stale: READ FROM THE DEVICE
+after re-mount  probe-TCPROBE03-000000000000000018e865.zip: 0 of 38400 copies as written
+after re-mount  probe-TCPROBE00-000000000000000018e865.zip: 0 of 38400 copies as written
+after re-mount  probe-TCPROBE02-000000000000000018e865.zip: 0 of 38400 copies as written
+after re-mount  probe-TCPROBE01-000000000000000018e865.zip: 0 of 38400 copies as written
+
+== where the backing file was
+overlay        overlay  61202244 5108164  52952756   9% /

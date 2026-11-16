@@ -81,6 +81,7 @@
   "exchange.save.cancel": "إلغاء",
   "exchange.save.chooseFolder": "اختر مجلدًا…",
   "exchange.save.done": "تم حفظ الملف {path} والتحقق منه. يمكنك الآن إزالة وحدة الذاكرة.",
+  "exchange.save.doneUnchecked": "تم حفظ الملف {path}. لم يتمكن هذا الحاسوب من التحقق منه على القرص نفسه. للتأكد، أخرج وحدة الذاكرة، ثم أعد إدخالها وافتح الملف.",
   "exchange.save.folder": "المجلد: {path}",
   "exchange.save.subtitle": "كتابة {name} على وحدة ذاكرة USB أو في مجلد ليستلمه زميل في الفريق.",
   "exchange.save.title": "حفظ العمل لزميل في الفريق",

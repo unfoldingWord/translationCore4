@@ -81,6 +81,7 @@
   "exchange.save.cancel": "Hủy",
   "exchange.save.chooseFolder": "Chọn một thư mục…",
   "exchange.save.done": "Tập tin {path} đã được lưu và kiểm tra. Bạn có thể rút ổ USB.",
+  "exchange.save.doneUnchecked": "Tập tin {path} đã được lưu. Máy tính này không thể kiểm tra tập tin ngay trên ổ đĩa. Để chắc chắn, hãy rút ổ USB, cắm lại rồi mở tập tin.",
   "exchange.save.folder": "Thư mục: {path}",
   "exchange.save.subtitle": "Ghi {name} vào ổ USB hoặc thư mục để đồng đội tiếp nhận.",
   "exchange.save.title": "Lưu công việc cho đồng đội",

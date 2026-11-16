@@ -56,12 +56,28 @@ pub struct Export {
     pub destination: String,
 }
 
-/// The exchange file written and verified: only now may the stick be removed.
+/// The exchange file written and checked. Only a check that read the file from the device
+/// ([`ReadFrom::Device`]) lets the person be told the stick can be removed
+/// (INV-STICK-SENTENCE-AFTER-DEVICE-READ).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "proptest", derive(proptest_derive::Arbitrary))]
 #[serde(rename_all = "camelCase")]
 pub struct ExportedView {
     pub path: String,
+    pub read_from: ReadFrom,
+}
+
+/// Where the bytes came from that the check of a written exchange file read (STORAGE §10.1
+/// E5).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "proptest", derive(proptest_derive::Arbitrary))]
+#[serde(rename_all = "camelCase")]
+pub enum ReadFrom {
+    /// The device: these are the bytes the stick holds.
+    Device,
+    /// The operating system's cache: these are the bytes written, whatever the stick holds.
+    /// The drive or folder refused a read around the cache.
+    Cache,
 }
 
 /// `exchange/receive` (job `ExchangeReceive`): takes the file's packs into `project`, whole or

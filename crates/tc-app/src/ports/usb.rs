@@ -110,8 +110,10 @@ impl ExchangePort for UsbExchange {
             let _ = tokio::task::spawn_blocking(move || drop(handle)).await;
             drop(lease);
             app.sessions().settled(&project).await;
+            let written = written?;
             Ok(ExportedView {
-                path: written?.to_string_lossy().into_owned(),
+                path: written.path.to_string_lossy().into_owned(),
+                read_from: written.read_from,
             })
         })
     }

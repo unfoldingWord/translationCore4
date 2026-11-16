@@ -228,7 +228,7 @@ async fn every_capsule_edits_saves_and_exchanges() {
             "INV-OLD-PROJECTS-OPEN-UNCHANGED: the checkpoint of {what} made no commit: {:?}",
             report.skipped
         );
-        let file = export(&a, &stick, "Ana").await.unwrap();
+        let file = export(&a, &stick, "Ana").await.unwrap().path;
         let b = juan.open(&folder_b);
         let received = receive(&b, &file, "Ana").await.unwrap();
         assert!(received.intake.packs > 0, "{what}: {received:?}");

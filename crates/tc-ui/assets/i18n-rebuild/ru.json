@@ -81,6 +81,7 @@
   "exchange.save.cancel": "Отмена",
   "exchange.save.chooseFolder": "Выбрать папку",
   "exchange.save.done": "Сохранено в {path}",
+  "exchange.save.doneUnchecked": "Файл {path} сохранён. Этот компьютер не смог проверить его на самом накопителе. Чтобы убедиться, извлеките флешку, вставьте её снова и откройте файл.",
   "exchange.save.folder": "Папка: {path}",
   "exchange.save.subtitle": "Записать проект {name} на USB-накопитель или в папку для передачи коллеге.",
   "exchange.save.title": "Сохранить работу для коллеги",

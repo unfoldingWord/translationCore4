@@ -116,6 +116,7 @@ pub fn SaveForTeammate() -> impl IntoView {
                         .unwrap_or_default();
                     let working_line = f.working_line();
                     let stick = f.stick_sentence();
+                    let unchecked = f.unchecked_sentence();
                     let failed = match &f.step {
                         ExportStep::Failed(text) => Some(text.clone()),
                         _ => None,
@@ -137,6 +138,7 @@ pub fn SaveForTeammate() -> impl IntoView {
                         })}
                         {working_line.map(|line| working("save-for-teammate-working", line))}
                         {stick.map(|text| callout("save-for-teammate-done", CalloutTone::Info, text))}
+                        {unchecked.map(|text| callout("save-for-teammate-unchecked", CalloutTone::Warn, text))}
                         {failed.map(|text| callout("save-for-teammate-error", CalloutTone::Warn, text))}
                     }
                 })}

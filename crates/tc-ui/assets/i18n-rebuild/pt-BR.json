@@ -81,6 +81,7 @@
   "exchange.save.cancel": "Cancelar",
   "exchange.save.chooseFolder": "Escolher pasta",
   "exchange.save.done": "Salvo em {path}",
+  "exchange.save.doneUnchecked": "O arquivo {path} foi salvo. Este computador não conseguiu verificá-lo na própria unidade. Para ter certeza, retire o pen drive, conecte-o de novo e abra o arquivo.",
   "exchange.save.folder": "Pasta: {path}",
   "exchange.save.subtitle": "Gravar {name} em uma unidade USB ou pasta para um colega de equipe receber.",
   "exchange.save.title": "Salvar trabalho para um colega de equipe",
