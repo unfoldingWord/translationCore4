@@ -140,7 +140,7 @@ impl ExportForm {
 
     /// The file was saved, and the drive refused the read that would have checked it there
     /// (owner, 2026-11-15, issue 867): the file stays and the person is told what was not
-    /// checked, with no word about removing the stick.
+    /// checked and how to be sure, never that the stick can be removed.
     pub fn unchecked_sentence(&self) -> Option<String> {
         match &self.step {
             ExportStep::Done(view) if view.read_from == ReadFrom::Cache => Some(t(

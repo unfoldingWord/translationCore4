@@ -141,28 +141,43 @@ fn read_uncached(path: &Path, _written: Written) -> std::io::Result<Option<Vec<u
         const FILE_FLAG_NO_BUFFERING: u32 = 0x2000_0000;
         options.custom_flags(FILE_FLAG_NO_BUFFERING);
     }
-    // A file system without unbuffered reads refuses the open (tmpfs, some network folders).
-    let Ok(mut file) = options.open(path) else {
-        return Ok(None);
+    // A file system without unbuffered reads refuses the open (some network folders, older
+    // tmpfs). Any other failure is the device's, and fails the verify.
+    let mut file = match options.open(path) {
+        Ok(file) => file,
+        Err(e) if refused(&e) => return Ok(None),
+        Err(e) => return Err(e),
     };
+    let len = usize::try_from(file.metadata()?.len()).map_err(std::io::Error::other)?;
     // An unbuffered read takes a buffer at a sector boundary: the aligned part of an owned one.
     let mut owned = vec![0u8; CHUNK + ALIGN];
     let start = owned.as_ptr().align_offset(ALIGN);
     let Some(buf) = owned.get_mut(start..start + CHUNK) else {
         return Ok(None);
     };
-    let mut bytes = Vec::new();
-    loop {
+    let mut bytes = Vec::with_capacity(len);
+    // Stops at the file's length: the last read is short and leaves the position off a sector
+    // boundary, where another unbuffered read may be refused.
+    while bytes.len() < len {
         match file.read(buf) {
-            Ok(0) => return Ok(Some(bytes)),
+            Ok(0) => break,
             Ok(n) => bytes.extend_from_slice(&buf[..n]),
             // Some file systems take the open and refuse the first unbuffered read.
-            Err(e) if bytes.is_empty() && e.kind() == std::io::ErrorKind::InvalidInput => {
-                return Ok(None);
-            }
+            Err(e) if bytes.is_empty() && refused(&e) => return Ok(None),
             Err(e) => return Err(e),
         }
     }
+    Ok(Some(bytes))
+}
+
+/// The file system does not do unbuffered reads (`EINVAL`, `EOPNOTSUPP`; Windows
+/// `ERROR_INVALID_PARAMETER`).
+#[cfg(any(target_os = "linux", target_os = "android", windows))]
+fn refused(error: &std::io::Error) -> bool {
+    matches!(
+        error.kind(),
+        std::io::ErrorKind::InvalidInput | std::io::ErrorKind::Unsupported
+    )
 }
 
 #[cfg(not(any(

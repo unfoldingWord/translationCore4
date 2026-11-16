@@ -35,9 +35,9 @@ Controls, in every run:
   filled the cache, which made the macOS writer's `F_NOCACHE` look useless.
 - After the run the volume is unmounted and mounted again, and every file is read plainly. All
   read 0 of 38,400 copies as written: the change was in the files' own bytes.
-- On macOS, in a first probe (a Python script, not kept), the raw device (`/dev/rdiskN`) was
-  read at the file's offset and showed the changed bytes while a plain read of the file showed
-  the bytes written.
+- On macOS, in a first probe (a Python script; neither it nor its output was kept), the raw
+  device (`/dev/rdiskN`) was read at the file's offset and showed the changed bytes while a
+  plain read of the file showed the bytes written.
 
 ## Results
 
@@ -55,12 +55,18 @@ Controls, in every run:
 | Linux, vfat, exfat and ext4 | plainly | `O_DIRECT` | 0 | the device |
 | Linux, vfat, exfat and ext4 | **the export's writer** | **the export's read-back** | 0 | the device |
 
-The macOS script, as committed, was run seven times: 14 volumes. The export's rows read from
-the device on all 14. The plain row read from the cache on 12 and from the device on 2; in a
-run of an earlier version of the probe it read partly from the cache (1,746 copies stale). What
-the cache still holds is the system's choice, so a plain read proves nothing either way. The
-Linux script was run once as committed, and once in an earlier version with the same rows and
-the same results.
+`macos.txt` and `linux.txt` are one run each, of the program as committed. Runs whose output
+was not kept, on 2026-11-15, before the export's writer was buffered and before the probe
+printed write times: the macOS script seven more times (14 volumes) and the Linux script twice.
+The export's rows read from the device on every volume. On macOS the plain row read from the
+cache on 12 of those 14 volumes and from the device on 2, and once, in a run of an earlier
+version of the probe, partly from the cache (1,746 copies stale). What the cache still holds
+is the system's choice, so a plain read proves nothing either way.
+
+The export's writer is buffered (1 MiB): a write kept out of the cache goes to the device as
+it is made. On the disk images the export's writer took 185 ms (ExFAT) and 327 ms (FAT32)
+against 330 and 540 ms for the plain writer and 448 and 701 ms for an unbuffered `F_NOCACHE`
+writer (`macos.txt`; one run, a disk image on an SSD, not a stick).
 
 ## What follows
 
@@ -77,7 +83,8 @@ the same results.
    nothing.
 4. **Windows: not probed.** The export opens the file with `FILE_FLAG_NO_BUFFERING` and reads
    into an aligned buffer, which Microsoft documents as a read with no system cache. That code
-   is type-checked for `x86_64-pc-windows-msvc` and has never run. A probe there needs a stick
+   has never run. `stick.rs` alone was type-checked for `x86_64-pc-windows-msvc` in a scratch
+   crate on the Mac; the workspace was not built for Windows. A probe there needs a stick
    whose bytes can be changed from outside Windows, for example a second raw disk of the
    Windows VM (`scripts/tools/winvm`) backed by a file on its Linux host. `usbprobe` changes
    the backing file itself, which a guest cannot reach, so it would first need a mode that
@@ -88,8 +95,8 @@ the same results.
 - A disk image and a loop device, not a USB stick, its controller or its own write cache. The
   probe shows the operating system's cache is passed. It does not show what a stick that lies
   about a flush does.
-- Linux ran in Docker Desktop's VM on arm64, with the backing file on a folder shared from the
-  Mac. It is one kernel (7.0.12). A file system served by a FUSE program (some exFAT and NTFS
+- Linux ran in Docker Desktop's VM on arm64, with the backing file in the container's own
+  `/tmp`. It is one kernel (7.0.12). A file system served by a FUSE program (some exFAT and NTFS
   drivers on older systems) was not probed: `O_DIRECT` there passes the kernel's cache of the
   file, not the block device's cache the program reads through.
 - macOS: another program that reads the file between the write and the read-back (an indexer,

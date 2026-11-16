@@ -650,6 +650,7 @@ enum Bypass {
 struct CachedStick {
     bypass: Bypass,
     failing: bool,
+    /// The file was made through this stick, not beside it.
     created: std::sync::atomic::AtomicBool,
 }
 
@@ -663,17 +664,47 @@ impl CachedStick {
     }
 }
 
+/// The stick's file: its writer keeps the bytes out of the cache where the platform does so
+/// at the write, and says which it did.
+struct CachedFile(Box<dyn StickFile>, Written);
+
+impl Write for CachedFile {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.write(buf)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.0.flush()
+    }
+}
+
+impl std::io::Seek for CachedFile {
+    fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
+        self.0.seek(pos)
+    }
+}
+
+impl StickFile for CachedFile {
+    fn sync_all(self: Box<Self>) -> std::io::Result<Written> {
+        self.0.sync_all()?;
+        Ok(self.1)
+    }
+}
+
 impl Stick for CachedStick {
     fn create(&self, path: &Path) -> std::io::Result<Box<dyn StickFile>> {
         self.created
             .store(true, std::sync::atomic::Ordering::SeqCst);
-        OsStick.create(path)
+        let written = match self.bypass {
+            Bypass::OnWrite => Written::OutOfCache,
+            Bypass::OnRead | Bypass::Never => Written::ThroughCache,
+        };
+        Ok(Box::new(CachedFile(OsStick.create(path)?, written)))
     }
 
     fn read_from_device(
         &self,
         path: &Path,
-        _written: Written,
+        written: Written,
     ) -> std::io::Result<(Vec<u8>, ReadFrom)> {
         let cache = std::fs::read(path)?;
         let mut device = cache.clone();
@@ -681,13 +712,14 @@ impl Stick for CachedStick {
             let middle = device.len() / 2;
             device[middle] ^= 0xFF;
         }
-        let kept_out = self.created.load(std::sync::atomic::Ordering::SeqCst);
+        let kept_out = written == Written::OutOfCache
+            && self.created.load(std::sync::atomic::Ordering::SeqCst);
         Ok(match self.bypass {
             Bypass::Never => (cache, ReadFrom::Cache),
             Bypass::OnRead => (device, ReadFrom::Device),
             Bypass::OnWrite if kept_out => (device, ReadFrom::Device),
-            // The writer left the bytes in the cache, and the platform cannot tell.
-            Bypass::OnWrite => (cache, ReadFrom::Device),
+            // The writer left the bytes in the cache: the read is served from it.
+            Bypass::OnWrite => (cache, ReadFrom::Cache),
         })
     }
 }
@@ -738,6 +770,8 @@ async fn usb_export_verify_reads_device() {
         ReadFrom::Cache,
         "INV-STICK-SENTENCE-AFTER-DEVICE-READ"
     );
+    assert_eq!(zips(&stick).len(), 1, "the file is kept");
+    assert!(exported.path.exists(), "{exported:?}");
     a.close().unwrap();
 }
 

@@ -21,7 +21,7 @@ url.workspace = true
 zip.workspace = true
 
 [target.'cfg(unix)'.dependencies]
-# The export's read from the device (STORAGE §10.1 E5): `F_NOCACHE`, `posix_fadvise`.
+# The export's read from the device (STORAGE §10.1 E5): `F_NOCACHE`, `O_DIRECT`.
 rustix.workspace = true
 
 [dev-dependencies]

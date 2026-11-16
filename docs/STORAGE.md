@@ -4205,7 +4205,9 @@ E5  Verify from the device, not from the page cache. What each platform needs wa
     CRC of every entry, tc_burrito::check on the entries' bytes and P2–P4 on every pack. Where
     the drive or folder refuses the read around the cache, the file is checked through the
     cache and kept, and the person is told it was saved and could not be checked on the drive
-    itself, with no word about removing the stick (owner, 2026-11-15, issue 867; the
+    itself, and is never told the stick can be removed on that check's word; the sentence asks
+    them to take the stick out, put it back in and open the file to be sure (owner,
+    2026-11-15, issue 867; the
     alternative was to ask for the stick to be taken out and put back in, then check). Only
     after a verify from the device: "Saved to E:\…. You can remove the stick." On failure
     the file is deleted and the person is told.
@@ -5204,7 +5206,7 @@ and the on-disk end state, not only what the fold returns.
 | L82 | The rename retry writes over a file another program saved during the retry | the compare-and-swap is repeated before every retry (§5.10) | `loss_rename_retry_never_overwrites_outside_save` |
 | L83 | A bit flip on a stick or on disk is recorded as a person's edit and synced to the team | Every zip entry's CRC and size are checked (§10.2 R4). On disk: nothing is taken into the project without the person. A changed book file is kept and asked about. Any other file is written again from the record, with a copy (§6.2) | `loss_usb_damaged_carried_entry_not_recorded`, `loss_bit_rot_not_recorded_as_edit` |
 | L84 | Rebuilding a damaged `.git` throws away carried blobs, so no commit can ever be made | G4 copies blobs from the broken repository and re-stores matching working-tree files; a missing blob never fails a commit (§6.4 G4, §9.4) | `crash_g4_rebuild_keeps_carried_blobs` |
-| L85 | The export check reads the zip back from the page cache and calls a failing stick verified | the verify bypasses the cache; where the drive refuses that, the person is told the file was not checked on the drive and is never told to remove the stick (§10.1 E5) | `usb_export_verify_reads_device` (probe §16.5 item 8), `an_export_ends_verified_or_deleted` |
+| L85 | The export check reads the zip back from the page cache and calls a failing stick verified | the verify bypasses the cache; where the drive refuses that, the person is told the file was not checked on the drive, never that it was checked or that the stick can be removed (§10.1 E5) | `usb_export_verify_reads_device` (probe §16.5 item 8), `an_export_ends_verified_or_deleted` |
 | L86 | A disk error after the rename reports "Not saved" for a save that exists; the retry reuses its seq and raises a false duplicate-device alarm | `WrittenNotDurable` counts as written, with a disk warning (§5.0) | `save_disk_error_after_rename_counts_as_saved` |
 | L87 | A read-only open deletes the writer's temp and lock files; a leftover `config.lock` blocks share and connect forever | a read-only open writes nothing; a writable open removes every `*.lock` under `.git` (§6.1) | `a_read_only_open_writes_nothing_in_git`, `an_open_removes_stale_git_lock_files` |
 | L88 | Files on Door43 the app does not own (dot files, names with spaces) are dropped from the tip by the next sync | foreign entries are kept verbatim; a badly named ingredient moves to `.tc-moved/` with a notice on every device (§9.4) | `a_checkpoint_keeps_foreign_entries_of_head`, `a_file_the_app_does_not_own_follows_door43`, `loss_invalid_name_file_moved_not_deleted` |
