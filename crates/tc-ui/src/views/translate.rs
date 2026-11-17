@@ -43,7 +43,7 @@ use crate::app::translate::{
     PickedUnit, SourcePlace, box_text, changed_while_typing, editing_focus, editing_section,
     editing_verse, range_span, sections, shown_words, source_place, source_unit, target_paragraphs,
 };
-use crate::app::understand::{HelpFocus, UnitMode, literal_pane};
+use crate::app::understand::{HelpFocus, UnitMode, literal_pane, shown_source_tab};
 use crate::app::web::{Actions, AppCtx, AppState, use_app, use_runtime};
 use crate::attrs::Attrs;
 use crate::ds::{
@@ -245,21 +245,11 @@ fn chosen_pane<'a>(view: &'a SourcesView, tab: &str) -> Option<&'a SourcePane> {
 /// The tab shown: the chosen one when the project has it (or its English/gateway counterpart
 /// when a book fell back to English), else its literal pane.
 fn shown_tab(view: &SourcesView, tab: &str) -> Option<String> {
-    if chosen_pane(view, tab).is_some() {
+    if tab == "orig" && view.original.is_some() {
         return Some(tab.to_owned());
     }
-    let counterpart = match tab {
-        "glt" => Some("ult"),
-        "ult" => Some("glt"),
-        "gst" => Some("ust"),
-        "ust" => Some("gst"),
-        _ => None,
-    };
-    if let Some(paired) = counterpart.filter(|id| chosen_pane(view, id).is_some()) {
-        return Some(paired.to_owned());
-    }
     let ids: Vec<String> = view.panes.iter().map(|p| p.id.clone()).collect();
-    literal_pane(&ids)
+    shown_source_tab(&ids, tab)
 }
 
 fn testament_key(book: BookId) -> &'static str {

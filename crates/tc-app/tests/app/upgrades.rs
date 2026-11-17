@@ -1284,12 +1284,13 @@ async fn an_existing_package_project_adopts_bibles_on_open_and_falls_back_by_boo
         0,
         None,
         Opts {
+            texts: true,
             panes: Some(tc_resources::suite::project_pins().extra_scripture),
             ..Opts::default()
         },
     )
     .await;
-    // First switch to ru_gl with only ru_rlob (no ru_rsob yet), so the simplified pane stays English UST.
+    // Switch to ru_gl with helps only first, so both panes stay on English ULT and UST.
     add_package_repos(
         &w.fake,
         "ru_gl",
@@ -1299,7 +1300,6 @@ async fn an_existing_package_project_adopts_bibles_on_open_and_falls_back_by_boo
             ("ru_twl", "TSV Translation Words Links", "en_twl@v86"),
             ("ru_tw", "Translation Words", "en_tw@v87"),
             ("ru_ta", "Translation Academy", "en_ta@v86"),
-            ("ru_rlob", "Aligned Bible", "en_ult@v89"),
         ],
     )
     .await;
@@ -1314,7 +1314,7 @@ async fn an_existing_package_project_adopts_bibles_on_open_and_falls_back_by_boo
             at: w.at.clone(),
             gateway: gateway.clone(),
             book: BookId::Titus,
-            repos: ["ru_tn", "ru_twl", "ru_tw", "ru_ta", "ru_rlob"]
+            repos: ["ru_tn", "ru_twl", "ru_tw", "ru_ta"]
                 .map(str::to_owned)
                 .to_vec(),
         },
@@ -1347,13 +1347,83 @@ async fn an_existing_package_project_adopts_bibles_on_open_and_falls_back_by_boo
         .iter()
         .map(|p| (p.id.as_str(), p.pin.repo.name().as_str()))
         .collect();
-    assert_eq!(pane_names, [("glt", "ru_rlob"), ("ust", "en_ust")]);
+    assert_eq!(pane_names, [("ult", "en_ult"), ("ust", "en_ust")]);
 
-    // Install ru_rsob into the resource store while the project is closed, then reopen via session::Open.
+    // Downloading ru_rlob (holding Jonah only, lacking Titus) on the project already on ru_gl
+    // adopts it into the literal pane on its own (C8 download path).
+    let jon_only = |fixture_dir: &str, repo: &str| -> Vec<SeedFile> {
+        let mut files = export(fixture_dir, repo);
+        let tit = files
+            .iter()
+            .find(|f| f.path == "ingredients/TIT.usfm")
+            .unwrap()
+            .bytes
+            .clone();
+        files.retain(|f| f.path != "ingredients/TIT.usfm");
+        files.push(SeedFile::regular("ingredients/JON.usfm", tit));
+        let meta_file = files
+            .iter_mut()
+            .find(|f| f.path == "metadata.json")
+            .unwrap();
+        let mut meta: serde_json::Value = serde_json::from_slice(&meta_file.bytes).unwrap();
+        let tit_ing = meta["ingredients"]["ingredients/TIT.usfm"].clone();
+        let ing = meta["ingredients"].as_object_mut().unwrap();
+        ing.clear();
+        ing.insert("ingredients/JON.usfm".into(), tit_ing);
+        meta_file.bytes = serde_json::to_vec_pretty(&meta).unwrap();
+        files
+    };
+    w.fake
+        .add_repo(RepoSeed {
+            owner: "ru_gl".into(),
+            name: "ru_rlob".into(),
+            subject: "Aligned Bible".into(),
+            language: "ru".into(),
+            topics: vec!["tc-ready".into()],
+            private: false,
+            commits: vec![CommitSeed {
+                message: "Release v13.0".into(),
+                files: jon_only("en_ult@v89", "ru_gl/ru_rlob"),
+                tag: Some("v13.0".into()),
+                release: Some(ReleaseKind::Published),
+            }],
+        })
+        .await
+        .unwrap();
+    let dl_rlob = ok(
+        &w.t.app,
+        &tc_api::resources::Download {
+            request: rid(83),
+            at: w.at.clone(),
+            gateway: gateway.clone(),
+            book: BookId::Jonah,
+            repos: vec!["ru_rlob".to_owned()],
+        },
+    )
+    .await;
+    assert!(matches!(
+        ended(&w.t.app, dl_rlob).await,
+        JobState::Done(JobOutcome::Downloaded(_))
+    ));
+    handle(&w).wait_idle();
+    let after_dl = pins_of(&w);
+    let dl_panes: Vec<_> = after_dl
+        .extra_scripture
+        .iter()
+        .map(|p| (p.id.as_str(), p.pin.repo.name().as_str()))
+        .collect();
+    assert_eq!(
+        dl_panes,
+        [("glt", "ru_rlob"), ("ust", "en_ust")],
+        "INV-GATEWAY-BIBLE-NAMED: downloading a package Bible adopts it into the matching English pane"
+    );
+
+    // Install ru_rsob (also Jonah only, lacking Titus) into the store while the project is closed,
+    // then reopen via session::Open (C8 open path).
     ok(
         &w.t.app,
         &tc_api::session::Close {
-            request: rid(83),
+            request: rid(84),
             at: w.at.clone(),
         },
     )
@@ -1361,16 +1431,39 @@ async fn an_existing_package_project_adopts_bibles_on_open_and_falls_back_by_boo
     let store =
         tc_resources::ResourceStore::open(w.t.app_data.join(tc_app::RESOURCES_FOLDER)).unwrap();
     let rsob_sha = "2".repeat(40);
-    let rsob_zip = zip_declaring("id_gst@v16", "ru_gl/ru_rsob", &rsob_sha);
     let rsob_pin = ResourcePin::new(
         "git.door43.org/ru_gl/ru_rsob".parse().unwrap(),
         rsob_sha.parse().unwrap(),
     )
     .with_version("v14.0".parse().unwrap())
     .with_flavor("scripture/textTranslation");
-    tc_resources::install_dcs_zip(&store, &rsob_pin, &rsob_zip, 1 << 30).unwrap();
+    {
+        use std::io::Write;
+        let mut files = jon_only("id_gst@v16", "ru_gl/ru_rsob");
+        let meta_file = files
+            .iter_mut()
+            .find(|f| f.path == "metadata.json")
+            .unwrap();
+        let mut meta: serde_json::Value = serde_json::from_slice(&meta_file.bytes).unwrap();
+        for value in meta["identification"]["primary"]["dcs"]
+            .as_object_mut()
+            .unwrap()
+            .values_mut()
+        {
+            value["revision"] = serde_json::json!(rsob_sha);
+        }
+        meta_file.bytes = serde_json::to_vec(&meta).unwrap();
+        let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default();
+        for file in files {
+            writer.start_file(&file.path, options).unwrap();
+            writer.write_all(&file.bytes).unwrap();
+        }
+        let rsob_zip = writer.finish().unwrap().into_inner();
+        tc_resources::install_dcs_zip(&store, &rsob_pin, &rsob_zip, 1 << 30).unwrap();
+    }
 
-    // Also install the bundled English ULT and UST with both Titus and Jonah for the fallback check.
+    // Also install the bundled English ULT and UST with both Titus and Jonah, plus UGNT for Align.
     let (bundled_ult, bundled_ust) = tc_resources::suite::english_bibles();
     for (pin, name) in [(bundled_ult, "en_ult"), (bundled_ust, "en_ust")] {
         use std::io::Write;
@@ -1405,11 +1498,18 @@ async fn an_existing_package_project_adopts_bibles_on_open_and_falls_back_by_boo
         let zip = writer.finish().unwrap().into_inner();
         tc_resources::install_dcs_zip(&store, pin, &zip, 1 << 30).unwrap();
     }
+    let ugnt_pin = after_dl.original_language.nt.as_ref().unwrap();
+    let ugnt_zip = zip_declaring(
+        "en_ult@v89",
+        "unfoldingWord/el-x-koine_ugnt",
+        &ugnt_pin.sha.to_hex(),
+    );
+    tc_resources::install_dcs_zip(&store, ugnt_pin, &ugnt_zip, 1 << 30).unwrap();
 
     let open_job = ok(
         &w.t.app,
         &tc_api::session::Open {
-            request: rid(84),
+            request: rid(85),
             project: super::common::folder(PROJECT),
             unit: Some(tc_api::session::OpenUnit::Book(BookId::Titus)),
         },
@@ -1441,21 +1541,7 @@ async fn an_existing_package_project_adopts_bibles_on_open_and_falls_back_by_boo
         Some("ru_rsob")
     );
 
-    // On Titus (which ru_rlob and ru_rsob hold), Sources reports glt and gst.
-    let titus_sources = ok(
-        &w.t.app,
-        &tc_api::editor::Sources {
-            at: w.at.clone(),
-            book: BookId::Titus,
-            chapter: 1,
-        },
-    )
-    .await;
-    let titus_ids: Vec<_> = titus_sources.panes.iter().map(|p| p.id.as_str()).collect();
-    assert_eq!(titus_ids, ["glt", "gst"]);
-
-    // On Jonah (which ru_rlob and ru_rsob lack), Sources reports ult and ust (the pinned English Bibles),
-    // while the project's pins stay ru_rlob and ru_rsob.
+    // On Jonah (which ru_rlob and ru_rsob hold), Sources reports glt and gst.
     let jonah_sources = ok(
         &w.t.app,
         &tc_api::editor::Sources {
@@ -1465,23 +1551,126 @@ async fn an_existing_package_project_adopts_bibles_on_open_and_falls_back_by_boo
         },
     )
     .await;
-    let jonah_ids: Vec<_> = jonah_sources
+    let jonah_ids: Vec<_> = jonah_sources.panes.iter().map(|p| p.id.as_str()).collect();
+    assert_eq!(jonah_ids, ["glt", "gst"]);
+
+    // On Titus (which ru_rlob and ru_rsob lack), Sources reports ult and ust (the pinned English Bibles),
+    // and helps, Check, and Align all read the English fallback text from the ult pane (Criterion 13).
+    let titus_sources = ok(
+        &w.t.app,
+        &tc_api::editor::Sources {
+            at: w.at.clone(),
+            book: BookId::Titus,
+            chapter: 1,
+        },
+    )
+    .await;
+    let titus_ids: Vec<_> = titus_sources
         .panes
         .iter()
         .map(|p| (p.id.as_str(), p.version.as_deref()))
         .collect();
     assert_eq!(
-        jonah_ids,
+        titus_ids,
         [("ult", Some("v91")), ("ust", Some("v91"))],
         "INV-PANE-BOOK-FALLBACK: panes lacking the open book show the pinned English ULT and UST labelled ULT and UST"
     );
-    for pane in &jonah_sources.panes {
+    for pane in &titus_sources.panes {
         assert!(
             matches!(pane.text, tc_api::editor::PaneText::Ready(_)),
             "INV-PANE-BOOK-FALLBACK: English fallback text must load for {}",
             pane.id
         );
     }
+
+    // Criterion 13: helps::Passage, check::Open/Item, and align::Open on the fallback book (Titus).
+    let passage = ok(
+        &w.t.app,
+        &tc_api::helps::Passage {
+            at: w.at.clone(),
+            book: BookId::Titus,
+            chapter: 1,
+        },
+    )
+    .await;
+    let tc_api::helps::Slot::Ready(notes_slot) = &passage.notes else {
+        panic!("notes must be ready on Titus");
+    };
+    assert!(
+        notes_slot.items.iter().any(|n| {
+            n.panes
+                .iter()
+                .any(|p| p.pane == "ult" && p.title.as_ref().is_some_and(|t| !t.is_empty()))
+        }),
+        "INV-PANE-BOOK-FALLBACK: helps::Passage reads the fallback English ULT pane on a missing book"
+    );
+
+    let check_open = ok(
+        &w.t.app,
+        &tc_api::check::Open {
+            at: w.at.clone(),
+            list: tc_api::check::CheckListRef {
+                tool: Tool::TranslationNotes,
+                unit: CheckUnit::Book(BookId::Titus),
+            },
+            since: None,
+        },
+    )
+    .await;
+    let tc_api::check::RailRows::Full(check_rows) = &check_open.rows else {
+        panic!("expected full check rows");
+    };
+    assert!(!check_rows[0].title.is_empty());
+    let check_item = ok(
+        &w.t.app,
+        &tc_api::check::Item {
+            at: w.at.clone(),
+            list: tc_api::check::CheckListRef {
+                tool: Tool::TranslationNotes,
+                unit: CheckUnit::Book(BookId::Titus),
+            },
+            index: 0,
+        },
+    )
+    .await;
+    let tc_api::check::CheckSources::Verse { gateway, .. } = &check_item.sources else {
+        panic!("expected book check verse sources");
+    };
+    assert!(
+        matches!(
+            gateway,
+            tc_api::check::GatewayView::Pane {
+                pane,
+                text: tc_api::check::GatewayText::Verse { tokens, .. }
+            } if pane == "ult" && !tokens.is_empty()
+        ),
+        "INV-PANE-BOOK-FALLBACK: Check's gateway card shows the English fallback ULT verse on a missing book"
+    );
+
+    let align_open = ok(
+        &w.t.app,
+        &tc_api::align::Open {
+            at: w.at.clone(),
+            request: rid(86),
+            book: BookId::Titus,
+            verse: Some(tc_api::align::OpenVerse {
+                chapter: 1,
+                verse: 1,
+            }),
+        },
+    )
+    .await;
+    let tc_api::align::Opened::Ready(align_view) = align_open else {
+        panic!("expected aligner to open on Titus 1:1");
+    };
+    assert!(
+        align_view
+            .gateway
+            .as_ref()
+            .is_some_and(|g| !g.text.is_empty()),
+        "INV-PANE-BOOK-FALLBACK: Align's reference text shows the English fallback ULT on a missing book"
+    );
+
     let unchanged = pins_of(&w);
     let unchanged_panes: Vec<_> = unchanged
         .extra_scripture

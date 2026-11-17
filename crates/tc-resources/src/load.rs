@@ -826,8 +826,9 @@ fn load_pane(
     book: BookId,
 ) -> TextStatus {
     let fallback = pane_fallback_pin(pins, &pane.id).filter(|fb| fb.repo != pane.pin.repo);
+    let (known_books, _) = coverage_for(&pane.pin, store);
     if let Some(fb) = fallback
-        && !crate::resolve::covers(&pane.pin, book, store)
+        && known_books.is_some_and(|books| !books.covers(book))
     {
         return load_usfm(store, fb, Some(Rung::Fallback), book);
     }

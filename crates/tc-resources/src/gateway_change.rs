@@ -868,4 +868,56 @@ mod tests {
             "INV-GATEWAY-BIBLE-NAMED: a pane naming another Bible never moves on its own"
         );
     }
+
+    proptest::proptest! {
+        #[test]
+        fn prop_english_panes_move_and_non_english_panes_stay(
+            en_ver in "v[1-9][0-9]?",
+            other_owner in "[a-zA-Z]{3,8}",
+            other_lang in "(fr|es-419|hi|id|ar)",
+            other_suffix in "(ult|glt|ust|gst|avd|arst)",
+        ) {
+            let russian = gateways::find("ru", "ru_gl").unwrap();
+            let rlob = real("ru_gl/ru_rlob", Some("v13.0"), &"1".repeat(40));
+            let rsob = real("ru_gl/ru_rsob", Some("v14.0"), &"2".repeat(40));
+            let mut primary = LanguageSet::new(GatewayLanguage {
+                language: "ru".to_owned(),
+                owner: "ru_gl".parse().unwrap(),
+            });
+            primary.pins.insert(
+                SetSlot::SimplifiedText,
+                rsob.clone(),
+            );
+            let mut on_english = suite::project_pins();
+            on_english.primary = Some(primary.clone());
+            on_english.extra_scripture[0].pin =
+                real("unfoldingWord/en_ult", Some(&en_ver), &"8".repeat(40));
+            on_english.extra_scripture[1].pin =
+                real("unfoldingWord/en_ust", Some(&en_ver), &"9".repeat(40));
+            let moved = adopt_package_bibles(&on_english, russian, &[rlob.clone(), rsob.clone()])
+                .expect("INV-GATEWAY-BIBLE-NAMED: any release of en_ult/en_ust moves");
+            proptest::prop_assert_eq!(
+                ids(&moved.extra_scripture),
+                [("glt", "ru_rlob"), ("gst", "ru_rsob")]
+            );
+
+            let other_repo = format!("{other_owner}/{other_lang}_{other_suffix}");
+            let other_pin = real(&other_repo, Some("v1"), &"c".repeat(40));
+            let mut on_other = on_english;
+            on_other.extra_scripture = vec![
+                ScripturePane {
+                    id: pane_id("glt"),
+                    pin: other_pin.clone(),
+                },
+                ScripturePane {
+                    id: pane_id("gst"),
+                    pin: other_pin,
+                },
+            ];
+            proptest::prop_assert_eq!(
+                adopt_package_bibles(&on_other, russian, &[rlob, rsob]),
+                None
+            );
+        }
+    }
 }

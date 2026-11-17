@@ -26,8 +26,8 @@ use super::source_verse::source_verse;
 use crate::app::load::Load;
 use crate::app::save::{Pair, View};
 use crate::app::understand::{
-    HelpFocus, Unit, UnitMode, UnitNotice, frame_units, literal_pane, paragraphs, shown_comment,
-    units,
+    HelpFocus, Unit, UnitMode, UnitNotice, frame_units, paragraphs, shown_comment,
+    shown_source_tab, units,
 };
 use crate::app::web::{Actions, AppCtx, AppState, use_app, use_runtime};
 use crate::attrs::Attrs;
@@ -489,10 +489,7 @@ fn unit_switch(s: &AppState, actions: &Actions) -> impl IntoView + use<> {
 /// literal pane (tC4's `literalPaneId`).
 fn shown_tab(view: &SourcesView, tab: &str) -> Option<String> {
     let ids: Vec<String> = view.panes.iter().map(|p| p.id.clone()).collect();
-    if ids.iter().any(|id| id == tab) {
-        return Some(tab.to_owned());
-    }
-    literal_pane(&ids)
+    shown_source_tab(&ids, tab)
 }
 
 fn header(actions: &Actions, book: BookId, chapter: u16) -> impl IntoView + use<> {

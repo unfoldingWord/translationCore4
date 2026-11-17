@@ -883,4 +883,20 @@ fn a_pane_whose_bible_lacks_the_book_shows_the_pinned_english_bible() {
         ),
         "INV-PANE-BOOK-FALLBACK: literal_pane_book must follow the English fallback for a missing book"
     );
+
+    // An uninstalled gateway pane with unrecorded book coverage states NotInstalled rather than
+    // silently showing the English fallback.
+    let uninstalled_ar = ResourcePin::new(
+        "git.door43.org/BSOJ/ar_avd".parse().unwrap(),
+        "9".repeat(40).parse().unwrap(),
+    )
+    .with_version("v6.9".parse().unwrap())
+    .with_flavor("scripture/textTranslation");
+    pins.extra_scripture[0].pin = uninstalled_ar.clone();
+    let uninstalled_loaded = load_book(&store, &pins, &HelpsChoice::Dcs, BookId::Titus);
+    assert_eq!(
+        uninstalled_loaded.text(&TextRole::Pane("glt".parse().unwrap())),
+        Some(&TextStatus::Missing(Missing::NotInstalled(uninstalled_ar))),
+        "an uninstalled gateway pane with unknown coverage must state NotInstalled"
+    );
 }
