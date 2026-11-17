@@ -312,6 +312,7 @@ struct Opts {
     /// The project pins an original-language text and a gateway Bible pane, and holds aligned
     /// verses.
     texts: bool,
+    panes: Option<Vec<tc_resources::ScripturePane>>,
     /// The bundled store this launch seeds from.
     bundle: Option<std::path::PathBuf>,
     /// The notes release the project pins is installed before the app starts, as an earlier
@@ -457,7 +458,10 @@ async fn build(decided: usize, orphans: usize, vrs: Option<&[u8]>, opts: Opts) -
             });
         }
     }
-    let groups: &[PinGroup] = if texts {
+    if let Some(panes) = opts.panes {
+        pins.extra_scripture = panes;
+    }
+    let groups: &[PinGroup] = if texts || !pins.extra_scripture.is_empty() {
         &PinGroup::ALL
     } else {
         &[PinGroup::Primary, PinGroup::Fallback]
@@ -1106,21 +1110,36 @@ pub(super) fn export(fixture_dir: &str, repo: &str) -> Vec<SeedFile> {
 /// The Spanish suite beside the seeded `es-419_tn`: links, words and academy made of the English
 /// fixtures under their Spanish names.
 async fn add_spanish_suite(fake: &FakeDoor43) {
-    for (name, subject, fixture_dir) in [
-        ("es-419_twl", "TSV Translation Words Links", "en_twl@v86"),
-        ("es-419_tw", "Translation Words", "en_tw@v87"),
-        ("es-419_ta", "Translation Academy", "en_ta@v86"),
-    ] {
+    add_package_repos(
+        fake,
+        "es-419_gl",
+        "es-419",
+        &[
+            ("es-419_twl", "TSV Translation Words Links", "en_twl@v86"),
+            ("es-419_tw", "Translation Words", "en_tw@v87"),
+            ("es-419_ta", "Translation Academy", "en_ta@v86"),
+        ],
+    )
+    .await;
+}
+
+async fn add_package_repos(
+    fake: &FakeDoor43,
+    owner: &str,
+    language: &str,
+    repos: &[(&str, &str, &str)],
+) {
+    for &(name, subject, fixture_dir) in repos {
         fake.add_repo(RepoSeed {
-            owner: "es-419_gl".into(),
+            owner: owner.into(),
             name: name.into(),
             subject: subject.into(),
-            language: "es-419".into(),
+            language: language.into(),
             topics: vec!["tc-ready".into()],
             private: false,
             commits: vec![CommitSeed {
                 message: "Release v1".into(),
-                files: export(fixture_dir, &format!("es-419_gl/{name}")),
+                files: export(fixture_dir, &format!("{owner}/{name}")),
                 tag: Some("v1".into()),
                 release: Some(ReleaseKind::Published),
             }],
@@ -1135,6 +1154,345 @@ fn spanish() -> tc_api::resources::GatewayRef {
         language: "es-419".into(),
         owner: "es-419_gl".into(),
     }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn j13_a_package_change_pins_the_registry_named_simplified_bible() {
+    let w = build(
+        0,
+        0,
+        None,
+        Opts {
+            panes: Some(tc_resources::suite::project_pins().extra_scripture),
+            ..Opts::default()
+        },
+    )
+    .await;
+    // Existing real fixtures under BSOJ names exercise the public download/change paths;
+    // their text is not evidence of the real Arabic releases required by the rig run.
+    add_package_repos(
+        &w.fake,
+        "BSOJ",
+        "ar",
+        &[
+            ("ar_tn", "TSV Translation Notes", "en_tn@v86"),
+            ("ar_twl", "TSV Translation Words Links", "en_twl@v86"),
+            ("ar_tw", "Translation Words", "en_tw@v87"),
+            ("ar_ta", "Translation Academy", "en_ta@v86"),
+            ("ar_avd", "Aligned Bible", "en_ult@v89"),
+            ("ar_arst", "Bible", "id_gst@v16"),
+        ],
+    )
+    .await;
+    let gateway = tc_api::resources::GatewayRef {
+        language: "ar".into(),
+        owner: "BSOJ".into(),
+    };
+    let download = ok(
+        &w.t.app,
+        &tc_api::resources::Download {
+            request: rid(70),
+            at: w.at.clone(),
+            gateway: gateway.clone(),
+            book: BookId::Titus,
+            repos: ["ar_tn", "ar_twl", "ar_tw", "ar_ta", "ar_avd", "ar_arst"]
+                .map(str::to_owned)
+                .to_vec(),
+        },
+    )
+    .await;
+    assert_eq!(
+        ended(&w.t.app, download).await,
+        JobState::Done(JobOutcome::Downloaded(
+            tc_api::resources::Downloaded::Fetched
+        ))
+    );
+    let before = pins_of(&w);
+    let planned = ok(
+        &w.t.app,
+        &tc_api::resources::PlanGateway {
+            request: rid(71),
+            at: w.at.clone(),
+            gateway,
+        },
+    )
+    .await;
+    let JobState::Done(JobOutcome::PlanReady(plan)) = ended(&w.t.app, planned).await else {
+        panic!("INV-GATEWAY-BIBLE-NAMED: the complete installed package must be selectable")
+    };
+    assert_eq!(pins_of(&w), before, "planning writes no pins");
+    assert_eq!(
+        ok(&w.t.app, &confirm(&w, plan.plan, 72)).await,
+        PlanApplied::Applied
+    );
+    handle(&w).wait_idle();
+    let pins = pins_of(&w);
+    let primary = pins.primary.as_ref().unwrap();
+    assert_eq!(primary.gateway.named().unwrap().language, "ar");
+    assert_eq!(
+        primary
+            .pin(SetSlot::SimplifiedText)
+            .expect("INV-GATEWAY-BIBLE-NAMED: the named simplified Bible must be pinned")
+            .repo
+            .name()
+            .as_str(),
+        "ar_arst",
+        "INV-GATEWAY-BIBLE-NAMED: the primary slot names the package's simplified Bible"
+    );
+    let names: Vec<_> = pins
+        .extra_scripture
+        .iter()
+        .map(|pane| (pane.id.as_str(), pane.pin.repo.name().as_str()))
+        .collect();
+    assert_eq!(names, [("glt", "ar_avd"), ("gst", "ar_arst")]);
+    assert_eq!(pins.fallback, before.fallback);
+    let sources = ok(
+        &w.t.app,
+        &tc_api::editor::Sources {
+            at: w.at.clone(),
+            book: BookId::Titus,
+            chapter: 1,
+        },
+    )
+    .await;
+    let simplified = sources.panes.iter().find(|pane| pane.id == "gst").unwrap();
+    let tc_api::editor::PaneText::Ready(text) = &simplified.text else {
+        panic!("INV-GATEWAY-BIBLE-NAMED: the simplified source text must load");
+    };
+    assert!(!text.verses.is_empty());
+    let helps = ok(
+        &w.t.app,
+        &tc_api::helps::Passage {
+            at: w.at.clone(),
+            book: BookId::Titus,
+            chapter: 1,
+        },
+    )
+    .await;
+    assert_eq!(helps.simplified_pin.as_deref(), Some("ar_arst"));
+    assert!(matches!(helps.simplified, tc_api::helps::Slot::Ready(_)));
+    assert_valid_burrito(
+        &w.fs,
+        &Path::new(crate::store_world::PROJECTS).join(PROJECT),
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_existing_package_project_adopts_bibles_on_open_and_falls_back_by_book() {
+    let mut w = build(
+        0,
+        0,
+        None,
+        Opts {
+            panes: Some(tc_resources::suite::project_pins().extra_scripture),
+            ..Opts::default()
+        },
+    )
+    .await;
+    // First switch to ru_gl with only ru_rlob (no ru_rsob yet), so the simplified pane stays English UST.
+    add_package_repos(
+        &w.fake,
+        "ru_gl",
+        "ru",
+        &[
+            ("ru_tn", "TSV Translation Notes", "en_tn@v86"),
+            ("ru_twl", "TSV Translation Words Links", "en_twl@v86"),
+            ("ru_tw", "Translation Words", "en_tw@v87"),
+            ("ru_ta", "Translation Academy", "en_ta@v86"),
+            ("ru_rlob", "Aligned Bible", "en_ult@v89"),
+        ],
+    )
+    .await;
+    let gateway = tc_api::resources::GatewayRef {
+        language: "ru".into(),
+        owner: "ru_gl".into(),
+    };
+    let dl = ok(
+        &w.t.app,
+        &tc_api::resources::Download {
+            request: rid(80),
+            at: w.at.clone(),
+            gateway: gateway.clone(),
+            book: BookId::Titus,
+            repos: ["ru_tn", "ru_twl", "ru_tw", "ru_ta", "ru_rlob"]
+                .map(str::to_owned)
+                .to_vec(),
+        },
+    )
+    .await;
+    assert!(matches!(
+        ended(&w.t.app, dl).await,
+        JobState::Done(JobOutcome::Downloaded(_))
+    ));
+    let planned = ok(
+        &w.t.app,
+        &tc_api::resources::PlanGateway {
+            request: rid(81),
+            at: w.at.clone(),
+            gateway: gateway.clone(),
+        },
+    )
+    .await;
+    let JobState::Done(JobOutcome::PlanReady(plan)) = ended(&w.t.app, planned).await else {
+        panic!("ru_gl plan must be ready")
+    };
+    assert_eq!(
+        ok(&w.t.app, &confirm(&w, plan.plan, 82)).await,
+        PlanApplied::Applied
+    );
+    handle(&w).wait_idle();
+    let after_change = pins_of(&w);
+    let pane_names: Vec<_> = after_change
+        .extra_scripture
+        .iter()
+        .map(|p| (p.id.as_str(), p.pin.repo.name().as_str()))
+        .collect();
+    assert_eq!(pane_names, [("glt", "ru_rlob"), ("ust", "en_ust")]);
+
+    // Install ru_rsob into the resource store while the project is closed, then reopen via session::Open.
+    ok(
+        &w.t.app,
+        &tc_api::session::Close {
+            request: rid(83),
+            at: w.at.clone(),
+        },
+    )
+    .await;
+    let store =
+        tc_resources::ResourceStore::open(w.t.app_data.join(tc_app::RESOURCES_FOLDER)).unwrap();
+    let rsob_sha = "2".repeat(40);
+    let rsob_zip = zip_declaring("id_gst@v16", "ru_gl/ru_rsob", &rsob_sha);
+    let rsob_pin = ResourcePin::new(
+        "git.door43.org/ru_gl/ru_rsob".parse().unwrap(),
+        rsob_sha.parse().unwrap(),
+    )
+    .with_version("v14.0".parse().unwrap())
+    .with_flavor("scripture/textTranslation");
+    tc_resources::install_dcs_zip(&store, &rsob_pin, &rsob_zip, 1 << 30).unwrap();
+
+    // Also install the bundled English ULT and UST with both Titus and Jonah for the fallback check.
+    let (bundled_ult, bundled_ust) = tc_resources::suite::english_bibles();
+    for (pin, name) in [(bundled_ult, "en_ult"), (bundled_ust, "en_ust")] {
+        use std::io::Write;
+        let mut files = export("en_ult@v89", &format!("unfoldingWord/{name}"));
+        let tit_bytes = files
+            .iter()
+            .find(|f| f.path == "ingredients/TIT.usfm")
+            .unwrap()
+            .bytes
+            .clone();
+        files.push(SeedFile::regular("ingredients/JON.usfm", tit_bytes));
+        let meta_file = files
+            .iter_mut()
+            .find(|f| f.path == "metadata.json")
+            .unwrap();
+        let mut meta: serde_json::Value = serde_json::from_slice(&meta_file.bytes).unwrap();
+        let dcs = meta["identification"]["primary"]["dcs"]
+            .as_object_mut()
+            .unwrap();
+        for value in dcs.values_mut() {
+            value["revision"] = serde_json::json!(pin.sha.to_hex());
+        }
+        let tit_ing = meta["ingredients"]["ingredients/TIT.usfm"].clone();
+        meta["ingredients"]["ingredients/JON.usfm"] = tit_ing;
+        meta_file.bytes = serde_json::to_vec(&meta).unwrap();
+        let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default();
+        for file in files {
+            writer.start_file(&file.path, options).unwrap();
+            writer.write_all(&file.bytes).unwrap();
+        }
+        let zip = writer.finish().unwrap().into_inner();
+        tc_resources::install_dcs_zip(&store, pin, &zip, 1 << 30).unwrap();
+    }
+
+    let open_job = ok(
+        &w.t.app,
+        &tc_api::session::Open {
+            request: rid(84),
+            project: super::common::folder(PROJECT),
+            unit: Some(tc_api::session::OpenUnit::Book(BookId::Titus)),
+        },
+    )
+    .await;
+    let JobState::Done(JobOutcome::Opened(opened)) = ended(&w.t.app, open_job).await else {
+        panic!("project must reopen")
+    };
+    w.at = opened.session.at;
+    handle(&w).wait_idle();
+    let reopened_pins = pins_of(&w);
+    let reopened_panes: Vec<_> = reopened_pins
+        .extra_scripture
+        .iter()
+        .map(|p| (p.id.as_str(), p.pin.repo.name().as_str()))
+        .collect();
+    assert_eq!(
+        reopened_panes,
+        [("glt", "ru_rlob"), ("gst", "ru_rsob")],
+        "INV-GATEWAY-BIBLE-NAMED: opening a project on a package moves an English pane to the installed package Bible"
+    );
+    assert_eq!(
+        reopened_pins
+            .primary
+            .as_ref()
+            .unwrap()
+            .pin(SetSlot::SimplifiedText)
+            .map(|p| p.repo.name().as_str()),
+        Some("ru_rsob")
+    );
+
+    // On Titus (which ru_rlob and ru_rsob hold), Sources reports glt and gst.
+    let titus_sources = ok(
+        &w.t.app,
+        &tc_api::editor::Sources {
+            at: w.at.clone(),
+            book: BookId::Titus,
+            chapter: 1,
+        },
+    )
+    .await;
+    let titus_ids: Vec<_> = titus_sources.panes.iter().map(|p| p.id.as_str()).collect();
+    assert_eq!(titus_ids, ["glt", "gst"]);
+
+    // On Jonah (which ru_rlob and ru_rsob lack), Sources reports ult and ust (the pinned English Bibles),
+    // while the project's pins stay ru_rlob and ru_rsob.
+    let jonah_sources = ok(
+        &w.t.app,
+        &tc_api::editor::Sources {
+            at: w.at.clone(),
+            book: BookId::Jonah,
+            chapter: 1,
+        },
+    )
+    .await;
+    let jonah_ids: Vec<_> = jonah_sources
+        .panes
+        .iter()
+        .map(|p| (p.id.as_str(), p.version.as_deref()))
+        .collect();
+    assert_eq!(
+        jonah_ids,
+        [("ult", Some("v91")), ("ust", Some("v91"))],
+        "INV-PANE-BOOK-FALLBACK: panes lacking the open book show the pinned English ULT and UST labelled ULT and UST"
+    );
+    for pane in &jonah_sources.panes {
+        assert!(
+            matches!(pane.text, tc_api::editor::PaneText::Ready(_)),
+            "INV-PANE-BOOK-FALLBACK: English fallback text must load for {}",
+            pane.id
+        );
+    }
+    let unchanged = pins_of(&w);
+    let unchanged_panes: Vec<_> = unchanged
+        .extra_scripture
+        .iter()
+        .map(|p| (p.id.as_str(), p.pin.repo.name().as_str()))
+        .collect();
+    assert_eq!(
+        unchanged_panes,
+        [("glt", "ru_rlob"), ("gst", "ru_rsob")],
+        "INV-PANE-BOOK-FALLBACK: the pane's pin does not change when falling back for a missing book"
+    );
 }
 
 async fn install_spanish_suite(w: &World) {

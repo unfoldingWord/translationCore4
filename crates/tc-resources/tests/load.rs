@@ -751,3 +751,136 @@ fn one_bad_obs_question_row_hides_no_other_question() {
         .sum();
     assert!(read >= good, "{read} questions read of {good} good rows");
 }
+
+#[test]
+fn a_pane_whose_bible_lacks_the_book_shows_the_pinned_english_bible() {
+    let (_dir, store) = store();
+    let _en = install_fixtures(&store);
+    let install_custom =
+        |repo: &str, version: &str, sha_char: char, books: &[&str]| -> ResourcePin {
+            let name = repo.split('/').next_back().unwrap();
+            let tit = fixture("tc4/test-fixtures/resources/en_ult@v89/TIT.usfm");
+            let meta_bytes = fixture("tc4/test-fixtures/resources/en_ult@v89/metadata.json");
+            let mut meta: serde_json::Value = serde_json::from_slice(&meta_bytes).unwrap();
+            let sha = sha_char.to_string().repeat(40);
+            let dcs = meta["identification"]["primary"]["dcs"]
+                .as_object_mut()
+                .unwrap();
+            let mut id_entry = dcs.values().next().unwrap().clone();
+            id_entry["revision"] = sha.clone().into();
+            dcs.clear();
+            dcs.insert(repo.to_owned(), id_entry);
+            let tit_entry = meta["ingredients"]["ingredients/TIT.usfm"].clone();
+            let ingredients = meta["ingredients"].as_object_mut().unwrap();
+            ingredients.clear();
+            let mut files: Vec<(String, Vec<u8>)> = Vec::new();
+            for &b in books {
+                let rel = format!("ingredients/{b}.usfm");
+                ingredients.insert(rel.clone(), tit_entry.clone());
+                files.push((format!("{name}/{rel}"), tit.clone()));
+            }
+            let meta_vec = serde_json::to_vec(&meta).unwrap();
+            files.insert(0, (format!("{name}/metadata.json"), meta_vec));
+            let refs: Vec<(&str, &[u8])> = files
+                .iter()
+                .map(|(p, b)| (p.as_str(), b.as_slice()))
+                .collect();
+            let zip = common::zip(&refs);
+            let pin = ResourcePin::new(
+                format!("git.door43.org/{repo}").parse().unwrap(),
+                sha.parse().unwrap(),
+            )
+            .with_version(version.parse().unwrap())
+            .with_flavor("scripture/textTranslation");
+            tc_resources::install_dcs_zip(&store, &pin, &zip, 1 << 30).unwrap();
+            pin
+        };
+    let (bundled_ult, bundled_ust) = suite::english_bibles();
+    for (pin, name) in [(bundled_ult, "en_ult"), (bundled_ust, "en_ust")] {
+        let tit = fixture("tc4/test-fixtures/resources/en_ult@v89/TIT.usfm");
+        let meta_bytes = fixture("tc4/test-fixtures/resources/en_ult@v89/metadata.json");
+        let mut meta: serde_json::Value = serde_json::from_slice(&meta_bytes).unwrap();
+        let dcs = meta["identification"]["primary"]["dcs"]
+            .as_object_mut()
+            .unwrap();
+        let mut id_entry = dcs.values().next().unwrap().clone();
+        id_entry["revision"] = pin.sha.to_hex().into();
+        dcs.clear();
+        dcs.insert(format!("unfoldingWord/{name}"), id_entry);
+        let tit_entry = meta["ingredients"]["ingredients/TIT.usfm"].clone();
+        meta["ingredients"]["ingredients/JON.usfm"] = tit_entry;
+        let meta_vec = serde_json::to_vec(&meta).unwrap();
+        let zip = common::zip(&[
+            (&format!("{name}/metadata.json"), &meta_vec),
+            (&format!("{name}/ingredients/TIT.usfm"), &tit),
+            (&format!("{name}/ingredients/JON.usfm"), &tit),
+        ]);
+        tc_resources::install_dcs_zip(&store, pin, &zip, 1 << 30).unwrap();
+    }
+    let ru_rlob = install_custom("ru_gl/ru_rlob", "v13.0", '1', &["TIT"]);
+    let ru_rsob = install_custom("ru_gl/ru_rsob", "v14.0", '2', &["TIT"]);
+    let mut pins = suite::project_pins();
+    pins.primary = Some(set("ru", "ru_gl").with(SetSlot::SimplifiedText, ru_rsob.clone()));
+    pins.extra_scripture = vec![
+        ScripturePane {
+            id: "glt".parse().unwrap(),
+            pin: ru_rlob.clone(),
+        },
+        ScripturePane {
+            id: "gst".parse().unwrap(),
+            pin: ru_rsob.clone(),
+        },
+    ];
+
+    // On Titus (which ru_rlob and ru_rsob hold), both panes load Russian with rung None.
+    let titus = load_book(&store, &pins, &HelpsChoice::Dcs, BookId::Titus);
+    match titus.text(&TextRole::Pane("glt".parse().unwrap())) {
+        Some(TextStatus::Loaded { pin, rung, .. }) => {
+            assert_eq!(pin, &ru_rlob);
+            assert_eq!(*rung, None);
+        }
+        other => panic!("expected Russian literal on Titus, got {other:?}"),
+    }
+    match titus.text(&TextRole::Pane("gst".parse().unwrap())) {
+        Some(TextStatus::Loaded { pin, rung, .. }) => {
+            assert_eq!(pin, &ru_rsob);
+            assert_eq!(*rung, None);
+        }
+        other => panic!("expected Russian simplified on Titus, got {other:?}"),
+    }
+
+    // On Jonah (which ru_rlob and ru_rsob lack), both panes fall back to the pinned English
+    // ULT and UST with Rung::Fallback, and literal_pane_book returns the fallback English text.
+    let jonah = load_book(&store, &pins, &HelpsChoice::Dcs, BookId::Jonah);
+    match jonah.text(&TextRole::Pane("glt".parse().unwrap())) {
+        Some(TextStatus::Loaded { pin, rung, .. }) => {
+            assert_eq!(
+                pin, bundled_ult,
+                "INV-PANE-BOOK-FALLBACK: literal pane falls back to the pinned English ULT"
+            );
+            assert_eq!(*rung, Some(Rung::Fallback));
+        }
+        other => panic!(
+            "INV-PANE-BOOK-FALLBACK: literal pane must fall back to English on a missing book, got {other:?}"
+        ),
+    }
+    match jonah.text(&TextRole::Pane("gst".parse().unwrap())) {
+        Some(TextStatus::Loaded { pin, rung, .. }) => {
+            assert_eq!(
+                pin, bundled_ust,
+                "INV-PANE-BOOK-FALLBACK: simplified pane falls back to the fallback set's English UST"
+            );
+            assert_eq!(*rung, Some(Rung::Fallback));
+        }
+        other => panic!(
+            "INV-PANE-BOOK-FALLBACK: simplified pane must fall back to English on a missing book, got {other:?}"
+        ),
+    }
+    assert!(
+        matches!(
+            tc_resources::literal_pane_book(&store, &pins, BookId::Jonah),
+            tc_resources::PaneBook::Text(_)
+        ),
+        "INV-PANE-BOOK-FALLBACK: literal_pane_book must follow the English fallback for a missing book"
+    );
+}

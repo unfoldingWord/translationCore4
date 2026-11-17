@@ -34,7 +34,8 @@ use tc_journal::keys::PinGroup;
 use tc_journal::record::{PinGroupValue, Record};
 use tc_journal::{Cause, RecordKey};
 use tc_resources::gateway_change::{
-    apply_gateway_change, complete_language_sets, merge_optional_pins, source_panes_for_gateway,
+    adopt_package_bibles, apply_gateway_change, complete_language_sets, merge_optional_pins,
+    source_panes_for_gateway,
 };
 use tc_resources::gateways::{self, Gateway};
 use tc_resources::resolve::backfill_coverage;
@@ -484,6 +485,25 @@ impl App {
         session: &Arc<ProjectSession>,
         gateway: &'static Gateway,
     ) -> Result<(), String> {
+        self.adopt_pins_with(session, gateway, merge_optional_pins)
+            .await
+    }
+
+    pub(crate) async fn adopt_package_bibles_on_open(
+        &self,
+        session: &Arc<ProjectSession>,
+        gateway: &'static Gateway,
+    ) -> Result<(), String> {
+        self.adopt_pins_with(session, gateway, adopt_package_bibles)
+            .await
+    }
+
+    async fn adopt_pins_with(
+        &self,
+        session: &Arc<ProjectSession>,
+        gateway: &'static Gateway,
+        merge: fn(&ProjectPins, &Gateway, &[ResourcePin]) -> Option<ProjectPins>,
+    ) -> Result<(), String> {
         for _ in 0..4 {
             let read = session.read();
             let Some(current) = crate::resources::project_pins(&read).map_err(|e| e.to_string())?
@@ -491,7 +511,7 @@ impl App {
                 return Ok(());
             };
             let installed = self.installed_pins().await?;
-            let Some(merged) = merge_optional_pins(&current, gateway, &installed) else {
+            let Some(merged) = merge(&current, gateway, &installed) else {
                 return Ok(());
             };
             let store = self.inner.resources.clone();

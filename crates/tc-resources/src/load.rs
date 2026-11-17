@@ -44,7 +44,7 @@ use crate::choice::{AquiferHelps, HelpsChoice};
 use crate::layout;
 use crate::pin::{AquiferPin, ResourcePin};
 use crate::resolve::{CoverageSource, Resolution, Resolved, coverage_for, resolve_slot};
-use crate::sets::{PaneId, ProjectPins, Rung, SetSlot};
+use crate::sets::{PaneId, ProjectPins, Rung, ScripturePane, SetSlot};
 use crate::store::{Installed, ResourceStore};
 
 /// Why a part or a text is not there.
@@ -775,7 +775,7 @@ fn load_texts(store: &ResourceStore, pins: &ProjectPins, book: BookId) -> Vec<So
     for pane in &pins.extra_scripture {
         texts.push(SourceText {
             role: TextRole::Pane(pane.id.clone()),
-            status: load_usfm(store, &pane.pin, None, book),
+            status: load_pane(store, pins, pane, book),
         });
     }
     let simplified =
@@ -793,6 +793,53 @@ fn load_texts(store: &ResourceStore, pins: &ProjectPins, book: BookId) -> Vec<So
         status: simplified,
     });
     texts
+}
+
+/// The pinned English Bible a gateway pane falls back to when its own Bible lacks a book
+/// (#1048): the bundled `en_ult` for the literal pane (`source_panes_for_gateway`'s own
+/// English pin), and the fallback set's `SimplifiedText` pin (else the bundled `en_ust`)
+/// for the simplified pane. Using a pinned release ensures every computer shows the same
+/// English text (J3).
+fn pane_fallback_pin<'a>(pins: &'a ProjectPins, id: &PaneId) -> Option<&'a ResourcePin> {
+    let (english_literal, english_simplified) = crate::suite::english_bibles();
+    if ["ult", "glt"].contains(&id.as_str()) {
+        Some(english_literal)
+    } else if ["ust", "gst"].contains(&id.as_str()) {
+        Some(
+            pins.set(Rung::Fallback)
+                .and_then(|set| set.pin(SetSlot::SimplifiedText))
+                .filter(|pin| pin.repo == english_simplified.repo)
+                .unwrap_or(english_simplified),
+        )
+    } else {
+        None
+    }
+}
+
+/// Loads one source pane's text for `book`. When a gateway pane's Bible does not cover
+/// `book`, loads the pinned English Bible of its kind with `rung: Some(Rung::Fallback)` so
+/// callers label it `ULT` or `UST` without changing the project's pin (#1048).
+fn load_pane(
+    store: &ResourceStore,
+    pins: &ProjectPins,
+    pane: &ScripturePane,
+    book: BookId,
+) -> TextStatus {
+    let fallback = pane_fallback_pin(pins, &pane.id).filter(|fb| fb.repo != pane.pin.repo);
+    if let Some(fb) = fallback
+        && !crate::resolve::covers(&pane.pin, book, store)
+    {
+        return load_usfm(store, fb, Some(Rung::Fallback), book);
+    }
+    match load_usfm(store, &pane.pin, None, book) {
+        status @ TextStatus::Missing(
+            Missing::BookNotInResource { .. } | Missing::NotCovered { .. },
+        ) => match fallback {
+            Some(fb) => load_usfm(store, fb, Some(Rung::Fallback), book),
+            None => status,
+        },
+        status => status,
+    }
 }
 
 /// What the literal pane has of a book, for a new blank book's chapters, verses and
@@ -819,7 +866,7 @@ pub fn literal_pane_book(store: &ResourceStore, pins: &ProjectPins, book: BookId
     let Some(pane) = pins.extra_scripture.iter().find(|p| &p.id == id) else {
         return PaneBook::Absent;
     };
-    match load_usfm(store, &pane.pin, None, book) {
+    match load_pane(store, pins, pane, book) {
         TextStatus::Loaded { usfm, .. } => PaneBook::Text(usfm),
         TextStatus::Missing(Missing::Unreadable { source, problem }) => {
             PaneBook::Unreadable(format!("{source}: {problem}"))

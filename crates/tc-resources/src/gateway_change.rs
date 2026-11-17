@@ -50,6 +50,11 @@ pub fn merge_optional_pins(
             .and_then(|repo| gateways::preferred(installed, &repo))
             .cloned()
     };
+    let literal = gateway
+        .literal_candidates()
+        .iter()
+        .find_map(|repo| gateways::preferred(installed, repo))
+        .cloned();
     let simplified = gateway
         .simplified_candidates()
         .iter()
@@ -73,9 +78,16 @@ pub fn merge_optional_pins(
         pick(SetSlot::ObsWordsLinks),
         pick(SetSlot::ObsQuestions),
     );
-    if [&questions, &simplified, &obs, &obs_questions, &images]
-        .iter()
-        .all(|pin| pin.is_none())
+    if [
+        &questions,
+        &literal,
+        &simplified,
+        &obs,
+        &obs_questions,
+        &images,
+    ]
+    .iter()
+    .all(|pin| pin.is_none())
     {
         return None;
     }
@@ -85,11 +97,7 @@ pub fn merge_optional_pins(
         let Some(set) = next.set_mut(rung).as_mut() else {
             continue;
         };
-        let names_it = set.gateway.named().is_some_and(|named| {
-            named.language == gateway.language
-                && named.owner.as_str().eq_ignore_ascii_case(gateway.owner)
-        });
-        if !names_it {
+        if !set_names_gateway(set, gateway) {
             continue;
         }
         let mut attach = |set: &mut LanguageSet, slot: SetSlot, pin: &Option<ResourcePin>| {
@@ -113,7 +121,102 @@ pub fn merge_optional_pins(
         attach(set, SetSlot::ObsQuestions, &obs_questions);
         attach(set, SetSlot::ObsImages, &images);
     }
+    if next
+        .primary
+        .as_ref()
+        .is_some_and(|set| set_names_gateway(set, gateway))
+    {
+        changed |= move_english_panes(
+            &mut next.extra_scripture,
+            literal.as_ref(),
+            simplified.as_ref(),
+        );
+    }
     changed.then_some(next)
+}
+
+/// Moves a project's English source panes (`en_ult` or `en_ust`, any release) to the
+/// primary package's own installed Bibles, and fills an empty `SimplifiedText` slot on
+/// sets naming that package (#1048). A pane that names any other Bible never moves.
+pub fn adopt_package_bibles(
+    pins: &ProjectPins,
+    gateway: &Gateway,
+    installed: &[ResourcePin],
+) -> Option<ProjectPins> {
+    if !pins
+        .primary
+        .as_ref()
+        .is_some_and(|set| set_names_gateway(set, gateway))
+    {
+        return None;
+    }
+    let literal = gateway
+        .literal_candidates()
+        .iter()
+        .find_map(|repo| gateways::preferred(installed, repo))
+        .cloned();
+    let simplified = gateway
+        .simplified_candidates()
+        .iter()
+        .find_map(|repo| gateways::preferred(installed, repo))
+        .cloned();
+    if literal.is_none() && simplified.is_none() {
+        return None;
+    }
+    let mut next = pins.clone();
+    let mut changed = false;
+    for rung in crate::sets::Rung::LADDER {
+        let Some(set) = next.set_mut(rung).as_mut() else {
+            continue;
+        };
+        if set_names_gateway(set, gateway)
+            && !set.pins.contains_key(&SetSlot::SimplifiedText)
+            && let Some(pin) = &simplified
+        {
+            set.pins.insert(SetSlot::SimplifiedText, pin.clone());
+            changed = true;
+        }
+    }
+    changed |= move_english_panes(
+        &mut next.extra_scripture,
+        literal.as_ref(),
+        simplified.as_ref(),
+    );
+    changed.then_some(next)
+}
+
+fn set_names_gateway(set: &LanguageSet, gateway: &Gateway) -> bool {
+    set.gateway.named().is_some_and(|named| {
+        named.language == gateway.language
+            && named.owner.as_str().eq_ignore_ascii_case(gateway.owner)
+    })
+}
+
+fn move_english_panes(
+    panes: &mut [ScripturePane],
+    literal: Option<&ResourcePin>,
+    simplified: Option<&ResourcePin>,
+) -> bool {
+    let (english_literal, english_simplified) = suite::english_bibles();
+    let mut changed = false;
+    for pane in panes {
+        if LITERAL_PANES.contains(&pane.id.as_str())
+            && pane.pin.repo == english_literal.repo
+            && let Some(pin) = literal
+            && pin.repo != pane.pin.repo
+        {
+            *pane = pane_for(LITERAL_PANES, pin);
+            changed = true;
+        } else if SIMPLIFIED_PANES.contains(&pane.id.as_str())
+            && pane.pin.repo == english_simplified.repo
+            && let Some(pin) = simplified
+            && pin.repo != pane.pin.repo
+        {
+            *pane = pane_for(SIMPLIFIED_PANES, pin);
+            changed = true;
+        }
+    }
+    changed
 }
 
 /// The pins after the change: `primary` moves, and the panes when given. The fallback
@@ -152,6 +255,20 @@ pub fn literal_pane_id(ids: &[PaneId]) -> Option<&PaneId> {
         .or_else(|| ids.first())
 }
 
+fn pane_for(ids: [&str; 2], pin: &ResourcePin) -> ScripturePane {
+    let name = pin.repo.name().as_str().to_ascii_lowercase();
+    let suffix = name.rsplit('_').next().unwrap_or_default();
+    let id = if ids.contains(&suffix) {
+        suffix
+    } else {
+        ids[1]
+    };
+    ScripturePane {
+        id: pane_id(id),
+        pin: pin.clone(),
+    }
+}
+
 /// A Bible project's source panes after a change (tC4 `sourcePanesForGateway`, #412,
 /// #704): the literal pane takes the package's literal Bible and the simplified pane its
 /// simplified Bible, and a pane the package cannot fill takes the English one. A pane is
@@ -169,17 +286,7 @@ pub fn source_panes_for_gateway(
         if was.pin.repo == pin.repo {
             return Some(was.clone());
         }
-        let name = pin.repo.name().as_str().to_ascii_lowercase();
-        let suffix = name.rsplit('_').next().unwrap_or_default();
-        let id = if ids.contains(&suffix) {
-            suffix
-        } else {
-            ids[1]
-        };
-        Some(ScripturePane {
-            id: pane_id(id),
-            pin: pin.clone(),
-        })
+        Some(pane_for(ids, pin))
     };
     let literal = pane(
         LITERAL_PANES,
@@ -437,6 +544,27 @@ mod tests {
     }
 
     #[test]
+    fn a_simplified_bible_with_another_name_fills_the_gst_pane() {
+        let current = suite::project_pins().extra_scripture;
+        let simplified = real("BSOJ/ar_arst", Some("v4.9"), &"a".repeat(40));
+        let installed = [ar_avd(), simplified.clone()];
+        let package = gateways::find("ar", "BSOJ").unwrap();
+        let bibles = gateways::gateway_bibles_from_installed(&installed, package);
+        let panes = source_panes_for_gateway(&current, &bibles);
+        assert_eq!(
+            ids(&panes),
+            [("glt", "ar_avd"), ("gst", "ar_arst")],
+            "INV-GATEWAY-BIBLE-NAMED: BSOJ's named simplified Bible fills the GST pane"
+        );
+        assert_eq!(panes[1].pin, simplified);
+        assert_eq!(
+            source_panes_for_gateway(&panes, &GatewayBibles::default()),
+            current,
+            "INV-GATEWAY-BIBLE-NAMED: a package without Bibles still uses English"
+        );
+    }
+
+    #[test]
     fn the_change_writes_the_panes_when_given_and_keeps_the_fallback() {
         let start = suite::project_pins();
         let primary = LanguageSet {
@@ -684,5 +812,60 @@ mod tests {
         for slot in [SetSlot::Obs, SetSlot::ObsNotes, SetSlot::ObsWordsLinks] {
             assert!(set.pin(slot).is_some(), "{slot:?}");
         }
+    }
+
+    #[test]
+    fn an_english_pane_moves_to_the_packages_bible_and_another_bible_never_moves() {
+        let russian = gateways::find("ru", "ru_gl").unwrap();
+        let rlob = real("ru_gl/ru_rlob", Some("v13.0"), &"1".repeat(40));
+        let rsob = real("ru_gl/ru_rsob", Some("v14.0"), &"2".repeat(40));
+        let mut primary = LanguageSet::new(GatewayLanguage {
+            language: "ru".to_owned(),
+            owner: "ru_gl".parse().unwrap(),
+        });
+        primary.pins.insert(
+            SetSlot::TranslationNotes,
+            real("ru_gl/ru_tn", Some("v85"), &"3".repeat(40)),
+        );
+        let mut before = suite::project_pins();
+        before.primary = Some(primary);
+        // Any release of the English ULT moves, not only the bundled sha.
+        before.extra_scripture[0].pin = real("unfoldingWord/en_ult", Some("v88"), &"8".repeat(40));
+        let after = merge_optional_pins(&before, russian, &[rlob.clone(), rsob.clone()])
+            .expect("INV-GATEWAY-BIBLE-NAMED: installed package Bibles adopt into English panes");
+        assert_eq!(
+            ids(&after.extra_scripture),
+            [("glt", "ru_rlob"), ("gst", "ru_rsob")],
+            "INV-GATEWAY-BIBLE-NAMED: both English panes move to ru_gl's Bibles"
+        );
+        assert_eq!(
+            after.primary.as_ref().unwrap().pin(SetSlot::SimplifiedText),
+            Some(&rsob)
+        );
+        assert_eq!(
+            merge_optional_pins(&after, russian, &[rlob.clone(), rsob.clone()]),
+            None,
+            "once moved, a second check changes nothing"
+        );
+
+        // A pane that names any other Bible never moves.
+        let other_literal = real("Door43-Catalog/fr_ult", Some("v1"), &"f".repeat(40));
+        let other_simplified = real("BSOJ/ar_arst", Some("v4.9"), &"a".repeat(40));
+        let mut custom = after.clone();
+        custom.extra_scripture = vec![
+            ScripturePane {
+                id: pane_id("glt"),
+                pin: other_literal.clone(),
+            },
+            ScripturePane {
+                id: pane_id("gst"),
+                pin: other_simplified.clone(),
+            },
+        ];
+        assert_eq!(
+            merge_optional_pins(&custom, russian, &[rlob, rsob]),
+            None,
+            "INV-GATEWAY-BIBLE-NAMED: a pane naming another Bible never moves on its own"
+        );
     }
 }

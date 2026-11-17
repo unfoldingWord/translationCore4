@@ -242,10 +242,21 @@ fn chosen_pane<'a>(view: &'a SourcesView, tab: &str) -> Option<&'a SourcePane> {
     view.panes.iter().find(|p| p.id == tab)
 }
 
-/// The tab shown: the chosen one when the project has it, else its literal pane.
+/// The tab shown: the chosen one when the project has it (or its English/gateway counterpart
+/// when a book fell back to English), else its literal pane.
 fn shown_tab(view: &SourcesView, tab: &str) -> Option<String> {
     if chosen_pane(view, tab).is_some() {
         return Some(tab.to_owned());
+    }
+    let counterpart = match tab {
+        "glt" => Some("ult"),
+        "ult" => Some("glt"),
+        "gst" => Some("ust"),
+        "ust" => Some("gst"),
+        _ => None,
+    };
+    if let Some(paired) = counterpart.filter(|id| chosen_pane(view, id).is_some()) {
+        return Some(paired.to_owned());
     }
     let ids: Vec<String> = view.panes.iter().map(|p| p.id.clone()).collect();
     literal_pane(&ids)

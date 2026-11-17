@@ -358,12 +358,32 @@ fn load(
     let panes = read_pins
         .extra_scripture
         .iter()
-        .map(|pane| LoadedPane {
-            id: pane.id.as_str().to_owned(),
-            version: pane.pin.version.as_ref().map(|v| v.as_str().to_owned()),
-            text: resources
-                .text(&TextRole::Pane(pane.id.clone()))
-                .map_or(LoadedText::Missing, text_state),
+        .map(|pane| {
+            let status = resources.text(&TextRole::Pane(pane.id.clone()));
+            let (id, version) = match status {
+                Some(TextStatus::Loaded {
+                    pin,
+                    rung: Some(Rung::Fallback),
+                    ..
+                }) => (
+                    match pane.id.as_str() {
+                        "glt" => "ult",
+                        "gst" => "ust",
+                        other => other,
+                    }
+                    .to_owned(),
+                    pin.version.as_ref().map(|v| v.as_str().to_owned()),
+                ),
+                _ => (
+                    pane.id.as_str().to_owned(),
+                    pane.pin.version.as_ref().map(|v| v.as_str().to_owned()),
+                ),
+            };
+            LoadedPane {
+                id,
+                version,
+                text: status.map_or(LoadedText::Missing, text_state),
+            }
         })
         .collect();
     let original = resources
@@ -515,10 +535,28 @@ impl App {
             .await
             .ok()
             .and_then(Result::ok);
-        let kind = self
-            .read(&session.at)
-            .map(|s| crate::home::api_kind(s.handle().facts().kind))
-            .map_err(JobEnd::Failed)?;
+        let opened = self.read(&session.at).map_err(JobEnd::Failed)?;
+        let kind = crate::home::api_kind(opened.handle().facts().kind);
+        let adopt_gateway = project_pins(&opened.read())
+            .ok()
+            .flatten()
+            .and_then(|pins| {
+                let primary = pins.primary.as_ref()?;
+                let gateway = tc_resources::gateways::of_set(primary)?;
+                let (en_lit, en_simp) = tc_resources::suite::english_bibles();
+                let needs_pane = gateway.language != "en"
+                    && pins
+                        .extra_scripture
+                        .iter()
+                        .any(|p| p.pin.repo == en_lit.repo || p.pin.repo == en_simp.repo);
+                let needs_slot = !primary
+                    .pins
+                    .contains_key(&tc_resources::SetSlot::SimplifiedText);
+                (needs_pane || needs_slot).then_some(gateway)
+            });
+        if let Some(gateway) = adopt_gateway {
+            let _ = self.adopt_package_bibles_on_open(&opened, gateway).await;
+        }
         let (metadata, text_direction) = match peek {
             Some(p) => (p.metadata, p.text_direction),
             None => (
