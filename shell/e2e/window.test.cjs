@@ -6,7 +6,34 @@
 
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
+const { execFileSync } = require('node:child_process');
+const path = require('node:path');
 const h = require('./harness.cjs');
+
+if (process.platform === 'win32') h.shellTest('spanish_layout_native_zoom_keys', async () => {
+  const app = await h.launch(h.appDataDir('spanish-zoom'));
+  try {
+    await h.home(app);
+    const handle = await app.evaluate(({ BrowserWindow }) => {
+      const win = BrowserWindow.getAllWindows()[0];
+      win.focus();
+      win.webContents.focus();
+      win.webContents.on('before-input-event', (_e, input) => {
+        if (input.type === 'keyDown' && input.key !== 'Control') globalThis.zoomInput = input;
+      });
+      return win.getNativeWindowHandle().readBigUInt64LE().toString();
+    });
+    for (const [key, expected] of [[0xbb, 0.5], [0x6b, 1], [0x6d, 0.5], [0xbd, 0], [0xbb, 0.5], [0x30, 0]]) {
+      execFileSync('powershell.exe', ['-NoProfile', '-File', path.join(__dirname, 'spanish-keys.ps1'), '-Window', handle, '-Key', String(key)], { windowsHide: true, timeout: 15000 });
+      await h.until(`INV-ZOOM-KEYS: native ${key}`, () => app.evaluate(({ BrowserWindow }, expected) => BrowserWindow.getAllWindows()[0].webContents.getZoomLevel() === expected, expected), 10000);
+      const input = await app.evaluate(() => globalThis.zoomInput);
+      assert.equal(input.control, true, 'INV-ZOOM-KEYS: Ctrl is held');
+      assert.equal(input.shift, false, 'INV-ZOOM-KEYS: Spanish plus needs no Shift');
+    }
+  } finally {
+    await h.finish(app);
+  }
+});
 
 h.shellTest('zoom_keys_follow_the_layout_and_numeric_keypad', async () => {
   const app = await h.launch(h.appDataDir('zoom-keys'));
