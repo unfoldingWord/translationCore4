@@ -445,17 +445,19 @@ impl Handle<Download> for App {
                 if fetched_any || (stopped.is_none() && failed.len() < paths.len()) {
                     lock(&app.inner.downloaded).insert((key, book));
                 }
-                if let Some(end) = stopped {
-                    return Err(end);
-                }
-                // What the download brought joins the project's sets (tC4 `adoptDownloadedPins`).
-                if (fetched_any || failed.len() < paths.len())
+                // What the download brought joins the project's sets and English panes
+                // (`adoptDownloadedPins`), including repositories that finished before a cancel.
+                if (fetched_any || (stopped.is_none() && failed.len() < paths.len()))
                     && let Err(error) =
                         runtime.block_on(app.adopt_downloaded_pins(&session, gateway))
+                    && stopped.is_none()
                 {
                     return Err(JobEnd::Failed(ApiError::Refused(Refusal::Resources(
                         ResourceRefusal::AdoptFailed { error },
                     ))));
+                }
+                if let Some(end) = stopped {
+                    return Err(end);
                 }
                 if failed.is_empty() {
                     Ok(if fetched_any {

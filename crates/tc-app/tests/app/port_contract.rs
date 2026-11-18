@@ -1678,6 +1678,7 @@ async fn move_pin(
             .submit(tc_app::backend::StoreCommand::apply_upgrade(
                 tc_journal::command::UpgradePlan {
                     changes: vec![change],
+                    guards: Vec::new(),
                 },
             ))
             .await

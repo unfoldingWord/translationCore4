@@ -14,8 +14,9 @@
 //!   looked. They are never gates, as in tC4: a set and the source panes take whatever
 //!   `<lang>_ult`/`_glt`, `<lang>_ust`/`_gst` and `<lang>_tq` is installed, because a flag
 //!   goes stale the day an owner publishes.
-//! - `literal`: the literal Bible's name when it is not `<lang>_ult` or `<lang>_glt`
-//!   (BSOJ publishes `ar_avd`).
+//! - `literal` and `simplified`: a Bible's own repository name, before the suffix names
+//!   (BSOJ publishes `ar_avd` and `ar_arst`; `ru_gl` publishes `ru_rlob` and `ru_rsob`;
+//!   #1048). The names remain language/owner-specific.
 //!
 //! One entry differs from tC4 on purpose: ur-deva reads left to right and is named in
 //! Devanagari (tC4 #701).
@@ -59,6 +60,8 @@ pub struct Gateway {
     pub has_simplified: bool,
     /// The literal Bible's repository when it is not `<lang>_ult` or `<lang>_glt`.
     pub literal: Option<&'static str>,
+    /// The simplified Bible's repository when it is not `<lang>_ust` or `<lang>_gst`.
+    pub simplified: Option<&'static str>,
     /// The releases of the owner's notes, words and academy that tC4 saw when it built the
     /// list (`seen`). Get source texts shows them under a package only for what is not
     /// installed (`installed_release`, tC4 #833.5).
@@ -92,6 +95,7 @@ const fn gl(
         has_tq: true,
         has_simplified: true,
         literal: None,
+        simplified: None,
         seen: Seen { tn, tw, ta },
     }
 }
@@ -138,6 +142,8 @@ pub const GATEWAYS: [Gateway; 18] = [
     ),
     Gateway {
         has_simplified: false,
+        literal: Some("ru_rlob"),
+        simplified: Some("ru_rsob"),
         ..gl(
             "ru",
             "ru_gl",
@@ -157,6 +163,7 @@ pub const GATEWAYS: [Gateway; 18] = [
     ),
     Gateway {
         literal: Some("ar_avd"),
+        simplified: Some("ar_arst"),
         ..gl(
             "ar",
             "BSOJ",
@@ -320,21 +327,19 @@ impl Gateway {
     /// The names the literal Bible may have, most specific first: the registry's own
     /// name, then `<lang>_ult`, then `<lang>_glt` (tC4 `gatewayBiblesFromInstalled`).
     pub fn literal_candidates(&self) -> Vec<RepoRef> {
-        let mut out: Vec<RepoRef> = self
-            .literal
-            .and_then(|n| self.repo(n))
-            .into_iter()
-            .collect();
-        out.extend(self.named("ult"));
-        out.extend(self.named("glt"));
-        out
+        self.bible_candidates(self.literal, ["ult", "glt"])
     }
 
-    /// The names the simplified Bible may have: `<lang>_ust`, then `<lang>_gst`.
+    /// The simplified Bible's names, most specific first: the registry's own name,
+    /// then `<lang>_ust`, then `<lang>_gst`.
     pub fn simplified_candidates(&self) -> Vec<RepoRef> {
-        self.named("ust")
+        self.bible_candidates(self.simplified, ["ust", "gst"])
+    }
+
+    fn bible_candidates(&self, name: Option<&str>, suffixes: [&str; 2]) -> Vec<RepoRef> {
+        name.and_then(|name| self.repo(name))
             .into_iter()
-            .chain(self.named("gst"))
+            .chain(suffixes.into_iter().filter_map(|suffix| self.named(suffix)))
             .collect()
     }
 }
@@ -537,6 +542,22 @@ mod tests {
         }
         assert_eq!(GATEWAYS.len(), 18);
         assert_eq!(english().language, "en");
+    }
+
+    #[test]
+    fn every_registry_bible_names_its_own_language() {
+        for gateway in &GATEWAYS {
+            for name in gateway.literal.into_iter().chain(gateway.simplified) {
+                let repo = name
+                    .parse::<RepoName>()
+                    .expect("INV-REGISTRY-BIBLE-OWN-LANGUAGE: a declared Bible name must parse");
+                assert!(
+                    repo.as_str().starts_with(&format!("{}_", gateway.language)),
+                    "INV-REGISTRY-BIBLE-OWN-LANGUAGE: {} names another language's Bible {repo}",
+                    gateway.key(),
+                );
+            }
+        }
     }
 
     #[test]
@@ -863,5 +884,122 @@ mod tests {
         let bibles = gateway_bibles_from_installed(&installed, find("ar", "BSOJ").unwrap());
         assert_eq!(bibles.literal.unwrap().repo.name().as_str(), "ar_avd");
         assert_eq!(bibles.simplified.unwrap().repo.name().as_str(), "ar_gst");
+    }
+
+    #[test]
+    fn gateway_bibles_take_the_registry_simplified_name_first() {
+        let installed: Vec<_> = ["ar_ust", "ar_gst", "ar_arst"]
+            .into_iter()
+            .map(|name| {
+                pin(
+                    &format!("git.door43.org/BSOJ/{name}"),
+                    'a',
+                    "scripture/textTranslation",
+                )
+            })
+            .collect();
+        let arabic = find("ar", "BSOJ").unwrap();
+        let bibles = gateway_bibles_from_installed(&installed, arabic);
+        assert_eq!(
+            bibles.simplified.unwrap().repo.name().as_str(),
+            "ar_arst",
+            "INV-GATEWAY-BIBLE-NAMED: the registry's simplified Bible precedes both suffix names"
+        );
+        assert_eq!(
+            arabic
+                .repo_for(SetSlot::SimplifiedText)
+                .unwrap()
+                .name
+                .as_str(),
+            "ar_arst",
+            "INV-GATEWAY-BIBLE-NAMED: the slot and pane use the same registry name"
+        );
+
+        let ru_installed: Vec<_> = ["ru_ult", "ru_glt", "ru_rlob", "ru_ust", "ru_gst", "ru_rsob"]
+            .into_iter()
+            .map(|name| {
+                pin(
+                    &format!("git.door43.org/ru_gl/{name}"),
+                    'b',
+                    "scripture/textTranslation",
+                )
+            })
+            .collect();
+        let russian = find("ru", "ru_gl").unwrap();
+        let ru_bibles = gateway_bibles_from_installed(&ru_installed, russian);
+        assert_eq!(
+            ru_bibles.literal.unwrap().repo.name().as_str(),
+            "ru_rlob",
+            "INV-GATEWAY-BIBLE-NAMED: ru_gl picks ru_rlob over ru_ult and ru_glt"
+        );
+        assert_eq!(
+            ru_bibles.simplified.unwrap().repo.name().as_str(),
+            "ru_rsob",
+            "INV-GATEWAY-BIBLE-NAMED: ru_gl picks ru_rsob over ru_ust and ru_gst"
+        );
+        assert_eq!(
+            russian
+                .repo_for(SetSlot::SimplifiedText)
+                .unwrap()
+                .name
+                .as_str(),
+            "ru_rsob",
+            "INV-GATEWAY-BIBLE-NAMED: ru_gl's simplified slot uses ru_rsob"
+        );
+    }
+
+    #[test]
+    fn the_set_and_download_adoption_take_the_registry_simplified_name() {
+        let gateway = find("ar", "BSOJ").unwrap();
+        let mut installed: Vec<_> = LanguageSet::required(ProjectKind::Bible)
+            .iter()
+            .map(|slot| {
+                let mut pin = suite::english_helps().pin(*slot).unwrap().clone();
+                pin.repo = format!("git.door43.org/{}", gateway.repo_for(*slot).unwrap())
+                    .parse()
+                    .unwrap();
+                pin
+            })
+            .collect();
+        let simplified = pin(
+            "git.door43.org/BSOJ/ar_arst",
+            'a',
+            "scripture/textTranslation",
+        )
+        .with_version("v4.9".parse().unwrap());
+        installed.push(simplified.clone());
+        let mut primary = language_set_from_installed(&installed, gateway, ProjectKind::Bible)
+            .expect("INV-GATEWAY-BIBLE-NAMED: the installed helps are a complete set");
+        assert_eq!(
+            primary.pin(SetSlot::SimplifiedText),
+            Some(&simplified),
+            "INV-GATEWAY-BIBLE-NAMED: the set pins the registry's Bible"
+        );
+        assert_eq!(
+            installed_release(&installed, gateway, SetSlot::SimplifiedText, None),
+            Some("v4.9"),
+            "INV-GATEWAY-BIBLE-NAMED: the package row names the installed release"
+        );
+        primary.pins.remove(&SetSlot::SimplifiedText);
+        let before = crate::sets::ProjectPins {
+            primary: Some(primary),
+            ..suite::project_pins()
+        };
+        let after = crate::gateway_change::merge_optional_pins(&before, gateway, &installed)
+            .expect("INV-GATEWAY-BIBLE-NAMED: the downloaded named Bible fills the empty slot");
+        assert_eq!(
+            after.primary.as_ref().unwrap().pin(SetSlot::SimplifiedText),
+            Some(&simplified)
+        );
+        assert_eq!(after.fallback, before.fallback);
+        assert_eq!(after.extra_scripture[0], before.extra_scripture[0]);
+        assert_eq!(
+            after.extra_scripture[1],
+            crate::sets::ScripturePane {
+                id: "gst".parse().unwrap(),
+                pin: simplified,
+            },
+            "INV-GATEWAY-BIBLE-NAMED: the English simplified pane moves to the package's Bible"
+        );
     }
 }

@@ -29,12 +29,13 @@ use tc_door43::{Door43Client, Door43Error, RepoRef};
 use tc_helps::WordArticleId;
 use tc_helps::metadata::parse_burrito_metadata;
 use tc_helps::tsv::{TsvScope, parse_notes, parse_word_links};
-use tc_journal::command::{PlannedChange, UpgradePlan};
+use tc_journal::command::{PlannedChange, UpgradeGuard, UpgradePlan};
 use tc_journal::keys::PinGroup;
 use tc_journal::record::{PinGroupValue, Record};
 use tc_journal::{Cause, RecordKey};
 use tc_resources::gateway_change::{
-    apply_gateway_change, complete_language_sets, merge_optional_pins, source_panes_for_gateway,
+    adopt_package_bibles, apply_gateway_change, complete_language_sets, merge_optional_pins,
+    source_panes_for_gateway,
 };
 use tc_resources::gateways::{self, Gateway};
 use tc_resources::resolve::backfill_coverage;
@@ -484,6 +485,25 @@ impl App {
         session: &Arc<ProjectSession>,
         gateway: &'static Gateway,
     ) -> Result<(), String> {
+        self.adopt_pins_with(session, gateway, merge_optional_pins)
+            .await
+    }
+
+    pub(crate) async fn adopt_package_bibles_on_open(
+        &self,
+        session: &Arc<ProjectSession>,
+        gateway: &'static Gateway,
+    ) -> Result<(), String> {
+        self.adopt_pins_with(session, gateway, adopt_package_bibles)
+            .await
+    }
+
+    async fn adopt_pins_with(
+        &self,
+        session: &Arc<ProjectSession>,
+        gateway: &'static Gateway,
+        merge: fn(&ProjectPins, &Gateway, &[ResourcePin]) -> Option<ProjectPins>,
+    ) -> Result<(), String> {
         for _ in 0..4 {
             let read = session.read();
             let Some(current) = crate::resources::project_pins(&read).map_err(|e| e.to_string())?
@@ -491,17 +511,15 @@ impl App {
                 return Ok(());
             };
             let installed = self.installed_pins().await?;
-            let Some(merged) = merge_optional_pins(&current, gateway, &installed) else {
+            let Some(merged) = merge(&current, gateway, &installed) else {
                 return Ok(());
             };
             let store = self.inner.resources.clone();
-            let changes = tokio::task::spawn_blocking(move || {
-                let (filled, _) = backfill_coverage(&merged, &store);
-                pin_changes(&read, &current, &filled).map_err(|e| e.to_string())
+            let plan = tokio::task::spawn_blocking(move || {
+                App::adoption_upgrade_plan(&read, &current, &merged, &store)
             })
             .await
             .map_err(|e| e.to_string())??;
-            let plan = UpgradePlan { changes };
             match session
                 .handle()
                 .submit(StoreCommand::apply_upgrade(plan))
@@ -513,6 +531,22 @@ impl App {
             }
         }
         Err("the project kept changing".to_owned())
+    }
+
+    fn adoption_upgrade_plan(
+        read: &crate::counters::CountingSnapshot,
+        current: &ProjectPins,
+        merged: &ProjectPins,
+        store: &tc_resources::ResourceStore,
+    ) -> Result<UpgradePlan, String> {
+        let primary_key = RecordKey::Pins(PinGroup::Primary);
+        let guards = vec![UpgradeGuard::new(
+            primary_key.clone(),
+            read.heads(&primary_key),
+        )];
+        let (filled, _) = backfill_coverage(merged, store);
+        let changes = pin_changes(read, current, &filled).map_err(|e| e.to_string())?;
+        Ok(UpgradePlan { changes, guards })
     }
 
     /// The next scripted plan, when a test or a capture scripted one.
@@ -611,6 +645,7 @@ impl App {
             recipe,
             plan: UpgradePlan {
                 changes: work.changes,
+                guards: Vec::new(),
             },
             blocked: blocked_books(&work.blocked),
         });
@@ -978,5 +1013,141 @@ impl Handle<ApplyPlan> for App {
                 ),
             }),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::backend::store::StoreBackend;
+    use crate::backend::{NewProjectSpec, ProjectStore as _};
+    use crate::counters::{AppCounters, CountingSnapshot};
+
+    #[tokio::test]
+    async fn adoption_plan_is_refused_as_stale_when_only_primary_changes_before_submit() {
+        let mut initial = tc_resources::suite::project_pins();
+        let ru_gateway = tc_resources::gateways::find("ru", "ru_gl").unwrap();
+        let es_gateway = tc_resources::gateways::find("es-419", "es-419_gl").unwrap();
+        let ru_rlob = ResourcePin::new(
+            "git.door43.org/ru_gl/ru_rlob".parse().unwrap(),
+            "1111111111111111111111111111111111111111".parse().unwrap(),
+        )
+        .with_version("v13.0".parse().unwrap())
+        .with_flavor("textTranslation");
+        let ru_rsob = ResourcePin::new(
+            "git.door43.org/ru_gl/ru_rsob".parse().unwrap(),
+            "2222222222222222222222222222222222222222".parse().unwrap(),
+        )
+        .with_version("v14.0".parse().unwrap())
+        .with_flavor("textTranslation");
+        let dummy_set = |gw: &Gateway| tc_resources::LanguageSet {
+            gateway: tc_resources::GatewayLanguage {
+                language: gw.language.to_owned(),
+                owner: gw.owner.parse().unwrap(),
+            }
+            .into(),
+            pins: [(tc_resources::SetSlot::SimplifiedText, ru_rsob.clone())]
+                .into_iter()
+                .collect(),
+            extra: Default::default(),
+            unreadable: Default::default(),
+        };
+        initial.primary = Some(dummy_set(ru_gateway));
+
+        let dir = tempfile::tempdir().unwrap();
+        let backend =
+            StoreBackend::on_disk(&dir.path().join("app-data"), &dir.path().join("projects"))
+                .unwrap();
+        let project = tc_api::ids::ProjectRef::parse("adopt_race").unwrap();
+        backend
+            .create(NewProjectSpec {
+                folder: project.clone(),
+                kind: tc_journal::fold::ProjectKind::Bible,
+                records: vec![
+                    Record::Pins {
+                        group: PinGroup::Primary,
+                        value: initial.group_value(PinGroup::Primary).unwrap(),
+                    },
+                    Record::Pins {
+                        group: PinGroup::Fallback,
+                        value: initial.group_value(PinGroup::Fallback).unwrap(),
+                    },
+                    Record::Pins {
+                        group: PinGroup::ExtraScripture,
+                        value: initial.group_value(PinGroup::ExtraScripture).unwrap(),
+                    },
+                ],
+                texts: Vec::new(),
+                carried: Vec::new(),
+            })
+            .unwrap();
+        let handle = backend
+            .open(
+                &project,
+                crate::jobs::ProgressSink::new(tc_api::jobs::Phase::Open(
+                    tc_api::jobs::OpenPhase::ReadingChanges,
+                )),
+            )
+            .unwrap();
+
+        let store = tc_resources::ResourceStore::open(dir.path().join("resources")).unwrap();
+        let read = CountingSnapshot::new(handle.snapshot(), Arc::new(AppCounters::default()));
+        let current = crate::resources::project_pins(&read).unwrap().unwrap();
+        let merged = tc_resources::gateway_change::adopt_package_bibles(
+            &current,
+            ru_gateway,
+            std::slice::from_ref(&ru_rlob),
+        )
+        .expect("ru_rlob should adopt into English ult pane");
+        assert_eq!(
+            merged.primary, current.primary,
+            "Primary is unchanged in merged"
+        );
+
+        let plan = App::adoption_upgrade_plan(&read, &current, &merged, &store).unwrap();
+        assert_eq!(plan.changes.len(), 1, "only ExtraScripture changes");
+        assert_eq!(plan.guards.len(), 1, "Primary is guarded");
+
+        // Between snapshot and submit, a teammate switches only Primary to es-419_gl.
+        let primary_key = RecordKey::Pins(PinGroup::Primary);
+        let mut switched = initial.clone();
+        let mut switched_primary = dummy_set(es_gateway);
+        switched_primary.pins.clear();
+        switched.primary = Some(switched_primary);
+        handle
+            .submit(StoreCommand::apply_upgrade(UpgradePlan {
+                changes: vec![PlannedChange::new(
+                    Record::Pins {
+                        group: PinGroup::Primary,
+                        value: switched.group_value(PinGroup::Primary).unwrap(),
+                    },
+                    handle.snapshot().fold().heads(&primary_key),
+                    Cause::Edit,
+                )],
+                guards: Vec::new(),
+            }))
+            .await
+            .unwrap();
+
+        let result = handle.submit(StoreCommand::apply_upgrade(plan)).await;
+        assert!(
+            matches!(result, Err(crate::backend::CommandError::PlanStale)),
+            "stale Primary guard must reject pane adoption: {result:?}"
+        );
+
+        let after_read = CountingSnapshot::new(handle.snapshot(), Arc::new(AppCounters::default()));
+        let final_pins = crate::resources::project_pins(&after_read)
+            .unwrap()
+            .unwrap();
+        let pane_repos: Vec<_> = final_pins
+            .extra_scripture
+            .iter()
+            .map(|p| p.pin.repo.name().as_str().to_owned())
+            .collect();
+        assert_eq!(
+            pane_repos,
+            ["en_ult", "en_ust"],
+            "English panes must not move to the obsolete ru_gl package's ru_rlob"
+        );
     }
 }

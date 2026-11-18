@@ -636,6 +636,25 @@ pub fn literal_pane(ids: &[String]) -> Option<String> {
         .or_else(|| ids.first().cloned())
 }
 
+/// The source tab a passage shows: the chosen one when present, its English/gateway
+/// counterpart when a book fell back to English (#1048), else [`literal_pane`].
+pub fn shown_source_tab(ids: &[String], tab: &str) -> Option<String> {
+    if ids.iter().any(|id| id == tab) {
+        return Some(tab.to_owned());
+    }
+    let counterpart = match tab {
+        "glt" => Some("ult"),
+        "ult" => Some("glt"),
+        "gst" => Some("ust"),
+        "ust" => Some("gst"),
+        _ => None,
+    };
+    if let Some(paired) = counterpart.filter(|id| ids.iter().any(|i| i == *id)) {
+        return Some(paired.to_owned());
+    }
+    literal_pane(ids)
+}
+
 /// The helps panel's tabs (tC4's `helpsTab`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HelpsTab {
@@ -694,4 +713,27 @@ pub fn clamp_helps(width: f64) -> f64 {
 /// The panel's width while dragging (tC4's `widthAt`): it grows toward the editing pane.
 pub fn drag_width(start_x: f64, start_width: f64, rtl: bool, x: f64) -> f64 {
     clamp_helps(start_width + if rtl { x - start_x } else { start_x - x })
+}
+
+#[cfg(test)]
+mod shown_tab_tests {
+    use super::shown_source_tab;
+
+    #[test]
+    fn shown_source_tab_keeps_the_kind_across_english_fallback_books() {
+        let russian = ["glt".to_owned(), "gst".to_owned()];
+        let fallback = ["ult".to_owned(), "ust".to_owned()];
+        assert_eq!(
+            shown_source_tab(&fallback, "gst").as_deref(),
+            Some("ust"),
+            "INV-PANE-BOOK-FALLBACK: simplified tab stays on simplified when falling back to UST"
+        );
+        assert_eq!(
+            shown_source_tab(&russian, "ust").as_deref(),
+            Some("gst"),
+            "INV-PANE-BOOK-FALLBACK: simplified tab returns to GST on a covered book"
+        );
+        assert_eq!(shown_source_tab(&fallback, "glt").as_deref(), Some("ult"));
+        assert_eq!(shown_source_tab(&russian, "ult").as_deref(), Some("glt"));
+    }
 }

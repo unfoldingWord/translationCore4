@@ -104,6 +104,10 @@ budget in `docs/PERFORMANCE.md`). Their tC4 tests stay mapped under `specs` in `
   the typed text. The section card fills the row its source sets (#915). A click on a section's
   translation filters the helps to it, and after Save they stay on that section, or on the verse
   in Verse mode (#991, DIFFERENCES).
+  Choosing BSOJ with `ar_arst` installed or `ru_gl` with `ru_rlob` and `ru_rsob` installed
+  shows those Bibles in the source panes, and a pane whose Bible lacks the open book shows
+  the pinned English ULT or UST (`ULT`/`UST`) without changing the pane's pin (#1048,
+  DIFFERENCES).
 
 ### J3 Get pinned resources
 
@@ -246,6 +250,10 @@ budget in `docs/PERFORMANCE.md`). Their tC4 tests stay mapped under `specs` in `
 - Differs from tC4: Keep and Change stay side by side inside the dialog at one width, a label
   that does not fit cut with an ellipsis and given whole in its tooltip; between two packages of
   one language they also name each package's owner; the language in use is never asked (#855).
+  A package may name its literal and simplified Bibles (`ar_avd` and `ar_arst` for BSOJ,
+  `ru_rlob` and `ru_rsob` for `ru_gl`); choosing the package pins them in the source panes
+  and the primary set's simplified-text slot, and a project already on the package moves an
+  English pane to the package's Bible when it is installed on download or open (#1048).
 
 ### J16 Read a passage with helps and write a user comment
 

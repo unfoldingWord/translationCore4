@@ -136,10 +136,12 @@ fn count(n: usize) -> u32 {
     u32::try_from(n).unwrap_or(u32::MAX)
 }
 
-/// What a list was derived under: another resolution, numbering or scope derives it again.
+/// What a list was derived under: another resolution, literal pane, numbering or scope derives
+/// it again.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ListKey {
     resolution: ResourceRef,
+    literal: Option<ResourceRef>,
     numbering: Option<&'static str>,
     scope: Option<BookScope>,
 }
@@ -1127,6 +1129,18 @@ impl App {
             (PreflightState::Ready, Some(resolution)) => Ready {
                 key: ListKey {
                     resolution: resolution.pin.resource.clone(),
+                    literal: match unit {
+                        CheckUnit::Book(_) => pins.as_ref().and_then(|p| {
+                            let ids: Vec<_> =
+                                p.extra_scripture.iter().map(|s| s.id.clone()).collect();
+                            let id = tc_resources::gateway_change::literal_pane_id(&ids)?;
+                            p.extra_scripture
+                                .iter()
+                                .find(|s| &s.id == id)
+                                .map(|s| s.pin.resource())
+                        }),
+                        CheckUnit::Story(_) => None,
+                    },
                     // A story has no verse numbering and no scope to map or cut by.
                     numbering: match unit {
                         CheckUnit::Book(_) => Numbering::of(versification(&read).as_ref())

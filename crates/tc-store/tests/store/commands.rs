@@ -262,6 +262,7 @@ pub(crate) fn rich() -> (FaultFs, PathBuf) {
                         Vec::new(),
                         Cause::Seed,
                     )],
+                    guards: Vec::new(),
                 },
             },
         )
@@ -588,6 +589,7 @@ pub(crate) fn every_command(handle: &ProjectHandle) -> Vec<(&'static str, Comman
                         group: PinGroup::Primary,
                     },
                 )],
+                guards: Vec::new(),
             },
         },
     ));

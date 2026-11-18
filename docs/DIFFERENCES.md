@@ -25,6 +25,15 @@ from `d494a9d` to `d310bf3`, and `docs/TC4-DELTA-2026-10-23.md` (SWEEP) the chan
 
 ## Where the rebuild differs from tC4 4.0 on purpose
 
+- A gateway package can name its simplified Bible as well as its literal Bible. BSOJ names
+  `ar_arst` beside `ar_avd`, and `ru_gl` names `ru_rlob` and `ru_rsob`, chosen before `_ult`/
+  `_glt` or `_ust`/`_gst` when installed. A project already on a package moves a source pane
+  that still names the English ULT or UST to the package's own Bible after a download or on
+  open, and a gateway source pane whose Bible lacks the open book shows the pinned English
+  ULT or UST (labelled `ULT` or `UST`) without changing the pane's pin. tC4 4.0 matches only
+  `ar_avd` and the `_ult`/`_glt` and `_ust`/`_gst` suffixes, never moves an existing pane on
+  download or open, and has no per-book fallback on source panes (#1048).
+
 The project owner ruled on these points on 2026-10-16 (`docs/TC4-DELTA-2026-10-16.md` §5).
 
 - OBS projects sync like Bible projects. The card reads "Sync with Door43", and the Share

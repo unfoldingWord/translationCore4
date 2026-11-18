@@ -55,6 +55,7 @@ pub async fn record_username(
                         snapshot.fold().heads(&key),
                         tc_journal::Cause::Edit,
                     )],
+                    guards: Vec::new(),
                 },
             })
             .await

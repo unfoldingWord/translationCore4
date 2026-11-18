@@ -83,6 +83,7 @@ fn record_carried(rig: &Rig, folder: &Path, handle: &ProjectHandle, bytes: &[u8]
                     Vec::new(),
                     Cause::Seed,
                 )],
+                guards: Vec::new(),
             },
         })
         .wait()

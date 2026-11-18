@@ -169,29 +169,40 @@ fn simplified_lit(pane: &SimplifiedPane) -> String {
 const BIBLE_PINS: &str = "repos/_local_/_local_/sample_burrito/ingredients/checking/resources.json";
 const INSTALL_RECORDS: &str = "client_settings/uw-tc4.json";
 
-/// The pin of a bahtraku release slice under `fixtures/tc4/test-fixtures/resources`, and its
-/// files as a sideloaded burrito that lists only the book it holds.
-fn bahtraku(repo: &str, tag: &str) -> (serde_json::Value, Vec<(String, Vec<u8>)>) {
+/// A bahtraku fixture under a package's repository name, as a sideloaded burrito holding
+/// Titus. Renaming only the identity lets name-resolution tests reuse real source text.
+fn package_bible(
+    fixture_repo: &str,
+    tag: &str,
+    repo: &str,
+) -> (serde_json::Value, Vec<(String, Vec<u8>)>) {
     let dir = super::common::repo_root()
         .join("fixtures/tc4/test-fixtures/resources")
-        .join(format!("{repo}@{tag}"));
+        .join(format!("{fixture_repo}@{tag}"));
     let mut metadata: serde_json::Value =
         serde_json::from_slice(&std::fs::read(dir.join("metadata.json")).unwrap()).unwrap();
-    let sha = metadata["identification"]["primary"]["dcs"][format!("bahtraku/{repo}")]["revision"]
+    let sha = metadata["identification"]["primary"]["dcs"][format!("bahtraku/{fixture_repo}")]["revision"]
         .as_str()
         .unwrap()
         .to_owned();
+    let dcs = metadata["identification"]["primary"]["dcs"]
+        .as_object_mut()
+        .unwrap();
+    let identity = dcs.values().next().unwrap().clone();
+    dcs.clear();
+    dcs.insert(repo.to_owned(), identity);
     metadata["ingredients"]
         .as_object_mut()
         .unwrap()
         .retain(|path, _| path == "ingredients/TIT.usfm");
     let pin = serde_json::json!({
-        "repoPath": format!("git.door43.org/bahtraku/{repo}"),
+        "repoPath": format!("git.door43.org/{repo}"),
         "version": tag,
         "sha": sha,
         "flavor": "scripture/textTranslation",
     });
-    let folder = format!("repos/_local_/_sideloaded_/{repo}/");
+    let name = repo.split('/').next_back().unwrap();
+    let folder = format!("repos/_local_/_sideloaded_/{name}/");
     let files = vec![
         (
             format!("{folder}metadata.json"),
@@ -218,8 +229,8 @@ enum Gst {
 /// simplified Bible (`id_gst` v16). No `ust` or `gst` pane is pinned. The fallback set stays
 /// the English suite, whose simplified Bible (`en_ust`) is on the computer.
 fn indonesian(gst: Gst) -> ScenarioState {
-    let (glt_pin, glt_files) = bahtraku("id_glt", "v105");
-    let (gst_pin, gst_files) = bahtraku("id_gst", "v16");
+    let (glt_pin, glt_files) = package_bible("id_glt", "v105", "bahtraku/id_glt");
+    let (gst_pin, gst_files) = package_bible("id_gst", "v16", "bahtraku/id_gst");
     let mut files = scenario("en-pins").files().clone();
     let json = |bytes: &[u8]| serde_json::from_slice::<serde_json::Value>(bytes).unwrap();
 
@@ -297,6 +308,33 @@ async fn a_check_shows_the_packages_simplified_bible_without_a_pane_for_it() {
     );
     let gst_lit = simplified_lit(&gst);
     assert!(gst_lit.starts_with("Allahtelahmengutusaku"), "{gst_lit}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_check_shows_the_packages_registry_named_simplified_bible() {
+    // The installed text is the existing Indonesian fixture under BSOJ's repository name:
+    // this proves name resolution without pretending to be a real Arabic rig run.
+    let mut files = indonesian(Gst::Installed).files().clone();
+    let (pin, text) = package_bible("id_gst", "v16", "BSOJ/ar_arst");
+    let mut pins: serde_json::Value = serde_json::from_slice(&files[BIBLE_PINS]).unwrap();
+    pins["languageSets"]["primary"]["gatewayLanguage"] =
+        serde_json::json!({ "languageId": "ar", "owner": "BSOJ" });
+    pins["languageSets"]["primary"]["simplifiedText"] = pin.clone();
+    files.insert(BIBLE_PINS.into(), serde_json::to_vec_pretty(&pins).unwrap());
+    let mut records: serde_json::Value = serde_json::from_slice(&files[INSTALL_RECORDS]).unwrap();
+    records["installedResources"]["_local_/_sideloaded_/ar_arst"] = pin;
+    files.insert(
+        INSTALL_RECORDS.into(),
+        serde_json::to_vec_pretty(&records).unwrap(),
+    );
+    files.extend(text);
+    let state = ScenarioState::from_files(files).unwrap();
+    let (_, simplified) = first_note_sources(&state).await;
+    let actual =
+        simplified.expect("INV-GATEWAY-BIBLE-NAMED: Check must show BSOJ's simplified Bible");
+    assert_eq!(actual.repo, "ar_arst");
+    let (_, expected) = first_note_sources(&indonesian(Gst::Installed)).await;
+    assert_eq!(actual.tokens, expected.unwrap().tokens);
 }
 
 /// #996: when the package's simplified Bible has no text for the book (it is not on this

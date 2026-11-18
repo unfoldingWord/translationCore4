@@ -1363,6 +1363,11 @@ fn save_frame(ctx: &Ctx<'_>, shown: &ShownToken, text: &str) -> R<Vec<PlannedCha
 /// plan was made from; otherwise the plan is made again.
 fn apply_upgrade(ctx: &Ctx<'_>, plan: &UpgradePlan) -> R<Vec<PlannedChange>> {
     let mut keys = BTreeSet::new();
+    for guard in &plan.guards {
+        if ctx.fold.heads(&guard.key) != guard.parents() {
+            return Err(CommandError::PlanStale);
+        }
+    }
     for planned in &plan.changes {
         let key = planned.record.key();
         if ctx.fold.heads(&key) != planned.parents() || !keys.insert(key) {
