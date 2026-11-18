@@ -330,8 +330,8 @@ impl PickedUnit {
     }
 
     /// The unit a click on a section's source or translation picks (#991, #1057): in Section
-    /// mode the section, in Verse mode the `verse` clicked. None while a card is open, so the
-    /// helps stay on the card and keep its unit after Save.
+    /// mode the section, in Verse mode the `verse` clicked. None when `card_open`, so the helps
+    /// stay on the card and keep its unit after Save.
     pub fn clicked(
         mode: UnitMode,
         card_open: bool,

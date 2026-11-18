@@ -353,6 +353,11 @@ fn chapter_view(
         let editing = editing.clone();
         Signal::derive(move || editing.with(Editing::is_open))
     };
+    // A press outside a verse card closes it before the click lands (its blur), so a click on
+    // the source asks whether a card was open when its press began (#1057, owner 2026-11-18),
+    // or is open still: a click with no press of its own, such as a script's, reads a stale press.
+    let open_at_press = StoredValue::new(false);
+    let note_press = move |_: web_sys::PointerEvent| open_at_press.set_value(off.get_untracked());
     // #991: the helps follow the open card, and once it closes, the unit it was opened on or the
     // unit clicked last, until another is picked or the person leaves the chapter.
     let picked: RwSignal<Option<PickedUnit>> = RwSignal::new(None);
@@ -435,7 +440,7 @@ fn chapter_view(
                             Callback::new(move |verse: Option<String>| {
                                 let unit = PickedUnit::clicked(
                                     mode.get_untracked(),
-                                    off.get_untracked(),
+                                    open_at_press.get_value() || off.get_untracked(),
                                     &keys,
                                     verse.as_deref(),
                                 );
@@ -485,7 +490,7 @@ fn chapter_view(
     };
     let dropped = dropped_links(runtime.saves().dropped(), open.at.clone());
     view! {
-        <main style=main.to_style()>
+        <main style=main.to_style() on:pointerdown=note_press>
             <div style=bar.to_style()>
                 <IconButton title=t(keys::draft::TOGGLE_RAIL, &[]) on_click=toggle>{rail_icon()}</IconButton>
                 <h2 style=h2.to_style()>{book_id.english_name()}" "{chapter}</h2>
