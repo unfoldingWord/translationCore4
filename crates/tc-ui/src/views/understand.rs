@@ -346,12 +346,13 @@ fn chapter_view(
                 "font-weight": "var(--fw-medium)",
                 "margin": "0 0 14px",
             };
-            let abbreviation = panes.with(|p| {
+            let (abbreviation, title) = panes.with(|p| {
                 p.as_ref()
                     .and_then(|v| v.panes.iter().find(|pane| pane.id == id))
-                    .and_then(|pane| pane.abbreviation.clone())
+                    .map(|pane| (pane.abbreviation.clone(), pane.title.clone()))
+                    .unwrap_or_default()
             });
-            let name = bible_long_name(abbreviation.as_deref(), &id);
+            let name = bible_long_name(abbreviation.as_deref(), title.as_deref(), &id);
             view! { <p data-testid="understand-source-name" style=style.to_style()>{name}</p> }
         })
     };

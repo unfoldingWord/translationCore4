@@ -150,6 +150,10 @@ pub struct SourcePane {
     /// wherever it would show GLT or GST (#1045). None when the text gives none or did not
     /// load.
     pub abbreviation: Option<String>,
+    /// The full name in the metadata of the text that loaded (`Texto Puente Literal`): the
+    /// pane's name under Translate's tabs and over Understand's passage, where the catalog has
+    /// none (it names only the English `ult` and `ust`).
+    pub title: Option<String>,
     /// The pinned version, `v91` (Translate's caption "· v91 · pinned"); none when the pin
     /// names no version.
     pub version: Option<String>,

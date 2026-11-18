@@ -17,6 +17,7 @@
         {
           "id": "ult",
           "abbreviation": "ULT",
+          "title": "unfoldingWord® Literal Text",
           "version": "v91",
           "dir": "ltr",
           "text": {
@@ -51,6 +52,7 @@
         {
           "id": "ust",
           "abbreviation": null,
+          "title": null,
           "version": "v88",
           "dir": "ltr",
           "text": {
@@ -60,6 +62,7 @@
         {
           "id": "glt",
           "abbreviation": "TPL",
+          "title": "Texto Puente Literal",
           "version": null,
           "dir": "rtl",
           "text": {
@@ -73,6 +76,7 @@
       "original": {
         "id": "orig",
         "abbreviation": null,
+        "title": null,
         "version": "v0.34",
         "dir": "ltr",
         "text": {

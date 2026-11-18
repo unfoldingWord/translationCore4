@@ -1049,12 +1049,14 @@ const writeJson = (file, value) => fs.writeFileSync(file, JSON.stringify(value, 
 /** Puts the Bible project of a built `en-pins` state on the Indonesian package (bahtraku): its
  * only source pane is the literal Bible (`id_glt` v105), and its primary set pins the simplified
  * Bible (`id_gst` v16), which is on the computer with `gst`. No `ust` or `gst` pane is pinned. The
- * fallback set stays the English suite, whose simplified Bible (`en_ust`) is on the computer. */
-const indonesianPackage = ({ gst }) => (state) => {
+ * fallback set stays the English suite, whose simplified Bible (`en_ust`) is on the computer.
+ * With `literal`, the literal Bible's metadata gives those `identification` fields (its
+ * `abbreviation`, its `name`) in place of its own. */
+const indonesianPackage = ({ gst, literal = {} }) => (state) => {
   const records = path.join(state, 'client_settings', 'uw-tc4.json');
   const installed = readJson(records);
   /** The pin of a release slice; with `install`, the slice as a sideloaded burrito of Titus. */
-  const slice = (repo, tag, install) => {
+  const slice = (repo, tag, install, identification = {}) => {
     const from = path.join(RESOURCE_SLICES, `${repo}@${tag}`);
     const metadata = readJson(path.join(from, 'metadata.json'));
     const pin = {
@@ -1067,6 +1069,7 @@ const indonesianPackage = ({ gst }) => (state) => {
       const to = path.join(state, 'repos', '_local_', '_sideloaded_', repo);
       fs.mkdirSync(path.join(to, 'ingredients'), { recursive: true });
       metadata.ingredients = { 'ingredients/TIT.usfm': metadata.ingredients['ingredients/TIT.usfm'] };
+      Object.assign(metadata.identification, identification);
       writeJson(path.join(to, 'metadata.json'), metadata);
       fs.copyFileSync(path.join(from, 'TIT.usfm'), path.join(to, 'ingredients', 'TIT.usfm'));
       installed.installedResources[`_local_/_sideloaded_/${repo}`] = pin;
@@ -1077,7 +1080,7 @@ const indonesianPackage = ({ gst }) => (state) => {
   const pins = readJson(file);
   pins.languageSets.primary.gatewayLanguage = { languageId: 'id', owner: 'bahtraku' };
   pins.languageSets.primary.simplifiedText = slice('id_gst', 'v16', gst);
-  pins.extraScripture = [{ id: 'glt', ...slice('id_glt', 'v105', true) }];
+  pins.extraScripture = [{ id: 'glt', ...slice('id_glt', 'v105', true, literal) }];
   writeJson(file, pins);
   writeJson(records, installed);
 };
@@ -1109,6 +1112,29 @@ browserTest('a_check_shows_no_simplified_bible_of_another_package', async () => 
     assert.deepEqual(await assertCompareFits(page, 'at 1280px'), ['orig-pane', 'ult-pane']);
     await evidence(page, 'compare-card-no-simplified');
   }, { scenario: 'en-pins', editState: indonesianPackage({ gst: false }) });
+});
+
+// #1045 (J2, J4): a package's Bible is named by its own metadata, not by the pane it fills
+// (`glt`): its abbreviation on the Check card and Translate's tab, its full name over
+// Understand's passage and under Translate's tabs. GLT, the old name, would fail each check.
+browserTest('a_package_bible_is_named_by_its_metadata', async () => {
+  await withApp(async ({ page }) => {
+    await page.getByTestId(`project-${BIBLE}`).getByRole('button', { name: /Titus/ }).click();
+    await page.getByTestId('understand-unit-s1').waitFor();
+    const passageName = page.getByTestId('understand-source-name');
+    await until('the passage is named', async () => (await passageName.textContent()) === 'Texto Puente Literal');
+    await page.getByRole('tab', { name: catalog('en')['nav.check'], exact: true }).click();
+    await page.getByTestId('open-translationNotes').click();
+    await page.getByTestId('check-quote').waitFor();
+    assert.equal(await cardLabel(page, 'ult-pane'), 'TPL');
+    await page.getByRole('tab', { name: catalog('en')['nav.draft'], exact: true }).click();
+    await page.getByTestId('source-name').waitFor();
+    assert.deepEqual(await page.locator('[data-testid^="source-tab-"]').allTextContents(), ['TPL', 'Greek']);
+    assert.equal(await page.getByTestId('source-name').textContent(), 'Texto Puente Literal · v105 · pinned');
+  }, {
+    scenario: 'en-pins',
+    editState: indonesianPackage({ gst: true, literal: { abbreviation: { en: 'TPL' }, name: { en: 'Texto Puente Literal' } } }),
+  });
 });
 
 // tC4 #614 (`ds-labels`): the drawer's close button, eyebrow and title come from the shown

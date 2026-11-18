@@ -40,8 +40,10 @@ from `d494a9d` to `d310bf3`, and `docs/TC4-DELTA-2026-10-23.md` (SWEEP) the chan
   UST. A label that names a Bible no longer starts with "Gateway ·": the Check cards and
   Align read "ULT" or "TPL" where tC4 reads "Gateway · unfoldingWord Literal Text",
   "Gateway · GLT" or "Gateway · ULT". A Bible whose metadata gives no abbreviation keeps the
-  name tC4 gives it. Only the labels change: pane ids and project files stay as they were
-  (#1045).
+  name tC4 gives it. Under Translate's tabs and over Understand's passage, where the English
+  ULT reads "unfoldingWord Literal Text", another Bible reads the full name in its metadata
+  (`identification.name`, such as "Texto Puente Literal"), where tC4 reads GLT. Only the labels
+  change: pane ids and project files stay as they were (#1045).
 
 The project owner ruled on these points on 2026-10-16 (`docs/TC4-DELTA-2026-10-16.md` §5).
 

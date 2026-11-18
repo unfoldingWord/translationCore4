@@ -141,6 +141,19 @@ fn text_at<'a>(v: &'a Value, path: &[&str]) -> Option<&'a str> {
     path.iter().try_fold(v, |v, key| v.get(key))?.as_str()
 }
 
+/// A burrito's text in several languages (`{"en": "TPL"}`), trimmed: the English one, which DCS
+/// exports, else the first the file lists. None when it is blank.
+fn localized(v: &Value, pointer: &str) -> Option<String> {
+    let names = v.pointer(pointer)?.as_object()?;
+    names
+        .get("en")
+        .or_else(|| names.values().next())?
+        .as_str()
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(str::to_owned)
+}
+
 /// Reads a Scripture Burrito `metadata.json` as DCS exports it.
 pub fn parse_burrito_metadata(json: &str) -> Result<BurritoMetadata, Error> {
     let v: Value =
@@ -191,19 +204,8 @@ pub fn parse_burrito_metadata(json: &str) -> Result<BurritoMetadata, Error> {
         .and_then(Value::as_object)
         .map(|scope| scope.keys().filter_map(|k| k.parse().ok()).collect())
         .unwrap_or_default();
-    let title = v
-        .pointer("/identification/name")
-        .and_then(Value::as_object)
-        .and_then(|names| names.values().next())
-        .and_then(Value::as_str)
-        .map(str::to_owned);
-    let abbreviation = v
-        .pointer("/identification/abbreviation")
-        .and_then(Value::as_object)
-        .and_then(|names| names.values().next())
-        .and_then(Value::as_str)
-        .filter(|a| !a.trim().is_empty())
-        .map(str::to_owned);
+    let title = localized(&v, "/identification/name");
+    let abbreviation = localized(&v, "/identification/abbreviation");
     let ingredients = v
         .get("ingredients")
         .and_then(Value::as_object)

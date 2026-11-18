@@ -592,16 +592,22 @@ fn source_tabs(
     };
     let caption = move || {
         let tab = chosen.get()?;
-        let (version, abbreviation) = panes.with(|p| {
+        let (version, abbreviation, title) = panes.with(|p| {
             p.as_ref()
                 .and_then(|v| chosen_pane(v, &tab))
-                .map(|pane| (pane.version.clone(), pane.abbreviation.clone()))
+                .map(|pane| {
+                    (
+                        pane.version.clone(),
+                        pane.abbreviation.clone(),
+                        pane.title.clone(),
+                    )
+                })
                 .unwrap_or_default()
         });
         let name = if tab == "orig" {
             t_dyn(&format!("source.orig.{testament}.name"), &[], None)
         } else {
-            bible_long_name(abbreviation.as_deref(), &tab)
+            bible_long_name(abbreviation.as_deref(), title.as_deref(), &tab)
         };
         let pinned = version
             .map(|v| format!(" · {}", t(keys::draft::PINNED, &[("version", &v)])))

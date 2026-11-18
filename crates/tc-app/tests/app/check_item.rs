@@ -391,6 +391,11 @@ async fn a_source_bible_is_named_by_the_abbreviation_in_its_metadata() {
             .iter()
             .map(|p| (p.id.as_str(), p.abbreviation.clone()))
             .collect();
+        // Its full name, which names it under Translate's tabs, comes from the same metadata.
+        assert_eq!(
+            sources.panes[0].title.as_deref(),
+            Some("BAHTRAKU Teks Literal")
+        );
         assert_eq!(
             panes,
             [("glt", expected.clone())],
