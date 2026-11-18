@@ -96,6 +96,10 @@ pub struct ResourceIdentity {
     pub language: String,
     pub direction: Option<ScriptDirection>,
     pub title: Option<String>,
+    /// The resource's short name as its labels show it (`TPL`): a burrito's
+    /// `identification.abbreviation`, or an RC manifest's `dublin_core.identifier` uppercased,
+    /// the value DCS exports as that abbreviation (#1045).
+    pub abbreviation: Option<String>,
     pub subject: Option<String>,
     /// `flavorType/flavor`, such as `parascriptural/x-bcvnotes`.
     pub flavor: Option<String>,
@@ -193,6 +197,13 @@ pub fn parse_burrito_metadata(json: &str) -> Result<BurritoMetadata, Error> {
         .and_then(|names| names.values().next())
         .and_then(Value::as_str)
         .map(str::to_owned);
+    let abbreviation = v
+        .pointer("/identification/abbreviation")
+        .and_then(Value::as_object)
+        .and_then(|names| names.values().next())
+        .and_then(Value::as_str)
+        .filter(|a| !a.trim().is_empty())
+        .map(str::to_owned);
     let ingredients = v
         .get("ingredients")
         .and_then(Value::as_object)
@@ -221,6 +232,7 @@ pub fn parse_burrito_metadata(json: &str) -> Result<BurritoMetadata, Error> {
                 .and_then(Value::as_str)
                 .and_then(ScriptDirection::parse),
             title,
+            abbreviation,
             subject: None,
             flavor,
             version: None,
@@ -290,6 +302,7 @@ pub fn parse_rc_manifest(text: &str) -> Result<RcManifest, Error> {
                 .and_then(ScriptDirection::parse),
             language,
             title: field("title"),
+            abbreviation: Some(identifier.to_uppercase()),
             subject: field("subject"),
             flavor: None,
             version: field("version"),

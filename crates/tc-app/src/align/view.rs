@@ -75,6 +75,9 @@ pub(super) struct Facts {
     pub orig_dir: Direction,
     pub original: String,
     pub gateway: Option<Gateway>,
+    /// The literal pane the lens reads, and its abbreviation: the lens's name (#1045).
+    pub gateway_pane: Option<String>,
+    pub gateway_abbreviation: Option<String>,
     /// What the stored alignment is checked against.
     pub basis: Basis,
     pub source: SourceVerse,
@@ -192,6 +195,8 @@ pub(super) fn build(aligner: &Aligner, facts: &Facts, now: &Moment) -> AlignerVi
         orig_dir: facts.orig_dir,
         original: facts.original.clone(),
         gateway: lens.map(|g| GatewayLens { text: g.text() }),
+        gateway_pane: facts.gateway_pane.clone(),
+        gateway_abbreviation: facts.gateway_abbreviation.clone(),
         bank: shown.iter().map(word).collect(),
         selection: if armed.is_empty() {
             BankSelection::None

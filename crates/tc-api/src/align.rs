@@ -256,6 +256,11 @@ pub struct AlignerView {
     pub original: String,
     /// The gateway lens, when it is available.
     pub gateway: Option<GatewayLens>,
+    /// The project's literal pane (`glt`), which the gateway lens reads; none when the
+    /// project lists no pane. The lens's switch and heading are named after it.
+    pub gateway_pane: Option<String>,
+    /// The abbreviation in that pane's metadata (`TPL`): the lens's name when present (#1045).
+    pub gateway_abbreviation: Option<String>,
     /// The bank as it shows: the words not placed and not standing as suggestions, in verse
     /// order.
     pub bank: Vec<Word>,

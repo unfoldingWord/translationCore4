@@ -26,7 +26,7 @@ use super::rail::category_name;
 use crate::app::check::place_parts;
 use crate::app::check_item::{self, MarkFailure, WordKey, WordNav, WordStep};
 use crate::app::save::Source;
-use crate::app::understand::simplified_label;
+use crate::app::understand::{bible_name, simplified_label};
 use crate::app::web::check::{Academy, Detail, Marking};
 use crate::app::web::{Actions, AppState, WriteCap};
 use crate::attrs::Attrs;
@@ -210,13 +210,19 @@ fn gateway_verse(
 
 /// The gateway card (tC4's `UltPane`): the project's literal text with the quote's words lit.
 fn gateway_pane(gateway: &GatewayView) -> AnyView {
-    let pane_id = match gateway {
-        GatewayView::Pane { pane, .. } => Some(pane.clone()),
-        _ => None,
+    // Named after its Bible alone (#1045): the abbreviation, else ULT or the pane's id.
+    let label = match gateway {
+        GatewayView::Pane {
+            pane, abbreviation, ..
+        }
+        | GatewayView::CrossFrame { pane, abbreviation } => {
+            bible_name(abbreviation.as_deref(), pane)
+        }
+        GatewayView::NoPane => t(keys::source::ULT, &[]),
     };
     let body = match gateway {
         GatewayView::NoPane => pane_absent(t(keys::check::NO_GATEWAY, &[])),
-        GatewayView::CrossFrame => pane_absent(t(keys::check::CROSS_FRAME, &[])),
+        GatewayView::CrossFrame { .. } => pane_absent(t(keys::check::CROSS_FRAME, &[])),
         GatewayView::Pane { text, .. } => match text {
             GatewayText::Verse { tokens, lit } => {
                 gateway_verse(tokens, lit, "ult-pane-text", "ult-hl")
@@ -226,10 +232,6 @@ fn gateway_pane(gateway: &GatewayView) -> AnyView {
             GatewayText::Missing => pane_absent(t(keys::source::UNAVAILABLE, &[])),
             GatewayText::Error { reason } => pane_absent(reason.clone()),
         },
-    };
-    let label = match &pane_id {
-        Some(id) if id != "ult" => t(keys::check::GATEWAY_LABEL, &[("name", &id.to_uppercase())]),
-        _ => t(keys::check::ULT_LABEL, &[]),
     };
     view! {
         <div data-testid="ult-pane" style=source_card().to_style()>
@@ -243,12 +245,13 @@ fn gateway_pane(gateway: &GatewayView) -> AnyView {
 /// The simplified card (#996): the verse in the simplified Bible of the project's checking
 /// package, named after the text it shows (`id_gst` → GST), with the quote's words lit.
 fn simplified_pane(simplified: &SimplifiedPane) -> AnyView {
-    let name = simplified_label(Some(&simplified.repo));
+    let name = simplified
+        .abbreviation
+        .clone()
+        .unwrap_or_else(|| simplified_label(Some(&simplified.repo)));
     view! {
         <div data-testid="simplified-pane" style=source_card().to_style()>
-            <Overline tone=OverlineTone::Muted>
-                {t(keys::check::GATEWAY_LABEL, &[("name", &name)])}
-            </Overline>
+            <Overline tone=OverlineTone::Muted>{name}</Overline>
             {gateway_verse(&simplified.tokens, &simplified.lit, "simplified-pane-text", "simplified-hl")}
         </div>
     }

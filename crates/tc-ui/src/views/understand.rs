@@ -26,8 +26,8 @@ use super::source_verse::source_verse;
 use crate::app::load::Load;
 use crate::app::save::{Pair, View};
 use crate::app::understand::{
-    HelpFocus, Unit, UnitMode, UnitNotice, frame_units, paragraphs, shown_comment,
-    shown_source_tab, units,
+    HelpFocus, Unit, UnitMode, UnitNotice, bible_long_name, bible_name, frame_units, paragraphs,
+    shown_comment, shown_source_tab, units,
 };
 use crate::app::web::{Actions, AppCtx, AppState, use_app, use_runtime};
 use crate::attrs::Attrs;
@@ -35,7 +35,7 @@ use crate::ds::{
     Button, ButtonVariant, Callout, CalloutTone, FilterChip, IconButton, Indicator, Overline, Size,
     Status, StatusDot, Switcher, SwitcherOption, Tone,
 };
-use crate::i18n::{keys, t, t_dyn};
+use crate::i18n::{keys, t};
 
 /// The reads of one open book.
 #[derive(Clone, PartialEq)]
@@ -312,6 +312,7 @@ fn chapter_view(
                             source_chip(
                                 &actions,
                                 &pane.id,
+                                bible_name(pane.abbreviation.as_deref(), &pane.id),
                                 tab.as_deref() == Some(pane.id.as_str()),
                             )
                         })
@@ -345,7 +346,12 @@ fn chapter_view(
                 "font-weight": "var(--fw-medium)",
                 "margin": "0 0 14px",
             };
-            let name = t_dyn(&format!("source.{id}.name"), &[], Some(&id.to_uppercase()));
+            let abbreviation = panes.with(|p| {
+                p.as_ref()
+                    .and_then(|v| v.panes.iter().find(|pane| pane.id == id))
+                    .and_then(|pane| pane.abbreviation.clone())
+            });
+            let name = bible_long_name(abbreviation.as_deref(), &id);
             view! { <p data-testid="understand-source-name" style=style.to_style()>{name}</p> }
         })
     };
@@ -428,7 +434,7 @@ fn chapter_view(
 }
 
 /// The source text's pill (tC4's `FilterChip` of a pane).
-fn source_chip(actions: &Actions, id: &str, selected: bool) -> AnyView {
+fn source_chip(actions: &Actions, id: &str, label: String, selected: bool) -> AnyView {
     let mut style = crate::css! {
         "display": "inline-block",
         "padding": "4px 10px",
@@ -441,7 +447,6 @@ fn source_chip(actions: &Actions, id: &str, selected: bool) -> AnyView {
     } else {
         crate::css! { "background": "var(--surface-card)", "color": "var(--text-heading)", "border-color": "var(--border-input)" }
     });
-    let label = t_dyn(&format!("source.{id}"), &[], Some(&id.to_uppercase()));
     let actions = actions.clone();
     let click = id.to_owned();
     let test_id = format!("source-tab-{id}");

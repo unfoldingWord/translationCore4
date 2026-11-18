@@ -230,6 +230,11 @@ pub(super) async fn prepare(
         verse: token(&verse_key)?,
     };
     let gateway = gateway(&loaded, chapter, verse, last);
+    let gateway_pane = literal_pane(&loaded.pane_ids());
+    let gateway_abbreviation = gateway_pane
+        .as_deref()
+        .and_then(|pane| loaded.pane_abbreviation(pane))
+        .map(str::to_owned);
     let facts = Facts {
         id,
         place: AlignPlace {
@@ -249,6 +254,8 @@ pub(super) async fn prepare(
         },
         original: original.display_text(source_at.chapter, source_at.verses),
         gateway,
+        gateway_pane,
+        gateway_abbreviation,
         marker: crate::translate::marker(&read, &alignment_key),
         basis,
         source,

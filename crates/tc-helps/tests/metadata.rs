@@ -182,6 +182,7 @@ fn an_rc_manifest_names_language_subject_version_and_books() {
     assert_eq!(id.language, "en");
     assert_eq!(id.subject.as_deref(), Some("TSV Translation Notes"));
     assert_eq!(id.version.as_deref(), Some("86"));
+    assert_eq!(id.abbreviation.as_deref(), Some("TN"));
     assert_eq!(id.revision, None);
     assert_eq!(id.books, vec![BookId::Jonah, BookId::Titus]);
     assert_eq!(
@@ -193,6 +194,29 @@ fn an_rc_manifest_names_language_subject_version_and_books() {
     );
     assert!(manifest.relations.contains(&"hbo/uhb?v=2.1.30".to_owned()));
     assert_eq!(manifest.rights.as_deref(), Some("CC BY-SA 4.0"));
+}
+
+/// #1045: a source Bible is labelled by the abbreviation its metadata gives, a map by language
+/// (`{"en": "GLT"}`); a burrito without one has none, and the label falls back.
+#[test]
+fn a_burrito_names_its_abbreviation() {
+    let abbreviation = |json: &str| parse_burrito_metadata(json).unwrap().identity.abbreviation;
+    let glt = resource("id_glt@v105/metadata.json");
+    assert_eq!(abbreviation(&glt).as_deref(), Some("GLT"));
+    let ult = resource("en_ult@v89/metadata.json");
+    assert_eq!(abbreviation(&ult).as_deref(), Some("ULT"));
+    let mut tpl: serde_json::Value = serde_json::from_str(&glt).unwrap();
+    tpl["identification"]["abbreviation"] = serde_json::json!({ "en": "TPL" });
+    assert_eq!(abbreviation(&tpl.to_string()).as_deref(), Some("TPL"));
+    for none in [
+        serde_json::Value::Null,
+        serde_json::json!({}),
+        serde_json::json!({ "en": " " }),
+    ] {
+        let mut without = tpl.clone();
+        without["identification"]["abbreviation"] = none;
+        assert_eq!(abbreviation(&without.to_string()), None);
+    }
 }
 
 #[test]

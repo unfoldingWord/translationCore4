@@ -1367,6 +1367,9 @@ async fn an_existing_package_project_adopts_bibles_on_open_and_falls_back_by_boo
             .find(|f| f.path == "metadata.json")
             .unwrap();
         let mut meta: serde_json::Value = serde_json::from_slice(&meta_file.bytes).unwrap();
+        // The abbreviation Door43 exports for the Russian Bibles (`rlob`, `rsob`), #1045.
+        let suffix = repo.rsplit_once('_').unwrap().1.to_uppercase();
+        meta["identification"]["abbreviation"] = serde_json::json!({ "en": suffix });
         let tit_ing = meta["ingredients"]["ingredients/TIT.usfm"].clone();
         let ing = meta["ingredients"].as_object_mut().unwrap();
         ing.clear();
@@ -1552,8 +1555,12 @@ async fn an_existing_package_project_adopts_bibles_on_open_and_falls_back_by_boo
         },
     )
     .await;
-    let jonah_ids: Vec<_> = jonah_sources.panes.iter().map(|p| p.id.as_str()).collect();
-    assert_eq!(jonah_ids, ["glt", "gst"]);
+    let jonah_ids: Vec<_> = jonah_sources
+        .panes
+        .iter()
+        .map(|p| (p.id.as_str(), p.abbreviation.as_deref()))
+        .collect();
+    assert_eq!(jonah_ids, [("glt", Some("RLOB")), ("gst", Some("RSOB"))]);
 
     // On Titus (which ru_rlob and ru_rsob lack), Sources reports ult and ust (the pinned English Bibles),
     // and helps, Check, and Align all read the English fallback text from the ult pane (Criterion 13).
@@ -1575,6 +1582,11 @@ async fn an_existing_package_project_adopts_bibles_on_open_and_falls_back_by_boo
         titus_ids,
         [("ult", Some("v91")), ("ust", Some("v91"))],
         "INV-PANE-BOOK-FALLBACK: panes lacking the open book show the pinned English ULT and UST labelled ULT and UST"
+    );
+    assert_eq!(
+        titus_sources.panes[0].abbreviation.as_deref(),
+        Some("ULT"),
+        "#1045: a fallback book is named after the English text it shows"
     );
     for pane in &titus_sources.panes {
         assert!(
@@ -1642,8 +1654,9 @@ async fn an_existing_package_project_adopts_bibles_on_open_and_falls_back_by_boo
             gateway,
             tc_api::check::GatewayView::Pane {
                 pane,
+                abbreviation,
                 text: tc_api::check::GatewayText::Verse { tokens, .. }
-            } if pane == "ult" && !tokens.is_empty()
+            } if pane == "ult" && abbreviation.as_deref() == Some("ULT") && !tokens.is_empty()
         ),
         "INV-PANE-BOOK-FALLBACK: Check's gateway card shows the English fallback ULT verse on a missing book"
     );
@@ -1670,6 +1683,13 @@ async fn an_existing_package_project_adopts_bibles_on_open_and_falls_back_by_boo
             .as_ref()
             .is_some_and(|g| !g.text.is_empty()),
         "INV-PANE-BOOK-FALLBACK: Align's reference text shows the English fallback ULT on a missing book"
+    );
+    assert_eq!(
+        (
+            align_view.gateway_pane.as_deref(),
+            align_view.gateway_abbreviation.as_deref()
+        ),
+        (Some("ult"), Some("ULT"))
     );
 
     let unchanged = pins_of(&w);

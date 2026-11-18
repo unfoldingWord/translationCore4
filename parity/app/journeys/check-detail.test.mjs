@@ -1017,7 +1017,6 @@ async function evidence(page, name) {
 }
 
 const SOURCES_WITH_SIMPLIFIED = ['orig-pane', 'ult-pane', 'simplified-pane'];
-const gatewayLabel = (name) => catalog('en')['check.gatewayLabel'].replace('{name}', name);
 /** The name over a source card. */
 const cardLabel = (page, id) => page.getByTestId(id).locator(':scope > :first-child').textContent();
 
@@ -1032,7 +1031,10 @@ browserTest('compare_card_columns_fit_the_width', async () => {
       assert.deepEqual(await assertCompareFits(page, `at ${width}px`), SOURCES_WITH_SIMPLIFIED);
     }
     await page.setViewportSize({ width: 1280, height: 800 });
-    assert.equal(await cardLabel(page, 'simplified-pane'), gatewayLabel('UST'));
+    // #1045: each card is named after its Bible alone, by the abbreviation in its metadata.
+    assert.equal(await cardLabel(page, 'ult-pane'), 'ULT');
+    assert.equal(await cardLabel(page, 'simplified-pane'), 'UST');
+    assert.doesNotMatch(await page.getByTestId('compare-sources').textContent(), /Gateway/);
     assert.match(await page.getByTestId('simplified-pane-text').textContent(), /^I, Paul, /);
     assert.ok((await page.getByTestId('simplified-hl').count()) > 0, 'the simplified row marks the quote');
     assert.equal(await page.getByTestId('compare-sources').locator('button, a, input, select').count(), 0, 'the sources hold no control');
@@ -1088,8 +1090,8 @@ browserTest('a_check_shows_the_packages_simplified_bible_beside_the_literal_one'
     await openTool(page, 'translationNotes');
     await page.setViewportSize({ width: 1280, height: 800 });
     assert.deepEqual(await assertCompareFits(page, 'at 1280px'), SOURCES_WITH_SIMPLIFIED);
-    assert.equal(await cardLabel(page, 'ult-pane'), gatewayLabel('GLT'));
-    assert.equal(await cardLabel(page, 'simplified-pane'), gatewayLabel('GST'));
+    assert.equal(await cardLabel(page, 'ult-pane'), 'GLT');
+    assert.equal(await cardLabel(page, 'simplified-pane'), 'GST');
     assert.match(await page.getByTestId('simplified-pane-text').textContent(), /^Aku, Paulus, menulis surat ini kepadamu, Titus\./);
     const lit = (await page.getByTestId('simplified-hl').allTextContents()).join('').replace(/\s/g, '');
     assert.match(lit, /^Allahtelahmengutusaku/, 'the simplified row marks the quote');

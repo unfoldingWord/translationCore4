@@ -718,11 +718,18 @@ pub enum Testament {
 pub enum GatewayView {
     /// The project lists no gateway source text.
     NoPane,
-    /// The project's numbering differs from the pane's.
-    CrossFrame,
+    /// The project's numbering differs from the pane's. The card is still named after the
+    /// pane.
+    CrossFrame {
+        pane: String,
+        abbreviation: Option<String>,
+    },
     Pane {
         /// The pane's id (`ult`): the literal Bible, else the first listed.
         pane: String,
+        /// The abbreviation in the pane's metadata (`TPL`): the card's name when present
+        /// (#1045).
+        abbreviation: Option<String>,
         text: GatewayText,
     },
 }
@@ -733,8 +740,11 @@ pub enum GatewayView {
 #[cfg_attr(feature = "proptest", derive(proptest_derive::Arbitrary))]
 #[serde(rename_all = "camelCase")]
 pub struct SimplifiedPane {
-    /// The repository the text was read from (`id_gst`); the card is named after it.
+    /// The repository the text was read from (`id_gst`); the card is named after it when
+    /// the text has no abbreviation.
     pub repo: String,
+    /// The abbreviation in the text's metadata (`GST`): the card's name when present (#1045).
+    pub abbreviation: Option<String>,
     #[cfg_attr(feature = "proptest", proptest(strategy = "crate::arb::few()"))]
     pub tokens: Vec<String>,
     /// The tokens that render the check's quote.

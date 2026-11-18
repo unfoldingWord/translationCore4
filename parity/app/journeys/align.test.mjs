@@ -161,7 +161,10 @@ browserTest('j5_align_steps_that_do_not_save', async () => {
     await page.getByTestId('align-mode-orig').click();
     await until('the Greek lens', async () => (await page.getByTestId('align-ref-text').textContent()).includes('Original'));
     await page.getByTestId('align-mode-gw').click();
-    await until('the gateway lens', async () => (await page.getByTestId('align-ref-text').textContent()).includes('Gateway'));
+    // #1045: the gateway lens is named after its Bible alone, on its switch and over its text.
+    const refLabel = () => page.getByTestId('align-ref-text').locator(':scope > :first-child').textContent();
+    await until('the gateway lens', async () => (await refLabel()) === 'ULT');
+    assert.equal(await page.getByTestId('align-mode-gw').textContent(), 'ULT');
 
     // How alignment works.
     assert.equal(await page.getByTestId('align-how').getAttribute('aria-expanded'), 'false');
