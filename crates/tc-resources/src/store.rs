@@ -56,6 +56,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use tc_core::BookId;
 use tc_door43::check_names;
+use tc_helps::metadata::{BurritoMetadata, parse_burrito_metadata};
 
 use crate::error::{InstallError, Refusal, StoreError};
 use crate::held;
@@ -312,6 +313,12 @@ impl Installed {
             file: path.to_owned(),
             problem: "it is not UTF-8 text".to_owned(),
         })
+    }
+
+    /// The install's `metadata.json`, parsed: none when it holds none (a Resource Container)
+    /// or the file cannot be read.
+    pub fn metadata(&self) -> Option<BurritoMetadata> {
+        parse_burrito_metadata(&self.read_text("metadata.json").ok()?).ok()
     }
 
     /// Checks every file against the receipt's size and SHA-256, and that the content

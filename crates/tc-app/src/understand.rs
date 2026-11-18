@@ -31,7 +31,8 @@ use tc_helps::{
 use tc_journal::record::{CommentTarget, VerseValue, VersificationValue};
 use tc_journal::{ChangeId, PinGroup, Record, RecordKey};
 use tc_resources::{
-    BookResources, HelpsChoice, Missing, PartStatus, ProjectPins, Rung, TextRole, TextStatus,
+    BookResources, HelpsChoice, Missing, PartStatus, ProjectPins, ResourceStore, Rung, TextRole,
+    TextStatus,
 };
 
 use crate::app::App;
@@ -57,6 +58,8 @@ struct LoadedPane {
     id: String,
     /// The pinned version (`v91`), when the pin names one.
     version: Option<String>,
+    /// The abbreviation in the metadata of the text that loaded (`TPL`, #1045).
+    abbreviation: Option<String>,
     text: LoadedText,
 }
 
@@ -74,6 +77,8 @@ pub(crate) struct LoadedBook {
     original: Option<LoadedPane>,
     simplified: Slot<PaneBook>,
     simplified_pin: Option<String>,
+    /// The abbreviation in the metadata of the simplified text that loaded (`GST`, #1045).
+    simplified_abbreviation: Option<String>,
     /// How the project numbers the book's verses against its sources.
     pub(crate) numbering: Numbering,
     /// Read with the Door43 helps, whatever the project's helps setting: the check lists'
@@ -91,6 +96,14 @@ impl LoadedBook {
         self.panes.iter().find(|p| p.id == id).map(|p| &p.text)
     }
 
+    /// The abbreviation of the text pane `id` shows (`TPL`), when its metadata gives one.
+    pub(crate) fn pane_abbreviation(&self, id: &str) -> Option<&str> {
+        self.panes
+            .iter()
+            .find(|p| p.id == id)
+            .and_then(|p| p.abbreviation.as_deref())
+    }
+
     /// The book's original-language text (the UGNT or the UHB of its testament).
     pub(crate) fn original(&self) -> &LoadedText {
         self.original
@@ -99,10 +112,10 @@ impl LoadedBook {
     }
 
     /// The book in the simplified Bible of the project's checking package (the primary set's
-    /// gateway), and its repository (`id_gst`), when that is the text that loaded. The
-    /// language sets answer with the fallback set's simplified Bible when the package's has
-    /// no text for the book: that one is another package's, and is none here.
-    pub(crate) fn package_simplified(&self) -> Option<(&str, &PaneBook)> {
+    /// gateway), its repository (`id_gst`) and its abbreviation (`GST`), when that is the text
+    /// that loaded. The language sets answer with the fallback set's simplified Bible when the
+    /// package's has no text for the book: that one is another package's, and is none here.
+    pub(crate) fn package_simplified(&self) -> Option<(&str, Option<&str>, &PaneBook)> {
         let TextStatus::Loaded { pin, .. } = self.resources.text(&TextRole::Simplified)? else {
             return None;
         };
@@ -117,7 +130,11 @@ impl LoadedBook {
         let Slot::Ready(ready) = &self.simplified else {
             return None;
         };
-        Some((pin.repo.name().as_str(), ready.items.first()?))
+        Some((
+            pin.repo.name().as_str(),
+            self.simplified_abbreviation.as_deref(),
+            ready.items.first()?,
+        ))
     }
 
     pub(crate) fn pins(&self) -> Option<&ProjectPins> {
@@ -382,6 +399,7 @@ fn load(
             LoadedPane {
                 id,
                 version,
+                abbreviation: loaded_abbreviation(store, status),
                 text: status.map_or(LoadedText::Missing, text_state),
             }
         })
@@ -396,6 +414,8 @@ fn load(
                 }
                 TextStatus::Missing(_) => None,
             },
+            // The Greek and Hebrew tabs keep their own names.
+            abbreviation: None,
             text: text_state(status),
         });
     // The tab is named after the text that loaded: a book the package's simplified Bible lacks
@@ -412,6 +432,7 @@ fn load(
             }),
     }
     .map(|pin| pin.repo.name().as_str().to_owned());
+    let simplified_abbreviation = loaded_abbreviation(store, resources.text(&TextRole::Simplified));
     let simplified = match resources.text(&TextRole::Simplified) {
         Some(TextStatus::Loaded { usfm, rung, .. }) => Slot::Ready(ReadySlot {
             items: vec![pane_book(usfm)],
@@ -430,9 +451,20 @@ fn load(
         original,
         simplified,
         simplified_pin,
+        simplified_abbreviation,
         numbering: Numbering::of(register),
         door43: matches!(choice, HelpsChoice::Dcs),
     }
+}
+
+/// The abbreviation in the metadata of the text that loaded (`TPL`): the name its labels show
+/// in place of GLT or GST (#1045). Read with the book, from the install the text came from, so
+/// a book that fell back to English is named after the English text.
+fn loaded_abbreviation(store: &ResourceStore, status: Option<&TextStatus>) -> Option<String> {
+    let Some(TextStatus::Loaded { pin, .. }) = status else {
+        return None;
+    };
+    store.dcs(pin).ok()??.metadata()?.identity.abbreviation
 }
 
 impl App {
@@ -824,6 +856,7 @@ impl Handle<Sources> for App {
         let frame = loaded.frame(&session.read(), req.chapter);
         let pane_view = |pane: &LoadedPane, dir: Direction| SourcePane {
             id: pane.id.clone(),
+            abbreviation: pane.abbreviation.clone(),
             version: pane.version.clone(),
             dir,
             text: match &pane.text {
@@ -1196,6 +1229,7 @@ impl LoadedBook {
             questions,
             simplified,
             simplified_pin: self.simplified_pin.clone(),
+            simplified_abbreviation: self.simplified_abbreviation.clone(),
             other_book,
         }
     }

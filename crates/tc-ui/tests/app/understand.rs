@@ -9,9 +9,9 @@ use tc_api::jobs::{OpenPhase, Phase, Progress};
 use tc_api::model::{ArticleBlock, ArticleSpan, BlockKind};
 use tc_core::BookId;
 use tc_ui::app::understand::{
-    HelpFocus, OpenStage, Opening, SHOW_THRESHOLD_MS, UnitMode, UnitNotice, clamp_helps,
-    drag_width, frame_units, in_focus, key_carries, paragraphs, preview_blocks, ref_label,
-    shown_comment, simplified_label, slot_state, units, word_panes,
+    HelpFocus, OpenStage, Opening, SHOW_THRESHOLD_MS, UnitMode, UnitNotice, bible_long_name,
+    bible_name, clamp_helps, drag_width, frame_units, in_focus, key_carries, paragraphs,
+    preview_blocks, ref_label, shown_comment, simplified_label, slot_state, units, word_panes,
 };
 
 fn progress(phase: OpenPhase, done: u64, total: Option<u64>) -> Progress {
@@ -407,6 +407,25 @@ fn a_word_card_lights_every_instance_of_its_article_in_its_section() {
     assert_eq!(panes[5], cards[5].panes);
     // Each card keeps its own title.
     assert_eq!(HelpFocus::title(&panes[2], "ult").as_deref(), Some("faith"));
+}
+
+/// #1045: a source Bible is named by the abbreviation in its metadata wherever the app showed
+/// GLT or GST, and as before when it gives none: the catalog's ULT, or the pane's id. The long
+/// name under the tabs keeps the catalog's English name and is otherwise the short one.
+#[test]
+fn a_source_bible_is_named_by_its_abbreviation_else_as_before() {
+    assert_eq!(bible_name(Some("TPL"), "glt"), "TPL");
+    assert_eq!(bible_name(Some("AVD"), "glt"), "AVD");
+    assert_eq!(bible_name(None, "glt"), "GLT");
+    assert_eq!(bible_name(None, "gst"), "GST");
+    assert_eq!(bible_name(None, "ult"), "ULT");
+    assert_eq!(bible_name(Some("ULT"), "ult"), "ULT");
+    assert_eq!(bible_long_name(Some("TPL"), "glt"), "TPL");
+    assert_eq!(bible_long_name(None, "gst"), "GST");
+    assert_eq!(
+        bible_long_name(Some("ULT"), "ult"),
+        "unfoldingWord Literal Text"
+    );
 }
 
 #[test]

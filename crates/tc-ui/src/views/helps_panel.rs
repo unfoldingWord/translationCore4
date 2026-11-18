@@ -112,7 +112,13 @@ pub fn HelpsPanel(
         css.to_style()
     };
     let label = Memo::new(move |_| {
-        helps.with(|h| simplified_label(h.value().and_then(|v| v.simplified_pin.as_deref())))
+        helps.with(|h| {
+            let passage = h.value();
+            match passage.and_then(|v| v.simplified_abbreviation.clone()) {
+                Some(abbreviation) => abbreviation,
+                None => simplified_label(passage.and_then(|v| v.simplified_pin.as_deref())),
+            }
+        })
     });
     // The frame in focus leads (owner ruling 2026-09-18, #331): its first card scrolls into view.
     let list_ref = NodeRef::<html::Div>::new();

@@ -32,6 +32,9 @@ pub struct PassageView {
     /// The repository of the pinned simplified text (`en_ust`): its tab is named after it
     /// (tC4's `simplifiedLabel`), whatever its state.
     pub simplified_pin: Option<String>,
+    /// The abbreviation in the metadata of the simplified text that loaded (`GST`): the tab's
+    /// name when present (#1045).
+    pub simplified_abbreviation: Option<String>,
     /// In a project with other verse numbers, the book and place every verse of the chapter
     /// has in the sources' numbering when it is another book (`NEH 1:1`): the chapter's
     /// helps are there and are not shown (tC4's `helpsCrossBook`).

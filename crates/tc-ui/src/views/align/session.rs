@@ -13,6 +13,7 @@ use crate::app::align::{
     Drag, Lens, armed, bank_click, bank_key, card_key_places, drop_on_bank, drop_on_card,
     effective_lens, nav, occurrence, occurrence_name,
 };
+use crate::app::understand::bible_name;
 use crate::app::web::align::{Rail, Screen};
 use crate::app::web::{Actions, AppState, WriteCap};
 use crate::attrs::Attrs;
@@ -606,11 +607,21 @@ fn word_card(
     }
 }
 
+/// The gateway lens's name on its switch and over its text (#1045): the abbreviation of the
+/// project's literal pane (`TPL`), else ULT or the pane's id.
+fn gateway_name(view: &AlignerView) -> String {
+    bible_name(
+        view.gateway_abbreviation.as_deref(),
+        view.gateway_pane.as_deref().unwrap_or("ult"),
+    )
+}
+
 /// The lens bar (tC4's `ModeBar`, mockup L1075–1081).
 fn mode_bar(
     s: &AppState,
     shown: Lens,
     gateway_available: bool,
+    gateway_name: String,
     testament: Testament,
 ) -> impl IntoView + use<> {
     let bar = crate::css! {
@@ -690,7 +701,7 @@ fn mode_bar(
                     style=gw.to_style()
                     on:click=move |_| a1.lens.set(Lens::Gateway)
                 >
-                    {t(keys::align::MODE_GW, &[])}
+                    {gateway_name}
                 </button>
                 <button
                     type="button"
@@ -736,9 +747,9 @@ fn ref_band(view: &AlignerView, shown: Lens) -> Option<AnyView> {
         "margin": "6px 0 0",
     };
     let label = match (shown, view.testament) {
-        (Lens::Gateway, _) => keys::check::ULT_LABEL,
-        (Lens::Original, Testament::Nt) => keys::check::orig_label::NT,
-        (Lens::Original, Testament::Ot) => keys::check::orig_label::OT,
+        (Lens::Gateway, _) => gateway_name(view),
+        (Lens::Original, Testament::Nt) => t(keys::check::orig_label::NT, &[]),
+        (Lens::Original, Testament::Ot) => t(keys::check::orig_label::OT, &[]),
     };
     let dir = if shown == Lens::Original {
         dir_name(view.orig_dir)
@@ -748,7 +759,7 @@ fn ref_band(view: &AlignerView, shown: Lens) -> Option<AnyView> {
     Some(
         view! {
             <div data-testid="align-ref-text" style=outer.to_style()>
-                <Overline>{t(label, &[])}</Overline>
+                <Overline>{label}</Overline>
                 <p dir=dir lang=lang style=p.to_style()>{text}</p>
             </div>
         }
@@ -1305,7 +1316,7 @@ fn ready(
             {stale}
             {dropped}
             <div style=panel.to_style()>
-                {mode_bar(s, lens, view.gateway.is_some(), view.testament)}
+                {mode_bar(s, lens, view.gateway.is_some(), gateway_name(&view), view.testament)}
                 {ref_band(&view, lens)}
                 {suggestions_row(s, actions, cap, &view.suggest)}
                 {bank(actions, cap, &view)}

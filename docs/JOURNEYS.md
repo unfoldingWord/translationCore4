@@ -107,6 +107,8 @@ budget in `docs/PERFORMANCE.md`). Their tC4 tests stay mapped under `specs` in `
   Choosing BSOJ with `ar_arst` installed or `ru_gl` with `ru_rlob` and `ru_rsob` installed
   shows those Bibles in the source panes, and a pane whose Bible lacks the open book shows
   the pinned English ULT or UST (`ULT`/`UST`) without changing the pane's pin (#1048,
+  DIFFERENCES). A source Bible's tab and name show the abbreviation in its metadata (`TPL`,
+  `AVD`) where tC4 shows GLT or GST, and the helps' simplified tab shows its own (#1045,
   DIFFERENCES).
 
 ### J3 Get pinned resources
@@ -133,7 +135,9 @@ budget in `docs/PERFORMANCE.md`). Their tC4 tests stay mapped under `specs` in `
   check is marked again; words selected on a check with no decision turn Previous and Next
   off, and every other way out of the check asks before it drops them (#853,
   `docs/DIFFERENCES.md`). The compare card also shows the simplified Bible (UST or GST) of
-  the checking package as a source text of its own (#996, `docs/DIFFERENCES.md`).
+  the checking package as a source text of its own (#996, `docs/DIFFERENCES.md`). Each source
+  card is named after its Bible alone, by the abbreviation in its metadata (`ULT`, `TPL`),
+  with no "Gateway ·" (#1045, `docs/DIFFERENCES.md`).
 - Must not: store a check comment anywhere but its decision; count a bookmarked or commented check
   differently from a plain one.
 
@@ -148,7 +152,9 @@ budget in `docs/PERFORMANCE.md`). Their tC4 tests stay mapped under `specs` in `
   make the translator wait for training after a save; clear a verse without the translator's
   confirmation.
 - Differs from tC4: across a verse edit, each link moves with its own word. Clear alignments
-  is new (#758).
+  is new (#758). The gateway lens's switch and the heading over its text name the project's
+  literal Bible by the abbreviation in its metadata (`ULT`, `TPL`), with no "Gateway ·"
+  (#1045, `docs/DIFFERENCES.md`).
 
 ### J6 Edit a checked verse
 

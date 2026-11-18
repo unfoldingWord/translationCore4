@@ -587,6 +587,7 @@ impl LoadedObs {
             questions,
             simplified: Slot::None,
             simplified_pin: None,
+            simplified_abbreviation: None,
             other_book: None,
         }
     }

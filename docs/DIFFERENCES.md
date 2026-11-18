@@ -33,6 +33,15 @@ from `d494a9d` to `d310bf3`, and `docs/TC4-DELTA-2026-10-23.md` (SWEEP) the chan
   ULT or UST (labelled `ULT` or `UST`) without changing the pane's pin. tC4 4.0 matches only
   `ar_avd` and the `_ult`/`_glt` and `_ust`/`_gst` suffixes, never moves an existing pane on
   download or open, and has no per-book fallback on source panes (#1048).
+- A source Bible is named by the abbreviation in its metadata (`identification.abbreviation`)
+  wherever tC4 4.0 shows GLT or GST: Translate's tabs and the name under them, Understand's
+  chips and passage name, the helps' simplified tab, the Check cards and Align's lens. The
+  Spanish package reads TPL and GST, the Arabic AVD; the English package still reads ULT and
+  UST. A label that names a Bible no longer starts with "Gateway ·": the Check cards and
+  Align read "ULT" or "TPL" where tC4 reads "Gateway · unfoldingWord Literal Text",
+  "Gateway · GLT" or "Gateway · ULT". A Bible whose metadata gives no abbreviation keeps the
+  name tC4 gives it. Only the labels change: pane ids and project files stay as they were
+  (#1045).
 
 The project owner ruled on these points on 2026-10-16 (`docs/TC4-DELTA-2026-10-16.md` §5).
 

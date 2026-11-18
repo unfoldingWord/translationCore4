@@ -334,12 +334,13 @@ fn gateway(loaded: &LoadedBook, place: &CheckPlace, item: &CheckItem) -> Gateway
     if ids.is_empty() {
         return GatewayView::NoPane;
     }
-    if !matches!(loaded.numbering, Numbering::Same) {
-        return GatewayView::CrossFrame;
-    }
     let Some(pane) = literal_pane(&ids) else {
         return GatewayView::NoPane;
     };
+    let abbreviation = loaded.pane_abbreviation(&pane).map(str::to_owned);
+    if !matches!(loaded.numbering, Numbering::Same) {
+        return GatewayView::CrossFrame { pane, abbreviation };
+    }
     let text = match loaded.pane(&pane) {
         Some(LoadedText::Ready(book)) => match pane_verse(book, place) {
             Some(model) => {
@@ -354,7 +355,11 @@ fn gateway(loaded: &LoadedBook, place: &CheckPlace, item: &CheckItem) -> Gateway
             reason: reason.clone(),
         },
     };
-    GatewayView::Pane { pane, text }
+    GatewayView::Pane {
+        pane,
+        abbreviation,
+        text,
+    }
 }
 
 /// A gateway text's verse as its card shows it: the tokens, and the ones that render the
@@ -385,12 +390,13 @@ fn simplified(loaded: &LoadedBook, place: &CheckPlace, item: &CheckItem) -> Opti
     let CheckPlace::Verse { chapter, verse, .. } = place else {
         return None;
     };
-    let (repo, book) = loaded.package_simplified()?;
+    let (repo, abbreviation, book) = loaded.package_simplified()?;
     let chapter = book.chapters.get(&chapter.as_str().parse::<u16>().ok()?)?;
     let (model, aligned) = chapter.holding(verse.as_str())?;
     let (tokens, lit) = lit_verse(model, &aligned, item);
     Some(SimplifiedPane {
         repo: repo.to_owned(),
+        abbreviation: abbreviation.map(str::to_owned),
         tokens,
         lit,
     })

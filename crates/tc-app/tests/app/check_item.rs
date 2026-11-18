@@ -132,6 +132,7 @@ async fn a_note_shows_its_panes_its_article_and_the_draft_words() {
     let GatewayView::Pane {
         pane,
         text: GatewayText::Verse { tokens, lit },
+        ..
     } = gateway
     else {
         panic!("{gateway:?}");
@@ -284,6 +285,7 @@ async fn first_note_sources(state: &ScenarioState) -> (Vec<String>, Option<Simpl
     let GatewayView::Pane {
         pane,
         text: GatewayText::Verse { tokens, .. },
+        ..
     } = gateway
     else {
         panic!("{gateway:?}");
@@ -345,6 +347,107 @@ async fn a_check_shows_the_packages_registry_named_simplified_bible() {
 async fn a_check_shows_no_simplified_bible_of_another_package() {
     let (_, simplified) = first_note_sources(&indonesian(Gst::NotInstalled)).await;
     assert_eq!(simplified, None);
+}
+
+/// The Indonesian state with the literal Bible's metadata giving `abbreviation` in place of
+/// its own (`GLT`), or none.
+fn indonesian_named(abbreviation: Option<&str>) -> ScenarioState {
+    let mut files = indonesian(Gst::Installed).files().clone();
+    let path = "repos/_local_/_sideloaded_/id_glt/metadata.json";
+    let mut metadata: serde_json::Value = serde_json::from_slice(&files[path]).unwrap();
+    metadata["identification"]["abbreviation"] = match abbreviation {
+        Some(a) => serde_json::json!({ "en": a }),
+        None => serde_json::Value::Null,
+    };
+    files.insert(
+        path.to_owned(),
+        serde_json::to_vec_pretty(&metadata).unwrap(),
+    );
+    ScenarioState::from_files(files).unwrap()
+}
+
+/// #1045 (J2, J4, J5): a source Bible is named by the abbreviation in its metadata wherever the
+/// app showed GLT or GST: Translate's pane, the Check cards, the helps' simplified tab and
+/// Align. The pane keeps its id (`glt`). A Bible whose metadata gives none has none, and each
+/// screen names it as before.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_source_bible_is_named_by_the_abbreviation_in_its_metadata() {
+    for (given, expected) in [(Some("TPL"), Some("TPL")), (None, None)] {
+        let (_dir, t) = start_over(&indonesian_named(given)).await;
+        let at = opened(&t.app).await.session.at;
+        let expected = expected.map(str::to_owned);
+
+        let sources = ok(
+            &t.app,
+            &tc_api::editor::Sources {
+                at: at.clone(),
+                book: BookId::Titus,
+                chapter: 1,
+            },
+        )
+        .await;
+        let panes: Vec<_> = sources
+            .panes
+            .iter()
+            .map(|p| (p.id.as_str(), p.abbreviation.clone()))
+            .collect();
+        assert_eq!(
+            panes,
+            [("glt", expected.clone())],
+            "#1045: the pane is named by its metadata"
+        );
+
+        let open = session(&t.app, &at, Tool::TranslationNotes).await;
+        let view = item(&t.app, &at, Tool::TranslationNotes, rows(&open)[0].index).await;
+        let CheckSources::Verse {
+            gateway,
+            simplified,
+            ..
+        } = view.sources
+        else {
+            panic!("{:?}", view.sources);
+        };
+        let GatewayView::Pane {
+            pane, abbreviation, ..
+        } = gateway
+        else {
+            panic!("{gateway:?}");
+        };
+        assert_eq!((pane.as_str(), abbreviation), ("glt", expected.clone()));
+        let gst = simplified.expect("the GST verse");
+        assert_eq!(gst.abbreviation.as_deref(), Some("GST"));
+
+        let passage = ok(
+            &t.app,
+            &tc_api::helps::Passage {
+                at: at.clone(),
+                book: BookId::Titus,
+                chapter: 1,
+            },
+        )
+        .await;
+        assert_eq!(passage.simplified_pin.as_deref(), Some("id_gst"));
+        assert_eq!(passage.simplified_abbreviation.as_deref(), Some("GST"));
+
+        let tc_api::align::Opened::Ready(aligner) = ok(
+            &t.app,
+            &tc_api::align::Open {
+                at: at.clone(),
+                request: rid(45),
+                book: BookId::Titus,
+                verse: Some(tc_api::align::OpenVerse {
+                    chapter: 1,
+                    verse: 1,
+                }),
+            },
+        )
+        .await
+        else {
+            panic!("the aligner opens on Titus 1:1");
+        };
+        assert_eq!(aligner.gateway_pane.as_deref(), Some("glt"));
+        assert_eq!(aligner.gateway_abbreviation, expected);
+    }
 }
 
 /// `en-check-tw-article`: a decided word check shows its selected word, and its article is

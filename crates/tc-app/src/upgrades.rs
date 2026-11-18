@@ -27,7 +27,6 @@ use tc_check::{Collection, Coverage, ResourceRef, ToolId};
 use tc_core::{BookId, Testament};
 use tc_door43::{Door43Client, Door43Error, RepoRef};
 use tc_helps::WordArticleId;
-use tc_helps::metadata::parse_burrito_metadata;
 use tc_helps::tsv::{TsvScope, parse_notes, parse_word_links};
 use tc_journal::command::{PlannedChange, UpgradeGuard, UpgradePlan};
 use tc_journal::keys::PinGroup;
@@ -184,8 +183,7 @@ impl PlanSources for StoreSources<'_> {
 
     fn articles(&self, resource: &ResourceRef) -> Option<BTreeSet<WordArticleId>> {
         let installed = self.store.dcs(&pin_of(resource)?).ok()??;
-        let text = installed.read_text("metadata.json").ok()?;
-        Some(parse_burrito_metadata(&text).ok()?.word_articles())
+        Some(installed.metadata()?.word_articles())
     }
 
     fn list(

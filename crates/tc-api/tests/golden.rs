@@ -2103,6 +2103,7 @@ impl Example for SourcesView {
             panes: vec![
                 SourcePane {
                     id: "ult".into(),
+                    abbreviation: Some("ULT".into()),
                     version: Some("v91".into()),
                     dir: Direction::Ltr,
                     text: PaneText::Ready(PaneChapter {
@@ -2128,12 +2129,14 @@ impl Example for SourcesView {
                 },
                 SourcePane {
                     id: "ust".into(),
+                    abbreviation: None,
                     version: Some("v88".into()),
                     dir: Direction::Ltr,
                     text: PaneText::NotInstalled,
                 },
                 SourcePane {
                     id: "glt".into(),
+                    abbreviation: Some("TPL".into()),
                     version: None,
                     dir: Direction::Rtl,
                     text: PaneText::Error {
@@ -2143,6 +2146,7 @@ impl Example for SourcesView {
             ],
             original: Some(SourcePane {
                 id: "orig".into(),
+                abbreviation: None,
                 version: Some("v0.34".into()),
                 dir: Direction::Ltr,
                 text: PaneText::Missing,
@@ -2325,6 +2329,7 @@ impl Example for PassageView {
                 fallback: false,
             }),
             simplified_pin: Some("en_ust".into()),
+            simplified_abbreviation: Some("UST".into()),
             other_book: None,
         }
     }
@@ -2475,6 +2480,8 @@ impl Example for AlignerView {
             gateway: Some(GatewayLens {
                 text: "Paul, a servant of God".into(),
             }),
+            gateway_pane: Some("ult".into()),
+            gateway_abbreviation: Some("ULT".into()),
             bank: vec![align_word("de", 1, 2), align_word("Dios", 1, 1)],
             selection: BankSelection::Armed(vec![0]),
             cards: vec![
@@ -2957,6 +2964,7 @@ impl Example for CheckItemView {
                 },
                 gateway: GatewayView::Pane {
                     pane: "ult".into(),
+                    abbreviation: Some("ULT".into()),
                     text: GatewayText::Verse {
                         tokens: vec!["Paul".into(), ", ".into(), "a".into()],
                         lit: vec![0],
@@ -2964,6 +2972,7 @@ impl Example for CheckItemView {
                 },
                 simplified: Some(SimplifiedPane {
                     repo: "en_ust".into(),
+                    abbreviation: Some("UST".into()),
                     tokens: vec!["I".into(), ", ".into(), "Paul".into()],
                     lit: vec![2],
                 }),

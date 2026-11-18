@@ -12,7 +12,7 @@ use tc_api::token::ShownToken;
 use tc_core::BookId;
 use tc_core::js::is_space as js_space;
 
-use crate::i18n::{Key, keys, t};
+use crate::i18n::{Key, keys, t, t_dyn};
 
 // ---------------------------------------------------------------------------------------
 // The open overlay (S14)
@@ -604,8 +604,28 @@ pub fn blocks_len(blocks: &[ArticleBlock]) -> usize {
     blocks.iter().map(|b| js_len(&b.text())).sum()
 }
 
-/// The simplified tab's name: the pinned text's abbreviation (`en_ust` → UST), else "UST"
-/// (tC4's `simplifiedLabel`).
+/// A source Bible's name on a tab, a chip or a card: the abbreviation in its metadata (`TPL`),
+/// else what the app showed before, the pane's catalog name (`ULT`) or its id uppercased
+/// (`GLT`), #1045.
+pub fn bible_name(abbreviation: Option<&str>, pane: &str) -> String {
+    abbreviation.map_or_else(
+        || t_dyn(&format!("source.{pane}"), &[], Some(&pane.to_uppercase())),
+        str::to_owned,
+    )
+}
+
+/// A source Bible's name under Translate's tabs and over Understand's passage: the catalog's
+/// long name (`unfoldingWord Literal Text`), else its [`bible_name`].
+pub fn bible_long_name(abbreviation: Option<&str>, pane: &str) -> String {
+    t_dyn(
+        &format!("source.{pane}.name"),
+        &[],
+        Some(&bible_name(abbreviation, pane)),
+    )
+}
+
+/// The simplified tab's name when its text gives no abbreviation: the pinned text's
+/// repository suffix (`en_ust` → UST), else "UST" (tC4's `simplifiedLabel`).
 pub fn simplified_label(pin: Option<&str>) -> String {
     pin.and_then(|repo| {
         let (_, abbreviation) = repo.rsplit_once('_')?;

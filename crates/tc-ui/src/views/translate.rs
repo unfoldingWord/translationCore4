@@ -43,7 +43,9 @@ use crate::app::translate::{
     PickedUnit, SourcePlace, box_text, changed_while_typing, editing_focus, editing_section,
     editing_verse, range_span, sections, shown_words, source_place, source_unit, target_paragraphs,
 };
-use crate::app::understand::{HelpFocus, UnitMode, literal_pane, shown_source_tab};
+use crate::app::understand::{
+    HelpFocus, UnitMode, bible_long_name, bible_name, literal_pane, shown_source_tab,
+};
 use crate::app::web::{Actions, AppCtx, AppState, use_app, use_runtime};
 use crate::attrs::Attrs;
 use crate::ds::{
@@ -565,11 +567,7 @@ fn source_tabs(
                         .panes
                         .iter()
                         .map(|pane| {
-                            let label = t_dyn(
-                                &format!("source.{}", pane.id),
-                                &[],
-                                Some(&pane.id.to_uppercase()),
-                            );
+                            let label = bible_name(pane.abbreviation.as_deref(), &pane.id);
                             chip(
                                 &actions,
                                 &pane.id,
@@ -594,19 +592,16 @@ fn source_tabs(
     };
     let caption = move || {
         let tab = chosen.get()?;
-        let version = panes.with(|p| {
+        let (version, abbreviation) = panes.with(|p| {
             p.as_ref()
                 .and_then(|v| chosen_pane(v, &tab))
-                .and_then(|pane| pane.version.clone())
+                .map(|pane| (pane.version.clone(), pane.abbreviation.clone()))
+                .unwrap_or_default()
         });
         let name = if tab == "orig" {
             t_dyn(&format!("source.orig.{testament}.name"), &[], None)
         } else {
-            t_dyn(
-                &format!("source.{tab}.name"),
-                &[],
-                Some(&tab.to_uppercase()),
-            )
+            bible_long_name(abbreviation.as_deref(), &tab)
         };
         let pinned = version
             .map(|v| format!(" · {}", t(keys::draft::PINNED, &[("version", &v)])))

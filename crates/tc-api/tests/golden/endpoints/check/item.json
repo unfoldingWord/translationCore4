@@ -78,6 +78,7 @@
             "type": "pane",
             "value": {
               "pane": "ult",
+              "abbreviation": "ULT",
               "text": {
                 "type": "verse",
                 "value": {
@@ -95,6 +96,7 @@
           },
           "simplified": {
             "repo": "en_ust",
+            "abbreviation": "UST",
             "tokens": [
               "I",
               ", ",

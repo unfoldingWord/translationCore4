@@ -143,8 +143,13 @@ pub enum RowSource {
 #[cfg_attr(feature = "proptest", derive(proptest_derive::Arbitrary))]
 #[serde(rename_all = "camelCase")]
 pub struct SourcePane {
-    /// The pane's id, such as `ult`: the UI names it from its catalog (`source.ult`).
+    /// The pane's id, such as `ult`: the UI names it from its catalog (`source.ult`) when
+    /// the text has no abbreviation.
     pub id: String,
+    /// The abbreviation in the metadata of the text that loaded (`TPL`): the pane's name
+    /// wherever it would show GLT or GST (#1045). None when the text gives none or did not
+    /// load.
+    pub abbreviation: Option<String>,
     /// The pinned version, `v91` (Translate's caption "· v91 · pinned"); none when the pin
     /// names no version.
     pub version: Option<String>,
