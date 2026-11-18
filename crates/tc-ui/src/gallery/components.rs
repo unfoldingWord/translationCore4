@@ -342,7 +342,7 @@ fn progress(p: Props) -> AnyView {
         tone: p.keyword("tone").unwrap_or_default(),
         height: p.num("height").unwrap_or(d.height),
         size: p.num("size").unwrap_or(d.size),
-        label: p.str("label"),
+        label: p.str("label").map(Signal::from),
         min_fill: None,
         style: p.css("style"),
         attrs: p.rest(),
@@ -749,7 +749,7 @@ fn spinner(p: Props) -> AnyView {
     Spinner(SpinnerProps {
         size: p.num("size").unwrap_or(d.size),
         tone,
-        label: p.str("label"),
+        label: p.str("label").map(Signal::from),
         style: p.css("style"),
         attrs: p.rest(),
     })

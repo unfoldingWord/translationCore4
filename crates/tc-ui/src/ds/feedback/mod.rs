@@ -154,7 +154,7 @@ pub fn InlineError(
 pub fn Spinner(
     #[prop(default = 18.0)] size: f64,
     #[prop(optional)] tone: SpinnerTone,
-    #[prop(optional, into)] label: Option<String>,
+    #[prop(optional, into)] label: Option<Signal<String>>,
     #[prop(optional)] style: Css,
     #[prop(optional)] attrs: Attrs,
 ) -> impl IntoView {

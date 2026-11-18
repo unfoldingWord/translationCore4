@@ -268,7 +268,8 @@
         "tests": [
           "J11 1. Share to the account: one progress line, the end with its address, Copy link and the team-access line; the main on Door43 holds the verse saved just before",
           "J11 6. A name that exists on Door43 is refused on the check step with its sentence, and nothing is pushed; another name shares",
-          "J11 11, J24. An Open Bible Stories project shares the same way, and its end names the team access too (#724)"
+          "J11 11, J24. An Open Bible Stories project shares the same way, and its end names the team access too (#724)",
+          "j11_the_share_spinner_turns_without_restarting"
         ]
       }
     ],
@@ -650,7 +651,8 @@
         "tests": [
           "J11 1. Share to the account: one progress line, the end with its address, Copy link and the team-access line; the main on Door43 holds the verse saved just before",
           "J11 6. A name that exists on Door43 is refused on the check step with its sentence, and nothing is pushed; another name shares",
-          "J11 11, J24. An Open Bible Stories project shares the same way, and its end names the team access too (#724)"
+          "J11 11, J24. An Open Bible Stories project shares the same way, and its end names the team access too (#724)",
+          "j11_the_share_spinner_turns_without_restarting"
         ]
       }
     ],
