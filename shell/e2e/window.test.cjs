@@ -8,6 +8,27 @@ const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const h = require('./harness.cjs');
 
+h.shellTest('zoom_keys_follow_the_layout_and_numeric_keypad', async () => {
+  const app = await h.launch(h.appDataDir('zoom-keys'));
+  try {
+    await h.home(app);
+    for (const [keyCode, expected] of [['+', 0.5], ['numadd', 1], ['numsub', 0.5], ['-', 0], ['+', 0.5], ['0', 0]]) {
+      const level = await app.evaluate(async ({ BrowserWindow }, keyCode) => {
+        const contents = BrowserWindow.getAllWindows()[0].webContents;
+        const modifiers = [process.platform === 'darwin' ? 'meta' : 'control'];
+
+        contents.sendInputEvent({ type: 'keyDown', keyCode, modifiers });
+        contents.sendInputEvent({ type: 'keyUp', keyCode, modifiers });
+        await new Promise((resolve) => setImmediate(resolve));
+        return contents.getZoomLevel();
+      }, keyCode);
+      assert.equal(level, expected, `INV-ZOOM-KEYS: ${keyCode}`);
+    }
+  } finally {
+    await h.finish(app);
+  }
+});
+
 const frame = (app, page) =>
   Promise.all([
     page.evaluate(() => ({

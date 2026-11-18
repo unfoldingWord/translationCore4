@@ -198,6 +198,15 @@ function showWindow() {
   win = new BrowserWindow(lib.windowOptions({ platform: process.platform, preload: path.join(__dirname, 'preload.cjs'), show: false }));
   win.maximize();
   win.show();
+  win.webContents.on('before-input-event', (event, input) => {
+    const modifier = process.platform === 'darwin' ? input.meta && !input.control : input.control && !input.meta;
+    if (input.type !== 'keyDown' || !modifier || input.alt) return;
+    const delta = { '+': 0.5, '-': -0.5, '0': 0 }[input.key];
+    if (delta === undefined) return;
+    // Consume the matching menu accelerator too, so each press changes zoom once.
+    event.preventDefault();
+    win.webContents.setZoomLevel(input.key === '0' ? 0 : win.webContents.getZoomLevel() + delta);
+  });
   log('window shown', { visible: win.isVisible() });
   win.on('close', (event) => {
     if (exiting) return;
