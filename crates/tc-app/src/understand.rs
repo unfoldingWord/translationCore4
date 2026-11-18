@@ -398,15 +398,20 @@ fn load(
             },
             text: text_state(status),
         });
-    let simplified_pin = read_pins
-        .set(Rung::Primary)
-        .and_then(|set| set.pin(tc_resources::SetSlot::SimplifiedText))
-        .or_else(|| {
-            read_pins
-                .set(Rung::Fallback)
-                .and_then(|set| set.pin(tc_resources::SetSlot::SimplifiedText))
-        })
-        .map(|pin| pin.repo.name().as_str().to_owned());
+    // The tab is named after the text that loaded: a book the package's simplified Bible lacks
+    // shows the English fallback's, which must not carry the package's name (#1048).
+    let simplified_pin = match resources.text(&TextRole::Simplified) {
+        Some(TextStatus::Loaded { pin, .. }) => Some(pin),
+        _ => read_pins
+            .set(Rung::Primary)
+            .and_then(|set| set.pin(tc_resources::SetSlot::SimplifiedText))
+            .or_else(|| {
+                read_pins
+                    .set(Rung::Fallback)
+                    .and_then(|set| set.pin(tc_resources::SetSlot::SimplifiedText))
+            }),
+    }
+    .map(|pin| pin.repo.name().as_str().to_owned());
     let simplified = match resources.text(&TextRole::Simplified) {
         Some(TextStatus::Loaded { usfm, rung, .. }) => Slot::Ready(ReadySlot {
             items: vec![pane_book(usfm)],
