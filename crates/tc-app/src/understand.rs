@@ -548,12 +548,14 @@ impl App {
             .and_then(|pins| {
                 let primary = pins.primary.as_ref()?;
                 let gateway = tc_resources::gateways::of_set(primary)?;
+                if gateway.language == "en" {
+                    return None;
+                }
                 let (en_lit, en_simp) = tc_resources::suite::english_bibles();
-                let needs_pane = gateway.language != "en"
-                    && pins
-                        .extra_scripture
-                        .iter()
-                        .any(|p| p.pin.repo == en_lit.repo || p.pin.repo == en_simp.repo);
+                let needs_pane = pins
+                    .extra_scripture
+                    .iter()
+                    .any(|p| p.pin.repo == en_lit.repo || p.pin.repo == en_simp.repo);
                 let needs_slot = !primary
                     .pins
                     .contains_key(&tc_resources::SetSlot::SimplifiedText);
