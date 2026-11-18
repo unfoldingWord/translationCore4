@@ -7,6 +7,7 @@ use crate::fold::ConflictId;
 use crate::ids::{BatchId, ChangeId, DeviceId, RepoPath, WallTime};
 use crate::json::{Json, JsonMap};
 use crate::keys::CheckKey;
+use crate::keys::RecordKey;
 use crate::record::{
     AlignmentGroup, ChapterFront, CommentTarget, PinGroupValue, Record, ResourceRef, Scope,
     Selection, TargetWord, UserStatus, VerseValue,
@@ -284,6 +285,30 @@ pub enum RestoreMode {
 pub struct UpgradePlan {
     /// The new pin groups, the carried-over and moved decisions.
     pub changes: Vec<PlannedChange>,
+    /// Records whose heads must still match the snapshot even when the plan does not rewrite
+    /// them (e.g. Primary during a pane-only adoption).
+    pub guards: Vec<UpgradeGuard>,
+}
+
+/// A head check on a record that UpgradePlan reads without modifying.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UpgradeGuard {
+    pub key: RecordKey,
+    parents: Vec<ChangeId>,
+}
+
+impl UpgradeGuard {
+    #[must_use]
+    pub fn new(key: RecordKey, mut parents: Vec<ChangeId>) -> Self {
+        parents.sort();
+        parents.dedup();
+        Self { key, parents }
+    }
+
+    #[must_use]
+    pub fn parents(&self) -> &[ChangeId] {
+        &self.parents
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -311,7 +311,10 @@ mod arbitrary {
         });
         if handle
             .submit(Command::ApplyUpgrade {
-                plan: UpgradePlan { changes },
+                plan: UpgradePlan {
+                    changes,
+                    guards: Vec::new(),
+                },
             })
             .wait()
             .is_err()

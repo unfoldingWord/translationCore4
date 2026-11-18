@@ -176,6 +176,7 @@ fn the_author_is_the_door43_username_after_consent() {
                     parents,
                     Cause::Seed,
                 )],
+                guards: Vec::new(),
             },
         })
         .wait()

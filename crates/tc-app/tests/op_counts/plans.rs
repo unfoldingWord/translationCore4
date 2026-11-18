@@ -224,6 +224,7 @@ async fn with_package(s: &Scale, covers: &[BookId]) {
         .handle()
         .submit(StoreCommand::apply_upgrade(UpgradePlan {
             changes: vec![write(PinGroup::Primary), write(PinGroup::Fallback)],
+            guards: Vec::new(),
         }))
         .await
         .unwrap();

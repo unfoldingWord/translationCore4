@@ -585,6 +585,11 @@ impl StoreCommand {
             .changes
             .iter()
             .map(|change| (change.record.key(), change.parents().to_vec()))
+            .chain(
+                plan.guards
+                    .iter()
+                    .map(|guard| (guard.key.clone(), guard.parents().to_vec())),
+            )
             .collect();
         Self::new(Command::ApplyUpgrade { plan }, listed)
     }

@@ -992,6 +992,7 @@ async fn a_stale_confirm_reshows_the_dialog_with_new_counts() {
             session.read().heads(&record),
             Cause::Edit,
         )],
+        guards: Vec::new(),
     };
     session
         .handle()

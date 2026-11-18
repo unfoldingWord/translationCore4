@@ -437,6 +437,7 @@ impl Store {
                     .iter()
                     .map(|record| PlannedChange::new(record.clone(), Vec::new(), cause.clone()))
                     .collect(),
+                guards: Vec::new(),
             };
             handle
                 .submit(Command::ApplyUpgrade { plan })

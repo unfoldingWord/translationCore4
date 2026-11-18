@@ -263,6 +263,7 @@ fn a_new_device_copies_the_profile_and_both_group_as_mine() {
                     parents,
                     tc_journal::Cause::Seed,
                 )],
+                guards: Vec::new(),
             },
         })
         .wait()
