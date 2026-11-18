@@ -12,7 +12,7 @@ use tc_api::token::ShownToken;
 use tc_core::BookId;
 
 use crate::app::shell::{Editing, js_trim};
-use crate::app::understand::{Unit, key_carries, leading_num, section_of};
+use crate::app::understand::{Unit, UnitMode, key_carries, leading_num, section_of};
 use crate::i18n::{keys, t};
 
 /// Comments keep their durable target when a source section or tab groups verses differently.
@@ -315,7 +315,8 @@ pub fn editing_focus(editing: &Editing, book: BookId, chapter: u16) -> Option<Ve
 pub enum PickedUnit {
     /// A section, by its first verse key: a join that regroups the chapter still finds it.
     Section(String),
-    /// One verse, as Verse mode edits it.
+    /// One verse, as Verse mode edits it, or a source verse clicked, whose key may span or split
+    /// the translation's keys.
     Verse(String),
 }
 
@@ -325,6 +326,24 @@ impl PickedUnit {
         match editing_section(editing, book, chapter) {
             Some(keys) => keys.first().cloned().map(Self::Section),
             None => editing_verse(editing, book, chapter).map(Self::Verse),
+        }
+    }
+
+    /// The unit a click on a section's source or translation picks (#991, #1057): in Section
+    /// mode the section, in Verse mode the `verse` clicked. None while a card is open, so the
+    /// helps stay on the card and keep its unit after Save.
+    pub fn clicked(
+        mode: UnitMode,
+        card_open: bool,
+        section: &[String],
+        verse: Option<&str>,
+    ) -> Option<Self> {
+        if card_open {
+            return None;
+        }
+        match mode {
+            UnitMode::Section => section.first().cloned().map(Self::Section),
+            UnitMode::Verse => verse.map(|v| Self::Verse(v.to_owned())),
         }
     }
 

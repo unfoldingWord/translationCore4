@@ -584,10 +584,12 @@ And this (#965):
 And this (#991, owner 2026-11-10):
 
 - The helps stay filtered to the section or verse the translator picked. On Translate a click on
-  a section's translation filters them without opening its card, and after Save, Cancel or a
-  held save the helps stay on that section, or on that verse in Verse mode. tC4's `editingFocus`
-  follows only an open card, so the helps go back to the whole chapter when it closes. A join
-  keeps them on the section that now holds the verses.
+  a section's translation filters them without opening its card. A click on its source does the
+  same in Section mode, and in Verse mode filters them to the verse clicked (#1057, owner
+  2026-11-18). After Save, Cancel or a held save the helps stay on that section, or on that
+  verse in Verse mode. tC4's source cell takes no click, and its `editingFocus` follows only an
+  open card, so the helps go back to the whole chapter when it closes. A join keeps them on the
+  section that now holds the verses.
 - A story's helps list only the frame in focus: Notes, Words, Questions and, on Translate,
   Comments. tC4 lists the whole story and marks the frame in focus (#331's ruling of
   2026-09-18).
