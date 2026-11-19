@@ -58,6 +58,10 @@ down the tower (GitHub issues and pull requests, built by the method in `docs/FU
   `lint-windows`, `lint-wasm`, `test`, `test-app`, `alignment-budget`, `parity-baseline`,
   `format-older-reader`, `unit`, `builds`, `e2e-linux` and `journeys`. A pull request runs only the lints; the merge
   queue runs the full list.
+- A version that shipped takes fixes on its release branch, `release/<major>.<minor>`. Merge
+  the fix to `main` first. Then open a pull request to the release branch that holds
+  `git cherry-pick -x <commit>`; it runs the full list itself (`docs/RELEASE.md` "Release
+  branches").
 
 ## The rules that protect translators' work
 

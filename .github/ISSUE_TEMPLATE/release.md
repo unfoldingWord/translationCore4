@@ -1,6 +1,6 @@
 ---
 name: Release
-about: One issue per release tag, from the first check on main to the download page, with every step a person or an AI agent can verify.
+about: One issue per release tag, from the first check to the download page, with every step a person or an AI agent can verify.
 title: "Release v"
 labels: epic
 ---
@@ -17,7 +17,12 @@ Two kinds of tag:
   says "preview"; the project format need not be frozen (ruling H9,
   docs/rulings/2026-10-27-H9.md).
 - A public tag (`v4.1.0`, `v4.1.1`) needs every box below.
-Strike the lines marked *(public only)* for a preview. Delete these comments when you file.
+Strike the lines marked *(public only)* for a preview.
+Which branch (`docs/RELEASE.md` "Release branches"): below, "the release's branch" is
+`release/<major>.<minor>`. An `X.Y.0` release has no release branch before its cut: until then
+its branch is `main`, and "The cut" makes `release/X.Y`. A patch (`X.Y.Z`) is on `release/X.Y`
+from its first box.
+Delete these comments when you file.
 -->
 
 ## What this release is
@@ -74,7 +79,7 @@ public tag while any key is pending. -->
       in every other language until translated.
 - [ ] **Owner:** the pending keys are handed over, and the translated files are merged
       (key into `<id>.json`, out of `<id>.pending.json`).
-- [ ] `cargo test --release -p tc-api --test refusals` passes on `main`.
+- [ ] `cargo test --release -p tc-api --test refusals` passes on the release's branch.
 - [ ] *(public only)* `release_has_no_pending_translation` passes too, so no
       `<id>.pending.json` holds a key.
 - [ ] A preview: the release notes say which languages still show some English.
@@ -122,9 +127,10 @@ release"); here, say what changed and link the run that checked it. -->
 
 ### Version
 
-- [ ] `[workspace.package] version` in `Cargo.toml` equals the tag without its `v`, on `main`,
-      before the tag is pushed (the tag's `translations` job refuses a tag that differs, #966).
-      About, the installer names and `BUILD-MANIFEST.json` all read it.
+- [ ] `[workspace.package] version` in `Cargo.toml` equals the tag without its `v`, on the
+      release's branch, before the tag is pushed (the tag's `translations` job refuses a tag
+      that differs, #966). About, the installer names and `BUILD-MANIFEST.json` all read it. A
+      patch sets it by a pull request to `release/<major>.<minor>`.
 - [ ] The release notes draft names the previous version and the project format, so a
       translator who goes back knows which version to take and what it can open
       (`docs/RELEASE.md` "Rolling back").
@@ -135,17 +141,21 @@ release"); here, say what changed and link the run that checked it. -->
 each release that it is still so, since a tag's Windows build fails at signing without it and
 nothing is published. -->
 
-- [ ] The `windows-signing` environment allows only the default branch and `v*` tags, and has a
-      required reviewer.
+- [ ] The `windows-signing` environment allows only the default branch, `release/*` branches
+      and `v*` tags, and its required reviewers are the release managers.
 - [ ] The `v*` tag ruleset lets only release managers create, update or delete release tags.
+- [ ] The two `release/*` branch rulesets are as `docs/RELEASE.md` "Signing" lists them: a pull
+      request with one approval and the checks `main` requires, and only release managers
+      create a release branch.
 - [ ] The five `AZURE_*` repository variables and the federated credential are present (names
       only; never paste values).
 - [ ] `TC_HELP_DESK_TOKEN` and `TC_HELP_DESK_EMAIL` are present, so the installed app can send
       Feedback (`docs/RELEASE.md` "Secrets").
-- [ ] A manual run of `release` on the default branch with **sign** ticked produced a signed
-      Windows installer, checked with `Get-AuthenticodeSignature` (command in `RELEASE.md`).
+- [ ] A manual run of `release` on the release's branch with **sign** ticked, approved by a
+      release manager, produced a signed Windows installer, checked with
+      `Get-AuthenticodeSignature` (command in `RELEASE.md`).
 
-### The tip of main
+### The tip of the release's branch
 
 - [ ] `scripts/gates.sh` is green on the commit to tag. Link the `ci`, `app-e2e` and `shell`
       runs.
@@ -165,12 +175,18 @@ list is redone for it. -->
 
 - [ ] Every open issue in the milestone is moved to the next milestone, and its edge removed
       from this issue's "blocked by" list.
-- [ ] The commit to tag is named here: `<sha>`.
+- [ ] An `X.Y.0` release: a release manager cut `release/X.Y` from a commit of `main` whose
+      checks are green, and a pull request set the version on `main` to the next minor's. A
+      patch: every fix in it merged to `main` first and reached `release/X.Y` by a pull request
+      that holds `git cherry-pick -x`, or its pull request says why it could not
+      (`docs/RELEASE.md` "Release branches").
+- [ ] The commit to tag is named here: `<sha>`. It is on `release/<major>.<minor>`.
 
 ## The tag
 
-- [ ] **Owner** (or the person the owner names) pushes `v<version>` on the default branch.
-      Nobody else pushes release tags.
+- [ ] **Owner** (or the person the owner names) pushes `v<version>` on the release branch.
+      Nobody else pushes release tags. A release manager approves the Windows build's signing
+      on the run's page.
 - [ ] `translations`, `common`, `build` ×3 and `smoke` ×3 are green on the tag run. Link the
       run.
 - [ ] The Windows installer is signed (no `-unsigned` in its name).
