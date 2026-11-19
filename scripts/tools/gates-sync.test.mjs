@@ -87,9 +87,9 @@ test('INV-BUILDS-ON-WINDOWS: the gate list builds for Windows, and CI runs it', 
   assert.ok(ciSteps.includes('clippy-windows'), 'INV-BUILDS-ON-WINDOWS: ci.yml does not run scripts/gates.sh --step clippy-windows');
 });
 
-test('INV-JOURNEYS-RUN: every browser journey runs in CI on every main and gate push', () => {
+test('INV-JOURNEYS-RUN: every browser journey runs in CI on every main, gate and release push', () => {
   const e2e = read('.github/workflows/app-e2e.yml');
-  assert.match(e2e.split(/^jobs:/m)[0], /^\s+push:\n\s+branches: \[main, 'gate\/\*\*'\]/m, 'INV-JOURNEYS-RUN: app-e2e does not run on pushes to main and gate/**');
+  assert.match(e2e.split(/^jobs:/m)[0], /^\s+push:\n\s+branches: \[main, 'gate\/\*\*', 'release\/\*'\]/m, 'INV-JOURNEYS-RUN: app-e2e does not run on pushes to main, gate/** and release/*');
   assert.match(e2e, /scripts\/gates\.sh --step journeys/, 'INV-JOURNEYS-RUN: app-e2e does not run scripts/gates.sh --step journeys');
   assert.match(gates, /node --test[^\n]*parity\/app\/journeys\/\*\.test\.mjs/, 'INV-JOURNEYS-RUN: the journeys step does not run every parity/app/journeys/*.test.mjs');
 });
@@ -109,6 +109,34 @@ test('INV-MERGE-QUEUE-RUNS-CI: ci, app-e2e and shell run in the merge queue', ()
     assert.match(on, /^  merge_group:$/m, `INV-MERGE-QUEUE-RUNS-CI: ${name}.yml has no merge_group trigger`);
     assert.match(on, /^  pull_request:$/m, `INV-MERGE-QUEUE-RUNS-CI: ${name}.yml never reports on a pull request, so its required checks keep it out of the queue`);
   }
+});
+
+// A release branch has no merge queue: its pull requests and its pushes run what the queue runs
+// (docs/rulings/2026-11-19-release-branches.md). A job that the queue runs and a pull request to
+// release/* skips reports success there, so the fix would merge with the test never run.
+test('INV-RELEASE-BRANCH-RUNS-THE-FULL-CHECKS: every job the merge queue runs also runs for a pull request to release/* and a push to release/*', () => {
+  const problems = [];
+  const toRelease = "startsWith(github.base_ref, 'release/')";
+  const onRelease = "startsWith(github.ref, 'refs/heads/release/')";
+  for (const name of ['ci', 'app-e2e', 'shell']) {
+    const text = read(`.github/workflows/${name}.yml`);
+    if (!/^\s+push:\n\s+branches: \[main, 'gate\/\*\*', 'release\/\*'\]/m.test(text.split(/^jobs:/m)[0])) {
+      problems.push(`${name}.yml does not run on a push to release/*`);
+    }
+    for (const job of jobsOf(text)) {
+      const condition = job.text.match(/^ {4}if: (.*)$/m)?.[1] ?? '';
+      // ci.yml names the refs and events that run a job in full.
+      if (condition.includes("github.event_name == 'merge_group'") && !(condition.includes(toRelease) && condition.includes(onRelease))) {
+        problems.push(`${name}.yml job ${job.id} runs in the merge queue but not for a release branch`);
+      }
+      // app-e2e.yml and shell.yml run a job in full on every event but a pull request.
+      const skipsPullRequests = condition.split("github.event_name != 'pull_request'").slice(1);
+      if (skipsPullRequests.some((rest) => !rest.startsWith(` || ${toRelease}`))) {
+        problems.push(`${name}.yml job ${job.id} is skipped on a pull request to release/*`);
+      }
+    }
+  }
+  assert.deepEqual(problems.map((p) => `INV-RELEASE-BRANCH-RUNS-THE-FULL-CHECKS: ${p}`), []);
 });
 
 test('INV-A-HUNG-TEST-IS-NAMED-AND-STOPPED: every gate test has a time limit (CHK-8)', () => {

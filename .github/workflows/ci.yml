@@ -2,12 +2,13 @@ name: ci
 permissions:
   contents: read
 on:
-  # Main and gate/* only: a branch with a pull request gets its run from pull_request, and a push
-  # there too ran every lint twice.
+  # Main, gate/* and release/* only: a branch with a pull request gets its run from pull_request,
+  # and a push there too ran every lint twice.
   push:
-    branches: [main, 'gate/**']
-  # A pull request runs the lints only: the full tests run where they gate a merge (main, gate/*,
-  # the merge queue).
+    branches: [main, 'gate/**', 'release/*']
+  # A pull request to main runs the lints only: the full tests run where they gate a merge (main,
+  # gate/*, the merge queue). A release branch has no merge queue, so a pull request to release/*
+  # runs the full tests itself (rulings/2026-11-19-release-branches.md).
   pull_request:
   # Anyone can run the whole workflow on a branch. With `nightly`, it runs only the nightly jobs
   # and files an issue for each that fails. A timer starts that at 2:30 AM US Eastern
@@ -146,9 +147,10 @@ jobs:
     # The scale tests run at twice Psalms (CHK-7c); ten times runs at night.
     timeout-minutes: 75
     needs: plan
-    # Full tests run where they gate a merge: main, gate/* and on request (rulings/2026-10-24-test-process.md).
+    # Full tests run where they gate a merge: main, gate/*, release/*, a pull request to release/*, and
+    # on request (rulings/2026-10-24-test-process.md, rulings/2026-11-19-release-branches.md).
     # !cancelled(): if plan fails, its outputs are empty and nothing is skipped.
-    if: ${{ !cancelled() && (!inputs.nightly && (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/heads/gate/') || github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch')) && needs.plan.outputs.tested != 'true' && needs.plan.outputs.code != 'false' }}
+    if: ${{ !cancelled() && (!inputs.nightly && (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/heads/gate/') || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.base_ref, 'release/') || github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch')) && needs.plan.outputs.tested != 'true' && needs.plan.outputs.code != 'false' }}
     # actions: write, so a dropped merge group can cancel its own run (first step).
     permissions:
       contents: read
@@ -192,9 +194,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 75
     needs: plan
-    # Full tests run where they gate a merge: main, gate/* and on request (rulings/2026-10-24-test-process.md).
+    # Full tests run where they gate a merge: main, gate/*, release/*, a pull request to release/*, and
+    # on request (rulings/2026-10-24-test-process.md, rulings/2026-11-19-release-branches.md).
     # !cancelled(): if plan fails, its outputs are empty and nothing is skipped.
-    if: ${{ !cancelled() && (!inputs.nightly && (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/heads/gate/') || github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch')) && needs.plan.outputs.tested != 'true' && needs.plan.outputs.code != 'false' }}
+    if: ${{ !cancelled() && (!inputs.nightly && (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/heads/gate/') || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.base_ref, 'release/') || github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch')) && needs.plan.outputs.tested != 'true' && needs.plan.outputs.code != 'false' }}
     # actions: write, so a dropped merge group can cancel its own run (first step).
     permissions:
       contents: read
@@ -235,9 +238,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs: [plan, test-shard, test-extra]
-    # Full tests run where they gate a merge: main, gate/* and on request (rulings/2026-10-24-test-process.md).
+    # Full tests run where they gate a merge: main, gate/*, release/*, a pull request to release/*, and
+    # on request (rulings/2026-10-24-test-process.md, rulings/2026-11-19-release-branches.md).
     # !cancelled(): a failed part must not skip this job, which would read as a pass.
-    if: ${{ !cancelled() && (!inputs.nightly && (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/heads/gate/') || github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch')) && needs.plan.outputs.tested != 'true' && needs.plan.outputs.code != 'false' }}
+    if: ${{ !cancelled() && (!inputs.nightly && (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/heads/gate/') || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.base_ref, 'release/') || github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch')) && needs.plan.outputs.tested != 'true' && needs.plan.outputs.code != 'false' }}
     steps:
       - run: '[[ "${{ needs.test-shard.result }}" = success && "${{ needs.test-extra.result }}" = success ]]'
 
@@ -249,9 +253,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 75
     needs: plan
-    # Full tests run where they gate a merge: main, gate/* and on request (rulings/2026-10-24-test-process.md).
+    # Full tests run where they gate a merge: main, gate/*, release/*, a pull request to release/*, and
+    # on request (rulings/2026-10-24-test-process.md, rulings/2026-11-19-release-branches.md).
     # !cancelled(): if plan fails, its outputs are empty and nothing is skipped.
-    if: ${{ !cancelled() && (!inputs.nightly && (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/heads/gate/') || github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch')) && needs.plan.outputs.tested != 'true' && needs.plan.outputs.code != 'false' }}
+    if: ${{ !cancelled() && (!inputs.nightly && (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/heads/gate/') || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.base_ref, 'release/') || github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch')) && needs.plan.outputs.tested != 'true' && needs.plan.outputs.code != 'false' }}
     # actions: write, so a dropped merge group can cancel its own run (first step).
     permissions:
       contents: read
@@ -307,9 +312,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs: [plan, test-app-shard]
-    # Full tests run where they gate a merge: main, gate/* and on request (rulings/2026-10-24-test-process.md).
+    # Full tests run where they gate a merge: main, gate/*, release/*, a pull request to release/*, and
+    # on request (rulings/2026-10-24-test-process.md, rulings/2026-11-19-release-branches.md).
     # !cancelled(): a failed part must not skip this job, which would read as a pass.
-    if: ${{ !cancelled() && (!inputs.nightly && (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/heads/gate/') || github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch')) && needs.plan.outputs.tested != 'true' && needs.plan.outputs.code != 'false' }}
+    if: ${{ !cancelled() && (!inputs.nightly && (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/heads/gate/') || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.base_ref, 'release/') || github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch')) && needs.plan.outputs.tested != 'true' && needs.plan.outputs.code != 'false' }}
     steps:
       - run: '[[ "${{ needs.test-app-shard.result }}" = success ]]'
 
@@ -422,9 +428,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: plan
-    # Full tests run where they gate a merge: main, gate/* and on request (rulings/2026-10-24-test-process.md).
+    # Full tests run where they gate a merge: main, gate/*, release/*, a pull request to release/*, and
+    # on request (rulings/2026-10-24-test-process.md, rulings/2026-11-19-release-branches.md).
     # !cancelled(): if plan fails, its outputs are empty and nothing is skipped.
-    if: ${{ !cancelled() && (!inputs.nightly && (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/heads/gate/') || github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch')) && needs.plan.outputs.tested != 'true' && needs.plan.outputs.code != 'false' }}
+    if: ${{ !cancelled() && (!inputs.nightly && (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/heads/gate/') || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.base_ref, 'release/') || github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch')) && needs.plan.outputs.tested != 'true' && needs.plan.outputs.code != 'false' }}
     steps:
       - uses: actions/checkout@v7
       # The runner image leaves too little disk for this workspace ("No space left on device",
@@ -448,9 +455,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: plan
-    # Full tests run where they gate a merge: main, gate/* and on request (rulings/2026-10-24-test-process.md).
+    # Full tests run where they gate a merge: main, gate/*, release/*, a pull request to release/*, and
+    # on request (rulings/2026-10-24-test-process.md, rulings/2026-11-19-release-branches.md).
     # !cancelled(): if plan fails, its outputs are empty and nothing is skipped.
-    if: ${{ !cancelled() && (!inputs.nightly && (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/heads/gate/') || github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch')) && needs.plan.outputs.tested != 'true' && needs.plan.outputs.code != 'false' }}
+    if: ${{ !cancelled() && (!inputs.nightly && (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/heads/gate/') || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.base_ref, 'release/') || github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch')) && needs.plan.outputs.tested != 'true' && needs.plan.outputs.code != 'false' }}
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/free-disk
@@ -479,9 +487,10 @@ jobs:
   parity-baseline:
     runs-on: ubuntu-latest
     needs: plan
-    # Full tests run where they gate a merge: main, gate/* and on request (rulings/2026-10-24-test-process.md).
+    # Full tests run where they gate a merge: main, gate/*, release/*, a pull request to release/*, and
+    # on request (rulings/2026-10-24-test-process.md, rulings/2026-11-19-release-branches.md).
     # !cancelled(): if plan fails, its outputs are empty and nothing is skipped.
-    if: ${{ !cancelled() && (!inputs.nightly && (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/heads/gate/') || github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch')) && needs.plan.outputs.tested != 'true' }}
+    if: ${{ !cancelled() && (!inputs.nightly && (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/heads/gate/') || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.base_ref, 'release/') || github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch')) && needs.plan.outputs.tested != 'true' }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
