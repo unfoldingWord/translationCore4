@@ -245,7 +245,7 @@ fn site_links(
     let mut out = String::with_capacity(text.len() + 1024);
     let mut rest = text;
     while let Some(at) = rest.find(opens) {
-        // Up to the address, which starts with its `/`.
+        // The last `/` of `opens` is the address's first character, so it stays with it.
         let (before, after) = rest.split_at(at + opens.len() - 1);
         out.push_str(before);
         if !is_address(&rest[..at]) {
@@ -285,9 +285,11 @@ fn site_link(up: &str, value: &str) -> String {
 /// `tests/help_links.rs` proves that every address a vendored page names has its file.
 fn help_file(path: &str) -> Option<String> {
     // The folder itself is its index: `/help/` is not a page (`help_never_redirects`).
-    let page = |name: &str| if name.is_empty() { "index.html" } else { name }.to_owned();
+    fn page(name: &str) -> &str {
+        if name.is_empty() { "index.html" } else { name }
+    }
     if let Some(name) = below(path, HELP_SITE_FOLDER) {
-        return Some(page(name));
+        return Some(page(name).to_owned());
     }
     if let Some(file) = below(path, HELP_SITE_ASSETS) {
         return (!file.is_empty()).then(|| format!("site{HELP_SITE_ASSETS}/{file}"));
