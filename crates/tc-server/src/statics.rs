@@ -79,48 +79,112 @@ pub(crate) async fn notices(State(shared): State<Arc<Shared>>) -> Response {
     }
 }
 
+/// The files a [`HELP_OVERLAY`] rule changes (#1036).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HelpPage {
+    /// The English file at this path below the help folder: the rule's words are English.
+    English(&'static str),
+    /// The file of this name in English and in every other language's folder.
+    EveryLanguage(&'static str),
+}
+
+impl HelpPage {
+    /// Whether the rule changes the file at `path`, below the help folder.
+    pub fn holds(self, path: &str) -> bool {
+        match self {
+            HelpPage::English(page) => path == page,
+            HelpPage::EveryLanguage(page) => {
+                path == page || path.split_once('/').is_some_and(|(_, name)| name == page)
+            }
+        }
+    }
+}
+
 /// Where a help page describes tC4 4.0 and not this app (H16 parts 2 and 3): `(page, tC4's
 /// words, this app's)`. The vendored pages stay the bytes `help-pages.txt` lists, so the
 /// change is made as they are served. The download page is translationcore.com's `/desktop/`:
-/// its old address `/tc4` redirects there (#1031).
-pub const HELP_OVERLAY: &[(&str, &str, &str)] = &[
+/// its old address `/tc4` redirects there (#1031). A folder's name and an address read the
+/// same in every language; a link's words do not, and only the English ones have a rule.
+pub const HELP_OVERLAY: &[(HelpPage, &str, &str)] = &[
     (
-        "st-where-projects-live.html",
+        HelpPage::EveryLanguage("st-where-projects-live.html"),
         "pankosmia",
         "translationCore4",
     ),
-    ("st-where-projects-live.html", "tc4-projects", "projects"),
-    ("search-index.json", "pankosmia", "translationCore4"),
-    ("search-index.json", "tc4-projects", "projects"),
-    ("search-index.js", "pankosmia", "translationCore4"),
-    ("search-index.js", "tc4-projects", "projects"),
     (
-        "gs-install.html",
-        "https://github.com/unfoldingWord/translationCore4/releases\">tC4 releases page",
-        "https://translationcore.com/desktop/\">translationCore download page",
+        HelpPage::EveryLanguage("st-where-projects-live.html"),
+        "tc4-projects",
+        "projects",
+    ),
+    (
+        HelpPage::English("search-index.json"),
+        "pankosmia",
+        "translationCore4",
+    ),
+    (
+        HelpPage::English("search-index.json"),
+        "tc4-projects",
+        "projects",
+    ),
+    (
+        HelpPage::EveryLanguage("search-index.js"),
+        "pankosmia",
+        "translationCore4",
+    ),
+    (
+        HelpPage::EveryLanguage("search-index.js"),
+        "tc4-projects",
+        "projects",
+    ),
+    (
+        HelpPage::EveryLanguage("gs-install.html"),
+        "https://github.com/unfoldingWord/translationCore4/releases\"",
+        "https://translationcore.com/desktop/\"",
+    ),
+    (
+        HelpPage::English("gs-install.html"),
+        ">tC4 releases page<",
+        ">translationCore download page<",
     ),
 ];
 
-/// The site the help pages are published on, below [`HELP_SITE_FOLDER`]. A page's link that
-/// starts with `/` names a page of this site.
+/// What a page of the site holds that Help in the app must not (#1036): `(its first words, its
+/// last)`. A page is served without each such part. Help follows the app's language, so the
+/// site's language menu goes; so does the script that sends a reader to the computer's
+/// language, at an address the app does not serve (`vendor-help.sh` does not copy it).
+pub const HELP_CUT: &[(&str, &str)] = &[
+    ("<details class=\"help-lang\">", "</details>"),
+    ("<script src=\"/assets/js/locale.js\">", "</script>"),
+];
+
+/// The site the help pages are published on. An address in a page that starts with `/` names
+/// a file of this site.
 pub const HELP_SITE: &str = "https://translationcore.com";
 
-/// The help pages' folder on [`HELP_SITE`], which the app serves as `/help/`.
+/// The English help pages' folder on [`HELP_SITE`], which the app serves as `/help/`. Another
+/// language's is `/{lang}/tc-help` there and `/help/{lang}/` here.
 pub const HELP_SITE_FOLDER: &str = "/tc-help";
 
-/// A help file as this app serves it: the vendored bytes with [`HELP_OVERLAY`] applied, and in
-/// a page (`*.html`) each `href="/…"` made a link that works in the Help panel
-/// ([`site_links`]).
+/// The folder of [`HELP_SITE`] that holds the site's own style sheets, scripts and fonts. The
+/// app serves the ones a help page loads, below `/help/site/assets/`.
+const HELP_SITE_ASSETS: &str = "/assets";
+
+/// A help file as this app serves it: the vendored bytes with [`HELP_OVERLAY`] applied; a page
+/// (`*.html`) without its [`HELP_CUT`] parts; and each address that starts with `/`, in a
+/// page's `href` or `src` or in a style sheet's `url()`, made one that works in the Help panel
+/// ([`site_link`]).
 pub fn help_overlay(path: &str, bytes: Vec<u8>) -> Vec<u8> {
     let rules: Vec<_> = HELP_OVERLAY
         .iter()
-        .filter(|(page, _, _)| *page == path)
+        .filter(|(page, _, _)| page.holds(path))
         .collect();
     let page = path.ends_with(".html");
-    if rules.is_empty() && !page {
+    let style_sheet = path.ends_with(".css");
+    if rules.is_empty() && !page && !style_sheet {
         return bytes;
     }
-    // Help pages and their index are UTF-8 text; a file that is not is served as it is.
+    // Help pages, their style sheets and their index are UTF-8 text; a file that is not is
+    // served as it is.
     let mut text = match String::from_utf8(bytes) {
         Ok(text) => text,
         Err(not_text) => return not_text.into_bytes(),
@@ -128,61 +192,119 @@ pub fn help_overlay(path: &str, bytes: Vec<u8>) -> Vec<u8> {
     for (_, from, to) in rules {
         text = text.replace(from, to);
     }
+    let up = "../".repeat(path.matches('/').count());
     if page {
-        text = site_links(path, &text);
+        for (first, last) in HELP_CUT {
+            text = without(&text, first, last);
+        }
+        text = site_links(&text, "=\"/", '"', is_link_attribute, &up);
+    } else if style_sheet {
+        text = site_links(&text, "url(/", ')', |_| true, &up);
     }
     text.into_bytes()
 }
 
-/// The page at `path` with each `href="/…"` rewritten (#1031). Served in the app, such a link
-/// would load the app's own root, or a page the app does not have, inside the Help panel. A
-/// link into the help folder becomes relative to the page, so it stays in the panel; any other
-/// names translationcore.com, which the panel opens in the browser after the internet question.
-fn site_links(path: &str, text: &str) -> String {
-    const ATTRIBUTE: &str = "href=\"/";
-    let up = "../".repeat(path.matches('/').count());
+/// `text` without each part that runs from `first` to the next `last`. A part with no end
+/// stays, so the page is served whole; `tests/help_overlay.rs` fails for such a page.
+fn without(text: &str, first: &str, last: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find(first) {
+        let Some(len) = rest[at..].find(last) else {
+            break;
+        };
+        out.push_str(&rest[..at]);
+        rest = &rest[at + len + last.len()..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Whether the text before `="/…"` ends with the name of an attribute that a page loads or
+/// follows. `data-href="/"` and the like are not links: the name follows a space.
+fn is_link_attribute(before: &str) -> bool {
+    ["href", "src"].iter().any(|name| {
+        before
+            .strip_suffix(name)
+            .is_some_and(|tag| tag.ends_with(|c: char| c.is_ascii_whitespace()))
+    })
+}
+
+/// `text` with each address that starts with `/` rewritten (#1031, #1036): served in the app,
+/// such an address would name the app's own root, or a file the app does not have. `opens`
+/// ends with the address's `/`, the address runs to `closes`, and `is_address` reads what
+/// stands before `opens`. [`site_link`] gives the address a file `up` below the help folder
+/// can use.
+fn site_links(
+    text: &str,
+    opens: &str,
+    closes: char,
+    is_address: impl Fn(&str) -> bool,
+    up: &str,
+) -> String {
     let mut out = String::with_capacity(text.len() + 1024);
     let mut rest = text;
-    while let Some(at) = rest.find(ATTRIBUTE) {
-        // Up to and including `href="`; the value starts with its `/`.
-        let (before, after) = rest.split_at(at + ATTRIBUTE.len() - 1);
+    while let Some(at) = rest.find(opens) {
+        // Up to the address, which starts with its `/`.
+        let (before, after) = rest.split_at(at + opens.len() - 1);
         out.push_str(before);
-        // `data-href="/"` and the like are not links.
-        let space = at.checked_sub(1).and_then(|i| before.as_bytes().get(i));
-        if !space.is_some_and(u8::is_ascii_whitespace) {
+        if !is_address(&rest[..at]) {
             rest = after;
             continue;
         }
-        let end = after.find('"').unwrap_or(after.len());
+        let end = after.find(closes).unwrap_or(after.len());
         let (value, tail) = after.split_at(end);
-        out.push_str(&site_link(&up, value));
+        out.push_str(&site_link(up, value));
         rest = tail;
     }
     out.push_str(rest);
     out
 }
 
-/// `value`, a link that starts with `/`, as a page `up` below the help folder must name it.
+/// `value`, an address that starts with `/`, as a file `up` below the help folder must name
+/// it. A file the app serves below `/help/` becomes relative to that file, so a link to it
+/// stays in the panel; any other address names translationcore.com, which the panel opens in
+/// the browser after the internet question.
 fn site_link(up: &str, value: &str) -> String {
     // `//host/…` already names another site.
     if value.starts_with("//") {
         return value.to_owned();
     }
-    let in_help = value
-        .strip_prefix(HELP_SITE_FOLDER)
-        .filter(|rest| rest.is_empty() || rest.starts_with(['/', '#', '?']));
-    match in_help {
-        Some(rest) => {
-            let page = rest.strip_prefix('/').unwrap_or(rest);
-            // The folder itself is its index: `/help/` is not a page (`help_never_redirects`).
-            let page = if page.is_empty() || page.starts_with(['#', '?']) {
-                format!("index.html{page}")
-            } else {
-                page.to_owned()
-            };
-            format!("{up}{page}")
-        }
+    let end = value.find(['#', '?']).unwrap_or(value.len());
+    let (path, rest) = value.split_at(end);
+    match help_file(path) {
+        Some(file) => format!("{up}{file}{rest}"),
         None => format!("{HELP_SITE}{value}"),
+    }
+}
+
+/// The file below `/help/` that holds the site's `path`, or `None` for a path the app does not
+/// serve. The English help (`/tc-help/…`) is the help folder itself, another language's
+/// (`/{lang}/tc-help/…`) is that language's folder in it, and the site's own files
+/// (`/assets/…`) are below `site/`. `vendor-help.sh` places the files so, and
+/// `tests/help_links.rs` proves that every address a vendored page names has its file.
+fn help_file(path: &str) -> Option<String> {
+    // The folder itself is its index: `/help/` is not a page (`help_never_redirects`).
+    let page = |name: &str| if name.is_empty() { "index.html" } else { name }.to_owned();
+    if let Some(name) = below(path, HELP_SITE_FOLDER) {
+        return Some(page(name));
+    }
+    if let Some(file) = below(path, HELP_SITE_ASSETS) {
+        return (!file.is_empty()).then(|| format!("site{HELP_SITE_ASSETS}/{file}"));
+    }
+    let (lang, _) = path.strip_prefix('/')?.split_once('/')?;
+    let name = below(&path[1 + lang.len()..], HELP_SITE_FOLDER)?;
+    (!lang.is_empty()).then(|| format!("{lang}/{}", page(name)))
+}
+
+/// What `path` names below `folder`: nothing for the folder itself, and `None` for a path
+/// outside it (`/tc-helpers` is not in `/tc-help`).
+fn below<'a>(path: &'a str, folder: &str) -> Option<&'a str> {
+    let rest = path.strip_prefix(folder)?;
+    if rest.is_empty() {
+        Some(rest)
+    } else {
+        rest.strip_prefix('/')
     }
 }
 

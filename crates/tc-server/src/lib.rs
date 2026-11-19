@@ -57,7 +57,9 @@ pub use lifecycle::Exit;
 pub use routes::product_paths;
 #[cfg(feature = "test-hooks")]
 pub use routes::test_paths;
-pub use statics::{CSP, HELP_OVERLAY, HELP_SITE, HELP_SITE_FOLDER, help_overlay};
+pub use statics::{
+    CSP, HELP_CUT, HELP_OVERLAY, HELP_SITE, HELP_SITE_FOLDER, HelpPage, help_overlay,
+};
 pub use token::{AddressLine, LaunchToken};
 pub use uploads::{Upload, Uploads};
 
