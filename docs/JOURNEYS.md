@@ -74,6 +74,10 @@ budget in `docs/PERFORMANCE.md`). Their tC4 tests stay mapped under `specs` in `
 
 ## Entries
 
+Across journeys, the desktop shell accepts Ctrl (Cmd on macOS) with the layout's `+`,
+`-` and `0` to enlarge, reduce and reset the page, including numeric keypad signs.
+This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERENCES.md`).
+
 ### J1 Create a Bible project
 
 - Actor: facilitator. Activity: Start. Serves V6.

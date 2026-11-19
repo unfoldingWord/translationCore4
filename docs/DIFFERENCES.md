@@ -25,6 +25,9 @@ from `d494a9d` to `d310bf3`, and `docs/TC4-DELTA-2026-10-23.md` (SWEEP) the chan
 
 ## Where the rebuild differs from tC4 4.0 on purpose
 
+- Desktop zoom shortcuts use the character from the active keyboard layout. Unshifted
+  plus and numeric keypad signs work alongside the existing menu commands (#976).
+
 - A gateway package can name its simplified Bible as well as its literal Bible. BSOJ names
   `ar_arst` beside `ar_avd`, and `ru_gl` names `ru_rlob` and `ru_rsob`, chosen before `_ult`/
   `_glt` or `_ust`/`_gst` when installed. A project already on a package moves a source pane
