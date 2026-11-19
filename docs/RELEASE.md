@@ -134,9 +134,10 @@ An app language names its help language in `LOCALES` (`help`, `crates/tc-ui/src/
 language with no help on the site shows the English help. To add a help language with its app
 language, add it to `LANGS` in `vendor-help.sh` and to that `Locale`, then refresh.
 
-The help translations at the pin `835fb965` have had no review by a native reader (the site's
-`docs/native-review.md`). Move the pin to the commit that holds the reviewed translations when
-that review is done.
+A help translation is reviewed by native readers in translationCore-Suite-website, whose
+`docs/native-review.md` says which languages have had that review. Move the pin to the commit
+that holds the reviewed translations when a review is done (#1036). The release issue asks for
+it.
 
 ## Signing (H4)
 

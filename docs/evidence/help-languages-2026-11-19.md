@@ -52,18 +52,19 @@ to another origin and lists it; each case below ends with that list empty.
 | Case | Result |
 |---|---|
 | a to e, g to k (English, as before) | pass |
-| f (modifier clicks) | fails at its Ctrl+click only, which macOS reads as a right click; with that one variant taken out it passes on this build |
+| f (modifier clicks) | fails at its Ctrl+click, the first of its four variants: the page never shows. With that one variant taken out, the case passes on this build. This branch does not change the case. The cause was not looked for here; pull request 1034 recorded the same failure on this Mac before this change |
 | l: Español, the help home, a search for "alinear", its first result, a shared image | pass |
 | m: العربية, right to left, the Arabic face loaded from the app and first in the heading's font | pass |
 | n: Українська and English show the English help | pass |
 | o: after the app language changes, the next opening shows the new language | pass |
 | p: app in English on a computer in Spanish; the help stays English | pass |
 
-Control: the same cases on a `tc4` built with `HELP_CUT` empty, with the site's `locale.js` put
-beside the vendored files. Cases l and n failed (the page showed the language menu: 17 nodes
-where 0 are wanted) and case p failed (the English help home never showed: the page had moved
-to the computer's language). With `HELP_CUT` empty, `cargo test -p tc-server --test help_links`
-also failed, on the menu's links to the languages that are not vendored (404).
+Control: cases l, n and p on a `tc4` built with `HELP_CUT` empty, with the site's `locale.js` put
+beside the vendored files (cases m and o were not run in the control). Cases l and n failed (the
+page showed the language menu: 17 nodes where 0 are wanted) and case p failed (the English help
+home never showed in the time the case waits for it). With `HELP_CUT` empty,
+`cargo test -p tc-server --test help_links` also failed, on the menu's links to the languages
+that are not vendored (404).
 
 Control for the byte list: with one byte of `help/es/index.html` changed,
 `cargo test -p tc-ui --test help_pages` failed with "help/es/index.html is not the site's".

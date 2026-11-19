@@ -29,8 +29,8 @@ ROOT="$(cd "$HERE/../.." && pwd)"
 REPO=https://github.com/unfoldingWord/translationCore-Suite-website.git
 REV="${1:-835fb965a322bc3800b61e95f4d2518010f3dd5a}"
 # The help languages an app language shows (`help` in crates/tc-ui/src/i18n.rs LOCALES);
-# tests/help_pages.rs fails when the two differ. The site builds more: add one here when the
-# app gains its interface language.
+# tests/help_pages.rs fails when the folders copied here are not the ones LOCALES names. The
+# site builds more: add one here when the app gains its interface language.
 LANGS="es fr hi pt id ru vi ar"
 NOT_COPIED=/assets/js/locale.js
 OUT="$HERE/help"

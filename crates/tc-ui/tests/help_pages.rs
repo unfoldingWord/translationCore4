@@ -3,7 +3,8 @@
 //! #1031, #1036): English, one folder for each other help language an app language shows, and
 //! the site's own files those pages load. `help-pages.txt` names each file by the git blob id
 //! of its bytes (tC4 #741's "help sha-list check"). The site holds the pages as sources, so
-//! the ids are those of its build: `vendor-help.sh` at the same commit writes the same list.
+//! the ids are those of its build. Two builds at the pin gave the same bytes
+//! (`docs/evidence/help-languages-2026-11-19.md`).
 #![cfg(not(target_arch = "wasm32"))]
 #![allow(
     clippy::unwrap_used,
@@ -168,6 +169,21 @@ fn the_help_languages_are_the_ones_the_app_languages_show() {
             .filter(|page| page.ends_with(".html"))
             .collect();
         assert_eq!(pages, english, "help/{folder}/ and the English pages");
+        // The folder is this language's, not another's: its home says the same language as
+        // the app language, and reads in the same direction.
+        let page = help_text(home);
+        let said = |name: &str| {
+            let from = page.find(&format!(" {name}=\"")).expect("the attribute") + name.len() + 3;
+            page[from..].split('"').next().unwrap().to_owned()
+        };
+        let language = |tag: &str| tag.split('-').next().unwrap().to_owned();
+        assert_eq!(
+            language(&said("lang")),
+            language(locale.id),
+            "{} shows help/{home}",
+            locale.id
+        );
+        assert_eq!(said("dir"), locale.dir.as_str(), "{}", locale.id);
     }
     // English, and a language translationcore.com has no help in, show the English help.
     for id in ["en", "uk"] {
