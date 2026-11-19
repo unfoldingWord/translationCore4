@@ -1,0 +1,317 @@
+[
+  {
+    "name": "before-click",
+    "panel": {
+      "width": 339,
+      "scrollWidth": 339,
+      "height": 744,
+      "scrollHeight": 744
+    },
+    "tabs": {
+      "width": 339,
+      "scrollWidth": 339,
+      "height": 88,
+      "scrollHeight": 88
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339,
+      "height": 655,
+      "scrollHeight": 12541
+    }
+  },
+  {
+    "name": "note-click",
+    "panel": {
+      "width": 339,
+      "scrollWidth": 339,
+      "height": 744,
+      "scrollHeight": 744
+    },
+    "tabs": {
+      "width": 339,
+      "scrollWidth": 339,
+      "height": 88,
+      "scrollHeight": 88
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339,
+      "height": 655,
+      "scrollHeight": 12541
+    }
+  },
+  {
+    "name": "keyboard-focus",
+    "panel": {
+      "width": 339,
+      "scrollWidth": 339,
+      "height": 744,
+      "scrollHeight": 744
+    },
+    "tabs": {
+      "width": 339,
+      "scrollWidth": 339,
+      "height": 88,
+      "scrollHeight": 88
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339,
+      "height": 655,
+      "scrollHeight": 12541
+    }
+  },
+  {
+    "name": "show-more",
+    "panel": {
+      "width": 339,
+      "scrollWidth": 339,
+      "height": 744,
+      "scrollHeight": 744
+    },
+    "tabs": {
+      "width": 339,
+      "scrollWidth": 339,
+      "height": 88,
+      "scrollHeight": 88
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339,
+      "height": 655,
+      "scrollHeight": 12835
+    }
+  },
+  {
+    "name": "academy-article",
+    "panel": {
+      "width": 339,
+      "scrollWidth": 339,
+      "height": 744,
+      "scrollHeight": 744
+    },
+    "tabs": {
+      "width": 339,
+      "scrollWidth": 339,
+      "height": 88,
+      "scrollHeight": 88
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339,
+      "height": 320,
+      "scrollHeight": 12541
+    }
+  },
+  {
+    "name": "empty-space",
+    "panel": {
+      "width": 339,
+      "scrollWidth": 339,
+      "height": 744,
+      "scrollHeight": 744
+    },
+    "tabs": {
+      "width": 339,
+      "scrollWidth": 339,
+      "height": 88,
+      "scrollHeight": 88
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339,
+      "height": 655,
+      "scrollHeight": 12541
+    }
+  },
+  {
+    "name": "vertical-scroll",
+    "panel": {
+      "width": 339,
+      "scrollWidth": 339,
+      "height": 744,
+      "scrollHeight": 744
+    },
+    "tabs": {
+      "width": 339,
+      "scrollWidth": 339,
+      "height": 88,
+      "scrollHeight": 88
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339,
+      "height": 655,
+      "scrollHeight": 12541
+    }
+  },
+  {
+    "name": "word-click",
+    "panel": {
+      "width": 339,
+      "scrollWidth": 339,
+      "height": 744,
+      "scrollHeight": 744
+    },
+    "tabs": {
+      "width": 339,
+      "scrollWidth": 339,
+      "height": 88,
+      "scrollHeight": 88
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339,
+      "height": 655,
+      "scrollHeight": 12113
+    }
+  },
+  {
+    "name": "word-article",
+    "panel": {
+      "width": 339,
+      "scrollWidth": 339,
+      "height": 744,
+      "scrollHeight": 744
+    },
+    "tabs": {
+      "width": 339,
+      "scrollWidth": 339,
+      "height": 88,
+      "scrollHeight": 88
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339,
+      "height": 320,
+      "scrollHeight": 12113
+    }
+  },
+  {
+    "name": "resize-480",
+    "panel": {
+      "width": 479,
+      "scrollWidth": 479,
+      "height": 744,
+      "scrollHeight": 744
+    },
+    "tabs": {
+      "width": 479,
+      "scrollWidth": 479,
+      "height": 43,
+      "scrollHeight": 43
+    },
+    "list": {
+      "width": 479,
+      "scrollWidth": 479,
+      "height": 700,
+      "scrollHeight": 10562
+    }
+  },
+  {
+    "name": "resize-280",
+    "panel": {
+      "width": 279,
+      "scrollWidth": 279,
+      "height": 744,
+      "scrollHeight": 744
+    },
+    "tabs": {
+      "width": 279,
+      "scrollWidth": 279,
+      "height": 88,
+      "scrollHeight": 88
+    },
+    "list": {
+      "width": 279,
+      "scrollWidth": 279,
+      "height": 655,
+      "scrollHeight": 13684
+    }
+  },
+  {
+    "name": "resize-340",
+    "panel": {
+      "width": 339,
+      "scrollWidth": 339,
+      "height": 744,
+      "scrollHeight": 744
+    },
+    "tabs": {
+      "width": 339,
+      "scrollWidth": 339,
+      "height": 88,
+      "scrollHeight": 88
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339,
+      "height": 655,
+      "scrollHeight": 12113
+    }
+  },
+  {
+    "name": "questions-tab",
+    "panel": {
+      "width": 339,
+      "scrollWidth": 339,
+      "height": 744,
+      "scrollHeight": 744
+    },
+    "tabs": {
+      "width": 339,
+      "scrollWidth": 339,
+      "height": 88,
+      "scrollHeight": 88
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339,
+      "height": 655,
+      "scrollHeight": 655
+    }
+  },
+  {
+    "name": "question-click",
+    "panel": {
+      "width": 339,
+      "scrollWidth": 339,
+      "height": 744,
+      "scrollHeight": 744
+    },
+    "tabs": {
+      "width": 339,
+      "scrollWidth": 339,
+      "height": 88,
+      "scrollHeight": 88
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339,
+      "height": 655,
+      "scrollHeight": 655
+    }
+  },
+  {
+    "name": "genuinely-wide-content",
+    "panel": {
+      "width": 279,
+      "scrollWidth": 279,
+      "height": 744,
+      "scrollHeight": 744
+    },
+    "tabs": {
+      "width": 279,
+      "scrollWidth": 279,
+      "height": 88,
+      "scrollHeight": 88
+    },
+    "list": {
+      "width": 279,
+      "scrollWidth": 311,
+      "height": 655,
+      "scrollHeight": 14758
+    }
+  }
+]

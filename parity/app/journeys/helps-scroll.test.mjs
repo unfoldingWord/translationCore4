@@ -21,6 +21,7 @@ async function fits(page, name, records) {
   const measured = await extents(page);
   records.push({ name, ...measured });
   for (const [part, size] of Object.entries(measured)) {
+    assert.ok(size.width > 0 && size.height > 0, `INV-HELPS-MEASURE-VISIBLE: ${name}, ${part}: ${JSON.stringify(size)}`);
     assert.ok(size.scrollWidth <= size.width, `INV-HELPS-NO-SPURIOUS-X-SCROLL: ${name}, ${part}: ${JSON.stringify(size)}`);
   }
 }
@@ -62,10 +63,12 @@ for (const mode of ['Understand', 'Translate']) {
       await page.getByTestId('helps-note').first().waitFor();
       if (mode === 'Translate') {
         await page.getByTestId('mode-switch').getByRole('tab', { name: mode, exact: true }).click();
+        await page.getByRole('button', { name: 'Draft section 1–3', exact: true }).waitFor();
       }
+      const note = page.getByTestId('helps-note').first();
+      await note.waitFor();
       await fits(page, 'before-click', records);
       await shot(page, `${mode}-before`);
-      const note = page.getByTestId('helps-note').first();
       await note.click({ position: { x: 8, y: 8 } });
       assert.equal(await note.evaluate((el) => document.activeElement === el), true, 'the clicked card has focus');
       await fits(page, 'note-click', records);

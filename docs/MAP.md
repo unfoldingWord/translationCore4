@@ -53,6 +53,7 @@ Evidence of a moment. Read them for the reasons behind a rule; never update them
 |---|---|---|---|
 | `docs/evidence/` | evidence | record | Measurements, audits and run logs, one file each, dated |
 | `docs/evidence/helps-horizontal-scroll-2026-11-19/README.md` | evidence | record | Helps overflow reproduction, focus screenshots and divider measurements (#993) |
+| `docs/evidence/helps-horizontal-scroll-2026-11-19-review/README.md` | evidence | record | Loaded pre-click measurements corrected after review of #1065 |
 | `docs/JOURNAL-DECISION-2026-10-16.md` | evidence | record | Why the journal has its design (decision memo and red-team review) |
 | `docs/BUDGET-REVIEW-2026-10-17.md` | evidence | record | The review of the speed budgets |
 | `docs/LOCAL-BENCH-FINDINGS-2026-10-16.md` | evidence | record | Local benchmark findings for the journal and the budgets |
