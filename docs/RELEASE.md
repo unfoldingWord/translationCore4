@@ -85,8 +85,7 @@ prepared (ruling `docs/rulings/2026-11-19-release-branches.md`).
   a commit of `main` whose checks are green:
   `git push origin <sha>:refs/heads/release/X.Y`. The release managers are the people who may
   push `v*` tags; nobody else can create a `release/*` branch. From the cut on, `main` takes the
-  next minor's work, and a pull request sets the version on `main` to the next minor's. Before
-  the cut there is no release branch, so a `-preview` tag for testers is pushed on `main`.
+  next minor's work, and a pull request sets the version on `main` to the next minor's.
 - **A fix.** Merge the fix to `main` first, through the merge queue. Then open a pull request to
   the release branch that holds `git cherry-pick -x <commit>`; the `-x` line records the commit
   on `main`. If the fix cannot apply to `main` (the code there changed, or the change is the
@@ -96,11 +95,18 @@ prepared (ruling `docs/rulings/2026-11-19-release-branches.md`).
   must be up to date with the release branch before it merges. Nobody can push to a release
   branch without a pull request, force-push it or delete it. The merge then runs `ci`,
   `app-e2e` and `shell` on the branch, so the commit to tag has runs of its own.
+- **Open the pull request against the release branch.** GitHub runs nothing when the base of a
+  pull request changes, and on a pull request to `main` the full checks are skipped, which
+  GitHub counts as passed. So a pull request opened against `main` and then pointed at the
+  release branch lacks the `release-base` check and cannot merge. Close it and open it again,
+  or push a commit: every check then runs for the release branch.
 - **The tag.** Each `vX.Y.Z` is tagged on its release branch ("Cutting a release" below).
 - **The end.** Picks to a release branch stop when the next minor release ships.
 
 4.1 is the one exception to the cut: `v4.1.0` was tagged on `main`, before `release/4.1`
-existed.
+existed. A release branch cut from a commit that lacks the change of #1039 has workflows that
+do none of this. Its first pull request is the pick of that change, which runs the checks on
+itself. Until it merges no other pull request can, because none reports `release-base`.
 
 ## Cutting a release
 
@@ -164,9 +170,10 @@ What must be set up once in the GitHub repository, by someone with admin rights 
   is signed without a release manager's yes.
 - A tag ruleset (Settings, Rules, Rulesets, *Tag*) for `v*` that only release managers may
   create, update or delete.
-- A branch ruleset for `release/*` ("release branches"): a pull request with one approval, the
-  checks `main` requires, reported by GitHub Actions, with the branch up to date; no force push;
-  no delete; nobody on its bypass list.
+- A branch ruleset for `release/*` ("release branches"): a pull request with one approval; the
+  checks `main` requires and `release-base`, reported by GitHub Actions, with the branch up to
+  date, and not required when a branch is created (its first commit cannot carry
+  `release-base`); no force push; no delete; nobody on its bypass list.
 - A second branch ruleset for `release/*` ("release branch creation") with one rule, restrict
   creation, and the release managers on its bypass list. It is a ruleset of its own because a
   bypass covers every rule of its ruleset.

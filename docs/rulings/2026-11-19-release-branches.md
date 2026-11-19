@@ -36,7 +36,8 @@
      write access.
 8. **Signing.** The `windows-signing` environment allows the default branch, `release/*`
    branches and `v*` tags. Each signed build waits until one release manager approves it. That
-   person can be the one who started the build.
+   person can be the one who started the build. A manual signed run of `release` works on a
+   release branch as on the default branch, so signing can be tried there before the tag.
    - The choice: "One click", not "No approval step".
    - The owner, on a list of several reviewers: "We don't have the personel to have multiple
      reviewers for a release." So one approval by one person is all that a signed build needs.
@@ -52,10 +53,16 @@ The session that worked #1039 read these from the rules and showed them to the o
   on the branch's tip.
 - **A push to a release branch** (the cut, or a merged fix) runs the same checks again, so the
   commit to tag has runs of its own.
+- **One more required check, `release-base`.** On a pull request to `main` the full checks are
+  skipped, and GitHub counts a skipped job as passed. GitHub runs nothing when the base of a
+  pull request changes. So a pull request opened against `main` and then pointed at a release
+  branch would pass with no test run. `release-base` is reported only by a run that started for
+  a `release/*` base, so that pull request cannot merge until its checks run again. A new
+  branch's first commit cannot carry the check, so the ruleset does not ask for the checks when
+  a branch is created.
 - **Rule 7 is a ruleset of its own** ("release branch creation": one rule, restrict creation,
   with the release managers as its bypass). A bypass covers every rule of its ruleset, so on the
   "release branches" ruleset it would also let them skip the pull request and the checks.
-- **A manual signed run** of `release` works on a release branch as on the default branch.
 - **The version of a patch** is the rule 2 case "cannot apply to `main`": its pull request goes
   to the release branch. When `release/X.Y` is cut, a pull request sets `main` to the next
   minor's version, so a build of `main` never carries the number of a version that shipped.
@@ -73,8 +80,10 @@ on. A patch holds only its fixes, never unfinished work from `main`.
   `.github/ISSUE_TEMPLATE/release.md`, `AGENTS.md` ("How work lands") and `CONTRIBUTING.md`
   (step 8).
 - **Workflows:** `ci`, `app-e2e` and `shell` run their full jobs for a pull request to
-  `release/*` and for a push to it. `release` signs a manual run on a `release/*` branch.
-  `scripts/tools/gates-sync.test.mjs` holds INV-RELEASE-BRANCH-RUNS-THE-FULL-CHECKS.
-- **Repository settings:** the "release branches" ruleset names the checks of `main` in place
-  of `verify`, which no workflow here reports. The "release branch creation" ruleset is new. The
-  `windows-signing` environment gets its required reviewers.
+  `release/*` and for a push to it. `release-base` is new. `release` signs a manual run on a
+  `release/*` branch. `scripts/tools/gates-sync.test.mjs` holds
+  INV-RELEASE-BRANCH-RUNS-THE-FULL-CHECKS and
+  INV-RELEASE-BASE-IS-REPORTED-ONLY-FOR-A-RELEASE-BASE.
+- **Repository settings:** the "release branches" ruleset names the checks of `main` and
+  `release-base` in place of `verify`, which no workflow here reports. The "release branch
+  creation" ruleset is new. The `windows-signing` environment gets its required reviewers.
