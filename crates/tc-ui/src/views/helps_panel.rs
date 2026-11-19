@@ -159,7 +159,8 @@ pub fn HelpsPanel(
                     actions.set_helps_tab(tab);
                 }
             });
-            view! { <Switcher indicator=Indicator::Underline value=value on_change=on_change options=options /> }
+            view! { <Switcher indicator=Indicator::Underline value=value on_change=on_change options=options
+            style=crate::css! { "flex-wrap": "wrap" } /> }
         }
     };
     let list = crate::css! {

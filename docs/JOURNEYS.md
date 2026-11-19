@@ -116,6 +116,8 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
   DIFFERENCES). A source Bible's tab and name show the abbreviation in its metadata (`TPL`,
   `AVD`) where tC4 shows GLT or GST, the name under the tabs is the full name in its metadata
   ("Texto Puente Literal"), and the helps' simplified tab shows its own (#1045, DIFFERENCES).
+  The helps tabs wrap at narrow panel widths so they do not push the panel sideways (#993,
+  DIFFERENCES).
 
 ### J3 Get pinned resources
 
@@ -281,7 +283,8 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
   first paragraph and lights every instance of its article in the section (owner, 2026-11-05);
   a note on one verse of a gateway verse span lights and titles only the gateway words whose
   `x-ref` names that verse, where tC4 reads the whole span (#409, DIFFERENCES); the helps stay
-  filtered to the unit clicked, also after a comment is saved (#991, DIFFERENCES).
+  filtered to the unit clicked, also after a comment is saved (#991, DIFFERENCES). The helps
+  tabs wrap at narrow panel widths so they do not push the panel sideways (#993, DIFFERENCES).
 
 ### J17 Open a shared project on another computer
 

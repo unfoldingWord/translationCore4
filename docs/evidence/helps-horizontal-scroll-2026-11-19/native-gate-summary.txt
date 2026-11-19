@@ -1,0 +1,69 @@
+     Summary [  55.645s] 17 tests run: 17 passed, 0 skipped
+     Summary [   0.771s] 13 tests run: 13 passed, 0 skipped
+        FAIL [   0.558s] ( 375/1780) tc-app::app app::feedback::the_attachment_carries_no_home_folder_and_no_account_name
+        FAIL [  17.217s] ( 447/1780) tc-app::app app::export::an_export_never_writes_the_project
+     TIMEOUT [ 301.600s] ( 845/1780) tc-app::app app::check_item::held_rails_equal_a_fresh_open_after_any_session
+     TIMEOUT [ 300.286s] ( 969/1780) tc-app::app app::save_machine::c3_reload_anywhere_keeps_each_saved_field_once
+     TIMEOUT [ 303.561s] ( 970/1780) tc-app::op_counts op_counts::align::align_index_costs_the_book
+     TIMEOUT [ 303.587s] ( 971/1780) tc-app::op_counts op_counts::align::align_edit_touches_one_verse
+     TIMEOUT [ 302.418s] ( 972/1780) tc-app::op_counts op_counts::align::align_open_touches_one_verse
+     TIMEOUT [ 302.370s] ( 973/1780) tc-app::op_counts op_counts::align::align_save_costs_one_verse
+     TIMEOUT [ 302.284s] ( 974/1780) tc-app::op_counts op_counts::align::align_save_costs_one_verse_while_model_training_is_held
+     TIMEOUT [ 302.144s] ( 975/1780) tc-app::op_counts op_counts::check::check_item_costs_its_verse_not_the_book
+     TIMEOUT [ 301.562s] ( 976/1780) tc-app::op_counts op_counts::check::check_open_cached_derives_nothing
+     TIMEOUT [ 300.213s] ( 977/1780) tc-app::op_counts op_counts::check::check_open_cached_sends_changed_rows_only
+     TIMEOUT [ 300.174s] ( 978/1780) tc-app::op_counts op_counts::check::check_open_derives_one_unit
+     TIMEOUT [ 300.304s] ( 979/1780) tc-app::op_counts op_counts::check::decision_refetches_no_rail
+     TIMEOUT [ 300.191s] ( 980/1780) tc-app::op_counts op_counts::check::decision_serializes_one_row
+     TIMEOUT [ 300.156s] ( 985/1780) tc-app::op_counts op_counts::check::the_rail_groups_equal_tc_checks_on_psalms
+     TIMEOUT [ 300.222s] ( 986/1780) tc-app::op_counts op_counts::check::verse_edit_reassesses_its_checks_only
+     TIMEOUT [ 300.173s] ( 988/1780) tc-app::op_counts op_counts::comments::a_new_comment_draft_touches_one_target
+     TIMEOUT [ 300.251s] ( 989/1780) tc-app::op_counts op_counts::comments::adding_a_comment_touches_one_target
+     TIMEOUT [ 300.175s] ( 991/1780) tc-app::op_counts op_counts::comments::revising_a_comment_touches_one_comment
+     TIMEOUT [ 300.141s] ( 992/1780) tc-app::op_counts op_counts::conflicts::conflict_tab_costs_its_conflicts
+     TIMEOUT [ 300.142s] ( 993/1780) tc-app::op_counts op_counts::conflicts::a_verses_history_costs_its_versions
+     TIMEOUT [ 300.109s] ( 994/1780) tc-app::op_counts op_counts::export::an_export_run_touches_one_book
+     TIMEOUT [ 300.190s] ( 995/1780) tc-app::op_counts op_counts::conflicts::a_bulk_keep_costs_its_conflicts
+     TIMEOUT [ 300.193s] ( 996/1780) tc-app::op_counts op_counts::conflicts::a_restore_costs_its_record
+     TIMEOUT [ 300.127s] ( 997/1780) tc-app::op_counts op_counts::export::print_book_touches_one_book
+     TIMEOUT [ 300.147s] (1003/1780) tc-app::op_counts op_counts::home::a_second_home_visit_renders_nothing
+     TIMEOUT [ 300.199s] (1005/1780) tc-app::op_counts op_counts::home::home_walks_no_history
+     TIMEOUT [ 300.180s] (1006/1780) tc-app::op_counts op_counts::plans::plan_cost_follows_affected_books
+     TIMEOUT [ 300.181s] (1009/1780) tc-app::op_counts op_counts::section::section_save_touches_one_section
+     TIMEOUT [ 300.162s] (1033/1780) tc-app::op_counts op_counts::session::a_chapter_read_costs_one_chapter
+     TIMEOUT [ 300.230s] (1726/1780) tc-app::op_counts op_counts::session::a_token_round_trip_costs_one_record
+     TIMEOUT [1200.212s] (1780/1780) tc-app::app app::store_scenario::a_crash_while_a_scenario_project_is_written_leaves_no_half_project
+     Summary [1533.800s] 1780 tests run: 1747 passed (36 slow), 2 failed, 31 timed out, 1 skipped
+        FAIL [   0.558s] ( 375/1780) tc-app::app app::feedback::the_attachment_carries_no_home_folder_and_no_account_name
+        FAIL [  17.217s] ( 447/1780) tc-app::app app::export::an_export_never_writes_the_project
+     TIMEOUT [ 301.600s] ( 845/1780) tc-app::app app::check_item::held_rails_equal_a_fresh_open_after_any_session
+     TIMEOUT [ 300.286s] ( 969/1780) tc-app::app app::save_machine::c3_reload_anywhere_keeps_each_saved_field_once
+     TIMEOUT [ 303.561s] ( 970/1780) tc-app::op_counts op_counts::align::align_index_costs_the_book
+     TIMEOUT [ 303.587s] ( 971/1780) tc-app::op_counts op_counts::align::align_edit_touches_one_verse
+     TIMEOUT [ 302.418s] ( 972/1780) tc-app::op_counts op_counts::align::align_open_touches_one_verse
+     TIMEOUT [ 302.370s] ( 973/1780) tc-app::op_counts op_counts::align::align_save_costs_one_verse
+     TIMEOUT [ 302.284s] ( 974/1780) tc-app::op_counts op_counts::align::align_save_costs_one_verse_while_model_training_is_held
+     TIMEOUT [ 302.144s] ( 975/1780) tc-app::op_counts op_counts::check::check_item_costs_its_verse_not_the_book
+     TIMEOUT [ 301.562s] ( 976/1780) tc-app::op_counts op_counts::check::check_open_cached_derives_nothing
+     TIMEOUT [ 300.213s] ( 977/1780) tc-app::op_counts op_counts::check::check_open_cached_sends_changed_rows_only
+     TIMEOUT [ 300.174s] ( 978/1780) tc-app::op_counts op_counts::check::check_open_derives_one_unit
+     TIMEOUT [ 300.304s] ( 979/1780) tc-app::op_counts op_counts::check::decision_refetches_no_rail
+     TIMEOUT [ 300.191s] ( 980/1780) tc-app::op_counts op_counts::check::decision_serializes_one_row
+     TIMEOUT [ 300.156s] ( 985/1780) tc-app::op_counts op_counts::check::the_rail_groups_equal_tc_checks_on_psalms
+     TIMEOUT [ 300.222s] ( 986/1780) tc-app::op_counts op_counts::check::verse_edit_reassesses_its_checks_only
+     TIMEOUT [ 300.173s] ( 988/1780) tc-app::op_counts op_counts::comments::a_new_comment_draft_touches_one_target
+     TIMEOUT [ 300.251s] ( 989/1780) tc-app::op_counts op_counts::comments::adding_a_comment_touches_one_target
+     TIMEOUT [ 300.175s] ( 991/1780) tc-app::op_counts op_counts::comments::revising_a_comment_touches_one_comment
+     TIMEOUT [ 300.141s] ( 992/1780) tc-app::op_counts op_counts::conflicts::conflict_tab_costs_its_conflicts
+     TIMEOUT [ 300.142s] ( 993/1780) tc-app::op_counts op_counts::conflicts::a_verses_history_costs_its_versions
+     TIMEOUT [ 300.109s] ( 994/1780) tc-app::op_counts op_counts::export::an_export_run_touches_one_book
+     TIMEOUT [ 300.190s] ( 995/1780) tc-app::op_counts op_counts::conflicts::a_bulk_keep_costs_its_conflicts
+     TIMEOUT [ 300.193s] ( 996/1780) tc-app::op_counts op_counts::conflicts::a_restore_costs_its_record
+     TIMEOUT [ 300.127s] ( 997/1780) tc-app::op_counts op_counts::export::print_book_touches_one_book
+     TIMEOUT [ 300.147s] (1003/1780) tc-app::op_counts op_counts::home::a_second_home_visit_renders_nothing
+     TIMEOUT [ 300.199s] (1005/1780) tc-app::op_counts op_counts::home::home_walks_no_history
+     TIMEOUT [ 300.180s] (1006/1780) tc-app::op_counts op_counts::plans::plan_cost_follows_affected_books
+     TIMEOUT [ 300.181s] (1009/1780) tc-app::op_counts op_counts::section::section_save_touches_one_section
+     TIMEOUT [ 300.162s] (1033/1780) tc-app::op_counts op_counts::session::a_chapter_read_costs_one_chapter
+     TIMEOUT [ 300.230s] (1726/1780) tc-app::op_counts op_counts::session::a_token_round_trip_costs_one_record
+     TIMEOUT [1200.212s] (1780/1780) tc-app::app app::store_scenario::a_crash_while_a_scenario_project_is_written_leaves_no_half_project

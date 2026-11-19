@@ -1,0 +1,32 @@
+TAP version 13
+# tc4: scenario C:\\Users\\Elias_2\\Documents\\Repositorios\\unfoldingWord\\tc4-993\\target\\parity-rust\\8016-1795109078151\\en-pins\\state: loaded sample_burrito (3 declared differences)
+# tc4: scenario C:\\Users\\Elias_2\\Documents\\Repositorios\\unfoldingWord\\tc4-993\\target\\parity-rust\\8016-1795109078151\\en-pins\\state: loaded sample_burrito_obs (1 declared differences)
+# tc4: scenario C:\\Users\\Elias_2\\Documents\\Repositorios\\unfoldingWord\\tc4-993\\target\\parity-rust\\8016-1795109078151\\en-pins\\state: 2 projects written to C:\\Users\\Elias_2\\Documents\\Repositorios\\unfoldingWord\\tc4-993\\target\\parity-rust\\8016-1795109078151\\en-pins\\projects
+# tc4: scenario C:\\Users\\Elias_2\\Documents\\Repositorios\\unfoldingWord\\tc4-993\\target\\parity-rust\\8016-1795109078151\\en-pins\\state: 13 resources installed
+# tc4: serving http://127.0.0.1:58766/ (projects: C:\\Users\\Elias_2\\Documents\\Repositorios\\unfoldingWord\\tc4-993\\target\\parity-rust\\8016-1795109078151\\en-pins\\projects, Door43: http://127.0.0.1:9)
+# Subtest: fitting_helps_keep_their_focus_and_scroll_after_clicks_in_understand
+ok 1 - fitting_helps_keep_their_focus_and_scroll_after_clicks_in_understand
+  ---
+  duration_ms: 9898.6207
+  type: 'test'
+  ...
+# tc4: scenario C:\\Users\\Elias_2\\Documents\\Repositorios\\unfoldingWord\\tc4-993\\target\\parity-rust\\8016-1795109088042\\en-pins\\state: loaded sample_burrito (3 declared differences)
+# tc4: scenario C:\\Users\\Elias_2\\Documents\\Repositorios\\unfoldingWord\\tc4-993\\target\\parity-rust\\8016-1795109088042\\en-pins\\state: loaded sample_burrito_obs (1 declared differences)
+# tc4: scenario C:\\Users\\Elias_2\\Documents\\Repositorios\\unfoldingWord\\tc4-993\\target\\parity-rust\\8016-1795109088042\\en-pins\\state: 2 projects written to C:\\Users\\Elias_2\\Documents\\Repositorios\\unfoldingWord\\tc4-993\\target\\parity-rust\\8016-1795109088042\\en-pins\\projects
+# tc4: scenario C:\\Users\\Elias_2\\Documents\\Repositorios\\unfoldingWord\\tc4-993\\target\\parity-rust\\8016-1795109088042\\en-pins\\state: 13 resources installed
+# tc4: serving http://127.0.0.1:53138/ (projects: C:\\Users\\Elias_2\\Documents\\Repositorios\\unfoldingWord\\tc4-993\\target\\parity-rust\\8016-1795109088042\\en-pins\\projects, Door43: http://127.0.0.1:9)
+# Subtest: fitting_helps_keep_their_focus_and_scroll_after_clicks_in_translate
+ok 2 - fitting_helps_keep_their_focus_and_scroll_after_clicks_in_translate
+  ---
+  duration_ms: 18006.9327
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 31362.7878
