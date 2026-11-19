@@ -97,9 +97,14 @@ Under AGENTS.md "Matching tC4" (2026-10-19):
   stay the bytes `help-pages.txt` lists; `tc4 serve` makes the change as it serves them (tc-server
   `HELP_OVERLAY`, REF1).
 - Help and guides shows translationcore.com's help, vendored from translationCore-Suite-website's
-  `public/tc-help/`, where tC4 4.0 shows tc-website's `tc-help/`, which is retired (#1031). The
+  build, where tC4 4.0 shows tc-website's `tc-help/`, which is retired (#1031). The
   pages' links to translationcore.com (the top bar's and the footer's) open in the browser after
   the internet question, and their logo opens the help home in the panel.
+- Help and guides opens in the app's language: Spanish, French, Hindi, Portuguese, Indonesian,
+  Russian, Vietnamese and Arabic each show translationcore.com's help in that language, and
+  Ukrainian, which has none there, shows the English help. tC4 4.0's help is English only. The
+  help follows the app's language alone: the pages are served without the site's language menu
+  and without its redirect to the computer's language (tc-server `HELP_CUT`, #1036).
 
 - A footnote, cross reference, figure or any other marker the shown text leaves out (`\va`,
   `\vp`, `\ca`, `\rq`, `\cat`, `\ts\*` …) between two words keeps the space after it, so the

@@ -1,0 +1,74 @@
+/* The Desktop help (/tc-help/, /{lang}/tc-help/): what the site adds to the
+ * upstream help pages for localization. The help's own style.css comes from
+ * translationCore4's help build and is left as it is; everything here is
+ * keyed so it only adds to it: the language menu in the top bar, the
+ * non-Latin font packs (see Base.astro / fontHrefFor), and right-to-left
+ * layout for ar, fa and ur. */
+
+/* Language menu (a <details>, so it opens without JavaScript). */
+.help-lang { position: relative; flex: none; }
+.help-lang summary { display: inline-flex; align-items: center; gap: 6px; list-style: none; cursor: pointer; color: #fff; font-size: 14px; padding: 5px 12px; border: 1px solid rgba(255,255,255,.45); border-radius: 999px; white-space: nowrap; }
+.help-lang summary::-webkit-details-marker { display: none; }
+.help-lang summary:hover, .help-lang[open] summary { background: rgba(255,255,255,.12); }
+.help-lang summary:focus-visible { outline: 3px solid #E59D33; outline-offset: 2px; }
+.help-lang ul { position: absolute; right: 0; top: calc(100% + 8px); z-index: 40; margin: 0; padding: 8px; list-style: none; background: #fff; border: 1px solid #dde3e9; border-radius: 12px; box-shadow: 0 18px 40px rgba(1,66,99,.18); min-width: 190px; max-height: 70vh; overflow-y: auto; }
+.help-lang a { display: block; padding: 7px 12px; border-radius: 8px; color: #231F20; text-decoration: none; font-size: 15px; }
+.help-lang a:hover { background: #e8f5fc; color: #014263; }
+.help-lang a[aria-current="true"] { font-weight: 700; color: #014263; }
+@media (max-width: 720px) { .help-lang summary span { display: none; } .help-lang summary { padding: 6px 8px; } }
+
+/* Scripts the help's system-ui stack may not cover or shape well: the same
+ * self-hosted Noto packs as the rest of the site (public/assets/fonts/{script}.css).
+ * Every element, not just body: style.css gives the sidebar, cards and the
+ * Contents rail their own UI font, and form fields never inherit one, and an
+ * unshaped fallback breaks Burmese, Bengali and Nastaliq apart. Code and the
+ * translationCore wordmark stay in their own faces. */
+html[data-script="arabic"] :is(body, body *:not(code, code *, .brand, .brand *)) { font-family: 'Noto Sans Arabic', system-ui, sans-serif; letter-spacing: normal; }
+html[data-script="nastaliq"] :is(body, body *:not(code, code *, .brand, .brand *)) { font-family: 'Noto Nastaliq Urdu', 'Noto Sans Arabic', system-ui, serif; letter-spacing: normal; }
+html[data-script="devanagari"] :is(body, body *:not(code, code *, .brand, .brand *)) { font-family: 'Noto Sans Devanagari', system-ui, sans-serif; letter-spacing: normal; }
+html[data-script="bengali"] :is(body, body *:not(code, code *, .brand, .brand *)) { font-family: 'Noto Sans Bengali', system-ui, sans-serif; letter-spacing: normal; }
+html[data-script="myanmar"] :is(body, body *:not(code, code *, .brand, .brand *)) { font-family: 'Noto Sans Myanmar', system-ui, sans-serif; letter-spacing: normal; }
+html[data-script="han"] :is(body, body *:not(code, code *, .brand, .brand *)) { font-family: 'Noto Sans SC', system-ui, sans-serif; letter-spacing: normal; }
+html[data-script="nastaliq"] body { line-height: 2.1; }
+html[data-script="myanmar"] body { line-height: 1.9; }
+html[data-script="nastaliq"] .content h1, html[data-script="nastaliq"] .content h2, html[data-script="nastaliq"] .content h3 { line-height: 1.8; }
+html[data-script="myanmar"] .content h1, html[data-script="myanmar"] .content h2, html[data-script="myanmar"] .content h3 { line-height: 1.6; }
+/* The help's own label, next to the wordmark, follows the script. */
+html[data-script="arabic"] .brand-text { font-family: 'Noto Sans Arabic', system-ui, sans-serif; }
+html[data-script="nastaliq"] .brand-text { font-family: 'Noto Nastaliq Urdu', 'Noto Sans Arabic', system-ui, serif; }
+html[data-script="devanagari"] .brand-text { font-family: 'Noto Sans Devanagari', system-ui, sans-serif; }
+html[data-script="bengali"] .brand-text { font-family: 'Noto Sans Bengali', system-ui, sans-serif; }
+html[data-script="myanmar"] .brand-text { font-family: 'Noto Sans Myanmar', system-ui, sans-serif; }
+html[data-script="han"] .brand-text { font-family: 'Noto Sans SC', system-ui, sans-serif; }
+
+/* Right-to-left (ar, fa, ur). Flex rows already follow dir; these are the
+ * physical left/right rules in style.css that need mirroring. */
+[dir="rtl"] .help-lang ul { right: auto; left: 0; }
+[dir="rtl"] .search { margin-left: 0; margin-right: auto; }
+[dir="rtl"] .sidebar { border-right: 0; border-left: 1px solid var(--line); }
+[dir="rtl"] .nav-group ul { padding: 2px 10px 4px 0; border-left: 0; border-right: 2px solid var(--uw-mist, #dde3e9); margin-left: 0; margin-right: 13px; }
+[dir="rtl"] .where, [dir="rtl"] .callout { border-left-width: 1px; border-right-width: 4px; }
+[dir="rtl"] .where, [dir="rtl"] .callout { border-left-color: var(--line); border-right-color: var(--sky); }
+[dir="rtl"] .callout-tip { border-right-color: var(--ok); }
+[dir="rtl"] .callout-warning { border-right-color: #c2410c; }
+[dir="rtl"] .callout-offline, [dir="rtl"] .callout-not-yet { border-right-color: #e59d33; }
+[dir="rtl"] th, [dir="rtl"] td { text-align: right; }
+[dir="rtl"] .search-page-results { padding-left: 0; padding-right: 20px; }
+[dir="rtl"] .page-toc-list { padding: 0 2px 0 0; border-left: 0; border-right: 2px solid var(--uw-mist, #dde3e9); }
+[dir="rtl"] .page-toc-list a { padding: 5px 12px 5px 10px; margin-left: 0; margin-right: -2px; border-left: 0; border-right: 2px solid transparent; border-radius: var(--radius-sm, 6px) 0 0 var(--radius-sm, 6px); }
+[dir="rtl"] .nav-group li a.current { box-shadow: inset -3px 0 0 var(--uw-inspire, #31ade3); }
+[dir="rtl"] .page-toc-h3 a { padding-left: 10px; padding-right: 22px; }
+[dir="rtl"] .page-toc-list a.is-active { border-right-color: var(--uw-inspire, #31ade3); }
+/* The brand and code read left to right inside an RTL page. */
+[dir="rtl"] .brand { direction: ltr; }
+[dir="rtl"] code { direction: ltr; unicode-bidi: isolate; }
+@media (max-width: 900px) {
+  [dir="rtl"] .sidebar { left: auto; right: 0; transform: translateX(100%); box-shadow: none; }
+  [dir="rtl"] body.nav-open .sidebar { transform: none; box-shadow: -4px 0 20px rgba(0,0,0,.15); }
+}
+/* The closed-group chevron points into the reading direction. */
+[dir="rtl"] .nav-group:not([open]) > summary::before { transform: rotate(135deg); }
+/* The skip link hides at left:-999px; in a right-to-left page that is
+ * scrollable overflow, so hide it past the right edge instead. */
+[dir="rtl"] .skip { left: auto; right: -999px; }
+[dir="rtl"] .skip:focus { left: auto; right: 8px; }

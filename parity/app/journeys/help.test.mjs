@@ -1,9 +1,9 @@
 // Help and guides (S13, tC4 #519, #632, #729): tC4's e2e/help.spec.ts, cases a to i, with the
-// in-project half of a left to B3 (A5 D18), and the site's own links, j and k (#1031). The pages
-// are translationCore-Suite-website's (https://translationcore.com/tc-help/), vendored (AD29),
-// served by `tc4 serve` at /help/, where an extensionless link (`gs-install`) finds its `.html`
-// file and a link to `/` names translationcore.com; the page swap and the link rules run in the
-// page (app/help-shim.js).
+// in-project half of a left to B3 (A5 D18), the site's own links, j and k (#1031), and the help
+// in the app's language, l to p (#1036). The pages are translationCore-Suite-website's
+// (https://translationcore.com/tc-help/), vendored (AD29), served by `tc4 serve` at /help/, where
+// an extensionless link (`gs-install`) finds its `.html` file and a link to `/` names
+// translationcore.com; the page swap and the link rules run in the page (app/help-shim.js).
 //
 // HELP_SHOTS=<folder> keeps case b's screenshots: the help home, a search and its first result.
 //
@@ -12,7 +12,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
-import { browserTest, focused, openMenu, panel, recordRequests, sleep, trigger, until, withApp } from './kit.mjs';
+import { REPO } from '../env-rust.mjs';
+import { LABEL, applyLanguage, browserTest, expectLanguage, focused, openMenu, panel, recordRequests, sleep, trigger, until, withApp } from './kit.mjs';
 
 // The install page's download link, as this app serves it (H16 part 3, #1031; tc-server HELP_OVERLAY).
 const DOWNLOAD = 'https://translationcore.com/desktop/';
@@ -25,13 +26,14 @@ const h1 = (page) => frame(page).getByRole('heading', { level: 1 });
 const helpFrame = (page) => page.frames().find((f) => f.url().includes('/help/'));
 const onPage = (page, file) => page.frames().some((f) => f.url().endsWith(`/help/${file}`));
 
-async function openHelp(page) {
+/** Help and guides, opened from the menu; `home` is the help home's title in the app's language. */
+async function openHelp(page, home = HOME) {
   await openMenu(page);
   await page.getByTestId('account-help').click();
   await helpPanel(page).waitFor();
   // The panel slides in; a click before it stops lands where the frame was.
   await until('the panel stops', async () => (await helpPanel(page).evaluate((el) => getComputedStyle(el).transform)) === 'none');
-  await until('the help home', async () => (await h1(page).textContent().catch(() => null)) === 'translationCore 4 Help');
+  await until('the help home', async () => (await h1(page).textContent().catch(() => null)) === home);
 }
 
 async function expectPage(page, file, title) {
@@ -394,5 +396,154 @@ browserTest('k. (#1031) with the internet on, the translationcore.com link opens
   }, {
     // The window would load translationcore.com: a stub answers it, so the run stays on this machine.
     init: (context) => context.route(SITE, (route) => route.fulfill({ contentType: 'text/html', body: '<title>stub</title>' })),
+  });
+});
+
+// ---- Help in the app's language (#1036) ------------------------------------------------------
+// The pages are translationcore.com's help in each language, vendored for the help languages an
+// app language shows (`help` in crates/tc-ui/src/i18n.rs LOCALES): es-419 shows `es`, pt-BR `pt`,
+// and a language the site has no help in (Українська) shows English. A language's pages are in
+// `/help/{lang}/`; tc-server serves each page without the site's language menu and without its
+// redirect to the computer's language.
+//
+// HELP_SHOTS=<folder> keeps these cases' screenshots too: the help home in Spanish, Arabic and
+// Ukrainian (English), and a Spanish search with its first result.
+
+/** The `<h1>` of a vendored help page (`index.html` for the English home, `es/index.html`),
+ * which `cargo test -p tc-ui --test help_pages` proves is the site's at the pin. */
+const vendoredTitle = (file) => fs.readFileSync(path.join(REPO, 'crates', 'tc-ui', 'help', file), 'utf8')
+  .match(/<h1[^>]*>(.*?)<\/h1>/s)[1];
+
+/** What the help frame's document says of itself, and whether it shows the site's language menu. */
+const helpDocument = (page) => helpFrame(page).evaluate(() => ({
+  lang: document.documentElement.lang,
+  dir: document.documentElement.dir,
+  menus: document.querySelectorAll('.help-lang, a[data-locale]').length,
+}));
+
+/** Every address the page and its frames ask for from now on, and every answer that is an error. */
+function recordLoads(page) {
+  const asked = [];
+  const errors = [];
+  page.on('request', (r) => asked.push(new URL(r.url()).pathname));
+  page.on('response', (r) => { if (r.status() >= 400) errors.push(`${r.status()} ${new URL(r.url()).pathname}`); });
+  return { asked, errors };
+}
+
+browserTest('l. (#1036) with the app in Español and every other origin refused, the help home, a search for "alinear" and its result are Spanish', async () => {
+  await withApp(async ({ page, env }) => {
+    const loads = recordLoads(page);
+    const home = vendoredTitle('es/index.html');
+    assert.notEqual(home, HOME);
+    await openHelp(page, home);
+    assert.ok(onPage(page, 'es/index.html'), helpFrame(page).url());
+    assert.deepEqual(await helpDocument(page), { lang: 'es-MX', dir: 'ltr', menus: 0 });
+    await shot(page, 'help-home-es-419');
+    await frame(page).locator('#q').fill('alinear');
+    const results = frame(page).locator('#search-results a[role="option"]');
+    await results.first().waitFor();
+    assert.ok((await results.count()) > 0);
+    await shot(page, 'help-search-es-419');
+    const first = results.first();
+    const [href, title] = [await first.getAttribute('href'), await first.locator('.sr-title').textContent()];
+    await first.click();
+    await expectPage(page, `es/${href}`, title);
+    assert.deepEqual(await helpDocument(page), { lang: 'es-MX', dir: 'ltr', menus: 0 });
+    await shot(page, 'help-search-result-es-419');
+    // A Spanish page shows the screenshots every language shares.
+    await frame(page).locator('a[href="section-align"]:visible').first().click();
+    await frame(page).locator('a[href="al-link-words"]:visible').first().waitFor();
+    await frame(page).locator('a[href="al-link-words"]:visible').first().click();
+    await expectPage(page, 'es/al-link-words', vendoredTitle('es/al-link-words.html'));
+    for (const img of [frame(page).locator('img.brand-logo'), frame(page).locator('img[src^="../img/"]').first()]) {
+      await img.scrollIntoViewIfNeeded();
+      await until('the image loads', () => img.evaluate((el) => el.complete && el.naturalWidth > 0));
+    }
+    assert.deepEqual(loads.errors, []);
+    assert.ok(loads.asked.every((p) => !p.startsWith('/help/') || p.startsWith('/help/es/') || /^\/help\/(assets|img|site)\//.test(p)), 'only Spanish pages and the shared files');
+    assert.deepEqual(env.refused(), []);
+  }, { locale: 'es-419' });
+});
+
+browserTest('m. (#1036) with the app in العربية, the help home reads right to left and its Arabic text is painted in the vendored Noto Sans Arabic', async () => {
+  await withApp(async ({ page, env }) => {
+    const loads = recordLoads(page);
+    await openHelp(page, vendoredTitle('ar/index.html'));
+    assert.ok(onPage(page, 'ar/index.html'), helpFrame(page).url());
+    assert.deepEqual(await helpDocument(page), { lang: 'ar', dir: 'rtl', menus: 0 });
+    // The computer has Arabic fonts of its own, so a font the app failed to serve would still
+    // show Arabic letters: the proof is the vendored face, loaded from the app and in use.
+    await until('the Arabic face loads', () => helpFrame(page).evaluate(() => [...document.fonts]
+      .some((face) => face.family.replace(/["']/g, '') === 'Noto Sans Arabic' && face.status === 'loaded')));
+    const family = await h1(page).evaluate((el) => getComputedStyle(el).fontFamily);
+    assert.match(family, /^["']?Noto Sans Arabic/);
+    assert.match(await h1(page).textContent(), /[؀-ۿ]/);
+    assert.ok(loads.asked.some((p) => /^\/help\/site\/assets\/fonts\/files\/noto-sans-arabic-arabic-\d+-normal\.woff2$/.test(p)), loads.asked.filter((p) => p.includes('font')).join(' '));
+    await shot(page, 'help-home-ar');
+    assert.deepEqual(loads.errors, []);
+    assert.deepEqual(env.refused(), []);
+  }, { locale: 'ar' });
+});
+
+for (const locale of ['uk', 'en']) {
+  browserTest(`n. (#1036) with the app in ${LABEL[locale]}, Help and guides shows the English help`, async () => {
+    await withApp(async ({ page, env }) => {
+      const loads = recordLoads(page);
+      assert.equal(vendoredTitle('index.html'), HOME);
+      await openHelp(page);
+      assert.ok(onPage(page, 'index.html'), helpFrame(page).url());
+      assert.deepEqual(await helpDocument(page), { lang: 'en', dir: 'ltr', menus: 0 });
+      await shot(page, `help-home-${locale}`);
+      assert.deepEqual(loads.errors, []);
+      assert.deepEqual(env.refused(), []);
+    }, { locale });
+  });
+}
+
+browserTest('o. (#1036) after the app language changes, the next opening of Help and guides shows the new language', async () => {
+  await withApp(async ({ page, env }) => {
+    await openHelp(page);
+    assert.ok(onPage(page, 'index.html'));
+    await page.getByTestId('help-close').click();
+    await expectClosed(page);
+    await applyLanguage(page, 'es-419');
+    await openHelp(page, vendoredTitle('es/index.html'));
+    assert.ok(onPage(page, 'es/index.html'), helpFrame(page).url());
+    await page.keyboard.press('Escape');
+    await expectClosed(page);
+    await applyLanguage(page, 'uk');
+    await openHelp(page);
+    assert.ok(onPage(page, 'index.html'), helpFrame(page).url());
+    assert.deepEqual(env.refused(), []);
+  });
+});
+
+// The site's pages send a reader on the English help to the computer's language
+// (`/assets/js/locale.js`, to `/es/tc-help/`, which the app does not serve). In the app the help
+// follows the app's language alone.
+browserTest('p. (#1036) with the app in English on a computer in Spanish, the help stays English: no page script moves the panel', async () => {
+  await withApp(async ({ context, env }) => {
+    const other = await context.browser().newContext({ ...env.contextOptions, locale: 'es-MX' });
+    await env.prepare(other);
+    const page = await other.newPage();
+    try {
+      await env.load(page, { locale: 'en' });
+      await expectLanguage(page, 'es-419'); // no language saved: the computer's
+      await applyLanguage(page, 'en');
+      await expectLanguage(page, 'en');
+      const loads = recordLoads(page);
+      await openHelp(page);
+      assert.match(await helpFrame(page).evaluate(() => navigator.language), /^es/);
+      await openInstallPage(page);
+      // A redirect would have left the English folder by now, for a page or for a 404.
+      await sleep(500);
+      assert.ok(onPage(page, 'gs-install'), helpFrame(page).url());
+      assert.deepEqual(await helpDocument(page), { lang: 'en', dir: 'ltr', menus: 0 });
+      assert.deepEqual(loads.errors, []);
+      assert.deepEqual(loads.asked.filter((p) => /\/es\/|locale\.js/.test(p)), []);
+      assert.deepEqual(env.refused(), []);
+    } finally {
+      await other.close();
+    }
   });
 });

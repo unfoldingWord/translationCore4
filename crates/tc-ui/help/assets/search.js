@@ -3,11 +3,21 @@
 (function () {
   'use strict';
   var INDEX = (window.TC4_SEARCH_INDEX && window.TC4_SEARCH_INDEX.docs) || [];
+  // translationcore.com localizes the help: the page sets TC4_HELP_I18N to its
+  // language and messages (English when absent), and loads that language's index.
+  var T = window.TC4_HELP_I18N || {};
+  var EN = !T.lang || T.lang === 'en';
+  function msg(key, fallback, vars) {
+    var s = T[key] || fallback;
+    Object.keys(vars || {}).forEach(function (k) { s = s.split('{' + k + '}').join(vars[k]); });
+    return s;
+  }
 
   function fold(s) {
     return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   }
   function stem(w) {
+    if (!EN) return w; // the suffix rules are English
     if (w.length > 5 && /ing$/.test(w)) return w.slice(0, -3);
     if (w.length > 4 && /ed$/.test(w)) return w.slice(0, -2);
     if (w.length > 4 && /ies$/.test(w)) return w.slice(0, -3) + 'y';
@@ -15,7 +25,9 @@
     return w;
   }
   function tokens(s) {
-    return fold(s).split(/[^a-z0-9\u0370-\u03ff\u0590-\u05ff]+/).filter(Boolean);
+    // Letters and digits of any script (with their combining marks); each
+    // Chinese character is a word of its own.
+    return fold(s).replace(/(\p{Script=Han})/gu, ' $1 ').split(/[^\p{L}\p{M}\p{N}]+/u).filter(Boolean);
   }
   // A few words translators use for the same thing.
   var SYN = {
@@ -52,6 +64,10 @@
   function termScore(p, q) {
     var s = countMatch(p.title, q) * 12 + countMatch(p.head, q) * 5 + countMatch(p.label, q) * 4;
     var b = countMatch(p.body, q);
+    // Scripts that do not put spaces between words (Burmese, Chinese) rarely
+    // match a whole token: count a match inside the text too.
+    if (!s && !b && !EN && q.length >= 2 && p.flatBody.indexOf(q) >= 0) b = 1;
+    if (!s && !EN && q.length >= 2 && p.flatTitle.indexOf(q) >= 0) s = 12;
     return s + Math.min(b, 20);
   }
 
@@ -106,7 +122,7 @@
     terms.forEach(function (t) {
       if (t.length < 2) return;
       var q = t.length > 4 ? stem(t) : t;
-      out = out.replace(new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[a-z]*)', 'gi'), '<mark>$1</mark>');
+      out = out.replace(new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[\\p{L}\\p{M}]*)', 'giu'), '<mark>$1</mark>');
     });
     return out;
   }
@@ -123,12 +139,12 @@
     var res = search(q).slice(0, 8);
     active = -1;
     if (!res.length) {
-      box.innerHTML = '<div class="sr-empty">No topics match “' + escapeHtml(q) + '”. Try another word, such as align, check, story or offline.</div>';
+      box.innerHTML = '<div class="sr-empty">' + msg('noResults', 'No topics match “{query}”. Try another word, such as align, check, story or offline.', { query: escapeHtml(q) }) + '</div>';
     } else {
       box.innerHTML = res.map(function (r) {
         return '<a role="option" href="' + r.doc.url + '"><span class="sr-title">' + escapeHtml(r.doc.title) +
           '</span><span class="sr-sec">' + escapeHtml(r.doc.section) + '</span><span class="sr-snip">' + snippet(r.doc, q) + '</span></a>';
-      }).join('') + '<a href="search?q=' + encodeURIComponent(q) + '"><span class="sr-sec">See all results →</span></a>';
+      }).join('') + '<a href="search?q=' + encodeURIComponent(q) + '"><span class="sr-sec">' + escapeHtml(msg('seeAll', 'See all results →')) + '</span></a>';
     }
     box.hidden = false;
   }
@@ -173,7 +189,9 @@
     if (input) input.value = q;
     var res = q ? search(q) : [];
     var sum = document.getElementById('search-summary');
-    if (sum) sum.textContent = q ? (res.length + ' topic' + (res.length === 1 ? '' : 's') + ' for “' + q + '”') : 'Type a word or two, such as “align”, “bookmark” or “verse span”.';
+    if (sum) sum.textContent = q
+      ? (res.length === 1 ? msg('resultsOne', '1 topic for “{query}”', { query: q }) : msg('resultsMany', '{count} topics for “{query}”', { count: res.length, query: q }))
+      : msg('searchPrompt', 'Type a word or two, such as “align”, “bookmark” or “verse span”.');
     list.innerHTML = res.map(function (r) {
       return '<li><a href="' + r.doc.url + '">' + escapeHtml(r.doc.title) + '</a> <span class="muted">· ' + escapeHtml(r.doc.section) +
         '</span><br><span>' + snippet(r.doc, q) + '</span></li>';

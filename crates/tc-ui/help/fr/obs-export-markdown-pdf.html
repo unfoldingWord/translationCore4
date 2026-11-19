@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="fr" dir="ltr" data-script="latin">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Exporter des histoires en PDF ou en Markdown · Aide de translationCore 4</title>
+<meta name="description" content="Enregistrez un PDF imprimable de vos histoires, un zip d’histoires en Markdown ou un Scripture Burrito.">
+<link rel="stylesheet" href="/tc-help/assets/style.css">
+<link rel="canonical" href="https://translationcore.com/fr/tc-help/obs-export-markdown-pdf">
+<link rel="alternate" hreflang="en" href="https://translationcore.com/tc-help/obs-export-markdown-pdf">
+<link rel="alternate" hreflang="es-MX" href="https://translationcore.com/es/tc-help/obs-export-markdown-pdf">
+<link rel="alternate" hreflang="fr" href="https://translationcore.com/fr/tc-help/obs-export-markdown-pdf">
+<link rel="alternate" hreflang="hi" href="https://translationcore.com/hi/tc-help/obs-export-markdown-pdf">
+<link rel="alternate" hreflang="ru" href="https://translationcore.com/ru/tc-help/obs-export-markdown-pdf">
+<link rel="alternate" hreflang="ar" href="https://translationcore.com/ar/tc-help/obs-export-markdown-pdf">
+<link rel="alternate" hreflang="zh-Hans" href="https://translationcore.com/zh/tc-help/obs-export-markdown-pdf">
+<link rel="alternate" hreflang="sw" href="https://translationcore.com/sw/tc-help/obs-export-markdown-pdf">
+<link rel="alternate" hreflang="pt-BR" href="https://translationcore.com/pt/tc-help/obs-export-markdown-pdf">
+<link rel="alternate" hreflang="id" href="https://translationcore.com/id/tc-help/obs-export-markdown-pdf">
+<link rel="alternate" hreflang="vi" href="https://translationcore.com/vi/tc-help/obs-export-markdown-pdf">
+<link rel="alternate" hreflang="bn" href="https://translationcore.com/bn/tc-help/obs-export-markdown-pdf">
+<link rel="alternate" hreflang="ur" href="https://translationcore.com/ur/tc-help/obs-export-markdown-pdf">
+<link rel="alternate" hreflang="fa" href="https://translationcore.com/fa/tc-help/obs-export-markdown-pdf">
+<link rel="alternate" hreflang="my" href="https://translationcore.com/my/tc-help/obs-export-markdown-pdf">
+<link rel="alternate" hreflang="nl" href="https://translationcore.com/nl/tc-help/obs-export-markdown-pdf">
+<link rel="alternate" hreflang="x-default" href="https://translationcore.com/tc-help/obs-export-markdown-pdf">
+<link rel="stylesheet" href="/assets/css/help-i18n.css">
+<script>window.__tcLocale={"locale":"fr","defaultLocale":"en","alternates":true,"locales":["en","es","fr","hi","ru","ar","zh","sw","pt","id","vi","bn","ur","fa","my","nl"],"tags":{"en":"en","es":"es-MX","fr":"fr","hi":"hi","ru":"ru","ar":"ar","zh":"zh-Hans","sw":"sw","pt":"pt-BR","id":"id","vi":"vi","bn":"bn","ur":"ur","fa":"fa","my":"my","nl":"nl"}};window.TC4_HELP_I18N={"lang":"fr","language":"Langue","onThisPage":"Sur cette page","noResults":"Aucun sujet ne correspond à « {query} ». Essayez un autre mot, comme aligner, vérifier, histoire ou hors ligne.","seeAll":"Voir tous les résultats →","resultsOne":"1 sujet pour « {query} »","resultsMany":"{count} sujets pour « {query} »","searchPrompt":"Tapez un ou deux mots, comme « aligner », « marquer » ou « plage de versets »."}</script>
+<script src="/assets/js/locale.js"></script>
+<link rel="icon" type="image/png" href="/tc-help/assets/tc_logo.png">
+<link rel="apple-touch-icon" href="/tc-help/assets/tc_logo.png">
+</head>
+<body>
+<a class="skip" href="#main">Aller au contenu</a>
+<header class="topbar">
+  <button class="menu-btn" id="menu-btn" aria-label="Afficher les sujets" aria-controls="sidebar" aria-expanded="false">☰</button>
+  <a class="brand" href="/fr/tc-help/" aria-label="Accueil de l’aide translationCore"><img class="brand-logo" src="/tc-help/assets/translationcore-logo.png" alt="" width="25" height="28"><span class="wordmark">translationCore<span class="reg">®</span></span><span class="brand-rule" aria-hidden="true"></span><span class="brand-text">Aide</span></a>
+  <form class="search" action="search" method="get" role="search" autocomplete="off">
+    <input id="q" name="q" type="search" placeholder="Rechercher dans l’aide (touche /)" aria-label="Rechercher dans l’aide">
+    <div class="search-results" id="search-results" role="listbox" hidden></div>
+  </form>
+  <details class="help-lang"><summary aria-label="Langue: Français"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm6.9 6h-2.95a15.7 15.7 0 0 0-1.38-3.56A8.03 8.03 0 0 1 18.9 8ZM12 4.04c.83 1.2 1.48 2.53 1.91 3.96h-3.82c.43-1.43 1.08-2.76 1.91-3.96ZM4.26 14a7.8 7.8 0 0 1 0-4h3.38a16.5 16.5 0 0 0 0 4H4.26Zm.82 2h2.95c.32 1.25.78 2.45 1.38 3.56A7.99 7.99 0 0 1 5.08 16Zm2.95-8H5.08a7.99 7.99 0 0 1 4.33-3.56A15.7 15.7 0 0 0 8.03 8ZM12 19.96A14.1 14.1 0 0 1 10.09 16h3.82A14.1 14.1 0 0 1 12 19.96ZM14.34 14H9.66a14.7 14.7 0 0 1 0-4h4.68a14.7 14.7 0 0 1 0 4Zm.25 5.56c.6-1.11 1.06-2.31 1.38-3.56h2.95a8.03 8.03 0 0 1-4.33 3.56ZM16.36 14a16.5 16.5 0 0 0 0-4h3.38a7.8 7.8 0 0 1 0 4h-3.38Z"/></svg><span>Français</span></summary><ul><li><a href="/tc-help/obs-export-markdown-pdf" data-locale="en" lang="en" dir="ltr">English</a></li><li><a href="/es/tc-help/obs-export-markdown-pdf" data-locale="es" lang="es-MX" dir="ltr">Español</a></li><li><a href="/fr/tc-help/obs-export-markdown-pdf" data-locale="fr" lang="fr" dir="ltr" aria-current="true">Français</a></li><li><a href="/hi/tc-help/obs-export-markdown-pdf" data-locale="hi" lang="hi" dir="ltr">हिन्दी</a></li><li><a href="/ru/tc-help/obs-export-markdown-pdf" data-locale="ru" lang="ru" dir="ltr">Русский</a></li><li><a href="/ar/tc-help/obs-export-markdown-pdf" data-locale="ar" lang="ar" dir="rtl">العربية</a></li><li><a href="/zh/tc-help/obs-export-markdown-pdf" data-locale="zh" lang="zh-Hans" dir="ltr">简体中文</a></li><li><a href="/sw/tc-help/obs-export-markdown-pdf" data-locale="sw" lang="sw" dir="ltr">Kiswahili</a></li><li><a href="/pt/tc-help/obs-export-markdown-pdf" data-locale="pt" lang="pt-BR" dir="ltr">Português</a></li><li><a href="/id/tc-help/obs-export-markdown-pdf" data-locale="id" lang="id" dir="ltr">Bahasa Indonesia</a></li><li><a href="/vi/tc-help/obs-export-markdown-pdf" data-locale="vi" lang="vi" dir="ltr">Tiếng Việt</a></li><li><a href="/bn/tc-help/obs-export-markdown-pdf" data-locale="bn" lang="bn" dir="ltr">বাংলা</a></li><li><a href="/ur/tc-help/obs-export-markdown-pdf" data-locale="ur" lang="ur" dir="rtl">اردو</a></li><li><a href="/fa/tc-help/obs-export-markdown-pdf" data-locale="fa" lang="fa" dir="rtl">فارسی</a></li><li><a href="/my/tc-help/obs-export-markdown-pdf" data-locale="my" lang="my" dir="ltr">ဗမာစာ</a></li><li><a href="/nl/tc-help/obs-export-markdown-pdf" data-locale="nl" lang="nl" dir="ltr">Nederlands</a></li></ul></details>
+  <a class="site-link" href="/fr/">translationcore.com</a>
+</header>
+<div class="shell">
+<nav class="sidebar" id="sidebar" aria-label="Sujets d’aide">
+<details class="nav-group"><summary><a href="section-getting-started">Prise en main</a></summary><ul>
+<li><a href="gs-install">Installer et lancer tC4</a></li>
+<li><a href="gs-home">L’écran d’accueil</a></li>
+<li><a href="gs-modes">Comprendre, Traduire et Vérifier — les trois modes</a></li>
+<li><a href="gs-save">Enregistrement et points de contrôle</a></li>
+<li><a href="gs-resume">Reprendre là où vous vous êtes arrêté</a></li>
+<li><a href="gs-switch-project">Changer de projet ou revenir à l’accueil</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-bible-projects">Projets bibliques</a></summary><ul>
+<li><a href="bp-new-bible">Créer un projet biblique</a></li>
+<li><a href="bp-add-book">Ajouter un livre</a></li>
+<li><a href="bp-open-book">Ouvrir un livre et passer d’un chapitre à l’autre</a></li>
+<li><a href="bp-import">Importer un projet translationCore 3</a></li>
+<li><a href="bp-export-pdf">Exporter un livre en PDF</a></li>
+<li><a href="bp-export-usfm">Exporter un livre en USFM (aligné ou simple)</a></li>
+<li><a href="bp-export-burrito">Exporter un projet en Scripture Burrito</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-translate">Traduire</a></summary><ul>
+<li><a href="tr-screen">L’écran Traduire</a></li>
+<li><a href="tr-source-texts">Onglets sources — textes passerelles et langue originale</a></li>
+<li><a href="tr-draft-section">Rédiger une section</a></li>
+<li><a href="tr-place-verse-numbers">Placer les numéros de verset</a></li>
+<li><a href="tr-verse-spans">Créer ou séparer une plage de versets</a></li>
+<li><a href="tr-verse-by-verse">Rédiger ou réviser un seul verset</a></li>
+<li><a href="tr-formatting">Paragraphes et poésie</a></li>
+<li><a href="tr-helps-panel">Le panneau d’aides dans Traduire</a></li>
+<li><a href="tr-edit-after-check">Modifier un verset déjà vérifié ou aligné</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-understand">Comprendre</a></summary><ul>
+<li><a href="un-read-passage">Lire un passage avant de le traduire</a></li>
+<li><a href="un-notes">Notes de traduction et articles de l’Académie de traduction</a></li>
+<li><a href="un-word-links">Liens de mots (Mots de traduction)</a></li>
+<li><a href="un-questions">Questions de traduction</a></li>
+<li><a href="un-simplified">L’onglet du texte simplifié</a></li>
+<li><a href="un-user-comments">Écrire un commentaire d’utilisateur</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-check">Vérifier</a></summary><ul>
+<li><a href="ck-tool-picker">Choisir un outil de vérification</a></li>
+<li><a href="ck-translation-notes">Vérifier avec les Notes de traduction</a></li>
+<li><a href="ck-translation-words">Vérifier avec les Mots de traduction</a></li>
+<li><a href="ck-decide">Décider d’un élément de vérification (valide, non valide, à faire)</a></li>
+<li><a href="ck-bookmarks">Marquer une vérification</a></li>
+<li><a href="ck-comments">Écrire un commentaire de vérification</a></li>
+<li><a href="ck-filter-sort">Filtrer et trier les éléments de vérification</a></li>
+<li><a href="ck-community-checking">Aperçu de la Vérification communautaire</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-align">Aligner</a></summary><ul>
+<li><a href="al-open">Ouvrir l’outil Aligner</a></li>
+<li><a href="al-link-words">Relier vos mots à la source</a></li>
+<li><a href="al-phrases">Aligner une expression (fusionner et séparer des cartes)</a></li>
+<li><a href="al-modes">Aligner sur le texte passerelle ou sur la langue originale</a></li>
+<li><a href="al-suggestions">Suggestions d’alignement</a></li>
+<li><a href="al-mark-valid">Marquer un alignement comme terminé</a></li>
+</ul></details>
+<details class="nav-group" open><summary><a href="section-obs">Open Bible Stories</a></summary><ul>
+<li><a href="obs-create">Commencer un projet Open Bible Stories</a></li>
+<li><a href="obs-story-tiles">Trouver une histoire sur l’accueil</a></li>
+<li><a href="obs-translate">Traduire une histoire</a></li>
+<li><a href="obs-understand">Comprendre une histoire</a></li>
+<li><a href="obs-check">Vérifier une histoire</a></li>
+<li><a href="obs-community-checking">Aperçu et exportation d’une histoire</a></li>
+<li><a href="obs-export-markdown-pdf" class="current" aria-current="page">Exporter des histoires en PDF ou en Markdown</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-resources">Ressources et travail hors ligne</a></summary><ul>
+<li><a href="rs-whats-included">Ce qui est fourni avec l’application</a></li>
+<li><a href="rs-source-texts">Télécharger des textes sources</a></li>
+<li><a href="rs-checking-language">Changer la langue de vérification</a></li>
+<li><a href="rs-upgrade-helps">Mettre à jour les aides épinglées</a></li>
+<li><a href="rs-upgrade-texts">Mettre à jour les textes bibliques</a></li>
+<li><a href="rs-guided-fix">Résoudre une ressource manquante</a></li>
+<li><a href="rs-offline">Travailler hors ligne</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-settings">Paramètres</a></summary><ul>
+<li><a href="st-project-settings">Paramètres du projet</a></li>
+<li><a href="st-where-projects-live">Où vos projets sont enregistrés</a></li>
+<li><a href="st-app-language">Changer la langue de l’application</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-troubleshooting">Dépannage et limites connues</a></summary><ul>
+<li><a href="ts-save-problems">Quand un enregistrement échoue</a></li>
+<li><a href="ts-protect-messages">Les messages qui protègent votre projet</a></li>
+<li><a href="ts-crash-recovery">Si l’application s’est fermée d’elle-même ou si la fenêtre est devenue vide</a></li>
+<li><a href="ts-platform">Remarques pour Windows, macOS et Linux</a></li>
+<li><a href="ts-share-door43">Partager sur Door43</a></li>
+<li><a href="ts-team-sync">Travailler en équipe sur plusieurs ordinateurs</a></li>
+<li><a href="ts-not-yet">Ce que tC4 ne fait pas</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-whats-new">Notes de version</a></summary><ul>
+<li><a href="wn-alpha1">alpha.1 — Première version publique</a></li>
+<li><a href="wn-alpha2">alpha.2 — Vérifier et aligner</a></li>
+<li><a href="wn-alpha4">alpha.4 — Ouvrir et reprendre</a></li>
+<li><a href="wn-alpha5">alpha.5 — Une vraie rédaction</a></li>
+<li><a href="wn-alpha6">alpha.6 — Suggestions et ressources</a></li>
+<li><a href="wn-alpha7">alpha.7 — Open Bible Stories</a></li>
+<li><a href="wn-add-a-project">27 sept. 2026 — un seul bouton + Ajouter un projet sur l’accueil</a></li>
+<li><a href="wn-rc1">Nouveautés de la 4.0 rc.1</a></li>
+<li><a href="wn-rc2">Nouveautés de la 4.0 rc.2</a></li>
+<li><a href="wn-4.1">Nouveautés de la 4.1</a></li>
+</ul></details>
+</nav>
+<main id="main" class="content">
+<p class="crumbs"><a href="/fr/tc-help/">Aide</a> › <a href="section-obs">Open Bible Stories</a></p>
+<h1>Exporter des histoires en PDF ou en Markdown</h1>
+<!-- tracking: status=shipped since=rc.1 -->
+<p class="lede">Enregistrez un PDF imprimable de vos histoires, un zip d’histoires en Markdown ou un Scripture Burrito.</p>
+<ul><li><strong>Exporter en PDF :</strong> une copie de lecture pour les relecteurs, avec ou sans images.</li><li><strong>Histoires en Markdown (.zip) :</strong> les fichiers des histoires pour d’autres outils Open Bible Stories.</li><li><strong>Scripture Burrito (.zip) :</strong> le projet entier. Voir <a href="bp-export-burrito">Exporter un projet en Scripture Burrito</a>.</li></ul>
+<h2 id="steps">Étapes</h2>
+<ol><li>Ouvrez une histoire et cliquez sur <span class="ui">Vérifier</span>, puis sur <span class="ui">Ouvrir →</span> sur <span class="ui">Vérification communautaire</span>.</li><li>Facultatif : choisissez la disposition et les images. Voir <a href="obs-community-checking">Aperçu et exportation d’une histoire</a>.</li><li>Cliquez sur <span class="ui">Exporter</span> (1), puis choisissez un format (2).</li></ol>
+<figure class="shot-inline" id="shot-1"><a href="/tc-help/img/obs-export-markdown-pdf-1.png"><img src="/tc-help/img/obs-export-markdown-pdf-1.png" alt="Vérification communautaire pour une histoire avec le menu Exporter ouvert. Exporter est marqué 1. Le menu, marqué 2, contient Exporter en PDF, Histoires en Markdown (.zip) et Scripture Burrito (.zip)." width="440" height="342" loading="lazy"></a></figure>
+<ol start="4"><li>Gardez le nom de fichier proposé ou tapez-en un autre, puis enregistrez. Le panneau affiche « &lt;nom du fichier&gt; enregistré ».</li></ol>
+<p>Pour annuler, fermez la fenêtre d’enregistrement. Aucun fichier n’est créé.</p>
+<h2 id="good-to-know">Bon à savoir</h2>
+<ul><li>Rédigez au moins le titre ou un cadre avant d’exporter un PDF.</li><li>Pour enregistrer un second PDF avec une autre disposition, changez la disposition, exportez de nouveau et donnez-lui un nouveau nom.</li><li>Si vous voyez « L’application n’a pas pu imprimer le PDF avec ses images… », désactivez <span class="ui">Images</span> et exportez de nouveau.</li><li>Sous Linux, la fenêtre d’enregistrement s’ouvre dans votre dossier <strong>Téléchargements</strong>. Si vous ne voyez pas ses boutons, appuyez sur <strong>Entrée</strong> pour enregistrer ou sur <strong>Échap</strong> pour annuler.</li></ul>
+<h2 id="related">Sujets liés</h2><ul class="related"><li><a href="obs-community-checking">Aperçu et exportation d’une histoire</a></li><li><a href="bp-export-burrito">Exporter un projet en Scripture Burrito</a></li><li><a href="ts-protect-messages">Les messages qui protègent votre projet</a></li></ul>
+</main>
+</div>
+<footer class="sitefoot">L’application fait foi : si cette page et l’application ne disent pas la même chose, c’est l’application qui a raison — merci de nous le signaler. <a href="section-whats-new">Notes de version</a> · <a href="/fr/">translationcore.com</a></footer>
+<script src="search-index.js"></script>
+<script src="/tc-help/assets/search.js"></script>
+<script src="/tc-help/assets/page-toc.js"></script>
+<script src="/assets/js/help-i18n.js"></script>
+</body>
+</html>

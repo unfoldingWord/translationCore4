@@ -270,6 +270,16 @@ export async function choose(page, id) {
   await until(`the select shows ${LABEL[id]}`, async () => (await page.getByTestId('language-select').textContent()).includes(LABEL[id]));
 }
 
+/** A language chosen and applied in the App language dialog: saved, and the dialog closed. */
+export async function applyLanguage(page, id) {
+  await openLanguage(page);
+  await choose(page, id);
+  const written = page.waitForResponse((r) => r.url().endsWith('/api/v1/prefs/setLocale'));
+  await page.getByTestId('language-apply').click();
+  await written;
+  await until('the dialog closes', async () => (await page.getByTestId('language-dialog').count()) === 0);
+}
+
 /** The test id of the focused element, or its role. */
 export const focused = (page) => page.evaluate(() => document.activeElement?.getAttribute('data-testid') ?? document.activeElement?.getAttribute('role') ?? document.activeElement?.tagName ?? null);
 

@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="vi" dir="ltr" data-script="latin">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Có gì mới trong 4.0 rc.2 · Trợ giúp translationCore 4</title>
+<meta name="description" content="Bản beta công khai. Một cửa sổ chuẩn bị khi khởi động lần đầu, các từ lặp lại được đánh số và đặt nhiều từ cùng lúc trong Căn chỉnh, kéo để chọn trong Kiểm tra, và nút Trước và Tiếp theo bên cạnh các nút đánh dấu. Cập nhật ngày 20 tháng 10: các câu thơ mở ra trọn vẹn, và căn chỉnh đi theo từ của chúng.">
+<link rel="stylesheet" href="/tc-help/assets/style.css">
+<link rel="canonical" href="https://translationcore.com/vi/tc-help/wn-rc2">
+<link rel="alternate" hreflang="en" href="https://translationcore.com/tc-help/wn-rc2">
+<link rel="alternate" hreflang="es-MX" href="https://translationcore.com/es/tc-help/wn-rc2">
+<link rel="alternate" hreflang="fr" href="https://translationcore.com/fr/tc-help/wn-rc2">
+<link rel="alternate" hreflang="hi" href="https://translationcore.com/hi/tc-help/wn-rc2">
+<link rel="alternate" hreflang="ru" href="https://translationcore.com/ru/tc-help/wn-rc2">
+<link rel="alternate" hreflang="ar" href="https://translationcore.com/ar/tc-help/wn-rc2">
+<link rel="alternate" hreflang="zh-Hans" href="https://translationcore.com/zh/tc-help/wn-rc2">
+<link rel="alternate" hreflang="sw" href="https://translationcore.com/sw/tc-help/wn-rc2">
+<link rel="alternate" hreflang="pt-BR" href="https://translationcore.com/pt/tc-help/wn-rc2">
+<link rel="alternate" hreflang="id" href="https://translationcore.com/id/tc-help/wn-rc2">
+<link rel="alternate" hreflang="vi" href="https://translationcore.com/vi/tc-help/wn-rc2">
+<link rel="alternate" hreflang="bn" href="https://translationcore.com/bn/tc-help/wn-rc2">
+<link rel="alternate" hreflang="ur" href="https://translationcore.com/ur/tc-help/wn-rc2">
+<link rel="alternate" hreflang="fa" href="https://translationcore.com/fa/tc-help/wn-rc2">
+<link rel="alternate" hreflang="my" href="https://translationcore.com/my/tc-help/wn-rc2">
+<link rel="alternate" hreflang="nl" href="https://translationcore.com/nl/tc-help/wn-rc2">
+<link rel="alternate" hreflang="x-default" href="https://translationcore.com/tc-help/wn-rc2">
+<link rel="stylesheet" href="/assets/css/help-i18n.css">
+<script>window.__tcLocale={"locale":"vi","defaultLocale":"en","alternates":true,"locales":["en","es","fr","hi","ru","ar","zh","sw","pt","id","vi","bn","ur","fa","my","nl"],"tags":{"en":"en","es":"es-MX","fr":"fr","hi":"hi","ru":"ru","ar":"ar","zh":"zh-Hans","sw":"sw","pt":"pt-BR","id":"id","vi":"vi","bn":"bn","ur":"ur","fa":"fa","my":"my","nl":"nl"}};window.TC4_HELP_I18N={"lang":"vi","language":"Ngôn ngữ","onThisPage":"Trên trang này","noResults":"Không có chủ đề nào khớp với “{query}”. Hãy thử từ khác, chẳng hạn căn chỉnh, kiểm tra, câu chuyện hoặc ngoại tuyến.","seeAll":"Xem tất cả kết quả →","resultsOne":"1 chủ đề cho “{query}”","resultsMany":"{count} chủ đề cho “{query}”","searchPrompt":"Gõ một hai từ, chẳng hạn “căn chỉnh”, “dấu trang” hoặc “nhóm câu”."}</script>
+<script src="/assets/js/locale.js"></script>
+<link rel="icon" type="image/png" href="/tc-help/assets/tc_logo.png">
+<link rel="apple-touch-icon" href="/tc-help/assets/tc_logo.png">
+</head>
+<body>
+<a class="skip" href="#main">Chuyển đến nội dung chính</a>
+<header class="topbar">
+  <button class="menu-btn" id="menu-btn" aria-label="Hiện các chủ đề" aria-controls="sidebar" aria-expanded="false">☰</button>
+  <a class="brand" href="/vi/tc-help/" aria-label="Trang chủ Trợ giúp translationCore"><img class="brand-logo" src="/tc-help/assets/translationcore-logo.png" alt="" width="25" height="28"><span class="wordmark">translationCore<span class="reg">®</span></span><span class="brand-rule" aria-hidden="true"></span><span class="brand-text">Trợ giúp</span></a>
+  <form class="search" action="search" method="get" role="search" autocomplete="off">
+    <input id="q" name="q" type="search" placeholder="Tìm trong trợ giúp (nhấn /)" aria-label="Tìm trong trợ giúp">
+    <div class="search-results" id="search-results" role="listbox" hidden></div>
+  </form>
+  <details class="help-lang"><summary aria-label="Ngôn ngữ: Tiếng Việt"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm6.9 6h-2.95a15.7 15.7 0 0 0-1.38-3.56A8.03 8.03 0 0 1 18.9 8ZM12 4.04c.83 1.2 1.48 2.53 1.91 3.96h-3.82c.43-1.43 1.08-2.76 1.91-3.96ZM4.26 14a7.8 7.8 0 0 1 0-4h3.38a16.5 16.5 0 0 0 0 4H4.26Zm.82 2h2.95c.32 1.25.78 2.45 1.38 3.56A7.99 7.99 0 0 1 5.08 16Zm2.95-8H5.08a7.99 7.99 0 0 1 4.33-3.56A15.7 15.7 0 0 0 8.03 8ZM12 19.96A14.1 14.1 0 0 1 10.09 16h3.82A14.1 14.1 0 0 1 12 19.96ZM14.34 14H9.66a14.7 14.7 0 0 1 0-4h4.68a14.7 14.7 0 0 1 0 4Zm.25 5.56c.6-1.11 1.06-2.31 1.38-3.56h2.95a8.03 8.03 0 0 1-4.33 3.56ZM16.36 14a16.5 16.5 0 0 0 0-4h3.38a7.8 7.8 0 0 1 0 4h-3.38Z"/></svg><span>Tiếng Việt</span></summary><ul><li><a href="/tc-help/wn-rc2" data-locale="en" lang="en" dir="ltr">English</a></li><li><a href="/es/tc-help/wn-rc2" data-locale="es" lang="es-MX" dir="ltr">Español</a></li><li><a href="/fr/tc-help/wn-rc2" data-locale="fr" lang="fr" dir="ltr">Français</a></li><li><a href="/hi/tc-help/wn-rc2" data-locale="hi" lang="hi" dir="ltr">हिन्दी</a></li><li><a href="/ru/tc-help/wn-rc2" data-locale="ru" lang="ru" dir="ltr">Русский</a></li><li><a href="/ar/tc-help/wn-rc2" data-locale="ar" lang="ar" dir="rtl">العربية</a></li><li><a href="/zh/tc-help/wn-rc2" data-locale="zh" lang="zh-Hans" dir="ltr">简体中文</a></li><li><a href="/sw/tc-help/wn-rc2" data-locale="sw" lang="sw" dir="ltr">Kiswahili</a></li><li><a href="/pt/tc-help/wn-rc2" data-locale="pt" lang="pt-BR" dir="ltr">Português</a></li><li><a href="/id/tc-help/wn-rc2" data-locale="id" lang="id" dir="ltr">Bahasa Indonesia</a></li><li><a href="/vi/tc-help/wn-rc2" data-locale="vi" lang="vi" dir="ltr" aria-current="true">Tiếng Việt</a></li><li><a href="/bn/tc-help/wn-rc2" data-locale="bn" lang="bn" dir="ltr">বাংলা</a></li><li><a href="/ur/tc-help/wn-rc2" data-locale="ur" lang="ur" dir="rtl">اردو</a></li><li><a href="/fa/tc-help/wn-rc2" data-locale="fa" lang="fa" dir="rtl">فارسی</a></li><li><a href="/my/tc-help/wn-rc2" data-locale="my" lang="my" dir="ltr">ဗမာစာ</a></li><li><a href="/nl/tc-help/wn-rc2" data-locale="nl" lang="nl" dir="ltr">Nederlands</a></li></ul></details>
+  <a class="site-link" href="/vi/">translationcore.com</a>
+</header>
+<div class="shell">
+<nav class="sidebar" id="sidebar" aria-label="Các chủ đề trợ giúp">
+<details class="nav-group"><summary><a href="section-getting-started">Bắt đầu</a></summary><ul>
+<li><a href="gs-install">Cài đặt và khởi động tC4</a></li>
+<li><a href="gs-home">Màn hình Trang chủ</a></li>
+<li><a href="gs-modes">Thấu hiểu, Dịch và Kiểm tra — ba chế độ</a></li>
+<li><a href="gs-save">Lưu và điểm kiểm tra</a></li>
+<li><a href="gs-resume">Tiếp tục nơi bạn đã dừng lại</a></li>
+<li><a href="gs-switch-project">Chuyển dự án hoặc quay lại Trang chủ</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-bible-projects">Dự án Kinh Thánh</a></summary><ul>
+<li><a href="bp-new-bible">Tạo dự án Kinh Thánh</a></li>
+<li><a href="bp-add-book">Thêm sách</a></li>
+<li><a href="bp-open-book">Mở sách và chuyển giữa các chương</a></li>
+<li><a href="bp-import">Nhập dự án translationCore 3</a></li>
+<li><a href="bp-export-pdf">Xuất sách thành PDF</a></li>
+<li><a href="bp-export-usfm">Xuất sách thành USFM (đã căn chỉnh hoặc văn bản thuần)</a></li>
+<li><a href="bp-export-burrito">Xuất dự án thành Scripture Burrito</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-translate">Dịch</a></summary><ul>
+<li><a href="tr-screen">Màn hình Dịch</a></li>
+<li><a href="tr-source-texts">Các thẻ nguồn — văn bản cầu nối và nguyên ngữ</a></li>
+<li><a href="tr-draft-section">Soạn nháp một phần</a></li>
+<li><a href="tr-place-verse-numbers">Đặt số câu</a></li>
+<li><a href="tr-verse-spans">Gộp hoặc tách nhóm câu</a></li>
+<li><a href="tr-verse-by-verse">Soạn nháp hoặc sửa một câu</a></li>
+<li><a href="tr-formatting">Đoạn văn và thơ</a></li>
+<li><a href="tr-helps-panel">Bảng trợ giúp trong chế độ Dịch</a></li>
+<li><a href="tr-edit-after-check">Sửa một câu bạn đã kiểm tra hoặc căn chỉnh</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-understand">Thấu hiểu</a></summary><ul>
+<li><a href="un-read-passage">Đọc phân đoạn trước khi dịch</a></li>
+<li><a href="un-notes">Ghi chú dịch thuật và bài viết Học viện dịch thuật</a></li>
+<li><a href="un-word-links">Liên kết từ (Từ ngữ dịch thuật)</a></li>
+<li><a href="un-questions">Câu hỏi dịch thuật</a></li>
+<li><a href="un-simplified">Thẻ văn bản đơn giản hóa</a></li>
+<li><a href="un-user-comments">Viết nhận xét của bạn</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-check">Kiểm tra</a></summary><ul>
+<li><a href="ck-tool-picker">Chọn công cụ kiểm tra</a></li>
+<li><a href="ck-translation-notes">Kiểm tra với Ghi chú dịch thuật</a></li>
+<li><a href="ck-translation-words">Kiểm tra với Từ ngữ dịch thuật</a></li>
+<li><a href="ck-decide">Quyết định cho một mục kiểm tra (hợp lệ, không hợp lệ, cần làm)</a></li>
+<li><a href="ck-bookmarks">Đặt dấu trang cho mục kiểm tra</a></li>
+<li><a href="ck-comments">Viết nhận xét cho mục kiểm tra</a></li>
+<li><a href="ck-filter-sort">Lọc và sắp xếp các mục kiểm tra</a></li>
+<li><a href="ck-community-checking">Xem trước Kiểm tra cộng đồng</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-align">Căn chỉnh</a></summary><ul>
+<li><a href="al-open">Mở công cụ Căn chỉnh</a></li>
+<li><a href="al-link-words">Liên kết từ của bạn với nguồn</a></li>
+<li><a href="al-phrases">Căn chỉnh một cụm từ (gộp và tách thẻ)</a></li>
+<li><a href="al-modes">Căn chỉnh với văn bản cầu nối hoặc nguyên ngữ</a></li>
+<li><a href="al-suggestions">Gợi ý căn chỉnh</a></li>
+<li><a href="al-mark-valid">Đánh dấu căn chỉnh đã xong</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-obs">Open Bible Stories</a></summary><ul>
+<li><a href="obs-create">Bắt đầu dự án Open Bible Stories</a></li>
+<li><a href="obs-story-tiles">Tìm câu chuyện trên Trang chủ</a></li>
+<li><a href="obs-translate">Dịch một câu chuyện</a></li>
+<li><a href="obs-understand">Thấu hiểu một câu chuyện</a></li>
+<li><a href="obs-check">Kiểm tra một câu chuyện</a></li>
+<li><a href="obs-community-checking">Xem trước và xuất câu chuyện</a></li>
+<li><a href="obs-export-markdown-pdf">Xuất câu chuyện thành PDF hoặc Markdown</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-resources">Tài liệu và làm việc ngoại tuyến</a></summary><ul>
+<li><a href="rs-whats-included">Những gì có sẵn trong ứng dụng</a></li>
+<li><a href="rs-source-texts">Tải xuống văn bản nguồn</a></li>
+<li><a href="rs-checking-language">Đổi ngôn ngữ kiểm tra</a></li>
+<li><a href="rs-upgrade-helps">Cập nhật tài liệu trợ giúp đã ghim</a></li>
+<li><a href="rs-upgrade-texts">Cập nhật văn bản Kinh Thánh</a></li>
+<li><a href="rs-guided-fix">Khắc phục tài liệu bị thiếu</a></li>
+<li><a href="rs-offline">Làm việc ngoại tuyến</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-settings">Cài đặt</a></summary><ul>
+<li><a href="st-project-settings">Cài đặt dự án</a></li>
+<li><a href="st-where-projects-live">Nơi lưu trữ dự án của bạn</a></li>
+<li><a href="st-app-language">Đổi ngôn ngữ ứng dụng</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-troubleshooting">Khắc phục sự cố và giới hạn đã biết</a></summary><ul>
+<li><a href="ts-save-problems">Khi lưu thất bại</a></li>
+<li><a href="ts-protect-messages">Các thông báo bảo vệ dự án của bạn</a></li>
+<li><a href="ts-crash-recovery">Nếu ứng dụng đóng đột ngột hoặc cửa sổ bị trống</a></li>
+<li><a href="ts-platform">Ghi chú cho Windows, macOS và Linux</a></li>
+<li><a href="ts-share-door43">Chia sẻ lên Door43</a></li>
+<li><a href="ts-team-sync">Làm việc theo nhóm trên nhiều máy tính</a></li>
+<li><a href="ts-not-yet">Các tính năng tC4 chưa có</a></li>
+</ul></details>
+<details class="nav-group" open><summary><a href="section-whats-new">Ghi chú phát hành</a></summary><ul>
+<li><a href="wn-alpha1">alpha.1 — Bản dựng công khai đầu tiên</a></li>
+<li><a href="wn-alpha2">alpha.2 — Kiểm tra và căn chỉnh</a></li>
+<li><a href="wn-alpha4">alpha.4 — Mở và tiếp tục</a></li>
+<li><a href="wn-alpha5">alpha.5 — Soạn nháp thực sự</a></li>
+<li><a href="wn-alpha6">alpha.6 — Gợi ý và tài liệu</a></li>
+<li><a href="wn-alpha7">alpha.7 — Open Bible Stories</a></li>
+<li><a href="wn-add-a-project">27/9/2026 — một nút + Thêm dự án duy nhất trên Trang chủ</a></li>
+<li><a href="wn-rc1">Có gì mới trong 4.0 rc.1</a></li>
+<li><a href="wn-rc2" class="current" aria-current="page">Có gì mới trong 4.0 rc.2</a></li>
+<li><a href="wn-4.1">Có gì mới trong 4.1</a></li>
+</ul></details>
+</nav>
+<main id="main" class="content">
+<p class="crumbs"><a href="/vi/tc-help/">Trợ giúp</a> › <a href="section-whats-new">Ghi chú phát hành</a></p>
+<h1>Có gì mới trong 4.0 rc.2</h1>
+<p class="lede">Bản beta công khai. Một cửa sổ chuẩn bị khi khởi động lần đầu, các từ lặp lại được đánh số và đặt nhiều từ cùng lúc trong Căn chỉnh, kéo để chọn trong Kiểm tra, và nút Trước và Tiếp theo bên cạnh các nút đánh dấu. Cập nhật ngày 20 tháng 10: các câu thơ mở ra trọn vẹn, và căn chỉnh đi theo từ của chúng.</p>
+<p>4.0.0-rc.2 là bản beta công khai. Đây là những thay đổi chính kể từ rc.1.</p>
+<h2 id="starting-tc4">Khởi động tC4</h2>
+<ul><li><strong>Cửa sổ chuẩn bị ở lần khởi động đầu tiên.</strong> "Đang chuẩn bị translationCore4" đếm các tài nguyên đi kèm, ví dụ "Đang chuẩn bị tài nguyên: 2 trên 16", rồi tC4 mở ra ở Trang chủ. Những lần khởi động sau sẽ nhanh hơn nhiều. Nếu tệp tải xuống bị hỏng, tC4 sẽ báo cho bạn và thoát mà không thay đổi gì. Xem <a href="gs-install">Cài đặt và khởi động tC4</a>.</li></ul>
+<h2 id="align">Căn chỉnh</h2>
+<ul><li><strong>Các từ lặp lại được đánh số.</strong> Một từ xuất hiện nhiều lần trong câu sẽ cho biết đó là lần thứ mấy: de¹, de², de³. Các thẻ nguồn cũng dùng cùng những số này.</li><li><strong>Đặt nhiều từ cùng lúc.</strong> Giữ Ctrl và nhấp (Cmd và nhấp trên máy Mac) hoặc giữ Shift và nhấp các từ trong ngân hàng từ, rồi nhấp hoặc kéo chúng vào một thẻ.</li><li><strong>Các thẻ giữ đúng thứ tự trong câu.</strong> Các từ trên một thẻ luôn hiện theo thứ tự xuất hiện trong câu của bạn, dù bạn thả chúng ở đâu.</li></ul>
+<p>Xem <a href="al-link-words">Liên kết từ của bạn với văn bản nguồn</a>.</p>
+<h2 id="check">Kiểm tra</h2>
+<ul><li><strong>Kéo để chọn từ.</strong> Kéo ngang qua <span class="ui">Bản dịch của bạn</span> để chọn trọn các từ. <span class="ui">✓ Đánh dấu hợp lệ</span> lưu phần đã chọn, và phần đó vẫn còn khi bạn quay lại mục này. Cách này dùng được trong Ghi chú dịch thuật và Từ ngữ dịch thuật. Xem <a href="ck-decide">Quyết định cho một mục kiểm tra</a>.</li><li><strong>Trước và Tiếp nằm cạnh các nút đánh dấu.</strong> <span class="ui">Trước</span> và <span class="ui">Tiếp</span> nay nằm cùng hàng với <span class="ui">✓ Đánh dấu hợp lệ</span>, <span class="ui">Không hợp lệ</span> và <span class="ui">Cần làm</span>, trong cả chế độ Kiểm tra và Căn chỉnh.</li></ul>
+<h2 id="translate">Dịch</h2>
+<ul><li><strong>Nút Soạn nháp phần luôn hiển thị</strong>, dưới dạng một nút nhỏ bo tròn trên mỗi phần. Xem <a href="tr-draft-section">Soạn nháp một phần</a>.</li></ul>
+<h2 id="also-new-since-rc-1">Cũng mới kể từ rc.1</h2>
+<ul><li><strong>Việc kiểm tra Từ ngữ dịch thuật dùng các Liên kết đã phát hành.</strong> Bản tiếng Anh kèm <code>en_twl</code> v91 bên cạnh <code>en_tw</code> v91. Các bản tải xuống bằng ngôn ngữ cầu nối sẽ cài <code>_twl</code> riêng khi đã được phát hành; nếu không, Liên kết tiếng Anh được ghép với các bài viết của ngôn ngữ đó. Những sách không có trong bản phát hành Liên kết sẽ không có phần kiểm tra tW. Các hàng thiếu bài viết bị ẩn. Xem <a href="ck-translation-words">Kiểm tra với Từ ngữ dịch thuật</a> và <a href="rs-whats-included">Những gì có sẵn trong ứng dụng</a>.</li></ul>
+<ul><li><strong>Internet tắt cho đến khi bạn bật lên.</strong> Một bước cần internet sẽ hỏi "Bật internet?" trước. Sau đó tC4 dùng internet cho đến khi bạn tắt <span class="ui">Sử dụng internet</span> trong trình đơn tài khoản, hoặc đóng tC4. Xem <a href="rs-offline">Làm việc ngoại tuyến</a>.</li><li><strong>Thêm sách từ tệp USFM</strong> vào một dự án bạn đã có: <span class="ui">Thêm sách</span> › <span class="ui">Thêm sách từ tệp USFM</span>. Mỗi tệp trở thành một sách. Xem <a href="bp-add-book">Thêm sách</a>.</li><li><strong>Chia sẻ trên Door43 dùng cùng câu hỏi đó.</strong> Nó cũng cho biết bạn sẽ xem lại nơi đến và các sách trước khi bất cứ thứ gì được tải lên. Xem <a href="ts-share-door43">Chia sẻ lên Door43</a>.</li><li><strong>Danh sách Các câu chuyện giữ nguyên tiêu đề và tỷ lệ phần trăm</strong> trong khi bạn soạn nháp một câu chuyện. Xem <a href="obs-translate">Dịch một câu chuyện</a>.</li><li><strong>Cài đặt dự án</strong> hiển thị đúng số ít "1 book" thay vì "1 books" (trong giao diện tiếng Anh).</li></ul>
+<ul><li><strong>Trình đơn tài khoản:</strong> <span class="ui">Trợ giúp và hướng dẫn</span> (ngoại tuyến), <span class="ui">Về translationCore</span>, <span class="ui">Ngôn ngữ ứng dụng</span> (chín ngôn ngữ) và <span class="ui">Báo cáo sự cố</span>. Xem <a href="gs-home">Màn hình Trang chủ</a> và <a href="st-app-language">Đổi ngôn ngữ ứng dụng</a>.</li><li><strong>Nhóm câu được tính vào tỷ lệ phần trăm đã soạn nháp</strong>, và việc nối các câu qua một đoạn văn không còn để lại dòng trống bên trong nhóm câu. Xem <a href="tr-verse-spans">Tạo hoặc tách nhóm câu</a>.</li><li><strong>Tiếp tục</strong> ghi đúng câu hoặc nhóm câu bạn đang làm sau khi nhóm câu thay đổi. Xem <a href="gs-resume">Tiếp tục từ chỗ bạn dừng lại</a>.</li><li><strong>Đặt số câu</strong> cho phép nhấp rồi nhấp để di chuyển một số câu bạn đã đặt. Xem <a href="tr-place-verse-numbers">Đặt số câu</a>.</li><li><strong>Thấu hiểu / Dịch / Kiểm tra</strong> vẫn nằm giữa khi Đã lưu chuyển thành Chưa lưu. Xem <a href="gs-modes">Ba chế độ</a>.</li><li>Bạn có thể <strong>lưu một phần sau khi xóa toàn bộ văn bản của nó</strong> (các câu giữ chỗ). Xem <a href="tr-draft-section">Soạn nháp một phần</a>.</li><li><strong>Bài viết trợ giúp</strong> hiển thị trích dẫn và chữ đậm gọn gàng; số câu của UST/GST là chỉ số trên. Xem <a href="un-notes">Đọc ghi chú</a> và <a href="un-simplified">Văn bản đơn giản hóa</a>.</li></ul>
+<h2 id="rc-2-update-october-20-2026">Cập nhật rc.2 — 20 tháng 10, 2026</h2>
+<p>rc.2 được dựng lại vào ngày 20 tháng 10 với những thay đổi này. Số phiên bản vẫn là 4.0.0-rc.2.</p>
+<h3 id="rc-2-update-translate">Dịch</h3>
+<ul><li><strong>Câu thơ mở ra trọn vẹn.</strong> Ô soạn Câu và Phần hiển thị mọi dòng của một câu thơ, mỗi dòng thụt vào một tab cho mỗi cấp, với chỗ ngắt đoạn và ngắt khối là các dòng trống. Khi lưu, văn bản cũ không còn sót lại. Xem <a href="tr-formatting">Đoạn văn và thơ ca</a>.</li><li><strong>Mọi câu của các sách thơ ca đều hiển thị.</strong> Những câu bắt đầu bằng một dòng thơ, ví dụ phần lớn sách Thi Thiên và Sáng Thế Ký 49, nay xuất hiện trong chế độ Dịch và Căn chỉnh.</li><li>Những câu có căn chỉnh lồng nhau hiển thị đầy đủ các từ, ví dụ "the heavens" trong Sáng Thế Ký 1:1.</li></ul>
+<h3 id="rc-2-update-align">Căn chỉnh</h3>
+<ul><li>Ngân hàng từ luôn khớp với văn bản hiện tại của câu, và khi nhấp vào thẻ, chỉ những từ đang hiện là đã chọn mới được đặt vào. Xem <a href="al-link-words">Liên kết từ của bạn với văn bản nguồn</a>.</li><li>Liên kết vẫn ở trên từ của nó khi bạn sửa câu. Xóa một từ đã liên kết sẽ xóa liên kết của từ đó. Nếu một thay đổi khiến không rõ bạn đã giữ lại lần xuất hiện nào của một từ lặp lại, câu đó sẽ được đánh dấu cần xem lại. Xem <a href="tr-edit-after-check">Sửa một câu bạn đã kiểm tra hoặc căn chỉnh</a>.</li><li>Một quy tắc duy nhất quyết định căn chỉnh nào cần xem lại, áp dụng cho danh sách câu, thông báo, ✓ Đánh dấu hợp lệ, việc nhập dự án translationCore 3 và tệp xuất có căn chỉnh.</li><li>Các thẻ nguồn theo văn bản ngôn ngữ gốc của dự án, giống như trong translationCore 3.</li><li>Những câu được nhập kèm căn chỉnh được giữ nguyên như khi nhập và hiện "Câu này đã có sẵn căn chỉnh". Xem <a href="al-open">Mở công cụ Căn chỉnh</a>.</li><li>Các gợi ý dùng cùng những từ như ngân hàng từ, và hoạt động tốt hơn với tiếng Híp-ri.</li></ul>
+<h3 id="export">Xuất</h3>
+<ul><li><strong>USFM, đã căn chỉnh</strong> nêu tên mọi câu có căn chỉnh cần xem lại và không có trong tệp: "Căn chỉnh của bạn cho những câu này không có trong tệp". Xem <a href="bp-export-usfm">Xuất sách dưới dạng USFM</a>.</li></ul>
+<h3 id="team-sync">Đồng bộ nhóm</h3>
+<ul><li>Kết quả đồng bộ nêu tên từng câu mà căn chỉnh mới hơn của một người trong nhóm đã thay thế căn chỉnh của bạn. Xem <a href="ts-team-sync">Làm việc nhóm</a>.</li><li>Sau khi đồng bộ, một dự án đang mở sẽ hiện thông báo đơn giản yêu cầu bạn đóng rồi mở lại dự án, và Trang chủ luôn cho phép bạn rời đi.</li></ul>
+<h3 id="import">Nhập</h3>
+<ul><li>Một Scripture Burrito không có tệp phân chia câu được nhập mà không gặp lỗi "Điểm kiểm tra chưa được lưu".</li></ul>
+<h2 id="related">Chủ đề liên quan</h2><ul class="related"><li><a href="wn-alpha1">alpha.1 — Bản dựng công khai đầu tiên</a></li><li><a href="wn-alpha2">alpha.2 — Kiểm tra và căn chỉnh</a></li><li><a href="wn-alpha4">alpha.4 — Mở và tiếp tục</a></li><li><a href="wn-alpha5">alpha.5 — Soạn nháp thực sự</a></li><li><a href="wn-alpha6">alpha.6 — Gợi ý và tài liệu</a></li><li><a href="wn-alpha7">alpha.7 — Open Bible Stories</a></li><li><a href="wn-add-a-project">27/9/2026 — một nút + Thêm dự án duy nhất trên Trang chủ</a></li><li><a href="wn-rc1">Có gì mới trong 4.0 rc.1</a></li></ul>
+</main>
+</div>
+<footer class="sitefoot">Ứng dụng là nguồn chính xác nhất: nếu trang này khác với ứng dụng, thì ứng dụng đúng — xin hãy báo cho chúng tôi. <a href="section-whats-new">Ghi chú phát hành</a> · <a href="/vi/">translationcore.com</a></footer>
+<script src="search-index.js"></script>
+<script src="/tc-help/assets/search.js"></script>
+<script src="/tc-help/assets/page-toc.js"></script>
+<script src="/assets/js/help-i18n.js"></script>
+</body>
+</html>

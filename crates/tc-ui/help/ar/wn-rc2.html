@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="ar" dir="rtl" data-script="arabic">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ما الجديد في 4.0 rc.2 · مساعدة translationCore 4</title>
+<meta name="description" content="الإصدار التجريبي العام. نافذة تحضير عند التشغيل الأول، وترقيم الكلمات المكررة ووضع عدة كلمات دفعة واحدة في المحاذاة، والتحديد بالسحب في المراجعة، و«السابق» و«التالي» بجانب أزرار التعليم. تحديث 20 أكتوبر: آيات الشعر تُفتح كاملة، والمحاذاة تتبع كلماتها.">
+<link rel="stylesheet" href="/tc-help/assets/style.css">
+<link rel="canonical" href="https://translationcore.com/ar/tc-help/wn-rc2">
+<link rel="alternate" hreflang="en" href="https://translationcore.com/tc-help/wn-rc2">
+<link rel="alternate" hreflang="es-MX" href="https://translationcore.com/es/tc-help/wn-rc2">
+<link rel="alternate" hreflang="fr" href="https://translationcore.com/fr/tc-help/wn-rc2">
+<link rel="alternate" hreflang="hi" href="https://translationcore.com/hi/tc-help/wn-rc2">
+<link rel="alternate" hreflang="ru" href="https://translationcore.com/ru/tc-help/wn-rc2">
+<link rel="alternate" hreflang="ar" href="https://translationcore.com/ar/tc-help/wn-rc2">
+<link rel="alternate" hreflang="zh-Hans" href="https://translationcore.com/zh/tc-help/wn-rc2">
+<link rel="alternate" hreflang="sw" href="https://translationcore.com/sw/tc-help/wn-rc2">
+<link rel="alternate" hreflang="pt-BR" href="https://translationcore.com/pt/tc-help/wn-rc2">
+<link rel="alternate" hreflang="id" href="https://translationcore.com/id/tc-help/wn-rc2">
+<link rel="alternate" hreflang="vi" href="https://translationcore.com/vi/tc-help/wn-rc2">
+<link rel="alternate" hreflang="bn" href="https://translationcore.com/bn/tc-help/wn-rc2">
+<link rel="alternate" hreflang="ur" href="https://translationcore.com/ur/tc-help/wn-rc2">
+<link rel="alternate" hreflang="fa" href="https://translationcore.com/fa/tc-help/wn-rc2">
+<link rel="alternate" hreflang="my" href="https://translationcore.com/my/tc-help/wn-rc2">
+<link rel="alternate" hreflang="nl" href="https://translationcore.com/nl/tc-help/wn-rc2">
+<link rel="alternate" hreflang="x-default" href="https://translationcore.com/tc-help/wn-rc2">
+<link rel="stylesheet" href="/assets/fonts/arabic.css">
+<link rel="stylesheet" href="/assets/css/help-i18n.css">
+<script>window.__tcLocale={"locale":"ar","defaultLocale":"en","alternates":true,"locales":["en","es","fr","hi","ru","ar","zh","sw","pt","id","vi","bn","ur","fa","my","nl"],"tags":{"en":"en","es":"es-MX","fr":"fr","hi":"hi","ru":"ru","ar":"ar","zh":"zh-Hans","sw":"sw","pt":"pt-BR","id":"id","vi":"vi","bn":"bn","ur":"ur","fa":"fa","my":"my","nl":"nl"}};window.TC4_HELP_I18N={"lang":"ar","language":"اللغة","onThisPage":"في هذه الصفحة","noResults":"لا توجد موضوعات تطابق «{query}». جرّب كلمة أخرى، مثل محاذاة أو مراجعة أو قصة أو دون إنترنت.","seeAll":"عرض كل النتائج →","resultsOne":"موضوع واحد عن «{query}»","resultsMany":"عدد الموضوعات المطابقة لـ«{query}»: {count}","searchPrompt":"اكتب كلمة أو كلمتين، مثل «محاذاة» أو «إشارة مرجعية» أو «نطاق آيات»."}</script>
+<script src="/assets/js/locale.js"></script>
+<link rel="icon" type="image/png" href="/tc-help/assets/tc_logo.png">
+<link rel="apple-touch-icon" href="/tc-help/assets/tc_logo.png">
+</head>
+<body>
+<a class="skip" href="#main">انتقل إلى المحتوى</a>
+<header class="topbar">
+  <button class="menu-btn" id="menu-btn" aria-label="عرض الموضوعات" aria-controls="sidebar" aria-expanded="false">☰</button>
+  <a class="brand" href="/ar/tc-help/" aria-label="الصفحة الرئيسية لمساعدة translationCore"><img class="brand-logo" src="/tc-help/assets/translationcore-logo.png" alt="" width="25" height="28"><span class="wordmark">translationCore<span class="reg">®</span></span><span class="brand-rule" aria-hidden="true"></span><span class="brand-text">المساعدة</span></a>
+  <form class="search" action="search" method="get" role="search" autocomplete="off">
+    <input id="q" name="q" type="search" placeholder="ابحث في المساعدة (اضغط /)" aria-label="البحث في المساعدة">
+    <div class="search-results" id="search-results" role="listbox" hidden></div>
+  </form>
+  <details class="help-lang"><summary aria-label="اللغة: العربية"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm6.9 6h-2.95a15.7 15.7 0 0 0-1.38-3.56A8.03 8.03 0 0 1 18.9 8ZM12 4.04c.83 1.2 1.48 2.53 1.91 3.96h-3.82c.43-1.43 1.08-2.76 1.91-3.96ZM4.26 14a7.8 7.8 0 0 1 0-4h3.38a16.5 16.5 0 0 0 0 4H4.26Zm.82 2h2.95c.32 1.25.78 2.45 1.38 3.56A7.99 7.99 0 0 1 5.08 16Zm2.95-8H5.08a7.99 7.99 0 0 1 4.33-3.56A15.7 15.7 0 0 0 8.03 8ZM12 19.96A14.1 14.1 0 0 1 10.09 16h3.82A14.1 14.1 0 0 1 12 19.96ZM14.34 14H9.66a14.7 14.7 0 0 1 0-4h4.68a14.7 14.7 0 0 1 0 4Zm.25 5.56c.6-1.11 1.06-2.31 1.38-3.56h2.95a8.03 8.03 0 0 1-4.33 3.56ZM16.36 14a16.5 16.5 0 0 0 0-4h3.38a7.8 7.8 0 0 1 0 4h-3.38Z"/></svg><span>العربية</span></summary><ul><li><a href="/tc-help/wn-rc2" data-locale="en" lang="en" dir="ltr">English</a></li><li><a href="/es/tc-help/wn-rc2" data-locale="es" lang="es-MX" dir="ltr">Español</a></li><li><a href="/fr/tc-help/wn-rc2" data-locale="fr" lang="fr" dir="ltr">Français</a></li><li><a href="/hi/tc-help/wn-rc2" data-locale="hi" lang="hi" dir="ltr">हिन्दी</a></li><li><a href="/ru/tc-help/wn-rc2" data-locale="ru" lang="ru" dir="ltr">Русский</a></li><li><a href="/ar/tc-help/wn-rc2" data-locale="ar" lang="ar" dir="rtl" aria-current="true">العربية</a></li><li><a href="/zh/tc-help/wn-rc2" data-locale="zh" lang="zh-Hans" dir="ltr">简体中文</a></li><li><a href="/sw/tc-help/wn-rc2" data-locale="sw" lang="sw" dir="ltr">Kiswahili</a></li><li><a href="/pt/tc-help/wn-rc2" data-locale="pt" lang="pt-BR" dir="ltr">Português</a></li><li><a href="/id/tc-help/wn-rc2" data-locale="id" lang="id" dir="ltr">Bahasa Indonesia</a></li><li><a href="/vi/tc-help/wn-rc2" data-locale="vi" lang="vi" dir="ltr">Tiếng Việt</a></li><li><a href="/bn/tc-help/wn-rc2" data-locale="bn" lang="bn" dir="ltr">বাংলা</a></li><li><a href="/ur/tc-help/wn-rc2" data-locale="ur" lang="ur" dir="rtl">اردو</a></li><li><a href="/fa/tc-help/wn-rc2" data-locale="fa" lang="fa" dir="rtl">فارسی</a></li><li><a href="/my/tc-help/wn-rc2" data-locale="my" lang="my" dir="ltr">ဗမာစာ</a></li><li><a href="/nl/tc-help/wn-rc2" data-locale="nl" lang="nl" dir="ltr">Nederlands</a></li></ul></details>
+  <a class="site-link" href="/ar/">translationcore.com</a>
+</header>
+<div class="shell">
+<nav class="sidebar" id="sidebar" aria-label="موضوعات المساعدة">
+<details class="nav-group"><summary><a href="section-getting-started">البدء</a></summary><ul>
+<li><a href="gs-install">تثبيت tC4 وتشغيله</a></li>
+<li><a href="gs-home">الشاشة الرئيسية</a></li>
+<li><a href="gs-modes">فهم وترجمة ومراجعة — الأوضاع الثلاثة</a></li>
+<li><a href="gs-save">الحفظ ونقاط الحفظ</a></li>
+<li><a href="gs-resume">استئناف العمل من حيث توقفت</a></li>
+<li><a href="gs-switch-project">تبديل المشروع أو العودة إلى الشاشة الرئيسية</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-bible-projects">مشاريع الكتاب المقدس</a></summary><ul>
+<li><a href="bp-new-bible">إنشاء مشروع كتاب مقدس</a></li>
+<li><a href="bp-add-book">إضافة سفر</a></li>
+<li><a href="bp-open-book">فتح سفر والتنقل بين الأصحاحات</a></li>
+<li><a href="bp-import">استيراد مشروع translationCore 3</a></li>
+<li><a href="bp-export-pdf">تصدير سفر بصيغة PDF</a></li>
+<li><a href="bp-export-usfm">تصدير سفر بصيغة USFM (مع المحاذاة أو نص عادي)</a></li>
+<li><a href="bp-export-burrito">تصدير مشروع بصيغة Scripture Burrito</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-translate">ترجمة</a></summary><ul>
+<li><a href="tr-screen">شاشة الترجمة</a></li>
+<li><a href="tr-source-texts">علامات تبويب المصدر — نصوص اللغة المحورية واللغة الأصلية</a></li>
+<li><a href="tr-draft-section">صياغة مقطع</a></li>
+<li><a href="tr-place-verse-numbers">وضع أرقام الآيات</a></li>
+<li><a href="tr-verse-spans">دمج الآيات في نطاق أو فصلها</a></li>
+<li><a href="tr-verse-by-verse">صياغة آية واحدة أو مراجعتها</a></li>
+<li><a href="tr-formatting">الفقرات والشعر</a></li>
+<li><a href="tr-helps-panel">لوحة المساعدات في وضع الترجمة</a></li>
+<li><a href="tr-edit-after-check">تعديل آية سبقت مراجعتها أو محاذاتها</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-understand">فهم</a></summary><ul>
+<li><a href="un-read-passage">اقرأ المقطع قبل أن تترجم</a></li>
+<li><a href="un-notes">ملاحظات الترجمة ومقالات أكاديمية الترجمة</a></li>
+<li><a href="un-word-links">روابط الكلمات (كلمات الترجمة)</a></li>
+<li><a href="un-questions">أسئلة الترجمة</a></li>
+<li><a href="un-simplified">علامة تبويب النص المبسَّط</a></li>
+<li><a href="un-user-comments">كتابة تعليق خاص بك</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-check">مراجعة</a></summary><ul>
+<li><a href="ck-tool-picker">اختيار أداة مراجعة</a></li>
+<li><a href="ck-translation-notes">المراجعة باستخدام ملاحظات الترجمة</a></li>
+<li><a href="ck-translation-words">المراجعة باستخدام كلمات الترجمة</a></li>
+<li><a href="ck-decide">الحكم على عنصر المراجعة (صالح، غير صالح، لم يُحسم)</a></li>
+<li><a href="ck-bookmarks">وضع إشارة مرجعية على عنصر مراجعة</a></li>
+<li><a href="ck-comments">كتابة تعليق على عنصر مراجعة</a></li>
+<li><a href="ck-filter-sort">تصفية عناصر المراجعة وفرزها</a></li>
+<li><a href="ck-community-checking">معاينة مراجعة المجتمع</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-align">محاذاة</a></summary><ul>
+<li><a href="al-open">فتح أداة المحاذاة</a></li>
+<li><a href="al-link-words">ربط كلماتك بالمصدر</a></li>
+<li><a href="al-phrases">محاذاة عبارة (دمج البطاقات وتقسيمها)</a></li>
+<li><a href="al-modes">المحاذاة مع نص اللغة المحورية أو مع اللغة الأصلية</a></li>
+<li><a href="al-suggestions">اقتراحات المحاذاة</a></li>
+<li><a href="al-mark-valid">تعليم المحاذاة على أنها مكتملة</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-obs">Open Bible Stories</a></summary><ul>
+<li><a href="obs-create">بدء مشروع Open Bible Stories</a></li>
+<li><a href="obs-story-tiles">العثور على قصة في الشاشة الرئيسية</a></li>
+<li><a href="obs-translate">ترجمة قصة</a></li>
+<li><a href="obs-understand">فهم قصة</a></li>
+<li><a href="obs-check">مراجعة قصة</a></li>
+<li><a href="obs-community-checking">معاينة القصة وتصديرها</a></li>
+<li><a href="obs-export-markdown-pdf">تصدير القصص بصيغة PDF أو Markdown</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-resources">الموارد والعمل دون إنترنت</a></summary><ul>
+<li><a href="rs-whats-included">ما يأتي مع التطبيق</a></li>
+<li><a href="rs-source-texts">تنزيل النصوص المصدرية</a></li>
+<li><a href="rs-checking-language">تغيير لغة المراجعة</a></li>
+<li><a href="rs-upgrade-helps">تحديث المساعدات المُعتمَدة</a></li>
+<li><a href="rs-upgrade-texts">تحديث نصوص الكتاب المقدس</a></li>
+<li><a href="rs-guided-fix">إصلاح مورد مفقود</a></li>
+<li><a href="rs-offline">العمل دون إنترنت</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-settings">الإعدادات</a></summary><ul>
+<li><a href="st-project-settings">إعدادات المشروع</a></li>
+<li><a href="st-where-projects-live">أين تُحفظ مشاريعك</a></li>
+<li><a href="st-app-language">تغيير لغة التطبيق</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-troubleshooting">حل المشكلات والحدود المعروفة</a></summary><ul>
+<li><a href="ts-save-problems">عندما يفشل الحفظ</a></li>
+<li><a href="ts-protect-messages">رسائل تحمي مشروعك</a></li>
+<li><a href="ts-crash-recovery">إذا أُغلق التطبيق فجأة أو أصبحت النافذة فارغة</a></li>
+<li><a href="ts-platform">ملاحظات حول Windows و macOS و Linux</a></li>
+<li><a href="ts-share-door43">المشاركة على Door43</a></li>
+<li><a href="ts-team-sync">العمل كفريق على عدة أجهزة كمبيوتر</a></li>
+<li><a href="ts-not-yet">ميزات لا يتضمنها tC4</a></li>
+</ul></details>
+<details class="nav-group" open><summary><a href="section-whats-new">ملاحظات الإصدار</a></summary><ul>
+<li><a href="wn-alpha1">alpha.1 — أول إصدار عام</a></li>
+<li><a href="wn-alpha2">alpha.2 — المراجعة والمحاذاة</a></li>
+<li><a href="wn-alpha4">alpha.4 — الفتح والاستئناف</a></li>
+<li><a href="wn-alpha5">alpha.5 — صياغة فعلية</a></li>
+<li><a href="wn-alpha6">alpha.6 — الاقتراحات والموارد</a></li>
+<li><a href="wn-alpha7">alpha.7 — Open Bible Stories</a></li>
+<li><a href="wn-add-a-project">27 سبتمبر 2026 — زر واحد «+ إضافة مشروع» في الشاشة الرئيسية</a></li>
+<li><a href="wn-rc1">ما الجديد في 4.0 rc.1</a></li>
+<li><a href="wn-rc2" class="current" aria-current="page">ما الجديد في 4.0 rc.2</a></li>
+<li><a href="wn-4.1">ما الجديد في 4.1</a></li>
+</ul></details>
+</nav>
+<main id="main" class="content">
+<p class="crumbs"><a href="/ar/tc-help/">المساعدة</a> › <a href="section-whats-new">ملاحظات الإصدار</a></p>
+<h1>ما الجديد في 4.0 rc.2</h1>
+<p class="lede">الإصدار التجريبي العام. نافذة تحضير عند التشغيل الأول، وترقيم الكلمات المكررة ووضع عدة كلمات دفعة واحدة في المحاذاة، والتحديد بالسحب في المراجعة، و«السابق» و«التالي» بجانب أزرار التعليم. تحديث 20 أكتوبر: آيات الشعر تُفتح كاملة، والمحاذاة تتبع كلماتها.</p>
+<p>الإصدار 4.0.0-rc.2 هو الإصدار التجريبي العام. هذه أهم التغييرات منذ rc.1.</p>
+<h2 id="starting-tc4">تشغيل tC4</h2>
+<ul><li><strong>نافذة تجهيز عند أول تشغيل.</strong> تعرض نافذة «جارٍ تجهيز translationCore4» عدّ الموارد المرفقة، مثل «جارٍ تجهيز الموارد: 2 من أصل 16»، ثم يُفتح tC4 على الرئيسية. مرات التشغيل اللاحقة أسرع بكثير. إذا كان الملف الذي نزّلته تالفًا، يخبرك tC4 بذلك ويُغلق دون أن يغيّر شيئًا. راجع <a href="gs-install">تثبيت tC4 وتشغيله</a>.</li></ul>
+<h2 id="align">محاذاة</h2>
+<ul><li><strong>الكلمات المكررة مرقّمة.</strong> الكلمة التي ترد أكثر من مرة في الآية تُظهر أي نسخة هي: de¹ وde² وde³. وتستخدم بطاقات المصدر الأرقام نفسها.</li><li><strong>ضع عدة كلمات دفعة واحدة.</strong> انقر مع Ctrl (أو Cmd على Mac) أو مع Shift على كلمات في بنك الكلمات، ثم انقرها أو اسحبها إلى بطاقة واحدة.</li><li><strong>تحافظ البطاقات على ترتيب الآية.</strong> تظهر الكلمات على البطاقة دائمًا بالترتيب الذي ترد به في آيتك، أينما أفلتّها.</li></ul>
+<p>راجع <a href="al-link-words">ربط كلماتك بالمصدر</a>.</p>
+<h2 id="check">مراجعة</h2>
+<ul><li><strong>اسحب لتحديد الكلمات.</strong> اسحب عبر <span class="ui">ترجمتك</span> لتحديد كلمات كاملة. يحفظ <span class="ui">✓ تعليم كصالح</span> التحديد، ويبقى موجودًا عندما تعود إلى العنصر. يعمل هذا في ملاحظات الترجمة وكلمات الترجمة. راجع <a href="ck-decide">اتخاذ قرار في عنصر مراجعة</a>.</li><li><strong>السابق والتالي بجانب العلامات.</strong> صار <span class="ui">السابق</span> و<span class="ui">التالي</span> في الصف نفسه مع <span class="ui">✓ تعليم كصالح</span> و<span class="ui">غير صالح</span> و<span class="ui">قيد الانتظار</span>، في المراجعة وفي المحاذاة.</li></ul>
+<h2 id="translate">ترجمة</h2>
+<ul><li><strong>زر صياغة المقطع ظاهر دائمًا</strong>، كزر صغير مستدير على كل مقطع. راجع <a href="tr-draft-section">صياغة مقطع</a>.</li></ul>
+<h2 id="also-new-since-rc-1">جديد أيضًا منذ rc.1</h2>
+<ul><li><strong>عناصر مراجعة كلمات الترجمة تستخدم الروابط المنشورة.</strong> تأتي الإنجليزية مع <code>en_twl</code> v91 بجانب <code>en_tw</code> v91. تثبّت تنزيلات اللغات المحورية ملف <code>_twl</code> الخاص بها عند نشره؛ وإلا فتُقرن الروابط الإنجليزية بمقالات تلك اللغة. الأسفار غير الموجودة في إصدار الروابط ليس لها مراجعة tW. وتُخفى الصفوف التي تنقصها مقالات. راجع <a href="ck-translation-words">المراجعة باستخدام كلمات الترجمة</a> و<a href="rs-whats-included">ما يأتي مع التطبيق</a>.</li></ul>
+<ul><li><strong>الإنترنت متوقف حتى تشغّله.</strong> الخطوة التي تحتاج إلى الإنترنت تسألك أولًا: «هل تريد تشغيل الإنترنت؟». ثم يستخدم tC4 الإنترنت حتى توقف <span class="ui">استخدام الإنترنت</span> في قائمة الحساب، أو تغلق tC4. راجع <a href="rs-offline">العمل دون إنترنت</a>.</li><li><strong>إضافة أسفار من ملفات USFM</strong> إلى مشروع موجود لديك: <span class="ui">إضافة سفر</span> › <span class="ui">إضافة أسفار من ملفات USFM</span>. يصبح كل ملف سفرًا. راجع <a href="bp-add-book">إضافة سفر</a>.</li><li><strong>المشاركة على Door43 تستخدم السؤال نفسه.</strong> وتقول أيضًا إنك ستراجع الوجهة والأسفار قبل رفع أي شيء. راجع <a href="ts-share-door43">المشاركة على Door43</a>.</li><li><strong>تحتفظ قائمة القصص بعناوينها ونسبها المئوية</strong> أثناء صياغة قصة. راجع <a href="obs-translate">ترجمة قصة</a>.</li><li><strong>إعدادات المشروع</strong> تقول «1 book» بدلًا من «1 books» (تصحيح لصيغة المفرد).</li></ul>
+<ul><li><strong>قائمة الحساب:</strong> <span class="ui">المساعدة والأدلة</span> (دون اتصال) و<span class="ui">حول translationCore</span> و<span class="ui">لغة التطبيق</span> (تسع لغات) و<span class="ui">الإبلاغ عن مشكلة</span>. راجع <a href="gs-home">الشاشة الرئيسية</a> و<a href="st-app-language">تغيير لغة التطبيق</a>.</li><li><strong>نطاقات الآيات تُحسب في نسبة الصياغة</strong>، وجمع آيات عبر فقرة لم يعد يترك سطرًا فارغًا داخل النطاق. راجع <a href="tr-verse-spans">دمج الآيات في نطاق أو فصلها</a>.</li><li><strong>الاستئناف</strong> يذكر الآية أو النطاق الذي كنت عليه بعد تغيير في النطاق. راجع <a href="gs-resume">استئناف العمل من حيث توقفت</a>.</li><li><strong>وضع أرقام الآيات</strong> يدعم النقر ثم النقر لنقل رقم وضعته من قبل. راجع <a href="tr-place-verse-numbers">وضع أرقام الآيات</a>.</li><li><strong>فهم / ترجمة / مراجعة</strong> تبقى في الوسط عندما يتحول «تم الحفظ» إلى «غير محفوظ». راجع <a href="gs-modes">الأوضاع الثلاثة</a>.</li><li>يمكنك <strong>حفظ مقطع بعد حذف كل نصه</strong> (آيات فارغة). راجع <a href="tr-draft-section">صياغة مقطع</a>.</li><li><strong>مقالات المساعدات</strong> تعرض الاقتباسات والخط العريض بشكل نظيف؛ وأرقام الآيات في UST/GST مرتفعة. راجع <a href="un-notes">قراءة الملاحظات</a> و<a href="un-simplified">النص المبسّط</a>.</li></ul>
+<h2 id="rc-2-update-october-20-2026">تحديث rc.2 — 20 أكتوبر 2026</h2>
+<p>أُعيد بناء rc.2 في 20 أكتوبر مع هذه التغييرات. ويبقى رقم الإصدار 4.0.0-rc.2.</p>
+<h3 id="rc-2-update-translate">ترجمة</h3>
+<ul><li><strong>آيات الشعر تُفتح كاملة.</strong> يعرض محررا الآية والمقطع كل سطر من آية الشعر، كل سطر مُزاح بمسافة جدولة لكل مستوى، مع فواصل الفقرات والمقاطع كأسطر فارغة. ولم يعد الحفظ يترك نصًا قديمًا وراءه. راجع <a href="tr-formatting">الفقرات والشعر</a>.</li><li><strong>تظهر كل آيات الأسفار الشعرية.</strong> الآيات التي تبدأ بسطر شعري، مثل معظم المزامير والتكوين 49، تظهر الآن في الترجمة والمحاذاة.</li><li>الآيات ذات المحاذاة المتداخلة تُظهر كل كلماتها، مثل «the heavens» في التكوين 1:1.</li></ul>
+<h3 id="rc-2-update-align">محاذاة</h3>
+<ul><li>يطابق بنك الكلمات دائمًا نص الآية كما هو الآن، والنقر على بطاقة يضع فقط الكلمات الظاهرة كمحددة. راجع <a href="al-link-words">ربط كلماتك بالمصدر</a>.</li><li>يبقى الرابط على كلمته عندما تعدّل الآية. حذف كلمة مرتبطة يزيل رابطها. والتغيير الذي يجعل من غير الواضح أي نسخة من الكلمة المكررة احتفظت بها يعلّم الآية للمراجعة. راجع <a href="tr-edit-after-check">تعديل آية سبقت مراجعتها أو محاذاتها</a>.</li><li>قاعدة واحدة تحدد أي المحاذاة تحتاج إلى مراجعة، في قائمة الآيات، والتنبيه، و✓ تعليم كصالح، واستيراد translationCore 3، والتصدير مع المحاذاة.</li><li>تتبع بطاقات المصدر نص اللغة الأصلية في مشروعك، كما في translationCore 3.</li><li>الآيات المستوردة مع محاذاتها تبقى كما استوردت وتعرض «هذه الآية تحتوي بالفعل على محاذاة». راجع <a href="al-open">فتح أداة المحاذاة</a>.</li><li>تستخدم الاقتراحات الكلمات نفسها التي في بنك الكلمات، وتعمل بشكل أفضل مع العبرية.</li></ul>
+<h3 id="export">تصدير</h3>
+<ul><li><strong>USFM، مع المحاذاة</strong> يذكر كل آية تحتاج محاذاتها إلى مراجعة وليست في الملف: «محاذاتك لهذه الآيات غير موجودة في الملف». راجع <a href="bp-export-usfm">تصدير سفر بصيغة USFM</a>.</li></ul>
+<h3 id="team-sync">مزامنة الفريق</h3>
+<ul><li>تذكر نتيجة المزامنة كل آية حلّت فيها محاذاة أحدث لأحد زملائك محل محاذاتك. راجع <a href="ts-team-sync">العمل كفريق</a>.</li><li>بعد المزامنة، يعرض المشروع الذي كان مفتوحًا رسالة بسيطة تطلب منك إغلاقه وفتحه مرة أخرى، والرئيسية تسمح لك دائمًا بالمغادرة.</li></ul>
+<h3 id="import">استيراد</h3>
+<ul><li>Scripture Burrito الذي لا يحتوي على ملف ترقيم الآيات يُستورد دون أخطاء «لم تُسجَّل نقطة الحفظ».</li></ul>
+<h2 id="related">موضوعات ذات صلة</h2><ul class="related"><li><a href="wn-alpha1">alpha.1 — أول إصدار عام</a></li><li><a href="wn-alpha2">alpha.2 — المراجعة والمحاذاة</a></li><li><a href="wn-alpha4">alpha.4 — الفتح والاستئناف</a></li><li><a href="wn-alpha5">alpha.5 — صياغة فعلية</a></li><li><a href="wn-alpha6">alpha.6 — الاقتراحات والموارد</a></li><li><a href="wn-alpha7">alpha.7 — Open Bible Stories</a></li><li><a href="wn-add-a-project">27 سبتمبر 2026 — زر واحد «+ إضافة مشروع» في الشاشة الرئيسية</a></li><li><a href="wn-rc1">ما الجديد في 4.0 rc.1</a></li></ul>
+</main>
+</div>
+<footer class="sitefoot">التطبيق هو المرجع: إذا اختلفت هذه الصفحة عن التطبيق، فالتطبيق هو الصحيح — يُرجى إخبارنا. <a href="section-whats-new">ملاحظات الإصدار</a> · <a href="/ar/">translationcore.com</a></footer>
+<script src="search-index.js"></script>
+<script src="/tc-help/assets/search.js"></script>
+<script src="/tc-help/assets/page-toc.js"></script>
+<script src="/assets/js/help-i18n.js"></script>
+</body>
+</html>

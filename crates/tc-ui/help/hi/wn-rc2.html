@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="hi" dir="ltr" data-script="devanagari">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>4.0 rc.2 में नया क्या है · translationCore 4 सहायता</title>
+<meta name="description" content="सार्वजनिक बीटा। पहली बार शुरू करने पर तैयारी की विंडो, संरेखण में दोहराए गए शब्दों पर क्रमांक और कई शब्दों को एक साथ रखना, जाँच में खींचकर चुनना, और चिह्नित करने वाले बटनों के पास पिछला और अगला। 20 अक्तूबर का अद्यतन: कविता वाले पद पूरे खुलते हैं, और संरेखण अपने शब्दों के साथ चलते हैं।">
+<link rel="stylesheet" href="/tc-help/assets/style.css">
+<link rel="canonical" href="https://translationcore.com/hi/tc-help/wn-rc2">
+<link rel="alternate" hreflang="en" href="https://translationcore.com/tc-help/wn-rc2">
+<link rel="alternate" hreflang="es-MX" href="https://translationcore.com/es/tc-help/wn-rc2">
+<link rel="alternate" hreflang="fr" href="https://translationcore.com/fr/tc-help/wn-rc2">
+<link rel="alternate" hreflang="hi" href="https://translationcore.com/hi/tc-help/wn-rc2">
+<link rel="alternate" hreflang="ru" href="https://translationcore.com/ru/tc-help/wn-rc2">
+<link rel="alternate" hreflang="ar" href="https://translationcore.com/ar/tc-help/wn-rc2">
+<link rel="alternate" hreflang="zh-Hans" href="https://translationcore.com/zh/tc-help/wn-rc2">
+<link rel="alternate" hreflang="sw" href="https://translationcore.com/sw/tc-help/wn-rc2">
+<link rel="alternate" hreflang="pt-BR" href="https://translationcore.com/pt/tc-help/wn-rc2">
+<link rel="alternate" hreflang="id" href="https://translationcore.com/id/tc-help/wn-rc2">
+<link rel="alternate" hreflang="vi" href="https://translationcore.com/vi/tc-help/wn-rc2">
+<link rel="alternate" hreflang="bn" href="https://translationcore.com/bn/tc-help/wn-rc2">
+<link rel="alternate" hreflang="ur" href="https://translationcore.com/ur/tc-help/wn-rc2">
+<link rel="alternate" hreflang="fa" href="https://translationcore.com/fa/tc-help/wn-rc2">
+<link rel="alternate" hreflang="my" href="https://translationcore.com/my/tc-help/wn-rc2">
+<link rel="alternate" hreflang="nl" href="https://translationcore.com/nl/tc-help/wn-rc2">
+<link rel="alternate" hreflang="x-default" href="https://translationcore.com/tc-help/wn-rc2">
+<link rel="stylesheet" href="/assets/fonts/devanagari.css">
+<link rel="stylesheet" href="/assets/css/help-i18n.css">
+<script>window.__tcLocale={"locale":"hi","defaultLocale":"en","alternates":true,"locales":["en","es","fr","hi","ru","ar","zh","sw","pt","id","vi","bn","ur","fa","my","nl"],"tags":{"en":"en","es":"es-MX","fr":"fr","hi":"hi","ru":"ru","ar":"ar","zh":"zh-Hans","sw":"sw","pt":"pt-BR","id":"id","vi":"vi","bn":"bn","ur":"ur","fa":"fa","my":"my","nl":"nl"}};window.TC4_HELP_I18N={"lang":"hi","language":"भाषा","onThisPage":"इस पृष्ठ पर","noResults":"“{query}” से कोई विषय मेल नहीं खाता। कोई दूसरा शब्द आज़माएँ, जैसे संरेखण, जाँच, कहानी या ऑफ़लाइन।","seeAll":"सभी परिणाम देखें →","resultsOne":"“{query}” के लिए 1 विषय","resultsMany":"“{query}” के लिए {count} विषय","searchPrompt":"एक-दो शब्द लिखें, जैसे “संरेखण”, “बुकमार्क” या “पद-समूह”।"}</script>
+<script src="/assets/js/locale.js"></script>
+<link rel="icon" type="image/png" href="/tc-help/assets/tc_logo.png">
+<link rel="apple-touch-icon" href="/tc-help/assets/tc_logo.png">
+</head>
+<body>
+<a class="skip" href="#main">सामग्री पर जाएँ</a>
+<header class="topbar">
+  <button class="menu-btn" id="menu-btn" aria-label="विषय दिखाएँ" aria-controls="sidebar" aria-expanded="false">☰</button>
+  <a class="brand" href="/hi/tc-help/" aria-label="translationCore सहायता का मुखपृष्ठ"><img class="brand-logo" src="/tc-help/assets/translationcore-logo.png" alt="" width="25" height="28"><span class="wordmark">translationCore<span class="reg">®</span></span><span class="brand-rule" aria-hidden="true"></span><span class="brand-text">सहायता</span></a>
+  <form class="search" action="search" method="get" role="search" autocomplete="off">
+    <input id="q" name="q" type="search" placeholder="सहायता में खोजें (/ दबाएँ)" aria-label="सहायता में खोजें">
+    <div class="search-results" id="search-results" role="listbox" hidden></div>
+  </form>
+  <details class="help-lang"><summary aria-label="भाषा: हिन्दी"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm6.9 6h-2.95a15.7 15.7 0 0 0-1.38-3.56A8.03 8.03 0 0 1 18.9 8ZM12 4.04c.83 1.2 1.48 2.53 1.91 3.96h-3.82c.43-1.43 1.08-2.76 1.91-3.96ZM4.26 14a7.8 7.8 0 0 1 0-4h3.38a16.5 16.5 0 0 0 0 4H4.26Zm.82 2h2.95c.32 1.25.78 2.45 1.38 3.56A7.99 7.99 0 0 1 5.08 16Zm2.95-8H5.08a7.99 7.99 0 0 1 4.33-3.56A15.7 15.7 0 0 0 8.03 8ZM12 19.96A14.1 14.1 0 0 1 10.09 16h3.82A14.1 14.1 0 0 1 12 19.96ZM14.34 14H9.66a14.7 14.7 0 0 1 0-4h4.68a14.7 14.7 0 0 1 0 4Zm.25 5.56c.6-1.11 1.06-2.31 1.38-3.56h2.95a8.03 8.03 0 0 1-4.33 3.56ZM16.36 14a16.5 16.5 0 0 0 0-4h3.38a7.8 7.8 0 0 1 0 4h-3.38Z"/></svg><span>हिन्दी</span></summary><ul><li><a href="/tc-help/wn-rc2" data-locale="en" lang="en" dir="ltr">English</a></li><li><a href="/es/tc-help/wn-rc2" data-locale="es" lang="es-MX" dir="ltr">Español</a></li><li><a href="/fr/tc-help/wn-rc2" data-locale="fr" lang="fr" dir="ltr">Français</a></li><li><a href="/hi/tc-help/wn-rc2" data-locale="hi" lang="hi" dir="ltr" aria-current="true">हिन्दी</a></li><li><a href="/ru/tc-help/wn-rc2" data-locale="ru" lang="ru" dir="ltr">Русский</a></li><li><a href="/ar/tc-help/wn-rc2" data-locale="ar" lang="ar" dir="rtl">العربية</a></li><li><a href="/zh/tc-help/wn-rc2" data-locale="zh" lang="zh-Hans" dir="ltr">简体中文</a></li><li><a href="/sw/tc-help/wn-rc2" data-locale="sw" lang="sw" dir="ltr">Kiswahili</a></li><li><a href="/pt/tc-help/wn-rc2" data-locale="pt" lang="pt-BR" dir="ltr">Português</a></li><li><a href="/id/tc-help/wn-rc2" data-locale="id" lang="id" dir="ltr">Bahasa Indonesia</a></li><li><a href="/vi/tc-help/wn-rc2" data-locale="vi" lang="vi" dir="ltr">Tiếng Việt</a></li><li><a href="/bn/tc-help/wn-rc2" data-locale="bn" lang="bn" dir="ltr">বাংলা</a></li><li><a href="/ur/tc-help/wn-rc2" data-locale="ur" lang="ur" dir="rtl">اردو</a></li><li><a href="/fa/tc-help/wn-rc2" data-locale="fa" lang="fa" dir="rtl">فارسی</a></li><li><a href="/my/tc-help/wn-rc2" data-locale="my" lang="my" dir="ltr">ဗမာစာ</a></li><li><a href="/nl/tc-help/wn-rc2" data-locale="nl" lang="nl" dir="ltr">Nederlands</a></li></ul></details>
+  <a class="site-link" href="/hi/">translationcore.com</a>
+</header>
+<div class="shell">
+<nav class="sidebar" id="sidebar" aria-label="सहायता के विषय">
+<details class="nav-group"><summary><a href="section-getting-started">शुरुआत करें</a></summary><ul>
+<li><a href="gs-install">tC4 स्थापित करें और शुरू करें</a></li>
+<li><a href="gs-home">होम स्क्रीन</a></li>
+<li><a href="gs-modes">समझें, अनुवाद और जाँच — तीन मोड</a></li>
+<li><a href="gs-save">सहेजना और चेकपॉइंट</a></li>
+<li><a href="gs-resume">जहाँ छोड़ा था वहीं से जारी रखें</a></li>
+<li><a href="gs-switch-project">परियोजना बदलें या होम पर वापस जाएँ</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-bible-projects">बाइबल परियोजनाएँ</a></summary><ul>
+<li><a href="bp-new-bible">बाइबल परियोजना बनाएँ</a></li>
+<li><a href="bp-add-book">पुस्तक जोड़ें</a></li>
+<li><a href="bp-open-book">पुस्तक खोलें और अध्यायों के बीच जाएँ</a></li>
+<li><a href="bp-import">translationCore 3 परियोजना आयात करें</a></li>
+<li><a href="bp-export-pdf">पुस्तक को PDF के रूप में निर्यात करें</a></li>
+<li><a href="bp-export-usfm">पुस्तक को USFM के रूप में निर्यात करें (संरेखित या सादा)</a></li>
+<li><a href="bp-export-burrito">परियोजना को Scripture Burrito के रूप में निर्यात करें</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-translate">अनुवाद</a></summary><ul>
+<li><a href="tr-screen">अनुवाद स्क्रीन</a></li>
+<li><a href="tr-source-texts">स्रोत टैब — गेटवे पाठ और मूल भाषा</a></li>
+<li><a href="tr-draft-section">एक खंड का मसौदा बनाएँ</a></li>
+<li><a href="tr-place-verse-numbers">पद संख्याएँ रखें</a></li>
+<li><a href="tr-verse-spans">पद-समूह बनाएँ या तोड़ें</a></li>
+<li><a href="tr-verse-by-verse">एक पद का मसौदा बनाएँ या उसे सुधारें</a></li>
+<li><a href="tr-formatting">अनुच्छेद और कविता</a></li>
+<li><a href="tr-helps-panel">अनुवाद में सहायता पैनल</a></li>
+<li><a href="tr-edit-after-check">ऐसे पद को बदलना जिसकी आप जाँच या संरेखण कर चुके हैं</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-understand">समझें</a></summary><ul>
+<li><a href="un-read-passage">अनुवाद से पहले अंश पढ़ें</a></li>
+<li><a href="un-notes">अनुवाद नोट्स और अनुवाद अकादमी के लेख</a></li>
+<li><a href="un-word-links">शब्द कड़ियाँ (अनुवाद शब्द)</a></li>
+<li><a href="un-questions">अनुवाद प्रश्न</a></li>
+<li><a href="un-simplified">सरलीकृत पाठ टैब</a></li>
+<li><a href="un-user-comments">उपयोगकर्ता टिप्पणी लिखें</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-check">जाँच</a></summary><ul>
+<li><a href="ck-tool-picker">जाँच उपकरण चुनें</a></li>
+<li><a href="ck-translation-notes">अनुवाद नोट्स से जाँचें</a></li>
+<li><a href="ck-translation-words">अनुवाद शब्द से जाँचें</a></li>
+<li><a href="ck-decide">जाँच मद पर निर्णय लें (मान्य, अमान्य, करना बाकी)</a></li>
+<li><a href="ck-bookmarks">जाँच को बुकमार्क करें</a></li>
+<li><a href="ck-comments">जाँच पर टिप्पणी लिखें</a></li>
+<li><a href="ck-filter-sort">जाँच मदों को छाँटें और क्रमबद्ध करें</a></li>
+<li><a href="ck-community-checking">सामुदायिक जाँच पूर्वावलोकन</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-align">संरेखण</a></summary><ul>
+<li><a href="al-open">संरेखण उपकरण खोलें</a></li>
+<li><a href="al-link-words">अपने शब्दों को स्रोत से जोड़ें</a></li>
+<li><a href="al-phrases">वाक्यांश का संरेखण करें (कार्ड जोड़ें और अलग करें)</a></li>
+<li><a href="al-modes">गेटवे पाठ या मूल भाषा से संरेखण करें</a></li>
+<li><a href="al-suggestions">संरेखण के सुझाव</a></li>
+<li><a href="al-mark-valid">संरेखण को पूरा चिह्नित करें</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-obs">Open Bible Stories</a></summary><ul>
+<li><a href="obs-create">Open Bible Stories परियोजना शुरू करें</a></li>
+<li><a href="obs-story-tiles">होम पर कहानी ढूँढें</a></li>
+<li><a href="obs-translate">कहानी का अनुवाद करें</a></li>
+<li><a href="obs-understand">कहानी को समझें</a></li>
+<li><a href="obs-check">कहानी की जाँच करें</a></li>
+<li><a href="obs-community-checking">कहानी का पूर्वावलोकन और निर्यात</a></li>
+<li><a href="obs-export-markdown-pdf">कहानियों को PDF या Markdown के रूप में निर्यात करें</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-resources">संसाधन और ऑफ़लाइन</a></summary><ul>
+<li><a href="rs-whats-included">ऐप के साथ क्या आता है</a></li>
+<li><a href="rs-source-texts">स्रोत पाठ डाउनलोड करें</a></li>
+<li><a href="rs-checking-language">जाँच की भाषा बदलें</a></li>
+<li><a href="rs-upgrade-helps">पिन की गई सहायता सामग्री अद्यतन करें</a></li>
+<li><a href="rs-upgrade-texts">धर्मशास्त्र पाठ अद्यतन करें</a></li>
+<li><a href="rs-guided-fix">गायब संसाधन ठीक करें</a></li>
+<li><a href="rs-offline">ऑफ़लाइन काम करना</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-settings">सेटिंग</a></summary><ul>
+<li><a href="st-project-settings">परियोजना सेटिंग</a></li>
+<li><a href="st-where-projects-live">आपकी परियोजनाएँ कहाँ रखी जाती हैं</a></li>
+<li><a href="st-app-language">ऐप की भाषा बदलें</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-troubleshooting">समस्या-समाधान और ज्ञात सीमाएँ</a></summary><ul>
+<li><a href="ts-save-problems">जब सहेजना विफल हो</a></li>
+<li><a href="ts-protect-messages">संदेश जो आपकी परियोजना की रक्षा करते हैं</a></li>
+<li><a href="ts-crash-recovery">यदि ऐप अचानक बंद हो गया या विंडो खाली हो गई</a></li>
+<li><a href="ts-platform">Windows, macOS और Linux के लिए नोट्स</a></li>
+<li><a href="ts-share-door43">Door43 पर साझा करें</a></li>
+<li><a href="ts-team-sync">कई कंप्यूटरों पर दल के रूप में काम करना</a></li>
+<li><a href="ts-not-yet">वे सुविधाएँ जो tC4 में नहीं हैं</a></li>
+</ul></details>
+<details class="nav-group" open><summary><a href="section-whats-new">रिलीज़ नोट्स</a></summary><ul>
+<li><a href="wn-alpha1">alpha.1 — पहला सार्वजनिक संस्करण</a></li>
+<li><a href="wn-alpha2">alpha.2 — जाँच और संरेखण</a></li>
+<li><a href="wn-alpha4">alpha.4 — खोलें और जारी रखें</a></li>
+<li><a href="wn-alpha5">alpha.5 — असली मसौदा लेखन</a></li>
+<li><a href="wn-alpha6">alpha.6 — सुझाव और संसाधन</a></li>
+<li><a href="wn-alpha7">alpha.7 — Open Bible Stories</a></li>
+<li><a href="wn-add-a-project">27 सितंबर 2026 — होम पर एक ही + परियोजना जोड़ें बटन</a></li>
+<li><a href="wn-rc1">4.0 rc.1 में नया क्या है</a></li>
+<li><a href="wn-rc2" class="current" aria-current="page">4.0 rc.2 में नया क्या है</a></li>
+<li><a href="wn-4.1">4.1 में नया क्या है</a></li>
+</ul></details>
+</nav>
+<main id="main" class="content">
+<p class="crumbs"><a href="/hi/tc-help/">सहायता</a> › <a href="section-whats-new">रिलीज़ नोट्स</a></p>
+<h1>4.0 rc.2 में नया क्या है</h1>
+<p class="lede">सार्वजनिक बीटा। पहली बार शुरू करने पर तैयारी की विंडो, संरेखण में दोहराए गए शब्दों पर क्रमांक और कई शब्दों को एक साथ रखना, जाँच में खींचकर चुनना, और चिह्नित करने वाले बटनों के पास पिछला और अगला। 20 अक्तूबर का अद्यतन: कविता वाले पद पूरे खुलते हैं, और संरेखण अपने शब्दों के साथ चलते हैं।</p>
+<p>4.0.0-rc.2 सार्वजनिक बीटा है। rc.1 के बाद के मुख्य बदलाव ये हैं।</p>
+<h2 id="starting-tc4">tC4 शुरू करना</h2>
+<ul><li><strong>पहली बार शुरू करने पर तैयारी की खिड़की।</strong> “translationCore4 तैयार किया जा रहा है” साथ आए संसाधनों को गिनता है, जैसे “संसाधन तैयार किए जा रहे हैं: 16 में से 2”, और फिर tC4 होम पर खुलता है। बाद में शुरू करना बहुत तेज़ होता है। अगर डाउनलोड क्षतिग्रस्त है, तो tC4 यह बताता है और कुछ भी बदले बिना बंद हो जाता है। देखें <a href="gs-install">tC4 स्थापित करें और शुरू करें</a>।</li></ul>
+<h2 id="align">संरेखण</h2>
+<ul><li><strong>दोहराए गए शब्दों पर संख्या होती है।</strong> जो शब्द पद में एक से अधिक बार आता है, वह दिखाता है कि यह उसकी कौन-सी प्रति है: de¹, de², de³। स्रोत कार्ड भी यही संख्याएँ उपयोग करते हैं।</li><li><strong>एक साथ कई शब्द रखें।</strong> शब्द बैंक में शब्दों पर Ctrl-क्लिक (Mac पर Cmd-क्लिक) या Shift-क्लिक करें, फिर उन्हें क्लिक करके या खींचकर एक कार्ड पर रखें।</li><li><strong>कार्ड पद का क्रम बनाए रखते हैं।</strong> कार्ड पर शब्द हमेशा उसी क्रम में दिखते हैं जिसमें वे आपके पद में आते हैं, चाहे आप उन्हें कहीं भी छोड़ें।</li></ul>
+<p>देखें <a href="al-link-words">अपने शब्दों को स्रोत से जोड़ें</a>।</p>
+<h2 id="check">जाँच</h2>
+<ul><li><strong>शब्द चुनने के लिए खींचें।</strong> पूरे शब्द चुनने के लिए <span class="ui">आपका अनुवाद</span> पर माउस खींचें। <span class="ui">✓ मान्य चिह्नित करें</span> चयन को सहेजता है, और जब आप उस मद पर लौटते हैं तब भी चयन वहीं होता है। यह अनुवाद नोट्स और अनुवाद शब्द में काम करता है। देखें <a href="ck-decide">जाँच की मद पर निर्णय लें</a>।</li><li><strong>चिह्नों के पास पिछला और अगला।</strong> जाँच और संरेखण दोनों में <span class="ui">पिछला</span> और <span class="ui">अगला</span> अब <span class="ui">✓ मान्य चिह्नित करें</span>, <span class="ui">अमान्य</span> और <span class="ui">करना बाकी</span> वाली पंक्ति में ही हैं।</li></ul>
+<h2 id="translate">अनुवाद</h2>
+<ul><li><strong>खंड का मसौदा बनाने का बटन हमेशा दिखता है</strong>, हर खंड पर एक छोटे गोल बटन के रूप में। देखें <a href="tr-draft-section">एक खंड का मसौदा बनाएँ</a>।</li></ul>
+<h2 id="also-new-since-rc-1">rc.1 के बाद और भी नया</h2>
+<ul><li><strong>अनुवाद शब्द की जाँचें जारी किए गए लिंक का उपयोग करती हैं।</strong> अंग्रेज़ी में <code>en_tw</code> v91 के साथ <code>en_twl</code> v91 आता है। गेटवे भाषा के डाउनलोड, प्रकाशित होने पर अपना <code>_twl</code> स्थापित करते हैं; नहीं तो अंग्रेज़ी लिंक उस भाषा के लेखों के साथ जोड़े जाते हैं। जो पुस्तकें लिंक रिलीज़ में नहीं हैं, उनकी अनुवाद शब्द जाँच नहीं होती। जिन पंक्तियों का लेख गायब है, वे छिपी रहती हैं। देखें <a href="ck-translation-words">अनुवाद शब्द से जाँचें</a> और <a href="rs-whats-included">ऐप के साथ क्या आता है</a>।</li></ul>
+<ul><li><strong>इंटरनेट तब तक बंद रहता है जब तक आप उसे चालू न करें।</strong> जिस चरण को इंटरनेट चाहिए, वह पहले पूछता है “इंटरनेट चालू करें?”। उसके बाद tC4 तब तक इंटरनेट का उपयोग करता है जब तक आप खाता मेनू में <span class="ui">इंटरनेट का उपयोग करें</span> बंद न करें, या tC4 बंद न करें। देखें <a href="rs-offline">ऑफ़लाइन काम करना</a>।</li><li>पहले से मौजूद परियोजना में <strong>USFM फ़ाइलों से पुस्तकें जोड़ें</strong>: <span class="ui">पुस्तक जोड़ें</span> › <span class="ui">USFM फ़ाइलों से पुस्तकें जोड़ें</span>। हर फ़ाइल एक पुस्तक बनती है। देखें <a href="bp-add-book">पुस्तक जोड़ें</a>।</li><li><strong>Door43 पर साझा करना भी यही प्रश्न पूछता है।</strong> यह यह भी बताता है कि कुछ भी अपलोड होने से पहले आप गंतव्य और पुस्तकों की समीक्षा करेंगे। देखें <a href="ts-share-door43">Door43 पर साझा करें</a>।</li><li><strong>कहानियों की सूची अपने शीर्षक और प्रतिशत बनाए रखती है</strong> जब आप किसी कहानी का मसौदा लिखते हैं। देखें <a href="obs-translate">कहानी का अनुवाद करें</a>।</li><li><strong>परियोजना सेटिंग</strong> में अब पुस्तक की संख्या सही व्याकरण में लिखी जाती है (“1 books” के बजाय “1 book”)।</li></ul>
+<ul><li><strong>खाता मेनू:</strong> <span class="ui">सहायता और मार्गदर्शिकाएँ</span> (ऑफ़लाइन), <span class="ui">translationCore के बारे में</span>, <span class="ui">ऐप की भाषा</span> (नौ भाषाएँ) और <span class="ui">समस्या की रिपोर्ट करें</span>। देखें <a href="gs-home">होम स्क्रीन</a> और <a href="st-app-language">ऐप की भाषा बदलें</a>।</li><li><strong>पद-समूह मसौदे के प्रतिशत में गिने जाते हैं</strong>, और अनुच्छेद के आर-पार पद जोड़ने पर अब पद-समूह के अंदर खाली पंक्ति नहीं बचती। देखें <a href="tr-verse-spans">पद-समूह बनाएँ या तोड़ें</a>।</li><li>पद-समूह बदलने के बाद <strong>“जारी रखें”</strong> उस पद या पद-समूह का नाम बताता है जिस पर आप थे। देखें <a href="gs-resume">जहाँ छोड़ा था वहीं से जारी रखें</a>।</li><li><strong>पद संख्याएँ रखें</strong> में पहले से रखी गई संख्या को एक क्लिक, फिर दूसरे क्लिक से खिसकाया जा सकता है। देखें <a href="tr-place-verse-numbers">पद संख्याएँ रखें</a>।</li><li><strong>समझें / अनुवाद / जाँच</strong> बीच में ही रहते हैं जब “सहेजा गया” बदलकर “बिना सहेजे बदलाव” हो जाता है। देखें <a href="gs-modes">तीन मोड</a>।</li><li>आप <strong>किसी खंड का सारा पाठ मिटाने के बाद भी उसे सहेज सकते हैं</strong> (खाली पद)। देखें <a href="tr-draft-section">एक खंड का मसौदा बनाएँ</a>।</li><li><strong>सहायता लेख</strong> उद्धरण और मोटे अक्षर साफ़ दिखाते हैं; UST/GST की पद संख्याएँ सुपरस्क्रिप्ट में होती हैं। देखें <a href="un-notes">नोट्स पढ़ें</a> और <a href="un-simplified">सरलीकृत पाठ</a>।</li></ul>
+<h2 id="rc-2-update-october-20-2026">rc.2 अद्यतन — 20 अक्टूबर 2026</h2>
+<p>rc.2 को 20 अक्टूबर को इन बदलावों के साथ फिर से बनाया गया। संस्करण संख्या 4.0.0-rc.2 ही रहती है।</p>
+<h3 id="rc-2-update-translate">अनुवाद</h3>
+<ul><li><strong>कविता के पद पूरे खुलते हैं।</strong> पद और खंड के संपादक कविता के पद की हर पंक्ति दिखाते हैं, हर स्तर पर एक टैब अंदर की ओर, और अनुच्छेद व अंश के विराम खाली पंक्तियों के रूप में। सहेजने पर अब पुराना पाठ पीछे नहीं छूटता। देखें <a href="tr-formatting">अनुच्छेद और कविता</a>।</li><li><strong>कविता की पुस्तकों के सभी पद दिखते हैं।</strong> जो पद कविता की पंक्ति से शुरू होते हैं, जैसे भजन संहिता के अधिकांश पद और उत्पत्ति 49, वे अब अनुवाद और संरेखण में दिखते हैं।</li><li>जिन पदों में नेस्टेड संरेखण हैं, वे अपने सभी शब्द दिखाते हैं, जैसे उत्पत्ति 1:1 में “the heavens”।</li></ul>
+<h3 id="rc-2-update-align">संरेखण</h3>
+<ul><li>शब्द बैंक हमेशा पद के वर्तमान पाठ से मेल खाता है, और कार्ड पर क्लिक करने से केवल वही शब्द रखे जाते हैं जो चुने हुए दिखते हैं। देखें <a href="al-link-words">अपने शब्दों को स्रोत से जोड़ें</a>।</li><li>पद संपादित करने पर लिंक अपने शब्द पर बना रहता है। जुड़े हुए शब्द को मिटाने पर उसका लिंक हट जाता है। अगर किसी बदलाव से साफ़ न हो कि दोहराए गए शब्द की कौन-सी प्रति आपने रखी, तो पद समीक्षा के लिए चिह्नित हो जाता है। देखें <a href="tr-edit-after-check">ऐसे पद को बदलना जिसकी आप जाँच या संरेखण कर चुके हैं</a>।</li><li>कौन-से संरेखणों को समीक्षा चाहिए, यह एक ही नियम तय करता है: पदों की सूची, सूचना, ✓ मान्य चिह्नित करें, translationCore 3 आयात और संरेखित निर्यात, सबके लिए।</li><li>स्रोत कार्ड आपकी परियोजना के मूल-भाषा पाठ के अनुसार चलते हैं, जैसे translationCore 3 में।</li><li>संरेखण सहित आयात किए गए पद वैसे ही रखे जाते हैं जैसे आयात हुए थे, और “इस पद में पहले से एक संरेखण है” दिखाते हैं। देखें <a href="al-open">संरेखण उपकरण खोलें</a>।</li><li>सुझाव वही शब्द उपयोग करते हैं जो शब्द बैंक में हैं, और इब्रानी के लिए बेहतर काम करते हैं।</li></ul>
+<h3 id="export">निर्यात</h3>
+<ul><li><strong>USFM, संरेखित</strong> हर उस पद का नाम बताता है जिसके संरेखण को समीक्षा चाहिए और जो फ़ाइल में नहीं है: “इन पदों का आपका संरेखण फ़ाइल में नहीं है”। देखें <a href="bp-export-usfm">पुस्तक को USFM के रूप में निर्यात करें</a>।</li></ul>
+<h3 id="team-sync">दल सिंक</h3>
+<ul><li>सिंक का परिणाम हर उस पद का नाम बताता है जहाँ किसी साथी के नए संरेखण ने आपके संरेखण की जगह ले ली। देखें <a href="ts-team-sync">दल के रूप में काम करना</a>।</li><li>सिंक के बाद, जो परियोजना खुली थी वह एक सरल संदेश दिखाती है जो आपसे उसे बंद करके फिर खोलने को कहता है, और होम से आप हमेशा बाहर जा सकते हैं।</li></ul>
+<h3 id="import">आयात</h3>
+<ul><li>बिना पद-विभाजन फ़ाइल वाला Scripture Burrito अब “चेकपॉइंट सहेजा नहीं गया” त्रुटियों के बिना आयात होता है।</li></ul>
+<h2 id="related">संबंधित विषय</h2><ul class="related"><li><a href="wn-alpha1">alpha.1 — पहला सार्वजनिक संस्करण</a></li><li><a href="wn-alpha2">alpha.2 — जाँच और संरेखण</a></li><li><a href="wn-alpha4">alpha.4 — खोलें और जारी रखें</a></li><li><a href="wn-alpha5">alpha.5 — असली मसौदा लेखन</a></li><li><a href="wn-alpha6">alpha.6 — सुझाव और संसाधन</a></li><li><a href="wn-alpha7">alpha.7 — Open Bible Stories</a></li><li><a href="wn-add-a-project">27 सितंबर 2026 — होम पर एक ही + परियोजना जोड़ें बटन</a></li><li><a href="wn-rc1">4.0 rc.1 में नया क्या है</a></li></ul>
+</main>
+</div>
+<footer class="sitefoot">ऐप ही सही जानकारी का स्रोत है: यदि यह पृष्ठ और ऐप अलग बात कहें, तो ऐप सही है — कृपया हमें बताएँ। <a href="section-whats-new">रिलीज़ नोट्स</a> · <a href="/hi/">translationcore.com</a></footer>
+<script src="search-index.js"></script>
+<script src="/tc-help/assets/search.js"></script>
+<script src="/tc-help/assets/page-toc.js"></script>
+<script src="/assets/js/help-i18n.js"></script>
+</body>
+</html>

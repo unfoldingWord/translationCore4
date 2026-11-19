@@ -15,7 +15,9 @@
   var aside = document.createElement('aside');
   aside.className = 'page-toc';
   aside.id = 'page-toc';
-  aside.setAttribute('aria-label', 'On this page');
+  // translationcore.com sets TC4_HELP_I18N on localized pages.
+  var label = (window.TC4_HELP_I18N && window.TC4_HELP_I18N.onThisPage) || 'On this page';
+  aside.setAttribute('aria-label', label);
 
   var head = document.createElement('div');
   head.className = 'page-toc-head';
@@ -25,7 +27,8 @@
   toggle.className = 'page-toc-toggle';
   toggle.setAttribute('aria-expanded', 'true');
   toggle.setAttribute('aria-controls', 'page-toc-list');
-  toggle.innerHTML = '<span class="page-toc-chevron" aria-hidden="true"></span><span class="page-toc-label">On this page</span>';
+  toggle.innerHTML = '<span class="page-toc-chevron" aria-hidden="true"></span><span class="page-toc-label"></span>';
+  toggle.lastChild.textContent = label;
 
   head.appendChild(toggle);
   aside.appendChild(head);

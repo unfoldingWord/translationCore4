@@ -40,5 +40,10 @@ test('the notices hold the licences of the app, its notices, Electronite and the
   for (const heading of ['translationCore 4 (tc-rst)', 'tc-door43 NOTICE', 'tc-align NOTICE', 'Font licence OFL-CharisSIL.txt', 'Font licence OFL-AwamiNastaliq.txt', 'Font licence OFL-NotoSansDevanagari.txt']) {
     assert.ok(text.includes(`\n${heading}\n`), heading);
   }
+  // The fonts the help pages load, Arabic and Hindi (#1036; tc-ui's
+  // `the_notices_carry_the_licence_of_every_help_font` ties the vendored fonts to these files).
+  for (const heading of ['Font licence OFL-NotoSansArabic.txt', 'Font licence OFL-NotoSansDevanagari.txt']) {
+    assert.ok(text.includes(`\n${heading}\n`), heading);
+  }
   assert.ok(text.includes('Copyright (c) Electron contributors'));
 });

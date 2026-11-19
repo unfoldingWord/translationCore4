@@ -8,8 +8,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
-  LABEL, LOCALES, browserTest, catalog, choose, expectLanguage, focused, openLanguage, openMenu,
-  recordRequests, sleep, trigger, until, withApp,
+  LABEL, LOCALES, applyLanguage, browserTest, catalog, choose, expectLanguage, focused, openLanguage,
+  openMenu, recordRequests, sleep, trigger, until, withApp,
 } from './kit.mjs';
 
 const dialog = (page) => page.getByTestId('language-dialog');
@@ -53,15 +53,6 @@ browserTest('a. the row shows the applied language; each selection previews befo
     assert.deepEqual(env.refused(), []);
   });
 });
-
-async function applyLanguage(page, id) {
-  await openLanguage(page);
-  await choose(page, id);
-  const written = page.waitForResponse((r) => r.url().endsWith('/api/v1/prefs/setLocale'));
-  await apply(page).click();
-  await written;
-  await closed(page);
-}
 
 browserTest('b. Apply saves the choice and closes after the write; a reload starts in it', async () => {
   await withApp(async ({ page, env }) => {

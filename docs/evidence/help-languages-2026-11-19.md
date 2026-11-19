@@ -1,0 +1,79 @@
+# Help in the app's language (issue 1036): the build of the help, and the journey
+
+What `crates/tc-ui/vendor-help.sh` copied, that two builds of the site give the same bytes, and
+what the help journey showed on a built app. Run on macOS only. **Not run on Windows or Linux.**
+
+- **Date:** 2026-11-19.
+- **Machine:** macOS 26.5.1 (25F80), Apple silicon.
+- **Source:** translationCore-Suite-website at `835fb965a322bc3800b61e95f4d2518010f3dd5a`, the
+  merge of its pull request 11.
+- **Tools:** Node v22.14.0, npm 11.5.2; `npm ci` installed Astro 5.18.2 and
+  `@fontsource/noto-sans-arabic` and `@fontsource/noto-sans-devanagari` 5.3.0, as the site's
+  `package-lock.json` pins them.
+
+## Two builds give the same bytes
+
+The site holds the help pages as sources, so `help-pages.txt` lists the git blob ids of built
+files, which no `git ls-tree` of the site can confirm. Two builds were made on this machine, each
+from its own fetch of the commit and its own `npm ci`:
+
+1. `crates/tc-ui/vendor-help.sh` (its build is in `target/vendor-help`, which it removes).
+2. By hand in another folder: `git fetch --depth 1 origin 835fb965…`, `npm ci`, `npm run build`.
+
+Each of the 966 files under `crates/tc-ui/help` was compared, byte for byte, with the file of the
+second build's `dist/` that it was copied from: 966 the same, none different, none missing. A
+build with another Node or on another system was not tried.
+
+## What was copied
+
+- `help/`: the English help, 210 files (89 pages, the images, the help's own assets, the search
+  index). The images, `features.json` and the search index are the bytes vendored before
+  (#1031); the 89 pages and two scripts changed.
+- `help/es`, `fr`, `hi`, `pt`, `id`, `ru`, `vi`, `ar`: 90 files each (89 pages and a search index).
+- `help/site/assets/`: 36 files: `css/help-i18n.css`, `js/help-i18n.js`, `fonts/arabic.css`,
+  `fonts/devanagari.css` and the 32 font files those two style sheets name.
+- Not copied: the site's seven other help languages, its `/assets/js/locale.js`, its Avenir Next
+  fonts (no help page loads them) and its four other font packs.
+- The licence texts of the two font packages (`LICENSE` in each) are byte for byte the app's
+  `OFL-NotoSansArabic.txt` and `OFL-NotoSansDevanagari.txt`, which `notices.mjs` already copies
+  into THIRD-PARTY-NOTICES.txt.
+
+## The translationcore.com addresses the pages name
+
+`curl -sI https://translationcore.com<path>` answered 200 with no redirect for `/`, `/desktop/`,
+`/es/`, `/fr/`, `/hi/`, `/pt/`, `/id/`, `/ru/`, `/vi/` and `/ar/` (2026-11-19).
+
+## The journey
+
+`parity/app/journeys/help.test.mjs`, on `tc4` built with `--features test-hooks,fixture-backend`
+and the UI of `crates/tc-ui/build-app.sh`, in Playwright's Chromium. The rig aborts every request
+to another origin and lists it; each case below ends with that list empty.
+
+| Case | Result |
+|---|---|
+| a to e, g to k (English, as before) | pass |
+| f (modifier clicks) | fails at its Ctrl+click only, which macOS reads as a right click; with that one variant taken out it passes on this build |
+| l: Español, the help home, a search for "alinear", its first result, a shared image | pass |
+| m: العربية, right to left, the Arabic face loaded from the app and first in the heading's font | pass |
+| n: Українська and English show the English help | pass |
+| o: after the app language changes, the next opening shows the new language | pass |
+| p: app in English on a computer in Spanish; the help stays English | pass |
+
+Control: the same cases on a `tc4` built with `HELP_CUT` empty, with the site's `locale.js` put
+beside the vendored files. Cases l and n failed (the page showed the language menu: 17 nodes
+where 0 are wanted) and case p failed (the English help home never showed: the page had moved
+to the computer's language). With `HELP_CUT` empty, `cargo test -p tc-server --test help_links`
+also failed, on the menu's links to the languages that are not vendored (404).
+
+Control for the byte list: with one byte of `help/es/index.html` changed,
+`cargo test -p tc-ui --test help_pages` failed with "help/es/index.html is not the site's".
+
+## Screenshots
+
+In `docs/evidence/help-languages-2026-11-19/`, kept by the journey with `HELP_SHOTS`:
+
+- `help-home-es-419.png`: the app in Español, the Spanish help home.
+- `help-home-ar.png`: the app in العربية, the Arabic help home, right to left.
+- `help-home-uk.png`: the app in Українська, the English help home.
+- `help-search-es-419.png`: the results of a search for "alinear" in the Spanish help.
+- `help-search-result-es-419.png`: the first of those results, open in the panel.

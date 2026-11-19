@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="pt-BR" dir="ltr" data-script="latin">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trabalhar em equipe em vários computadores · Ajuda do translationCore 4</title>
+<meta name="description" content="Compartilhe um projeto da Bíblia no Door43; depois, cada colega da equipe o abre a partir do Door43 e usa Sincronizar com o Door43 para trocar o trabalho.">
+<link rel="stylesheet" href="/tc-help/assets/style.css">
+<link rel="canonical" href="https://translationcore.com/pt/tc-help/ts-team-sync">
+<link rel="alternate" hreflang="en" href="https://translationcore.com/tc-help/ts-team-sync">
+<link rel="alternate" hreflang="es-MX" href="https://translationcore.com/es/tc-help/ts-team-sync">
+<link rel="alternate" hreflang="fr" href="https://translationcore.com/fr/tc-help/ts-team-sync">
+<link rel="alternate" hreflang="hi" href="https://translationcore.com/hi/tc-help/ts-team-sync">
+<link rel="alternate" hreflang="ru" href="https://translationcore.com/ru/tc-help/ts-team-sync">
+<link rel="alternate" hreflang="ar" href="https://translationcore.com/ar/tc-help/ts-team-sync">
+<link rel="alternate" hreflang="zh-Hans" href="https://translationcore.com/zh/tc-help/ts-team-sync">
+<link rel="alternate" hreflang="sw" href="https://translationcore.com/sw/tc-help/ts-team-sync">
+<link rel="alternate" hreflang="pt-BR" href="https://translationcore.com/pt/tc-help/ts-team-sync">
+<link rel="alternate" hreflang="id" href="https://translationcore.com/id/tc-help/ts-team-sync">
+<link rel="alternate" hreflang="vi" href="https://translationcore.com/vi/tc-help/ts-team-sync">
+<link rel="alternate" hreflang="bn" href="https://translationcore.com/bn/tc-help/ts-team-sync">
+<link rel="alternate" hreflang="ur" href="https://translationcore.com/ur/tc-help/ts-team-sync">
+<link rel="alternate" hreflang="fa" href="https://translationcore.com/fa/tc-help/ts-team-sync">
+<link rel="alternate" hreflang="my" href="https://translationcore.com/my/tc-help/ts-team-sync">
+<link rel="alternate" hreflang="nl" href="https://translationcore.com/nl/tc-help/ts-team-sync">
+<link rel="alternate" hreflang="x-default" href="https://translationcore.com/tc-help/ts-team-sync">
+<link rel="stylesheet" href="/assets/css/help-i18n.css">
+<script>window.__tcLocale={"locale":"pt","defaultLocale":"en","alternates":true,"locales":["en","es","fr","hi","ru","ar","zh","sw","pt","id","vi","bn","ur","fa","my","nl"],"tags":{"en":"en","es":"es-MX","fr":"fr","hi":"hi","ru":"ru","ar":"ar","zh":"zh-Hans","sw":"sw","pt":"pt-BR","id":"id","vi":"vi","bn":"bn","ur":"ur","fa":"fa","my":"my","nl":"nl"}};window.TC4_HELP_I18N={"lang":"pt","language":"Idioma","onThisPage":"Nesta página","noResults":"Nenhum tópico corresponde a “{query}”. Tente outra palavra, como alinhar, verificar, história ou off-line.","seeAll":"Ver todos os resultados →","resultsOne":"1 tópico para “{query}”","resultsMany":"{count} tópicos para “{query}”","searchPrompt":"Digite uma ou duas palavras, como “alinhar”, “marcador” ou “intervalo de versículos”."}</script>
+<script src="/assets/js/locale.js"></script>
+<link rel="icon" type="image/png" href="/tc-help/assets/tc_logo.png">
+<link rel="apple-touch-icon" href="/tc-help/assets/tc_logo.png">
+</head>
+<body>
+<a class="skip" href="#main">Pular para o conteúdo</a>
+<header class="topbar">
+  <button class="menu-btn" id="menu-btn" aria-label="Mostrar tópicos" aria-controls="sidebar" aria-expanded="false">☰</button>
+  <a class="brand" href="/pt/tc-help/" aria-label="Início da Ajuda do translationCore"><img class="brand-logo" src="/tc-help/assets/translationcore-logo.png" alt="" width="25" height="28"><span class="wordmark">translationCore<span class="reg">®</span></span><span class="brand-rule" aria-hidden="true"></span><span class="brand-text">Ajuda</span></a>
+  <form class="search" action="search" method="get" role="search" autocomplete="off">
+    <input id="q" name="q" type="search" placeholder="Pesquisar na ajuda (pressione /)" aria-label="Pesquisar na ajuda">
+    <div class="search-results" id="search-results" role="listbox" hidden></div>
+  </form>
+  <details class="help-lang"><summary aria-label="Idioma: Português"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm6.9 6h-2.95a15.7 15.7 0 0 0-1.38-3.56A8.03 8.03 0 0 1 18.9 8ZM12 4.04c.83 1.2 1.48 2.53 1.91 3.96h-3.82c.43-1.43 1.08-2.76 1.91-3.96ZM4.26 14a7.8 7.8 0 0 1 0-4h3.38a16.5 16.5 0 0 0 0 4H4.26Zm.82 2h2.95c.32 1.25.78 2.45 1.38 3.56A7.99 7.99 0 0 1 5.08 16Zm2.95-8H5.08a7.99 7.99 0 0 1 4.33-3.56A15.7 15.7 0 0 0 8.03 8ZM12 19.96A14.1 14.1 0 0 1 10.09 16h3.82A14.1 14.1 0 0 1 12 19.96ZM14.34 14H9.66a14.7 14.7 0 0 1 0-4h4.68a14.7 14.7 0 0 1 0 4Zm.25 5.56c.6-1.11 1.06-2.31 1.38-3.56h2.95a8.03 8.03 0 0 1-4.33 3.56ZM16.36 14a16.5 16.5 0 0 0 0-4h3.38a7.8 7.8 0 0 1 0 4h-3.38Z"/></svg><span>Português</span></summary><ul><li><a href="/tc-help/ts-team-sync" data-locale="en" lang="en" dir="ltr">English</a></li><li><a href="/es/tc-help/ts-team-sync" data-locale="es" lang="es-MX" dir="ltr">Español</a></li><li><a href="/fr/tc-help/ts-team-sync" data-locale="fr" lang="fr" dir="ltr">Français</a></li><li><a href="/hi/tc-help/ts-team-sync" data-locale="hi" lang="hi" dir="ltr">हिन्दी</a></li><li><a href="/ru/tc-help/ts-team-sync" data-locale="ru" lang="ru" dir="ltr">Русский</a></li><li><a href="/ar/tc-help/ts-team-sync" data-locale="ar" lang="ar" dir="rtl">العربية</a></li><li><a href="/zh/tc-help/ts-team-sync" data-locale="zh" lang="zh-Hans" dir="ltr">简体中文</a></li><li><a href="/sw/tc-help/ts-team-sync" data-locale="sw" lang="sw" dir="ltr">Kiswahili</a></li><li><a href="/pt/tc-help/ts-team-sync" data-locale="pt" lang="pt-BR" dir="ltr" aria-current="true">Português</a></li><li><a href="/id/tc-help/ts-team-sync" data-locale="id" lang="id" dir="ltr">Bahasa Indonesia</a></li><li><a href="/vi/tc-help/ts-team-sync" data-locale="vi" lang="vi" dir="ltr">Tiếng Việt</a></li><li><a href="/bn/tc-help/ts-team-sync" data-locale="bn" lang="bn" dir="ltr">বাংলা</a></li><li><a href="/ur/tc-help/ts-team-sync" data-locale="ur" lang="ur" dir="rtl">اردو</a></li><li><a href="/fa/tc-help/ts-team-sync" data-locale="fa" lang="fa" dir="rtl">فارسی</a></li><li><a href="/my/tc-help/ts-team-sync" data-locale="my" lang="my" dir="ltr">ဗမာစာ</a></li><li><a href="/nl/tc-help/ts-team-sync" data-locale="nl" lang="nl" dir="ltr">Nederlands</a></li></ul></details>
+  <a class="site-link" href="/pt/">translationcore.com</a>
+</header>
+<div class="shell">
+<nav class="sidebar" id="sidebar" aria-label="Tópicos da ajuda">
+<details class="nav-group"><summary><a href="section-getting-started">Primeiros passos</a></summary><ul>
+<li><a href="gs-install">Instalar e iniciar o tC4</a></li>
+<li><a href="gs-home">A tela Início</a></li>
+<li><a href="gs-modes">Compreender, Traduzir e Verificar — os três modos</a></li>
+<li><a href="gs-save">Salvamento e pontos de controle</a></li>
+<li><a href="gs-resume">Continuar de onde você parou</a></li>
+<li><a href="gs-switch-project">Trocar de projeto ou voltar ao Início</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-bible-projects">Projetos da Bíblia</a></summary><ul>
+<li><a href="bp-new-bible">Criar um projeto da Bíblia</a></li>
+<li><a href="bp-add-book">Adicionar um livro</a></li>
+<li><a href="bp-open-book">Abrir um livro e passar de um capítulo a outro</a></li>
+<li><a href="bp-import">Importar um projeto do translationCore 3</a></li>
+<li><a href="bp-export-pdf">Exportar um livro em PDF</a></li>
+<li><a href="bp-export-usfm">Exportar um livro em USFM (alinhado ou sem alinhamento)</a></li>
+<li><a href="bp-export-burrito">Exportar um projeto como Scripture Burrito</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-translate">Traduzir</a></summary><ul>
+<li><a href="tr-screen">A tela Traduzir</a></li>
+<li><a href="tr-source-texts">Abas de fonte — textos do idioma ponte e a língua original</a></li>
+<li><a href="tr-draft-section">Redigir uma seção</a></li>
+<li><a href="tr-place-verse-numbers">Posicionar os números dos versículos</a></li>
+<li><a href="tr-verse-spans">Criar ou desfazer um intervalo de versículos</a></li>
+<li><a href="tr-verse-by-verse">Redigir ou revisar um versículo</a></li>
+<li><a href="tr-formatting">Parágrafos e poesia</a></li>
+<li><a href="tr-helps-panel">O painel de ajudas em Traduzir</a></li>
+<li><a href="tr-edit-after-check">Editar um versículo que você já verificou ou alinhou</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-understand">Compreender</a></summary><ul>
+<li><a href="un-read-passage">Ler uma passagem antes de traduzir</a></li>
+<li><a href="un-notes">Notas de tradução e artigos da Academia de Tradução</a></li>
+<li><a href="un-word-links">Links de palavras (Palavras de Tradução)</a></li>
+<li><a href="un-questions">Perguntas de tradução</a></li>
+<li><a href="un-simplified">A aba do texto simplificado</a></li>
+<li><a href="un-user-comments">Escrever um comentário do usuário</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-check">Verificar</a></summary><ul>
+<li><a href="ck-tool-picker">Escolher uma ferramenta de verificação</a></li>
+<li><a href="ck-translation-notes">Verificar com Notas de Tradução</a></li>
+<li><a href="ck-translation-words">Verificar com Palavras de Tradução</a></li>
+<li><a href="ck-decide">Decidir sobre um item de verificação (válido, inválido, a fazer)</a></li>
+<li><a href="ck-bookmarks">Marcar uma verificação</a></li>
+<li><a href="ck-comments">Escrever um comentário de verificação</a></li>
+<li><a href="ck-filter-sort">Filtrar e classificar os itens de verificação</a></li>
+<li><a href="ck-community-checking">Prévia da Verificação comunitária</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-align">Alinhar</a></summary><ul>
+<li><a href="al-open">Abrir a ferramenta Alinhar</a></li>
+<li><a href="al-link-words">Ligar suas palavras à fonte</a></li>
+<li><a href="al-phrases">Alinhar uma expressão (juntar e separar cartões)</a></li>
+<li><a href="al-modes">Alinhar ao texto do idioma ponte ou à língua original</a></li>
+<li><a href="al-suggestions">Sugestões de alinhamento</a></li>
+<li><a href="al-mark-valid">Marcar um alinhamento como concluído</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-obs">Open Bible Stories</a></summary><ul>
+<li><a href="obs-create">Iniciar um projeto de Open Bible Stories</a></li>
+<li><a href="obs-story-tiles">Encontrar uma história no Início</a></li>
+<li><a href="obs-translate">Traduzir uma história</a></li>
+<li><a href="obs-understand">Compreender uma história</a></li>
+<li><a href="obs-check">Verificar uma história</a></li>
+<li><a href="obs-community-checking">Prévia e exportação da história</a></li>
+<li><a href="obs-export-markdown-pdf">Exportar histórias em PDF ou Markdown</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-resources">Recursos e uso off-line</a></summary><ul>
+<li><a href="rs-whats-included">O que vem com o aplicativo</a></li>
+<li><a href="rs-source-texts">Baixar textos-fonte</a></li>
+<li><a href="rs-checking-language">Mudar o idioma de verificação</a></li>
+<li><a href="rs-upgrade-helps">Atualizar as ajudas fixadas</a></li>
+<li><a href="rs-upgrade-texts">Atualizar os textos bíblicos</a></li>
+<li><a href="rs-guided-fix">Corrigir um recurso ausente</a></li>
+<li><a href="rs-offline">Trabalhar off-line</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-settings">Configurações</a></summary><ul>
+<li><a href="st-project-settings">Configurações do projeto</a></li>
+<li><a href="st-where-projects-live">Onde seus projetos ficam guardados</a></li>
+<li><a href="st-app-language">Mudar o idioma do aplicativo</a></li>
+</ul></details>
+<details class="nav-group" open><summary><a href="section-troubleshooting">Solução de problemas e limites conhecidos</a></summary><ul>
+<li><a href="ts-save-problems">Quando o salvamento falha</a></li>
+<li><a href="ts-protect-messages">Mensagens que protegem seu projeto</a></li>
+<li><a href="ts-crash-recovery">Se o aplicativo fechou de repente ou a janela ficou em branco</a></li>
+<li><a href="ts-platform">Observações sobre Windows, macOS e Linux</a></li>
+<li><a href="ts-share-door43">Compartilhar no Door43</a></li>
+<li><a href="ts-team-sync" class="current" aria-current="page">Trabalhar em equipe em vários computadores</a></li>
+<li><a href="ts-not-yet">Recursos que o tC4 não tem</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-whats-new">Notas da versão</a></summary><ul>
+<li><a href="wn-alpha1">alpha.1 — Primeira versão pública</a></li>
+<li><a href="wn-alpha2">alpha.2 — Verificar e alinhar</a></li>
+<li><a href="wn-alpha4">alpha.4 — Abrir e continuar</a></li>
+<li><a href="wn-alpha5">alpha.5 — Redação de verdade</a></li>
+<li><a href="wn-alpha6">alpha.6 — Sugestões e recursos</a></li>
+<li><a href="wn-alpha7">alpha.7 — Open Bible Stories</a></li>
+<li><a href="wn-add-a-project">27 de set. de 2026 — um só botão + Adicionar um projeto no Início</a></li>
+<li><a href="wn-rc1">Novidades da versão 4.0 rc.1</a></li>
+<li><a href="wn-rc2">Novidades da versão 4.0 rc.2</a></li>
+<li><a href="wn-4.1">Novidades da versão 4.1</a></li>
+</ul></details>
+</nav>
+<main id="main" class="content">
+<p class="crumbs"><a href="/pt/tc-help/">Ajuda</a> › <a href="section-troubleshooting">Solução de problemas e limites conhecidos</a></p>
+<h1>Trabalhar em equipe em vários computadores</h1>
+<!-- tracking: status=shipped -->
+<p class="lede">Compartilhe um projeto no Door43; depois, cada colega de equipe o abre a partir do Door43 e usa Sincronizar com o Door43 para trocar trabalho.</p>
+<p>Quando um projeto da Bíblia ou de Open Bible Stories está no Door43, cada colega de equipe pode trabalhar no próprio computador e trocar alterações com <strong>Sincronizar com o Door43</strong>.</p>
+<h2 id="start-sharing-project-owner">Começar a compartilhar (dono do projeto)</h2>
+<ol><li>Na tela Início, selecione <span class="ui">Compartilhar no Door43</span> no cartão do projeto e siga os passos. Veja <a href="ts-share-door43">Compartilhar no Door43</a>.</li><li>No Door43, dê a cada colega de equipe acesso de escrita ao repositório. Sem isso, os colegas não conseguem sincronizar.</li><li>Agora o cartão diz <strong>No Door43</strong> e <em>Compartilhado em</em> o repositório, e o botão dele muda para <strong>Sincronizar com o Door43</strong>.</li></ol>
+<figure class="shot-inline" id="shot-1"><a href="/tc-help/img/ts-team-sync-1.png"><img src="/tc-help/img/ts-team-sync-1.png" alt="Cartão do projeto Equipo Ejemplo — Tito y Jonás com o selo NO DOOR43, Compartilhado em facilitator-zq/sample_burrito, os botões Sincronizar com o Door43, Salvar ou receber trabalho por USB e Configurações, e os livros Jonas e Tito." width="1032" height="282" loading="lazy"></a></figure>
+<h2 id="join-a-project-teammate">Entrar em um projeto (colega de equipe)</h2>
+<ol><li>Selecione <strong>+ Adicionar um projeto</strong> e depois <strong>Abrir um projeto do Door43</strong>.</li><li>Digite <code>owner/repository</code>, ou cole o link do repositório, e clique em <span class="ui">Abrir projeto</span>. Um repositório privado abre depois que você entra no Door43.</li><li>Se a internet estiver desligada, o tC4 pergunta antes. Clique em <span class="ui">Ativar internet</span>; <span class="ui">Agora não</span> não traz nada.</li></ol>
+<figure class="shot-inline" id="shot-4"><a href="/tc-help/img/ts-team-sync-4.png"><img src="/tc-help/img/ts-team-sync-4.png" alt="A janela Abrir um projeto do Door43: O projeto é aberto a partir de git.door43.org, o repositório do Door43 facilitator-zq/sample_burrito, e a observação de que o tC4 verifica cada arquivo antes de adicionar o projeto. Botões Cancelar e Abrir projeto." width="548" height="390" loading="lazy"></a></figure>
+<figure class="shot-inline" id="shot-3"><a href="/tc-help/img/ts-team-sync-3.png"><img src="/tc-help/img/ts-team-sync-3.png" alt="Conectar à internet? Esta etapa precisa da internet para obter uma cópia completa do projeto do Door43 e verificar seus arquivos. Nada dos seus projetos é enviado. Botões Agora não e Ativar internet." width="548" height="270" loading="lazy"></a></figure>
+<p>O projeto mantém o nome que a equipe deu a ele; o tC4 não pede um nome. O tC4 verifica cada arquivo antes de adicionar o projeto.</p>
+<p>Um projeto usa versões exatas dos seus textos-fonte e ajudas. Se algumas delas não estiverem no seu computador, o tC4 as baixa primeiro, e a janela informa o nome de cada uma, por exemplo <em>Baixando en_tn v91, que este projeto usa. Versões restantes depois desta: 8.</em> Uma barra abaixo mostra o andamento dessa versão. Clique em <span class="ui">Cancelar</span> para parar: a janela diz <em>A abertura foi cancelada. Nenhum projeto foi adicionado a este computador.</em></p>
+<figure class="shot-inline" id="shot-9"><a href="/tc-help/img/ts-team-sync-9.png"><img src="/tc-help/img/ts-team-sync-9.png" alt="A janela durante a abertura: Baixando en_tn v91, que este projeto usa. Versões restantes depois desta: 8, com uma barra de progresso abaixo. Cancelar está disponível e Abrir projeto aparece como Abrindo…." width="548" height="426" loading="lazy"></a></figure>
+<figure class="shot-inline" id="shot-10"><a href="/tc-help/img/ts-team-sync-10.png"><img src="/tc-help/img/ts-team-sync-10.png" alt="A janela depois de Cancelar: A abertura foi cancelada. Nenhum projeto foi adicionado a este computador." width="548" height="400" loading="lazy"></a></figure>
+<ul><li>Se o projeto já estiver neste computador, a janela diz <em>Você já tem este projeto neste computador. Um projeto tem uma cópia em cada computador.</em> Clique em <span class="ui">Abrir o seu</span>.</li><li>Se o Door43 não tiver uma versão que o projeto usa, ou se ela não puder ser baixada, a janela diz <span class="ui">Não é possível abrir este projeto.</span> e informa a versão, por exemplo <em>O Door43 não tem en_ult v91, que este projeto usa.</em> Nenhum projeto é adicionado. Clique em <span class="ui">Pedir ajuda</span> se isso continuar acontecendo.</li></ul>
+<figure class="shot-inline" id="shot-11"><a href="/tc-help/img/ts-team-sync-11.png"><img src="/tc-help/img/ts-team-sync-11.png" alt="A janela para um projeto que já está aqui: Você já tem este projeto neste computador. Um projeto tem uma cópia em cada computador. Botão Abrir o seu." width="548" height="452" loading="lazy"></a></figure>
+<figure class="shot-inline" id="shot-12"><a href="/tc-help/img/ts-team-sync-12.png"><img src="/tc-help/img/ts-team-sync-12.png" alt="A janela quando uma versão não pôde ser baixada: Não é possível abrir este projeto. O tC4 não pôde baixar en_tn v91, que este projeto usa, porque o Door43 não respondeu. Tente novamente. Código open-door43.pin-not-downloaded · Nenhum projeto foi adicionado. Pedir ajuda." width="548" height="502" loading="lazy"></a></figure>
+<h2 id="sync">Sincronizar</h2>
+<p>Selecione <strong>Sincronizar com o Door43</strong> no cartão do projeto. O resultado diz quantas alterações vieram dos colegas e quantos conflitos mantiveram a versão mais recente. Se um colega alinhou o mesmo versículo depois de você, o resultado informa qual, por exemplo <em>Tito 1:1: o alinhamento de Ana substituiu o seu.</em> Suas ligações nesse versículo voltam para o banco de palavras. Abra o versículo em Alinhar para conferir. Nada é mesclado automaticamente.</p>
+<figure class="shot-inline" id="shot-2"><a href="/tc-help/img/ts-team-sync-2.png"><img src="/tc-help/img/ts-team-sync-2.png" alt="Resultado da sincronização: Sincronizado com o Door43 · 0 alterações da equipe · 0 conflitos mantiveram a versão mais recente · 0 conflitos de versículos para revisar." width="818" height="80" loading="lazy"></a></figure>
+<p>Se a internet estiver desligada, o tC4 pergunta antes. <strong>Agora não</strong> não envia nada. Se você não estiver conectado, o tC4 pede que você entre no Door43.</p>
+<h3 id="sync-downloads">Versões que o projeto usa</h3>
+<p>Um colega pode ter passado o projeto para uma versão mais nova de um texto-fonte ou de uma ajuda, ou este computador pode não ter uma das versões que o projeto usa. Quando a sincronização termina, o tC4 baixa cada versão que falta neste computador, sem perguntar. Durante o download, o cartão do projeto diz, por exemplo, <em>Baixando es-419_twl v18, que este projeto usa. Versões restantes depois desta: 4.</em> Uma barra e <span class="ui">Cancelar o download</span> ficam ao lado.</p>
+<figure class="shot-inline" id="shot-13"><a href="/tc-help/img/ts-team-sync-13.png"><img src="/tc-help/img/ts-team-sync-13.png" alt="Cartão do projeto enquanto a sincronização baixa: Baixando es-419_twl v18, que este projeto usa. Versões restantes depois desta: 4, uma barra de progresso e Cancelar o download. O botão do cartão aparece como Sincronizando…." width="1008" height="271" loading="lazy"></a></figure>
+<ul><li>A sincronização vale mesmo que você cancele o download ou que uma versão não possa ser baixada. Suas alterações foram enviadas, e as alterações dos colegas foram recebidas.</li><li>O resultado então diz quantas versões o projeto usa que não estão neste computador, e por quê. Por exemplo, ele diz <em>Você cancelou o download das versões que este projeto usa.</em> Ou informa uma versão que o Door43 não tem: <em>O Door43 não tem es-419_tw v37, que este projeto usa.</em> Se uma versão não puder ser obtida, o tC4 ainda baixa as outras.</li><li>Clique em <span class="ui">Baixar</span> no resultado para obtê-las agora, ou sincronize de novo mais tarde. A próxima sincronização baixa o que ainda estiver faltando.</li><li>Se a internet for desligada durante o download, o download para e o resultado avisa.</li></ul>
+<figure class="shot-inline" id="shot-14"><a href="/tc-help/img/ts-team-sync-14.png"><img src="/tc-help/img/ts-team-sync-14.png" alt="Resultado da sincronização depois de Cancelar o download: Sincronizado com o Door43 · 0 alterações da equipe · 0 conflitos mantiveram a versão mais recente · 0 conflitos de versículos para revisar. Este projeto agora usa 5 versões de recursos que não estão neste computador. Você cancelou o download das versões que este projeto usa. Baixar." width="896" height="118" loading="lazy"></a></figure>
+<figure class="shot-inline" id="shot-15"><a href="/tc-help/img/ts-team-sync-15.png"><img src="/tc-help/img/ts-team-sync-15.png" alt="Resultado da sincronização quando o Door43 não tem uma versão: Este projeto agora usa 1 versão de recurso que não está neste computador. O Door43 não tem es-419_tw v37, que este projeto usa. Baixar." width="896" height="118" loading="lazy"></a></figure>
+<h2 id="story-frame-conflicts">Conflitos de quadros de histórias</h2><p>Em projetos de Open Bible Stories, a sincronização pode encontrar quadros que dois colegas alteraram.</p><ul><li>O aviso da sincronização diz <span class="ui">1 conflito de quadro para revisar</span> (ou o número de conflitos), com um link <span class="ui">Revisar</span>.</li><li>O cartão da história no Início e a barra superior de Traduzir mostram uma etiqueta âmbar <span class="ui">1 conflito · Revisar</span>.</li></ul><figure class="shot-inline" id="shot-conflict"><a href="/tc-help/img/ts-team-sync-5.png"><img src="/tc-help/img/ts-team-sync-5.png" alt="Aviso da sincronização: Sincronizado com o Door43 · 1 alteração da equipe · 0 conflitos mantiveram a versão mais recente · 1 conflito de quadro para revisar. Alterações de: teammate-b, com um link Revisar." width="868" height="96" loading="lazy"></a></figure><figure class="shot-inline" id="shot-conflict-chip"><a href="/tc-help/img/ts-team-sync-6.png"><img src="/tc-help/img/ts-team-sync-6.png" alt="Cartão de história no Início com uma etiqueta âmbar 1 conflito · Revisar." width="490" height="175" loading="lazy"></a></figure><h2 id="project-format-and-repaired-files">Formato do projeto e arquivos reparados</h2><ul><li>Se o translationCore mais novo de um colega salvou o projeto em um formato no qual esta versão não consegue salvar, a sincronização para e o aviso informa o formato dele (por exemplo <span class="ui">1.4</span> ou <span class="ui">2</span>).</li><li>Se <code>format.json</code> foi excluído ou danificado no Door43, o tC4 coloca de volta a cópia deste computador e o aviso acrescenta: <span class="ui">Um arquivo do projeto foi excluído ou danificado no Door43, então o tC4 colocou sua cópia de volta.</span></li></ul><figure class="shot-inline" id="shot-format"><a href="/tc-help/img/ts-team-sync-7.png"><img src="/tc-help/img/ts-team-sync-7.png" alt="Aviso da sincronização informando um formato de projeto mais novo no qual esta versão não consegue salvar." width="480" height="24" loading="lazy"></a></figure><figure class="shot-inline" id="shot-restored"><a href="/tc-help/img/ts-team-sync-8.png"><img src="/tc-help/img/ts-team-sync-8.png" alt="Aviso da sincronização: Sincronizado com o Door43 · 0 alterações da equipe · 0 conflitos mantiveram a versão mais recente · 0 conflitos de versículos para revisar. Um arquivo do projeto foi excluído ou danificado no Door43, então o tC4 colocou sua cópia de volta." width="818" height="96" loading="lazy"></a></figure><h2 id="good-to-know">Bom saber</h2>
+<ul><li>Projetos de Bíblia e de Open Bible Stories abrem e sincronizam da mesma forma.</li><li>Não copie pastas de projeto entre computadores manualmente. O tC4 se recusa a abri-las, para proteger o projeto.</li></ul>
+<h2 id="related">Tópicos relacionados</h2><ul class="related"><li><a href="ts-share-door43">Compartilhar no Door43</a></li><li><a href="bp-import">Importar um projeto do translationCore 3</a></li><li><a href="bp-export-burrito">Exportar um projeto como Scripture Burrito</a></li></ul>
+</main>
+</div>
+<footer class="sitefoot">O aplicativo é a referência: se esta página e o aplicativo não estiverem de acordo, o aplicativo está certo — por favor, avise-nos. <a href="section-whats-new">Notas da versão</a> · <a href="/pt/">translationcore.com</a></footer>
+<script src="search-index.js"></script>
+<script src="/tc-help/assets/search.js"></script>
+<script src="/tc-help/assets/page-toc.js"></script>
+<script src="/assets/js/help-i18n.js"></script>
+</body>
+</html>

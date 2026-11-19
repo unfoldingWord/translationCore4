@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="vi" dir="ltr" data-script="latin">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tạo dự án Kinh Thánh · Trợ giúp translationCore 4</title>
+<meta name="description" content="Bắt đầu một dự án dịch Kinh Thánh mới: trống, từ các tệp USFM, hoặc từ một Scripture Burrito. Bạn thêm sách ngay sau đó.">
+<link rel="stylesheet" href="/tc-help/assets/style.css">
+<link rel="canonical" href="https://translationcore.com/vi/tc-help/bp-new-bible">
+<link rel="alternate" hreflang="en" href="https://translationcore.com/tc-help/bp-new-bible">
+<link rel="alternate" hreflang="es-MX" href="https://translationcore.com/es/tc-help/bp-new-bible">
+<link rel="alternate" hreflang="fr" href="https://translationcore.com/fr/tc-help/bp-new-bible">
+<link rel="alternate" hreflang="hi" href="https://translationcore.com/hi/tc-help/bp-new-bible">
+<link rel="alternate" hreflang="ru" href="https://translationcore.com/ru/tc-help/bp-new-bible">
+<link rel="alternate" hreflang="ar" href="https://translationcore.com/ar/tc-help/bp-new-bible">
+<link rel="alternate" hreflang="zh-Hans" href="https://translationcore.com/zh/tc-help/bp-new-bible">
+<link rel="alternate" hreflang="sw" href="https://translationcore.com/sw/tc-help/bp-new-bible">
+<link rel="alternate" hreflang="pt-BR" href="https://translationcore.com/pt/tc-help/bp-new-bible">
+<link rel="alternate" hreflang="id" href="https://translationcore.com/id/tc-help/bp-new-bible">
+<link rel="alternate" hreflang="vi" href="https://translationcore.com/vi/tc-help/bp-new-bible">
+<link rel="alternate" hreflang="bn" href="https://translationcore.com/bn/tc-help/bp-new-bible">
+<link rel="alternate" hreflang="ur" href="https://translationcore.com/ur/tc-help/bp-new-bible">
+<link rel="alternate" hreflang="fa" href="https://translationcore.com/fa/tc-help/bp-new-bible">
+<link rel="alternate" hreflang="my" href="https://translationcore.com/my/tc-help/bp-new-bible">
+<link rel="alternate" hreflang="nl" href="https://translationcore.com/nl/tc-help/bp-new-bible">
+<link rel="alternate" hreflang="x-default" href="https://translationcore.com/tc-help/bp-new-bible">
+<link rel="stylesheet" href="/assets/css/help-i18n.css">
+<script>window.__tcLocale={"locale":"vi","defaultLocale":"en","alternates":true,"locales":["en","es","fr","hi","ru","ar","zh","sw","pt","id","vi","bn","ur","fa","my","nl"],"tags":{"en":"en","es":"es-MX","fr":"fr","hi":"hi","ru":"ru","ar":"ar","zh":"zh-Hans","sw":"sw","pt":"pt-BR","id":"id","vi":"vi","bn":"bn","ur":"ur","fa":"fa","my":"my","nl":"nl"}};window.TC4_HELP_I18N={"lang":"vi","language":"Ngôn ngữ","onThisPage":"Trên trang này","noResults":"Không có chủ đề nào khớp với “{query}”. Hãy thử từ khác, chẳng hạn căn chỉnh, kiểm tra, câu chuyện hoặc ngoại tuyến.","seeAll":"Xem tất cả kết quả →","resultsOne":"1 chủ đề cho “{query}”","resultsMany":"{count} chủ đề cho “{query}”","searchPrompt":"Gõ một hai từ, chẳng hạn “căn chỉnh”, “dấu trang” hoặc “nhóm câu”."}</script>
+<script src="/assets/js/locale.js"></script>
+<link rel="icon" type="image/png" href="/tc-help/assets/tc_logo.png">
+<link rel="apple-touch-icon" href="/tc-help/assets/tc_logo.png">
+</head>
+<body>
+<a class="skip" href="#main">Chuyển đến nội dung chính</a>
+<header class="topbar">
+  <button class="menu-btn" id="menu-btn" aria-label="Hiện các chủ đề" aria-controls="sidebar" aria-expanded="false">☰</button>
+  <a class="brand" href="/vi/tc-help/" aria-label="Trang chủ Trợ giúp translationCore"><img class="brand-logo" src="/tc-help/assets/translationcore-logo.png" alt="" width="25" height="28"><span class="wordmark">translationCore<span class="reg">®</span></span><span class="brand-rule" aria-hidden="true"></span><span class="brand-text">Trợ giúp</span></a>
+  <form class="search" action="search" method="get" role="search" autocomplete="off">
+    <input id="q" name="q" type="search" placeholder="Tìm trong trợ giúp (nhấn /)" aria-label="Tìm trong trợ giúp">
+    <div class="search-results" id="search-results" role="listbox" hidden></div>
+  </form>
+  <details class="help-lang"><summary aria-label="Ngôn ngữ: Tiếng Việt"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm6.9 6h-2.95a15.7 15.7 0 0 0-1.38-3.56A8.03 8.03 0 0 1 18.9 8ZM12 4.04c.83 1.2 1.48 2.53 1.91 3.96h-3.82c.43-1.43 1.08-2.76 1.91-3.96ZM4.26 14a7.8 7.8 0 0 1 0-4h3.38a16.5 16.5 0 0 0 0 4H4.26Zm.82 2h2.95c.32 1.25.78 2.45 1.38 3.56A7.99 7.99 0 0 1 5.08 16Zm2.95-8H5.08a7.99 7.99 0 0 1 4.33-3.56A15.7 15.7 0 0 0 8.03 8ZM12 19.96A14.1 14.1 0 0 1 10.09 16h3.82A14.1 14.1 0 0 1 12 19.96ZM14.34 14H9.66a14.7 14.7 0 0 1 0-4h4.68a14.7 14.7 0 0 1 0 4Zm.25 5.56c.6-1.11 1.06-2.31 1.38-3.56h2.95a8.03 8.03 0 0 1-4.33 3.56ZM16.36 14a16.5 16.5 0 0 0 0-4h3.38a7.8 7.8 0 0 1 0 4h-3.38Z"/></svg><span>Tiếng Việt</span></summary><ul><li><a href="/tc-help/bp-new-bible" data-locale="en" lang="en" dir="ltr">English</a></li><li><a href="/es/tc-help/bp-new-bible" data-locale="es" lang="es-MX" dir="ltr">Español</a></li><li><a href="/fr/tc-help/bp-new-bible" data-locale="fr" lang="fr" dir="ltr">Français</a></li><li><a href="/hi/tc-help/bp-new-bible" data-locale="hi" lang="hi" dir="ltr">हिन्दी</a></li><li><a href="/ru/tc-help/bp-new-bible" data-locale="ru" lang="ru" dir="ltr">Русский</a></li><li><a href="/ar/tc-help/bp-new-bible" data-locale="ar" lang="ar" dir="rtl">العربية</a></li><li><a href="/zh/tc-help/bp-new-bible" data-locale="zh" lang="zh-Hans" dir="ltr">简体中文</a></li><li><a href="/sw/tc-help/bp-new-bible" data-locale="sw" lang="sw" dir="ltr">Kiswahili</a></li><li><a href="/pt/tc-help/bp-new-bible" data-locale="pt" lang="pt-BR" dir="ltr">Português</a></li><li><a href="/id/tc-help/bp-new-bible" data-locale="id" lang="id" dir="ltr">Bahasa Indonesia</a></li><li><a href="/vi/tc-help/bp-new-bible" data-locale="vi" lang="vi" dir="ltr" aria-current="true">Tiếng Việt</a></li><li><a href="/bn/tc-help/bp-new-bible" data-locale="bn" lang="bn" dir="ltr">বাংলা</a></li><li><a href="/ur/tc-help/bp-new-bible" data-locale="ur" lang="ur" dir="rtl">اردو</a></li><li><a href="/fa/tc-help/bp-new-bible" data-locale="fa" lang="fa" dir="rtl">فارسی</a></li><li><a href="/my/tc-help/bp-new-bible" data-locale="my" lang="my" dir="ltr">ဗမာစာ</a></li><li><a href="/nl/tc-help/bp-new-bible" data-locale="nl" lang="nl" dir="ltr">Nederlands</a></li></ul></details>
+  <a class="site-link" href="/vi/">translationcore.com</a>
+</header>
+<div class="shell">
+<nav class="sidebar" id="sidebar" aria-label="Các chủ đề trợ giúp">
+<details class="nav-group"><summary><a href="section-getting-started">Bắt đầu</a></summary><ul>
+<li><a href="gs-install">Cài đặt và khởi động tC4</a></li>
+<li><a href="gs-home">Màn hình Trang chủ</a></li>
+<li><a href="gs-modes">Thấu hiểu, Dịch và Kiểm tra — ba chế độ</a></li>
+<li><a href="gs-save">Lưu và điểm kiểm tra</a></li>
+<li><a href="gs-resume">Tiếp tục nơi bạn đã dừng lại</a></li>
+<li><a href="gs-switch-project">Chuyển dự án hoặc quay lại Trang chủ</a></li>
+</ul></details>
+<details class="nav-group" open><summary><a href="section-bible-projects">Dự án Kinh Thánh</a></summary><ul>
+<li><a href="bp-new-bible" class="current" aria-current="page">Tạo dự án Kinh Thánh</a></li>
+<li><a href="bp-add-book">Thêm sách</a></li>
+<li><a href="bp-open-book">Mở sách và chuyển giữa các chương</a></li>
+<li><a href="bp-import">Nhập dự án translationCore 3</a></li>
+<li><a href="bp-export-pdf">Xuất sách thành PDF</a></li>
+<li><a href="bp-export-usfm">Xuất sách thành USFM (đã căn chỉnh hoặc văn bản thuần)</a></li>
+<li><a href="bp-export-burrito">Xuất dự án thành Scripture Burrito</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-translate">Dịch</a></summary><ul>
+<li><a href="tr-screen">Màn hình Dịch</a></li>
+<li><a href="tr-source-texts">Các thẻ nguồn — văn bản cầu nối và nguyên ngữ</a></li>
+<li><a href="tr-draft-section">Soạn nháp một phần</a></li>
+<li><a href="tr-place-verse-numbers">Đặt số câu</a></li>
+<li><a href="tr-verse-spans">Gộp hoặc tách nhóm câu</a></li>
+<li><a href="tr-verse-by-verse">Soạn nháp hoặc sửa một câu</a></li>
+<li><a href="tr-formatting">Đoạn văn và thơ</a></li>
+<li><a href="tr-helps-panel">Bảng trợ giúp trong chế độ Dịch</a></li>
+<li><a href="tr-edit-after-check">Sửa một câu bạn đã kiểm tra hoặc căn chỉnh</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-understand">Thấu hiểu</a></summary><ul>
+<li><a href="un-read-passage">Đọc phân đoạn trước khi dịch</a></li>
+<li><a href="un-notes">Ghi chú dịch thuật và bài viết Học viện dịch thuật</a></li>
+<li><a href="un-word-links">Liên kết từ (Từ ngữ dịch thuật)</a></li>
+<li><a href="un-questions">Câu hỏi dịch thuật</a></li>
+<li><a href="un-simplified">Thẻ văn bản đơn giản hóa</a></li>
+<li><a href="un-user-comments">Viết nhận xét của bạn</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-check">Kiểm tra</a></summary><ul>
+<li><a href="ck-tool-picker">Chọn công cụ kiểm tra</a></li>
+<li><a href="ck-translation-notes">Kiểm tra với Ghi chú dịch thuật</a></li>
+<li><a href="ck-translation-words">Kiểm tra với Từ ngữ dịch thuật</a></li>
+<li><a href="ck-decide">Quyết định cho một mục kiểm tra (hợp lệ, không hợp lệ, cần làm)</a></li>
+<li><a href="ck-bookmarks">Đặt dấu trang cho mục kiểm tra</a></li>
+<li><a href="ck-comments">Viết nhận xét cho mục kiểm tra</a></li>
+<li><a href="ck-filter-sort">Lọc và sắp xếp các mục kiểm tra</a></li>
+<li><a href="ck-community-checking">Xem trước Kiểm tra cộng đồng</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-align">Căn chỉnh</a></summary><ul>
+<li><a href="al-open">Mở công cụ Căn chỉnh</a></li>
+<li><a href="al-link-words">Liên kết từ của bạn với nguồn</a></li>
+<li><a href="al-phrases">Căn chỉnh một cụm từ (gộp và tách thẻ)</a></li>
+<li><a href="al-modes">Căn chỉnh với văn bản cầu nối hoặc nguyên ngữ</a></li>
+<li><a href="al-suggestions">Gợi ý căn chỉnh</a></li>
+<li><a href="al-mark-valid">Đánh dấu căn chỉnh đã xong</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-obs">Open Bible Stories</a></summary><ul>
+<li><a href="obs-create">Bắt đầu dự án Open Bible Stories</a></li>
+<li><a href="obs-story-tiles">Tìm câu chuyện trên Trang chủ</a></li>
+<li><a href="obs-translate">Dịch một câu chuyện</a></li>
+<li><a href="obs-understand">Thấu hiểu một câu chuyện</a></li>
+<li><a href="obs-check">Kiểm tra một câu chuyện</a></li>
+<li><a href="obs-community-checking">Xem trước và xuất câu chuyện</a></li>
+<li><a href="obs-export-markdown-pdf">Xuất câu chuyện thành PDF hoặc Markdown</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-resources">Tài liệu và làm việc ngoại tuyến</a></summary><ul>
+<li><a href="rs-whats-included">Những gì có sẵn trong ứng dụng</a></li>
+<li><a href="rs-source-texts">Tải xuống văn bản nguồn</a></li>
+<li><a href="rs-checking-language">Đổi ngôn ngữ kiểm tra</a></li>
+<li><a href="rs-upgrade-helps">Cập nhật tài liệu trợ giúp đã ghim</a></li>
+<li><a href="rs-upgrade-texts">Cập nhật văn bản Kinh Thánh</a></li>
+<li><a href="rs-guided-fix">Khắc phục tài liệu bị thiếu</a></li>
+<li><a href="rs-offline">Làm việc ngoại tuyến</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-settings">Cài đặt</a></summary><ul>
+<li><a href="st-project-settings">Cài đặt dự án</a></li>
+<li><a href="st-where-projects-live">Nơi lưu trữ dự án của bạn</a></li>
+<li><a href="st-app-language">Đổi ngôn ngữ ứng dụng</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-troubleshooting">Khắc phục sự cố và giới hạn đã biết</a></summary><ul>
+<li><a href="ts-save-problems">Khi lưu thất bại</a></li>
+<li><a href="ts-protect-messages">Các thông báo bảo vệ dự án của bạn</a></li>
+<li><a href="ts-crash-recovery">Nếu ứng dụng đóng đột ngột hoặc cửa sổ bị trống</a></li>
+<li><a href="ts-platform">Ghi chú cho Windows, macOS và Linux</a></li>
+<li><a href="ts-share-door43">Chia sẻ lên Door43</a></li>
+<li><a href="ts-team-sync">Làm việc theo nhóm trên nhiều máy tính</a></li>
+<li><a href="ts-not-yet">Các tính năng tC4 chưa có</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-whats-new">Ghi chú phát hành</a></summary><ul>
+<li><a href="wn-alpha1">alpha.1 — Bản dựng công khai đầu tiên</a></li>
+<li><a href="wn-alpha2">alpha.2 — Kiểm tra và căn chỉnh</a></li>
+<li><a href="wn-alpha4">alpha.4 — Mở và tiếp tục</a></li>
+<li><a href="wn-alpha5">alpha.5 — Soạn nháp thực sự</a></li>
+<li><a href="wn-alpha6">alpha.6 — Gợi ý và tài liệu</a></li>
+<li><a href="wn-alpha7">alpha.7 — Open Bible Stories</a></li>
+<li><a href="wn-add-a-project">27/9/2026 — một nút + Thêm dự án duy nhất trên Trang chủ</a></li>
+<li><a href="wn-rc1">Có gì mới trong 4.0 rc.1</a></li>
+<li><a href="wn-rc2">Có gì mới trong 4.0 rc.2</a></li>
+<li><a href="wn-4.1">Có gì mới trong 4.1</a></li>
+</ul></details>
+</nav>
+<main id="main" class="content">
+<p class="crumbs"><a href="/vi/tc-help/">Trợ giúp</a> › <a href="section-bible-projects">Dự án Kinh Thánh</a></p>
+<h1>Tạo dự án Kinh Thánh</h1>
+<!-- tracking: status=shipped since=alpha.1 -->
+<p class="lede">Bắt đầu một dự án dịch Kinh Thánh mới: trống, từ các tệp USFM, hoặc từ một Scripture Burrito. Bạn thêm sách ngay sau đó.</p>
+<p>"Tiếp theo bạn sẽ thêm các sách. Mọi thứ ở đây đều có thể thay đổi sau."</p>
+<h2 id="steps">Các bước</h2>
+<ol><li>Trên Trang chủ, nhấp vào <span class="ui">+ Thêm dự án</span>, rồi <span class="ui">Kinh Thánh mới</span> (1).</li></ol>
+<figure class="shot-inline" id="shot-1"><a href="/tc-help/img/bp-new-bible-1.png"><img src="/tc-help/img/bp-new-bible-1.png" alt="Hộp thoại Thêm dự án với năm thẻ: Kinh Thánh mới được đánh số 1, Open Bible Stories mới, Nhập một dự án, Mở một dự án từ Door43 và Nhận công việc từ tập tin." width="548" height="544" loading="lazy"></a></figure>
+<ol start="2"><li>Kinh Thánh mới hỏi <span class="ui">Bạn muốn bắt đầu như thế nào?</span> Hãy chọn <span class="ui">Trống</span> (1), <span class="ui">Từ các tệp USFM</span> (2) hoặc <span class="ui">Từ một Scripture Burrito</span> (3).</li></ol>
+<figure class="shot-inline" id="shot-2"><a href="/tc-help/img/bp-new-bible-2.png"><img src="/tc-help/img/bp-new-bible-2.png" alt="Kinh Thánh mới, Bạn muốn bắt đầu như thế nào?: Trống, Đặt tên cho dự án, sau đó thêm các sách bạn sẽ dịch, được đánh số 1; Từ các tệp USFM, .usfm, .sfm hoặc .txt · một hoặc nhiều, được đánh số 2; Từ một Scripture Burrito, .zip · một Kinh Thánh, được đánh số 3." width="548" height="364" loading="lazy"></a></figure>
+<h2 id="blank">Bắt đầu một Kinh Thánh trống</h2>
+<ol><li>Nhấp vào <span class="ui">Trống</span>.</li><li>Gõ <span class="ui">Tên Kinh Thánh</span>, ví dụ <code>Kanuri Bible</code>.</li><li>Gõ <span class="ui">Tên ngôn ngữ</span>. Khi ngôn ngữ phù hợp xuất hiện trong danh sách, hãy chọn nó để ô <span class="ui">Mã</span> được điền tự động (ví dụ <code>French (fr)</code> → <code>fr</code>). Bạn vẫn có thể tự gõ mã.</li><li>Chọn <span class="ui">Từ trái sang phải</span> hoặc <span class="ui">Từ phải sang trái</span>.</li><li>Để <span class="ui">Ngôn ngữ kiểm tra</span> là tiếng Anh. Ngôn ngữ này có sẵn trong ứng dụng, nên bạn không cần tải xuống gì.</li></ol>
+<figure class="shot-inline" id="shot-3"><a href="/tc-help/img/bp-new-bible-3.png"><img src="/tc-help/img/bp-new-bible-3.png" alt="Biểu mẫu Kinh Thánh mới còn trống: Tên Kinh Thánh, Tên ngôn ngữ và Mã, Hướng văn bản (Từ trái sang phải được chọn), Ngôn ngữ kiểm tra tiếng Anh, được đề xuất và được cài đặt cùng ứng dụng, Phông chữ viết Noto Sans (mặc định), Hệ thống phân chia câu được thu gọn, cùng Hủy và Tạo Kinh Thánh →." width="548" height="656" loading="lazy"></a></figure>
+<ol start="6"><li>Nhấp vào <span class="ui">Tạo Kinh Thánh →</span>. Hộp thoại <span class="ui">Thêm sách</span> sẽ mở ra. Tiếp tục với <a href="bp-add-book">Thêm sách</a>.</li></ol>
+<h2 id="from-usfm">Bắt đầu từ các tệp USFM</h2>
+<p>Dùng cách này khi bản dịch của bạn đã có trong các tệp USFM, mỗi tệp một sách. Mỗi tệp sẽ trở thành một sách của dự án mới, với văn bản của tệp làm bản nháp.</p>
+<ol><li>Nhấp vào <span class="ui">Từ các tệp USFM</span>.</li><li>Thả tệp của bạn vào <span class="ui">Thả các tệp USFM vào đây, hoặc duyệt tìm</span>, hoặc nhấp vào đó để chọn tệp. Mỗi tệp có một dòng. Chấm xanh lá cho biết tệp sẽ thêm sách nào, ví dụ <span class="ui">Thêm Tít</span>.</li><li>Chấm cam nghĩa là không dùng được tệp đó, và dòng đó cho biết lý do và lỗi ở dòng nào (1). Hãy xóa tệp đó bằng dấu ✕, sửa tệp, rồi thêm lại.</li></ol>
+<figure class="shot-inline" id="shot-4"><a href="/tc-help/img/bp-new-bible-4.png"><img src="/tc-help/img/bp-new-bible-4.png" alt="Kinh Thánh mới từ các tệp USFM: vùng thả, rồi ba dòng. TIT.usfm, Thêm Tít, và sample-JON-span.usfm, Thêm Giô-na, có chấm xanh lá. GEN-draft.usfm có chấm cam và ghi GEN-draft.usfm không thể thêm: dòng 4: chương 1 xuất hiện hai lần, được đánh số 1. Quay lại và nút Tiếp theo → bị làm mờ." width="548" height="574" loading="lazy"></a></figure>
+<ol start="4"><li>Khi mỗi dòng đều là một sách, hãy nhấp vào <span class="ui">Tiếp theo →</span>.</li><li>Điền tên Kinh Thánh, ngôn ngữ, mã và hướng văn bản như với một Kinh Thánh trống. Bên dưới biểu mẫu, <span class="ui">Các sách từ tệp của bạn</span> liệt kê các sách (1), và một ghi chú cho biết số câu của các sách khớp với <span class="ui">Hệ thống phân chia câu</span> nào (2). Hầu hết các dự án giữ nguyên mục này.</li></ol>
+<figure class="shot-inline" id="shot-5"><a href="/tc-help/img/bp-new-bible-5.png"><img src="/tc-help/img/bp-new-bible-5.png" alt="Biểu mẫu Kinh Thánh mới sau khi chọn Từ các tệp USFM, đã cuộn xuống: Kanuri Bible, Kanuri, knc, Hệ thống phân chia câu đang mở với eng (mặc định), Các sách từ tệp của bạn: Tít, Giô-na, được đánh số 1, và Số lượng câu của các sách khớp với eng, được đánh số 2. Hủy và Tạo Kinh Thánh →." width="548" height="684" loading="lazy"></a></figure>
+<ol start="6"><li>Nhấp vào <span class="ui">Tạo Kinh Thánh →</span>. Dự án được tạo cùng tất cả các sách trong một bước, và <span class="ui">Thêm sách</span> sẽ mở ra phòng khi bạn muốn thêm sách.</li></ol>
+<h2 id="from-burrito">Bắt đầu từ một Scripture Burrito</h2>
+<p>Dùng cách này cho một bản dịch Kinh Thánh mà một công cụ khác đã lưu thành tệp Scripture Burrito <code>.zip</code>.</p>
+<ol><li>Nhấp vào <span class="ui">Từ một Scripture Burrito</span>, rồi thả tệp <code>.zip</code> vào <span class="ui">Thả Scripture Burrito vào đây, hoặc duyệt tìm</span>, hoặc nhấp vào đó để chọn tệp.</li><li>Biểu mẫu được điền từ Burrito: tên, ngôn ngữ và mã. Hãy thay đổi nếu cần. <span class="ui">Các sách từ Scripture Burrito</span> liệt kê các sách của nó (1). Burrito có hệ thống phân chia câu riêng sẽ giữ nguyên hệ thống đó, và biểu mẫu ghi <span class="ui">Cách phân câu riêng của Scripture Burrito được giữ nguyên.</span></li></ol>
+<figure class="shot-inline" id="shot-6"><a href="/tc-help/img/bp-new-bible-6.png"><img src="/tc-help/img/bp-new-bible-6.png" alt="Biểu mẫu Kinh Thánh mới được điền từ một Scripture Burrito: Tên Kinh Thánh Biblia Ejemplo, Tên ngôn ngữ Spanish (Latin America), Mã es-419, Từ trái sang phải, Ngôn ngữ kiểm tra tiếng Anh, Phông chữ viết Noto Sans (mặc định). Các sách từ Scripture Burrito: Giô-na, Tít được đánh số 1, rồi Cách phân câu riêng của Scripture Burrito được giữ nguyên. Hủy và Tạo Kinh Thánh →." width="548" height="684" loading="lazy"></a></figure>
+<ol start="3"><li>Nhấp vào <span class="ui">Tạo Kinh Thánh →</span>. Các sách và mọi tệp khác của Burrito được đưa vào dự án mới, và <span class="ui">Thêm sách</span> sẽ mở ra.</li></ol>
+<p>Để hủy ở bất kỳ bước nào, hãy nhấp vào <span class="ui">Hủy</span>, <span class="ui">← Quay lại</span> hoặc ✕. Sẽ không có gì được lưu.</p>
+<h2 id="good-to-know">Nên biết</h2>
+<ul><li>Tên cần có ít nhất một chữ cái Latinh không dấu hoặc chữ số, vì tên này cũng dùng để đặt tên thư mục dự án. Nếu máy tính này đã có một dự án trùng tên, <span class="ui">Tạo Kinh Thánh →</span> sẽ bị tắt cho đến khi bạn chọn tên khác.</li><li><span class="ui">Phông chữ viết</span> chọn phông chữ dùng để hiển thị bản dịch của bạn. <span class="ui">Hệ thống phân chia câu</span> là cách đánh số câu; hầu hết các dự án giữ mặc định.</li><li>Nếu một mã ngôn ngữ bị từ chối, hãy thử mã cho đúng ngôn ngữ cụ thể của bạn, ví dụ <code>knc</code> cho tiếng Kanuri Trung Phần thay vì <code>kau</code>.</li><li>Mỗi tệp USFM phải chứa một sách và bắt đầu bằng dòng <code>\id</code>. Hai tệp của cùng một sách sẽ bị từ chối, và dòng đó nêu tên sách.</li><li>Burrito chứa thứ gì khác ngoài bản dịch Kinh Thánh, ví dụ Open Bible Stories, sẽ bị từ chối và cho biết nó chứa gì. Burrito được xuất từ tC4 là công việc của một dự án: tC4 sẽ yêu cầu bạn mở nó bằng <span class="ui">Nhận công việc từ tập tin</span>.</li><li>Sau khi nhấp vào một ô, hãy chờ một chút rồi mới gõ, sau đó kiểm tra lại tên. Những chữ cái đầu tiên có thể bị mất.</li><li>Bạn có thể đổi hướng văn bản và phông chữ sau trong <a href="st-project-settings">Cài đặt dự án</a>. Hiện chưa thể đổi tên và ngôn ngữ.</li></ul>
+<h2 id="related">Chủ đề liên quan</h2><ul class="related"><li><a href="bp-add-book">Thêm sách</a></li><li><a href="bp-import">Nhập dự án translationCore 3</a></li><li><a href="st-project-settings">Cài đặt dự án</a></li><li><a href="rs-checking-language">Đổi ngôn ngữ kiểm tra</a></li></ul>
+</main>
+</div>
+<footer class="sitefoot">Ứng dụng là nguồn chính xác nhất: nếu trang này khác với ứng dụng, thì ứng dụng đúng — xin hãy báo cho chúng tôi. <a href="section-whats-new">Ghi chú phát hành</a> · <a href="/vi/">translationcore.com</a></footer>
+<script src="search-index.js"></script>
+<script src="/tc-help/assets/search.js"></script>
+<script src="/tc-help/assets/page-toc.js"></script>
+<script src="/assets/js/help-i18n.js"></script>
+</body>
+</html>
