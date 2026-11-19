@@ -103,7 +103,9 @@ budget in `docs/PERFORMANCE.md`). Their tC4 tests stay mapped under `specs` in `
 - Differs from tC4: a section draft not yet saved survives a reload; its card opens again with
   the typed text. The section card fills the row its source sets (#915). A click on a section's
   translation filters the helps to it, and after Save they stay on that section, or on the verse
-  in Verse mode (#991, DIFFERENCES).
+  in Verse mode (#991, DIFFERENCES). A click on its source does the same; in Verse mode it filters
+  them to the verse clicked, and while a card is open it leaves them on the card (#1057,
+  DIFFERENCES).
   Choosing BSOJ with `ar_arst` installed or `ru_gl` with `ru_rlob` and `ru_rsob` installed
   shows those Bibles in the source panes, and a pane whose Bible lacks the open book shows
   the pinned English ULT or UST (`ULT`/`UST`) without changing the pane's pin (#1048,

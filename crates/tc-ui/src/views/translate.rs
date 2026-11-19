@@ -355,8 +355,13 @@ fn chapter_view(
         let editing = editing.clone();
         Signal::derive(move || editing.with(Editing::is_open))
     };
+    // A press outside a verse card closes it before the click lands (its blur), so a click on
+    // the source asks whether a card was open when its press began (#1057, owner 2026-11-18),
+    // or is open still: a click with no press of its own, such as a script's, reads a stale press.
+    let open_at_press = StoredValue::new(false);
+    let note_press = move |_: web_sys::PointerEvent| open_at_press.set_value(off.get_untracked());
     // #991: the helps follow the open card, and once it closes, the unit it was opened on or the
-    // section clicked last, until another is picked or the person leaves the chapter.
+    // unit clicked last, until another is picked or the person leaves the chapter.
     let picked: RwSignal<Option<PickedUnit>> = RwSignal::new(None);
     {
         let editing = editing.clone();
@@ -430,6 +435,22 @@ fn chapter_view(
                     .map(|keys| {
                         let span = range_span(keys);
                         let label = format!("{} {chapter}:{span}", book_id.english_name());
+                        // #1057: the source is one cell per section in both modes, so in Verse
+                        // mode the click names the verse under the pointer.
+                        let pick = {
+                            let keys = keys.clone();
+                            Callback::new(move |verse: Option<String>| {
+                                let unit = PickedUnit::clicked(
+                                    mode.get_untracked(),
+                                    open_at_press.get_value() || off.get_untracked(),
+                                    &keys,
+                                    verse.as_deref(),
+                                );
+                                if let Some(unit) = unit {
+                                    picked.set(Some(unit));
+                                }
+                            })
+                        };
                         let source = {
                             let keys = keys.clone();
                             move || {
@@ -439,7 +460,7 @@ fn chapter_view(
                                     _ => SourcePlace::Same,
                                 });
                                 pane_text.with(|text| {
-                                    source_cell(book_id, &pane, text.as_ref(), &keys, &label, &place, pane_focus)
+                                    source_cell(book_id, &pane, text.as_ref(), &keys, &label, &place, pane_focus, pick)
                                 })
                             }
                         };
@@ -471,7 +492,7 @@ fn chapter_view(
     };
     let dropped = dropped_links(runtime.saves().dropped(), open.at.clone());
     view! {
-        <main style=main.to_style()>
+        <main style=main.to_style() on:pointerdown=note_press>
             <div style=bar.to_style()>
                 <IconButton title=t(keys::draft::TOGGLE_RAIL, &[]) on_click=toggle>{rail_icon()}</IconButton>
                 <h2 style=h2.to_style()>{book_id.english_name()}" "{chapter}</h2>
@@ -728,7 +749,12 @@ fn target_head(
     }
 }
 
-/// tC4's `SourceCell`: the section's place and its source verses.
+/// tC4's `SourceCell`: the section's place and its source verses. A click on the verses runs
+/// `pick` with the verse under the pointer.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "a view's inputs: the state, handles and signals it reads"
+)]
 fn source_cell(
     book: BookId,
     pane: &str,
@@ -737,6 +763,7 @@ fn source_cell(
     label: &str,
     place: &SourcePlace,
     focus: Memo<Option<HelpFocus>>,
+    pick: Callback<Option<String>>,
 ) -> AnyView {
     let mut style = cell();
     style.set("border-inline-end", HAIR);
@@ -789,7 +816,7 @@ fn source_cell(
         }
         .into_any(),
         Some(PaneText::Ready(chapter)) => {
-            source_paragraphs(book, pane, chapter, keys, number.as_deref(), focus)
+            source_paragraphs(book, pane, chapter, keys, number.as_deref(), focus, pick)
         }
         None => ().into_any(),
     };
@@ -803,6 +830,7 @@ fn source_paragraphs(
     keys: &[String],
     number: Option<&str>,
     focus: Memo<Option<HelpFocus>>,
+    pick: Callback<Option<String>>,
 ) -> AnyView {
     let number = number.map(str::to_owned);
     let orig = pane == "orig";
@@ -861,14 +889,25 @@ fn source_paragraphs(
                         }
                         None => view! { <span style=waiting.clone()>{t(keys::draft::SOURCES_LOAD, &[])}</span> }.into_any(),
                     };
-                    let shown = number.clone().unwrap_or(k);
-                    view! { <sup style=sup()>{shown}</sup>{text} }
+                    let shown = number.clone().unwrap_or_else(|| k.clone());
+                    view! { <span data-verse=k><sup style=sup()>{shown}</sup>{text}</span> }
                 })
                 .collect_view();
-            view! { <p data-testid="draft-source-text" dir=dir lang=lang style=style.clone()>{body}</p> }
+            let on_click = move |e: web_sys::MouseEvent| pick.run(clicked_verse(&e));
+            view! { <p data-testid="draft-source-text" dir=dir lang=lang style=style.clone() on:click=on_click>{body}</p> }
         })
         .collect_view()
         .into_any()
+}
+
+/// The key of the source verse a click fell on; none for a click between verses.
+fn clicked_verse(e: &web_sys::MouseEvent) -> Option<String> {
+    e.target()
+        .and_then(|t| t.dyn_into::<web_sys::Element>().ok())?
+        .closest("[data-verse]")
+        .ok()
+        .flatten()?
+        .get_attribute("data-verse")
 }
 
 /// tC4's `TargetCell`: the section's "Draft section" pill, its verses as paragraphs, and the
@@ -984,13 +1023,12 @@ fn target_cell(
     // (#991); a click while a card is open leaves the filter on that card. In Verse mode the
     // verse's own click picks it (`target_verse`).
     let pick = {
-        let first = keys.first().cloned();
+        let keys = keys.to_vec();
         move |_| {
-            if let Some(first) = first.clone()
-                && mode.get_untracked() == UnitMode::Section
-                && !off.get_untracked()
+            if let Some(unit) =
+                PickedUnit::clicked(mode.get_untracked(), off.get_untracked(), &keys, None)
             {
-                picked.set(Some(PickedUnit::Section(first)));
+                picked.set(Some(unit));
             }
         }
     };

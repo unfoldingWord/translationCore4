@@ -17,6 +17,7 @@ use tc_ui::app::translate::{
     section_place, section_ranges, sections, source_keys_for, source_place, target_paragraphs,
     verse_key, verse_place,
 };
+use tc_ui::app::understand::UnitMode;
 
 fn keys(list: &[&str]) -> Vec<String> {
     list.iter().map(|k| (*k).to_owned()).collect()
@@ -385,6 +386,50 @@ fn the_helps_stay_on_the_unit_picked_after_its_card_closes() {
     assert_eq!(
         PickedUnit::Verse("12".to_owned()).verses(&bridged),
         keys(&["12-13"])
+    );
+}
+
+// #1057: a click on a section's source picks its unit as a click on its translation does: the
+// section in Section mode, the verse clicked in Verse mode, nothing while a card is open.
+#[test]
+fn a_click_on_the_source_or_the_translation_picks_the_unit_its_mode_names() {
+    let section = keys(&["4", "5"]);
+    assert_eq!(
+        PickedUnit::clicked(UnitMode::Section, false, &section, Some("5")),
+        Some(PickedUnit::Section("4".to_owned())),
+        "INV-HELPS-FOLLOW-THE-UNIT-CLICKED: a click in Section mode picks its whole section"
+    );
+    assert_eq!(
+        PickedUnit::clicked(UnitMode::Section, false, &section, None),
+        Some(PickedUnit::Section("4".to_owned()))
+    );
+    assert_eq!(
+        PickedUnit::clicked(UnitMode::Verse, false, &section, Some("5")),
+        Some(PickedUnit::Verse("5".to_owned())),
+        "INV-HELPS-FOLLOW-THE-UNIT-CLICKED: a click in Verse mode picks the verse, not its section"
+    );
+    assert_eq!(
+        PickedUnit::clicked(UnitMode::Verse, false, &section, None),
+        None,
+        "a click between verses in Verse mode picks nothing"
+    );
+    for mode in [UnitMode::Section, UnitMode::Verse] {
+        assert_eq!(
+            PickedUnit::clicked(mode, true, &section, Some("5")),
+            None,
+            "INV-HELPS-FOLLOW-THE-UNIT-CLICKED: while a card is open the helps stay on it"
+        );
+    }
+    assert_eq!(
+        PickedUnit::clicked(UnitMode::Section, false, &[], None),
+        None
+    );
+
+    // A source verse that bridges two of the translation's verses picks both.
+    let chapter = vec![keys(&["1", "2", "3"]), keys(&["4", "5"])];
+    assert_eq!(
+        PickedUnit::Verse("4-5".to_owned()).verses(&chapter),
+        keys(&["4", "5"])
     );
 }
 

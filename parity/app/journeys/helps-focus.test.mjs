@@ -3,13 +3,15 @@
 // Bible Understand, and an Open Bible Story in Translate and Understand.
 //
 // With TC4_EVIDENCE set to a folder, each step also saves a screenshot there (the issue's
-// evidence, `docs/evidence/helps-filter-after-save-<date>/`).
+// evidence: `docs/evidence/helps-filter-after-save-2026-11-10/` for #991,
+// `docs/evidence/helps-filter-source-click-2026-11-18/` for #1057).
 //
 //   TC4_BIN=target/debug/tc4 TC4_UI=target/tc-ui-app TC4_UI_HOOKS=target/tc-ui-app-hooks \
 //     node --test parity/app/journeys/helps-focus.test.mjs
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { newRequestId } from '../env-rust.mjs';
 import { browserTest, until, withApp } from './kit.mjs';
 
 const BIBLE = 'sample_burrito';
@@ -19,16 +21,16 @@ const SCENARIO = { scenario: 'en-pins' };
 const indicator = (page) => page.getByTestId('save-indicator');
 const notes = (page) => page.getByTestId('helps-note');
 
-/** The verse (a story's frame) of every note the panel lists. */
-const noteFrames = (page) => notes(page).evaluateAll((cards) => cards.map((c) => c.getAttribute('data-frame')));
-
-/** Waits until the panel lists notes, every one of them at one of `frames`. */
-async function notesOnlyAt(page, frames, what) {
+/** Waits until the panel lists `cards`, every one of them at one of `frames` (a verse, or a
+ * story's frame). */
+async function onlyAt(cards, frames, what) {
   await until(what, async () => {
-    const shown = await noteFrames(page);
+    const shown = await cards.evaluateAll((all) => all.map((c) => c.getAttribute('data-frame')));
     return shown.length > 0 && shown.every((f) => frames.includes(f));
   });
 }
+const notesOnlyAt = (page, frames, what) => onlyAt(notes(page), frames, what);
+const wordsOnlyAt = (page, frames, what) => onlyAt(page.getByTestId('helps-word'), frames, what);
 
 async function shot(page, name) {
   if (process.env.TC4_EVIDENCE) await page.screenshot({ path: path.join(process.env.TC4_EVIDENCE, `${name}.png`) });
@@ -49,6 +51,12 @@ async function openTranslate(page) {
 
 /** The translation cell of the section whose pill reads `span`. */
 const cell = (page, span) => page.getByRole('button', { name: `Draft section ${span}` }).locator('xpath=../..');
+
+/** The source text of the section whose pill reads `span`: the cell before its translation. */
+const source = (page, span) => cell(page, span).locator('xpath=preceding-sibling::div[1]').getByTestId('draft-source-text').first();
+
+/** The number of source verse `n`, a click target that is never on another verse's words. */
+const sourceVerse = (page, n) => page.getByTestId('draft-source-text').locator('sup').filter({ hasText: new RegExp(`^${n}$`) });
 
 browserTest('a_section_clicked_in_translate_filters_the_helps_and_keeps_them_after_save', async () => {
   await withApp(async ({ page }) => {
@@ -73,6 +81,95 @@ browserTest('a_section_clicked_in_translate_filters_the_helps_and_keeps_them_aft
     await page.getByRole('button', { name: 'Cancel' }).click();
     await page.getByTestId('section-editor').waitFor({ state: 'detached' });
     await notesOnlyAt(page, ['intro', '1', '2', '3'], 'Cancel keeps the section the card was opened on');
+  }, SCENARIO);
+});
+
+// #1057: a click on the source filters the helps as a click on the translation does.
+browserTest('a_source_click_in_translate_filters_the_helps_to_its_section_and_keeps_them_after_save', async () => {
+  await withApp(async ({ page }) => {
+    await openTranslate(page);
+    await source(page, '4–5').click();
+    await notesOnlyAt(page, ['4', '5'], 'a click on the source filters the Notes to 4–5');
+    assert.equal(await page.getByTestId('section-editor').count(), 0, 'the click opens no card');
+    await shot(page, '6a-translate-source-clicked');
+    await page.getByRole('tab', { name: 'Words', exact: true }).click();
+    await wordsOnlyAt(page, ['4', '5'], 'a click on the source filters the Words to 4–5');
+    await shot(page, '6b-translate-source-clicked-words');
+    await page.getByRole('tab', { name: 'Notes', exact: true }).click();
+    // A click on the source moves the filter that a click on the translation set.
+    await cell(page, '6–7').getByTestId('draft-target-text').first().click();
+    await notesOnlyAt(page, ['6', '7'], 'a click on the translation filters the helps to 6–7');
+    await sourceVerse(page, '5').click();
+    await notesOnlyAt(page, ['4', '5'], 'in Section mode a click on the source of verse 5 filters to all of 4–5');
+    await page.getByRole('button', { name: 'Draft section 4–5' }).click();
+    const box = page.getByRole('textbox', { name: 'Section 4–5' });
+    await box.waitFor();
+    // A press on the source while the section card is open picks nothing: the check after Save
+    // below would see 6–7 if it did (while the card is open the helps follow the card).
+    await sourceVerse(page, '7').click();
+    assert.equal(await page.getByTestId('section-editor').count(), 1, 'the section card stays open');
+    await box.fill(`${await box.inputValue()} revisado`);
+    await page.getByRole('button', { name: 'Save section' }).click();
+    await page.getByTestId('section-editor').waitFor({ state: 'detached' });
+    await saved(page);
+    await notesOnlyAt(page, ['4', '5'], 'the helps stay on 4–5 after Save');
+    await shot(page, '6c-translate-source-after-save');
+  }, SCENARIO);
+});
+
+browserTest('a_source_click_in_verse_mode_filters_the_helps_to_that_verse_unless_a_card_is_open', async () => {
+  await withApp(async ({ page }) => {
+    await openTranslate(page);
+    await page.getByRole('tab', { name: 'Verse', exact: true }).click();
+    await sourceVerse(page, '9').click();
+    await notesOnlyAt(page, ['9'], 'a click on the source of verse 9 filters the Notes to 9, not to 8–9');
+    assert.equal(await page.getByLabel('Verse 9', { exact: true }).count(), 0, 'the click opens no card');
+    await shot(page, '7a-translate-verse-mode-source-clicked');
+    await page.getByRole('tab', { name: 'Words', exact: true }).click();
+    await wordsOnlyAt(page, ['9'], 'a click on the source of verse 9 filters the Words to 9');
+    await shot(page, '7b-translate-verse-mode-source-clicked-words');
+    await page.getByRole('tab', { name: 'Notes', exact: true }).click();
+    await sourceVerse(page, '8').click();
+    await notesOnlyAt(page, ['8'], 'a click on the source of verse 8 moves the filter to 8');
+    // A press on the source while verse 4's card is open leaves the helps on the card's verse
+    // (owner, 2026-11-18). The press still leaves the card, which saves it, as any press does.
+    await page.getByTitle('Edit this verse').nth(3).click();
+    const box = page.getByLabel('Verse 4', { exact: true });
+    await box.waitFor();
+    await notesOnlyAt(page, ['4'], 'the open card filters the helps to verse 4');
+    await box.fill(`${await box.inputValue()} revisado`);
+    await sourceVerse(page, '5').click();
+    await box.waitFor({ state: 'detached' });
+    await saved(page);
+    await notesOnlyAt(page, ['4'], 'INV-HELPS-FOLLOW-THE-UNIT-CLICKED: a press on the source while verse 4\'s card is open leaves the helps on verse 4');
+    await shot(page, '7c-translate-verse-mode-source-press-with-card-open');
+    // With no card open, a click on the source moves the filter that verse 4's card set.
+    await sourceVerse(page, '5').click();
+    await notesOnlyAt(page, ['5'], 'with no card open, a click on the source of verse 5 moves the filter from 4 to 5');
+    await shot(page, '7d-translate-verse-mode-source-click-after-the-card');
+  }, SCENARIO);
+});
+
+// #991's held save: verse 4's save waits while the source of verse 8 is clicked, and its landing
+// leaves the filter the click set.
+browserTest('a_source_click_keeps_the_helps_when_a_held_save_lands_after_it', async () => {
+  await withApp(async ({ page, env }) => {
+    await openTranslate(page);
+    await page.getByRole('tab', { name: 'Verse', exact: true }).click();
+    await env.call('test/hold', { request: newRequestId(), at: 'save' });
+    await page.getByTitle('Edit this verse').nth(3).click();
+    const box = page.getByLabel('Verse 4', { exact: true });
+    await box.waitFor();
+    await box.fill(`${await box.inputValue()} revisado`);
+    await page.getByRole('button', { name: 'Save verse' }).click();
+    await box.waitFor({ state: 'detached' });
+    await until('saving', async () => (await indicator(page).getAttribute('data-state')) === 'saving', 5_000);
+    await sourceVerse(page, '8').click();
+    await notesOnlyAt(page, ['8'], 'a click on the source of verse 8 while verse 4 saves filters the helps to 8');
+    await env.call('test/release', { request: newRequestId(), at: 'save' });
+    await saved(page);
+    await notesOnlyAt(page, ['8'], 'the helps stay on verse 8, clicked in the source, after verse 4\'s save lands');
+    await shot(page, '7e-translate-source-click-after-a-held-save');
   }, SCENARIO);
 });
 
