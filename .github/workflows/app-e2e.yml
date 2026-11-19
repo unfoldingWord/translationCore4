@@ -6,12 +6,14 @@ name: app-e2e
 permissions:
   contents: read
 on:
-  # The journeys gate a merge: they run on main, gate/* and in the merge queue (and on request),
-  # not on every track push (rulings/2026-10-24-test-process.md).
+  # The journeys gate a merge: they run on main, gate/*, release/* and in the merge queue (and on
+  # request), not on every track push (rulings/2026-10-24-test-process.md).
   push:
-    branches: [main, 'gate/**']
-  # A pull request only reports the job as skipped: journeys is a required check, and a check
-  # that never reports would keep the pull request out of the merge queue.
+    branches: [main, 'gate/**', 'release/*']
+  # A pull request to main only reports the job as skipped: journeys is a required check, and a
+  # check that never reports would keep the pull request out of the merge queue. A release branch
+  # has no merge queue, so a pull request to release/* runs the journeys itself
+  # (rulings/2026-11-19-release-branches.md).
   pull_request:
   workflow_dispatch:
   merge_group:
@@ -26,7 +28,7 @@ jobs:
   # Whether the change can affect this workflow's tests: false when it is wholly prose
   # (scripts/ci-changes.sh). A skipped job reports success, so required checks still pass.
   changes:
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' || startsWith(github.base_ref, 'release/')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -39,8 +41,8 @@ jobs:
       - id: changes
         env:
           GH_TOKEN: ${{ github.token }}
-          BASE: ${{ github.event.merge_group.base_sha || github.event.before }}
-          HEAD: ${{ github.event.merge_group.head_sha || github.sha }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
         run: scripts/ci-changes.sh
 
   # Each shard builds what it runs against and runs its slice of the journey files (node's
@@ -49,7 +51,7 @@ jobs:
     name: journeys ${{ matrix.shard }}
     needs: changes
     # !cancelled(): if changes fails, its output is empty and nothing is skipped.
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.changes.outputs.code != 'false' }}
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || startsWith(github.base_ref, 'release/')) && needs.changes.outputs.code != 'false' }}
     strategy:
       fail-fast: false
       matrix:
@@ -104,7 +106,7 @@ jobs:
   journeys:
     needs: [changes, journeys-shard]
     # !cancelled(): a failed shard must not skip this job, which would read as a pass.
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.changes.outputs.code != 'false' }}
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || startsWith(github.base_ref, 'release/')) && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
