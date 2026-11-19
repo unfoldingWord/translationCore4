@@ -213,7 +213,7 @@ Removing the app removes only the app. Projects (`translationCore4/projects`) an
   default branch, and tag a patch version.
 - **After publishing:** mark the release as a pre-release and start its notes with "Do not
   install this version", naming the version to use instead. Point the download page,
-  https://translationcore.com/tc4, back to the previous version's files. Publish a patch that
+  https://translationcore.com/desktop/, back to the previous version's files. Publish a patch that
   fixes the problem as soon as it is ready.
 - **Translators who installed it already** follow the steps above, or wait for the patch.
 
