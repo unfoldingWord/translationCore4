@@ -149,7 +149,7 @@ fn loaded_screen(
         Some(TextDir::Rtl) => "rtl",
         _ => "ltr",
     };
-    let root = crate::css! { "flex": 1, "display": "flex", "min-height": 0 };
+    let root = super::reading_workspace_style();
     let rail = {
         let (s, actions, story) = (s.clone(), actions.clone(), shown.story);
         let on = s.u.rail.clone();
@@ -170,13 +170,7 @@ fn loaded_screen(
             })
         }
     };
-    let main = crate::css! {
-        "flex": 1,
-        "display": "flex",
-        "flex-direction": "column",
-        "min-width": 0,
-        "min-height": 0,
-    };
+    let main = super::reading_main_style();
     let bar = crate::css! {
         "display": "flex",
         "align-items": "center",
@@ -198,7 +192,7 @@ fn loaded_screen(
     let scroll = crate::css! { "flex": 1, "overflow": "auto", "min-height": 0 };
     let grid = crate::css! {
         "display": "grid",
-        "grid-template-columns": "1fr 1fr",
+        "grid-template-columns": "var(--draft-columns, 1fr 1fr)",
         "max-width": 1100,
         "margin": "0 auto",
     };
@@ -279,6 +273,7 @@ fn loaded_screen(
     let editing = s.editing.clone();
     html::div()
         .attr("style", root.to_style())
+        .attr("data-layout", "reading")
         .attr("data-testid", "story-draft")
         .on(
             leptos::ev::capture(leptos::ev::pointerdown),
@@ -413,7 +408,7 @@ fn unit_row(
     let row = crate::css! {
         "grid-column": "1 / -1",
         "display": "grid",
-        "grid-template-columns": "1fr 1fr",
+        "grid-template-columns": "var(--draft-columns, 1fr 1fr)",
     };
     let on_click = {
         let (actions, frame) = (actions.clone(), unit.frame);

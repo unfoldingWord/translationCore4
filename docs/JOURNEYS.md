@@ -117,7 +117,8 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
   `AVD`) where tC4 shows GLT or GST, the name under the tabs is the full name in its metadata
   ("Texto Puente Literal"), and the helps' simplified tab shows its own (#1045, DIFFERENCES).
   The helps tabs wrap at narrow panel widths so they do not push the panel sideways (#993,
-  DIFFERENCES).
+  DIFFERENCES). In a narrow window the book list, passage and helps stack vertically, the
+  header controls use two rows, and each source sits above its translation (#993, DIFFERENCES).
 
 ### J3 Get pinned resources
 
@@ -285,6 +286,8 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
   `x-ref` names that verse, where tC4 reads the whole span (#409, DIFFERENCES); the helps stay
   filtered to the unit clicked, also after a comment is saved (#991, DIFFERENCES). The helps
   tabs wrap at narrow panel widths so they do not push the panel sideways (#993, DIFFERENCES).
+  In a narrow window the book list, passage and helps stack vertically and the header controls
+  use two rows (#993, DIFFERENCES).
 
 ### J17 Open a shared project on another computer
 
@@ -346,7 +349,9 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
   title and the reference line.
 - End state: the story file changes only inside the written frame, title or reference line.
 - Must not: touch another frame; write two paragraphs into one frame; save a picture line.
-- Differs from tC4: a frame's editor fills the row its picture and text set (#915).
+- Differs from tC4: a frame's editor fills the row its picture and text set (#915). In a narrow
+  window the story list, passage and helps stack vertically, the header controls use two rows,
+  and each source sits above its translation (#993, DIFFERENCES).
 
 ### J22 Check an OBS story
 
@@ -381,7 +386,8 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
   same story in Understand.
 - Must not: change progress.
 - Differs from tC4: the helps list only the frame in focus, also after Save (#991,
-  DIFFERENCES).
+  DIFFERENCES). In a narrow window the story list, passage and helps stack vertically and the
+  header controls use two rows (#993, DIFFERENCES).
 
 ### J26 Sync one project with two teammates through Door43
 

@@ -12,8 +12,9 @@ use crate::ds::spread;
 /// its `...rest` (the story rail's test id).
 pub fn rail_shell(title: Signal<String>, attrs: Attrs, children: AnyView) -> impl IntoView {
     let aside = crate::css! {
-        "width": "var(--rail-width)",
-        "flex": "none",
+        "width": "var(--reading-rail-width, var(--rail-width))",
+        "height": "var(--reading-rail-height, auto)",
+        "flex": "var(--reading-rail-flex, none)",
         "background": "var(--surface-panel)",
         "border-inline-end": "var(--stroke-hair) solid var(--border-hair)",
         "display": "flex",

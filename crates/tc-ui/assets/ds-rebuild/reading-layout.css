@@ -1,0 +1,31 @@
+/* Below the room needed by the book rail, passage and fully widened helps,
+   vertical panels keep all three reachable instead of shrinking the passage to zero. */
+@media (max-width: 1279px) {
+  [data-layout="reading"] {
+    --reading-direction: column;
+    --reading-overflow: auto;
+    --reading-rail-width: 100%;
+    --reading-rail-height: 8rem;
+    --reading-rail-flex: 0 0 8rem;
+    --reading-main-flex: 1 0 clamp(20rem, 45vh, 28rem);
+    --reading-helps-flex: 1 0 clamp(18rem, 40vh, 24rem);
+    --reading-helps-align: flex-end;
+  }
+}
+
+@media (max-width: 800px) {
+  [data-layout="app-header"] {
+    --app-header-columns: minmax(0, 1fr) auto;
+    --app-header-height: auto;
+    --app-header-gap: 8px 14px;
+    --app-header-pad: 8px 16px;
+    grid-template-areas: "brand status" "modes modes";
+  }
+  [data-layout="app-header"] > :first-child { grid-area: brand; }
+  [data-layout="app-header"] > :nth-child(2) { grid-area: modes; justify-self: center; }
+  [data-layout="app-header"] > :last-child { grid-area: status; }
+}
+
+@media (max-width: 640px) {
+  [data-layout="reading"] { --draft-columns: minmax(0, 1fr); }
+}

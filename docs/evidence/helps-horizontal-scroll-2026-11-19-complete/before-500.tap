@@ -1,0 +1,36 @@
+TAP version 13
+# tc4: scenario C:\\Users\\Elias_2\\Documents\\Repositorios\\unfoldingWord\\tc4-993\\target\\parity-rust\\15292-1795130409896\\en-pins\\state: loaded sample_burrito (3 declared differences)
+# tc4: scenario C:\\Users\\Elias_2\\Documents\\Repositorios\\unfoldingWord\\tc4-993\\target\\parity-rust\\15292-1795130409896\\en-pins\\state: loaded sample_burrito_obs (1 declared differences)
+# tc4: scenario C:\\Users\\Elias_2\\Documents\\Repositorios\\unfoldingWord\\tc4-993\\target\\parity-rust\\15292-1795130409896\\en-pins\\state: 2 projects written to C:\\Users\\Elias_2\\Documents\\Repositorios\\unfoldingWord\\tc4-993\\target\\parity-rust\\15292-1795130409896\\en-pins\\projects
+# tc4: scenario C:\\Users\\Elias_2\\Documents\\Repositorios\\unfoldingWord\\tc4-993\\target\\parity-rust\\15292-1795130409896\\en-pins\\state: 13 resources installed
+# tc4: serving http://127.0.0.1:61885/ (projects: C:\\Users\\Elias_2\\Documents\\Repositorios\\unfoldingWord\\tc4-993\\target\\parity-rust\\15292-1795130409896\\en-pins\\projects, Door43: http://127.0.0.1:9)
+# Subtest: the_passage_helps_and_header_remain_reachable_in_a_small_bible_translate_window
+not ok 1 - the_passage_helps_and_header_remain_reachable_in_a_small_bible_translate_window
+  ---
+  duration_ms: 6145.719
+  type: 'test'
+  location: 'C:\\Users\\Elias_2\\Documents\\Repositorios\\unfoldingWord\\tc4-993\\parity\\app\\journeys\\kit.mjs:39:10'
+  failureType: 'testCodeFailure'
+  error: 'INV-READING-SPACE: passage collapsed: {"viewport":500,"main":{"left":176,"right":176,"top":56,"bottom":938,"width":0,"height":882},"helps":{"left":176,"right":516,"top":56,"bottom":938,"width":340,"height":882},"list":{"width":339,"scrollWidth":339},"header":[{"name":"brand","left":-38,"right":119.671875,"top":14,"bottom":42,"width":157.671875,"height":28},{"name":"project","left":148.671875,"right":168.671875,"top":4.109375,"bottom":51.890625,"width":20,"height":47.78125},{"name":"modes","left":53.328125,"right":338.671875,"top":7,"bottom":49,"width":285.34375,"height":42},{"name":"status","left":352.671875,"right":430,"top":11,"bottom":45,"width":77.328125,"height":34}]}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    fitsWindow (file:///C:/Users/Elias_2/Documents/Repositorios/unfoldingWord/tc4-993/parity/app/journeys/helps-window.test.mjs:39:10)
+    withApp.scenario (file:///C:/Users/Elias_2/Documents/Repositorios/unfoldingWord/tc4-993/parity/app/journeys/helps-window.test.mjs:94:13)
+    async withApp (file:///C:/Users/Elias_2/Documents/Repositorios/unfoldingWord/tc4-993/parity/app/journeys/kit.mjs:181:20)
+    async file:///C:/Users/Elias_2/Documents/Repositorios/unfoldingWord/tc4-993/parity/app/journeys/helps-window.test.mjs:74:7
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 16082.4224

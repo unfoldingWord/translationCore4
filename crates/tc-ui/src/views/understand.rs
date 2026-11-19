@@ -136,7 +136,7 @@ fn screen(
     book: Memo<Option<Arc<BookView>>>,
     text: Memo<Option<Arc<ChaptersView>>>,
 ) -> AnyView {
-    let root = crate::css! { "flex": 1, "display": "flex", "min-height": 0 };
+    let root = super::reading_workspace_style();
     let rail = {
         let (s2, actions) = (s.clone(), actions.clone());
         let on = s.u.rail.clone();
@@ -154,7 +154,7 @@ fn screen(
         }
     };
     view! {
-        <div style=root.to_style() data-testid="understand">
+        <div style=root.to_style() data-layout="reading" data-testid="understand">
             {rail}
             {rest}
         </div>
@@ -275,13 +275,7 @@ fn chapter_view(
             ready
         });
     }
-    let main = crate::css! {
-        "flex": 1,
-        "display": "flex",
-        "flex-direction": "column",
-        "min-width": 0,
-        "min-height": 0,
-    };
+    let main = super::reading_main_style();
     let scroll = crate::css! {
         "flex": 1,
         "overflow": "auto",

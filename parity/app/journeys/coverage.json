@@ -132,6 +132,12 @@
         "tests": [
           "fitting_helps_keep_their_focus_and_scroll_after_clicks_in_translate"
         ]
+      },
+      {
+        "file": "parity/app/journeys/helps-window.test.mjs",
+        "tests": [
+          "the_passage_helps_and_header_remain_reachable_in_a_small_bible_translate_window"
+        ]
       }
     ],
     "J3": [
@@ -334,6 +340,12 @@
         "tests": [
           "fitting_helps_keep_their_focus_and_scroll_after_clicks_in_understand"
         ]
+      },
+      {
+        "file": "parity/app/journeys/helps-window.test.mjs",
+        "tests": [
+          "the_passage_helps_and_header_remain_reachable_in_a_small_bible_understand_window"
+        ]
       }
     ],
     "J17": [
@@ -370,14 +382,22 @@
         "J20: Open Bible Stories are created with fifty stories, and Home shows the project at 0%"
       ]
     },
-    "J21": {
-      "file": "parity/app/journeys/story-writes.test.mjs",
-      "tests": [
-        "j21_frame_title_and_reference_save_only_their_own_story_bytes_and_keep_the_rail",
-        "a_frame_editor_fills_the_row_its_source_sets_and_scrolls_inside",
-        "a_frame_editor_resize_handle_works_and_the_window_refits_it"
-      ]
-    },
+    "J21": [
+      {
+        "file": "parity/app/journeys/story-writes.test.mjs",
+        "tests": [
+          "j21_frame_title_and_reference_save_only_their_own_story_bytes_and_keep_the_rail",
+          "a_frame_editor_fills_the_row_its_source_sets_and_scrolls_inside",
+          "a_frame_editor_resize_handle_works_and_the_window_refits_it"
+        ]
+      },
+      {
+        "file": "parity/app/journeys/helps-window.test.mjs",
+        "tests": [
+          "the_passage_helps_and_header_remain_reachable_in_a_small_story_translate_window"
+        ]
+      }
+    ],
     "J22": [
       {
         "file": "parity/app/journeys/check-writes.test.mjs",
@@ -431,6 +451,12 @@
         "file": "parity/app/journeys/helps-focus.test.mjs",
         "tests": [
           "a_frame_clicked_in_a_story_filters_the_helps_to_it_also_after_save"
+        ]
+      },
+      {
+        "file": "parity/app/journeys/helps-window.test.mjs",
+        "tests": [
+          "the_passage_helps_and_header_remain_reachable_in_a_small_story_understand_window"
         ]
       }
     ],

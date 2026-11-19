@@ -1,0 +1,4891 @@
+{
+  "ar-500-before": {
+    "viewport": 500,
+    "main": {
+      "left": 0,
+      "right": 500,
+      "top": 241.78125,
+      "bottom": 663.875,
+      "width": 500,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 0,
+      "right": 340,
+      "top": 663.875,
+      "bottom": 1039.0625,
+      "width": 340,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 324.4375,
+        "right": 484,
+        "top": 17.890625,
+        "bottom": 45.890625,
+        "width": 159.5625,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 138.65625,
+        "right": 295.4375,
+        "top": 8,
+        "bottom": 55.78125,
+        "width": 156.78125,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 142.453125,
+        "right": 357.5625,
+        "top": 63.78125,
+        "bottom": 105.78125,
+        "width": 215.109375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 16,
+        "right": 124.65625,
+        "top": 14.890625,
+        "bottom": 48.890625,
+        "width": 108.65625,
+        "height": 34
+      }
+    ]
+  },
+  "ar-500-clicked": {
+    "viewport": 500,
+    "main": {
+      "left": 0,
+      "right": 500,
+      "top": 241.78125,
+      "bottom": 663.875,
+      "width": 500,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 0,
+      "right": 340,
+      "top": 663.875,
+      "bottom": 1039.0625,
+      "width": 340,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 324.4375,
+        "right": 484,
+        "top": 17.890625,
+        "bottom": 45.890625,
+        "width": 159.5625,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 138.65625,
+        "right": 295.4375,
+        "top": 8,
+        "bottom": 55.78125,
+        "width": 156.78125,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 142.453125,
+        "right": 357.5625,
+        "top": 63.78125,
+        "bottom": 105.78125,
+        "width": 215.109375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 16,
+        "right": 124.65625,
+        "top": 14.890625,
+        "bottom": 48.890625,
+        "width": 108.65625,
+        "height": 34
+      }
+    ]
+  },
+  "bible_translate-340-500-before": {
+    "viewport": 500,
+    "main": {
+      "left": 0,
+      "right": 500,
+      "top": 241.78125,
+      "bottom": 663.875,
+      "width": 500,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 160,
+      "right": 500,
+      "top": 663.875,
+      "bottom": 1039.0625,
+      "width": 340,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 17.890625,
+        "bottom": 45.890625,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 373.734375,
+        "top": 8,
+        "bottom": 55.78125,
+        "width": 171.0625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 107.328125,
+        "right": 392.671875,
+        "top": 63.78125,
+        "bottom": 105.78125,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 387.734375,
+        "right": 484,
+        "top": 14.890625,
+        "bottom": 48.890625,
+        "width": 96.265625,
+        "height": 34
+      }
+    ]
+  },
+  "bible_translate-340-500-clicked": {
+    "viewport": 500,
+    "main": {
+      "left": 0,
+      "right": 500,
+      "top": 241.78125,
+      "bottom": 663.875,
+      "width": 500,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 160,
+      "right": 500,
+      "top": 663.875,
+      "bottom": 1039.0625,
+      "width": 340,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 17.890625,
+        "bottom": 45.890625,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 373.734375,
+        "top": 8,
+        "bottom": 55.78125,
+        "width": 171.0625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 107.328125,
+        "right": 392.671875,
+        "top": 63.78125,
+        "bottom": 105.78125,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 387.734375,
+        "right": 484,
+        "top": 14.890625,
+        "bottom": 48.890625,
+        "width": 96.265625,
+        "height": 34
+      }
+    ]
+  },
+  "bible_translate-340-960-before": {
+    "viewport": 960,
+    "main": {
+      "left": 0,
+      "right": 960,
+      "top": 184,
+      "bottom": 606.09375,
+      "width": 960,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 620,
+      "right": 960,
+      "top": 606.09375,
+      "bottom": 981.28125,
+      "width": 340,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 14,
+        "bottom": 42,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 323.328125,
+        "top": 4.109375,
+        "bottom": 51.890625,
+        "width": 120.65625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 337.328125,
+        "right": 622.671875,
+        "top": 7,
+        "bottom": 49,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 636.671875,
+        "right": 944,
+        "top": 11,
+        "bottom": 45,
+        "width": 307.328125,
+        "height": 34
+      }
+    ]
+  },
+  "bible_translate-340-960-clicked": {
+    "viewport": 960,
+    "main": {
+      "left": 0,
+      "right": 960,
+      "top": 184,
+      "bottom": 606.09375,
+      "width": 960,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 620,
+      "right": 960,
+      "top": 606.09375,
+      "bottom": 981.28125,
+      "width": 340,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 14,
+        "bottom": 42,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 323.328125,
+        "top": 4.109375,
+        "bottom": 51.890625,
+        "width": 120.65625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 337.328125,
+        "right": 622.671875,
+        "top": 7,
+        "bottom": 49,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 636.671875,
+        "right": 944,
+        "top": 11,
+        "bottom": 45,
+        "width": 307.328125,
+        "height": 34
+      }
+    ]
+  },
+  "bible_translate-340-restored": {
+    "viewport": 1280,
+    "main": {
+      "left": 230,
+      "right": 940,
+      "top": 56,
+      "bottom": 800,
+      "width": 710,
+      "height": 744
+    },
+    "helps": {
+      "left": 940,
+      "right": 1280,
+      "top": 56,
+      "bottom": 800,
+      "width": 340,
+      "height": 744
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 14,
+        "bottom": 42,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 445.859375,
+        "top": 4.109375,
+        "bottom": 51.890625,
+        "width": 243.1875,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 497.328125,
+        "right": 782.671875,
+        "top": 7,
+        "bottom": 49,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 796.671875,
+        "right": 1264,
+        "top": 11,
+        "bottom": 45,
+        "width": 467.328125,
+        "height": 34
+      }
+    ]
+  },
+  "bible_translate-720-500-before": {
+    "viewport": 500,
+    "main": {
+      "left": 0,
+      "right": 500,
+      "top": 241.78125,
+      "bottom": 663.875,
+      "width": 500,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 0,
+      "right": 500,
+      "top": 663.875,
+      "bottom": 1039.0625,
+      "width": 500,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 499,
+      "scrollWidth": 499
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 17.890625,
+        "bottom": 45.890625,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 373.734375,
+        "top": 8,
+        "bottom": 55.78125,
+        "width": 171.0625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 107.328125,
+        "right": 392.671875,
+        "top": 63.78125,
+        "bottom": 105.78125,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 387.734375,
+        "right": 484,
+        "top": 14.890625,
+        "bottom": 48.890625,
+        "width": 96.265625,
+        "height": 34
+      }
+    ]
+  },
+  "bible_translate-720-500-clicked": {
+    "viewport": 500,
+    "main": {
+      "left": 0,
+      "right": 500,
+      "top": 241.78125,
+      "bottom": 663.875,
+      "width": 500,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 0,
+      "right": 500,
+      "top": 663.875,
+      "bottom": 1039.0625,
+      "width": 500,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 499,
+      "scrollWidth": 499
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 17.890625,
+        "bottom": 45.890625,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 373.734375,
+        "top": 8,
+        "bottom": 55.78125,
+        "width": 171.0625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 107.328125,
+        "right": 392.671875,
+        "top": 63.78125,
+        "bottom": 105.78125,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 387.734375,
+        "right": 484,
+        "top": 14.890625,
+        "bottom": 48.890625,
+        "width": 96.265625,
+        "height": 34
+      }
+    ]
+  },
+  "bible_translate-720-960-before": {
+    "viewport": 960,
+    "main": {
+      "left": 0,
+      "right": 960,
+      "top": 184,
+      "bottom": 606.09375,
+      "width": 960,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 240,
+      "right": 960,
+      "top": 606.09375,
+      "bottom": 981.28125,
+      "width": 720,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 719,
+      "scrollWidth": 719
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 14,
+        "bottom": 42,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 323.328125,
+        "top": 4.109375,
+        "bottom": 51.890625,
+        "width": 120.65625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 337.328125,
+        "right": 622.671875,
+        "top": 7,
+        "bottom": 49,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 636.671875,
+        "right": 944,
+        "top": 11,
+        "bottom": 45,
+        "width": 307.328125,
+        "height": 34
+      }
+    ]
+  },
+  "bible_translate-720-960-clicked": {
+    "viewport": 960,
+    "main": {
+      "left": 0,
+      "right": 960,
+      "top": 184,
+      "bottom": 606.09375,
+      "width": 960,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 240,
+      "right": 960,
+      "top": 606.09375,
+      "bottom": 981.28125,
+      "width": 720,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 719,
+      "scrollWidth": 719
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 14,
+        "bottom": 42,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 323.328125,
+        "top": 4.109375,
+        "bottom": 51.890625,
+        "width": 120.65625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 337.328125,
+        "right": 622.671875,
+        "top": 7,
+        "bottom": 49,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 636.671875,
+        "right": 944,
+        "top": 11,
+        "bottom": 45,
+        "width": 307.328125,
+        "height": 34
+      }
+    ]
+  },
+  "bible_translate-720-restored": {
+    "viewport": 1280,
+    "main": {
+      "left": 230,
+      "right": 560,
+      "top": 56,
+      "bottom": 800,
+      "width": 330,
+      "height": 744
+    },
+    "helps": {
+      "left": 560,
+      "right": 1280,
+      "top": 56,
+      "bottom": 800,
+      "width": 720,
+      "height": 744
+    },
+    "list": {
+      "width": 719,
+      "scrollWidth": 719
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 14,
+        "bottom": 42,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 445.859375,
+        "top": 4.109375,
+        "bottom": 51.890625,
+        "width": 243.1875,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 497.328125,
+        "right": 782.671875,
+        "top": 7,
+        "bottom": 49,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 796.671875,
+        "right": 1264,
+        "top": 11,
+        "bottom": 45,
+        "width": 467.328125,
+        "height": 34
+      }
+    ]
+  },
+  "bible_translate-resized-in-small-window": {
+    "viewport": 500,
+    "main": {
+      "left": 0,
+      "right": 500,
+      "top": 241.78125,
+      "bottom": 663.875,
+      "width": 500,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 220,
+      "right": 500,
+      "top": 663.875,
+      "bottom": 1039.0625,
+      "width": 280,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 279,
+      "scrollWidth": 279
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 17.890625,
+        "bottom": 45.890625,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 373.734375,
+        "top": 8,
+        "bottom": 55.78125,
+        "width": 171.0625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 107.328125,
+        "right": 392.671875,
+        "top": 63.78125,
+        "bottom": 105.78125,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 387.734375,
+        "right": 484,
+        "top": 14.890625,
+        "bottom": 48.890625,
+        "width": 96.265625,
+        "height": 34
+      }
+    ]
+  },
+  "bible_translate-restored": {
+    "viewport": 1280,
+    "main": {
+      "left": 230,
+      "right": 1000,
+      "top": 56,
+      "bottom": 800,
+      "width": 770,
+      "height": 744
+    },
+    "helps": {
+      "left": 1000,
+      "right": 1280,
+      "top": 56,
+      "bottom": 800,
+      "width": 280,
+      "height": 744
+    },
+    "list": {
+      "width": 279,
+      "scrollWidth": 279
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 14,
+        "bottom": 42,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 445.859375,
+        "top": 4.109375,
+        "bottom": 51.890625,
+        "width": 243.1875,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 497.328125,
+        "right": 782.671875,
+        "top": 7,
+        "bottom": 49,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 796.671875,
+        "right": 1264,
+        "top": 11,
+        "bottom": 45,
+        "width": 467.328125,
+        "height": 34
+      }
+    ]
+  },
+  "bible_translate-saved": {
+    "viewport": 500,
+    "main": {
+      "left": 0,
+      "right": 500,
+      "top": 140.78125,
+      "bottom": 562.875,
+      "width": 500,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 220,
+      "right": 500,
+      "top": 562.875,
+      "bottom": 938.0625,
+      "width": 280,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 279,
+      "scrollWidth": 279
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 17.890625,
+        "bottom": 45.890625,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 373.734375,
+        "top": 8,
+        "bottom": 55.78125,
+        "width": 171.0625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 107.328125,
+        "right": 392.671875,
+        "top": 63.78125,
+        "bottom": 105.78125,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 387.734375,
+        "right": 484,
+        "top": 14.890625,
+        "bottom": 48.890625,
+        "width": 96.265625,
+        "height": 34
+      }
+    ]
+  },
+  "bible_translate-shown-again": {
+    "viewport": 500,
+    "main": {
+      "left": 0,
+      "right": 500,
+      "top": 241.78125,
+      "bottom": 663.875,
+      "width": 500,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 0,
+      "right": 500,
+      "top": 663.875,
+      "bottom": 1039.0625,
+      "width": 500,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 499,
+      "scrollWidth": 499
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 17.890625,
+        "bottom": 45.890625,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 373.734375,
+        "top": 8,
+        "bottom": 55.78125,
+        "width": 171.0625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 107.328125,
+        "right": 392.671875,
+        "top": 63.78125,
+        "bottom": 105.78125,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 387.734375,
+        "right": 484,
+        "top": 14.890625,
+        "bottom": 48.890625,
+        "width": 96.265625,
+        "height": 34
+      }
+    ]
+  },
+  "bible_translate-wide": {
+    "viewport": 1280,
+    "main": {
+      "left": 230,
+      "right": 940,
+      "top": 56,
+      "bottom": 800,
+      "width": 710,
+      "height": 744
+    },
+    "helps": {
+      "left": 940,
+      "right": 1280,
+      "top": 56,
+      "bottom": 800,
+      "width": 340,
+      "height": 744
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 14,
+        "bottom": 42,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 445.859375,
+        "top": 4.109375,
+        "bottom": 51.890625,
+        "width": 243.1875,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 497.328125,
+        "right": 782.671875,
+        "top": 7,
+        "bottom": 49,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 796.671875,
+        "right": 1264,
+        "top": 11,
+        "bottom": 45,
+        "width": 467.328125,
+        "height": 34
+      }
+    ]
+  },
+  "bible_translate-workspace-scrolled": {
+    "viewport": 500,
+    "main": {
+      "left": 0,
+      "right": 500,
+      "top": 140.78125,
+      "bottom": 562.875,
+      "width": 500,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 220,
+      "right": 500,
+      "top": 562.875,
+      "bottom": 938.0625,
+      "width": 280,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 279,
+      "scrollWidth": 279
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 17.890625,
+        "bottom": 45.890625,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 373.734375,
+        "top": 8,
+        "bottom": 55.78125,
+        "width": 171.0625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 107.328125,
+        "right": 392.671875,
+        "top": 63.78125,
+        "bottom": 105.78125,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 387.734375,
+        "right": 484,
+        "top": 14.890625,
+        "bottom": 48.890625,
+        "width": 96.265625,
+        "height": 34
+      }
+    ]
+  },
+  "bible_understand-340-500-before": {
+    "viewport": 500,
+    "main": {
+      "left": 0,
+      "right": 500,
+      "top": 241.78125,
+      "bottom": 663.875,
+      "width": 500,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 160,
+      "right": 500,
+      "top": 663.875,
+      "bottom": 1039.0625,
+      "width": 340,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 17.890625,
+        "bottom": 45.890625,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 373.734375,
+        "top": 8,
+        "bottom": 55.78125,
+        "width": 171.0625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 107.328125,
+        "right": 392.671875,
+        "top": 63.78125,
+        "bottom": 105.78125,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 387.734375,
+        "right": 484,
+        "top": 14.890625,
+        "bottom": 48.890625,
+        "width": 96.265625,
+        "height": 34
+      }
+    ]
+  },
+  "bible_understand-340-500-clicked": {
+    "viewport": 500,
+    "main": {
+      "left": 0,
+      "right": 500,
+      "top": 241.78125,
+      "bottom": 663.875,
+      "width": 500,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 160,
+      "right": 500,
+      "top": 663.875,
+      "bottom": 1039.0625,
+      "width": 340,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 17.890625,
+        "bottom": 45.890625,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 373.734375,
+        "top": 8,
+        "bottom": 55.78125,
+        "width": 171.0625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 107.328125,
+        "right": 392.671875,
+        "top": 63.78125,
+        "bottom": 105.78125,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 387.734375,
+        "right": 484,
+        "top": 14.890625,
+        "bottom": 48.890625,
+        "width": 96.265625,
+        "height": 34
+      }
+    ]
+  },
+  "bible_understand-340-960-before": {
+    "viewport": 960,
+    "main": {
+      "left": 0,
+      "right": 960,
+      "top": 184,
+      "bottom": 606.09375,
+      "width": 960,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 620,
+      "right": 960,
+      "top": 606.09375,
+      "bottom": 981.28125,
+      "width": 340,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 14,
+        "bottom": 42,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 323.328125,
+        "top": 4.109375,
+        "bottom": 51.890625,
+        "width": 120.65625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 337.328125,
+        "right": 622.671875,
+        "top": 7,
+        "bottom": 49,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 636.671875,
+        "right": 944,
+        "top": 11,
+        "bottom": 45,
+        "width": 307.328125,
+        "height": 34
+      }
+    ]
+  },
+  "bible_understand-340-960-clicked": {
+    "viewport": 960,
+    "main": {
+      "left": 0,
+      "right": 960,
+      "top": 184,
+      "bottom": 606.09375,
+      "width": 960,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 620,
+      "right": 960,
+      "top": 606.09375,
+      "bottom": 981.28125,
+      "width": 340,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 14,
+        "bottom": 42,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 323.328125,
+        "top": 4.109375,
+        "bottom": 51.890625,
+        "width": 120.65625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 337.328125,
+        "right": 622.671875,
+        "top": 7,
+        "bottom": 49,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 636.671875,
+        "right": 944,
+        "top": 11,
+        "bottom": 45,
+        "width": 307.328125,
+        "height": 34
+      }
+    ]
+  },
+  "bible_understand-340-restored": {
+    "viewport": 1280,
+    "main": {
+      "left": 230,
+      "right": 940,
+      "top": 56,
+      "bottom": 800,
+      "width": 710,
+      "height": 744
+    },
+    "helps": {
+      "left": 940,
+      "right": 1280,
+      "top": 56,
+      "bottom": 800,
+      "width": 340,
+      "height": 744
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 14,
+        "bottom": 42,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 445.859375,
+        "top": 4.109375,
+        "bottom": 51.890625,
+        "width": 243.1875,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 497.328125,
+        "right": 782.671875,
+        "top": 7,
+        "bottom": 49,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 796.671875,
+        "right": 1264,
+        "top": 11,
+        "bottom": 45,
+        "width": 467.328125,
+        "height": 34
+      }
+    ]
+  },
+  "bible_understand-720-500-before": {
+    "viewport": 500,
+    "main": {
+      "left": 0,
+      "right": 500,
+      "top": 241.78125,
+      "bottom": 663.875,
+      "width": 500,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 0,
+      "right": 500,
+      "top": 663.875,
+      "bottom": 1039.0625,
+      "width": 500,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 499,
+      "scrollWidth": 499
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 17.890625,
+        "bottom": 45.890625,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 373.734375,
+        "top": 8,
+        "bottom": 55.78125,
+        "width": 171.0625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 107.328125,
+        "right": 392.671875,
+        "top": 63.78125,
+        "bottom": 105.78125,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 387.734375,
+        "right": 484,
+        "top": 14.890625,
+        "bottom": 48.890625,
+        "width": 96.265625,
+        "height": 34
+      }
+    ]
+  },
+  "bible_understand-720-500-clicked": {
+    "viewport": 500,
+    "main": {
+      "left": 0,
+      "right": 500,
+      "top": 241.78125,
+      "bottom": 663.875,
+      "width": 500,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 0,
+      "right": 500,
+      "top": 663.875,
+      "bottom": 1039.0625,
+      "width": 500,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 499,
+      "scrollWidth": 499
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 17.890625,
+        "bottom": 45.890625,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 373.734375,
+        "top": 8,
+        "bottom": 55.78125,
+        "width": 171.0625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 107.328125,
+        "right": 392.671875,
+        "top": 63.78125,
+        "bottom": 105.78125,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 387.734375,
+        "right": 484,
+        "top": 14.890625,
+        "bottom": 48.890625,
+        "width": 96.265625,
+        "height": 34
+      }
+    ]
+  },
+  "bible_understand-720-960-before": {
+    "viewport": 960,
+    "main": {
+      "left": 0,
+      "right": 960,
+      "top": 184,
+      "bottom": 606.09375,
+      "width": 960,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 240,
+      "right": 960,
+      "top": 606.09375,
+      "bottom": 981.28125,
+      "width": 720,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 719,
+      "scrollWidth": 719
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 14,
+        "bottom": 42,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 323.328125,
+        "top": 4.109375,
+        "bottom": 51.890625,
+        "width": 120.65625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 337.328125,
+        "right": 622.671875,
+        "top": 7,
+        "bottom": 49,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 636.671875,
+        "right": 944,
+        "top": 11,
+        "bottom": 45,
+        "width": 307.328125,
+        "height": 34
+      }
+    ]
+  },
+  "bible_understand-720-960-clicked": {
+    "viewport": 960,
+    "main": {
+      "left": 0,
+      "right": 960,
+      "top": 184,
+      "bottom": 606.09375,
+      "width": 960,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 240,
+      "right": 960,
+      "top": 606.09375,
+      "bottom": 981.28125,
+      "width": 720,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 719,
+      "scrollWidth": 719
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 14,
+        "bottom": 42,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 323.328125,
+        "top": 4.109375,
+        "bottom": 51.890625,
+        "width": 120.65625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 337.328125,
+        "right": 622.671875,
+        "top": 7,
+        "bottom": 49,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 636.671875,
+        "right": 944,
+        "top": 11,
+        "bottom": 45,
+        "width": 307.328125,
+        "height": 34
+      }
+    ]
+  },
+  "bible_understand-720-restored": {
+    "viewport": 1280,
+    "main": {
+      "left": 230,
+      "right": 560,
+      "top": 56,
+      "bottom": 800,
+      "width": 330,
+      "height": 744
+    },
+    "helps": {
+      "left": 560,
+      "right": 1280,
+      "top": 56,
+      "bottom": 800,
+      "width": 720,
+      "height": 744
+    },
+    "list": {
+      "width": 719,
+      "scrollWidth": 719
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 14,
+        "bottom": 42,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 445.859375,
+        "top": 4.109375,
+        "bottom": 51.890625,
+        "width": 243.1875,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 497.328125,
+        "right": 782.671875,
+        "top": 7,
+        "bottom": 49,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 796.671875,
+        "right": 1264,
+        "top": 11,
+        "bottom": 45,
+        "width": 467.328125,
+        "height": 34
+      }
+    ]
+  },
+  "bible_understand-resized-in-small-window": {
+    "viewport": 500,
+    "main": {
+      "left": 0,
+      "right": 500,
+      "top": 241.78125,
+      "bottom": 663.875,
+      "width": 500,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 220,
+      "right": 500,
+      "top": 663.875,
+      "bottom": 1039.0625,
+      "width": 280,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 279,
+      "scrollWidth": 279
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 17.890625,
+        "bottom": 45.890625,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 373.734375,
+        "top": 8,
+        "bottom": 55.78125,
+        "width": 171.0625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 107.328125,
+        "right": 392.671875,
+        "top": 63.78125,
+        "bottom": 105.78125,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 387.734375,
+        "right": 484,
+        "top": 14.890625,
+        "bottom": 48.890625,
+        "width": 96.265625,
+        "height": 34
+      }
+    ]
+  },
+  "bible_understand-restored": {
+    "viewport": 1280,
+    "main": {
+      "left": 230,
+      "right": 1000,
+      "top": 56,
+      "bottom": 800,
+      "width": 770,
+      "height": 744
+    },
+    "helps": {
+      "left": 1000,
+      "right": 1280,
+      "top": 56,
+      "bottom": 800,
+      "width": 280,
+      "height": 744
+    },
+    "list": {
+      "width": 279,
+      "scrollWidth": 279
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 14,
+        "bottom": 42,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 445.859375,
+        "top": 4.109375,
+        "bottom": 51.890625,
+        "width": 243.1875,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 497.328125,
+        "right": 782.671875,
+        "top": 7,
+        "bottom": 49,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 796.671875,
+        "right": 1264,
+        "top": 11,
+        "bottom": 45,
+        "width": 467.328125,
+        "height": 34
+      }
+    ]
+  },
+  "bible_understand-shown-again": {
+    "viewport": 500,
+    "main": {
+      "left": 0,
+      "right": 500,
+      "top": 241.78125,
+      "bottom": 663.875,
+      "width": 500,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 0,
+      "right": 500,
+      "top": 663.875,
+      "bottom": 1039.0625,
+      "width": 500,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 499,
+      "scrollWidth": 499
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 17.890625,
+        "bottom": 45.890625,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 373.734375,
+        "top": 8,
+        "bottom": 55.78125,
+        "width": 171.0625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 107.328125,
+        "right": 392.671875,
+        "top": 63.78125,
+        "bottom": 105.78125,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 387.734375,
+        "right": 484,
+        "top": 14.890625,
+        "bottom": 48.890625,
+        "width": 96.265625,
+        "height": 34
+      }
+    ]
+  },
+  "bible_understand-wide": {
+    "viewport": 1280,
+    "main": {
+      "left": 230,
+      "right": 940,
+      "top": 56,
+      "bottom": 800,
+      "width": 710,
+      "height": 744
+    },
+    "helps": {
+      "left": 940,
+      "right": 1280,
+      "top": 56,
+      "bottom": 800,
+      "width": 340,
+      "height": 744
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 14,
+        "bottom": 42,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 445.859375,
+        "top": 4.109375,
+        "bottom": 51.890625,
+        "width": 243.1875,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 497.328125,
+        "right": 782.671875,
+        "top": 7,
+        "bottom": 49,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 796.671875,
+        "right": 1264,
+        "top": 11,
+        "bottom": 45,
+        "width": 467.328125,
+        "height": 34
+      }
+    ]
+  },
+  "bible_understand-workspace-scrolled": {
+    "viewport": 500,
+    "main": {
+      "left": 0,
+      "right": 500,
+      "top": 140.78125,
+      "bottom": 562.875,
+      "width": 500,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 220,
+      "right": 500,
+      "top": 562.875,
+      "bottom": 938.0625,
+      "width": 280,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 279,
+      "scrollWidth": 279
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 17.890625,
+        "bottom": 45.890625,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 373.734375,
+        "top": 8,
+        "bottom": 55.78125,
+        "width": 171.0625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 107.328125,
+        "right": 392.671875,
+        "top": 63.78125,
+        "bottom": 105.78125,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 387.734375,
+        "right": 484,
+        "top": 14.890625,
+        "bottom": 48.890625,
+        "width": 96.265625,
+        "height": 34
+      }
+    ]
+  },
+  "fr-500-before": {
+    "viewport": 500,
+    "main": {
+      "left": 0,
+      "right": 500,
+      "top": 241.78125,
+      "bottom": 663.875,
+      "width": 500,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 160,
+      "right": 500,
+      "top": 663.875,
+      "bottom": 1039.0625,
+      "width": 340,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 17.890625,
+        "bottom": 45.890625,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 350.609375,
+        "top": 8,
+        "bottom": 55.78125,
+        "width": 147.9375,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 105.28125,
+        "right": 394.703125,
+        "top": 63.78125,
+        "bottom": 105.78125,
+        "width": 289.421875,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 364.609375,
+        "right": 484,
+        "top": 14.890625,
+        "bottom": 48.890625,
+        "width": 119.390625,
+        "height": 34
+      }
+    ]
+  },
+  "fr-500-clicked": {
+    "viewport": 500,
+    "main": {
+      "left": 0,
+      "right": 500,
+      "top": 241.78125,
+      "bottom": 663.875,
+      "width": 500,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 160,
+      "right": 500,
+      "top": 663.875,
+      "bottom": 1039.0625,
+      "width": 340,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 17.890625,
+        "bottom": 45.890625,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 350.609375,
+        "top": 8,
+        "bottom": 55.78125,
+        "width": 147.9375,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 105.28125,
+        "right": 394.703125,
+        "top": 63.78125,
+        "bottom": 105.78125,
+        "width": 289.421875,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 364.609375,
+        "right": 484,
+        "top": 14.890625,
+        "bottom": 48.890625,
+        "width": 119.390625,
+        "height": 34
+      }
+    ]
+  },
+  "story_translate-340-500-before": {
+    "viewport": 500,
+    "main": {
+      "left": 0,
+      "right": 500,
+      "top": 241.78125,
+      "bottom": 663.875,
+      "width": 500,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 160,
+      "right": 500,
+      "top": 663.875,
+      "bottom": 1039.0625,
+      "width": 340,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 17.890625,
+        "bottom": 45.890625,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 373.734375,
+        "top": 8,
+        "bottom": 55.78125,
+        "width": 171.0625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 107.328125,
+        "right": 392.671875,
+        "top": 63.78125,
+        "bottom": 105.78125,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 387.734375,
+        "right": 484,
+        "top": 14.890625,
+        "bottom": 48.890625,
+        "width": 96.265625,
+        "height": 34
+      }
+    ]
+  },
+  "story_translate-340-500-clicked": {
+    "viewport": 500,
+    "main": {
+      "left": 0,
+      "right": 500,
+      "top": 241.78125,
+      "bottom": 663.875,
+      "width": 500,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 160,
+      "right": 500,
+      "top": 663.875,
+      "bottom": 1039.0625,
+      "width": 340,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 17.890625,
+        "bottom": 45.890625,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 373.734375,
+        "top": 8,
+        "bottom": 55.78125,
+        "width": 171.0625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 107.328125,
+        "right": 392.671875,
+        "top": 63.78125,
+        "bottom": 105.78125,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 387.734375,
+        "right": 484,
+        "top": 14.890625,
+        "bottom": 48.890625,
+        "width": 96.265625,
+        "height": 34
+      }
+    ]
+  },
+  "story_translate-340-960-before": {
+    "viewport": 960,
+    "main": {
+      "left": 0,
+      "right": 960,
+      "top": 184,
+      "bottom": 606.09375,
+      "width": 960,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 620,
+      "right": 960,
+      "top": 606.09375,
+      "bottom": 981.28125,
+      "width": 340,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 14,
+        "bottom": 42,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 323.328125,
+        "top": 4.109375,
+        "bottom": 51.890625,
+        "width": 120.65625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 337.328125,
+        "right": 622.671875,
+        "top": 7,
+        "bottom": 49,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 636.671875,
+        "right": 944,
+        "top": 11,
+        "bottom": 45,
+        "width": 307.328125,
+        "height": 34
+      }
+    ]
+  },
+  "story_translate-340-960-clicked": {
+    "viewport": 960,
+    "main": {
+      "left": 0,
+      "right": 960,
+      "top": 184,
+      "bottom": 606.09375,
+      "width": 960,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 620,
+      "right": 960,
+      "top": 606.09375,
+      "bottom": 981.28125,
+      "width": 340,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 14,
+        "bottom": 42,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 323.328125,
+        "top": 4.109375,
+        "bottom": 51.890625,
+        "width": 120.65625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 337.328125,
+        "right": 622.671875,
+        "top": 7,
+        "bottom": 49,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 636.671875,
+        "right": 944,
+        "top": 11,
+        "bottom": 45,
+        "width": 307.328125,
+        "height": 34
+      }
+    ]
+  },
+  "story_translate-340-restored": {
+    "viewport": 1280,
+    "main": {
+      "left": 230,
+      "right": 940,
+      "top": 56,
+      "bottom": 800,
+      "width": 710,
+      "height": 744
+    },
+    "helps": {
+      "left": 940,
+      "right": 1280,
+      "top": 56,
+      "bottom": 800,
+      "width": 340,
+      "height": 744
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 14,
+        "bottom": 42,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 483.328125,
+        "top": 4.109375,
+        "bottom": 51.890625,
+        "width": 280.65625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 497.328125,
+        "right": 782.671875,
+        "top": 7,
+        "bottom": 49,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 796.671875,
+        "right": 1264,
+        "top": 11,
+        "bottom": 45,
+        "width": 467.328125,
+        "height": 34
+      }
+    ]
+  },
+  "story_translate-720-500-before": {
+    "viewport": 500,
+    "main": {
+      "left": 0,
+      "right": 500,
+      "top": 241.78125,
+      "bottom": 663.875,
+      "width": 500,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 0,
+      "right": 500,
+      "top": 663.875,
+      "bottom": 1039.0625,
+      "width": 500,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 499,
+      "scrollWidth": 499
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 17.890625,
+        "bottom": 45.890625,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 373.734375,
+        "top": 8,
+        "bottom": 55.78125,
+        "width": 171.0625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 107.328125,
+        "right": 392.671875,
+        "top": 63.78125,
+        "bottom": 105.78125,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 387.734375,
+        "right": 484,
+        "top": 14.890625,
+        "bottom": 48.890625,
+        "width": 96.265625,
+        "height": 34
+      }
+    ]
+  },
+  "story_translate-720-500-clicked": {
+    "viewport": 500,
+    "main": {
+      "left": 0,
+      "right": 500,
+      "top": 241.78125,
+      "bottom": 663.875,
+      "width": 500,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 0,
+      "right": 500,
+      "top": 663.875,
+      "bottom": 1039.0625,
+      "width": 500,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 499,
+      "scrollWidth": 499
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 17.890625,
+        "bottom": 45.890625,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 373.734375,
+        "top": 8,
+        "bottom": 55.78125,
+        "width": 171.0625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 107.328125,
+        "right": 392.671875,
+        "top": 63.78125,
+        "bottom": 105.78125,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 387.734375,
+        "right": 484,
+        "top": 14.890625,
+        "bottom": 48.890625,
+        "width": 96.265625,
+        "height": 34
+      }
+    ]
+  },
+  "story_translate-720-960-before": {
+    "viewport": 960,
+    "main": {
+      "left": 0,
+      "right": 960,
+      "top": 184,
+      "bottom": 606.09375,
+      "width": 960,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 240,
+      "right": 960,
+      "top": 606.09375,
+      "bottom": 981.28125,
+      "width": 720,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 719,
+      "scrollWidth": 719
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 14,
+        "bottom": 42,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 323.328125,
+        "top": 4.109375,
+        "bottom": 51.890625,
+        "width": 120.65625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 337.328125,
+        "right": 622.671875,
+        "top": 7,
+        "bottom": 49,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 636.671875,
+        "right": 944,
+        "top": 11,
+        "bottom": 45,
+        "width": 307.328125,
+        "height": 34
+      }
+    ]
+  },
+  "story_translate-720-960-clicked": {
+    "viewport": 960,
+    "main": {
+      "left": 0,
+      "right": 960,
+      "top": 184,
+      "bottom": 606.09375,
+      "width": 960,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 240,
+      "right": 960,
+      "top": 606.09375,
+      "bottom": 981.28125,
+      "width": 720,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 719,
+      "scrollWidth": 719
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 14,
+        "bottom": 42,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 323.328125,
+        "top": 4.109375,
+        "bottom": 51.890625,
+        "width": 120.65625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 337.328125,
+        "right": 622.671875,
+        "top": 7,
+        "bottom": 49,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 636.671875,
+        "right": 944,
+        "top": 11,
+        "bottom": 45,
+        "width": 307.328125,
+        "height": 34
+      }
+    ]
+  },
+  "story_translate-720-restored": {
+    "viewport": 1280,
+    "main": {
+      "left": 230,
+      "right": 560,
+      "top": 56,
+      "bottom": 800,
+      "width": 330,
+      "height": 744
+    },
+    "helps": {
+      "left": 560,
+      "right": 1280,
+      "top": 56,
+      "bottom": 800,
+      "width": 720,
+      "height": 744
+    },
+    "list": {
+      "width": 719,
+      "scrollWidth": 719
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 14,
+        "bottom": 42,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 483.328125,
+        "top": 4.109375,
+        "bottom": 51.890625,
+        "width": 280.65625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 497.328125,
+        "right": 782.671875,
+        "top": 7,
+        "bottom": 49,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 796.671875,
+        "right": 1264,
+        "top": 11,
+        "bottom": 45,
+        "width": 467.328125,
+        "height": 34
+      }
+    ]
+  },
+  "story_translate-resized-in-small-window": {
+    "viewport": 500,
+    "main": {
+      "left": 0,
+      "right": 500,
+      "top": 140.78125,
+      "bottom": 562.875,
+      "width": 500,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 220,
+      "right": 500,
+      "top": 562.875,
+      "bottom": 938.0625,
+      "width": 280,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 279,
+      "scrollWidth": 279
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 17.890625,
+        "bottom": 45.890625,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 373.734375,
+        "top": 8,
+        "bottom": 55.78125,
+        "width": 171.0625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 107.328125,
+        "right": 392.671875,
+        "top": 63.78125,
+        "bottom": 105.78125,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 387.734375,
+        "right": 484,
+        "top": 14.890625,
+        "bottom": 48.890625,
+        "width": 96.265625,
+        "height": 34
+      }
+    ]
+  },
+  "story_translate-restored": {
+    "viewport": 1280,
+    "main": {
+      "left": 230,
+      "right": 1000,
+      "top": 56,
+      "bottom": 800,
+      "width": 770,
+      "height": 744
+    },
+    "helps": {
+      "left": 1000,
+      "right": 1280,
+      "top": 56,
+      "bottom": 800,
+      "width": 280,
+      "height": 744
+    },
+    "list": {
+      "width": 279,
+      "scrollWidth": 279
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 14,
+        "bottom": 42,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 483.328125,
+        "top": 4.109375,
+        "bottom": 51.890625,
+        "width": 280.65625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 497.328125,
+        "right": 782.671875,
+        "top": 7,
+        "bottom": 49,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 796.671875,
+        "right": 1264,
+        "top": 11,
+        "bottom": 45,
+        "width": 467.328125,
+        "height": 34
+      }
+    ]
+  },
+  "story_translate-saved": {
+    "viewport": 500,
+    "main": {
+      "left": 0,
+      "right": 500,
+      "top": 241.78125,
+      "bottom": 663.875,
+      "width": 500,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 220,
+      "right": 500,
+      "top": 663.875,
+      "bottom": 1039.0625,
+      "width": 280,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 279,
+      "scrollWidth": 279
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 17.890625,
+        "bottom": 45.890625,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 373.734375,
+        "top": 8,
+        "bottom": 55.78125,
+        "width": 171.0625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 107.328125,
+        "right": 392.671875,
+        "top": 63.78125,
+        "bottom": 105.78125,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 387.734375,
+        "right": 484,
+        "top": 14.890625,
+        "bottom": 48.890625,
+        "width": 96.265625,
+        "height": 34
+      }
+    ]
+  },
+  "story_translate-shown-again": {
+    "viewport": 500,
+    "main": {
+      "left": 0,
+      "right": 500,
+      "top": 140.78125,
+      "bottom": 562.875,
+      "width": 500,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 0,
+      "right": 500,
+      "top": 562.875,
+      "bottom": 938.0625,
+      "width": 500,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 499,
+      "scrollWidth": 499
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 17.890625,
+        "bottom": 45.890625,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 373.734375,
+        "top": 8,
+        "bottom": 55.78125,
+        "width": 171.0625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 107.328125,
+        "right": 392.671875,
+        "top": 63.78125,
+        "bottom": 105.78125,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 387.734375,
+        "right": 484,
+        "top": 14.890625,
+        "bottom": 48.890625,
+        "width": 96.265625,
+        "height": 34
+      }
+    ]
+  },
+  "story_translate-wide": {
+    "viewport": 1280,
+    "main": {
+      "left": 230,
+      "right": 940,
+      "top": 56,
+      "bottom": 800,
+      "width": 710,
+      "height": 744
+    },
+    "helps": {
+      "left": 940,
+      "right": 1280,
+      "top": 56,
+      "bottom": 800,
+      "width": 340,
+      "height": 744
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 14,
+        "bottom": 42,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 483.328125,
+        "top": 4.109375,
+        "bottom": 51.890625,
+        "width": 280.65625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 497.328125,
+        "right": 782.671875,
+        "top": 7,
+        "bottom": 49,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 796.671875,
+        "right": 1264,
+        "top": 11,
+        "bottom": 45,
+        "width": 467.328125,
+        "height": 34
+      }
+    ]
+  },
+  "story_translate-workspace-scrolled": {
+    "viewport": 500,
+    "main": {
+      "left": 0,
+      "right": 500,
+      "top": 241.78125,
+      "bottom": 663.875,
+      "width": 500,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 220,
+      "right": 500,
+      "top": 663.875,
+      "bottom": 1039.0625,
+      "width": 280,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 279,
+      "scrollWidth": 279
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 17.890625,
+        "bottom": 45.890625,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 373.734375,
+        "top": 8,
+        "bottom": 55.78125,
+        "width": 171.0625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 107.328125,
+        "right": 392.671875,
+        "top": 63.78125,
+        "bottom": 105.78125,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 387.734375,
+        "right": 484,
+        "top": 14.890625,
+        "bottom": 48.890625,
+        "width": 96.265625,
+        "height": 34
+      }
+    ]
+  },
+  "story_understand-340-500-before": {
+    "viewport": 500,
+    "main": {
+      "left": 0,
+      "right": 500,
+      "top": 241.78125,
+      "bottom": 663.875,
+      "width": 500,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 160,
+      "right": 500,
+      "top": 663.875,
+      "bottom": 1039.0625,
+      "width": 340,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 17.890625,
+        "bottom": 45.890625,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 373.734375,
+        "top": 8,
+        "bottom": 55.78125,
+        "width": 171.0625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 107.328125,
+        "right": 392.671875,
+        "top": 63.78125,
+        "bottom": 105.78125,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 387.734375,
+        "right": 484,
+        "top": 14.890625,
+        "bottom": 48.890625,
+        "width": 96.265625,
+        "height": 34
+      }
+    ]
+  },
+  "story_understand-340-500-clicked": {
+    "viewport": 500,
+    "main": {
+      "left": 0,
+      "right": 500,
+      "top": 241.78125,
+      "bottom": 663.875,
+      "width": 500,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 160,
+      "right": 500,
+      "top": 663.875,
+      "bottom": 1039.0625,
+      "width": 340,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 17.890625,
+        "bottom": 45.890625,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 373.734375,
+        "top": 8,
+        "bottom": 55.78125,
+        "width": 171.0625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 107.328125,
+        "right": 392.671875,
+        "top": 63.78125,
+        "bottom": 105.78125,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 387.734375,
+        "right": 484,
+        "top": 14.890625,
+        "bottom": 48.890625,
+        "width": 96.265625,
+        "height": 34
+      }
+    ]
+  },
+  "story_understand-340-960-before": {
+    "viewport": 960,
+    "main": {
+      "left": 0,
+      "right": 960,
+      "top": 184,
+      "bottom": 606.09375,
+      "width": 960,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 620,
+      "right": 960,
+      "top": 606.09375,
+      "bottom": 981.28125,
+      "width": 340,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 14,
+        "bottom": 42,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 323.328125,
+        "top": 4.109375,
+        "bottom": 51.890625,
+        "width": 120.65625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 337.328125,
+        "right": 622.671875,
+        "top": 7,
+        "bottom": 49,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 636.671875,
+        "right": 944,
+        "top": 11,
+        "bottom": 45,
+        "width": 307.328125,
+        "height": 34
+      }
+    ]
+  },
+  "story_understand-340-960-clicked": {
+    "viewport": 960,
+    "main": {
+      "left": 0,
+      "right": 960,
+      "top": 184,
+      "bottom": 606.09375,
+      "width": 960,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 620,
+      "right": 960,
+      "top": 606.09375,
+      "bottom": 981.28125,
+      "width": 340,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 14,
+        "bottom": 42,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 323.328125,
+        "top": 4.109375,
+        "bottom": 51.890625,
+        "width": 120.65625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 337.328125,
+        "right": 622.671875,
+        "top": 7,
+        "bottom": 49,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 636.671875,
+        "right": 944,
+        "top": 11,
+        "bottom": 45,
+        "width": 307.328125,
+        "height": 34
+      }
+    ]
+  },
+  "story_understand-340-restored": {
+    "viewport": 1280,
+    "main": {
+      "left": 230,
+      "right": 940,
+      "top": 56,
+      "bottom": 800,
+      "width": 710,
+      "height": 744
+    },
+    "helps": {
+      "left": 940,
+      "right": 1280,
+      "top": 56,
+      "bottom": 800,
+      "width": 340,
+      "height": 744
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 14,
+        "bottom": 42,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 483.328125,
+        "top": 4.109375,
+        "bottom": 51.890625,
+        "width": 280.65625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 497.328125,
+        "right": 782.671875,
+        "top": 7,
+        "bottom": 49,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 796.671875,
+        "right": 1264,
+        "top": 11,
+        "bottom": 45,
+        "width": 467.328125,
+        "height": 34
+      }
+    ]
+  },
+  "story_understand-720-500-before": {
+    "viewport": 500,
+    "main": {
+      "left": 0,
+      "right": 500,
+      "top": 241.78125,
+      "bottom": 663.875,
+      "width": 500,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 0,
+      "right": 500,
+      "top": 663.875,
+      "bottom": 1039.0625,
+      "width": 500,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 499,
+      "scrollWidth": 499
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 17.890625,
+        "bottom": 45.890625,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 373.734375,
+        "top": 8,
+        "bottom": 55.78125,
+        "width": 171.0625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 107.328125,
+        "right": 392.671875,
+        "top": 63.78125,
+        "bottom": 105.78125,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 387.734375,
+        "right": 484,
+        "top": 14.890625,
+        "bottom": 48.890625,
+        "width": 96.265625,
+        "height": 34
+      }
+    ]
+  },
+  "story_understand-720-500-clicked": {
+    "viewport": 500,
+    "main": {
+      "left": 0,
+      "right": 500,
+      "top": 241.78125,
+      "bottom": 663.875,
+      "width": 500,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 0,
+      "right": 500,
+      "top": 663.875,
+      "bottom": 1039.0625,
+      "width": 500,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 499,
+      "scrollWidth": 499
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 17.890625,
+        "bottom": 45.890625,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 373.734375,
+        "top": 8,
+        "bottom": 55.78125,
+        "width": 171.0625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 107.328125,
+        "right": 392.671875,
+        "top": 63.78125,
+        "bottom": 105.78125,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 387.734375,
+        "right": 484,
+        "top": 14.890625,
+        "bottom": 48.890625,
+        "width": 96.265625,
+        "height": 34
+      }
+    ]
+  },
+  "story_understand-720-960-before": {
+    "viewport": 960,
+    "main": {
+      "left": 0,
+      "right": 960,
+      "top": 184,
+      "bottom": 606.09375,
+      "width": 960,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 240,
+      "right": 960,
+      "top": 606.09375,
+      "bottom": 981.28125,
+      "width": 720,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 719,
+      "scrollWidth": 719
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 14,
+        "bottom": 42,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 323.328125,
+        "top": 4.109375,
+        "bottom": 51.890625,
+        "width": 120.65625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 337.328125,
+        "right": 622.671875,
+        "top": 7,
+        "bottom": 49,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 636.671875,
+        "right": 944,
+        "top": 11,
+        "bottom": 45,
+        "width": 307.328125,
+        "height": 34
+      }
+    ]
+  },
+  "story_understand-720-960-clicked": {
+    "viewport": 960,
+    "main": {
+      "left": 0,
+      "right": 960,
+      "top": 184,
+      "bottom": 606.09375,
+      "width": 960,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 240,
+      "right": 960,
+      "top": 606.09375,
+      "bottom": 981.28125,
+      "width": 720,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 719,
+      "scrollWidth": 719
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 14,
+        "bottom": 42,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 323.328125,
+        "top": 4.109375,
+        "bottom": 51.890625,
+        "width": 120.65625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 337.328125,
+        "right": 622.671875,
+        "top": 7,
+        "bottom": 49,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 636.671875,
+        "right": 944,
+        "top": 11,
+        "bottom": 45,
+        "width": 307.328125,
+        "height": 34
+      }
+    ]
+  },
+  "story_understand-720-restored": {
+    "viewport": 1280,
+    "main": {
+      "left": 230,
+      "right": 560,
+      "top": 56,
+      "bottom": 800,
+      "width": 330,
+      "height": 744
+    },
+    "helps": {
+      "left": 560,
+      "right": 1280,
+      "top": 56,
+      "bottom": 800,
+      "width": 720,
+      "height": 744
+    },
+    "list": {
+      "width": 719,
+      "scrollWidth": 719
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 14,
+        "bottom": 42,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 483.328125,
+        "top": 4.109375,
+        "bottom": 51.890625,
+        "width": 280.65625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 497.328125,
+        "right": 782.671875,
+        "top": 7,
+        "bottom": 49,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 796.671875,
+        "right": 1264,
+        "top": 11,
+        "bottom": 45,
+        "width": 467.328125,
+        "height": 34
+      }
+    ]
+  },
+  "story_understand-resized-in-small-window": {
+    "viewport": 500,
+    "main": {
+      "left": 0,
+      "right": 500,
+      "top": 140.78125,
+      "bottom": 562.875,
+      "width": 500,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 220,
+      "right": 500,
+      "top": 562.875,
+      "bottom": 938.0625,
+      "width": 280,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 279,
+      "scrollWidth": 279
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 17.890625,
+        "bottom": 45.890625,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 373.734375,
+        "top": 8,
+        "bottom": 55.78125,
+        "width": 171.0625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 107.328125,
+        "right": 392.671875,
+        "top": 63.78125,
+        "bottom": 105.78125,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 387.734375,
+        "right": 484,
+        "top": 14.890625,
+        "bottom": 48.890625,
+        "width": 96.265625,
+        "height": 34
+      }
+    ]
+  },
+  "story_understand-restored": {
+    "viewport": 1280,
+    "main": {
+      "left": 230,
+      "right": 1000,
+      "top": 56,
+      "bottom": 800,
+      "width": 770,
+      "height": 744
+    },
+    "helps": {
+      "left": 1000,
+      "right": 1280,
+      "top": 56,
+      "bottom": 800,
+      "width": 280,
+      "height": 744
+    },
+    "list": {
+      "width": 279,
+      "scrollWidth": 279
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 14,
+        "bottom": 42,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 483.328125,
+        "top": 4.109375,
+        "bottom": 51.890625,
+        "width": 280.65625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 497.328125,
+        "right": 782.671875,
+        "top": 7,
+        "bottom": 49,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 796.671875,
+        "right": 1264,
+        "top": 11,
+        "bottom": 45,
+        "width": 467.328125,
+        "height": 34
+      }
+    ]
+  },
+  "story_understand-shown-again": {
+    "viewport": 500,
+    "main": {
+      "left": 0,
+      "right": 500,
+      "top": 140.78125,
+      "bottom": 562.875,
+      "width": 500,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 0,
+      "right": 500,
+      "top": 562.875,
+      "bottom": 938.0625,
+      "width": 500,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 499,
+      "scrollWidth": 499
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 17.890625,
+        "bottom": 45.890625,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 373.734375,
+        "top": 8,
+        "bottom": 55.78125,
+        "width": 171.0625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 107.328125,
+        "right": 392.671875,
+        "top": 63.78125,
+        "bottom": 105.78125,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 387.734375,
+        "right": 484,
+        "top": 14.890625,
+        "bottom": 48.890625,
+        "width": 96.265625,
+        "height": 34
+      }
+    ]
+  },
+  "story_understand-wide": {
+    "viewport": 1280,
+    "main": {
+      "left": 230,
+      "right": 940,
+      "top": 56,
+      "bottom": 800,
+      "width": 710,
+      "height": 744
+    },
+    "helps": {
+      "left": 940,
+      "right": 1280,
+      "top": 56,
+      "bottom": 800,
+      "width": 340,
+      "height": 744
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 14,
+        "bottom": 42,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 483.328125,
+        "top": 4.109375,
+        "bottom": 51.890625,
+        "width": 280.65625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 497.328125,
+        "right": 782.671875,
+        "top": 7,
+        "bottom": 49,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 796.671875,
+        "right": 1264,
+        "top": 11,
+        "bottom": 45,
+        "width": 467.328125,
+        "height": 34
+      }
+    ]
+  },
+  "story_understand-workspace-scrolled": {
+    "viewport": 500,
+    "main": {
+      "left": 0,
+      "right": 500,
+      "top": 241.78125,
+      "bottom": 663.875,
+      "width": 500,
+      "height": 422.09375
+    },
+    "helps": {
+      "left": 220,
+      "right": 500,
+      "top": 663.875,
+      "bottom": 1039.0625,
+      "width": 280,
+      "height": 375.1875
+    },
+    "list": {
+      "width": 279,
+      "scrollWidth": 279
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": 16,
+        "right": 173.671875,
+        "top": 17.890625,
+        "bottom": 45.890625,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 202.671875,
+        "right": 373.734375,
+        "top": 8,
+        "bottom": 55.78125,
+        "width": 171.0625,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 107.328125,
+        "right": 392.671875,
+        "top": 63.78125,
+        "bottom": 105.78125,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 387.734375,
+        "right": 484,
+        "top": 14.890625,
+        "bottom": 48.890625,
+        "width": 96.265625,
+        "height": 34
+      }
+    ]
+  },
+  "Translate-extents": [
+    {
+      "name": "before-click",
+      "panel": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 744,
+        "scrollHeight": 744
+      },
+      "tabs": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 88,
+        "scrollHeight": 88
+      },
+      "list": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 655,
+        "scrollHeight": 12541
+      }
+    },
+    {
+      "name": "note-click",
+      "panel": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 744,
+        "scrollHeight": 744
+      },
+      "tabs": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 88,
+        "scrollHeight": 88
+      },
+      "list": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 655,
+        "scrollHeight": 12541
+      }
+    },
+    {
+      "name": "keyboard-focus",
+      "panel": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 744,
+        "scrollHeight": 744
+      },
+      "tabs": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 88,
+        "scrollHeight": 88
+      },
+      "list": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 655,
+        "scrollHeight": 12541
+      }
+    },
+    {
+      "name": "show-more",
+      "panel": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 744,
+        "scrollHeight": 744
+      },
+      "tabs": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 88,
+        "scrollHeight": 88
+      },
+      "list": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 655,
+        "scrollHeight": 12835
+      }
+    },
+    {
+      "name": "academy-article",
+      "panel": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 744,
+        "scrollHeight": 744
+      },
+      "tabs": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 88,
+        "scrollHeight": 88
+      },
+      "list": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 320,
+        "scrollHeight": 12541
+      }
+    },
+    {
+      "name": "empty-space",
+      "panel": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 744,
+        "scrollHeight": 744
+      },
+      "tabs": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 88,
+        "scrollHeight": 88
+      },
+      "list": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 655,
+        "scrollHeight": 12541
+      }
+    },
+    {
+      "name": "vertical-scroll",
+      "panel": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 744,
+        "scrollHeight": 744
+      },
+      "tabs": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 88,
+        "scrollHeight": 88
+      },
+      "list": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 655,
+        "scrollHeight": 12541
+      }
+    },
+    {
+      "name": "word-click",
+      "panel": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 744,
+        "scrollHeight": 744
+      },
+      "tabs": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 88,
+        "scrollHeight": 88
+      },
+      "list": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 655,
+        "scrollHeight": 12113
+      }
+    },
+    {
+      "name": "word-article",
+      "panel": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 744,
+        "scrollHeight": 744
+      },
+      "tabs": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 88,
+        "scrollHeight": 88
+      },
+      "list": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 320,
+        "scrollHeight": 12113
+      }
+    },
+    {
+      "name": "resize-480",
+      "panel": {
+        "width": 479,
+        "scrollWidth": 479,
+        "height": 744,
+        "scrollHeight": 744
+      },
+      "tabs": {
+        "width": 479,
+        "scrollWidth": 479,
+        "height": 43,
+        "scrollHeight": 43
+      },
+      "list": {
+        "width": 479,
+        "scrollWidth": 479,
+        "height": 700,
+        "scrollHeight": 10562
+      }
+    },
+    {
+      "name": "resize-280",
+      "panel": {
+        "width": 279,
+        "scrollWidth": 279,
+        "height": 744,
+        "scrollHeight": 744
+      },
+      "tabs": {
+        "width": 279,
+        "scrollWidth": 279,
+        "height": 88,
+        "scrollHeight": 88
+      },
+      "list": {
+        "width": 279,
+        "scrollWidth": 279,
+        "height": 655,
+        "scrollHeight": 13684
+      }
+    },
+    {
+      "name": "resize-340",
+      "panel": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 744,
+        "scrollHeight": 744
+      },
+      "tabs": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 88,
+        "scrollHeight": 88
+      },
+      "list": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 655,
+        "scrollHeight": 12113
+      }
+    },
+    {
+      "name": "questions-tab",
+      "panel": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 744,
+        "scrollHeight": 744
+      },
+      "tabs": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 88,
+        "scrollHeight": 88
+      },
+      "list": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 655,
+        "scrollHeight": 655
+      }
+    },
+    {
+      "name": "question-click",
+      "panel": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 744,
+        "scrollHeight": 744
+      },
+      "tabs": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 88,
+        "scrollHeight": 88
+      },
+      "list": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 655,
+        "scrollHeight": 655
+      }
+    },
+    {
+      "name": "genuinely-wide-content",
+      "panel": {
+        "width": 279,
+        "scrollWidth": 279,
+        "height": 744,
+        "scrollHeight": 744
+      },
+      "tabs": {
+        "width": 279,
+        "scrollWidth": 279,
+        "height": 88,
+        "scrollHeight": 88
+      },
+      "list": {
+        "width": 279,
+        "scrollWidth": 311,
+        "height": 655,
+        "scrollHeight": 14758
+      }
+    },
+    {
+      "name": "small-window-note-click",
+      "panel": {
+        "width": 479,
+        "scrollWidth": 479,
+        "height": 375,
+        "scrollHeight": 375
+      },
+      "tabs": {
+        "width": 479,
+        "scrollWidth": 479,
+        "height": 43,
+        "scrollHeight": 43
+      },
+      "list": {
+        "width": 479,
+        "scrollWidth": 479,
+        "height": 331,
+        "scrollHeight": 10218
+      }
+    },
+    {
+      "name": "small-window-show-more",
+      "panel": {
+        "width": 479,
+        "scrollWidth": 479,
+        "height": 375,
+        "scrollHeight": 375
+      },
+      "tabs": {
+        "width": 479,
+        "scrollWidth": 479,
+        "height": 43,
+        "scrollHeight": 43
+      },
+      "list": {
+        "width": 479,
+        "scrollWidth": 479,
+        "height": 331,
+        "scrollHeight": 10431
+      }
+    },
+    {
+      "name": "small-window-question-click",
+      "panel": {
+        "width": 479,
+        "scrollWidth": 479,
+        "height": 375,
+        "scrollHeight": 375
+      },
+      "tabs": {
+        "width": 479,
+        "scrollWidth": 479,
+        "height": 43,
+        "scrollHeight": 43
+      },
+      "list": {
+        "width": 479,
+        "scrollWidth": 479,
+        "height": 331,
+        "scrollHeight": 331
+      }
+    },
+    {
+      "name": "small-window-word-article",
+      "panel": {
+        "width": 479,
+        "scrollWidth": 479,
+        "height": 375,
+        "scrollHeight": 375
+      },
+      "tabs": {
+        "width": 479,
+        "scrollWidth": 479,
+        "height": 43,
+        "scrollHeight": 43
+      },
+      "list": {
+        "width": 479,
+        "scrollWidth": 479,
+        "height": 162,
+        "scrollHeight": 10562
+      }
+    }
+  ],
+  "Understand-extents": [
+    {
+      "name": "before-click",
+      "panel": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 744,
+        "scrollHeight": 744
+      },
+      "tabs": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 43,
+        "scrollHeight": 43
+      },
+      "list": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 700,
+        "scrollHeight": 2708
+      }
+    },
+    {
+      "name": "note-click",
+      "panel": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 744,
+        "scrollHeight": 744
+      },
+      "tabs": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 43,
+        "scrollHeight": 43
+      },
+      "list": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 700,
+        "scrollHeight": 2708
+      }
+    },
+    {
+      "name": "keyboard-focus",
+      "panel": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 744,
+        "scrollHeight": 744
+      },
+      "tabs": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 43,
+        "scrollHeight": 43
+      },
+      "list": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 700,
+        "scrollHeight": 2708
+      }
+    },
+    {
+      "name": "show-more",
+      "panel": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 744,
+        "scrollHeight": 744
+      },
+      "tabs": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 43,
+        "scrollHeight": 43
+      },
+      "list": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 700,
+        "scrollHeight": 3002
+      }
+    },
+    {
+      "name": "academy-article",
+      "panel": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 744,
+        "scrollHeight": 744
+      },
+      "tabs": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 43,
+        "scrollHeight": 43
+      },
+      "list": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 365,
+        "scrollHeight": 2708
+      }
+    },
+    {
+      "name": "empty-space",
+      "panel": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 744,
+        "scrollHeight": 744
+      },
+      "tabs": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 43,
+        "scrollHeight": 43
+      },
+      "list": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 700,
+        "scrollHeight": 2708
+      }
+    },
+    {
+      "name": "vertical-scroll",
+      "panel": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 744,
+        "scrollHeight": 744
+      },
+      "tabs": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 43,
+        "scrollHeight": 43
+      },
+      "list": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 700,
+        "scrollHeight": 2708
+      }
+    },
+    {
+      "name": "word-click",
+      "panel": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 744,
+        "scrollHeight": 744
+      },
+      "tabs": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 43,
+        "scrollHeight": 43
+      },
+      "list": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 700,
+        "scrollHeight": 3599
+      }
+    },
+    {
+      "name": "word-article",
+      "panel": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 744,
+        "scrollHeight": 744
+      },
+      "tabs": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 43,
+        "scrollHeight": 43
+      },
+      "list": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 365,
+        "scrollHeight": 3599
+      }
+    },
+    {
+      "name": "resize-480",
+      "panel": {
+        "width": 479,
+        "scrollWidth": 479,
+        "height": 744,
+        "scrollHeight": 744
+      },
+      "tabs": {
+        "width": 479,
+        "scrollWidth": 479,
+        "height": 43,
+        "scrollHeight": 43
+      },
+      "list": {
+        "width": 479,
+        "scrollWidth": 479,
+        "height": 700,
+        "scrollHeight": 3095
+      }
+    },
+    {
+      "name": "resize-280",
+      "panel": {
+        "width": 279,
+        "scrollWidth": 279,
+        "height": 744,
+        "scrollHeight": 744
+      },
+      "tabs": {
+        "width": 279,
+        "scrollWidth": 279,
+        "height": 43,
+        "scrollHeight": 43
+      },
+      "list": {
+        "width": 279,
+        "scrollWidth": 279,
+        "height": 700,
+        "scrollHeight": 4062
+      }
+    },
+    {
+      "name": "resize-340",
+      "panel": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 744,
+        "scrollHeight": 744
+      },
+      "tabs": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 43,
+        "scrollHeight": 43
+      },
+      "list": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 700,
+        "scrollHeight": 3599
+      }
+    },
+    {
+      "name": "questions-tab",
+      "panel": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 744,
+        "scrollHeight": 744
+      },
+      "tabs": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 43,
+        "scrollHeight": 43
+      },
+      "list": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 700,
+        "scrollHeight": 700
+      }
+    },
+    {
+      "name": "question-click",
+      "panel": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 744,
+        "scrollHeight": 744
+      },
+      "tabs": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 43,
+        "scrollHeight": 43
+      },
+      "list": {
+        "width": 339,
+        "scrollWidth": 339,
+        "height": 700,
+        "scrollHeight": 700
+      }
+    },
+    {
+      "name": "genuinely-wide-content",
+      "panel": {
+        "width": 279,
+        "scrollWidth": 279,
+        "height": 744,
+        "scrollHeight": 744
+      },
+      "tabs": {
+        "width": 279,
+        "scrollWidth": 279,
+        "height": 43,
+        "scrollHeight": 43
+      },
+      "list": {
+        "width": 279,
+        "scrollWidth": 311,
+        "height": 700,
+        "scrollHeight": 3247
+      }
+    },
+    {
+      "name": "small-window-note-click",
+      "panel": {
+        "width": 479,
+        "scrollWidth": 479,
+        "height": 375,
+        "scrollHeight": 375
+      },
+      "tabs": {
+        "width": 479,
+        "scrollWidth": 479,
+        "height": 43,
+        "scrollHeight": 43
+      },
+      "list": {
+        "width": 479,
+        "scrollWidth": 479,
+        "height": 331,
+        "scrollHeight": 2237
+      }
+    },
+    {
+      "name": "small-window-show-more",
+      "panel": {
+        "width": 479,
+        "scrollWidth": 479,
+        "height": 375,
+        "scrollHeight": 375
+      },
+      "tabs": {
+        "width": 479,
+        "scrollWidth": 479,
+        "height": 43,
+        "scrollHeight": 43
+      },
+      "list": {
+        "width": 479,
+        "scrollWidth": 479,
+        "height": 331,
+        "scrollHeight": 2451
+      }
+    },
+    {
+      "name": "small-window-question-click",
+      "panel": {
+        "width": 479,
+        "scrollWidth": 479,
+        "height": 375,
+        "scrollHeight": 375
+      },
+      "tabs": {
+        "width": 479,
+        "scrollWidth": 479,
+        "height": 43,
+        "scrollHeight": 43
+      },
+      "list": {
+        "width": 479,
+        "scrollWidth": 479,
+        "height": 331,
+        "scrollHeight": 331
+      }
+    },
+    {
+      "name": "small-window-word-article",
+      "panel": {
+        "width": 479,
+        "scrollWidth": 479,
+        "height": 375,
+        "scrollHeight": 375
+      },
+      "tabs": {
+        "width": 479,
+        "scrollWidth": 479,
+        "height": 43,
+        "scrollHeight": 43
+      },
+      "list": {
+        "width": 479,
+        "scrollWidth": 479,
+        "height": 162,
+        "scrollHeight": 3095
+      }
+    }
+  ],
+  "before-default-500": {
+    "viewport": 500,
+    "main": {
+      "left": 176,
+      "right": 176,
+      "top": 56,
+      "bottom": 938,
+      "width": 0,
+      "height": 882
+    },
+    "helps": {
+      "left": 176,
+      "right": 516,
+      "top": 56,
+      "bottom": 938,
+      "width": 340,
+      "height": 882
+    },
+    "list": {
+      "width": 339,
+      "scrollWidth": 339
+    },
+    "header": [
+      {
+        "name": "brand",
+        "left": -38,
+        "right": 119.671875,
+        "top": 14,
+        "bottom": 42,
+        "width": 157.671875,
+        "height": 28
+      },
+      {
+        "name": "project",
+        "left": 148.671875,
+        "right": 168.671875,
+        "top": 4.109375,
+        "bottom": 51.890625,
+        "width": 20,
+        "height": 47.78125
+      },
+      {
+        "name": "modes",
+        "left": 53.328125,
+        "right": 338.671875,
+        "top": 7,
+        "bottom": 49,
+        "width": 285.34375,
+        "height": 42
+      },
+      {
+        "name": "status",
+        "left": 352.671875,
+        "right": 430,
+        "top": 11,
+        "bottom": 45,
+        "width": 77.328125,
+        "height": 34
+      }
+    ]
+  }
+}
