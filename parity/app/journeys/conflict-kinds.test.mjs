@@ -15,7 +15,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { FAKE_USER } from '../../tc4-baseline/mock-server/fake-door43.mjs';
 import { REPO, newRequestId } from '../env-rust.mjs';
-import { browserTest, catalog, until, withApp } from './kit.mjs';
+import { browserTest, catalog, until, waitForCheck, withApp } from './kit.mjs';
 
 const en = { ...catalog('en'), ...JSON.parse(fs.readFileSync(path.join(REPO, 'crates', 'tc-ui', 'assets', 'i18n-rebuild', 'en.json'), 'utf8')) };
 const opts = { door43: true, scenario: 'shared' };
@@ -121,6 +121,7 @@ browserTest('newest_version_wins_and_history_restores_the_older: a teammate\'s n
     const [{ index }] = teammates;
     await row(page, index).click();
     await until(`check ${index} shows`, async () => (await page.locator('[data-testid="check-list"] [aria-current="true"]').getAttribute('data-rail-index')) === String(index));
+    await waitForCheck(page, index);
     assert.equal(await page.getByTestId('comment-toggle').getAttribute('data-written'), '1');
     await page.getByTestId('comment-toggle').click();
     await until('the comment shows', async () => (await page.getByTestId('comment-text').inputValue()) === TWO);

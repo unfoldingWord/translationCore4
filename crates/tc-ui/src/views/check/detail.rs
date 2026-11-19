@@ -5,7 +5,7 @@
 //! check comment. The compare card is tC4's (#762: the source texts as cards in a wrapping row and
 //! "Your translation" a card of its own), for a book and a story alike since tC4 rc.2.
 //!
-//! The detail is built once for a check and then follows its reads in place, so the focus on a
+//! The detail is built once for a tool session and then follows its reads in place, so the focus on a
 //! word, a button or the comment box survives the read that a mark makes. The words are the one
 //! part rebuilt when a read changes them (the draft was edited): the caret starts before the
 //! first word again.
@@ -51,13 +51,12 @@ fn interface_is_rtl() -> bool {
     locale_of(shown_locale()).dir == LocaleDir::Rtl
 }
 
-/// What the detail column shows now: nothing while a check is read, the failure of a read, or
-/// the check at `index`.
+/// What the detail column shows now: no check yet, a read failure, or the current check.
 #[derive(Debug, Clone, PartialEq)]
 enum Shown {
     Nothing,
     Failed(String),
-    Check(u32),
+    Check,
 }
 
 /// The detail column of the open tool.
@@ -65,9 +64,9 @@ pub fn check_detail(s: &AppState, actions: &Actions, unit: CheckUnit) -> AnyView
     let detail = s.c.detail.clone();
     let shown = Memo::new(move |_| {
         detail.with(|d| match d {
-            None | Some(Detail::Loading(_)) => Shown::Nothing,
+            None => Shown::Nothing,
             Some(Detail::Failed(_, error)) => Shown::Failed(error.clone()),
-            Some(Detail::Ready(view)) => Shown::Check(view.index),
+            Some(Detail::Ready(_)) => Shown::Check,
         })
     });
     let (s, actions) = (s.clone(), actions.clone());
@@ -82,7 +81,7 @@ pub fn check_detail(s: &AppState, actions: &Actions, unit: CheckUnit) -> AnyView
             };
             view! { <p data-testid="check-error" style=p.to_style()>{error}</p> }.into_any()
         }
-        Shown::Check(_) => item_detail(&s, &actions, unit),
+        Shown::Check => item_detail(&s, &actions, unit),
     })
     .into_any()
 }
@@ -319,13 +318,13 @@ fn triage_style(active: bool, tone: &'static str) -> Css {
 /// follows the interface direction.
 fn item_nav_button(
     prev: bool,
-    target: Option<u32>,
-    held: bool,
+    target: Signal<Option<u32>>,
+    held: Memo<bool>,
     actions: &Actions,
     testid: &'static str,
 ) -> AnyView {
     // Words no mark saved hold the person on the check, and the button says what frees it (#853).
-    let target = if held { None } else { target };
+    let target = Memo::new(move |_| if held.get() { None } else { target.get() });
     let rtl = interface_is_rtl();
     let arrow = if prev == rtl { "→" } else { "←" };
     let label = t(
@@ -341,25 +340,28 @@ fn item_nav_button(
     } else {
         format!("{label} {arrow}")
     };
-    let mut style = Css::new();
-    style.set(
-        if prev {
-            "margin-inline-end"
-        } else {
-            "margin-inline-start"
-        },
-        4,
-    );
-    if target.is_some() {
-        style.set("color", "var(--accent)");
-    }
+    let style = Signal::derive(move || {
+        let mut style = Css::new();
+        style.set(
+            if prev {
+                "margin-inline-end"
+            } else {
+                "margin-inline-start"
+            },
+            4,
+        );
+        if target.get().is_some() {
+            style.set("color", "var(--accent)");
+        }
+        style
+    });
     let actions = actions.clone();
     view! {
         <Button
             variant=ButtonVariant::Secondary
             size=Size::Sm
-            title=t(
-                if held {
+            title=Signal::derive(move || Some(t(
+                if held.get() {
                     keys::check::leave::MARK_FIRST
                 } else if prev {
                     keys::check::PREV_ITEM
@@ -367,12 +369,12 @@ fn item_nav_button(
                     keys::check::NEXT_ITEM
                 },
                 &[],
-            )
-            disabled=target.is_none()
+            )))
+            disabled=Signal::derive(move || target.get().is_none())
             style=style
             attrs=Attrs::from([("data-testid", testid)])
             on_click=Callback::new(move |_| {
-                if let Some(to) = target {
+                if let Some(to) = target.get_untracked() {
                     actions.select_check(to);
                 }
             })
@@ -417,7 +419,7 @@ fn target_words(
     // can cross a save that may still fail.
     let saving = {
         let actions = send_wrapper::SendWrapper::new(actions.clone());
-        Memo::new(move |_| actions.words_saving())
+        Memo::new(move |_| actions.words_saving() || actions.check_item_pending())
     };
     // The pointer changed the words during this press. A read that lands under a press changes
     // the line too, and is no act of the person's.
@@ -641,20 +643,6 @@ fn item_detail(s: &AppState, actions: &Actions, unit: CheckUnit) -> AnyView {
             })
         }
     });
-    // The parts that do not move with a read (the place, the title, the note) are taken once;
-    // the rest follow the detail through their own memos below.
-    let read = {
-        let detail = detail.clone();
-        move || {
-            detail.with_untracked(|d| match d {
-                Some(Detail::Ready(view)) => Some((**view).clone()),
-                _ => None,
-            })
-        }
-    };
-    let Some(view) = read() else {
-        return ().into_any();
-    };
     let total = Memo::new({
         let session = session.clone();
         move |_| {
@@ -664,28 +652,42 @@ fn item_detail(s: &AppState, actions: &Actions, unit: CheckUnit) -> AnyView {
             })
         }
     });
-    let (chapter, verse) = place_parts(&view.place);
     let story = matches!(unit, CheckUnit::Story(_));
     let unit = match unit {
         CheckUnit::Book(book) => book.english_name().to_owned(),
         CheckUnit::Story(story) => crate::app::story::story_label(story),
     };
-    let helps_dir = view.helps_dir;
     let direction = s
         .project
         .with_untracked(|p| p.as_ref().map(|p| p.dir))
         .unwrap_or(TextDir::Ltr);
 
-    // A verse holds several checks: the title says which one's History this is.
-    let history = check_history(
-        s,
-        actions,
-        format!(
-            "{unit} {} · {}",
-            t(keys::check::REF, &[("c", &chapter), ("v", &verse)]),
-            view.title
-        ),
-    );
+    let reference = Memo::new({
+        let detail = detail.clone();
+        move |_| {
+            detail.with(|d| match d {
+                Some(Detail::Ready(view)) => {
+                    let (chapter, verse) = place_parts(&view.place);
+                    format!(
+                        "{unit} {}",
+                        t(keys::check::REF, &[("c", &chapter), ("v", &verse)])
+                    )
+                }
+                _ => String::new(),
+            })
+        }
+    });
+    let quote = Memo::new({
+        let detail = detail.clone();
+        move |_| {
+            detail.with(|d| match d {
+                Some(Detail::Ready(view)) => view.title.clone(),
+                _ => String::new(),
+            })
+        }
+    });
+    let history_reference = Memo::new(move |_| format!("{} · {}", reference.get(), quote.get()));
+    let history = check_history(s, actions, history_reference.into());
 
     // ---- the header
     let header = {
@@ -703,10 +705,6 @@ fn item_detail(s: &AppState, actions: &Actions, unit: CheckUnit) -> AnyView {
             "white-space": "nowrap",
         };
         let fill = crate::css! { "flex": 1 };
-        let reference = format!(
-            "{unit} {}",
-            t(keys::check::REF, &[("c", &chapter), ("v", &verse)])
-        );
         // A decision with two versions (a teammate's check arrived) is marked, and its review
         // opens over the screen.
         let marker = {
@@ -723,7 +721,7 @@ fn item_detail(s: &AppState, actions: &Actions, unit: CheckUnit) -> AnyView {
                     let conflict = marker.conflict.clone();
                     crate::views::conflict_markers::versions_marker(
                         "check-conflict-marker",
-                        &reference,
+                        &reference.get(),
                         marker.versions,
                         Callback::new(move |()| {
                             actions.open_review(
@@ -738,7 +736,7 @@ fn item_detail(s: &AppState, actions: &Actions, unit: CheckUnit) -> AnyView {
         view! {
             <div style=row.to_style()>
                 <span style=place.to_style()>
-                    {unit}" "{t(keys::check::REF, &[("c", &chapter), ("v", &verse)])}
+                    {move || reference.get()}
                 </span>
                 {marker}
                 <div style=fill.to_style()></div>
@@ -758,9 +756,20 @@ fn item_detail(s: &AppState, actions: &Actions, unit: CheckUnit) -> AnyView {
             "color": "var(--text-heading)",
             "margin": "0 0 14px",
         };
-        view! { <h1 data-testid="check-quote" style=style.to_style()>"“"{view.title.clone()}"”"</h1> }
+        view! { <h1 data-testid="check-quote" data-check-index=move || index.get() style=style.to_style()>"“"{move || quote.get()}"”"</h1> }
     };
-    let note = (!view.note.is_empty()).then(|| {
+    let note = Memo::new({
+        let detail = detail.clone();
+        move |_| {
+            detail.with(|d| match d {
+                Some(Detail::Ready(view)) => (view.note.clone(), view.helps_dir),
+                _ => (Vec::new(), None),
+            })
+        }
+    });
+    let note = move || {
+        let (note, helps_dir) = note.get();
+        (!note.is_empty()).then(|| {
         let boxed = crate::css! {
             "font-size": "var(--fs-title-sm)",
             "max-width": "calc(80ch + 36px)",
@@ -784,11 +793,16 @@ fn item_detail(s: &AppState, actions: &Actions, unit: CheckUnit) -> AnyView {
             <div data-testid="check-note" style=boxed.to_style()>
                 <Overline style=overline>{t(keys::check::WHAT_TO_CHECK, &[])}</Overline>
                 <div dir=helps_dir.map(dir_attr) data-testid="check-note-text" style=text.to_style()>
-                    {expandable_note(view.note.clone())}
+                    {expandable_note(note)}
                 </div>
             </div>
         }
-    });
+        })
+    };
+    let pending = {
+        let actions = send_wrapper::SendWrapper::new(actions.clone());
+        Memo::new(move |_| actions.check_item_pending())
+    };
     let learn_more = {
         let detail = detail.clone();
         let actions = actions.clone();
@@ -809,6 +823,7 @@ fn item_detail(s: &AppState, actions: &Actions, unit: CheckUnit) -> AnyView {
             <Button
                 variant=ButtonVariant::Ghost
                 style=crate::css! { "margin": "0 0 24px" }
+                disabled=Signal::derive(move || pending.get())
                 attrs=Attrs::from([("data-testid", "open-academy")])
                 on_click=Callback::new(move |_| actions.open_academy())
             >
@@ -968,7 +983,8 @@ fn item_detail(s: &AppState, actions: &Actions, unit: CheckUnit) -> AnyView {
             })
         }
     });
-    let nav = Memo::new(move |_| check_item::item_nav(index.get(), total.get()));
+    let active = c.active.clone();
+    let nav = Memo::new(move |_| check_item::item_nav(active.get().unwrap_or(0), total.get()));
     let cap = write_cap(actions);
     let saving = {
         let actions = send_wrapper::SendWrapper::new(actions.clone());
@@ -1056,11 +1072,11 @@ fn item_detail(s: &AppState, actions: &Actions, unit: CheckUnit) -> AnyView {
         });
         view! {
             <div style=row.to_style()>
-                {move || item_nav_button(true, nav.get().prev, held.get(), &prev_actions, "check-prev")}
+                {item_nav_button(true, Signal::derive(move || nav.get().prev), held, &prev_actions, "check-prev")}
                 {triage("mark-valid", "valid", DecisionStatus::Valid, t(keys::check::MARK_VALID, &[]), valid)}
                 {triage("mark-invalid", "invalid", DecisionStatus::Invalid, t(keys::check::MARK_INVALID, &[]), invalid)}
                 {triage("mark-todo", "todo", DecisionStatus::Todo, t(keys::check::MARK_TODO, &[]), todo)}
-                {move || item_nav_button(false, nav.get().next, held.get(), &next_actions, "check-next")}
+                {item_nav_button(false, Signal::derive(move || nav.get().next), held, &next_actions, "check-next")}
             </div>
         }
     };
@@ -1089,7 +1105,11 @@ fn item_detail(s: &AppState, actions: &Actions, unit: CheckUnit) -> AnyView {
 /// The open's write proof, followed (6.4): the marks turn off the moment it goes read-only.
 fn write_cap(actions: &Actions) -> Memo<Option<WriteCap>> {
     let actions = send_wrapper::SendWrapper::new(actions.clone());
-    Memo::new(move |_| actions.write_cap())
+    Memo::new(move |_| {
+        (!actions.check_item_pending())
+            .then(|| actions.write_cap())
+            .flatten()
+    })
 }
 
 /// A chip button of the marks (tC4's `railChip` with the marks' padding).
@@ -1177,6 +1197,10 @@ fn check_marks(s: &AppState, actions: &Actions) -> AnyView {
             </button>
         }
     };
+    let pending = {
+        let actions = send_wrapper::SendWrapper::new(actions.clone());
+        Memo::new(move |_| actions.check_item_pending())
+    };
     let comment_button = {
         let (open, actions) = (open.clone(), actions.clone());
         view! {
@@ -1184,6 +1208,7 @@ fn check_marks(s: &AppState, actions: &Actions) -> AnyView {
                 type="button"
                 node_ref=toggle
                 data-testid="comment-toggle"
+                disabled=move || pending.get()
                 data-written=move || if written.get() { "1" } else { "0" }
                 data-open={let open = open.clone(); move || if open.get() { "1" } else { "0" }}
                 on:click=move |_| actions.toggle_comment()
@@ -1510,7 +1535,7 @@ fn article_body(state: &Academy) -> AnyView {
 }
 
 /// The check's History under its marks (owner ruling H5); a decision in conflict has its review.
-fn check_history(s: &AppState, actions: &Actions, reference: String) -> AnyView {
+fn check_history(s: &AppState, actions: &Actions, reference: Signal<String>) -> AnyView {
     let Some(at) = s
         .project
         .with_untracked(|p| p.as_ref().map(|p| p.at.clone()))
@@ -1532,7 +1557,7 @@ fn check_history(s: &AppState, actions: &Actions, reference: String) -> AnyView 
     // restored check is on screen: Restore is off then, not pressed for nothing (#853).
     let saving = {
         let actions = send_wrapper::SendWrapper::new(actions.clone());
-        Memo::new(move |_| actions.words_saving())
+        Memo::new(move |_| actions.words_saving() || actions.check_item_pending())
     };
     let actions = actions.clone();
     crate::views::history::record_history(crate::views::history::RecordHistory {

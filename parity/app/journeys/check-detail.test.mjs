@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { REPO } from '../env-rust.mjs';
-import { browserTest, catalog, sleep, until, withApp } from './kit.mjs';
+import { browserTest, catalog, sleep, until, waitForCheck, withApp } from './kit.mjs';
 
 const BIBLE = 'sample_burrito';
 
@@ -37,6 +37,157 @@ async function scopeOf(env) {
 
 const list = (tool) => ({ tool, unit: { type: 'book', value: 'TIT' } });
 const item = async (env, tool, index) => env.call('check/item', { at: await scopeOf(env), list: list(tool), index });
+
+function switchingChecks(tool) {
+  return async () => {
+    await withApp(async ({ page, env }) => {
+      await openTool(page, tool);
+      await page.getByTestId('sort-byVerse').click();
+      await page.locator('[data-testid="check-list"] [data-rail-index="0"]').click();
+      await waitForCheck(page, 0);
+      const ids = ['check-quote', 'compare-card', 'check-prev', 'check-next'];
+      await page.evaluate((ids) => {
+        const nodes = ids.map((id) => document.querySelector(`[data-testid="${id}"]`));
+        if (nodes.some((node) => !node)) throw new Error('INV-CHECK-SWITCH-NO-FLICKER: the initial detail is incomplete');
+        const removed = [];
+        const observer = new MutationObserver((records) => {
+          for (const record of records) for (const node of record.removedNodes) {
+            nodes.forEach((original, i) => {
+              if (node === original || node.contains(original)) removed.push(ids[i]);
+            });
+          }
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+        window.checkSwitch = { nodes, removed, observer };
+      }, ids);
+      const stable = async () => assert.deepEqual(await page.evaluate((ids) => ({
+        removed: window.checkSwitch.removed,
+        same: ids.map((id, i) => window.checkSwitch.nodes[i] === document.querySelector(`[data-testid="${id}"]`)),
+      }), ids), { removed: [], same: ids.map(() => true) }, 'INV-CHECK-SWITCH-NO-FLICKER: detail nodes must stay mounted');
+
+      for (const [index, activate, focus] of [
+        [1, () => page.getByTestId('check-next').press('Enter'), 'check-next'],
+        [2, () => page.getByTestId('check-next').press('Space'), 'check-next'],
+        [1, () => page.getByTestId('check-prev').press('Enter'), 'check-prev'],
+        [3, () => page.locator('[data-testid="check-list"] [data-rail-index="3"]').click()],
+        [null, async () => {
+          // tW's grouped rail need not have list-index order.
+          await page.locator('[data-testid="check-list"] [aria-current="true"]').press('ArrowDown');
+        }],
+        [null, () => page.locator('[data-testid="check-list"] [aria-current="true"]').press('ArrowUp')],
+      ]) {
+        let release;
+        let requested;
+        const pending = new Promise((resolve) => { requested = resolve; });
+        const held = new Promise((resolve) => { release = resolve; });
+        let continued;
+        const done = new Promise((resolve) => { continued = resolve; });
+        await page.route('**/api/v1/check/item', async (route) => {
+          requested(route.request().postDataJSON().index);
+          await held;
+          await route.continue();
+          continued();
+        });
+        const before = await page.getByTestId('check-quote').textContent();
+        const compareBefore = await page.getByTestId('compare-card').textContent();
+        const selectedBefore = await pressedWords(page);
+        try {
+          await activate();
+          const requestedIndex = await pending;
+          if (index !== null) assert.equal(requestedIndex, index);
+          await stable();
+          assert.equal(await page.getByTestId('check-quote').textContent(), before,
+            'INV-CHECK-SWITCH-NO-FLICKER: keep the previous check until the read lands');
+          assert.equal(await page.getByTestId('compare-card').textContent(), compareBefore,
+            'INV-CHECK-SWITCH-NO-FLICKER: keep the previous comparison while reading');
+          assert.deepEqual(await pressedWords(page), selectedBefore,
+            'INV-CHECK-SWITCH-NO-FLICKER: keep the previous selected words while reading');
+          assert.equal(await page.getByTestId('comment-toggle').isDisabled(), true);
+          assert.equal(await page.getByTestId('bookmark').isDisabled(), true);
+          const expected = await item(env, tool, requestedIndex);
+          release();
+          await waitForCheck(page, requestedIndex);
+          assert.equal(await page.getByTestId('check-quote').textContent(), `“${expected.title}”`);
+          assert.equal(await page.getByTestId('check-quote').evaluate((quote) =>
+            quote.previousElementSibling.querySelector('span').textContent), expected.place.replace(/^TIT /, 'Titus '));
+          assert.deepEqual(await page.locator('[data-words="target"] [data-testid^="tw-"]').allTextContents(), expected.target.words);
+          assert.deepEqual(await page.locator('[data-words="target"] [data-selected="1"]').evaluateAll((words) =>
+            words.map((word) => Number(word.dataset.testid.slice(3)))), expected.target.selected);
+          if (expected.note.length) {
+            const beginning = expected.note[0].spans.map((span) => span.text).join('').replace(/\s+/g, ' ').slice(0, 80);
+            assert.ok((await page.getByTestId('check-note-text').textContent()).replace(/\s+/g, ' ').startsWith(beginning),
+              'INV-CHECK-SWITCH-NO-FLICKER: the note must belong to the new check');
+          } else {
+            assert.equal(await page.getByTestId('check-note').count(), 0);
+          }
+          if (expected.article.title) assert.ok((await page.getByTestId('open-academy').textContent()).includes(expected.article.title));
+          await stable();
+          if (focus) assert.equal(await testidOfFocus(page), focus,
+            'INV-CHECK-SWITCH-NO-FLICKER: keyboard navigation must keep button focus');
+        } finally {
+          release();
+          await done;
+          await page.unroute('**/api/v1/check/item');
+        }
+      }
+      await page.evaluate(() => window.checkSwitch.observer.disconnect());
+      if (process.env.TC4_EVIDENCE) await page.screenshot({ path: path.join(process.env.TC4_EVIDENCE, `switch-${tool}.png`) });
+    }, { scenario: 'en-pins' });
+  };
+}
+
+browserTest('switching_checks_updates_the_detail_in_place_without_unmounting', switchingChecks('translationNotes'));
+browserTest('switching_checks_updates_the_detail_in_place_without_unmounting_translation_words', switchingChecks('translationWords'));
+
+browserTest('a_newer_check_read_wins_while_the_previous_detail_stays_visible', async () => {
+  await withApp(async ({ page, env, allow }) => {
+    await openTool(page, 'translationNotes');
+    await page.locator('[data-testid="check-list"] [data-rail-index="0"]').click();
+    await waitForCheck(page, 0);
+    const expected = await item(env, 'translationNotes', 2);
+    const reads = new Map();
+    await page.route('**/api/v1/check/item', async (route) => {
+      const response = await route.fetch();
+      let release;
+      const held = new Promise((resolve) => { release = resolve; });
+      let answered;
+      const done = new Promise((resolve) => { answered = resolve; });
+      reads.set(route.request().postDataJSON().index, { release, done });
+      await held;
+      await route.fulfill({ response });
+      answered();
+    });
+    try {
+      await page.getByTestId('check-next').press('Enter');
+      await until('the first read is held', () => reads.has(1));
+      await page.getByTestId('check-next').press('Enter');
+      await until('Next steps past the pending check', () => reads.has(2));
+      reads.get(2).release();
+      await waitForCheck(page, 2);
+      const oldResponse = page.waitForResponse((response) => response.url().endsWith('/check/item')
+        && response.request().postDataJSON().index === 1);
+      reads.get(1).release();
+      await (await oldResponse).finished();
+      // A browser round trip lets the old response's microtasks finish.
+      await page.evaluate(() => new Promise(requestAnimationFrame));
+      assert.equal(await page.getByTestId('check-quote').textContent(), `“${expected.title}”`,
+        'INV-CHECK-SWITCH-NO-FLICKER: an older reply must not replace the newest check');
+      assert.equal(await testidOfFocus(page), 'check-next');
+    } finally {
+      for (const read of reads.values()) read.release();
+      await Promise.all([...reads.values()].map((read) => read.done));
+      await page.unroute('**/api/v1/check/item');
+    }
+    allow(/Failed to load resource: the server responded with a status of 503/);
+    await page.route('**/api/v1/check/item', (route) => route.fulfill({ status: 503, body: 'unavailable' }));
+    await page.getByTestId('check-next').press('Enter');
+    await page.getByTestId('check-error').waitFor();
+    await page.unroute('**/api/v1/check/item');
+    await page.locator('[data-testid="check-list"] [data-rail-index="0"]').click();
+    await page.getByTestId('check-quote').waitFor();
+    assert.equal(await page.getByTestId('check-error').count(), 0);
+  }, { scenario: 'en-pins' });
+});
 
 /** Tab until `test` holds, at most `limit` presses; the stops passed, in order. */
 async function tabTo(page, test, limit = 60, shift = false) {
@@ -70,7 +221,7 @@ for (const locale of ['en', 'ar']) {
         await until('Previous is off on the first check', () => page.getByTestId('check-prev').isDisabled());
         await page.getByTestId('check-next').click();
         await until('Next moves to the second check', async () => (await shownIndex(page)) === '1');
-        await until('the second check is drawn', () => page.getByTestId('check-prev').isEnabled().catch(() => false));
+        await until('the second check is drawn', () => page.getByTestId('check-prev').isEnabled());
         const ids = ['check-prev', 'mark-valid', 'mark-invalid', 'mark-todo', 'check-next'];
         const row = page.getByTestId('check-prev').locator('..');
         assert.equal(await row.locator('button').count(), ids.length);
@@ -105,7 +256,7 @@ for (const locale of ['en', 'ar']) {
         assert.equal(await page.getByTestId('check-item-counter').locator('..').locator('button').count(), 0);
         await page.getByTestId('check-prev').click();
         await until('Previous returns to the first check', async () => (await shownIndex(page)) === '0');
-        await until('the first check is drawn', () => page.getByTestId('check-prev').isDisabled().catch(() => false));
+        await until('the first check is drawn', () => page.getByTestId('check-prev').isDisabled());
         const indices = await page.locator('[data-testid="check-list"] button[data-rail-index]').evaluateAll((b) => b.map((x) => Number(x.getAttribute('data-rail-index'))));
         await page.locator(`[data-testid="check-list"] [data-rail-index="${Math.max(...indices)}"]`).click();
         await until('Next is off on the last check', () => page.getByTestId('check-next').isDisabled());
@@ -261,6 +412,8 @@ browserTest('a_drag_selects_whole_words_and_mark_valid_saves_them', async () => 
     // Next before marking drops the selection (tC4's Q2).
     await page.getByTestId('check-next').click();
     await until('the next check shows', async () => Number(await shownIndex(page)) !== index);
+    const next = Number(await shownIndex(page));
+    await waitForCheck(page, next);
     assert.deepEqual(await pressedWords(), []);
   }, { scenario: 'en-pins' });
 });
@@ -275,10 +428,10 @@ const storedAs = (env, index, status, selected) => until(`check ${index} is stor
 async function awayAndBack(page, index) {
   await page.getByTestId('check-next').click();
   await until('the next check shows', async () => Number(await shownIndex(page)) !== index);
-  await page.getByTestId('check-quote').waitFor();
+  await waitForCheck(page, index + 1);
   await page.getByTestId('check-prev').click();
   await until('the check shows again', async () => Number(await shownIndex(page)) === index);
-  await page.getByTestId('tw-4').waitFor();
+  await waitForCheck(page, index);
 }
 /** The `check/decide` requests the page sends from now on. */
 function decides(page) {
@@ -613,10 +766,10 @@ browserTest('leaving_a_check_with_selected_words_not_saved_asks_first', async ()
     await question(page).waitFor();
     await answer(page, 'check.leave.leave');
     await until('the next check shows', async () => Number(await shownIndex(page)) === index + 1);
-    await page.getByTestId('check-quote').waitFor();
+    await waitForCheck(page, index + 1);
     await railRow(page, index).click();
     await until('the check shows again', async () => Number(await shownIndex(page)) === index);
-    await page.getByTestId('tw-4').waitFor();
+    await waitForCheck(page, index);
     assert.deepEqual(await pressedWords(page), []);
     assert.equal(await question(page).count(), 0, 'no words, no question');
     // Discard on the way to All checking tools closes the tool.
@@ -753,7 +906,7 @@ browserTest('check_comment_saved_on_leaving_the_item', async () => {
     // No Done: the checker goes to the next check.
     await page.getByTestId('check-next').click();
     await until('the next check shows', async () => Number(await shownIndex(page)) !== first);
-    await page.getByTestId('check-quote').waitFor();
+    await waitForCheck(page, first + 1);
     const left = await until('the comment is stored on the check it was typed on', async () => {
       const view = await item(env, 'translationNotes', first);
       return view.decision.value.comment ? view : null;
@@ -900,7 +1053,7 @@ browserTest('a_slow_comment_save_does_not_touch_the_check_moved_to', async () =>
     await page.getByTestId('comment-text').fill('Ask the team.');
     await page.getByTestId('check-next').click();
     await until('the next check shows', async () => Number(await shownIndex(page)) !== first);
-    await page.getByTestId('check-quote').waitFor();
+    await waitForCheck(page, first + 1);
     await until('the comment is stored on the first check', async () => (await item(env, 'translationNotes', first)).decision.value.comment);
     // The reply reaches the page; the check shown has not taken anything from it.
     await sleep(300);
