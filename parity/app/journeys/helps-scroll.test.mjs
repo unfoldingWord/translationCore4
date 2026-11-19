@@ -144,4 +144,3 @@ for (const mode of ['Understand', 'Translate']) {
     }, { scenario: 'en-pins' });
   });
 }
-
