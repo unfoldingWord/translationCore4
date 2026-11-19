@@ -114,8 +114,8 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
   shows those Bibles in the source panes, and a pane whose Bible lacks the open book shows
   the pinned English ULT or UST (`ULT`/`UST`) without changing the pane's pin (#1048,
   DIFFERENCES). A source Bible's tab and name show the abbreviation in its metadata (`TPL`,
-  `AVD`) where tC4 shows GLT or GST, and the helps' simplified tab shows its own (#1045,
-  DIFFERENCES).
+  `AVD`) where tC4 shows GLT or GST, the name under the tabs is the full name in its metadata
+  ("Texto Puente Literal"), and the helps' simplified tab shows its own (#1045, DIFFERENCES).
 
 ### J3 Get pinned resources
 

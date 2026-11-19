@@ -2104,6 +2104,7 @@ impl Example for SourcesView {
                 SourcePane {
                     id: "ult".into(),
                     abbreviation: Some("ULT".into()),
+                    title: Some("unfoldingWord® Literal Text".into()),
                     version: Some("v91".into()),
                     dir: Direction::Ltr,
                     text: PaneText::Ready(PaneChapter {
@@ -2130,6 +2131,7 @@ impl Example for SourcesView {
                 SourcePane {
                     id: "ust".into(),
                     abbreviation: None,
+                    title: None,
                     version: Some("v88".into()),
                     dir: Direction::Ltr,
                     text: PaneText::NotInstalled,
@@ -2137,6 +2139,7 @@ impl Example for SourcesView {
                 SourcePane {
                     id: "glt".into(),
                     abbreviation: Some("TPL".into()),
+                    title: Some("Texto Puente Literal".into()),
                     version: None,
                     dir: Direction::Rtl,
                     text: PaneText::Error {
@@ -2147,6 +2150,7 @@ impl Example for SourcesView {
             original: Some(SourcePane {
                 id: "orig".into(),
                 abbreviation: None,
+                title: None,
                 version: Some("v0.34".into()),
                 dir: Direction::Ltr,
                 text: PaneText::Missing,

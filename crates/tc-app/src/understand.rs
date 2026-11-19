@@ -24,6 +24,7 @@ use tc_api::session::{Close, KeptPlace, Open, OpenUnit, OpenedProject};
 use tc_api::shown::{Direction, Known};
 use tc_api::{ApiError, NotSaved};
 use tc_core::BookId;
+use tc_helps::metadata::ResourceIdentity;
 use tc_helps::{
     AcademyArticleId, HelpItemId, HelpRef, HelpsPart, Manual, Occurrence, Quote, Slug,
     WordArticleId, WordCategory,
@@ -60,6 +61,8 @@ struct LoadedPane {
     version: Option<String>,
     /// The abbreviation in the metadata of the text that loaded (`TPL`, #1045).
     abbreviation: Option<String>,
+    /// The full name in that metadata (`Texto Puente Literal`).
+    title: Option<String>,
     text: LoadedText,
 }
 
@@ -396,10 +399,12 @@ fn load(
                     pane.pin.version.as_ref().map(|v| v.as_str().to_owned()),
                 ),
             };
+            let identity = loaded_identity(store, status);
             LoadedPane {
                 id,
                 version,
-                abbreviation: loaded_abbreviation(store, status),
+                abbreviation: identity.as_ref().and_then(|i| i.abbreviation.clone()),
+                title: identity.and_then(|i| i.title),
                 text: status.map_or(LoadedText::Missing, text_state),
             }
         })
@@ -416,6 +421,7 @@ fn load(
             },
             // The Greek and Hebrew tabs keep their own names.
             abbreviation: None,
+            title: None,
             text: text_state(status),
         });
     // The tab is named after the text that loaded: a book the package's simplified Bible lacks
@@ -432,7 +438,8 @@ fn load(
             }),
     }
     .map(|pin| pin.repo.name().as_str().to_owned());
-    let simplified_abbreviation = loaded_abbreviation(store, resources.text(&TextRole::Simplified));
+    let simplified_abbreviation =
+        loaded_identity(store, resources.text(&TextRole::Simplified)).and_then(|i| i.abbreviation);
     let simplified = match resources.text(&TextRole::Simplified) {
         Some(TextStatus::Loaded { usfm, rung, .. }) => Slot::Ready(ReadySlot {
             items: vec![pane_book(usfm)],
@@ -457,14 +464,15 @@ fn load(
     }
 }
 
-/// The abbreviation in the metadata of the text that loaded (`TPL`): the name its labels show
-/// in place of GLT or GST (#1045). Read with the book, from the install the text came from, so
-/// a book that fell back to English is named after the English text.
-fn loaded_abbreviation(store: &ResourceStore, status: Option<&TextStatus>) -> Option<String> {
+/// What the metadata of the text that loaded says it is: its abbreviation (`TPL`), the name its
+/// labels show in place of GLT or GST (#1045), and its full name. Read with the book, from the
+/// install the text came from, so a book that fell back to English is named after the English
+/// text.
+fn loaded_identity(store: &ResourceStore, status: Option<&TextStatus>) -> Option<ResourceIdentity> {
     let Some(TextStatus::Loaded { pin, .. }) = status else {
         return None;
     };
-    store.dcs(pin).ok()??.metadata()?.identity.abbreviation
+    Some(store.dcs(pin).ok()??.metadata()?.identity)
 }
 
 impl App {
@@ -857,6 +865,7 @@ impl Handle<Sources> for App {
         let pane_view = |pane: &LoadedPane, dir: Direction| SourcePane {
             id: pane.id.clone(),
             abbreviation: pane.abbreviation.clone(),
+            title: pane.title.clone(),
             version: pane.version.clone(),
             dir,
             text: match &pane.text {

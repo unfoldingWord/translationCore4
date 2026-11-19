@@ -217,6 +217,33 @@ fn a_burrito_names_its_abbreviation() {
         without["identification"]["abbreviation"] = none;
         assert_eq!(abbreviation(&without.to_string()), None);
     }
+    // Many languages give the English one, trimmed, else the first the file lists.
+    for (names, expected) in [
+        (r#"{ "es": "TPE", "en": " TPL " }"#, "TPL"),
+        (r#"{ "fr": "TPF", "es": "TPE" }"#, "TPF"),
+    ] {
+        let mut many = tpl.clone();
+        many["identification"]["abbreviation"] = serde_json::from_str(names).unwrap();
+        assert_eq!(abbreviation(&many.to_string()).as_deref(), Some(expected));
+    }
+}
+
+/// A source Bible's full name is its metadata's `identification.name`, by the same rule as its
+/// abbreviation: the English entry, trimmed, else the first the file lists.
+#[test]
+fn a_burrito_names_its_full_name() {
+    let title = |json: &str| parse_burrito_metadata(json).unwrap().identity.title;
+    let glt = resource("id_glt@v105/metadata.json");
+    assert_eq!(title(&glt).as_deref(), Some("BAHTRAKU Teks Literal"));
+    let mut named: serde_json::Value = serde_json::from_str(&glt).unwrap();
+    named["identification"]["name"] =
+        serde_json::json!({ "es": "Puente", "en": " Texto Puente Literal " });
+    assert_eq!(
+        title(&named.to_string()).as_deref(),
+        Some("Texto Puente Literal")
+    );
+    named["identification"]["name"] = serde_json::json!({ "en": "" });
+    assert_eq!(title(&named.to_string()), None);
 }
 
 #[test]

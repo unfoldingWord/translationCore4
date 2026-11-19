@@ -615,13 +615,11 @@ pub fn bible_name(abbreviation: Option<&str>, pane: &str) -> String {
 }
 
 /// A source Bible's name under Translate's tabs and over Understand's passage: the catalog's
-/// long name (`unfoldingWord Literal Text`), else its [`bible_name`].
-pub fn bible_long_name(abbreviation: Option<&str>, pane: &str) -> String {
-    t_dyn(
-        &format!("source.{pane}.name"),
-        &[],
-        Some(&bible_name(abbreviation, pane)),
-    )
+/// long name for the English Bibles (`unfoldingWord Literal Text`, in the app's language), else
+/// the full name in the Bible's metadata (`Texto Puente Literal`), else its [`bible_name`].
+pub fn bible_long_name(abbreviation: Option<&str>, title: Option<&str>, pane: &str) -> String {
+    let name = title.map_or_else(|| bible_name(abbreviation, pane), str::to_owned);
+    t_dyn(&format!("source.{pane}.name"), &[], Some(&name))
 }
 
 /// The simplified tab's name when its text gives no abbreviation: the pinned text's

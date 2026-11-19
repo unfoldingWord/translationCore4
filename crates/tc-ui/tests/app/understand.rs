@@ -411,7 +411,8 @@ fn a_word_card_lights_every_instance_of_its_article_in_its_section() {
 
 /// #1045: a source Bible is named by the abbreviation in its metadata wherever the app showed
 /// GLT or GST, and as before when it gives none: the catalog's ULT, or the pane's id. The long
-/// name under the tabs keeps the catalog's English name and is otherwise the short one.
+/// name under the tabs is the catalog's for the English Bibles, else the full name in the
+/// metadata, else the short one.
 #[test]
 fn a_source_bible_is_named_by_its_abbreviation_else_as_before() {
     assert_eq!(bible_name(Some("TPL"), "glt"), "TPL");
@@ -420,10 +421,16 @@ fn a_source_bible_is_named_by_its_abbreviation_else_as_before() {
     assert_eq!(bible_name(None, "gst"), "GST");
     assert_eq!(bible_name(None, "ult"), "ULT");
     assert_eq!(bible_name(Some("ULT"), "ult"), "ULT");
-    assert_eq!(bible_long_name(Some("TPL"), "glt"), "TPL");
-    assert_eq!(bible_long_name(None, "gst"), "GST");
+    // The long name: the full name in the metadata, else the short one; the English Bibles
+    // keep the catalog's name, in the app's language.
     assert_eq!(
-        bible_long_name(Some("ULT"), "ult"),
+        bible_long_name(Some("TPL"), Some("Texto Puente Literal"), "glt"),
+        "Texto Puente Literal"
+    );
+    assert_eq!(bible_long_name(Some("TPL"), None, "glt"), "TPL");
+    assert_eq!(bible_long_name(None, None, "gst"), "GST");
+    assert_eq!(
+        bible_long_name(Some("ULT"), Some("unfoldingWord® Literal Text"), "ult"),
         "unfoldingWord Literal Text"
     );
 }
