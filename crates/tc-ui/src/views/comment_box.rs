@@ -194,7 +194,8 @@ fn comment_history(
                 keys::review::place::FRAME,
                 &[("story", &story.get()), ("frame", frame)],
             ),
-        },
+        }
+        .into(),
         restore,
     })
 }

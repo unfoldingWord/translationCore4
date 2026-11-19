@@ -96,6 +96,9 @@ export async function until(what, read, ms = 60_000) {
   }
 }
 
+/** A navigation has painted its requested check; the preceding detail stays mounted meanwhile. */
+export const waitForCheck = (page, index) => page.locator(`[data-testid="check-quote"][data-check-index="${index}"]`).waitFor();
+
 /**
  * Where a Translate editing card sits in its row of the two-column grid (#915): the row's height
  * (the source cell, which the grid stretches to the row), the height the source cell's own

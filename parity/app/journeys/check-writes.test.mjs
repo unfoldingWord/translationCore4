@@ -13,7 +13,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { newRequestId } from '../env-rust.mjs';
-import { browserTest, catalog, sleep, until, withApp } from './kit.mjs';
+import { browserTest, catalog, sleep, until, waitForCheck, withApp } from './kit.mjs';
 
 const BIBLE = 'sample_burrito';
 const OBS = 'sample_burrito_obs';
@@ -59,7 +59,7 @@ async function openTool(page, tool) {
 async function select(page, index) {
   await row(page, index).click();
   await until(`check ${index} shows`, async () => (await shownIndex(page)) === index);
-  await page.getByTestId('check-target').waitFor();
+  await waitForCheck(page, index);
 }
 
 /** Home, and the leave's checkpoint written: the project's files are what it holds. */
@@ -194,13 +194,17 @@ browserTest('j22_a_story_check_marked_in_the_browser_is_stored_under_its_frame_a
     await select(page, index);
     assert.equal(await row(page, index).getAttribute('data-ref'), '1:1');
     assert.equal(await page.getByTestId('check-target').getAttribute('data-drafted'), '1');
+    const before = await item(env, list, index);
     const word = page.getByTestId('check-target').locator('[data-testid^="tw-"]', { hasText: 'principio' }).first();
+    const selected = Number((await word.getAttribute('data-testid')).slice(3));
     await word.click();
     assert.equal(await word.getAttribute('aria-pressed'), 'true');
     await page.getByTestId('mark-valid').click();
     const marked = await until('the mark is stored', async () => {
       const view = await item(env, list, index);
-      return view.decision.value.status === 'valid' ? view : null;
+      return view.decision.value.status === 'valid'
+        && view.target.selected.includes(selected)
+        && view.decision.token !== before.decision.token ? view : null;
     });
     await until('the rail row is decided', async () => (await row(page, index).getAttribute('data-decided')) === '1');
 
