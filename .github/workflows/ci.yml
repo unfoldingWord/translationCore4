@@ -25,8 +25,8 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   # A newer push to a track branch cancels the run it supersedes, which frees runners. Main's
   # runs always finish (a quick follow-up must not cancel the test of the one before), and so
-  # do gate/* runs.
-  cancel-in-progress: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && !startsWith(github.ref, 'refs/heads/gate/') }}
+  # do gate/* and release/* runs.
+  cancel-in-progress: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && !startsWith(github.ref, 'refs/heads/gate/') && !startsWith(github.ref, 'refs/heads/release/') }}
 jobs:
   # What this run must check. `code`: false when the change is wholly prose (docs/ outside
   # docs/contracts/, top-level *.md; scripts/ci-changes.sh), which the node step still checks.

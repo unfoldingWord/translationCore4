@@ -94,7 +94,7 @@ test('INV-JOURNEYS-RUN: every browser journey runs in CI on every main, gate and
   assert.match(gates, /node --test[^\n]*parity\/app\/journeys\/\*\.test\.mjs/, 'INV-JOURNEYS-RUN: the journeys step does not run every parity/app/journeys/*.test.mjs');
 });
 
-test('INV-FULL-TESTS-GATE-MERGES: the full tests run on main, gate/*, in the merge queue and on request, not on other pushes', () => {
+test('INV-FULL-TESTS-GATE-MERGES: the full tests run on main, gate/*, release/*, in the merge queue and on request, not on other pushes', () => {
   const ci = read('.github/workflows/ci.yml');
   for (const job of ['test', 'test-app', 'alignment-budget', 'parity-baseline']) {
     const body = ci.split(new RegExp(`^  ${job}:$`, 'm'))[1]?.split(/^  [a-z-]+:$/m)[0] ?? '';
@@ -125,6 +125,8 @@ test('INV-RELEASE-BRANCH-RUNS-THE-FULL-CHECKS: every job the merge queue runs al
     }
     for (const job of jobsOf(text)) {
       const condition = job.text.match(/^ {4}if: (.*)$/m)?.[1] ?? '';
+      // A condition folded over several lines is one this check cannot read.
+      if (/^[>|]/.test(condition)) problems.push(`${name}.yml job ${job.id} has an if: over several lines; write it on one line`);
       // ci.yml names the refs and events that run a job in full.
       if (condition.includes("github.event_name == 'merge_group'") && !(condition.includes(toRelease) && condition.includes(onRelease))) {
         problems.push(`${name}.yml job ${job.id} runs in the merge queue but not for a release branch`);
@@ -137,6 +139,22 @@ test('INV-RELEASE-BRANCH-RUNS-THE-FULL-CHECKS: every job the merge queue runs al
     }
   }
   assert.deepEqual(problems.map((p) => `INV-RELEASE-BRANCH-RUNS-THE-FULL-CHECKS: ${p}`), []);
+});
+
+// GitHub starts no run when the base of a pull request changes, so a pull request opened against
+// main and then pointed at release/* keeps its skipped, passed checks. The `release-base` check,
+// which the "release branches" ruleset requires, is what that pull request lacks: it must come
+// only from a run that started for a release/* base, and never from a skipped job.
+test('INV-RELEASE-BASE-IS-REPORTED-ONLY-FOR-A-RELEASE-BASE: release-base runs for a pull request to release/* and for nothing else', () => {
+  const text = read('.github/workflows/release-base.yml');
+  const on = text.split(/^jobs:/m)[0].split(/^on:\s*$/m)[1] ?? '';
+  assert.equal(on.replace(/\s+/g, ' ').trim(), "pull_request: branches: ['release/*']", 'INV-RELEASE-BASE-IS-REPORTED-ONLY-FOR-A-RELEASE-BASE: release-base.yml starts on something other than a pull request to release/*');
+  const jobs = jobsOf(text);
+  assert.deepEqual(jobs.map((job) => job.id), ['release-base'], 'INV-RELEASE-BASE-IS-REPORTED-ONLY-FOR-A-RELEASE-BASE: release-base.yml has one job, release-base');
+  assert.doesNotMatch(jobs[0].text, /^\s*(- )?if:/m, 'INV-RELEASE-BASE-IS-REPORTED-ONLY-FOR-A-RELEASE-BASE: a skipped release-base job or step reports success');
+  for (const name of ['ci', 'app-e2e', 'shell']) {
+    assert.ok(!jobsOf(read(`.github/workflows/${name}.yml`)).some((job) => job.id === 'release-base'), `INV-RELEASE-BASE-IS-REPORTED-ONLY-FOR-A-RELEASE-BASE: ${name}.yml also has a job named release-base`);
+  }
 });
 
 test('INV-A-HUNG-TEST-IS-NAMED-AND-STOPPED: every gate test has a time limit (CHK-8)', () => {
