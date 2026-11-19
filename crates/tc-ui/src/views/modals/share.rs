@@ -149,10 +149,16 @@ pub fn ShareDialog() -> impl IntoView {
             };
             let body = {
                 let (actions, sh) = (actions.clone(), s.share_form());
-                move || match step.get() {
+                let body_step = Memo::new(move |_| match step.get() {
+                    ShareStep::Target => ShareStep::Target,
+                    ShareStep::Check => ShareStep::Check,
+                    ShareStep::Running(_) => ShareStep::Running(SharePhase::Preparing),
+                    ShareStep::Done(repo) => ShareStep::Done(repo),
+                });
+                move || match body_step.get() {
                     ShareStep::Target => target_step(&actions, &sh, user).into_any(),
                     ShareStep::Check => check_step(&actions, &sh, user).into_any(),
-                    ShareStep::Running(phase) => progress_step(phase, &sh).into_any(),
+                    ShareStep::Running(_) => progress_step(&sh).into_any(),
                     ShareStep::Done(repo) => done_step(&actions, &sh, repo).into_any(),
                 }
             };
@@ -463,22 +469,33 @@ fn steps_attr(sh: &Signal<Option<ShareForm>>) -> String {
     })
 }
 
-/// One progress line (D84 point 5, `ProgressStep`).
-fn progress_step(phase: SharePhase, sh: &Signal<Option<ShareForm>>) -> impl IntoView + use<> {
-    let label = t(
-        match phase {
-            SharePhase::Preparing => keys::share_dialog::PREPARING,
-            SharePhase::Create => keys::share_dialog::CREATING,
-            SharePhase::Push => keys::share_dialog::PUSHING,
-        },
-        &[],
-    );
+/// One progress line (D84 point 5, `ProgressStep`): one circle for the whole run, whose label
+/// and `data-steps` follow the phase (#851).
+fn progress_step(sh: &Signal<Option<ShareForm>>) -> impl IntoView + use<> {
+    let sh = *sh;
+    let phase = Memo::new(move |_| {
+        sh.with(|sh| match sh.as_ref().map(|sh| &sh.step) {
+            Some(ShareStep::Running(phase)) => *phase,
+            _ => SharePhase::Preparing,
+        })
+    });
+    let label = Signal::derive(move || {
+        t(
+            match phase.get() {
+                SharePhase::Preparing => keys::share_dialog::PREPARING,
+                SharePhase::Create => keys::share_dialog::CREATING,
+                SharePhase::Push => keys::share_dialog::PUSHING,
+            },
+            &[],
+        )
+    });
+    let steps = Memo::new(move |_| steps_attr(&sh));
     view! {
         <div
             role="status"
             style="padding: 26px 0px 30px; display: flex; justify-content: center;"
             data-testid="share-progress"
-            data-steps=steps_attr(sh)
+            data-steps=move || steps.get()
         >
             <Spinner label=label />
         </div>
@@ -494,6 +511,7 @@ fn done_step(
 ) -> impl IntoView + use<> {
     let sh = *sh;
     let lines = sh.with_untracked(|sh| sh.as_ref().map(ShareForm::done_lines).unwrap_or_default());
+    let steps = untrack(|| steps_attr(&sh));
     let mut lines = lines.into_iter();
     let first = lines.next().map(|key| {
         view! {
@@ -516,7 +534,7 @@ fn done_step(
     let url: WebUrl = repo.url;
     let shown_url = url.as_str().to_owned();
     view! {
-        <div data-testid="share-done" data-steps=steps_attr(&sh) style="display: flex; flex-direction: column; gap: 12px;">
+        <div data-testid="share-done" data-steps=steps style="display: flex; flex-direction: column; gap: 12px;">
             {first}
             <Text role=TextRole::Strong attrs=Attrs::from([("data-testid", "share-url")]) style=crate::css! { "overflow-wrap": "anywhere" }>
                 {shown_url}

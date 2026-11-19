@@ -19,7 +19,7 @@ pub fn Progress(
     /// The ring's diameter in px.
     #[prop(default = 18.0)]
     size: f64,
-    #[prop(optional, into)] label: Option<String>,
+    #[prop(optional, into)] label: Option<Signal<String>>,
     /// The bar's smallest fill in px once its value is above 0, so a small share still shows
     /// (tC4 #764, the Check bars). None draws the share as it is.
     #[prop(default = None)]
@@ -28,13 +28,13 @@ pub fn Progress(
     #[prop(optional)] attrs: Attrs,
 ) -> impl IntoView {
     let pct = move || value.get().map(|v| v.clamp(0.0, 100.0));
-    let label = label.filter(|l| !l.is_empty());
-    let aria_label = label.clone();
+    let label = label.filter(|l| l.with_untracked(|s| !s.is_empty()));
+    let aria_label = label;
     let aria = move || {
         use leptos::tachys::html::attribute::custom::custom_attribute as attr;
         (
             attr("role", "progressbar"),
-            attr("aria-label", aria_label.clone()),
+            attr("aria-label", move || aria_label.map(|l| l.get())),
             attr("aria-valuenow", move || pct().map(|p| js_number(p.round()))),
             attr("aria-valuemin", move || pct().map(|_| "0")),
             attr("aria-valuemax", move || pct().map(|_| "100")),
@@ -111,7 +111,7 @@ pub fn Progress(
         return view! {
             <span data-tone=tone.as_str() style=outer.to_style() {..spread(&attrs)}>
                 {mark}
-                {label.map(|l| view! { <span style=label_css.to_style()>{l}</span> })}
+                {label.map(|l| view! { <span style=label_css.to_style()>{move || l.get()}</span> })}
             </span>
         }
         .into_any();

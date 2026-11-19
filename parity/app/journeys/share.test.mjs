@@ -114,3 +114,62 @@ browserTest('J11 11, J24. An Open Bible Stories project shares the same way, and
     assert.equal(await page.getByTestId('share-team-access').textContent(), en['shareDialog.teamAccess']);
   }, opts);
 });
+
+browserTest('j11_the_share_spinner_turns_without_restarting', async () => {
+  await withApp(async ({ page, env }) => {
+    await page.getByTestId(`share-${BIBLE}`).waitFor();
+    await openShare(page, BIBLE);
+    await page.getByTestId('share-next').click();
+    await env.door43.fault({ path: '/api/v1/user/repos', times: 2, fault: { type: 'delay', ms: 1200 } });
+    await env.door43.fault({ path: `/${DOOR43_OWNER}/${BIBLE}`, times: 6, fault: { type: 'delay', ms: 600 } });
+    await page.evaluate(() => {
+      const ids = new WeakMap();
+      let nextId = 1;
+      const state = { elements: 0, restarts: 0, frames: 0, lines: [] };
+      let lastId = 0;
+      let lastTime = -1;
+      const sample = () => {
+        const box = document.querySelector('[data-testid="share-progress"]');
+        if (box) {
+          const ring = box.querySelector('[role="progressbar"]');
+          const text = box.textContent?.trim() ?? '';
+          if (text && state.lines.at(-1) !== text) state.lines.push(text);
+          if (ring) {
+            if (!ids.has(ring)) {
+              ids.set(ring, nextId++);
+              state.elements += 1;
+            }
+            const id = ids.get(ring);
+            const anims = document.getAnimations().filter((a) => box.contains(a.effect?.target));
+            const time = Number(anims[0]?.currentTime ?? 0);
+            if ((lastId !== 0 && id !== lastId) || (lastTime >= 0 && time < lastTime)) {
+              state.restarts += 1;
+            }
+            lastId = id;
+            lastTime = time;
+            state.frames += 1;
+          }
+        }
+        if (!document.querySelector('[data-testid="share-done"]')) {
+          requestAnimationFrame(sample);
+        }
+      };
+      requestAnimationFrame(sample);
+      window.__shareSpin = state;
+    });
+    await page.getByTestId('share-submit').click();
+    const done = page.getByTestId('share-done');
+    await done.waitFor({ timeout: 120_000 });
+    assert.equal(await done.getAttribute('data-steps'), 'create,push');
+    const spin = await page.evaluate(() => window.__shareSpin);
+    assert.ok(spin.frames >= 10, `expected at least 10 sampled frames, got ${JSON.stringify(spin)}`);
+    assert.equal(spin.elements, 1, `expected 1 circle element, got ${spin.elements} (${spin.restarts} restarts, lines: ${spin.lines.join(' -> ')})`);
+    assert.equal(spin.restarts, 0, `expected 0 animation restarts, got ${spin.restarts} (${spin.elements} elements, lines: ${spin.lines.join(' -> ')})`);
+    assert.deepEqual(
+      spin.lines,
+      [en['shareDialog.preparing'], en['shareDialog.creating'], en['shareDialog.pushing']],
+      'the three progress lines still show in order',
+    );
+  }, opts);
+});
+
