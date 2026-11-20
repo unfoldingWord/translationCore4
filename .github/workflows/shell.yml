@@ -6,26 +6,28 @@ name: shell
 permissions:
   contents: read
 on:
-  # As in ci.yml: main and gate/* only, so a pull request's branch does not run twice.
+  # As in ci.yml: main, gate/* and release/* only, so a pull request's branch does not run twice.
   push:
-    branches: [main, 'gate/**']
-  # A pull request runs the unit tests; it only reports the builds and end-to-end jobs as skipped
-  # (they are required checks), as app-e2e does. In 48 runs they never failed, and each run held
-  # a macOS and a Windows runner; they gate the merge queue and main.
+    branches: [main, 'gate/**', 'release/*']
+  # A pull request to main runs the unit tests; it only reports the builds and end-to-end jobs as
+  # skipped (they are required checks), as app-e2e does. In 48 runs they never failed, and each run
+  # held a macOS and a Windows runner; they gate the merge queue and main. A release branch has no
+  # merge queue, so a pull request to release/* runs them itself
+  # (rulings/2026-11-19-release-branches.md).
   pull_request:
   workflow_dispatch:
   merge_group:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
-  # As in ci.yml: a superseded track run is cancelled; main and gate/* runs always finish.
-  cancel-in-progress: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && !startsWith(github.ref, 'refs/heads/gate/') }}
+  # As in ci.yml: a superseded track run is cancelled; main, gate/* and release/* runs always finish.
+  cancel-in-progress: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && !startsWith(github.ref, 'refs/heads/gate/') && !startsWith(github.ref, 'refs/heads/release/') }}
 env:
   ELECTRONITE: v44.9.3-graphite
 jobs:
   # Whether the change can affect this workflow's tests: false when it is wholly prose
   # (scripts/ci-changes.sh). A skipped job reports success, so required checks still pass.
   changes:
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' || startsWith(github.base_ref, 'release/')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -38,8 +40,8 @@ jobs:
       - id: changes
         env:
           GH_TOKEN: ${{ github.token }}
-          BASE: ${{ github.event.merge_group.base_sha || github.event.before }}
-          HEAD: ${{ github.event.merge_group.head_sha || github.sha }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
         run: scripts/ci-changes.sh
 
   unit:
@@ -56,7 +58,7 @@ jobs:
   builds:
     needs: changes
     # !cancelled(): if changes fails, its output is empty and nothing is skipped.
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.changes.outputs.code != 'false' }}
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || startsWith(github.base_ref, 'release/')) && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
@@ -97,7 +99,7 @@ jobs:
     name: tc4 ${{ matrix.name }}
     needs: changes
     # !cancelled(): if changes fails, its output is empty and nothing is skipped.
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.changes.outputs.code != 'false' }}
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || startsWith(github.base_ref, 'release/')) && needs.changes.outputs.code != 'false' }}
     strategy:
       fail-fast: false
       matrix:
@@ -125,7 +127,7 @@ jobs:
     needs: [changes, builds]
     # !cancelled(): a failed build must fail this required check with its missing download, not
     # skip it, which would read as a pass.
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.changes.outputs.code != 'false' }}
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || startsWith(github.base_ref, 'release/')) && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -176,7 +178,7 @@ jobs:
     needs: [changes, builds, tc4]
     # !cancelled(): a failed build must fail this required check with its missing download, not
     # skip it, which would read as a pass.
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.changes.outputs.code != 'false' }}
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || startsWith(github.base_ref, 'release/')) && needs.changes.outputs.code != 'false' }}
     runs-on: windows-2025
     timeout-minutes: 60
     defaults:
@@ -226,7 +228,7 @@ jobs:
     needs: [changes, builds, tc4]
     # !cancelled(): a failed build must fail this required check with its missing download, not
     # skip it, which would read as a pass.
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.changes.outputs.code != 'false' }}
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || startsWith(github.base_ref, 'release/')) && needs.changes.outputs.code != 'false' }}
     runs-on: macos-15
     timeout-minutes: 60
     steps:

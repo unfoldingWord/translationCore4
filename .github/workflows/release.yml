@@ -1,9 +1,11 @@
 # The release pipeline (card G3, docs/RELEASE.md): the app for Windows, macOS and Linux (H3),
 # each installer installed on a fresh runner and smoke-tested there, a draft GitHub release only
-# from a tag. Windows is signed on a release tag, and on a manual run of the default branch with
-# `sign` ticked, inside the `windows-signing` environment (H4; tC4 package-desktop.yml #456, which
-# signs release/* the same way). macOS is ad-hoc signed and not notarized, as tC4 4.0 rc.2; the
-# staged bundle's seal and manifest are verified before packaging and again once installed (#969).
+# from a tag. Windows is signed on a release tag, and on a manual run of the default branch or a
+# release/* branch with `sign` ticked, inside the `windows-signing` environment, where a release
+# manager approves each signed build (H4; rulings/2026-11-19-release-branches.md; tC4
+# package-desktop.yml #456 signs release/* the same way). macOS is ad-hoc signed and not
+# notarized, as tC4 4.0 rc.2; the staged bundle's seal and manifest are verified before packaging
+# and again once installed (#969).
 name: release
 permissions:
   contents: read
@@ -11,7 +13,7 @@ on:
   workflow_dispatch:
     inputs:
       sign:
-        description: Sign the Windows build (default branch only)
+        description: Sign the Windows build (default branch or a release/* branch)
         type: boolean
         default: false
   push:
@@ -109,10 +111,10 @@ jobs:
             electronite: electronite-v44.9.3-graphite-darwin-arm64.zip
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
-    # Signing (H4): Azure trusts only this environment's OIDC subject, and its deployment rules
-    # allow only the default branch and v* tags. Every other run uses no environment and builds
-    # unsigned.
-    environment: ${{ matrix.platform == 'windows-x64' && (startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.sign && github.ref == format('refs/heads/{0}', github.event.repository.default_branch))) && 'windows-signing' || '' }}
+    # Signing (H4): Azure trusts only this environment's OIDC subject. Its deployment rules allow
+    # only the default branch, release/* branches and v* tags, and a release manager approves each
+    # job that uses it. Every other run uses no environment and builds unsigned.
+    environment: ${{ matrix.platform == 'windows-x64' && (startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.sign && (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/heads/release/')))) && 'windows-signing' || '' }}
     permissions:
       contents: read
       id-token: write
@@ -120,7 +122,7 @@ jobs:
       run:
         shell: bash
     env:
-      SIGN: ${{ matrix.platform == 'windows-x64' && (startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.sign && github.ref == format('refs/heads/{0}', github.event.repository.default_branch))) && 'yes' || '' }}
+      SIGN: ${{ matrix.platform == 'windows-x64' && (startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.sign && (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/heads/release/')))) && 'yes' || '' }}
     steps:
       - uses: actions/checkout@v7
       - run: rustup toolchain install && rustc --version

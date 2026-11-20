@@ -74,6 +74,41 @@ The installed bundle's `CFBundleShortVersionString` and the pkg receipt (`pkguti
 org.unfoldingword.translationcore4`) carry the app's whole version, such as `4.1.0-preview2`;
 `CFBundleVersion` carries its numbers, `4.1.0`.
 
+## Release branches
+
+A release goes out from its release branch, so work keeps merging to `main` while a release is
+prepared (ruling `docs/rulings/2026-11-19-release-branches.md`).
+
+- **One branch for each minor release**, named `release/<major>.<minor>` (`release/4.1`). It
+  gets fixes only, never a feature.
+- **The cut.** At the cut date of an `X.Y.0` release, a release manager cuts `release/X.Y` from
+  a commit of `main` whose checks are green:
+  `git push origin <sha>:refs/heads/release/X.Y`. The release managers are the people who may
+  push `v*` tags; nobody else can create a `release/*` branch. From the cut on, `main` takes the
+  next minor's work, and a pull request sets the version on `main` to the next minor's.
+- **A fix.** Merge the fix to `main` first, through the merge queue. Then open a pull request to
+  the release branch that holds `git cherry-pick -x <commit>`; the `-x` line records the commit
+  on `main`. If the fix cannot apply to `main` (the code there changed, or the change is the
+  version of a patch), write it on the release branch and give the reason in the pull request.
+- **The checks.** A release branch has no merge queue. A pull request to it runs the checks a
+  change to `main` must pass (`AGENTS.md` "How work lands") and needs one approving review. It
+  must be up to date with the release branch before it merges. Nobody can push to a release
+  branch without a pull request, force-push it or delete it. The merge then runs `ci`,
+  `app-e2e` and `shell` on the branch, so the commit to tag has runs of its own.
+- **Open the pull request against the release branch.** GitHub runs nothing when the base of a
+  pull request changes, and on a pull request to `main` the full checks are skipped, which
+  GitHub counts as passed. So a pull request opened against `main` and then pointed at the
+  release branch lacks the `release-base` check and cannot merge. Push a commit to it (an empty
+  one will do): every check then runs for the release branch.
+- **The tag.** Each `vX.Y.Z` is tagged on its release branch ("Cutting a release" below).
+- **The end.** Picks to a release branch stop when the next minor release ships.
+
+4.1 is the one exception to the cut: `v4.1.0` was tagged on `main`, before `release/4.1`
+existed. A release branch cut from a commit that lacks the change of #1039 has workflows that
+do none of this. Its first pull request is the pick of that change, which runs the checks on
+itself. Until it merges, a pull request that does not hold these workflows cannot merge,
+because it does not report `release-base`.
+
 ## Cutting a release
 
 Each release has one GitHub issue, opened from the **Release** issue template
@@ -83,9 +118,10 @@ help pages re-vendored from translationCore-Suite-website, the download page, th
 the evidence written afterwards. A box is ticked only with a link to its evidence.
 
 1. Set `[workspace.package] version` in `Cargo.toml` to the tag's, less its `v`, by pull request
-   (`Cargo.lock` changes with it). About, the installer names and `BUILD-MANIFEST.json` carry
-   that version; the release is titled from the tag. Then, on the default branch, the owner (or
-   someone the owner names) pushes the tag:
+   to the release branch (`Cargo.lock` changes with it). An `X.Y.0` needs no such pull request
+   when `main` carried that version at the cut. About, the installer names and
+   `BUILD-MANIFEST.json` carry that version; the release is titled from the tag. Then, on the
+   release branch, the owner (or someone the owner names) pushes the tag:
    `git tag v4.1.0 && git push origin v4.1.0`. Nobody else pushes release tags.
 2. The tag runs `release`. It builds nothing for a tag that is not `v` and that version, or
    while any interface string is untranslated (job `translations`,
@@ -102,11 +138,12 @@ the evidence written afterwards. A box is ticked only with a link to its evidenc
    project format (`FORMAT_MAJOR`.`FORMAT_MINOR` in `crates/tc-journal/src/format.rs`), so a
    translator who has to go back knows which version to take and what it can open.
 
-A tag run signs the Windows build inside the `windows-signing` environment (below). Until signing
-is set up, the tag's Windows build fails at signing and nothing is published; `publish` also
-refuses any Windows installer named `-unsigned` (tC4 #456). So a release always carries a signed
-Windows installer. To try signing without a tag, run the workflow by hand on the default branch
-with **sign** ticked.
+A tag run signs the Windows build inside the `windows-signing` environment (below), once a
+release manager has approved that job on the run's page. Until signing is set up, the tag's
+Windows build fails at signing and nothing is published; `publish` also refuses any Windows
+installer named `-unsigned` (tC4 #456). So a release always carries a signed Windows installer.
+To try signing without a tag, run the workflow by hand on the release branch or the default
+branch with **sign** ticked.
 
 ## Refreshing the help
 
@@ -159,11 +196,19 @@ codesign --verify --deep --strict "/Applications/translationCore 4.app"
 What must be set up once in the GitHub repository, by someone with admin rights (owner action A4):
 
 - An environment named **`windows-signing`**, with deployment rules (*Selected branches and
-  tags*) that allow only the default branch and tags matching `v*`. tC4 allows its `release/*`
-  branches the same way. Give the environment a **required reviewer** (the person who cuts
-  releases), so no tag pushed from an unreviewed commit is signed without their yes.
+  tags*) that allow only the default branch, branches matching `release/*` and tags matching
+  `v*`. Its **required reviewers** are the release managers. Each signed build waits until one of
+  them approves it on the run's page, and a person may approve a build they started. So nothing
+  is signed without a release manager's yes.
 - A tag ruleset (Settings, Rules, Rulesets, *Tag*) for `v*` that only release managers may
   create, update or delete.
+- A branch ruleset for `release/*` ("release branches"): a pull request with one approval; the
+  checks `main` requires and `release-base`, reported by GitHub Actions, with the branch up to
+  date, and not required when a branch is created (its first commit cannot carry
+  `release-base`); no force push; no delete; nobody on its bypass list.
+- A second branch ruleset for `release/*` ("release branch creation") with one rule, restrict
+  creation, and the release managers on its bypass list. It is a ruleset of its own because a
+  bypass covers every rule of its ruleset.
 - Five repository variables (Settings, Secrets and variables, Actions, **Variables**; they are not
   secret): `AZURE_SIGNING_ENDPOINT`, `AZURE_SIGNING_ACCOUNT`, `AZURE_SIGNING_PROFILE`,
   `AZURE_TENANT_ID`, `AZURE_CLIENT_ID` — the same values tC4's repository uses.
@@ -171,10 +216,10 @@ What must be set up once in the GitHub repository, by someone with admin rights 
   Actions with organization and repository of **this** repository, entity type *Environment*,
   environment `windows-signing` (subject `repo:<owner>/<repo>:environment:windows-signing`).
 
-A tag run, or a manual run with **sign** ticked on the default branch, then signs every `.exe`, `.dll` and
-`.node` file of the app, the installer and its uninstaller; files Microsoft already signed keep
-their signature. Any other run builds unsigned and its file names say `-unsigned`. Check a
-signature in PowerShell:
+A tag run, or a manual run with **sign** ticked on the default branch or a release branch, then
+signs every `.exe`, `.dll` and `.node` file of the app, the installer and its uninstaller; files
+Microsoft already signed keep their signature. Any other run builds unsigned and its file names
+say `-unsigned`. Check a signature in PowerShell:
 
 ```powershell
 Get-AuthenticodeSignature .\translationCore4-4.1.0-windows-x64.exe | Format-List Status,SignerCertificate,TimeStamperCertificate
@@ -240,8 +285,9 @@ Removing the app removes only the app. Projects (`translationCore4/projects`) an
 
 ### The owner: stop a bad release
 
-- **Before publishing** (the release is still a draft): delete the draft, fix the problem on the
-  default branch, and tag a patch version.
+- **Before publishing** (the release is still a draft): delete the draft, fix the problem on
+  `main`, pick the fix to the release branch ("Release branches" above), and tag a patch version
+  there.
 - **After publishing:** mark the release as a pre-release and start its notes with "Do not
   install this version", naming the version to use instead. Point the download page,
   https://translationcore.com/desktop/, back to the previous version's files. Publish a patch that

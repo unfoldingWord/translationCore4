@@ -1,0 +1,21 @@
+# Says that a pull request's checks ran for a release branch (rulings/2026-11-19-release-branches.md).
+# ci, app-e2e and shell skip their full jobs on a pull request to main, and GitHub counts a skipped
+# job as passed. GitHub starts no run when the base of a pull request changes. So a pull request
+# opened against main and then pointed at release/* would carry every required check as passed,
+# with no test run. This workflow starts only for a release/* base, so that pull request lacks this
+# check, which the "release branches" ruleset requires, until a push runs every check for its new
+# base. A pull request to a release branch whose workflows are older than this file lacks the
+# check too, unless it brings these workflows with it.
+name: release-base
+permissions:
+  contents: read
+on:
+  pull_request:
+    branches: ['release/*']
+jobs:
+  # No `if:` here, ever: a skipped job reports success, which is the gap this check closes.
+  release-base:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: echo "The checks of this pull request ran for the base $GITHUB_BASE_REF."
