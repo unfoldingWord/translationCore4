@@ -1351,7 +1351,7 @@ fn align_history(s: &AppState, actions: &Actions, view: &AlignerView, book: Book
         open: s.a.history_open.clone(),
         busy: Signal::derive(move || restoring.get()),
         failed: Signal::derive(move || failed.get()),
-        reference,
+        reference: reference.into(),
         restore: Callback::new(move |from| actions.restore_alignment(from)),
     })
 }

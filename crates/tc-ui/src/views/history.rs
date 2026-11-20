@@ -24,7 +24,7 @@ pub struct RecordHistory {
     /// The last Restore was not saved.
     pub failed: Signal<bool>,
     /// "History of {ref}"'s place.
-    pub reference: String,
+    pub reference: Signal<String>,
     pub restore: Callback<ChangeRef>,
 }
 
@@ -44,7 +44,7 @@ pub fn record_history(h: RecordHistory) -> AnyView {
         let open = open.clone();
         Callback::new(move |_| open.update(|o| *o = !*o))
     };
-    let title = t(keys::review::HISTORY_OF, &[("ref", &reference)]);
+    let title = move || t(keys::review::HISTORY_OF, &[("ref", &reference.get())]);
     let history = move || {
         let shown = shown.get()?;
         let list = open
@@ -54,7 +54,7 @@ pub fn record_history(h: RecordHistory) -> AnyView {
                     at: at.clone(),
                     shown,
                 });
-                Some(history_section(read, title.clone(), restore, busy))
+                Some(history_section(read, title(), restore, busy))
             })
             .flatten();
         let label = if open.get() {
