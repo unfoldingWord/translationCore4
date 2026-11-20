@@ -99,7 +99,7 @@ to another origin and lists it; each case below ends with that list empty.
 | Case | Result |
 |---|---|
 | a to e, g to k (English, as before) | pass |
-| f (modifier clicks) | fails at its Ctrl+click, the first of its four variants: the page never shows. With that one variant taken out, the case passes on this build. This branch does not change the case. The cause was not looked for here; pull request 1034 recorded the same failure on this Mac before this change |
+| f (modifier clicks) | fails at its Ctrl+click, the first of its four variants: the page never shows. With that one variant taken out, the case passes on this build. This branch does not change the case. The cause was not looked for here; pull request 1034 recorded the same failure on this Mac before this change. Found and fixed on 2026-11-20: see "Case f on macOS" below |
 | l: Español, the help home, a search for "alinear", its first result, a shared image | pass |
 | m: العربية, right to left, the Arabic face loaded from the app and first in the heading's font | pass |
 | n: Українська and English show the English help | pass |
@@ -121,6 +121,30 @@ Run again on the branch with `main` at `c040cb7f` merged in (commit `87392095`),
 place, "no section-getting-started shows after 60000 ms"), and
 `parity/app/journeys/app-language.test.mjs`, which now takes `applyLanguage` from `kit.mjs`,
 passed 16 of 16. The controls were not run again.
+
+## Case f on macOS
+
+Added on 2026-11-20, after the review of pull request 1072 asked why case f fails. Same machine,
+Playwright 1.56.1, Chromium 141.0.7390.37.
+
+- **The same failure on `main`.** `tc4` and the UI built from `main` at `13b3c27b`, with `main`'s
+  journey file: 11 of 12 cases passed, and case f failed with the same words, "no
+  section-getting-started shows after 60000 ms". On the pull request's head, `07ea9480`, 17 of 18
+  passed, cases l to p among them, and case f failed the same way.
+- **The cause.** The journeys' Chromium on this Mac turns a Control+left click into a
+  context-menu click. A page with one link gave these events for the case's four clicks:
+  Ctrl gave `mousedown` and `contextmenu` and no `click`; Shift and Meta gave `mousedown` and
+  `click`; the middle button gave `mousedown` and `auxclick`. A plain click, the control, gave
+  `mousedown` and `click`. So the Ctrl+click never opened the link.
+- **On Linux the case passes.** CI's `journeys 2/2` job on `main` at `13b3c27b` printed `ok` for
+  case f, in the merge queue's run (44652659921) and in the run on the push (44654809191).
+- **The fix.** tC4's own spec holds a branch for this (`git show d25b7871:e2e/help.spec.ts`,
+  case f): on macOS, after the Ctrl+click, no window opens and the frame stays on the help home.
+  The journey here had no such branch. With it, the help journey passed 18 of 18 on this Mac, on
+  `tc4` and the UI built from `07ea9480`. On Linux and Windows the case runs the statements it ran
+  before.
+- **Control.** With a plain click in place of the Ctrl+click, the case failed on this Mac with "no
+  index.html shows after 60000 ms": the new branch fails when the link opens.
 
 ## Screenshots
 

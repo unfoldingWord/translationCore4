@@ -194,7 +194,10 @@ browserTest('f. Ctrl, Shift, Meta and middle clicks on a help link open no windo
       await sleep(500);
       assert.equal(pages - before, 0, `${name}: no window`);
       assert.equal(await helpPanel(page).count(), 1);
-      await expectPage(page, 'section-getting-started', 'Getting started');
+      // On macOS, Ctrl+click is a right-click: the browser sends contextmenu and no click, so the
+      // link opens nothing and the frame stays (tC4's help.spec.ts, case f, holds the same branch).
+      if (name === 'ctrl' && process.platform === 'darwin') await expectPage(page, 'index.html', HOME);
+      else await expectPage(page, 'section-getting-started', 'Getting started');
     }
   });
 });
