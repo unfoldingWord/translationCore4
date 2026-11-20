@@ -145,8 +145,8 @@ nothing is published. -->
       and `v*` tags, and its required reviewers are the release managers.
 - [ ] The `v*` tag ruleset lets only release managers create, update or delete release tags.
 - [ ] The two `release/*` branch rulesets are as `docs/RELEASE.md` "Signing" lists them: a pull
-      request with one approval and the checks `main` requires, and only release managers
-      create a release branch.
+      request with one approval, the checks `main` requires and `release-base`, and only
+      release managers create a release branch.
 - [ ] The five `AZURE_*` repository variables and the federated credential are present (names
       only; never paste values).
 - [ ] `TC_HELP_DESK_TOKEN` and `TC_HELP_DESK_EMAIL` are present, so the installed app can send
@@ -257,4 +257,6 @@ https://translationcore.com/desktop/ (ruling H16 part 3; its first address, /tc4
 (what a translator would notice) get `needs definition`. Standing ones:
 - Q31: what Help may say about the app's version (`docs/TC4-DELTA-2026-10-19.md`).
 - Whether the help pages are also published on translationcore.com, and if so that the site
-  shows the commit the app vendored. No document in this repository says they are. -->
+  shows the commit the app vendored. No document in this repository says they are.
+- Where a `-preview` tag goes when it is wanted before the cut. `docs/RELEASE.md` puts every
+  tag on the release branch (`docs/rulings/2026-11-19-release-branches.md`, "Not decided"). -->

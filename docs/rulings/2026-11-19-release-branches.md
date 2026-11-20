@@ -45,7 +45,9 @@
 ## What follows from the rules
 
 The session that worked #1039 read these from the rules and showed them to the owner on
-2026-11-19. They are that session's decisions, not the owner's words.
+2026-11-19. They are that session's decisions, not the owner's words. One came later:
+`release-base` answers a gap that an independent review of the change found, and the owner
+agreed to its ruleset change on 2026-11-20.
 
 - **The required checks** of rule 4 are the checks that `main` requires (`AGENTS.md` "How work
   lands"), reported by GitHub Actions. A pull request to a release branch runs them itself. It
@@ -77,8 +79,10 @@ on. A patch holds only its fixes, never unfinished work from `main`.
 
 - **Unblocks:** #1055 (Release v4.1.1).
 - **Documents:** `docs/RELEASE.md` ("Release branches", "Cutting a release", "Signing"),
-  `.github/ISSUE_TEMPLATE/release.md`, `AGENTS.md` ("How work lands") and `CONTRIBUTING.md`
-  (step 8).
+  `.github/ISSUE_TEMPLATE/release.md`, `AGENTS.md` ("How work lands"), `CONTRIBUTING.md`
+  (step 8) and `docs/GLOSSARY.md` ("Pull request", "Required checks").
+- **Not decided:** where a `-preview` tag goes when it is wanted before the cut. Rule 3 as
+  written puts every tag on the release branch.
 - **Workflows:** `ci`, `app-e2e` and `shell` run their full jobs for a pull request to
   `release/*` and for a push to it. `release-base` is new. `release` signs a manual run on a
   `release/*` branch. `scripts/tools/gates-sync.test.mjs` holds

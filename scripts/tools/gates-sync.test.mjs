@@ -2,7 +2,7 @@
 // name, the Windows VM's list equals it, and the workflows run the script.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -98,7 +98,7 @@ test('INV-FULL-TESTS-GATE-MERGES: the full tests run on main, gate/*, release/*,
   const ci = read('.github/workflows/ci.yml');
   for (const job of ['test', 'test-app', 'alignment-budget', 'parity-baseline']) {
     const body = ci.split(new RegExp(`^  ${job}:$`, 'm'))[1]?.split(/^  [a-z-]+:$/m)[0] ?? '';
-    assert.match(body, /if: .*format\('refs\/heads\/\{0\}', github\.event\.repository\.default_branch\).*startsWith\(github\.ref, 'refs\/heads\/gate\/'\).*github\.event_name == 'merge_group'.*workflow_dispatch/, `INV-FULL-TESTS-GATE-MERGES: ci.yml job ${job} runs on every push, or is skipped in the merge queue`);
+    assert.match(body, /if: .*format\('refs\/heads\/\{0\}', github\.event\.repository\.default_branch\).*startsWith\(github\.ref, 'refs\/heads\/gate\/'\).*startsWith\(github\.ref, 'refs\/heads\/release\/'\).*github\.event_name == 'merge_group'.*workflow_dispatch/, `INV-FULL-TESTS-GATE-MERGES: ci.yml job ${job} runs on every push, or is skipped on a release branch or in the merge queue`);
   }
 });
 
@@ -151,9 +151,11 @@ test('INV-RELEASE-BASE-IS-REPORTED-ONLY-FOR-A-RELEASE-BASE: release-base runs fo
   assert.equal(on.replace(/\s+/g, ' ').trim(), "pull_request: branches: ['release/*']", 'INV-RELEASE-BASE-IS-REPORTED-ONLY-FOR-A-RELEASE-BASE: release-base.yml starts on something other than a pull request to release/*');
   const jobs = jobsOf(text);
   assert.deepEqual(jobs.map((job) => job.id), ['release-base'], 'INV-RELEASE-BASE-IS-REPORTED-ONLY-FOR-A-RELEASE-BASE: release-base.yml has one job, release-base');
-  assert.doesNotMatch(jobs[0].text, /^\s*(- )?if:/m, 'INV-RELEASE-BASE-IS-REPORTED-ONLY-FOR-A-RELEASE-BASE: a skipped release-base job or step reports success');
-  for (const name of ['ci', 'app-e2e', 'shell']) {
-    assert.ok(!jobsOf(read(`.github/workflows/${name}.yml`)).some((job) => job.id === 'release-base'), `INV-RELEASE-BASE-IS-REPORTED-ONLY-FOR-A-RELEASE-BASE: ${name}.yml also has a job named release-base`);
+  assert.doesNotMatch(jobs[0].text, /^\s*(- )?["']?if["']?:/m, 'INV-RELEASE-BASE-IS-REPORTED-ONLY-FOR-A-RELEASE-BASE: a skipped release-base job or step reports success');
+  assert.doesNotMatch(jobs[0].text, /^ {4}name:/m, 'INV-RELEASE-BASE-IS-REPORTED-ONLY-FOR-A-RELEASE-BASE: a name: on the job renames the check the ruleset requires');
+  // No other workflow may report a check of the same name: it would start for other bases.
+  for (const file of readdirSync(join(ROOT, '.github/workflows')).filter((f) => f !== 'release-base.yml')) {
+    assert.doesNotMatch(read(`.github/workflows/${file}`), /^ {2}release-base:\s*$|^\s+name:\s*["']?release-base["']?\s*$/m, `INV-RELEASE-BASE-IS-REPORTED-ONLY-FOR-A-RELEASE-BASE: ${file} also reports a check named release-base`);
   }
 });
 

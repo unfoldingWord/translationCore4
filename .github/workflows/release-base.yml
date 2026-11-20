@@ -3,9 +3,9 @@
 # job as passed. GitHub starts no run when the base of a pull request changes. So a pull request
 # opened against main and then pointed at release/* would carry every required check as passed,
 # with no test run. This workflow starts only for a release/* base, so that pull request lacks this
-# check, which the "release branches" ruleset requires, until a push or a reopening runs every
-# check for its new base. A pull request to a release branch whose workflows are older than this
-# file lacks the check too, unless it brings these workflows with it.
+# check, which the "release branches" ruleset requires, until a push runs every check for its new
+# base. A pull request to a release branch whose workflows are older than this file lacks the
+# check too, unless it brings these workflows with it.
 name: release-base
 permissions:
   contents: read

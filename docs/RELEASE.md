@@ -98,15 +98,16 @@ prepared (ruling `docs/rulings/2026-11-19-release-branches.md`).
 - **Open the pull request against the release branch.** GitHub runs nothing when the base of a
   pull request changes, and on a pull request to `main` the full checks are skipped, which
   GitHub counts as passed. So a pull request opened against `main` and then pointed at the
-  release branch lacks the `release-base` check and cannot merge. Close it and open it again,
-  or push a commit: every check then runs for the release branch.
+  release branch lacks the `release-base` check and cannot merge. Push a commit to it (an empty
+  one will do): every check then runs for the release branch.
 - **The tag.** Each `vX.Y.Z` is tagged on its release branch ("Cutting a release" below).
 - **The end.** Picks to a release branch stop when the next minor release ships.
 
 4.1 is the one exception to the cut: `v4.1.0` was tagged on `main`, before `release/4.1`
 existed. A release branch cut from a commit that lacks the change of #1039 has workflows that
 do none of this. Its first pull request is the pick of that change, which runs the checks on
-itself. Until it merges no other pull request can, because none reports `release-base`.
+itself. Until it merges, a pull request that does not hold these workflows cannot merge,
+because it does not report `release-base`.
 
 ## Cutting a release
 
