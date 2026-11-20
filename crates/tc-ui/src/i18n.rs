@@ -52,6 +52,20 @@ pub struct Locale {
     pub label: &'static str,
     /// The direction the interface reads in (#657). Scripture sets its own from the project.
     pub dir: TextDir,
+    /// The folder of this language's help below `/help/`, as `vendor-help.sh` places it
+    /// (#1036). `None` shows the English help, which is the help folder's own: for English,
+    /// and for a language translationcore.com has no help in.
+    pub help: Option<&'static str>,
+}
+
+impl Locale {
+    /// The address of the help home that Help and guides opens in this language.
+    pub fn help_home(&self) -> String {
+        match self.help {
+            Some(folder) => format!("/help/{folder}/index.html"),
+            None => "/help/index.html".to_owned(),
+        }
+    }
 }
 
 /// The installed catalogs, in picker order (#522, #622; Arabic #649). The picker offers exactly
@@ -61,51 +75,61 @@ pub const LOCALES: [Locale; 10] = [
         id: "en",
         label: "English",
         dir: TextDir::Ltr,
+        help: None,
     },
     Locale {
         id: "es-419",
         label: "Español (Latinoamérica)",
         dir: TextDir::Ltr,
+        help: Some("es"),
     },
     Locale {
         id: "fr",
         label: "Français",
         dir: TextDir::Ltr,
+        help: Some("fr"),
     },
     Locale {
         id: "hi",
         label: "हिन्दी",
         dir: TextDir::Ltr,
+        help: Some("hi"),
     },
     Locale {
         id: "pt-BR",
         label: "Português (Brasil)",
         dir: TextDir::Ltr,
+        help: Some("pt"),
     },
     Locale {
         id: "id",
         label: "Bahasa Indonesia",
         dir: TextDir::Ltr,
+        help: Some("id"),
     },
     Locale {
         id: "uk",
         label: "Українська",
         dir: TextDir::Ltr,
+        help: None,
     },
     Locale {
         id: "ru",
         label: "Русский",
         dir: TextDir::Ltr,
+        help: Some("ru"),
     },
     Locale {
         id: "vi",
         label: "Tiếng Việt",
         dir: TextDir::Ltr,
+        help: Some("vi"),
     },
     Locale {
         id: "ar",
         label: "العربية",
         dir: TextDir::Rtl,
+        help: Some("ar"),
     },
 ];
 

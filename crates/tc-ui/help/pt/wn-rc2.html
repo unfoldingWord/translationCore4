@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="pt-BR" dir="ltr" data-script="latin">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Novidades da versão 4.0 rc.2 · Ajuda do translationCore 4</title>
+<meta name="description" content="O beta público. Uma janela de preparação na primeira inicialização, palavras repetidas numeradas e posicionamento de várias palavras em Alinhar, seleção arrastando em Verificar e Anterior e Próximo ao lado dos botões de marcação. Atualizado em 20 de outubro: versículos de poesia abrem inteiros e os alinhamentos acompanham suas palavras.">
+<link rel="stylesheet" href="/tc-help/assets/style.css">
+<link rel="canonical" href="https://translationcore.com/pt/tc-help/wn-rc2">
+<link rel="alternate" hreflang="en" href="https://translationcore.com/tc-help/wn-rc2">
+<link rel="alternate" hreflang="es-MX" href="https://translationcore.com/es/tc-help/wn-rc2">
+<link rel="alternate" hreflang="fr" href="https://translationcore.com/fr/tc-help/wn-rc2">
+<link rel="alternate" hreflang="hi" href="https://translationcore.com/hi/tc-help/wn-rc2">
+<link rel="alternate" hreflang="ru" href="https://translationcore.com/ru/tc-help/wn-rc2">
+<link rel="alternate" hreflang="ar" href="https://translationcore.com/ar/tc-help/wn-rc2">
+<link rel="alternate" hreflang="zh-Hans" href="https://translationcore.com/zh/tc-help/wn-rc2">
+<link rel="alternate" hreflang="sw" href="https://translationcore.com/sw/tc-help/wn-rc2">
+<link rel="alternate" hreflang="pt-BR" href="https://translationcore.com/pt/tc-help/wn-rc2">
+<link rel="alternate" hreflang="id" href="https://translationcore.com/id/tc-help/wn-rc2">
+<link rel="alternate" hreflang="vi" href="https://translationcore.com/vi/tc-help/wn-rc2">
+<link rel="alternate" hreflang="bn" href="https://translationcore.com/bn/tc-help/wn-rc2">
+<link rel="alternate" hreflang="ur" href="https://translationcore.com/ur/tc-help/wn-rc2">
+<link rel="alternate" hreflang="fa" href="https://translationcore.com/fa/tc-help/wn-rc2">
+<link rel="alternate" hreflang="my" href="https://translationcore.com/my/tc-help/wn-rc2">
+<link rel="alternate" hreflang="nl" href="https://translationcore.com/nl/tc-help/wn-rc2">
+<link rel="alternate" hreflang="x-default" href="https://translationcore.com/tc-help/wn-rc2">
+<link rel="stylesheet" href="/assets/css/help-i18n.css">
+<script>window.__tcLocale={"locale":"pt","defaultLocale":"en","alternates":true,"locales":["en","es","fr","hi","ru","ar","zh","sw","pt","id","vi","bn","ur","fa","my","nl"],"tags":{"en":"en","es":"es-MX","fr":"fr","hi":"hi","ru":"ru","ar":"ar","zh":"zh-Hans","sw":"sw","pt":"pt-BR","id":"id","vi":"vi","bn":"bn","ur":"ur","fa":"fa","my":"my","nl":"nl"}};window.TC4_HELP_I18N={"lang":"pt","language":"Idioma","onThisPage":"Nesta página","noResults":"Nenhum tópico corresponde a “{query}”. Tente outra palavra, como alinhar, verificar, história ou off-line.","seeAll":"Ver todos os resultados →","resultsOne":"1 tópico para “{query}”","resultsMany":"{count} tópicos para “{query}”","searchPrompt":"Digite uma ou duas palavras, como “alinhar”, “marcador” ou “intervalo de versículos”."}</script>
+<script src="/assets/js/locale.js"></script>
+<link rel="icon" type="image/png" href="/tc-help/assets/tc_logo.png">
+<link rel="apple-touch-icon" href="/tc-help/assets/tc_logo.png">
+</head>
+<body>
+<a class="skip" href="#main">Pular para o conteúdo</a>
+<header class="topbar">
+  <button class="menu-btn" id="menu-btn" aria-label="Mostrar tópicos" aria-controls="sidebar" aria-expanded="false">☰</button>
+  <a class="brand" href="/pt/tc-help/" aria-label="Início da Ajuda do translationCore"><img class="brand-logo" src="/tc-help/assets/translationcore-logo.png" alt="" width="25" height="28"><span class="wordmark">translationCore<span class="reg">®</span></span><span class="brand-rule" aria-hidden="true"></span><span class="brand-text">Ajuda</span></a>
+  <form class="search" action="search" method="get" role="search" autocomplete="off">
+    <input id="q" name="q" type="search" placeholder="Pesquisar na ajuda (pressione /)" aria-label="Pesquisar na ajuda">
+    <div class="search-results" id="search-results" role="listbox" hidden></div>
+  </form>
+  <details class="help-lang"><summary aria-label="Idioma: Português"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm6.9 6h-2.95a15.7 15.7 0 0 0-1.38-3.56A8.03 8.03 0 0 1 18.9 8ZM12 4.04c.83 1.2 1.48 2.53 1.91 3.96h-3.82c.43-1.43 1.08-2.76 1.91-3.96ZM4.26 14a7.8 7.8 0 0 1 0-4h3.38a16.5 16.5 0 0 0 0 4H4.26Zm.82 2h2.95c.32 1.25.78 2.45 1.38 3.56A7.99 7.99 0 0 1 5.08 16Zm2.95-8H5.08a7.99 7.99 0 0 1 4.33-3.56A15.7 15.7 0 0 0 8.03 8ZM12 19.96A14.1 14.1 0 0 1 10.09 16h3.82A14.1 14.1 0 0 1 12 19.96ZM14.34 14H9.66a14.7 14.7 0 0 1 0-4h4.68a14.7 14.7 0 0 1 0 4Zm.25 5.56c.6-1.11 1.06-2.31 1.38-3.56h2.95a8.03 8.03 0 0 1-4.33 3.56ZM16.36 14a16.5 16.5 0 0 0 0-4h3.38a7.8 7.8 0 0 1 0 4h-3.38Z"/></svg><span>Português</span></summary><ul><li><a href="/tc-help/wn-rc2" data-locale="en" lang="en" dir="ltr">English</a></li><li><a href="/es/tc-help/wn-rc2" data-locale="es" lang="es-MX" dir="ltr">Español</a></li><li><a href="/fr/tc-help/wn-rc2" data-locale="fr" lang="fr" dir="ltr">Français</a></li><li><a href="/hi/tc-help/wn-rc2" data-locale="hi" lang="hi" dir="ltr">हिन्दी</a></li><li><a href="/ru/tc-help/wn-rc2" data-locale="ru" lang="ru" dir="ltr">Русский</a></li><li><a href="/ar/tc-help/wn-rc2" data-locale="ar" lang="ar" dir="rtl">العربية</a></li><li><a href="/zh/tc-help/wn-rc2" data-locale="zh" lang="zh-Hans" dir="ltr">简体中文</a></li><li><a href="/sw/tc-help/wn-rc2" data-locale="sw" lang="sw" dir="ltr">Kiswahili</a></li><li><a href="/pt/tc-help/wn-rc2" data-locale="pt" lang="pt-BR" dir="ltr" aria-current="true">Português</a></li><li><a href="/id/tc-help/wn-rc2" data-locale="id" lang="id" dir="ltr">Bahasa Indonesia</a></li><li><a href="/vi/tc-help/wn-rc2" data-locale="vi" lang="vi" dir="ltr">Tiếng Việt</a></li><li><a href="/bn/tc-help/wn-rc2" data-locale="bn" lang="bn" dir="ltr">বাংলা</a></li><li><a href="/ur/tc-help/wn-rc2" data-locale="ur" lang="ur" dir="rtl">اردو</a></li><li><a href="/fa/tc-help/wn-rc2" data-locale="fa" lang="fa" dir="rtl">فارسی</a></li><li><a href="/my/tc-help/wn-rc2" data-locale="my" lang="my" dir="ltr">ဗမာစာ</a></li><li><a href="/nl/tc-help/wn-rc2" data-locale="nl" lang="nl" dir="ltr">Nederlands</a></li></ul></details>
+  <a class="site-link" href="/pt/">translationcore.com</a>
+</header>
+<div class="shell">
+<nav class="sidebar" id="sidebar" aria-label="Tópicos da ajuda">
+<details class="nav-group"><summary><a href="section-getting-started">Primeiros passos</a></summary><ul>
+<li><a href="gs-install">Instalar e iniciar o tC4</a></li>
+<li><a href="gs-home">A tela Início</a></li>
+<li><a href="gs-modes">Compreender, Traduzir e Verificar — os três modos</a></li>
+<li><a href="gs-save">Salvamento e pontos de controle</a></li>
+<li><a href="gs-resume">Continuar de onde você parou</a></li>
+<li><a href="gs-switch-project">Trocar de projeto ou voltar ao Início</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-bible-projects">Projetos da Bíblia</a></summary><ul>
+<li><a href="bp-new-bible">Criar um projeto da Bíblia</a></li>
+<li><a href="bp-add-book">Adicionar um livro</a></li>
+<li><a href="bp-open-book">Abrir um livro e passar de um capítulo a outro</a></li>
+<li><a href="bp-import">Importar um projeto do translationCore 3</a></li>
+<li><a href="bp-export-pdf">Exportar um livro em PDF</a></li>
+<li><a href="bp-export-usfm">Exportar um livro em USFM (alinhado ou sem alinhamento)</a></li>
+<li><a href="bp-export-burrito">Exportar um projeto como Scripture Burrito</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-translate">Traduzir</a></summary><ul>
+<li><a href="tr-screen">A tela Traduzir</a></li>
+<li><a href="tr-source-texts">Abas de fonte — textos do idioma ponte e a língua original</a></li>
+<li><a href="tr-draft-section">Redigir uma seção</a></li>
+<li><a href="tr-place-verse-numbers">Posicionar os números dos versículos</a></li>
+<li><a href="tr-verse-spans">Criar ou desfazer um intervalo de versículos</a></li>
+<li><a href="tr-verse-by-verse">Redigir ou revisar um versículo</a></li>
+<li><a href="tr-formatting">Parágrafos e poesia</a></li>
+<li><a href="tr-helps-panel">O painel de ajudas em Traduzir</a></li>
+<li><a href="tr-edit-after-check">Editar um versículo que você já verificou ou alinhou</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-understand">Compreender</a></summary><ul>
+<li><a href="un-read-passage">Ler uma passagem antes de traduzir</a></li>
+<li><a href="un-notes">Notas de tradução e artigos da Academia de Tradução</a></li>
+<li><a href="un-word-links">Links de palavras (Palavras de Tradução)</a></li>
+<li><a href="un-questions">Perguntas de tradução</a></li>
+<li><a href="un-simplified">A aba do texto simplificado</a></li>
+<li><a href="un-user-comments">Escrever um comentário do usuário</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-check">Verificar</a></summary><ul>
+<li><a href="ck-tool-picker">Escolher uma ferramenta de verificação</a></li>
+<li><a href="ck-translation-notes">Verificar com Notas de Tradução</a></li>
+<li><a href="ck-translation-words">Verificar com Palavras de Tradução</a></li>
+<li><a href="ck-decide">Decidir sobre um item de verificação (válido, inválido, a fazer)</a></li>
+<li><a href="ck-bookmarks">Marcar uma verificação</a></li>
+<li><a href="ck-comments">Escrever um comentário de verificação</a></li>
+<li><a href="ck-filter-sort">Filtrar e classificar os itens de verificação</a></li>
+<li><a href="ck-community-checking">Prévia da Verificação comunitária</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-align">Alinhar</a></summary><ul>
+<li><a href="al-open">Abrir a ferramenta Alinhar</a></li>
+<li><a href="al-link-words">Ligar suas palavras à fonte</a></li>
+<li><a href="al-phrases">Alinhar uma expressão (juntar e separar cartões)</a></li>
+<li><a href="al-modes">Alinhar ao texto do idioma ponte ou à língua original</a></li>
+<li><a href="al-suggestions">Sugestões de alinhamento</a></li>
+<li><a href="al-mark-valid">Marcar um alinhamento como concluído</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-obs">Open Bible Stories</a></summary><ul>
+<li><a href="obs-create">Iniciar um projeto de Open Bible Stories</a></li>
+<li><a href="obs-story-tiles">Encontrar uma história no Início</a></li>
+<li><a href="obs-translate">Traduzir uma história</a></li>
+<li><a href="obs-understand">Compreender uma história</a></li>
+<li><a href="obs-check">Verificar uma história</a></li>
+<li><a href="obs-community-checking">Prévia e exportação da história</a></li>
+<li><a href="obs-export-markdown-pdf">Exportar histórias em PDF ou Markdown</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-resources">Recursos e uso off-line</a></summary><ul>
+<li><a href="rs-whats-included">O que vem com o aplicativo</a></li>
+<li><a href="rs-source-texts">Baixar textos-fonte</a></li>
+<li><a href="rs-checking-language">Mudar o idioma de verificação</a></li>
+<li><a href="rs-upgrade-helps">Atualizar as ajudas fixadas</a></li>
+<li><a href="rs-upgrade-texts">Atualizar os textos bíblicos</a></li>
+<li><a href="rs-guided-fix">Corrigir um recurso ausente</a></li>
+<li><a href="rs-offline">Trabalhar off-line</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-settings">Configurações</a></summary><ul>
+<li><a href="st-project-settings">Configurações do projeto</a></li>
+<li><a href="st-where-projects-live">Onde seus projetos ficam guardados</a></li>
+<li><a href="st-app-language">Mudar o idioma do aplicativo</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-troubleshooting">Solução de problemas e limites conhecidos</a></summary><ul>
+<li><a href="ts-save-problems">Quando o salvamento falha</a></li>
+<li><a href="ts-protect-messages">Mensagens que protegem seu projeto</a></li>
+<li><a href="ts-crash-recovery">Se o aplicativo fechou de repente ou a janela ficou em branco</a></li>
+<li><a href="ts-platform">Observações sobre Windows, macOS e Linux</a></li>
+<li><a href="ts-share-door43">Compartilhar no Door43</a></li>
+<li><a href="ts-team-sync">Trabalhar em equipe em vários computadores</a></li>
+<li><a href="ts-not-yet">Recursos que o tC4 não tem</a></li>
+</ul></details>
+<details class="nav-group" open><summary><a href="section-whats-new">Notas da versão</a></summary><ul>
+<li><a href="wn-alpha1">alpha.1 — Primeira versão pública</a></li>
+<li><a href="wn-alpha2">alpha.2 — Verificar e alinhar</a></li>
+<li><a href="wn-alpha4">alpha.4 — Abrir e continuar</a></li>
+<li><a href="wn-alpha5">alpha.5 — Redação de verdade</a></li>
+<li><a href="wn-alpha6">alpha.6 — Sugestões e recursos</a></li>
+<li><a href="wn-alpha7">alpha.7 — Open Bible Stories</a></li>
+<li><a href="wn-add-a-project">27 de set. de 2026 — um só botão + Adicionar um projeto no Início</a></li>
+<li><a href="wn-rc1">Novidades da versão 4.0 rc.1</a></li>
+<li><a href="wn-rc2" class="current" aria-current="page">Novidades da versão 4.0 rc.2</a></li>
+<li><a href="wn-4.1">Novidades da versão 4.1</a></li>
+</ul></details>
+</nav>
+<main id="main" class="content">
+<p class="crumbs"><a href="/pt/tc-help/">Ajuda</a> › <a href="section-whats-new">Notas da versão</a></p>
+<h1>Novidades da versão 4.0 rc.2</h1>
+<p class="lede">O beta público. Uma janela de preparação na primeira inicialização, palavras repetidas numeradas e posicionamento de várias palavras em Alinhar, seleção arrastando em Verificar e Anterior e Próximo ao lado dos botões de marcação. Atualizado em 20 de outubro: versículos de poesia abrem inteiros e os alinhamentos acompanham suas palavras.</p>
+<p>A 4.0.0-rc.2 é o beta público. Estas são as principais mudanças desde a rc.1.</p>
+<h2 id="starting-tc4">Iniciar o tC4</h2>
+<ul><li><strong>Uma janela de preparação na primeira vez que você abre o app.</strong> "Preparando translationCore4" conta os recursos incluídos, por exemplo "Preparando recursos: 2 de 16", e depois o tC4 abre no Início. As próximas aberturas são muito mais rápidas. Se o arquivo baixado estiver danificado, o tC4 avisa e fecha sem mudar nada. Veja <a href="gs-install">Instalar e iniciar o tC4</a>.</li></ul>
+<h2 id="align">Alinhar</h2>
+<ul><li><strong>Palavras repetidas são numeradas.</strong> Uma palavra que aparece mais de uma vez no versículo mostra qual cópia ela é: de¹, de², de³. Os cartões de fonte usam os mesmos números.</li><li><strong>Posicione várias palavras de uma vez.</strong> Clique com Ctrl (Cmd no Mac) ou com Shift em palavras do banco de palavras e depois clique em um cartão ou arraste-as até ele.</li><li><strong>Os cartões mantêm a ordem do versículo.</strong> As palavras em um cartão sempre aparecem na ordem em que vêm no seu versículo, não importa onde você as solte.</li></ul>
+<p>Veja <a href="al-link-words">Ligar suas palavras à fonte</a>.</p>
+<h2 id="check">Verificar</h2>
+<ul><li><strong>Arraste para selecionar palavras.</strong> Arraste sobre <span class="ui">Sua tradução</span> para selecionar palavras inteiras. <span class="ui">✓ Marcar como válido</span> salva a seleção, e ela continua lá quando você volta ao item. Isso funciona em Notas de Tradução e Palavras de Tradução. Veja <a href="ck-decide">Decidir sobre um item de verificação</a>.</li><li><strong>Anterior e Próximo ao lado das marcações.</strong> <span class="ui">Anterior</span> e <span class="ui">Próximo</span> agora ficam na mesma linha que <span class="ui">✓ Marcar como válido</span>, <span class="ui">Inválido</span> e <span class="ui">A fazer</span>, em Verificar e em Alinhar.</li></ul>
+<h2 id="translate">Traduzir</h2>
+<ul><li><strong>O botão Redigir seção está sempre visível</strong>, como um pequeno botão arredondado em cada seção. Veja <a href="tr-draft-section">Redigir uma seção</a>.</li></ul>
+<h2 id="also-new-since-rc-1">Outras novidades desde a rc.1</h2>
+<ul><li><strong>As verificações de Palavras de Tradução usam os Links publicados.</strong> O inglês inclui <code>en_twl</code> v91 ao lado de <code>en_tw</code> v91. Os downloads de idiomas ponte instalam seu próprio <code>_twl</code> quando ele é publicado; caso contrário, os Links em inglês são combinados com os artigos daquele idioma. Livros que não estão na versão dos Links não têm verificação de tW. As linhas de artigos ausentes ficam ocultas. Veja <a href="ck-translation-words">Verificar com Palavras de Tradução</a> e <a href="rs-whats-included">O que vem com o aplicativo</a>.</li></ul>
+<ul><li><strong>A internet fica desligada até você ligá-la.</strong> Uma etapa que precisa da internet pergunta antes "Conectar à internet?". Depois, o tC4 usa a internet até você desligar <span class="ui">Usar a internet</span> no menu da conta ou fechar o tC4. Veja <a href="rs-offline">Trabalhar off-line</a>.</li><li><strong>Adicione livros de arquivos USFM</strong> a um projeto que você já tem: <span class="ui">Adicionar um livro</span> › <span class="ui">Adicionar livros de arquivos USFM</span>. Cada arquivo se torna um livro. Veja <a href="bp-add-book">Adicionar um livro</a>.</li><li><strong>Compartilhar no Door43 usa a mesma pergunta.</strong> Ela também diz que você vai revisar o destino e os livros antes de qualquer envio. Veja <a href="ts-share-door43">Compartilhar no Door43</a>.</li><li><strong>A lista de Histórias mantém os títulos e as porcentagens</strong> enquanto você redige uma história. Veja <a href="obs-translate">Traduzir uma história</a>.</li><li><strong>Configurações do projeto</strong> diz "1 livro" em vez de "1 livros".</li></ul>
+<ul><li><strong>Menu da conta:</strong> <span class="ui">Ajuda e guias</span> (off-line), <span class="ui">Sobre o translationCore</span>, <span class="ui">Idioma do aplicativo</span> (nove idiomas) e <span class="ui">Relatar um problema</span>. Veja <a href="gs-home">A tela Início</a> e <a href="st-app-language">Mudar o idioma do aplicativo</a>.</li><li><strong>Os intervalos de versículos contam na porcentagem redigida</strong>, e juntar versículos de parágrafos diferentes não deixa mais uma linha em branco dentro do intervalo. Veja <a href="tr-verse-spans">Criar ou desfazer um intervalo de versículos</a>.</li><li><strong>Retomar</strong> mostra o versículo ou o intervalo em que você estava depois de uma mudança de intervalo. Veja <a href="gs-resume">Continuar de onde você parou</a>.</li><li><strong>Posicionar números dos versículos</strong> permite clicar e depois clicar de novo para mover um número que você já posicionou. Veja <a href="tr-place-verse-numbers">Posicionar os números dos versículos</a>.</li><li><strong>Compreender / Traduzir / Verificar</strong> continuam centralizados quando Salvo muda para Não salvo. Veja <a href="gs-modes">Os três modos</a>.</li><li>Você pode <strong>salvar uma seção depois de apagar todo o texto dela</strong> (versículos vazios). Veja <a href="tr-draft-section">Redigir uma seção</a>.</li><li><strong>Os artigos de ajuda</strong> mostram citações e negrito de forma limpa; os números dos versículos da UST/GST ficam sobrescritos. Veja <a href="un-notes">Ler as notas</a> e <a href="un-simplified">Texto simplificado</a>.</li></ul>
+<h2 id="rc-2-update-october-20-2026">Atualização da rc.2 — 20 de outubro de 2026</h2>
+<p>A rc.2 foi refeita em 20 de outubro com estas mudanças. O número da versão continua 4.0.0-rc.2.</p>
+<h3 id="rc-2-update-translate">Traduzir</h3>
+<ul><li><strong>Versículos de poesia abrem inteiros.</strong> Os editores de Versículo e de Seção mostram todas as linhas de um versículo de poesia, cada uma com um recuo de uma tabulação por nível, e as quebras de parágrafo e de bloco aparecem como linhas em branco. Salvar não deixa mais texto antigo para trás. Veja <a href="tr-formatting">Parágrafos e poesia</a>.</li><li><strong>Todos os versículos dos livros poéticos aparecem.</strong> Versículos que começam em uma linha de poesia, por exemplo a maior parte de Salmos e Gênesis 49, agora aparecem em Traduzir e em Alinhar.</li><li>Versículos com alinhamentos aninhados mostram todas as suas palavras, por exemplo "the heavens" em Gênesis 1:1.</li></ul>
+<h3 id="rc-2-update-align">Alinhar</h3>
+<ul><li>O banco de palavras sempre corresponde ao texto atual do versículo, e um clique em um cartão posiciona apenas as palavras mostradas como selecionadas. Veja <a href="al-link-words">Ligar suas palavras à fonte</a>.</li><li>Uma ligação fica na sua palavra quando você edita o versículo. Apagar uma palavra ligada remove a ligação dela. Uma mudança que deixa incerto qual cópia de uma palavra repetida você manteve marca o versículo para revisão. Veja <a href="tr-edit-after-check">Editar um versículo que você já verificou ou alinhou</a>.</li><li>Uma única regra decide quais alinhamentos precisam de revisão, para a lista de versículos, o aviso, ✓ Marcar como válido, a importação do translationCore 3 e a exportação alinhada.</li><li>Os cartões de fonte seguem o texto na língua original do seu projeto, como no translationCore 3.</li><li>Versículos importados com alinhamentos são mantidos como foram importados e mostram "Este versículo já tem um alinhamento". Veja <a href="al-open">Abrir a ferramenta Alinhar</a>.</li><li>As sugestões usam as mesmas palavras do banco de palavras e funcionam melhor para o hebraico.</li></ul>
+<h3 id="export">Exportar</h3>
+<ul><li><strong>USFM, alinhado</strong> informa cada versículo cujo alinhamento precisa de revisão e que não está no arquivo: "Seu alinhamento destes versículos não está no arquivo". Veja <a href="bp-export-usfm">Exportar um livro em USFM</a>.</li></ul>
+<h3 id="team-sync">Sincronização em equipe</h3>
+<ul><li>O resultado da sincronização informa cada versículo em que o alinhamento mais novo de um colega substituiu o seu. Veja <a href="ts-team-sync">Trabalhar em equipe</a>.</li><li>Depois de uma sincronização, um projeto que estava aberto mostra uma mensagem simples pedindo que você o feche e abra de novo, e o Início sempre deixa você sair.</li></ul>
+<h3 id="import">Importar</h3>
+<ul><li>Um Scripture Burrito sem arquivo de versificação é importado sem erros de "Ponto de controle não salvo".</li></ul>
+<h2 id="related">Tópicos relacionados</h2><ul class="related"><li><a href="wn-alpha1">alpha.1 — Primeira versão pública</a></li><li><a href="wn-alpha2">alpha.2 — Verificar e alinhar</a></li><li><a href="wn-alpha4">alpha.4 — Abrir e continuar</a></li><li><a href="wn-alpha5">alpha.5 — Redação de verdade</a></li><li><a href="wn-alpha6">alpha.6 — Sugestões e recursos</a></li><li><a href="wn-alpha7">alpha.7 — Open Bible Stories</a></li><li><a href="wn-add-a-project">27 de set. de 2026 — um só botão + Adicionar um projeto no Início</a></li><li><a href="wn-rc1">Novidades da versão 4.0 rc.1</a></li></ul>
+</main>
+</div>
+<footer class="sitefoot">O aplicativo é a referência: se esta página e o aplicativo não estiverem de acordo, o aplicativo está certo — por favor, avise-nos. <a href="section-whats-new">Notas da versão</a> · <a href="/pt/">translationcore.com</a></footer>
+<script src="search-index.js"></script>
+<script src="/tc-help/assets/search.js"></script>
+<script src="/tc-help/assets/page-toc.js"></script>
+<script src="/assets/js/help-i18n.js"></script>
+</body>
+</html>

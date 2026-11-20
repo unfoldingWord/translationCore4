@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="ru" dir="ltr" data-script="cyrillic">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Панель материалов в режиме «Переводить» · Справка translationCore 4</title>
+<meta name="description" content="Пока вы пишете черновик, панель материалов показывает примечания, ссылки на слова, вопросы, упрощённый текст и ваши собственные комментарии к стихам, с которыми вы работаете.">
+<link rel="stylesheet" href="/tc-help/assets/style.css">
+<link rel="canonical" href="https://translationcore.com/ru/tc-help/tr-helps-panel">
+<link rel="alternate" hreflang="en" href="https://translationcore.com/tc-help/tr-helps-panel">
+<link rel="alternate" hreflang="es-MX" href="https://translationcore.com/es/tc-help/tr-helps-panel">
+<link rel="alternate" hreflang="fr" href="https://translationcore.com/fr/tc-help/tr-helps-panel">
+<link rel="alternate" hreflang="hi" href="https://translationcore.com/hi/tc-help/tr-helps-panel">
+<link rel="alternate" hreflang="ru" href="https://translationcore.com/ru/tc-help/tr-helps-panel">
+<link rel="alternate" hreflang="ar" href="https://translationcore.com/ar/tc-help/tr-helps-panel">
+<link rel="alternate" hreflang="zh-Hans" href="https://translationcore.com/zh/tc-help/tr-helps-panel">
+<link rel="alternate" hreflang="sw" href="https://translationcore.com/sw/tc-help/tr-helps-panel">
+<link rel="alternate" hreflang="pt-BR" href="https://translationcore.com/pt/tc-help/tr-helps-panel">
+<link rel="alternate" hreflang="id" href="https://translationcore.com/id/tc-help/tr-helps-panel">
+<link rel="alternate" hreflang="vi" href="https://translationcore.com/vi/tc-help/tr-helps-panel">
+<link rel="alternate" hreflang="bn" href="https://translationcore.com/bn/tc-help/tr-helps-panel">
+<link rel="alternate" hreflang="ur" href="https://translationcore.com/ur/tc-help/tr-helps-panel">
+<link rel="alternate" hreflang="fa" href="https://translationcore.com/fa/tc-help/tr-helps-panel">
+<link rel="alternate" hreflang="my" href="https://translationcore.com/my/tc-help/tr-helps-panel">
+<link rel="alternate" hreflang="nl" href="https://translationcore.com/nl/tc-help/tr-helps-panel">
+<link rel="alternate" hreflang="x-default" href="https://translationcore.com/tc-help/tr-helps-panel">
+<link rel="stylesheet" href="/assets/css/help-i18n.css">
+<script>window.__tcLocale={"locale":"ru","defaultLocale":"en","alternates":true,"locales":["en","es","fr","hi","ru","ar","zh","sw","pt","id","vi","bn","ur","fa","my","nl"],"tags":{"en":"en","es":"es-MX","fr":"fr","hi":"hi","ru":"ru","ar":"ar","zh":"zh-Hans","sw":"sw","pt":"pt-BR","id":"id","vi":"vi","bn":"bn","ur":"ur","fa":"fa","my":"my","nl":"nl"}};window.TC4_HELP_I18N={"lang":"ru","language":"Язык","onThisPage":"На этой странице","noResults":"Нет разделов по запросу «{query}». Попробуйте другое слово, например «выравнивание», «проверка», «история» или «без интернета».","seeAll":"Все результаты →","resultsOne":"1 раздел по запросу «{query}»","resultsMany":"Разделов по запросу «{query}»: {count}","searchPrompt":"Введите одно-два слова, например «выравнивание», «закладка» или «диапазон стихов»."}</script>
+<script src="/assets/js/locale.js"></script>
+<link rel="icon" type="image/png" href="/tc-help/assets/tc_logo.png">
+<link rel="apple-touch-icon" href="/tc-help/assets/tc_logo.png">
+</head>
+<body>
+<a class="skip" href="#main">Перейти к содержимому</a>
+<header class="topbar">
+  <button class="menu-btn" id="menu-btn" aria-label="Показать разделы" aria-controls="sidebar" aria-expanded="false">☰</button>
+  <a class="brand" href="/ru/tc-help/" aria-label="Главная страница справки translationCore"><img class="brand-logo" src="/tc-help/assets/translationcore-logo.png" alt="" width="25" height="28"><span class="wordmark">translationCore<span class="reg">®</span></span><span class="brand-rule" aria-hidden="true"></span><span class="brand-text">Справка</span></a>
+  <form class="search" action="search" method="get" role="search" autocomplete="off">
+    <input id="q" name="q" type="search" placeholder="Поиск по справке (нажмите /)" aria-label="Поиск по справке">
+    <div class="search-results" id="search-results" role="listbox" hidden></div>
+  </form>
+  <details class="help-lang"><summary aria-label="Язык: Русский"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm6.9 6h-2.95a15.7 15.7 0 0 0-1.38-3.56A8.03 8.03 0 0 1 18.9 8ZM12 4.04c.83 1.2 1.48 2.53 1.91 3.96h-3.82c.43-1.43 1.08-2.76 1.91-3.96ZM4.26 14a7.8 7.8 0 0 1 0-4h3.38a16.5 16.5 0 0 0 0 4H4.26Zm.82 2h2.95c.32 1.25.78 2.45 1.38 3.56A7.99 7.99 0 0 1 5.08 16Zm2.95-8H5.08a7.99 7.99 0 0 1 4.33-3.56A15.7 15.7 0 0 0 8.03 8ZM12 19.96A14.1 14.1 0 0 1 10.09 16h3.82A14.1 14.1 0 0 1 12 19.96ZM14.34 14H9.66a14.7 14.7 0 0 1 0-4h4.68a14.7 14.7 0 0 1 0 4Zm.25 5.56c.6-1.11 1.06-2.31 1.38-3.56h2.95a8.03 8.03 0 0 1-4.33 3.56ZM16.36 14a16.5 16.5 0 0 0 0-4h3.38a7.8 7.8 0 0 1 0 4h-3.38Z"/></svg><span>Русский</span></summary><ul><li><a href="/tc-help/tr-helps-panel" data-locale="en" lang="en" dir="ltr">English</a></li><li><a href="/es/tc-help/tr-helps-panel" data-locale="es" lang="es-MX" dir="ltr">Español</a></li><li><a href="/fr/tc-help/tr-helps-panel" data-locale="fr" lang="fr" dir="ltr">Français</a></li><li><a href="/hi/tc-help/tr-helps-panel" data-locale="hi" lang="hi" dir="ltr">हिन्दी</a></li><li><a href="/ru/tc-help/tr-helps-panel" data-locale="ru" lang="ru" dir="ltr" aria-current="true">Русский</a></li><li><a href="/ar/tc-help/tr-helps-panel" data-locale="ar" lang="ar" dir="rtl">العربية</a></li><li><a href="/zh/tc-help/tr-helps-panel" data-locale="zh" lang="zh-Hans" dir="ltr">简体中文</a></li><li><a href="/sw/tc-help/tr-helps-panel" data-locale="sw" lang="sw" dir="ltr">Kiswahili</a></li><li><a href="/pt/tc-help/tr-helps-panel" data-locale="pt" lang="pt-BR" dir="ltr">Português</a></li><li><a href="/id/tc-help/tr-helps-panel" data-locale="id" lang="id" dir="ltr">Bahasa Indonesia</a></li><li><a href="/vi/tc-help/tr-helps-panel" data-locale="vi" lang="vi" dir="ltr">Tiếng Việt</a></li><li><a href="/bn/tc-help/tr-helps-panel" data-locale="bn" lang="bn" dir="ltr">বাংলা</a></li><li><a href="/ur/tc-help/tr-helps-panel" data-locale="ur" lang="ur" dir="rtl">اردو</a></li><li><a href="/fa/tc-help/tr-helps-panel" data-locale="fa" lang="fa" dir="rtl">فارسی</a></li><li><a href="/my/tc-help/tr-helps-panel" data-locale="my" lang="my" dir="ltr">ဗမာစာ</a></li><li><a href="/nl/tc-help/tr-helps-panel" data-locale="nl" lang="nl" dir="ltr">Nederlands</a></li></ul></details>
+  <a class="site-link" href="/ru/">translationcore.com</a>
+</header>
+<div class="shell">
+<nav class="sidebar" id="sidebar" aria-label="Разделы справки">
+<details class="nav-group"><summary><a href="section-getting-started">Начало работы</a></summary><ul>
+<li><a href="gs-install">Установка и запуск tC4</a></li>
+<li><a href="gs-home">Главный экран</a></li>
+<li><a href="gs-modes">«Понять», «Переводить» и «Проверить» — три режима</a></li>
+<li><a href="gs-save">Сохранение и контрольные точки</a></li>
+<li><a href="gs-resume">Продолжить с того места, где вы остановились</a></li>
+<li><a href="gs-switch-project">Сменить проект или вернуться на главный экран</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-bible-projects">Проекты Библии</a></summary><ul>
+<li><a href="bp-new-bible">Создать проект Библии</a></li>
+<li><a href="bp-add-book">Добавить книгу</a></li>
+<li><a href="bp-open-book">Открыть книгу и переходить между главами</a></li>
+<li><a href="bp-import">Импортировать проект translationCore 3</a></li>
+<li><a href="bp-export-pdf">Экспортировать книгу в PDF</a></li>
+<li><a href="bp-export-usfm">Экспортировать книгу в USFM (с выравниванием или простой текст)</a></li>
+<li><a href="bp-export-burrito">Экспортировать проект как Scripture Burrito</a></li>
+</ul></details>
+<details class="nav-group" open><summary><a href="section-translate">Переводить</a></summary><ul>
+<li><a href="tr-screen">Экран «Переводить»</a></li>
+<li><a href="tr-source-texts">Вкладки источника — тексты на языке-мосте и язык оригинала</a></li>
+<li><a href="tr-draft-section">Черновик части</a></li>
+<li><a href="tr-place-verse-numbers">Расставить номера стихов</a></li>
+<li><a href="tr-verse-spans">Объединить стихи в диапазон или разделить его</a></li>
+<li><a href="tr-verse-by-verse">Черновик или правка одного стиха</a></li>
+<li><a href="tr-formatting">Абзацы и поэзия</a></li>
+<li><a href="tr-helps-panel" class="current" aria-current="page">Панель материалов в режиме «Переводить»</a></li>
+<li><a href="tr-edit-after-check">Правка стиха, который вы уже проверили или выровняли</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-understand">Понять</a></summary><ul>
+<li><a href="un-read-passage">Прочитайте отрывок перед переводом</a></li>
+<li><a href="un-notes">Примечания к переводу и статьи Академии перевода</a></li>
+<li><a href="un-word-links">Ссылки на слова (Слова перевода)</a></li>
+<li><a href="un-questions">Вопросы к переводу</a></li>
+<li><a href="un-simplified">Вкладка упрощённого текста</a></li>
+<li><a href="un-user-comments">Написать комментарий</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-check">Проверить</a></summary><ul>
+<li><a href="ck-tool-picker">Выбрать инструмент проверки</a></li>
+<li><a href="ck-translation-notes">Проверка с помощью «Примечаний к переводу»</a></li>
+<li><a href="ck-translation-words">Проверка с помощью «Слов перевода»</a></li>
+<li><a href="ck-decide">Решение по пункту проверки (действительно, недействительно, к выполнению)</a></li>
+<li><a href="ck-bookmarks">Добавить проверку в закладки</a></li>
+<li><a href="ck-comments">Написать комментарий к проверке</a></li>
+<li><a href="ck-filter-sort">Фильтрация и сортировка пунктов проверки</a></li>
+<li><a href="ck-community-checking">Предварительный просмотр «Проверки сообществом»</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-align">Выровнять</a></summary><ul>
+<li><a href="al-open">Открыть инструмент «Выровнять»</a></li>
+<li><a href="al-link-words">Свяжите свои слова с источником</a></li>
+<li><a href="al-phrases">Выравнивание фразы (объединение и разделение карточек)</a></li>
+<li><a href="al-modes">Выравнивание по тексту на языке-мосте или по языку оригинала</a></li>
+<li><a href="al-suggestions">Подсказки для выравнивания</a></li>
+<li><a href="al-mark-valid">Отметить выравнивание как завершённое</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-obs">Open Bible Stories</a></summary><ul>
+<li><a href="obs-create">Начать проект Open Bible Stories</a></li>
+<li><a href="obs-story-tiles">Найти историю на главном экране</a></li>
+<li><a href="obs-translate">Перевести историю</a></li>
+<li><a href="obs-understand">Понять историю</a></li>
+<li><a href="obs-check">Проверить историю</a></li>
+<li><a href="obs-community-checking">Предварительный просмотр и экспорт истории</a></li>
+<li><a href="obs-export-markdown-pdf">Экспорт историй в PDF или Markdown</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-resources">Ресурсы и работа без интернета</a></summary><ul>
+<li><a href="rs-whats-included">Что входит в приложение</a></li>
+<li><a href="rs-source-texts">Скачать исходные тексты</a></li>
+<li><a href="rs-checking-language">Сменить язык проверки</a></li>
+<li><a href="rs-upgrade-helps">Обновить закреплённые материалы</a></li>
+<li><a href="rs-upgrade-texts">Обновить тексты Писания</a></li>
+<li><a href="rs-guided-fix">Исправить отсутствующий ресурс</a></li>
+<li><a href="rs-offline">Работа без интернета</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-settings">Настройки</a></summary><ul>
+<li><a href="st-project-settings">Настройки проекта</a></li>
+<li><a href="st-where-projects-live">Где хранятся ваши проекты</a></li>
+<li><a href="st-app-language">Сменить язык приложения</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-troubleshooting">Решение проблем и известные ограничения</a></summary><ul>
+<li><a href="ts-save-problems">Если сохранение не удалось</a></li>
+<li><a href="ts-protect-messages">Сообщения, которые защищают ваш проект</a></li>
+<li><a href="ts-crash-recovery">Если приложение неожиданно закрылось или окно стало пустым</a></li>
+<li><a href="ts-platform">Заметки для Windows, macOS и Linux</a></li>
+<li><a href="ts-share-door43">Поделиться на Door43</a></li>
+<li><a href="ts-team-sync">Работа в команде на нескольких компьютерах</a></li>
+<li><a href="ts-not-yet">Чего нет в tC4</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-whats-new">Заметки о выпусках</a></summary><ul>
+<li><a href="wn-alpha1">alpha.1 — первая публичная сборка</a></li>
+<li><a href="wn-alpha2">alpha.2 — проверка и выравнивание</a></li>
+<li><a href="wn-alpha4">alpha.4 — открытие и продолжение работы</a></li>
+<li><a href="wn-alpha5">alpha.5 — полноценная работа над черновиком</a></li>
+<li><a href="wn-alpha6">alpha.6 — подсказки и ресурсы</a></li>
+<li><a href="wn-alpha7">alpha.7 — Open Bible Stories</a></li>
+<li><a href="wn-add-a-project">27 сентября 2026 г. — одна кнопка + Добавить проект на главном экране</a></li>
+<li><a href="wn-rc1">Что нового в 4.0 rc.1</a></li>
+<li><a href="wn-rc2">Что нового в 4.0 rc.2</a></li>
+<li><a href="wn-4.1">Что нового в 4.1</a></li>
+</ul></details>
+</nav>
+<main id="main" class="content">
+<p class="crumbs"><a href="/ru/tc-help/">Справка</a> › <a href="section-translate">Переводить</a></p>
+<h1>Панель материалов в режиме «Переводить»</h1>
+<!-- tracking: status=shipped since=alpha.4 -->
+<p class="lede">Пока вы пишете черновик, панель материалов показывает примечания, ссылки на слова, вопросы, упрощённый текст и ваши собственные комментарии к стихам, с которыми вы работаете. Примечания сгруппированы под заголовками частей и стихов, а карточки слов открываются с первым абзацем своей статьи.</p>
+<p>Она находится справа в режиме <span class="ui">Переводить</span>, рядом с вашим черновиком.</p>
+<h2 id="steps">Шаги</h2>
+<ol><li>Если панель скрыта, нажмите <span class="ui">Переключить панель материалов</span> в правом верхнем углу главы.</li><li>Нажмите на вкладку.</li></ol>
+<figure class="shot-inline" id="shot-1"><a href="/tc-help/img/tr-helps-panel-1.png"><img src="/tc-help/img/tr-helps-panel-1.png" alt="Панель материалов для Тит 1 с выбранной вкладкой «Слова». Каждая карточка слова показывает первый абзац своей статьи «Слов перевода» и ссылку «Читать статью →». Значков KEY WORD нет." width="420" height="703" loading="lazy"></a></figure>
+<ol start="3"><li>Откройте редактор части или стиха. Панель сузится до стихов, которые вы редактируете.</li></ol>
+<h2 id="the-tabs">Вкладки</h2>
+<ul><li><strong><span class="ui">Примечания</span>:</strong> примечания к переводу, сгруппированные под заголовками заглавными буквами, например <span class="ui">ВВЕДЕНИЕ</span> и <span class="ui">СТИХ 1</span>. Каждое примечание, у которого есть статья Академии перевода, ссылается на неё по настоящему названию статьи (например, <span class="ui">Abstract Nouns →</span>), а не общей подписью.</li><li><strong><span class="ui">Слова</span>:</strong> ключевые термины. Каждая карточка показывает первый абзац статьи «Слов перевода» и <span class="ui">Читать статью →</span>. Нажмите на карточку, чтобы выделить все вхождения этого слова в части.</li><li><strong><span class="ui">Вопросы</span>:</strong> вопросы с ответами, чтобы проверить смысл вашего черновика.</li><li><strong><span class="ui">UST</span>:</strong> упрощённый текст главы. В некоторых языках-мостах эта вкладка называется иначе, например <span class="ui">GST</span>.</li><li><strong><span class="ui">Комментарии</span>:</strong> комментарии, которые вы написали в режиме <span class="ui">Понять</span>. Если их нет, там написано «Ничего в этой главе.».</li></ul>
+<h2 id="good-to-know">Полезно знать</h2>
+<ul><li>Материалы следуют за тем, на что вы нажали: за частью в режиме <span class="ui">Раздел</span>, за стихом в режиме <span class="ui">Стих</span> или за кадром истории. Они остаются на нём и после того, как вы нажмёте <span class="ui">Сохранить</span>, пока вы не нажмёте на другой фрагмент или не покинете главу.</li><li>Наведите указатель на карточку примечания, чтобы выделить её фразу в источнике; нажмите на неё, чтобы выделение осталось.</li><li>Нажмите на карточку слова, чтобы выделить все совпадающие слова во всей части, которую вы читаете.</li><li>У длинных примечаний есть <span class="ui">Показать больше</span> и <span class="ui">Показать меньше</span>.</li><li>Перетаскивайте вертикальный разделитель между черновиком и материалами, чтобы сделать панель шире или уже. <span class="ui">Переключить панель материалов</span> полностью показывает или скрывает панель (это одна кнопка; отдельной кнопки для расширения нет).</li><li>Статьи материалов открываются с плавающей кнопкой закрытия над разделителем и аккуратно показывают переносы строк, надстрочные знаки и подчёркивания из источника.</li><li>Каждый вид материалов описан в разделе <a href="section-understand">Понять</a>.</li></ul>
+<h2 id="related">Связанные разделы</h2><ul class="related"><li><a href="tr-screen">Экран «Переводить»</a></li><li><a href="un-notes">Примечания к переводу и статьи Академии перевода</a></li><li><a href="un-word-links">Ссылки на слова (Слова перевода)</a></li><li><a href="un-questions">Вопросы к переводу</a></li><li><a href="un-user-comments">Написать комментарий</a></li></ul>
+</main>
+</div>
+<footer class="sitefoot">Главный источник истины — само приложение: если эта страница и приложение расходятся, право приложение. Пожалуйста, сообщите нам об этом. <a href="section-whats-new">Заметки о выпусках</a> · <a href="/ru/">translationcore.com</a></footer>
+<script src="search-index.js"></script>
+<script src="/tc-help/assets/search.js"></script>
+<script src="/tc-help/assets/page-toc.js"></script>
+<script src="/assets/js/help-i18n.js"></script>
+</body>
+</html>

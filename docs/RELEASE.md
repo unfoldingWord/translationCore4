@@ -108,6 +108,37 @@ refuses any Windows installer named `-unsigned` (tC4 #456). So a release always 
 Windows installer. To try signing without a tag, run the workflow by hand on the default branch
 with **sign** ticked.
 
+## Refreshing the help
+
+Help and guides shows translationcore.com's help in the app's language (#1036). The help is built
+from translationCore-Suite-website at one commit, the pin, and copied into `crates/tc-ui/help`
+(APP-DESIGN AD29). That repository holds the help pages as sources, so a refresh builds the site:
+
+1. Change the help in translationCore-Suite-website first. A page cannot be edited in this
+   repository.
+2. Run `crates/tc-ui/vendor-help.sh <commit>`. It needs the network, git, and Node at a version
+   the site's `package.json` accepts. It fetches the site at that commit, runs `npm ci` and
+   `npm run build` there (Astro, at the version the site's `package-lock.json` pins), and copies
+   the built help: the English help, the help of each other language that an app language
+   shows, and the site's own files that those pages load (a style sheet, a script, and the Noto
+   fonts for Arabic and Hindi). It writes the commit and the git blob id of every copied file to
+   `crates/tc-ui/help-pages.txt`.
+3. Set the commit in `HELP_PIN` (`crates/tc-ui/tests/help_pages.rs`) and as the default `REV` in
+   `vendor-help.sh`.
+4. Run `cargo test -p tc-ui --test help_pages` and
+   `cargo test -p tc-server --test help_links --test help_overlay`, then the help journey
+   (`parity/app/journeys/help.test.mjs`). The tests say what else moved: the number of files, a
+   translationcore.com address nobody checked, or words that a served page no longer holds.
+
+An app language names its help language in `LOCALES` (`help`, `crates/tc-ui/src/i18n.rs`). A
+language with no help on the site shows the English help. To add a help language with its app
+language, add it to `LANGS` in `vendor-help.sh` and to that `Locale`, then refresh.
+
+A help translation is reviewed by native readers in translationCore-Suite-website, whose
+`docs/native-review.md` says which languages have had that review. Move the pin to the commit
+that holds the reviewed translations when a review is done (#1036). The release issue asks for
+it.
+
 ## Signing (H4)
 
 Yakob signs, as for tC4. Windows is signed with Azure Artifact Signing through GitHub's OIDC token,

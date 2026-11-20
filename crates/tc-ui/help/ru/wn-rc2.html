@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="ru" dir="ltr" data-script="cyrillic">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Что нового в 4.0 rc.2 · Справка translationCore 4</title>
+<meta name="description" content="Публичная бета-версия. Окно подготовки при первом запуске, нумерация повторяющихся слов и размещение нескольких слов сразу в режиме «Выровнять», выделение перетаскиванием в режиме «Проверить», а также «Назад» и «Далее» рядом с кнопками отметки. Обновление от 20 октября: стихи поэзии открываются целиком, а выравнивание следует за своими словами.">
+<link rel="stylesheet" href="/tc-help/assets/style.css">
+<link rel="canonical" href="https://translationcore.com/ru/tc-help/wn-rc2">
+<link rel="alternate" hreflang="en" href="https://translationcore.com/tc-help/wn-rc2">
+<link rel="alternate" hreflang="es-MX" href="https://translationcore.com/es/tc-help/wn-rc2">
+<link rel="alternate" hreflang="fr" href="https://translationcore.com/fr/tc-help/wn-rc2">
+<link rel="alternate" hreflang="hi" href="https://translationcore.com/hi/tc-help/wn-rc2">
+<link rel="alternate" hreflang="ru" href="https://translationcore.com/ru/tc-help/wn-rc2">
+<link rel="alternate" hreflang="ar" href="https://translationcore.com/ar/tc-help/wn-rc2">
+<link rel="alternate" hreflang="zh-Hans" href="https://translationcore.com/zh/tc-help/wn-rc2">
+<link rel="alternate" hreflang="sw" href="https://translationcore.com/sw/tc-help/wn-rc2">
+<link rel="alternate" hreflang="pt-BR" href="https://translationcore.com/pt/tc-help/wn-rc2">
+<link rel="alternate" hreflang="id" href="https://translationcore.com/id/tc-help/wn-rc2">
+<link rel="alternate" hreflang="vi" href="https://translationcore.com/vi/tc-help/wn-rc2">
+<link rel="alternate" hreflang="bn" href="https://translationcore.com/bn/tc-help/wn-rc2">
+<link rel="alternate" hreflang="ur" href="https://translationcore.com/ur/tc-help/wn-rc2">
+<link rel="alternate" hreflang="fa" href="https://translationcore.com/fa/tc-help/wn-rc2">
+<link rel="alternate" hreflang="my" href="https://translationcore.com/my/tc-help/wn-rc2">
+<link rel="alternate" hreflang="nl" href="https://translationcore.com/nl/tc-help/wn-rc2">
+<link rel="alternate" hreflang="x-default" href="https://translationcore.com/tc-help/wn-rc2">
+<link rel="stylesheet" href="/assets/css/help-i18n.css">
+<script>window.__tcLocale={"locale":"ru","defaultLocale":"en","alternates":true,"locales":["en","es","fr","hi","ru","ar","zh","sw","pt","id","vi","bn","ur","fa","my","nl"],"tags":{"en":"en","es":"es-MX","fr":"fr","hi":"hi","ru":"ru","ar":"ar","zh":"zh-Hans","sw":"sw","pt":"pt-BR","id":"id","vi":"vi","bn":"bn","ur":"ur","fa":"fa","my":"my","nl":"nl"}};window.TC4_HELP_I18N={"lang":"ru","language":"Язык","onThisPage":"На этой странице","noResults":"Нет разделов по запросу «{query}». Попробуйте другое слово, например «выравнивание», «проверка», «история» или «без интернета».","seeAll":"Все результаты →","resultsOne":"1 раздел по запросу «{query}»","resultsMany":"Разделов по запросу «{query}»: {count}","searchPrompt":"Введите одно-два слова, например «выравнивание», «закладка» или «диапазон стихов»."}</script>
+<script src="/assets/js/locale.js"></script>
+<link rel="icon" type="image/png" href="/tc-help/assets/tc_logo.png">
+<link rel="apple-touch-icon" href="/tc-help/assets/tc_logo.png">
+</head>
+<body>
+<a class="skip" href="#main">Перейти к содержимому</a>
+<header class="topbar">
+  <button class="menu-btn" id="menu-btn" aria-label="Показать разделы" aria-controls="sidebar" aria-expanded="false">☰</button>
+  <a class="brand" href="/ru/tc-help/" aria-label="Главная страница справки translationCore"><img class="brand-logo" src="/tc-help/assets/translationcore-logo.png" alt="" width="25" height="28"><span class="wordmark">translationCore<span class="reg">®</span></span><span class="brand-rule" aria-hidden="true"></span><span class="brand-text">Справка</span></a>
+  <form class="search" action="search" method="get" role="search" autocomplete="off">
+    <input id="q" name="q" type="search" placeholder="Поиск по справке (нажмите /)" aria-label="Поиск по справке">
+    <div class="search-results" id="search-results" role="listbox" hidden></div>
+  </form>
+  <details class="help-lang"><summary aria-label="Язык: Русский"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm6.9 6h-2.95a15.7 15.7 0 0 0-1.38-3.56A8.03 8.03 0 0 1 18.9 8ZM12 4.04c.83 1.2 1.48 2.53 1.91 3.96h-3.82c.43-1.43 1.08-2.76 1.91-3.96ZM4.26 14a7.8 7.8 0 0 1 0-4h3.38a16.5 16.5 0 0 0 0 4H4.26Zm.82 2h2.95c.32 1.25.78 2.45 1.38 3.56A7.99 7.99 0 0 1 5.08 16Zm2.95-8H5.08a7.99 7.99 0 0 1 4.33-3.56A15.7 15.7 0 0 0 8.03 8ZM12 19.96A14.1 14.1 0 0 1 10.09 16h3.82A14.1 14.1 0 0 1 12 19.96ZM14.34 14H9.66a14.7 14.7 0 0 1 0-4h4.68a14.7 14.7 0 0 1 0 4Zm.25 5.56c.6-1.11 1.06-2.31 1.38-3.56h2.95a8.03 8.03 0 0 1-4.33 3.56ZM16.36 14a16.5 16.5 0 0 0 0-4h3.38a7.8 7.8 0 0 1 0 4h-3.38Z"/></svg><span>Русский</span></summary><ul><li><a href="/tc-help/wn-rc2" data-locale="en" lang="en" dir="ltr">English</a></li><li><a href="/es/tc-help/wn-rc2" data-locale="es" lang="es-MX" dir="ltr">Español</a></li><li><a href="/fr/tc-help/wn-rc2" data-locale="fr" lang="fr" dir="ltr">Français</a></li><li><a href="/hi/tc-help/wn-rc2" data-locale="hi" lang="hi" dir="ltr">हिन्दी</a></li><li><a href="/ru/tc-help/wn-rc2" data-locale="ru" lang="ru" dir="ltr" aria-current="true">Русский</a></li><li><a href="/ar/tc-help/wn-rc2" data-locale="ar" lang="ar" dir="rtl">العربية</a></li><li><a href="/zh/tc-help/wn-rc2" data-locale="zh" lang="zh-Hans" dir="ltr">简体中文</a></li><li><a href="/sw/tc-help/wn-rc2" data-locale="sw" lang="sw" dir="ltr">Kiswahili</a></li><li><a href="/pt/tc-help/wn-rc2" data-locale="pt" lang="pt-BR" dir="ltr">Português</a></li><li><a href="/id/tc-help/wn-rc2" data-locale="id" lang="id" dir="ltr">Bahasa Indonesia</a></li><li><a href="/vi/tc-help/wn-rc2" data-locale="vi" lang="vi" dir="ltr">Tiếng Việt</a></li><li><a href="/bn/tc-help/wn-rc2" data-locale="bn" lang="bn" dir="ltr">বাংলা</a></li><li><a href="/ur/tc-help/wn-rc2" data-locale="ur" lang="ur" dir="rtl">اردو</a></li><li><a href="/fa/tc-help/wn-rc2" data-locale="fa" lang="fa" dir="rtl">فارسی</a></li><li><a href="/my/tc-help/wn-rc2" data-locale="my" lang="my" dir="ltr">ဗမာစာ</a></li><li><a href="/nl/tc-help/wn-rc2" data-locale="nl" lang="nl" dir="ltr">Nederlands</a></li></ul></details>
+  <a class="site-link" href="/ru/">translationcore.com</a>
+</header>
+<div class="shell">
+<nav class="sidebar" id="sidebar" aria-label="Разделы справки">
+<details class="nav-group"><summary><a href="section-getting-started">Начало работы</a></summary><ul>
+<li><a href="gs-install">Установка и запуск tC4</a></li>
+<li><a href="gs-home">Главный экран</a></li>
+<li><a href="gs-modes">«Понять», «Переводить» и «Проверить» — три режима</a></li>
+<li><a href="gs-save">Сохранение и контрольные точки</a></li>
+<li><a href="gs-resume">Продолжить с того места, где вы остановились</a></li>
+<li><a href="gs-switch-project">Сменить проект или вернуться на главный экран</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-bible-projects">Проекты Библии</a></summary><ul>
+<li><a href="bp-new-bible">Создать проект Библии</a></li>
+<li><a href="bp-add-book">Добавить книгу</a></li>
+<li><a href="bp-open-book">Открыть книгу и переходить между главами</a></li>
+<li><a href="bp-import">Импортировать проект translationCore 3</a></li>
+<li><a href="bp-export-pdf">Экспортировать книгу в PDF</a></li>
+<li><a href="bp-export-usfm">Экспортировать книгу в USFM (с выравниванием или простой текст)</a></li>
+<li><a href="bp-export-burrito">Экспортировать проект как Scripture Burrito</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-translate">Переводить</a></summary><ul>
+<li><a href="tr-screen">Экран «Переводить»</a></li>
+<li><a href="tr-source-texts">Вкладки источника — тексты на языке-мосте и язык оригинала</a></li>
+<li><a href="tr-draft-section">Черновик части</a></li>
+<li><a href="tr-place-verse-numbers">Расставить номера стихов</a></li>
+<li><a href="tr-verse-spans">Объединить стихи в диапазон или разделить его</a></li>
+<li><a href="tr-verse-by-verse">Черновик или правка одного стиха</a></li>
+<li><a href="tr-formatting">Абзацы и поэзия</a></li>
+<li><a href="tr-helps-panel">Панель материалов в режиме «Переводить»</a></li>
+<li><a href="tr-edit-after-check">Правка стиха, который вы уже проверили или выровняли</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-understand">Понять</a></summary><ul>
+<li><a href="un-read-passage">Прочитайте отрывок перед переводом</a></li>
+<li><a href="un-notes">Примечания к переводу и статьи Академии перевода</a></li>
+<li><a href="un-word-links">Ссылки на слова (Слова перевода)</a></li>
+<li><a href="un-questions">Вопросы к переводу</a></li>
+<li><a href="un-simplified">Вкладка упрощённого текста</a></li>
+<li><a href="un-user-comments">Написать комментарий</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-check">Проверить</a></summary><ul>
+<li><a href="ck-tool-picker">Выбрать инструмент проверки</a></li>
+<li><a href="ck-translation-notes">Проверка с помощью «Примечаний к переводу»</a></li>
+<li><a href="ck-translation-words">Проверка с помощью «Слов перевода»</a></li>
+<li><a href="ck-decide">Решение по пункту проверки (действительно, недействительно, к выполнению)</a></li>
+<li><a href="ck-bookmarks">Добавить проверку в закладки</a></li>
+<li><a href="ck-comments">Написать комментарий к проверке</a></li>
+<li><a href="ck-filter-sort">Фильтрация и сортировка пунктов проверки</a></li>
+<li><a href="ck-community-checking">Предварительный просмотр «Проверки сообществом»</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-align">Выровнять</a></summary><ul>
+<li><a href="al-open">Открыть инструмент «Выровнять»</a></li>
+<li><a href="al-link-words">Свяжите свои слова с источником</a></li>
+<li><a href="al-phrases">Выравнивание фразы (объединение и разделение карточек)</a></li>
+<li><a href="al-modes">Выравнивание по тексту на языке-мосте или по языку оригинала</a></li>
+<li><a href="al-suggestions">Подсказки для выравнивания</a></li>
+<li><a href="al-mark-valid">Отметить выравнивание как завершённое</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-obs">Open Bible Stories</a></summary><ul>
+<li><a href="obs-create">Начать проект Open Bible Stories</a></li>
+<li><a href="obs-story-tiles">Найти историю на главном экране</a></li>
+<li><a href="obs-translate">Перевести историю</a></li>
+<li><a href="obs-understand">Понять историю</a></li>
+<li><a href="obs-check">Проверить историю</a></li>
+<li><a href="obs-community-checking">Предварительный просмотр и экспорт истории</a></li>
+<li><a href="obs-export-markdown-pdf">Экспорт историй в PDF или Markdown</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-resources">Ресурсы и работа без интернета</a></summary><ul>
+<li><a href="rs-whats-included">Что входит в приложение</a></li>
+<li><a href="rs-source-texts">Скачать исходные тексты</a></li>
+<li><a href="rs-checking-language">Сменить язык проверки</a></li>
+<li><a href="rs-upgrade-helps">Обновить закреплённые материалы</a></li>
+<li><a href="rs-upgrade-texts">Обновить тексты Писания</a></li>
+<li><a href="rs-guided-fix">Исправить отсутствующий ресурс</a></li>
+<li><a href="rs-offline">Работа без интернета</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-settings">Настройки</a></summary><ul>
+<li><a href="st-project-settings">Настройки проекта</a></li>
+<li><a href="st-where-projects-live">Где хранятся ваши проекты</a></li>
+<li><a href="st-app-language">Сменить язык приложения</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-troubleshooting">Решение проблем и известные ограничения</a></summary><ul>
+<li><a href="ts-save-problems">Если сохранение не удалось</a></li>
+<li><a href="ts-protect-messages">Сообщения, которые защищают ваш проект</a></li>
+<li><a href="ts-crash-recovery">Если приложение неожиданно закрылось или окно стало пустым</a></li>
+<li><a href="ts-platform">Заметки для Windows, macOS и Linux</a></li>
+<li><a href="ts-share-door43">Поделиться на Door43</a></li>
+<li><a href="ts-team-sync">Работа в команде на нескольких компьютерах</a></li>
+<li><a href="ts-not-yet">Чего нет в tC4</a></li>
+</ul></details>
+<details class="nav-group" open><summary><a href="section-whats-new">Заметки о выпусках</a></summary><ul>
+<li><a href="wn-alpha1">alpha.1 — первая публичная сборка</a></li>
+<li><a href="wn-alpha2">alpha.2 — проверка и выравнивание</a></li>
+<li><a href="wn-alpha4">alpha.4 — открытие и продолжение работы</a></li>
+<li><a href="wn-alpha5">alpha.5 — полноценная работа над черновиком</a></li>
+<li><a href="wn-alpha6">alpha.6 — подсказки и ресурсы</a></li>
+<li><a href="wn-alpha7">alpha.7 — Open Bible Stories</a></li>
+<li><a href="wn-add-a-project">27 сентября 2026 г. — одна кнопка + Добавить проект на главном экране</a></li>
+<li><a href="wn-rc1">Что нового в 4.0 rc.1</a></li>
+<li><a href="wn-rc2" class="current" aria-current="page">Что нового в 4.0 rc.2</a></li>
+<li><a href="wn-4.1">Что нового в 4.1</a></li>
+</ul></details>
+</nav>
+<main id="main" class="content">
+<p class="crumbs"><a href="/ru/tc-help/">Справка</a> › <a href="section-whats-new">Заметки о выпусках</a></p>
+<h1>Что нового в 4.0 rc.2</h1>
+<p class="lede">Публичная бета-версия. Окно подготовки при первом запуске, нумерация повторяющихся слов и размещение нескольких слов сразу в режиме «Выровнять», выделение перетаскиванием в режиме «Проверить», а также «Назад» и «Далее» рядом с кнопками отметки. Обновление от 20 октября: стихи поэзии открываются целиком, а выравнивание следует за своими словами.</p>
+<p>4.0.0-rc.2 — это публичная бета-версия. Вот главные изменения после rc.1.</p>
+<h2 id="starting-tc4">Запуск tC4</h2>
+<ul><li><strong>Окно подготовки при первом запуске.</strong> Окно «Подготовка translationCore4» считает встроенные ресурсы, например «Подготовка ресурсов: 2 из 16», а затем tC4 открывается на главном экране. Следующие запуски намного быстрее. Если загруженный файл повреждён, tC4 сообщит об этом и закроется, ничего не изменив. См. <a href="gs-install">Установка и запуск tC4</a>.</li></ul>
+<h2 id="align">Выровнять</h2>
+<ul><li><strong>Повторяющиеся слова пронумерованы.</strong> У слова, которое встречается в стихе несколько раз, видно, какой это повтор: de¹, de², de³. На исходных карточках те же номера.</li><li><strong>Несколько слов сразу.</strong> Щёлкните слова в банке слов с Ctrl (с Cmd на Mac) или с Shift, затем нажмите карточку или перетащите их на одну карточку.</li><li><strong>Карточки сохраняют порядок стиха.</strong> Слова на карточке всегда идут в том порядке, в каком стоят в вашем стихе, куда бы вы их ни положили.</li></ul>
+<p>См. <a href="al-link-words">Свяжите свои слова с источником</a>.</p>
+<h2 id="check">Проверить</h2>
+<ul><li><strong>Выбор слов перетаскиванием.</strong> Проведите указателем по тексту в <span class="ui">Ваш перевод</span>, чтобы выбрать целые слова. <span class="ui">✓ Отметить как действительное</span> сохраняет выбор, и он остаётся на месте, когда вы возвращаетесь к пункту. Это работает в «Примечаниях к переводу» и «Словах перевода». См. <a href="ck-decide">Решение по пункту проверки</a>.</li><li><strong>«Назад» и «Далее» рядом с отметками.</strong> Кнопки <span class="ui">Назад</span> и <span class="ui">Далее</span> теперь стоят в одной строке с <span class="ui">✓ Отметить как действительное</span>, <span class="ui">Недействительно</span> и <span class="ui">К выполнению</span> — в режиме «Проверить» и в выравнивании.</li></ul>
+<h2 id="translate">Переводить</h2>
+<ul><li><strong>Кнопка «Составить черновик части» видна всегда</strong> — это маленькая скруглённая кнопка на каждой части. См. <a href="tr-draft-section">Черновик части</a>.</li></ul>
+<h2 id="also-new-since-rc-1">Что ещё нового после rc.1</h2>
+<ul><li><strong>Проверки по «Словам перевода» используют опубликованные ссылки (Links).</strong> Для английского поставляется <code>en_twl</code> v91 вместе с <code>en_tw</code> v91. При скачивании языка-моста устанавливается его собственный <code>_twl</code>, если он опубликован; иначе английские ссылки используются со статьями этого языка. Для книг, которых нет в выпуске ссылок, проверки tW нет. Строки с отсутствующими статьями скрыты. См. <a href="ck-translation-words">Проверка с помощью «Слов перевода»</a> и <a href="rs-whats-included">Что входит в приложение</a>.</li></ul>
+<ul><li><strong>Интернет выключен, пока вы его не включите.</strong> Шаг, которому нужен интернет, сначала спрашивает «Включить интернет?». После этого tC4 пользуется интернетом, пока вы не выключите <span class="ui">Использовать интернет</span> в меню учётной записи или не закроете tC4. См. <a href="rs-offline">Работа без интернета</a>.</li><li><strong>Добавление книг из файлов USFM</strong> в уже существующий проект: <span class="ui">Добавить книгу</span> › <span class="ui">Добавить книги из файлов USFM</span>. Каждый файл становится книгой. См. <a href="bp-add-book">Добавить книгу</a>.</li><li><strong>Публикация на Door43 задаёт тот же вопрос.</strong> Кроме того, там сказано, что вы проверите место назначения и книги, прежде чем что-либо будет отправлено. См. <a href="ts-share-door43">Поделиться на Door43</a>.</li><li><strong>Список историй сохраняет названия и проценты</strong>, пока вы пишете черновик истории. См. <a href="obs-translate">Перевести историю</a>.</li><li><strong>В настройках проекта</strong> число книг теперь пишется грамматически правильно (в английском «1 book» вместо «1 books»).</li></ul>
+<ul><li><strong>Меню учётной записи:</strong> <span class="ui">Справка и руководства</span> (без интернета), <span class="ui">О программе translationCore</span>, <span class="ui">Язык приложения</span> (девять языков) и <span class="ui">Сообщить о проблеме</span>. См. <a href="gs-home">Главный экран</a> и <a href="st-app-language">Сменить язык приложения</a>.</li><li><strong>Диапазоны стихов учитываются в проценте готовности черновика</strong>, а объединение стихов через границу абзаца больше не оставляет пустую строку внутри диапазона. См. <a href="tr-verse-spans">Объединить стихи в диапазон или разделить его</a>.</li><li><strong>«Продолжить»</strong> называет стих или диапазон, на котором вы были, после изменения диапазона. См. <a href="gs-resume">Продолжить с того места, где вы остановились</a>.</li><li><strong>«Расставить номера стихов»</strong> позволяет переместить уже поставленный номер: нажмите его, затем нажмите новое место. См. <a href="tr-place-verse-numbers">Расставить номера стихов</a>.</li><li><strong>Переключатель «Понять / Переводить / Проверить»</strong> остаётся по центру, когда «Сохранено» меняется на «Несохранённые изменения». См. <a href="gs-modes">Три режима</a>.</li><li>Теперь можно <strong>сохранить часть после удаления всего её текста</strong> (стихи-заполнители). См. <a href="tr-draft-section">Черновик части</a>.</li><li><strong>Статьи материалов</strong> аккуратно отображают цитаты и полужирный шрифт; номера стихов UST/GST — надстрочные. См. <a href="un-notes">Примечания к переводу</a> и <a href="un-simplified">Упрощённый текст</a>.</li></ul>
+<h2 id="rc-2-update-october-20-2026">Обновление rc.2 — 20 октября 2026 г.</h2>
+<p>rc.2 был пересобран 20 октября с этими изменениями. Номер версии остаётся 4.0.0-rc.2.</p>
+<h3 id="rc-2-update-translate">Переводить</h3>
+<ul><li><strong>Поэтические стихи открываются целиком.</strong> Редакторы стиха и части показывают все строки поэтического стиха, каждая с отступом в одну табуляцию на уровень, а разрывы абзацев и фрагментов — пустыми строками. При сохранении старый текст больше не остаётся. См. <a href="tr-formatting">Абзацы и поэзия</a>.</li><li><strong>Видны все стихи поэтических книг.</strong> Стихи, которые начинаются с поэтической строки, например большая часть Псалмов и Бытие 49, теперь появляются в режиме «Переводить» и в выравнивании.</li><li>Стихи с вложенным выравниванием показывают все свои слова, например «the heavens» в Бытие 1:1.</li></ul>
+<h3 id="rc-2-update-align">Выровнять</h3>
+<ul><li>Банк слов всегда соответствует тексту стиха в его нынешнем виде, а нажатие карточки размещает только слова, показанные как выбранные. См. <a href="al-link-words">Свяжите свои слова с источником</a>.</li><li>При правке стиха связь остаётся на своём слове. Удаление связанного слова удаляет его связь. Если после изменения неясно, какой из повторов слова вы оставили, стих помечается для просмотра. См. <a href="tr-edit-after-check">Правка стиха, который вы уже проверили или выровняли</a>.</li><li>Одно правило решает, какое выравнивание нужно просмотреть, — для списка стихов, уведомления, ✓ Отметить как действительное, импорта из translationCore 3 и экспорта с выравниванием.</li><li>Исходные карточки следуют тексту на языке оригинала вашего проекта, как в translationCore 3.</li><li>Стихи, импортированные с выравниванием, сохраняются в импортированном виде и показывают «В этом стихе уже есть выравнивание». См. <a href="al-open">Открыть инструмент «Выровнять»</a>.</li><li>Подсказки используют те же слова, что и банк слов, и лучше работают для иврита.</li></ul>
+<h3 id="export">Экспорт</h3>
+<ul><li><strong>USFM, с выравниванием</strong> называет каждый стих, выравнивание которого нужно просмотреть и которого нет в файле: «Ваше выравнивание для этих стихов отсутствует в файле». См. <a href="bp-export-usfm">Экспортировать книгу в USFM</a>.</li></ul>
+<h3 id="team-sync">Командная синхронизация</h3>
+<ul><li>Результат синхронизации называет каждый стих, где более новое выравнивание коллеги заменило ваше. См. <a href="ts-team-sync">Работа в команде</a>.</li><li>После синхронизации открытый проект показывает простое сообщение с просьбой закрыть и снова открыть его, а с главного экрана всегда можно уйти.</li></ul>
+<h3 id="import">Импорт</h3>
+<ul><li>Scripture Burrito без файла версификации импортируется без ошибок «Контрольная точка не сохранена».</li></ul>
+<h2 id="related">Связанные разделы</h2><ul class="related"><li><a href="wn-alpha1">alpha.1 — первая публичная сборка</a></li><li><a href="wn-alpha2">alpha.2 — проверка и выравнивание</a></li><li><a href="wn-alpha4">alpha.4 — открытие и продолжение работы</a></li><li><a href="wn-alpha5">alpha.5 — полноценная работа над черновиком</a></li><li><a href="wn-alpha6">alpha.6 — подсказки и ресурсы</a></li><li><a href="wn-alpha7">alpha.7 — Open Bible Stories</a></li><li><a href="wn-add-a-project">27 сентября 2026 г. — одна кнопка + Добавить проект на главном экране</a></li><li><a href="wn-rc1">Что нового в 4.0 rc.1</a></li></ul>
+</main>
+</div>
+<footer class="sitefoot">Главный источник истины — само приложение: если эта страница и приложение расходятся, право приложение. Пожалуйста, сообщите нам об этом. <a href="section-whats-new">Заметки о выпусках</a> · <a href="/ru/">translationcore.com</a></footer>
+<script src="search-index.js"></script>
+<script src="/tc-help/assets/search.js"></script>
+<script src="/tc-help/assets/page-toc.js"></script>
+<script src="/assets/js/help-i18n.js"></script>
+</body>
+</html>

@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="pt-BR" dir="ltr" data-script="latin">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Criar um projeto da Bíblia · Ajuda do translationCore 4</title>
+<meta name="description" content="Comece um novo projeto de tradução da Bíblia: em branco, a partir de arquivos USFM ou a partir de um Scripture Burrito. Logo depois você adiciona os livros.">
+<link rel="stylesheet" href="/tc-help/assets/style.css">
+<link rel="canonical" href="https://translationcore.com/pt/tc-help/bp-new-bible">
+<link rel="alternate" hreflang="en" href="https://translationcore.com/tc-help/bp-new-bible">
+<link rel="alternate" hreflang="es-MX" href="https://translationcore.com/es/tc-help/bp-new-bible">
+<link rel="alternate" hreflang="fr" href="https://translationcore.com/fr/tc-help/bp-new-bible">
+<link rel="alternate" hreflang="hi" href="https://translationcore.com/hi/tc-help/bp-new-bible">
+<link rel="alternate" hreflang="ru" href="https://translationcore.com/ru/tc-help/bp-new-bible">
+<link rel="alternate" hreflang="ar" href="https://translationcore.com/ar/tc-help/bp-new-bible">
+<link rel="alternate" hreflang="zh-Hans" href="https://translationcore.com/zh/tc-help/bp-new-bible">
+<link rel="alternate" hreflang="sw" href="https://translationcore.com/sw/tc-help/bp-new-bible">
+<link rel="alternate" hreflang="pt-BR" href="https://translationcore.com/pt/tc-help/bp-new-bible">
+<link rel="alternate" hreflang="id" href="https://translationcore.com/id/tc-help/bp-new-bible">
+<link rel="alternate" hreflang="vi" href="https://translationcore.com/vi/tc-help/bp-new-bible">
+<link rel="alternate" hreflang="bn" href="https://translationcore.com/bn/tc-help/bp-new-bible">
+<link rel="alternate" hreflang="ur" href="https://translationcore.com/ur/tc-help/bp-new-bible">
+<link rel="alternate" hreflang="fa" href="https://translationcore.com/fa/tc-help/bp-new-bible">
+<link rel="alternate" hreflang="my" href="https://translationcore.com/my/tc-help/bp-new-bible">
+<link rel="alternate" hreflang="nl" href="https://translationcore.com/nl/tc-help/bp-new-bible">
+<link rel="alternate" hreflang="x-default" href="https://translationcore.com/tc-help/bp-new-bible">
+<link rel="stylesheet" href="/assets/css/help-i18n.css">
+<script>window.__tcLocale={"locale":"pt","defaultLocale":"en","alternates":true,"locales":["en","es","fr","hi","ru","ar","zh","sw","pt","id","vi","bn","ur","fa","my","nl"],"tags":{"en":"en","es":"es-MX","fr":"fr","hi":"hi","ru":"ru","ar":"ar","zh":"zh-Hans","sw":"sw","pt":"pt-BR","id":"id","vi":"vi","bn":"bn","ur":"ur","fa":"fa","my":"my","nl":"nl"}};window.TC4_HELP_I18N={"lang":"pt","language":"Idioma","onThisPage":"Nesta página","noResults":"Nenhum tópico corresponde a “{query}”. Tente outra palavra, como alinhar, verificar, história ou off-line.","seeAll":"Ver todos os resultados →","resultsOne":"1 tópico para “{query}”","resultsMany":"{count} tópicos para “{query}”","searchPrompt":"Digite uma ou duas palavras, como “alinhar”, “marcador” ou “intervalo de versículos”."}</script>
+<script src="/assets/js/locale.js"></script>
+<link rel="icon" type="image/png" href="/tc-help/assets/tc_logo.png">
+<link rel="apple-touch-icon" href="/tc-help/assets/tc_logo.png">
+</head>
+<body>
+<a class="skip" href="#main">Pular para o conteúdo</a>
+<header class="topbar">
+  <button class="menu-btn" id="menu-btn" aria-label="Mostrar tópicos" aria-controls="sidebar" aria-expanded="false">☰</button>
+  <a class="brand" href="/pt/tc-help/" aria-label="Início da Ajuda do translationCore"><img class="brand-logo" src="/tc-help/assets/translationcore-logo.png" alt="" width="25" height="28"><span class="wordmark">translationCore<span class="reg">®</span></span><span class="brand-rule" aria-hidden="true"></span><span class="brand-text">Ajuda</span></a>
+  <form class="search" action="search" method="get" role="search" autocomplete="off">
+    <input id="q" name="q" type="search" placeholder="Pesquisar na ajuda (pressione /)" aria-label="Pesquisar na ajuda">
+    <div class="search-results" id="search-results" role="listbox" hidden></div>
+  </form>
+  <details class="help-lang"><summary aria-label="Idioma: Português"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm6.9 6h-2.95a15.7 15.7 0 0 0-1.38-3.56A8.03 8.03 0 0 1 18.9 8ZM12 4.04c.83 1.2 1.48 2.53 1.91 3.96h-3.82c.43-1.43 1.08-2.76 1.91-3.96ZM4.26 14a7.8 7.8 0 0 1 0-4h3.38a16.5 16.5 0 0 0 0 4H4.26Zm.82 2h2.95c.32 1.25.78 2.45 1.38 3.56A7.99 7.99 0 0 1 5.08 16Zm2.95-8H5.08a7.99 7.99 0 0 1 4.33-3.56A15.7 15.7 0 0 0 8.03 8ZM12 19.96A14.1 14.1 0 0 1 10.09 16h3.82A14.1 14.1 0 0 1 12 19.96ZM14.34 14H9.66a14.7 14.7 0 0 1 0-4h4.68a14.7 14.7 0 0 1 0 4Zm.25 5.56c.6-1.11 1.06-2.31 1.38-3.56h2.95a8.03 8.03 0 0 1-4.33 3.56ZM16.36 14a16.5 16.5 0 0 0 0-4h3.38a7.8 7.8 0 0 1 0 4h-3.38Z"/></svg><span>Português</span></summary><ul><li><a href="/tc-help/bp-new-bible" data-locale="en" lang="en" dir="ltr">English</a></li><li><a href="/es/tc-help/bp-new-bible" data-locale="es" lang="es-MX" dir="ltr">Español</a></li><li><a href="/fr/tc-help/bp-new-bible" data-locale="fr" lang="fr" dir="ltr">Français</a></li><li><a href="/hi/tc-help/bp-new-bible" data-locale="hi" lang="hi" dir="ltr">हिन्दी</a></li><li><a href="/ru/tc-help/bp-new-bible" data-locale="ru" lang="ru" dir="ltr">Русский</a></li><li><a href="/ar/tc-help/bp-new-bible" data-locale="ar" lang="ar" dir="rtl">العربية</a></li><li><a href="/zh/tc-help/bp-new-bible" data-locale="zh" lang="zh-Hans" dir="ltr">简体中文</a></li><li><a href="/sw/tc-help/bp-new-bible" data-locale="sw" lang="sw" dir="ltr">Kiswahili</a></li><li><a href="/pt/tc-help/bp-new-bible" data-locale="pt" lang="pt-BR" dir="ltr" aria-current="true">Português</a></li><li><a href="/id/tc-help/bp-new-bible" data-locale="id" lang="id" dir="ltr">Bahasa Indonesia</a></li><li><a href="/vi/tc-help/bp-new-bible" data-locale="vi" lang="vi" dir="ltr">Tiếng Việt</a></li><li><a href="/bn/tc-help/bp-new-bible" data-locale="bn" lang="bn" dir="ltr">বাংলা</a></li><li><a href="/ur/tc-help/bp-new-bible" data-locale="ur" lang="ur" dir="rtl">اردو</a></li><li><a href="/fa/tc-help/bp-new-bible" data-locale="fa" lang="fa" dir="rtl">فارسی</a></li><li><a href="/my/tc-help/bp-new-bible" data-locale="my" lang="my" dir="ltr">ဗမာစာ</a></li><li><a href="/nl/tc-help/bp-new-bible" data-locale="nl" lang="nl" dir="ltr">Nederlands</a></li></ul></details>
+  <a class="site-link" href="/pt/">translationcore.com</a>
+</header>
+<div class="shell">
+<nav class="sidebar" id="sidebar" aria-label="Tópicos da ajuda">
+<details class="nav-group"><summary><a href="section-getting-started">Primeiros passos</a></summary><ul>
+<li><a href="gs-install">Instalar e iniciar o tC4</a></li>
+<li><a href="gs-home">A tela Início</a></li>
+<li><a href="gs-modes">Compreender, Traduzir e Verificar — os três modos</a></li>
+<li><a href="gs-save">Salvamento e pontos de controle</a></li>
+<li><a href="gs-resume">Continuar de onde você parou</a></li>
+<li><a href="gs-switch-project">Trocar de projeto ou voltar ao Início</a></li>
+</ul></details>
+<details class="nav-group" open><summary><a href="section-bible-projects">Projetos da Bíblia</a></summary><ul>
+<li><a href="bp-new-bible" class="current" aria-current="page">Criar um projeto da Bíblia</a></li>
+<li><a href="bp-add-book">Adicionar um livro</a></li>
+<li><a href="bp-open-book">Abrir um livro e passar de um capítulo a outro</a></li>
+<li><a href="bp-import">Importar um projeto do translationCore 3</a></li>
+<li><a href="bp-export-pdf">Exportar um livro em PDF</a></li>
+<li><a href="bp-export-usfm">Exportar um livro em USFM (alinhado ou sem alinhamento)</a></li>
+<li><a href="bp-export-burrito">Exportar um projeto como Scripture Burrito</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-translate">Traduzir</a></summary><ul>
+<li><a href="tr-screen">A tela Traduzir</a></li>
+<li><a href="tr-source-texts">Abas de fonte — textos do idioma ponte e a língua original</a></li>
+<li><a href="tr-draft-section">Redigir uma seção</a></li>
+<li><a href="tr-place-verse-numbers">Posicionar os números dos versículos</a></li>
+<li><a href="tr-verse-spans">Criar ou desfazer um intervalo de versículos</a></li>
+<li><a href="tr-verse-by-verse">Redigir ou revisar um versículo</a></li>
+<li><a href="tr-formatting">Parágrafos e poesia</a></li>
+<li><a href="tr-helps-panel">O painel de ajudas em Traduzir</a></li>
+<li><a href="tr-edit-after-check">Editar um versículo que você já verificou ou alinhou</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-understand">Compreender</a></summary><ul>
+<li><a href="un-read-passage">Ler uma passagem antes de traduzir</a></li>
+<li><a href="un-notes">Notas de tradução e artigos da Academia de Tradução</a></li>
+<li><a href="un-word-links">Links de palavras (Palavras de Tradução)</a></li>
+<li><a href="un-questions">Perguntas de tradução</a></li>
+<li><a href="un-simplified">A aba do texto simplificado</a></li>
+<li><a href="un-user-comments">Escrever um comentário do usuário</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-check">Verificar</a></summary><ul>
+<li><a href="ck-tool-picker">Escolher uma ferramenta de verificação</a></li>
+<li><a href="ck-translation-notes">Verificar com Notas de Tradução</a></li>
+<li><a href="ck-translation-words">Verificar com Palavras de Tradução</a></li>
+<li><a href="ck-decide">Decidir sobre um item de verificação (válido, inválido, a fazer)</a></li>
+<li><a href="ck-bookmarks">Marcar uma verificação</a></li>
+<li><a href="ck-comments">Escrever um comentário de verificação</a></li>
+<li><a href="ck-filter-sort">Filtrar e classificar os itens de verificação</a></li>
+<li><a href="ck-community-checking">Prévia da Verificação comunitária</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-align">Alinhar</a></summary><ul>
+<li><a href="al-open">Abrir a ferramenta Alinhar</a></li>
+<li><a href="al-link-words">Ligar suas palavras à fonte</a></li>
+<li><a href="al-phrases">Alinhar uma expressão (juntar e separar cartões)</a></li>
+<li><a href="al-modes">Alinhar ao texto do idioma ponte ou à língua original</a></li>
+<li><a href="al-suggestions">Sugestões de alinhamento</a></li>
+<li><a href="al-mark-valid">Marcar um alinhamento como concluído</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-obs">Open Bible Stories</a></summary><ul>
+<li><a href="obs-create">Iniciar um projeto de Open Bible Stories</a></li>
+<li><a href="obs-story-tiles">Encontrar uma história no Início</a></li>
+<li><a href="obs-translate">Traduzir uma história</a></li>
+<li><a href="obs-understand">Compreender uma história</a></li>
+<li><a href="obs-check">Verificar uma história</a></li>
+<li><a href="obs-community-checking">Prévia e exportação da história</a></li>
+<li><a href="obs-export-markdown-pdf">Exportar histórias em PDF ou Markdown</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-resources">Recursos e uso off-line</a></summary><ul>
+<li><a href="rs-whats-included">O que vem com o aplicativo</a></li>
+<li><a href="rs-source-texts">Baixar textos-fonte</a></li>
+<li><a href="rs-checking-language">Mudar o idioma de verificação</a></li>
+<li><a href="rs-upgrade-helps">Atualizar as ajudas fixadas</a></li>
+<li><a href="rs-upgrade-texts">Atualizar os textos bíblicos</a></li>
+<li><a href="rs-guided-fix">Corrigir um recurso ausente</a></li>
+<li><a href="rs-offline">Trabalhar off-line</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-settings">Configurações</a></summary><ul>
+<li><a href="st-project-settings">Configurações do projeto</a></li>
+<li><a href="st-where-projects-live">Onde seus projetos ficam guardados</a></li>
+<li><a href="st-app-language">Mudar o idioma do aplicativo</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-troubleshooting">Solução de problemas e limites conhecidos</a></summary><ul>
+<li><a href="ts-save-problems">Quando o salvamento falha</a></li>
+<li><a href="ts-protect-messages">Mensagens que protegem seu projeto</a></li>
+<li><a href="ts-crash-recovery">Se o aplicativo fechou de repente ou a janela ficou em branco</a></li>
+<li><a href="ts-platform">Observações sobre Windows, macOS e Linux</a></li>
+<li><a href="ts-share-door43">Compartilhar no Door43</a></li>
+<li><a href="ts-team-sync">Trabalhar em equipe em vários computadores</a></li>
+<li><a href="ts-not-yet">Recursos que o tC4 não tem</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-whats-new">Notas da versão</a></summary><ul>
+<li><a href="wn-alpha1">alpha.1 — Primeira versão pública</a></li>
+<li><a href="wn-alpha2">alpha.2 — Verificar e alinhar</a></li>
+<li><a href="wn-alpha4">alpha.4 — Abrir e continuar</a></li>
+<li><a href="wn-alpha5">alpha.5 — Redação de verdade</a></li>
+<li><a href="wn-alpha6">alpha.6 — Sugestões e recursos</a></li>
+<li><a href="wn-alpha7">alpha.7 — Open Bible Stories</a></li>
+<li><a href="wn-add-a-project">27 de set. de 2026 — um só botão + Adicionar um projeto no Início</a></li>
+<li><a href="wn-rc1">Novidades da versão 4.0 rc.1</a></li>
+<li><a href="wn-rc2">Novidades da versão 4.0 rc.2</a></li>
+<li><a href="wn-4.1">Novidades da versão 4.1</a></li>
+</ul></details>
+</nav>
+<main id="main" class="content">
+<p class="crumbs"><a href="/pt/tc-help/">Ajuda</a> › <a href="section-bible-projects">Projetos da Bíblia</a></p>
+<h1>Criar um projeto da Bíblia</h1>
+<!-- tracking: status=shipped since=alpha.1 -->
+<p class="lede">Comece um novo projeto de tradução da Bíblia: em branco, a partir de arquivos USFM ou a partir de um Scripture Burrito. Logo depois você adiciona os livros.</p>
+<p>"Você adicionará livros a seguir. Tudo aqui pode ser alterado depois."</p>
+<h2 id="steps">Passos</h2>
+<ol><li>No Início, clique em <span class="ui">+ Adicionar um projeto</span> e depois em <span class="ui">Nova Bíblia</span> (1).</li></ol>
+<figure class="shot-inline" id="shot-1"><a href="/tc-help/img/bp-new-bible-1.png"><img src="/tc-help/img/bp-new-bible-1.png" alt="A caixa de diálogo Adicionar um projeto com cinco cartões: Nova Bíblia, marcado com 1, Novo Open Bible Stories, Importar um projeto, Abrir um projeto do Door43 e Receber trabalho de um arquivo." width="548" height="544" loading="lazy"></a></figure>
+<ol start="2"><li>Nova Bíblia pergunta <span class="ui">Como você quer começar?</span> Escolha <span class="ui">Em branco</span> (1), <span class="ui">A partir de arquivos USFM</span> (2) ou <span class="ui">A partir de um Scripture Burrito</span> (3).</li></ol>
+<figure class="shot-inline" id="shot-2"><a href="/tc-help/img/bp-new-bible-2.png"><img src="/tc-help/img/bp-new-bible-2.png" alt="Nova Bíblia, Como você quer começar?: Em branco, Dê um nome ao projeto e depois adicione os livros que você vai traduzir, marcado com 1; A partir de arquivos USFM, .usfm, .sfm ou .txt · um ou vários, marcado com 2; A partir de um Scripture Burrito, .zip · uma Bíblia, marcado com 3." width="548" height="364" loading="lazy"></a></figure>
+<h2 id="blank">Começar uma Bíblia em branco</h2>
+<ol><li>Clique em <span class="ui">Em branco</span>.</li><li>Digite um <span class="ui">Nome da Bíblia</span>, por exemplo <code>Kanuri Bible</code>.</li><li>Digite o <span class="ui">Nome do idioma</span>. Quando um idioma correspondente aparecer na lista, escolha-o para que o <span class="ui">Código</span> seja preenchido (por exemplo <code>French (fr)</code> → <code>fr</code>). Você também pode digitar o código.</li><li>Escolha <span class="ui">Da esquerda para a direita</span> ou <span class="ui">Da direita para a esquerda</span>.</li><li>Deixe o <span class="ui">Idioma de verificação</span> em inglês. Ele vem com o aplicativo, então você não precisa baixar nada.</li></ol>
+<figure class="shot-inline" id="shot-3"><a href="/tc-help/img/bp-new-bible-3.png"><img src="/tc-help/img/bp-new-bible-3.png" alt="O formulário Nova Bíblia vazio: Nome da Bíblia, Nome do idioma e Código, Direção do texto (Da esquerda para a direita selecionado), Idioma de verificação inglês, recomendado e instalado com o aplicativo, Fonte do texto Noto Sans (padrão), Versificação recolhida, e Cancelar e Criar Bíblia →." width="548" height="656" loading="lazy"></a></figure>
+<ol start="6"><li>Clique em <span class="ui">Criar Bíblia →</span>. A caixa de diálogo <span class="ui">Adicionar um livro</span> abre. Continue com <a href="bp-add-book">Adicionar um livro</a>.</li></ol>
+<h2 id="from-usfm">Começar a partir de arquivos USFM</h2>
+<p>Use esta opção quando sua tradução já estiver em arquivos USFM, um livro por arquivo. Cada arquivo se torna um livro do novo projeto, com o texto do arquivo como rascunho.</p>
+<ol><li>Clique em <span class="ui">A partir de arquivos USFM</span>.</li><li>Solte seus arquivos em <span class="ui">Solte seus arquivos USFM aqui ou procure</span> ou clique ali para escolhê-los. Cada arquivo ganha uma linha. Um ponto verde diz qual livro ele adiciona, por exemplo <span class="ui">Adiciona Tito</span>.</li><li>Um ponto laranja quer dizer que o arquivo não pode ser usado, e a linha diz por quê e em qual linha do arquivo (1). Remova esse arquivo com o ✕ dele, corrija-o e adicione-o de novo.</li></ol>
+<figure class="shot-inline" id="shot-4"><a href="/tc-help/img/bp-new-bible-4.png"><img src="/tc-help/img/bp-new-bible-4.png" alt="Nova Bíblia a partir de arquivos USFM: a área para soltar arquivos e depois três linhas. TIT.usfm, Adiciona Tito, e sample-JON-span.usfm, Adiciona Jonas, têm pontos verdes. GEN-draft.usfm tem um ponto laranja e diz que GEN-draft.usfm não pode ser adicionado: linha 4: o capítulo 1 aparece duas vezes, marcado com 1. Voltar e Avançar → em cinza." width="548" height="574" loading="lazy"></a></figure>
+<ol start="4"><li>Quando todas as linhas forem livros, clique em <span class="ui">Avançar →</span>.</li><li>Preencha o nome da Bíblia, o idioma, o código e a direção, como em uma Bíblia em branco. Abaixo do formulário, <span class="ui">Livros dos seus arquivos</span> lista os livros (1), e uma nota diz a qual <span class="ui">Versificação</span> a contagem de versículos dos livros corresponde (2). A maioria dos projetos a mantém.</li></ol>
+<figure class="shot-inline" id="shot-5"><a href="/tc-help/img/bp-new-bible-5.png"><img src="/tc-help/img/bp-new-bible-5.png" alt="O formulário Nova Bíblia depois de A partir de arquivos USFM, rolado para baixo: Kanuri Bible, Kanuri, knc, Versificação aberta com eng (padrão), Livros dos seus arquivos: Tito, Jonas, marcado com 1, e A contagem de versículos dos livros corresponde a eng, marcado com 2. Cancelar e Criar Bíblia →." width="548" height="684" loading="lazy"></a></figure>
+<ol start="6"><li>Clique em <span class="ui">Criar Bíblia →</span>. O projeto é criado com todos os livros de uma só vez, e <span class="ui">Adicionar um livro</span> abre, caso você queira mais.</li></ol>
+<h2 id="from-burrito">Começar a partir de um Scripture Burrito</h2>
+<p>Use esta opção para uma tradução da Bíblia que outra ferramenta salvou como Scripture Burrito <code>.zip</code>.</p>
+<ol><li>Clique em <span class="ui">A partir de um Scripture Burrito</span> e solte o <code>.zip</code> em <span class="ui">Solte seu Scripture Burrito aqui ou procure</span> ou clique ali para escolhê-lo.</li><li>O formulário é preenchido a partir do Burrito: o nome, o idioma e o código. Mude-os, se precisar. <span class="ui">Livros do Scripture Burrito</span> lista os livros dele (1). Um Burrito com versificação própria a mantém, e o formulário diz <span class="ui">A versificação própria do Scripture Burrito é mantida.</span></li></ol>
+<figure class="shot-inline" id="shot-6"><a href="/tc-help/img/bp-new-bible-6.png"><img src="/tc-help/img/bp-new-bible-6.png" alt="O formulário Nova Bíblia preenchido a partir de um Scripture Burrito: Nome da Bíblia Biblia Ejemplo, Nome do idioma Spanish (Latin America), Código es-419, Da esquerda para a direita, Idioma de verificação inglês, Fonte do texto Noto Sans (padrão). Livros do Scripture Burrito: Jonas, Tito está marcado com 1, depois A versificação própria do Scripture Burrito é mantida. Cancelar e Criar Bíblia →." width="548" height="684" loading="lazy"></a></figure>
+<ol start="3"><li>Clique em <span class="ui">Criar Bíblia →</span>. Os livros e os outros arquivos do Burrito entram no novo projeto, e <span class="ui">Adicionar um livro</span> abre.</li></ol>
+<p>Para cancelar em qualquer passo, clique em <span class="ui">Cancelar</span>, <span class="ui">← Voltar</span> ou no ✕. Nada é salvo.</p>
+<h2 id="good-to-know">Bom saber</h2>
+<ul><li>O nome precisa ter pelo menos uma letra simples ou um número, porque também dá nome à pasta do projeto. Se já houver um projeto com esse nome neste computador, <span class="ui">Criar Bíblia →</span> continua desativado até você escolher outro nome.</li><li><span class="ui">Fonte do texto</span> define a fonte em que sua tradução aparece. <span class="ui">Versificação</span> é o sistema de numeração dos versículos; a maioria dos projetos mantém o padrão.</li><li>Se um código de idioma for recusado, tente o código do seu idioma específico, por exemplo <code>knc</code> para canúri central em vez de <code>kau</code>.</li><li>Cada arquivo USFM deve conter um só livro e começar com uma linha <code>\id</code>. Dois arquivos do mesmo livro são recusados, e a linha diz qual é o livro.</li><li>Um Burrito que contém algo diferente de uma tradução da Bíblia, por exemplo Open Bible Stories, é recusado, e a mensagem diz o que ele contém. Um Burrito exportado do tC4 é trabalho de um projeto: o tC4 pede que você o abra com <span class="ui">Receber trabalho de um arquivo</span>.</li><li>Depois de clicar em um campo, espere um instante antes de digitar e depois confira o nome. As primeiras letras podem se perder.</li><li>Você pode mudar a direção do texto e a fonte depois, em <a href="st-project-settings">Configurações do projeto</a>. O nome e o idioma ainda não podem ser mudados.</li></ul>
+<h2 id="related">Tópicos relacionados</h2><ul class="related"><li><a href="bp-add-book">Adicionar um livro</a></li><li><a href="bp-import">Importar um projeto do translationCore 3</a></li><li><a href="st-project-settings">Configurações do projeto</a></li><li><a href="rs-checking-language">Mudar o idioma de verificação</a></li></ul>
+</main>
+</div>
+<footer class="sitefoot">O aplicativo é a referência: se esta página e o aplicativo não estiverem de acordo, o aplicativo está certo — por favor, avise-nos. <a href="section-whats-new">Notas da versão</a> · <a href="/pt/">translationcore.com</a></footer>
+<script src="search-index.js"></script>
+<script src="/tc-help/assets/search.js"></script>
+<script src="/tc-help/assets/page-toc.js"></script>
+<script src="/assets/js/help-i18n.js"></script>
+</body>
+</html>

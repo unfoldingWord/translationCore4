@@ -1,7 +1,7 @@
-//! Every link, image, style sheet, script, form and search result of every vendored help page
-//! resolves in the app, as `tc4 serve` serves the pages (#1031). A re-vendored page that links
-//! somewhere the app has no file for, to the app's own root, or to a translationcore.com
-//! address nobody checked fails here.
+//! Every link, image, style sheet, script, font, form and search result of every vendored help
+//! page, in every language, resolves in the app, as `tc4 serve` serves the pages (#1031,
+//! #1036). A re-vendored page that links somewhere the app has no file for, to the app's own
+//! root, or to a translationcore.com address nobody checked fails here.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -18,10 +18,22 @@ use common::{TestServer, stub};
 use regex::Regex;
 use tc_server::HELP_SITE;
 
-/// The translationcore.com addresses the help pages may name. Each answered 200 with no
-/// redirect when it was added (`curl -sI`, 2026-11-13); a page naming another one fails, so a
-/// person checks it before it ships.
-const CHECKED_SITE_PAGES: &[&str] = &["/", "/desktop/"];
+/// The translationcore.com addresses the help pages may name: the site's home, its download
+/// page, and its home in each other help language (#1036). Each answered 200 with no redirect
+/// when it was added (`curl -sI`, 2026-11-13; the language homes 2026-11-19); a page naming
+/// another one fails, so a person checks it before it ships.
+const CHECKED_SITE_PAGES: &[&str] = &[
+    "/",
+    "/desktop/",
+    "/es/",
+    "/fr/",
+    "/hi/",
+    "/pt/",
+    "/id/",
+    "/ru/",
+    "/vi/",
+    "/ar/",
+];
 
 /// tc-ui's folder, which holds `help/` as `build-app.sh` copies it. Without `..` in it: the
 /// server refuses any file whose path has one.
@@ -145,6 +157,9 @@ fn every_help_link_image_and_style_sheet_resolves_in_the_app() {
     )
     .unwrap();
     let css_url = Regex::new(r#"(?i)url\(\s*["']?([^"')]+)["']?\s*\)"#).unwrap();
+    // A page's address on translationcore.com, in its own language and in each other one. A
+    // browser loads neither, and nobody can click one.
+    let names_the_page = Regex::new(r#"(?i)\srel\s*=\s*["'](?:canonical|alternate)["']"#).unwrap();
 
     // target path -> (what it must be, where it was named)
     let mut targets: BTreeMap<String, (Want, String)> = BTreeMap::new();
@@ -182,6 +197,9 @@ fn every_help_link_image_and_style_sheet_resolves_in_the_app() {
             pages += 1;
             for element in tag.captures_iter(&text) {
                 let name = element[1].to_ascii_lowercase();
+                if name == "link" && names_the_page.is_match(&element[2]) {
+                    continue;
+                }
                 let link = matches!(name.as_str(), "a" | "area");
                 // A link may open a screenshot full size; a form's answer is a page.
                 let kind = if name == "form" {
@@ -208,18 +226,29 @@ fn every_help_link_image_and_style_sheet_resolves_in_the_app() {
     }
 
     // The search box and the search page build their result links from the index the page
-    // loads, `search-index.js`, as the script runs; no page holds them.
-    let script = server.get("/help/search-index.js").text();
-    let json = script
-        .find('{')
-        .zip(script.rfind('}'))
-        .map(|(start, end)| &script[start..=end])
-        .expect("search-index.js holds the index as JSON");
-    let index: serde_json::Value = serde_json::from_str(json).unwrap();
-    let docs = index["docs"].as_array().expect("search-index.js has docs");
-    for doc in docs {
-        let url = doc["url"].as_str().expect("each search result has a url");
-        want("search.html", url, Want::Page, true, &mut problems);
+    // loads, its language's `search-index.js`, as the script runs; no page holds them.
+    let mut results = 0;
+    let mut indexes = 0;
+    for file in files
+        .iter()
+        .filter(|file| file.rsplit('/').next() == Some("search-index.js"))
+    {
+        indexes += 1;
+        let script = server.get(&format!("/help/{file}")).text();
+        let json = script
+            .find('{')
+            .zip(script.rfind('}'))
+            .map(|(start, end)| &script[start..=end])
+            .expect("search-index.js holds the index as JSON");
+        let index: serde_json::Value = serde_json::from_str(json).unwrap();
+        let docs = index["docs"].as_array().expect("search-index.js has docs");
+        let search_page = file.replace("search-index.js", "search.html");
+        assert!(files.contains(&search_page), "no {search_page}");
+        for doc in docs {
+            let url = doc["url"].as_str().expect("each search result has a url");
+            want(&search_page, url, Want::Page, true, &mut problems);
+        }
+        results += docs.len();
     }
 
     for (path, (kind, from)) in &targets {
@@ -240,14 +269,16 @@ fn every_help_link_image_and_style_sheet_resolves_in_the_app() {
     }
 
     assert!(problems.is_empty(), "{}", problems.join("\n"));
-    assert!(pages > 50, "only {pages} pages walked");
-    assert!(docs.len() > 50, "only {} search results walked", docs.len());
+    // English and eight more languages (#1036).
+    assert!(pages > 800, "only {pages} pages walked");
+    assert_eq!(indexes, 9, "one search index for each language");
+    assert!(results > 700, "only {results} search results walked");
     assert!(
-        targets.len() > 100,
+        targets.len() > 900,
         "only {} targets checked",
         targets.len()
     );
-    assert!(named > 5_000, "only {named} links read");
+    assert!(named > 90_000, "only {named} links read");
 }
 
 /// The walk itself: a link it should refuse is refused, and one it should follow is followed.

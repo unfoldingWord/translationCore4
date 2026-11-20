@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="vi" dir="ltr" data-script="latin">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Làm việc nhóm trên nhiều máy tính · Trợ giúp translationCore 4</title>
+<meta name="description" content="Chia sẻ một dự án Kinh Thánh trên Door43, sau đó mỗi thành viên trong nhóm mở dự án từ Door43 và dùng Đồng bộ với Door43 để trao đổi công việc.">
+<link rel="stylesheet" href="/tc-help/assets/style.css">
+<link rel="canonical" href="https://translationcore.com/vi/tc-help/ts-team-sync">
+<link rel="alternate" hreflang="en" href="https://translationcore.com/tc-help/ts-team-sync">
+<link rel="alternate" hreflang="es-MX" href="https://translationcore.com/es/tc-help/ts-team-sync">
+<link rel="alternate" hreflang="fr" href="https://translationcore.com/fr/tc-help/ts-team-sync">
+<link rel="alternate" hreflang="hi" href="https://translationcore.com/hi/tc-help/ts-team-sync">
+<link rel="alternate" hreflang="ru" href="https://translationcore.com/ru/tc-help/ts-team-sync">
+<link rel="alternate" hreflang="ar" href="https://translationcore.com/ar/tc-help/ts-team-sync">
+<link rel="alternate" hreflang="zh-Hans" href="https://translationcore.com/zh/tc-help/ts-team-sync">
+<link rel="alternate" hreflang="sw" href="https://translationcore.com/sw/tc-help/ts-team-sync">
+<link rel="alternate" hreflang="pt-BR" href="https://translationcore.com/pt/tc-help/ts-team-sync">
+<link rel="alternate" hreflang="id" href="https://translationcore.com/id/tc-help/ts-team-sync">
+<link rel="alternate" hreflang="vi" href="https://translationcore.com/vi/tc-help/ts-team-sync">
+<link rel="alternate" hreflang="bn" href="https://translationcore.com/bn/tc-help/ts-team-sync">
+<link rel="alternate" hreflang="ur" href="https://translationcore.com/ur/tc-help/ts-team-sync">
+<link rel="alternate" hreflang="fa" href="https://translationcore.com/fa/tc-help/ts-team-sync">
+<link rel="alternate" hreflang="my" href="https://translationcore.com/my/tc-help/ts-team-sync">
+<link rel="alternate" hreflang="nl" href="https://translationcore.com/nl/tc-help/ts-team-sync">
+<link rel="alternate" hreflang="x-default" href="https://translationcore.com/tc-help/ts-team-sync">
+<link rel="stylesheet" href="/assets/css/help-i18n.css">
+<script>window.__tcLocale={"locale":"vi","defaultLocale":"en","alternates":true,"locales":["en","es","fr","hi","ru","ar","zh","sw","pt","id","vi","bn","ur","fa","my","nl"],"tags":{"en":"en","es":"es-MX","fr":"fr","hi":"hi","ru":"ru","ar":"ar","zh":"zh-Hans","sw":"sw","pt":"pt-BR","id":"id","vi":"vi","bn":"bn","ur":"ur","fa":"fa","my":"my","nl":"nl"}};window.TC4_HELP_I18N={"lang":"vi","language":"Ngôn ngữ","onThisPage":"Trên trang này","noResults":"Không có chủ đề nào khớp với “{query}”. Hãy thử từ khác, chẳng hạn căn chỉnh, kiểm tra, câu chuyện hoặc ngoại tuyến.","seeAll":"Xem tất cả kết quả →","resultsOne":"1 chủ đề cho “{query}”","resultsMany":"{count} chủ đề cho “{query}”","searchPrompt":"Gõ một hai từ, chẳng hạn “căn chỉnh”, “dấu trang” hoặc “nhóm câu”."}</script>
+<script src="/assets/js/locale.js"></script>
+<link rel="icon" type="image/png" href="/tc-help/assets/tc_logo.png">
+<link rel="apple-touch-icon" href="/tc-help/assets/tc_logo.png">
+</head>
+<body>
+<a class="skip" href="#main">Chuyển đến nội dung chính</a>
+<header class="topbar">
+  <button class="menu-btn" id="menu-btn" aria-label="Hiện các chủ đề" aria-controls="sidebar" aria-expanded="false">☰</button>
+  <a class="brand" href="/vi/tc-help/" aria-label="Trang chủ Trợ giúp translationCore"><img class="brand-logo" src="/tc-help/assets/translationcore-logo.png" alt="" width="25" height="28"><span class="wordmark">translationCore<span class="reg">®</span></span><span class="brand-rule" aria-hidden="true"></span><span class="brand-text">Trợ giúp</span></a>
+  <form class="search" action="search" method="get" role="search" autocomplete="off">
+    <input id="q" name="q" type="search" placeholder="Tìm trong trợ giúp (nhấn /)" aria-label="Tìm trong trợ giúp">
+    <div class="search-results" id="search-results" role="listbox" hidden></div>
+  </form>
+  <details class="help-lang"><summary aria-label="Ngôn ngữ: Tiếng Việt"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm6.9 6h-2.95a15.7 15.7 0 0 0-1.38-3.56A8.03 8.03 0 0 1 18.9 8ZM12 4.04c.83 1.2 1.48 2.53 1.91 3.96h-3.82c.43-1.43 1.08-2.76 1.91-3.96ZM4.26 14a7.8 7.8 0 0 1 0-4h3.38a16.5 16.5 0 0 0 0 4H4.26Zm.82 2h2.95c.32 1.25.78 2.45 1.38 3.56A7.99 7.99 0 0 1 5.08 16Zm2.95-8H5.08a7.99 7.99 0 0 1 4.33-3.56A15.7 15.7 0 0 0 8.03 8ZM12 19.96A14.1 14.1 0 0 1 10.09 16h3.82A14.1 14.1 0 0 1 12 19.96ZM14.34 14H9.66a14.7 14.7 0 0 1 0-4h4.68a14.7 14.7 0 0 1 0 4Zm.25 5.56c.6-1.11 1.06-2.31 1.38-3.56h2.95a8.03 8.03 0 0 1-4.33 3.56ZM16.36 14a16.5 16.5 0 0 0 0-4h3.38a7.8 7.8 0 0 1 0 4h-3.38Z"/></svg><span>Tiếng Việt</span></summary><ul><li><a href="/tc-help/ts-team-sync" data-locale="en" lang="en" dir="ltr">English</a></li><li><a href="/es/tc-help/ts-team-sync" data-locale="es" lang="es-MX" dir="ltr">Español</a></li><li><a href="/fr/tc-help/ts-team-sync" data-locale="fr" lang="fr" dir="ltr">Français</a></li><li><a href="/hi/tc-help/ts-team-sync" data-locale="hi" lang="hi" dir="ltr">हिन्दी</a></li><li><a href="/ru/tc-help/ts-team-sync" data-locale="ru" lang="ru" dir="ltr">Русский</a></li><li><a href="/ar/tc-help/ts-team-sync" data-locale="ar" lang="ar" dir="rtl">العربية</a></li><li><a href="/zh/tc-help/ts-team-sync" data-locale="zh" lang="zh-Hans" dir="ltr">简体中文</a></li><li><a href="/sw/tc-help/ts-team-sync" data-locale="sw" lang="sw" dir="ltr">Kiswahili</a></li><li><a href="/pt/tc-help/ts-team-sync" data-locale="pt" lang="pt-BR" dir="ltr">Português</a></li><li><a href="/id/tc-help/ts-team-sync" data-locale="id" lang="id" dir="ltr">Bahasa Indonesia</a></li><li><a href="/vi/tc-help/ts-team-sync" data-locale="vi" lang="vi" dir="ltr" aria-current="true">Tiếng Việt</a></li><li><a href="/bn/tc-help/ts-team-sync" data-locale="bn" lang="bn" dir="ltr">বাংলা</a></li><li><a href="/ur/tc-help/ts-team-sync" data-locale="ur" lang="ur" dir="rtl">اردو</a></li><li><a href="/fa/tc-help/ts-team-sync" data-locale="fa" lang="fa" dir="rtl">فارسی</a></li><li><a href="/my/tc-help/ts-team-sync" data-locale="my" lang="my" dir="ltr">ဗမာစာ</a></li><li><a href="/nl/tc-help/ts-team-sync" data-locale="nl" lang="nl" dir="ltr">Nederlands</a></li></ul></details>
+  <a class="site-link" href="/vi/">translationcore.com</a>
+</header>
+<div class="shell">
+<nav class="sidebar" id="sidebar" aria-label="Các chủ đề trợ giúp">
+<details class="nav-group"><summary><a href="section-getting-started">Bắt đầu</a></summary><ul>
+<li><a href="gs-install">Cài đặt và khởi động tC4</a></li>
+<li><a href="gs-home">Màn hình Trang chủ</a></li>
+<li><a href="gs-modes">Thấu hiểu, Dịch và Kiểm tra — ba chế độ</a></li>
+<li><a href="gs-save">Lưu và điểm kiểm tra</a></li>
+<li><a href="gs-resume">Tiếp tục nơi bạn đã dừng lại</a></li>
+<li><a href="gs-switch-project">Chuyển dự án hoặc quay lại Trang chủ</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-bible-projects">Dự án Kinh Thánh</a></summary><ul>
+<li><a href="bp-new-bible">Tạo dự án Kinh Thánh</a></li>
+<li><a href="bp-add-book">Thêm sách</a></li>
+<li><a href="bp-open-book">Mở sách và chuyển giữa các chương</a></li>
+<li><a href="bp-import">Nhập dự án translationCore 3</a></li>
+<li><a href="bp-export-pdf">Xuất sách thành PDF</a></li>
+<li><a href="bp-export-usfm">Xuất sách thành USFM (đã căn chỉnh hoặc văn bản thuần)</a></li>
+<li><a href="bp-export-burrito">Xuất dự án thành Scripture Burrito</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-translate">Dịch</a></summary><ul>
+<li><a href="tr-screen">Màn hình Dịch</a></li>
+<li><a href="tr-source-texts">Các thẻ nguồn — văn bản cầu nối và nguyên ngữ</a></li>
+<li><a href="tr-draft-section">Soạn nháp một phần</a></li>
+<li><a href="tr-place-verse-numbers">Đặt số câu</a></li>
+<li><a href="tr-verse-spans">Gộp hoặc tách nhóm câu</a></li>
+<li><a href="tr-verse-by-verse">Soạn nháp hoặc sửa một câu</a></li>
+<li><a href="tr-formatting">Đoạn văn và thơ</a></li>
+<li><a href="tr-helps-panel">Bảng trợ giúp trong chế độ Dịch</a></li>
+<li><a href="tr-edit-after-check">Sửa một câu bạn đã kiểm tra hoặc căn chỉnh</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-understand">Thấu hiểu</a></summary><ul>
+<li><a href="un-read-passage">Đọc phân đoạn trước khi dịch</a></li>
+<li><a href="un-notes">Ghi chú dịch thuật và bài viết Học viện dịch thuật</a></li>
+<li><a href="un-word-links">Liên kết từ (Từ ngữ dịch thuật)</a></li>
+<li><a href="un-questions">Câu hỏi dịch thuật</a></li>
+<li><a href="un-simplified">Thẻ văn bản đơn giản hóa</a></li>
+<li><a href="un-user-comments">Viết nhận xét của bạn</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-check">Kiểm tra</a></summary><ul>
+<li><a href="ck-tool-picker">Chọn công cụ kiểm tra</a></li>
+<li><a href="ck-translation-notes">Kiểm tra với Ghi chú dịch thuật</a></li>
+<li><a href="ck-translation-words">Kiểm tra với Từ ngữ dịch thuật</a></li>
+<li><a href="ck-decide">Quyết định cho một mục kiểm tra (hợp lệ, không hợp lệ, cần làm)</a></li>
+<li><a href="ck-bookmarks">Đặt dấu trang cho mục kiểm tra</a></li>
+<li><a href="ck-comments">Viết nhận xét cho mục kiểm tra</a></li>
+<li><a href="ck-filter-sort">Lọc và sắp xếp các mục kiểm tra</a></li>
+<li><a href="ck-community-checking">Xem trước Kiểm tra cộng đồng</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-align">Căn chỉnh</a></summary><ul>
+<li><a href="al-open">Mở công cụ Căn chỉnh</a></li>
+<li><a href="al-link-words">Liên kết từ của bạn với nguồn</a></li>
+<li><a href="al-phrases">Căn chỉnh một cụm từ (gộp và tách thẻ)</a></li>
+<li><a href="al-modes">Căn chỉnh với văn bản cầu nối hoặc nguyên ngữ</a></li>
+<li><a href="al-suggestions">Gợi ý căn chỉnh</a></li>
+<li><a href="al-mark-valid">Đánh dấu căn chỉnh đã xong</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-obs">Open Bible Stories</a></summary><ul>
+<li><a href="obs-create">Bắt đầu dự án Open Bible Stories</a></li>
+<li><a href="obs-story-tiles">Tìm câu chuyện trên Trang chủ</a></li>
+<li><a href="obs-translate">Dịch một câu chuyện</a></li>
+<li><a href="obs-understand">Thấu hiểu một câu chuyện</a></li>
+<li><a href="obs-check">Kiểm tra một câu chuyện</a></li>
+<li><a href="obs-community-checking">Xem trước và xuất câu chuyện</a></li>
+<li><a href="obs-export-markdown-pdf">Xuất câu chuyện thành PDF hoặc Markdown</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-resources">Tài liệu và làm việc ngoại tuyến</a></summary><ul>
+<li><a href="rs-whats-included">Những gì có sẵn trong ứng dụng</a></li>
+<li><a href="rs-source-texts">Tải xuống văn bản nguồn</a></li>
+<li><a href="rs-checking-language">Đổi ngôn ngữ kiểm tra</a></li>
+<li><a href="rs-upgrade-helps">Cập nhật tài liệu trợ giúp đã ghim</a></li>
+<li><a href="rs-upgrade-texts">Cập nhật văn bản Kinh Thánh</a></li>
+<li><a href="rs-guided-fix">Khắc phục tài liệu bị thiếu</a></li>
+<li><a href="rs-offline">Làm việc ngoại tuyến</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-settings">Cài đặt</a></summary><ul>
+<li><a href="st-project-settings">Cài đặt dự án</a></li>
+<li><a href="st-where-projects-live">Nơi lưu trữ dự án của bạn</a></li>
+<li><a href="st-app-language">Đổi ngôn ngữ ứng dụng</a></li>
+</ul></details>
+<details class="nav-group" open><summary><a href="section-troubleshooting">Khắc phục sự cố và giới hạn đã biết</a></summary><ul>
+<li><a href="ts-save-problems">Khi lưu thất bại</a></li>
+<li><a href="ts-protect-messages">Các thông báo bảo vệ dự án của bạn</a></li>
+<li><a href="ts-crash-recovery">Nếu ứng dụng đóng đột ngột hoặc cửa sổ bị trống</a></li>
+<li><a href="ts-platform">Ghi chú cho Windows, macOS và Linux</a></li>
+<li><a href="ts-share-door43">Chia sẻ lên Door43</a></li>
+<li><a href="ts-team-sync" class="current" aria-current="page">Làm việc theo nhóm trên nhiều máy tính</a></li>
+<li><a href="ts-not-yet">Các tính năng tC4 chưa có</a></li>
+</ul></details>
+<details class="nav-group"><summary><a href="section-whats-new">Ghi chú phát hành</a></summary><ul>
+<li><a href="wn-alpha1">alpha.1 — Bản dựng công khai đầu tiên</a></li>
+<li><a href="wn-alpha2">alpha.2 — Kiểm tra và căn chỉnh</a></li>
+<li><a href="wn-alpha4">alpha.4 — Mở và tiếp tục</a></li>
+<li><a href="wn-alpha5">alpha.5 — Soạn nháp thực sự</a></li>
+<li><a href="wn-alpha6">alpha.6 — Gợi ý và tài liệu</a></li>
+<li><a href="wn-alpha7">alpha.7 — Open Bible Stories</a></li>
+<li><a href="wn-add-a-project">27/9/2026 — một nút + Thêm dự án duy nhất trên Trang chủ</a></li>
+<li><a href="wn-rc1">Có gì mới trong 4.0 rc.1</a></li>
+<li><a href="wn-rc2">Có gì mới trong 4.0 rc.2</a></li>
+<li><a href="wn-4.1">Có gì mới trong 4.1</a></li>
+</ul></details>
+</nav>
+<main id="main" class="content">
+<p class="crumbs"><a href="/vi/tc-help/">Trợ giúp</a> › <a href="section-troubleshooting">Khắc phục sự cố và giới hạn đã biết</a></p>
+<h1>Làm việc theo nhóm trên nhiều máy tính</h1>
+<!-- tracking: status=shipped -->
+<p class="lede">Chia sẻ dự án lên Door43, rồi mỗi người trong nhóm mở dự án từ Door43 và dùng Đồng bộ với Door43 để trao đổi công việc.</p>
+<p>Khi một dự án Kinh Thánh hoặc Open Bible Stories đã có trên Door43, mỗi người trong nhóm có thể làm việc trên máy tính riêng và trao đổi thay đổi bằng <strong>Đồng bộ với Door43</strong>.</p>
+<h2 id="start-sharing-project-owner">Bắt đầu chia sẻ (chủ dự án)</h2>
+<ol><li>Trên màn hình Trang chủ, chọn <span class="ui">Chia sẻ trên Door43</span> trên thẻ dự án và làm theo các bước. Xem <a href="ts-share-door43">Chia sẻ lên Door43</a>.</li><li>Trên Door43, hãy cấp cho mỗi người trong nhóm quyền ghi vào kho lưu trữ. Không có quyền này, họ không thể đồng bộ.</li><li>Thẻ dự án lúc này ghi <strong>Trên Door43</strong> và <em>Đã chia sẻ tại</em> kho lưu trữ, và nút của thẻ đổi thành <strong>Đồng bộ với Door43</strong>.</li></ol>
+<figure class="shot-inline" id="shot-1"><a href="/tc-help/img/ts-team-sync-1.png"><img src="/tc-help/img/ts-team-sync-1.png" alt="Thẻ dự án Equipo Ejemplo — Tito y Jonás với nhãn TRÊN DOOR43, Đã chia sẻ tại facilitator-zq/sample_burrito, các nút Đồng bộ với Door43, Lưu hoặc nhận công việc qua USB và Cài đặt, cùng các sách Giô-na và Tít." width="1032" height="282" loading="lazy"></a></figure>
+<h2 id="join-a-project-teammate">Tham gia một dự án (thành viên nhóm)</h2>
+<ol><li>Chọn <strong>+ Thêm dự án</strong>, rồi <strong>Mở một dự án từ Door43</strong>.</li><li>Gõ <code>owner/repository</code>, hoặc dán liên kết đến kho lưu trữ, rồi nhấp <span class="ui">Mở dự án</span>. Kho lưu trữ riêng tư sẽ mở sau khi bạn đăng nhập vào Door43.</li><li>Nếu internet đang tắt, tC4 sẽ hỏi trước. Nhấp <span class="ui">Bật internet</span>; <span class="ui">Không phải bây giờ</span> sẽ không nhận gì cả.</li></ol>
+<figure class="shot-inline" id="shot-4"><a href="/tc-help/img/ts-team-sync-4.png"><img src="/tc-help/img/ts-team-sync-4.png" alt="Hộp thoại Mở một dự án từ Door43: Dự án được mở từ git.door43.org, kho lưu trữ Door43 facilitator-zq/sample_burrito, và ghi chú rằng tC4 kiểm tra mọi tệp trước khi thêm dự án. Các nút Hủy và Mở dự án." width="548" height="390" loading="lazy"></a></figure>
+<figure class="shot-inline" id="shot-3"><a href="/tc-help/img/ts-team-sync-3.png"><img src="/tc-help/img/ts-team-sync-3.png" alt="Bật internet? Bước này cần internet để lấy một bản sao đầy đủ của dự án từ Door43 và kiểm tra các tệp của nó. Không có gì từ các dự án của bạn được gửi đi. Các nút Không phải bây giờ và Bật internet." width="548" height="270" loading="lazy"></a></figure>
+<p>Dự án giữ tên mà nhóm đã đặt; tC4 không hỏi tên. tC4 kiểm tra mọi tệp trước khi thêm dự án.</p>
+<p>Một dự án dùng đúng các phiên bản cụ thể của văn bản nguồn và tài liệu trợ giúp. Nếu máy tính của bạn chưa có một số phiên bản đó, tC4 sẽ tải chúng xuống trước, và hộp thoại ghi tên từng phiên bản, ví dụ <em>Đang tải xuống en_tn v91 mà dự án này sử dụng. Số phiên bản còn lại sau phiên bản này: 8.</em> Một thanh bên dưới cho biết phiên bản đó đã tải được bao nhiêu. Nhấp <span class="ui">Hủy</span> để dừng: hộp thoại ghi <em>Đã hủy việc mở. Không có dự án nào được thêm vào máy tính này.</em></p>
+<figure class="shot-inline" id="shot-9"><a href="/tc-help/img/ts-team-sync-9.png"><img src="/tc-help/img/ts-team-sync-9.png" alt="Hộp thoại trong lúc mở: Đang tải xuống en_tn v91 mà dự án này sử dụng. Số phiên bản còn lại sau phiên bản này: 8, với thanh tiến trình bên dưới. Nút Hủy có thể dùng được và nút Mở dự án ghi Đang mở…." width="548" height="426" loading="lazy"></a></figure>
+<figure class="shot-inline" id="shot-10"><a href="/tc-help/img/ts-team-sync-10.png"><img src="/tc-help/img/ts-team-sync-10.png" alt="Hộp thoại sau khi Hủy: Đã hủy việc mở. Không có dự án nào được thêm vào máy tính này." width="548" height="400" loading="lazy"></a></figure>
+<ul><li>Nếu dự án đã có trên máy tính này, hộp thoại ghi <em>Bạn đã có dự án này trên máy tính này. Một dự án chỉ có một bản sao trên mỗi máy tính.</em> Nhấp <span class="ui">Mở dự án</span>.</li><li>Nếu Door43 không có một phiên bản mà dự án dùng, hoặc không tải xuống được, hộp thoại ghi <span class="ui">Không thể mở dự án này.</span> và nêu tên phiên bản đó, ví dụ <em>Door43 không có en_ult v91 mà dự án này sử dụng.</em> Sẽ không có dự án nào được thêm. Nhấp <span class="ui">Yêu cầu trợ giúp</span> nếu việc này cứ lặp lại.</li></ul>
+<figure class="shot-inline" id="shot-11"><a href="/tc-help/img/ts-team-sync-11.png"><img src="/tc-help/img/ts-team-sync-11.png" alt="Hộp thoại cho một dự án đã có ở đây: Bạn đã có dự án này trên máy tính này. Một dự án chỉ có một bản sao trên mỗi máy tính. Nút Mở dự án." width="548" height="452" loading="lazy"></a></figure>
+<figure class="shot-inline" id="shot-12"><a href="/tc-help/img/ts-team-sync-12.png"><img src="/tc-help/img/ts-team-sync-12.png" alt="Hộp thoại khi không tải xuống được một phiên bản: Không thể mở dự án này. tC4 không thể tải xuống en_tn v91 mà dự án này sử dụng vì Door43 không trả lời. Hãy thử lại. Mã open-door43.pin-not-downloaded · Không có dự án nào được thêm. Yêu cầu trợ giúp." width="548" height="502" loading="lazy"></a></figure>
+<h2 id="sync">Đồng bộ</h2>
+<p>Chọn <strong>Đồng bộ với Door43</strong> trên thẻ dự án. Kết quả cho biết có bao nhiêu thay đổi đến từ nhóm và bao nhiêu xung đột đã giữ phiên bản mới nhất. Nếu một người trong nhóm căn chỉnh cùng một câu sau bạn, kết quả sẽ nêu tên câu đó, ví dụ <em>Tít 1:1: căn chỉnh của Ana đã thay thế căn chỉnh của bạn.</em> Các liên kết của bạn cho câu đó trở về ngân hàng từ. Hãy mở câu đó trong chế độ Căn chỉnh để kiểm tra. Không có gì được tự động hợp nhất.</p>
+<figure class="shot-inline" id="shot-2"><a href="/tc-help/img/ts-team-sync-2.png"><img src="/tc-help/img/ts-team-sync-2.png" alt="Kết quả đồng bộ: Đã đồng bộ với Door43 · 0 thay đổi từ nhóm · 0 xung đột đã giữ phiên bản mới nhất · 0 xung đột câu cần xem xét." width="818" height="80" loading="lazy"></a></figure>
+<p>Nếu internet đang tắt, tC4 sẽ hỏi trước. <strong>Không phải bây giờ</strong> sẽ không gửi gì cả. Nếu bạn chưa đăng nhập, tC4 sẽ yêu cầu bạn đăng nhập vào Door43.</p>
+<h3 id="sync-downloads">Các phiên bản dự án sử dụng</h3>
+<p>Một người trong nhóm có thể đã chuyển dự án sang phiên bản mới hơn của văn bản nguồn hoặc tài liệu trợ giúp, hoặc máy tính này có thể chưa có một trong các phiên bản mà dự án dùng. Khi đồng bộ xong, tC4 tải xuống từng phiên bản mà máy tính này còn thiếu, không cần hỏi. Trong khi tải, thẻ dự án ghi, ví dụ, <em>Đang tải xuống es-419_twl v18 mà dự án này sử dụng. Số phiên bản còn lại sau phiên bản này: 4.</em> Bên cạnh có một thanh tiến trình và nút <span class="ui">Hủy tải xuống</span>.</p>
+<figure class="shot-inline" id="shot-13"><a href="/tc-help/img/ts-team-sync-13.png"><img src="/tc-help/img/ts-team-sync-13.png" alt="Thẻ dự án trong lúc đồng bộ đang tải xuống: Đang tải xuống es-419_twl v18 mà dự án này sử dụng. Số phiên bản còn lại sau phiên bản này: 4, một thanh tiến trình và nút Hủy tải xuống. Nút của thẻ ghi Đang đồng bộ…." width="1008" height="271" loading="lazy"></a></figure>
+<ul><li>Việc đồng bộ vẫn được tính kể cả khi bạn hủy tải xuống hoặc một phiên bản không tải được. Các thay đổi của bạn đã được gửi, và các thay đổi của nhóm đã được nhận.</li><li>Sau đó, kết quả cho biết dự án dùng bao nhiêu phiên bản chưa có trên máy tính này, và vì sao. Ví dụ, kết quả ghi <em>Bạn đã hủy việc tải xuống các phiên bản mà dự án này sử dụng.</em> Hoặc nêu tên một phiên bản mà Door43 không có: <em>Door43 không có es-419_tw v37 mà dự án này sử dụng.</em> Nếu không lấy được một phiên bản, tC4 vẫn tải xuống các phiên bản khác.</li><li>Nhấp <span class="ui">Tải xuống</span> trong kết quả để tải chúng ngay, hoặc đồng bộ lại sau. Lần đồng bộ tiếp theo sẽ tải xuống những gì vẫn còn thiếu.</li><li>Nếu internet bị tắt trong lúc tải xuống, việc tải sẽ dừng và kết quả sẽ cho biết điều đó.</li></ul>
+<figure class="shot-inline" id="shot-14"><a href="/tc-help/img/ts-team-sync-14.png"><img src="/tc-help/img/ts-team-sync-14.png" alt="Kết quả đồng bộ sau khi Hủy tải xuống: Đã đồng bộ với Door43 · 0 thay đổi từ nhóm · 0 xung đột đã giữ phiên bản mới nhất · 0 xung đột câu cần xem xét. Dự án này hiện dùng 5 phiên bản tài nguyên không có trên máy tính này. Bạn đã hủy việc tải xuống các phiên bản mà dự án này sử dụng. Tải xuống." width="896" height="118" loading="lazy"></a></figure>
+<figure class="shot-inline" id="shot-15"><a href="/tc-help/img/ts-team-sync-15.png"><img src="/tc-help/img/ts-team-sync-15.png" alt="Kết quả đồng bộ khi Door43 thiếu một phiên bản: Dự án này hiện dùng 1 phiên bản tài nguyên không có trên máy tính này. Door43 không có es-419_tw v37 mà dự án này sử dụng. Tải xuống." width="896" height="118" loading="lazy"></a></figure>
+<h2 id="story-frame-conflicts">Xung đột khung hình câu chuyện</h2><p>Với dự án Open Bible Stories, việc đồng bộ có thể phát hiện những khung hình mà hai người trong nhóm cùng thay đổi.</p><ul><li>Thông báo đồng bộ ghi <span class="ui">1 xung đột khung hình cần xem xét</span> (hoặc số lượng tương ứng) kèm liên kết <span class="ui">Xem xét</span>.</li><li>Thẻ câu chuyện trên Trang chủ và thanh trên cùng của chế độ Dịch hiện một nhãn màu hổ phách <span class="ui">1 xung đột · Xem xét</span>.</li></ul><figure class="shot-inline" id="shot-conflict"><a href="/tc-help/img/ts-team-sync-5.png"><img src="/tc-help/img/ts-team-sync-5.png" alt="Thông báo đồng bộ: Đã đồng bộ với Door43 · 1 thay đổi từ nhóm · 0 xung đột đã giữ phiên bản mới nhất · 1 xung đột khung hình cần xem xét. Thay đổi từ: teammate-b, kèm liên kết Xem xét." width="868" height="96" loading="lazy"></a></figure><figure class="shot-inline" id="shot-conflict-chip"><a href="/tc-help/img/ts-team-sync-6.png"><img src="/tc-help/img/ts-team-sync-6.png" alt="Thẻ câu chuyện trên Trang chủ với nhãn màu hổ phách 1 xung đột · Xem xét." width="490" height="175" loading="lazy"></a></figure><h2 id="project-format-and-repaired-files">Định dạng dự án và tệp được khôi phục</h2><ul><li>Nếu translationCore mới hơn của một người trong nhóm đã lưu dự án theo định dạng mà phiên bản này không lưu được, việc đồng bộ sẽ dừng và thông báo nêu tên định dạng đó (ví dụ <span class="ui">1.4</span> hoặc <span class="ui">2</span>).</li><li>Nếu <code>format.json</code> bị xóa hoặc bị hỏng trên Door43, tC4 sẽ đưa bản sao trên máy tính này trở lại và thông báo ghi thêm: <span class="ui">Một tệp của dự án đã bị xóa hoặc bị hỏng trên Door43, vì vậy tC4 đã đưa bản sao của bạn trở lại.</span></li></ul><figure class="shot-inline" id="shot-format"><a href="/tc-help/img/ts-team-sync-7.png"><img src="/tc-help/img/ts-team-sync-7.png" alt="Thông báo đồng bộ nêu tên một định dạng dự án mới hơn mà phiên bản này không lưu được." width="480" height="24" loading="lazy"></a></figure><figure class="shot-inline" id="shot-restored"><a href="/tc-help/img/ts-team-sync-8.png"><img src="/tc-help/img/ts-team-sync-8.png" alt="Thông báo đồng bộ: Đã đồng bộ với Door43 · 0 thay đổi từ nhóm · 0 xung đột đã giữ phiên bản mới nhất · 0 xung đột câu cần xem xét. Một tệp của dự án đã bị xóa hoặc bị hỏng trên Door43, vì vậy tC4 đã đưa bản sao của bạn trở lại." width="818" height="96" loading="lazy"></a></figure><h2 id="good-to-know">Nên biết</h2>
+<ul><li>Dự án Kinh Thánh và Open Bible Stories được mở và đồng bộ theo cùng một cách.</li><li>Đừng sao chép thủ công các thư mục dự án giữa các máy tính. tC4 sẽ từ chối mở chúng để bảo vệ dự án.</li></ul>
+<h2 id="related">Chủ đề liên quan</h2><ul class="related"><li><a href="ts-share-door43">Chia sẻ lên Door43</a></li><li><a href="bp-import">Nhập dự án translationCore 3</a></li><li><a href="bp-export-burrito">Xuất dự án thành Scripture Burrito</a></li></ul>
+</main>
+</div>
+<footer class="sitefoot">Ứng dụng là nguồn chính xác nhất: nếu trang này khác với ứng dụng, thì ứng dụng đúng — xin hãy báo cho chúng tôi. <a href="section-whats-new">Ghi chú phát hành</a> · <a href="/vi/">translationcore.com</a></footer>
+<script src="search-index.js"></script>
+<script src="/tc-help/assets/search.js"></script>
+<script src="/tc-help/assets/page-toc.js"></script>
+<script src="/assets/js/help-i18n.js"></script>
+</body>
+</html>

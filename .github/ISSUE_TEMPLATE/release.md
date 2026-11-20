@@ -83,22 +83,30 @@ public tag while any key is pending. -->
 
 ### Help in the app
 
-<!-- The help pages are translationCore-Suite-website's `public/tc-help/` (the help of
-https://translationcore.com/tc-help/), copied byte for byte by
-`crates/tc-ui/vendor-help.sh [REV]` and listed with their blob ids in
-`crates/tc-ui/help-pages.txt` (APP-DESIGN AD29, #1031). `cargo test -p tc-ui`
+<!-- The help pages are the help of https://translationcore.com/tc-help/, in English and in
+each other language an app language shows, as translationCore-Suite-website builds it at one
+commit. `crates/tc-ui/vendor-help.sh [REV]` builds the site at that commit (`npm ci`,
+`npm run build`: Node and Astro), copies the built help byte for byte, and lists each file with
+its blob id in `crates/tc-ui/help-pages.txt` (APP-DESIGN AD29, #1031, #1036). `cargo test -p tc-ui`
 (`tests/help_pages.rs`) checks every byte, and `cargo test -p tc-server --test help_links` checks
 that every link resolves in the app. Order: change the pages in translationCore-Suite-website
-first, then re-vendor, then test; a page cannot be edited in this repository. tc-website's
-`tc-help/` is retired. -->
+first, then re-vendor, then test; a page cannot be edited in this repository. The steps are in
+`docs/RELEASE.md` "Refreshing the help". tc-website's `tc-help/` is retired. -->
 
 - [ ] Every screen or flow this release adds or changes has its help page in
       translationCore-Suite-website, and "What's new" (`section-whats-new`) describes this
       release's changes. Link the translationCore-Suite-website pull request.
 - [ ] `crates/tc-ui/vendor-help.sh <commit>` was run at the translationCore-Suite-website
-      commit above; `help-pages.txt` records that commit; `HELP_PIN` in
-      `crates/tc-ui/tests/help_pages.rs` is set to it; `cargo test -p tc-ui` and
+      commit above, on a computer with Node: it built the site at that commit and copied the
+      built help. `help-pages.txt` records that commit; `HELP_PIN` in
+      `crates/tc-ui/tests/help_pages.rs` and the default `REV` in `vendor-help.sh` are set to it;
+      `cargo test -p tc-ui` and
       `cargo test -p tc-server --test help_links --test help_overlay` pass.
+- [ ] The help translations at that commit have had their review by native readers
+      (translationCore-Suite-website `docs/native-review.md`), or the release notes say which
+      help languages have had none. The pin moves to the reviewed commit when there is one.
+- [ ] Help and guides opens in the app's language, and in English for an app language with no
+      help (the help journey's cases l to p are green).
 - [ ] Help names no tC4 build, so it cannot disagree with About (journey
       `help_home_shows_no_rc1_build_text_offline` is green). What Help may say about its own
       version is still the owner's open question Q31 (`docs/TC4-DELTA-2026-10-19.md`); if it is

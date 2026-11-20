@@ -1,8 +1,9 @@
 //! Help and guides (S13, tC4 #519, `tC4:src/views/AccountMenu.jsx:229-289`): the help pages of
-//! this build in a same-origin frame that fills the window. A new window would open in the
-//! system browser and skip the internet switch, so the pages stay here. A link to another site
-//! is the internet task `helpLink`, which opens the browser; Escape in the frame closes the
-//! panel too. The page swap and the link rules are tC4's code, in `app/help-shim.js`.
+//! this build, in the language the app shows (#1036), in a same-origin frame that fills the
+//! window. A new window would open in the system browser and skip the internet switch, so the
+//! pages stay here. A link to another site is the internet task `helpLink`, which opens the
+//! browser; Escape in the frame closes the panel too. The page swap and the link rules are
+//! tC4's code, in `app/help-shim.js`.
 
 use std::time::Duration;
 
@@ -16,7 +17,7 @@ use wasm_bindgen::prelude::*;
 use crate::app::internet::LinkKind;
 use crate::app::web::use_app;
 use crate::ds::{Attrs, Dismiss, Fill, LayerPlacement, Level, Shape, Size, Surface, Tone, Weight};
-use crate::i18n::{keys, t};
+use crate::i18n::{keys, locale_of, shown_locale, t};
 
 #[wasm_bindgen(module = "/app/help-shim.js")]
 extern "C" {
@@ -34,6 +35,8 @@ extern "C" {
 pub fn HelpPanel(on_close: Callback<()>) -> impl IntoView {
     let actions = use_app().map(|ctx| ctx.actions);
     let frame = NodeRef::<html::Iframe>::new();
+    // Read as the panel opens: the next opening after a change of language shows the new one.
+    let home = locale_of(shown_locale()).help_home();
     Effect::new(move |_| {
         let Some(element) = frame.get() else {
             return;
@@ -60,6 +63,7 @@ pub fn HelpPanel(on_close: Callback<()>) -> impl IntoView {
         });
     });
     let content: ChildrenFn = std::sync::Arc::new(move || {
+        let home = home.clone();
         let close = crate::ds::Action(crate::ds::ActionProps {
             weight: Weight::Soft,
             icon_only: true,
@@ -94,7 +98,7 @@ pub fn HelpPanel(on_close: Callback<()>) -> impl IntoView {
                 <iframe
                     node_ref=frame
                     title=move || t(keys::account::HELP, &[])
-                    src="/help/index.html"
+                    src=home
                     tabindex="0"
                     data-testid="help-frame"
                     style="flex: 1; width: 100%; border: 0;"

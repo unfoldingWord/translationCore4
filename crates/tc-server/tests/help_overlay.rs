@@ -232,6 +232,45 @@ fn a_page_is_served_without_the_language_menu_and_the_language_redirect() {
     }
 }
 
+/// Every vendored page, in every language, holds the site's language menu and its redirect
+/// script, and none is served with either (#1036). A re-vendored page whose menu or script tag
+/// reads another way would show the menu, or ask for a script the app does not have.
+#[test]
+fn no_help_page_is_served_with_the_language_menu_or_the_language_redirect() {
+    let languages = languages();
+    assert_eq!(languages.len(), 9, "English and eight more: {languages:?}");
+    let mut pages = 0;
+    for language in &languages {
+        let folder = help_dir().join(language);
+        for entry in std::fs::read_dir(folder).unwrap() {
+            let name = entry.unwrap().file_name().to_string_lossy().into_owned();
+            if !name.ends_with(".html") {
+                continue;
+            }
+            let page = format!("{language}{name}");
+            let vendored = String::from_utf8(vendored(&page)).unwrap();
+            for (first, last) in HELP_CUT {
+                assert_eq!(vendored.matches(first).count(), 1, "{page}: {first}");
+                assert!(vendored.contains(last), "{page}: {last}");
+            }
+            let served = served(&page);
+            assert!(
+                !served.contains("help-lang"),
+                "{page} shows the language menu"
+            );
+            assert!(!served.contains("locale.js"), "{page} loads the redirect");
+            assert!(
+                !served.contains("data-locale="),
+                "{page} links to another language"
+            );
+            // The messages the page's own scripts show stay.
+            assert!(served.contains("window.TC4_HELP_I18N="), "{page}");
+            pages += 1;
+        }
+    }
+    assert!(pages > 800, "only {pages} pages read");
+}
+
 /// Only a page's and a style sheet's addresses are rewritten: a script is served as it is, and
 /// so is a style sheet that names nothing from the site's root.
 #[test]
