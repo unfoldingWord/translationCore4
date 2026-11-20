@@ -600,6 +600,10 @@ And this (#965):
   the repository read "Other". About and the License dialog show the repository's own `LICENSE`,
   not a copy of tC4's, and `crates/tc-ui/tests/license.rs` keeps the file in that shape (#965).
 
+The helps tabs wrap to another row when the panel is narrow. The reference's `HelpsPanel`
+uses a single row (`d25b7871:src/views/HelpsPanel.jsx`). Wrapping keeps every tab reachable
+without pushing the panel sideways when its cards fit (#993).
+
 And this (#991, owner 2026-11-10):
 
 - The helps stay filtered to the section or verse the translator picked. On Translate a click on

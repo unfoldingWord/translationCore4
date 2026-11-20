@@ -126,6 +126,14 @@
           "a_verse_saved_in_verse_mode_keeps_the_helps_on_that_verse",
           "a_verse_or_section_picked_in_a_read_only_project_filters_the_helps"
         ]
+      },
+      {
+        "file": "parity/app/journeys/helps-scroll.test.mjs",
+        "tests": [
+          "fitting_helps_keep_their_focus_and_scroll_after_clicks_in_translate",
+          "fitting_helps_keep_translated_tabs_inside_the_panel_in_fr_translate",
+          "fitting_helps_keep_translated_tabs_inside_the_panel_in_ar_translate"
+        ]
       }
     ],
     "J3": [
@@ -324,6 +332,14 @@
         "file": "parity/app/journeys/helps-focus.test.mjs",
         "tests": [
           "a_unit_clicked_in_understand_keeps_the_helps_filtered_after_its_comment_is_saved"
+        ]
+      },
+      {
+        "file": "parity/app/journeys/helps-scroll.test.mjs",
+        "tests": [
+          "fitting_helps_keep_their_focus_and_scroll_after_clicks_in_understand",
+          "fitting_helps_keep_translated_tabs_inside_the_panel_in_fr_understand",
+          "fitting_helps_keep_translated_tabs_inside_the_panel_in_ar_understand"
         ]
       }
     ],
