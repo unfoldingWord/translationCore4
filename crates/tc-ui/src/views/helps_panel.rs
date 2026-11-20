@@ -102,9 +102,7 @@ pub fn HelpsPanel(
                 .map_or_else(|| "var(--helps-width)".to_owned(), |w| format!("{w}px")),
         );
         css.extend(&crate::css! {
-            "flex": "var(--reading-helps-flex, none)",
-            "max-width": "100%",
-            "align-self": "var(--reading-helps-align, auto)",
+            "flex": "none",
             "background": "var(--surface-panel)",
             "border-inline-start": "var(--stroke-hair) solid var(--border)",
             "display": "flex",

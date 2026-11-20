@@ -36,27 +36,6 @@ pub mod understand;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-fn reading_workspace_style() -> crate::css::Css {
-    crate::css! {
-        "flex": 1,
-        "display": "flex",
-        "flex-direction": "var(--reading-direction, row)",
-        "overflow": "var(--reading-overflow, visible)",
-        "min-width": 0,
-        "min-height": 0,
-    }
-}
-
-fn reading_main_style() -> crate::css::Css {
-    crate::css! {
-        "flex": "var(--reading-main-flex, 1)",
-        "display": "flex",
-        "flex-direction": "column",
-        "min-width": 0,
-        "min-height": 0,
-    }
-}
-
 /// The look of an edit control a read-only open turns off (tC4 `Check.jsx`'s disabled button):
 /// its colours stay, faded, and it no longer reads as clickable.
 pub(crate) fn off_look() -> crate::css::Css {

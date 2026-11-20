@@ -12,11 +12,10 @@ use crate::ds::{
 };
 use crate::tokens::{Align, Corner, Edge, Shadow};
 
-/// AppHeader.jsx: the application title bar: brand, project chip, mode switch, save state.
-/// Wide windows have equal side columns, so the switch stays in the centre of the bar; a
+/// AppHeader.jsx: the 56 px application title bar: brand, project chip, mode switch, save
+/// state. The two side columns are equal, so the switch stays in the centre of the bar; a
 /// project name that does not fit is cut with an ellipsis, and the chip's tooltip gives it in
-/// full. The rebuild's reading-layout stylesheet puts the switch below the other controls
-/// when the window cannot fit all of them in one row.
+/// full.
 #[component]
 pub fn AppHeader(
     #[prop(optional)] tone: HeaderTone,
@@ -58,11 +57,11 @@ pub fn AppHeader(
     let switch_title = switch_title.unwrap_or_else(|| "Switch project".into());
     let outer = css! {
         "display": "grid",
-        "grid-template-columns": "var(--app-header-columns, minmax(0,1fr) auto minmax(0,1fr))",
+        "grid-template-columns": "minmax(0,1fr) auto minmax(0,1fr)",
         "align-items": "center",
-        "gap": "var(--app-header-gap, 14px)",
+        "gap": 14,
         "flex": "none",
-        "height": "var(--app-header-height, var(--header-height))",
+        "height": "var(--header-height)",
         "z-index": "var(--z-header)",
     };
     let brand_style = Signal::derive(move || {
@@ -133,8 +132,7 @@ pub fn AppHeader(
         fill: Signal::from(if dark { Fill::Solid } else { Fill::Card }),
         border: Some(if dark { Edge::None } else { Edge::Hair }.into()),
         radius: Some(Corner::None.into()),
-        pad: Some("var(--app-header-pad, 0 16px)".into()),
-        attrs: Attrs::from([("data-layout", "app-header")]),
+        pad: Some("0 16px".into()),
         style: outer.into(),
         children: Some(Box::new(move || {
             let brand = crate::ds::Stack(crate::ds::StackProps {

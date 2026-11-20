@@ -35,9 +35,11 @@ async function resize(page, width) {
   const divider = await page.getByTestId('helps-divider').boundingBox();
   const x = divider.x + divider.width / 2;
   const y = divider.y + 100;
+  const direction = await panel(page).evaluate((el) => getComputedStyle(el).direction);
+  const delta = direction === 'rtl' ? width - before.width : before.width - width;
   await page.mouse.move(x, y);
   await page.mouse.down();
-  await page.mouse.move(x + before.width - width, y, { steps: 4 });
+  await page.mouse.move(x + delta, y, { steps: 4 });
   await page.mouse.up();
   await until(`helps width ${width}`, async () => Math.round((await panel(page).boundingBox()).width) === width);
 }
@@ -140,25 +142,44 @@ for (const mode of ['Understand', 'Translate']) {
       await until('genuinely wide content scrolls horizontally', async () => (await list(page).evaluate((el) => el.scrollLeft)) > 0);
       records.push({ name: 'genuinely-wide-content', ...wide });
       await shot(page, `${mode}-wide-content`);
-      await page.setViewportSize({ width: 500, height: 938 });
-      await note.scrollIntoViewIfNeeded();
-      await resize(page, 480);
-      await note.click({ position: { x: 8, y: 8 } });
-      await fits(page, 'small-window-note-click', records);
-      await more.click();
-      await fits(page, 'small-window-show-more', records);
-      await more.click();
-      await panel(page).getByRole('tab', { name: 'Questions', exact: true }).click();
-      await page.getByTestId('understand-question').first().click();
-      await fits(page, 'small-window-question-click', records);
-      await panel(page).getByRole('tab', { name: 'Words', exact: true }).click();
-      await word.click({ position: { x: 8, y: 8 } });
-      await word.getByRole('button', { name: /Read the article/ }).click();
-      await page.getByTestId('understand-article').waitFor();
-      await fits(page, 'small-window-word-article', records);
-      await shot(page, `${mode}-small-window-article`);
-      await page.getByTestId('helps-article-close').click();
       if (process.env.TC4_EVIDENCE) fs.writeFileSync(path.join(process.env.TC4_EVIDENCE, `${mode}-extents.json`), `${JSON.stringify(records, null, 2)}\n`);
     }, { scenario: 'en-pins' });
   });
+}
+
+for (const locale of ['fr', 'ar']) {
+  for (const mode of ['Understand', 'Translate']) {
+    browserTest(`fitting_helps_keep_translated_tabs_inside_the_panel_in_${locale}_${mode.toLowerCase()}`, async () => {
+      const records = [];
+      await withApp(async ({ page }) => {
+        await page.getByTestId('project-sample_burrito').getByRole('button', { name: /Titus/ }).click();
+        await page.getByTestId('helps-note').first().waitFor();
+        if (mode === 'Translate') await page.getByTestId('mode-switch').getByRole('tab').nth(1).click();
+        // The tab order is Notes, Words, Questions, Simplified in every interface language.
+        const words = panel(page).getByRole('tab').nth(1);
+        await words.click();
+        const word = page.getByTestId('helps-word').first();
+        await word.waitFor();
+        for (const width of [340, 280, 480, 340]) {
+          await resize(page, width);
+          await shot(page, `${locale}-${mode}-${width}-before`);
+          records.push({ name: `${locale}-${mode}-${width}-before`, ...await extents(page) });
+          await word.click({ position: { x: 8, y: 8 } });
+          await shot(page, `${locale}-${mode}-${width}-clicked`);
+          await fits(page, `${locale}-${mode}-${width}-word-click`, records);
+          await word.getByRole('button').click();
+          await page.getByTestId('understand-article').waitFor();
+          await fits(page, `${locale}-${mode}-${width}-article`, records);
+          await page.getByTestId('helps-article-close').click();
+          await panel(page).getByRole('tab').nth(2).click();
+          await fits(page, `${locale}-${mode}-${width}-questions-tab`, records);
+          await words.click();
+          await word.waitFor();
+          await shot(page, `${locale}-${mode}-${width}-after`);
+        }
+      }, { scenario: 'en-pins', locale }).finally(() => {
+        if (process.env.TC4_EVIDENCE) fs.writeFileSync(path.join(process.env.TC4_EVIDENCE, `${locale}-${mode}-extents.json`), `${JSON.stringify(records, null, 2)}\n`);
+      });
+    });
+  }
 }

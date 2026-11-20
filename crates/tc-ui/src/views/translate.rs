@@ -176,7 +176,7 @@ fn screen(
     book: Memo<Option<Arc<BookView>>>,
     text: Memo<Option<Arc<ChaptersView>>>,
 ) -> AnyView {
-    let root = super::reading_workspace_style();
+    let root = crate::css! { "flex": 1, "display": "flex", "min-height": 0 };
     let rail = {
         let (s2, actions) = (s.clone(), actions.clone());
         let on = s.u.rail.clone();
@@ -206,7 +206,6 @@ fn screen(
     };
     leptos::html::div()
         .attr("style", root.to_style())
-        .attr("data-layout", "reading")
         .on(leptos::ev::capture(leptos::ev::pointerdown), keep_focus)
         .child((rail, rest))
         .into_any()
@@ -392,7 +391,13 @@ fn chapter_view(
         })
     };
     let conflicts = Memo::new(move |_| text.with(|v| v.as_ref().map_or(0, |v| v.conflicts)));
-    let main = super::reading_main_style();
+    let main = crate::css! {
+        "flex": 1,
+        "display": "flex",
+        "flex-direction": "column",
+        "min-width": 0,
+        "min-height": 0,
+    };
     let bar = crate::css! {
         "display": "flex",
         "align-items": "center",
@@ -410,7 +415,7 @@ fn chapter_view(
     let scroll = crate::css! { "flex": 1, "overflow": "auto", "min-height": 0 };
     let grid = crate::css! {
         "display": "grid",
-        "grid-template-columns": "var(--draft-columns, 1fr 1fr)",
+        "grid-template-columns": "1fr 1fr",
         "max-width": 1100,
         "margin": "0 auto",
     };

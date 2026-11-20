@@ -599,14 +599,6 @@ The helps tabs wrap to another row when the panel is narrow. The reference's `He
 uses a single row (`d25b7871:src/views/HelpsPanel.jsx`). Wrapping keeps every tab reachable
 without pushing the panel sideways when its cards fit (#993).
 
-When the window is narrower than 1280 px, the book or story list, passage and helps stack
-vertically instead of allowing the passage to shrink to zero. Every panel remains reachable
-by scrolling, and the helps divider still changes its width within the available space.
-The requested width returns when the window grows. At 800 px and below the header's mode
-switch gets its own row; at 640 px and below, Translate puts each source above its translation.
-The reference keeps these panes and header controls beside one another, which clips them in
-a small window. Bible and OBS Understand/Translate share the responsive layout (#993).
-
 And this (#991, owner 2026-11-10):
 
 - The helps stay filtered to the section or verse the translator picked. On Translate a click on
