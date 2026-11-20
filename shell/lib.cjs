@@ -307,6 +307,15 @@ function linkTarget(url, origin) {
 // the shell only through preload.cjs's bridge. Windows and Linux hide the bar and draw their
 // controls over the header (#639, #642); macOS hides it and centres the traffic lights in the
 // 56 px header (#214).
+const HEADER_HEIGHT = 56;
+const TITLE_BAR_OVERLAY = Object.freeze({ color: '#014263', symbolColor: '#FFFFFF' });
+
+// The overlay's height is in window DIPs while the header's 56 px scales with page zoom
+// (INV-TITLEBAR-OVERLAY-FOLLOWS-ZOOM).
+function titleBarOverlay(zoomFactor = 1) {
+  return { ...TITLE_BAR_OVERLAY, height: Math.max(1, Math.round(HEADER_HEIGHT * zoomFactor)) };
+}
+
 function windowOptions({ platform, preload, show = true, print = false }) {
   const webPreferences = {
     contextIsolation: true,
@@ -319,7 +328,7 @@ function windowOptions({ platform, preload, show = true, print = false }) {
   const frame =
     platform === 'darwin'
       ? { titleBarStyle: 'hidden', trafficLightPosition: { x: 20, y: 21 } }
-      : { titleBarStyle: 'hidden', titleBarOverlay: { color: '#014263', symbolColor: '#FFFFFF', height: 56 } };
+      : { titleBarStyle: 'hidden', titleBarOverlay: titleBarOverlay(1) };
   // macOS takes the icon from the app bundle (stage.sh); Windows and Linux from the window. Every
   // window gets it, so a link opened in the app shows the translationCore mark too (#871).
   const icon = platform === 'darwin' ? {} : { icon: path.join(BRANDING, platform === 'win32' ? 'icon.ico' : 'icon-1024.png') };
@@ -414,6 +423,7 @@ function redact(text, secrets) {
 
 module.exports = {
   EVENTS,
+  HEADER_HEIGHT,
   QUICK_EXITS_TO_STOP,
   QUICK_EXIT_MS,
   State,
@@ -434,6 +444,7 @@ module.exports = {
   sameOrigin,
   serveArgs,
   startErrorPage,
+  titleBarOverlay,
   wantsToken,
   windowOptions,
 };
