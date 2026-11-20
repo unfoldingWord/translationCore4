@@ -46,23 +46,49 @@ build with another Node or on another system was not tried.
 ## The address forms the pages hold
 
 The server's rules read `href="/…"` and `src="/…"` in a page and `url(/…)` in a style sheet, and
-cut the language menu and the `locale.js` tag by their exact opening text. A count over the 966
-vendored files (801 pages, 4 style sheets, 12 scripts) shows the pages hold no other form:
+cut the language menu and the `locale.js` tag by their exact opening text. The review of pull
+request 1071 asked whether the vendored files hold a form these rules do not read. Two checks
+answer it.
 
-- Style sheets: 32 `url(/…)`, all in the two font style sheets, none in quotes. No page holds an
-  inline `url(/…)`.
-- Pages: no `srcset`, `action` or `poster` names an address from the root, and no `href` or `src`
-  does so in single quotes, without quotes or with a space beside the `=`.
-- Each page holds the menu's opening tag once and the class `help-lang` on nothing else. Each
-  holds the `locale.js` tag once and that file's name nowhere else.
+The first is `cargo test -p tc-server --test help_links`: it walks every `href`, `src`, `srcset`,
+`action`, `url()` and search result of every page as served, and each one resolves in the app.
+
+The second is a count over the 966 vendored files (801 pages, 4 style sheets, 12 scripts), one
+regular expression for each form on the list below. Each expression was first run on a control
+page and style sheet that hold the form, and counted it there. On the vendored files:
+
+- Style sheets: 32 `url(/…)` as the rules read it, all in the two font style sheets. None in
+  quotes, none after a space, no `@import`.
+- Pages, none of these: a `srcset`, `action`, `poster`, `data`, `formaction` or `ping` that names
+  an address from the root; an `href` or `src` in single quotes, without quotes, with a space
+  beside the `=`, or not in lower case; a `base` element; a meta refresh; an inline `url(` from
+  the root; an inline `@import`.
+- Each of the 801 pages holds the menu's exact opening tag once and the class `help-lang` in no
+  other tag, and holds the exact `locale.js` tag once and that file's name nowhere else.
 - Search indexes: one `search-index.js` for each of the nine languages, and one
   `search-index.json` (English). Each holds 87 results, each a relative address.
-- Scripts: `assets/search.js` and `assets/page-toc.js` (as before #1036, now with their words from
-  the page), a `search-index.js` for each language, and `site/assets/js/help-i18n.js` (15 lines:
-  it closes the language menu, which the app serves the page without, so it finds none and
-  stops). Each page also holds one inline script, which sets two values from JSON
-  (`__tcLocale`, `TC4_HELP_I18N`) and does nothing else. No script names `fetch`,
-  `XMLHttpRequest`, `sendBeacon`, `WebSocket`, `parent`, `postMessage`, storage or cookies.
+
+A form that is not on this list was not counted.
+
+## The scripts the pages run
+
+- `assets/search.js` and `assets/page-toc.js`, as before #1036; they now take their words from
+  the page and split words of any script.
+- A `search-index.js` for each language (data).
+- `site/assets/js/help-i18n.js`, 15 lines: it closes the language menu. The app serves each page
+  without the menu, so it finds none and stops.
+- One inline script in each page. In all 801 it is two assignments of JSON values
+  (`__tcLocale`, `TC4_HELP_I18N`) and nothing else.
+
+`search.js`, `page-toc.js` and `help-i18n.js` are the files that hold code. The text of none of
+the three holds `fetch`, `XMLHttpRequest`, `sendBeacon`, `WebSocket`, `EventSource`, `parent`,
+`postMessage`, `localStorage`, `sessionStorage` or `document.cookie`.
+
+The review also asked whether a help script can reach the app's page. It can, and it could before
+this change: the frame has no `sandbox` (`crates/tc-ui/src/views/help_panel.rs`), the server sends
+its policy header with `index.html` only (`crates/tc-server/src/statics.rs` `index`), and the
+help has the app's origin. That is so on `main` since #1031, with `search.js` and `page-toc.js`.
+This change adds no limit and takes none away.
 
 ## The journey
 
@@ -89,6 +115,12 @@ that are not vendored (404).
 
 Control for the byte list: with one byte of `help/es/index.html` changed,
 `cargo test -p tc-ui --test help_pages` failed with "help/es/index.html is not the site's".
+
+Run again on the branch with `main` at `c040cb7f` merged in (commit `87392095`), on a new build of
+`tc4` and the UI: the help journey gave the same results (17 of 18 pass; case f stops at the same
+place, "no section-getting-started shows after 60000 ms"), and
+`parity/app/journeys/app-language.test.mjs`, which now takes `applyLanguage` from `kit.mjs`,
+passed 16 of 16. The controls were not run again.
 
 ## Screenshots
 
