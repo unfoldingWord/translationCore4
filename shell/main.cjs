@@ -193,9 +193,38 @@ function load(url) {
   win.loadURL(url).catch((error) => log('load failed', { message: error.message }));
 }
 
+// INV-TITLEBAR-OVERLAY-FOLLOWS-ZOOM: tracks each overlay-enabled window's last applied height
+// (excluding macOS and hidden print windows) so repeated geometrychange notices are no-ops.
+const overlayHeights = new WeakMap();
+
+function registerOverlay(browserWindow) {
+  if (process.platform === 'darwin' || !browserWindow || browserWindow.isDestroyed()) return;
+  overlayHeights.set(browserWindow, lib.titleBarOverlay().height);
+  syncTitleBarOverlay(browserWindow);
+}
+
+function syncTitleBarOverlay(browserWindow) {
+  if (process.platform === 'darwin' || !browserWindow || browserWindow.isDestroyed()) return;
+  if (!overlayHeights.has(browserWindow)) return;
+  const overlay = lib.titleBarOverlay(browserWindow.webContents.getZoomFactor());
+  if (overlayHeights.get(browserWindow) === overlay.height) return;
+  overlayHeights.set(browserWindow, overlay.height);
+  browserWindow.setTitleBarOverlay(overlay);
+}
+
+function syncAllTitleBarOverlays() {
+  for (const browserWindow of BrowserWindow.getAllWindows()) syncTitleBarOverlay(browserWindow);
+}
+
+function setZoomLevel(contents, level) {
+  contents.setZoomLevel(level);
+  syncAllTitleBarOverlays();
+}
+
 function showWindow() {
   // Maximized before it shows, as tC4's window, in the same moment.
   win = new BrowserWindow(lib.windowOptions({ platform: process.platform, preload: path.join(__dirname, 'preload.cjs'), show: false }));
+  registerOverlay(win);
   win.maximize();
   win.show();
   win.webContents.on('before-input-event', (event, input) => {
@@ -205,7 +234,7 @@ function showWindow() {
     if (delta === undefined) return;
     // Consume the matching menu accelerator too, so each press changes zoom once.
     event.preventDefault();
-    win.webContents.setZoomLevel(input.key === '0' ? 0 : win.webContents.getZoomLevel() + delta);
+    setZoomLevel(win.webContents, input.key === '0' ? 0 : win.webContents.getZoomLevel() + delta);
   });
   log('window shown', { visible: win.isVisible() });
   win.on('close', (event) => {
@@ -253,6 +282,11 @@ ipcMain.on('shell:closeAnswer', (event, id, clean) => {
   closeAsk++;
   log('page answered', { clean: clean === true });
   dispatch({ type: 'pageAnswered', clean: clean === true });
+});
+
+ipcMain.on('shell:titleBarOverlay', (event) => {
+  if (!bridge.trusted(ctx, event)) return;
+  syncAllTitleBarOverlays();
 });
 
 // tC4's own question (its template's close guard).
@@ -346,6 +380,7 @@ const ctx = {
   writeFile: (file, bytes) => fs.promises.writeFile(file, bytes),
   openInApp: (url) => {
     const child = new BrowserWindow(lib.windowOptions({ platform: process.platform }));
+    registerOverlay(child);
     child.loadURL(url).catch((error) => log('load failed', { message: error.message }));
   },
   internetOn: async () => {
@@ -373,6 +408,8 @@ bridge.register(ipcMain, ctx);
 // INV-RENDERER-IS-ISOLATED: every page, the child windows included, stays on tc4's origin;
 // a link elsewhere goes to the system browser.
 app.on('web-contents-created', (_e, contents) => {
+  contents.on('did-create-window', (child) => registerOverlay(child));
+  contents.on('did-navigate', () => syncTitleBarOverlay(BrowserWindow.fromWebContents(contents)));
   contents.on('will-navigate', (event, url) => {
     if (!lib.sameOrigin(url, origin())) {
       event.preventDefault();
@@ -405,7 +442,7 @@ app.whenReady().then(() => {
     submenu: menu.submenu.map(({ action, ...item }) => {
       if (!action) return item;
       const run = {
-        resetZoom: (w) => w.webContents.setZoomLevel(0),
+        resetZoom: (w) => setZoomLevel(w.webContents, 0),
         reload: (w) => w.webContents.reload(),
         forceReload: (w) => w.webContents.reloadIgnoringCache(),
         toggleDevTools: (w) => w.webContents.toggleDevTools(),

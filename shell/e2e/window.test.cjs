@@ -134,6 +134,91 @@ async function noNativeBar() {
 if (process.platform === 'win32') h.shellTest('windows_window_has_no_native_bar_and_keeps_zoom_and_reload', noNativeBar);
 if (process.platform === 'linux') h.shellTest('linux_window_has_no_native_bar_and_keeps_zoom_and_reload', noNativeBar);
 
+if (process.platform === 'win32' || process.platform === 'linux') {
+  h.shellTest('title_bar_overlay_matches_header_height_across_zoom_levels', async () => {
+    const app = await h.launch(h.appDataDir('zoom-overlay'));
+    try {
+      const page = await h.home(app);
+      const sendZoomKey = (keyCode) =>
+        app.evaluate(async ({ BrowserWindow }, keyCode) => {
+          const contents = BrowserWindow.getAllWindows()[0].webContents;
+          contents.sendInputEvent({ type: 'keyDown', keyCode, modifiers: ['control'] });
+          contents.sendInputEvent({ type: 'keyUp', keyCode, modifiers: ['control'] });
+          await new Promise((resolve) => setImmediate(resolve));
+        }, keyCode);
+
+      const measure = () =>
+        page.evaluate(() => {
+          const header = document.querySelector('header').getBoundingClientRect();
+          const wco = navigator.windowControlsOverlay.getTitlebarAreaRect();
+          const diff = +(wco.bottom - header.bottom).toFixed(2);
+          return {
+            aligned: header.top === 0 && wco.y === 0 && Math.abs(diff) <= 2,
+            headerTop: header.top,
+            headerBottom: header.bottom,
+            wcoY: wco.y,
+            wcoBottom: wco.bottom,
+            diff,
+          };
+        });
+
+      const assertAligned = async (expectedLevel, label) => {
+        await h.until(
+          `INV-TITLEBAR-OVERLAY-FOLLOWS-ZOOM: ${label} zoom ${expectedLevel}`,
+          () => app.evaluate(({ BrowserWindow }, expected) => BrowserWindow.getAllWindows()[0].webContents.getZoomLevel() === expected, expectedLevel),
+          10000,
+        );
+        let last;
+        try {
+          await h.until(
+            `INV-TITLEBAR-OVERLAY-FOLLOWS-ZOOM: ${label} overlay aligns`,
+            async () => (last = await measure()).aligned,
+            5000,
+          );
+        } catch (error) {
+          throw new Error(
+            `INV-TITLEBAR-OVERLAY-FOLLOWS-ZOOM: ${label} (level ${expectedLevel}): headerBottom=${last?.headerBottom}, wcoBottom=${last?.wcoBottom}, diff=${last?.diff}`,
+            { cause: error },
+          );
+        }
+      };
+
+      await assertAligned(0, 'default');
+      for (const expected of [-0.5, -1, -1.5, -2]) {
+        await sendZoomKey('-');
+        await assertAligned(expected, 'zoom out');
+      }
+
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await page.getByTestId('account-menu').waitFor({ timeout: 60000 });
+      await assertAligned(-2, 'after reload at -2');
+
+      await sendZoomKey('0');
+      await assertAligned(0, 'reset to 0');
+
+      for (const expected of [0.5, 1, 1.5, 2]) {
+        await sendZoomKey('+');
+        await assertAligned(expected, 'zoom in');
+      }
+
+      await sendZoomKey('0');
+      await assertAligned(0, 'reset before menu zoomOut');
+
+      await app.evaluate(({ Menu, BrowserWindow }) => {
+        const win = BrowserWindow.getAllWindows()[0];
+        const items = Menu.getApplicationMenu().items.flatMap((m) => m.submenu.items);
+        items.find((i) => i.role === 'zoomout').click(undefined, win, win.webContents);
+      });
+      await assertAligned(-0.5, 'menu zoomOut');
+
+      await sendZoomKey('0');
+      await assertAligned(0, 'final reset');
+    } finally {
+      await h.finish(app);
+    }
+  });
+}
+
 // tC4 #525: Electronite takes the system's language, and with none saved the app starts in it. On
 // Linux the system's language is the environment's, so a run can set it.
 if (process.platform === 'linux') {

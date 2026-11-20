@@ -67,7 +67,6 @@ pub enum Session {
 /// The active check's detail (tC4's `cs.items[activeIndex]` with its panes).
 #[derive(Debug, Clone, PartialEq)]
 pub enum Detail {
-    Loading(u32),
     Ready(Box<CheckItemView>),
     Failed(u32, String),
 }
@@ -765,7 +764,7 @@ impl Actions {
     }
 
     /// Before another check shows: its editor closes (which saves the comment typed in it,
-    /// A-10), the drawer and the last mark's failure go, and the selection is the new check's.
+    /// A-10), the drawer and the last mark's failure go. The words follow the detail's read.
     fn leave_item(&self) {
         let c = &self.s().c;
         c.comment_open.try_set(false);
@@ -773,8 +772,16 @@ impl Actions {
         c.restore_failed.try_set(false);
         c.academy.try_set(None);
         c.marking.try_set(Marking::Idle);
-        WORDS_OF.with(|shown| shown.replace(None));
-        self.words(WordsEvent::Shown(BTreeSet::new()));
+    }
+
+    /// The rail has moved, but the detail still shows the preceding check. Its text stays
+    /// selectable; edits wait for the requested check so no new words or comment are lost.
+    pub fn check_item_pending(&self) -> bool {
+        let c = &self.s().c;
+        c.detail.with(|d| match d {
+            Some(Detail::Ready(view)) => c.active.get() != Some(view.index),
+            None | Some(Detail::Failed(_, _)) => true,
+        })
     }
 
     /// Whether words are selected on the shown check that no mark saved (#853), tracked:
@@ -845,12 +852,10 @@ impl Actions {
     /// Reads check `index` for the detail (tC4 shows it from the list it holds; the server
     /// answers it here). The newest read is the one that lands.
     pub(crate) fn load_item(&self, index: u32) {
-        let c = &self.s().c;
         let Some((at, list)) = self.detail_target() else {
             return;
         };
         let attempt = ITEMS.with(Latest::begin);
-        c.detail.try_set(Some(Detail::Loading(index)));
         self.read_item(at, list, index, attempt);
     }
 
@@ -862,7 +867,7 @@ impl Actions {
         else {
             return;
         };
-        if matches!(c.detail.get_untracked(), Some(Detail::Loading(_)) | None) {
+        if c.detail.with_untracked(Option::is_none) {
             return;
         }
         let attempt = ITEMS.with(Latest::begin);

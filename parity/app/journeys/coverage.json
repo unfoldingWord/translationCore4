@@ -172,6 +172,9 @@
       {
         "file": "parity/app/journeys/check-detail.test.mjs",
         "tests": [
+          "switching_checks_updates_the_detail_in_place_without_unmounting",
+          "switching_checks_updates_the_detail_in_place_without_unmounting_translation_words",
+          "a_newer_check_read_wins_while_the_previous_detail_stays_visible",
           "a_changed_selection_takes_the_mark_away_until_the_check_is_marked_again",
           "a_changed_selection_is_told_once_per_gesture",
           "the_words_and_marks_are_off_while_a_mark_is_being_saved",
