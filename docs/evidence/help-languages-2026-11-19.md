@@ -43,6 +43,27 @@ build with another Node or on another system was not tried.
 `curl -sI https://translationcore.com<path>` answered 200 with no redirect for `/`, `/desktop/`,
 `/es/`, `/fr/`, `/hi/`, `/pt/`, `/id/`, `/ru/`, `/vi/` and `/ar/` (2026-11-19).
 
+## The address forms the pages hold
+
+The server's rules read `href="/…"` and `src="/…"` in a page and `url(/…)` in a style sheet, and
+cut the language menu and the `locale.js` tag by their exact opening text. A count over the 966
+vendored files (801 pages, 4 style sheets, 12 scripts) shows the pages hold no other form:
+
+- Style sheets: 32 `url(/…)`, all in the two font style sheets, none in quotes. No page holds an
+  inline `url(/…)`.
+- Pages: no `srcset`, `action` or `poster` names an address from the root, and no `href` or `src`
+  does so in single quotes, without quotes or with a space beside the `=`.
+- Each page holds the menu's opening tag once and the class `help-lang` on nothing else. Each
+  holds the `locale.js` tag once and that file's name nowhere else.
+- Search indexes: one `search-index.js` for each of the nine languages, and one
+  `search-index.json` (English). Each holds 87 results, each a relative address.
+- Scripts: `assets/search.js` and `assets/page-toc.js` (as before #1036, now with their words from
+  the page), a `search-index.js` for each language, and `site/assets/js/help-i18n.js` (15 lines:
+  it closes the language menu, which the app serves the page without, so it finds none and
+  stops). Each page also holds one inline script, which sets two values from JSON
+  (`__tcLocale`, `TC4_HELP_I18N`) and does nothing else. No script names `fetch`,
+  `XMLHttpRequest`, `sendBeacon`, `WebSocket`, `parent`, `postMessage`, storage or cookies.
+
 ## The journey
 
 `parity/app/journeys/help.test.mjs`, on `tc4` built with `--features test-hooks,fixture-backend`
