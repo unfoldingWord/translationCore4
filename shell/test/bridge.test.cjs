@@ -273,3 +273,15 @@ test('windows_frames_and_the_menu_keys_follow_tc4', () => {
   assert.deepEqual(lib.contextMenuTemplate(editable).map((i) => i.role), ['cut', 'copy', 'paste']);
   assert.deepEqual(lib.contextMenuTemplate({ isEditable: false, editFlags: {} }), []);
 });
+
+test('title_bar_overlay_height_scales_with_zoom', () => {
+  assert.deepEqual(lib.titleBarOverlay(), { color: '#014263', symbolColor: '#FFFFFF', height: 56 });
+  for (const [level, expectedHeight] of [[-2, 39], [-1, 47], [-0.5, 51], [0, 56], [0.5, 61], [1, 67], [2, 81]]) {
+    assert.deepEqual(
+      lib.titleBarOverlay(1.2 ** level),
+      { color: '#014263', symbolColor: '#FFFFFF', height: expectedHeight },
+      `INV-TITLEBAR-OVERLAY-FOLLOWS-ZOOM: zoom level ${level}`,
+    );
+  }
+  assert.equal(lib.titleBarOverlay(0.001).height, 1, 'INV-TITLEBAR-OVERLAY-FOLLOWS-ZOOM: height never reaches 0');
+});

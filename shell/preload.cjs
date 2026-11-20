@@ -13,6 +13,11 @@ const titleBar = process.platform === 'darwin' ? 'hidden' : 'overlay';
 window.addEventListener('DOMContentLoaded', () => {
   document.documentElement.dataset.titleBar = titleBar;
 });
+if (titleBar === 'overlay' && navigator.windowControlsOverlay) {
+  const syncTitleBarOverlay = () => ipcRenderer.send('shell:titleBarOverlay');
+  navigator.windowControlsOverlay.addEventListener('geometrychange', syncTitleBarOverlay);
+  window.addEventListener('DOMContentLoaded', syncTitleBarOverlay);
+}
 
 contextBridge.exposeInMainWorld('tc4Shell', {
   bufferChanged: send('shell:bufferChanged'),
