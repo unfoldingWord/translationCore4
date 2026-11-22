@@ -99,7 +99,9 @@ prepared (ruling `docs/rulings/2026-11-19-release-branches.md`).
   pull request changes, and on a pull request to `main` the full checks are skipped, which
   GitHub counts as passed. So a pull request opened against `main` and then pointed at the
   release branch lacks the `release-base` check and cannot merge. Push a commit to it (an empty
-  one will do): every check then runs for the release branch.
+  one will do): every check then runs for the release branch. Push a commit after any other
+  change of base too, also from one release branch to another: `release-base` has passed there
+  already, so nothing stops a merge whose checks ran for the old base.
 - **The tag.** Each `vX.Y.Z` is tagged on its release branch ("Cutting a release" below).
 - **The end.** Picks to a release branch stop when the next minor release ships.
 
