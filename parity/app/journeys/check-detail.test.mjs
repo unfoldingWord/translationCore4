@@ -335,6 +335,9 @@ browserTest('check_keyboard_detail_drawer_words_marks_and_comment', async () => 
     await page.keyboard.press('Shift+Tab');
     assert.ok(await activeIs(page, '[data-testid="tw-2"]'), 'Shift+Tab returns to the caret word');
 
+    await page.keyboard.press('Tab');
+    assert.equal(await testidOfFocus(page), 'check-clear-selection');
+
     // The marking row: Previous (skipped while disabled), the three marks, Next.
     if (await page.getByTestId('check-prev').isEnabled()) {
       await page.keyboard.press('Tab');
@@ -1305,4 +1308,111 @@ browserTest('academy_drawer_close_label_is_in_the_shown_language', async () => {
     const eyebrow = (await drawer.locator('span').first().textContent()).trim();
     assert.ok(eyebrow.startsWith(c['check.academyEyebrow'].split('{')[0].trim()), `the eyebrow is Arabic: ${eyebrow}`);
   }, { locale: 'ar', scenario: 'en-pins' });
+});
+
+// #757: clearing uses the same selection change as unselecting words individually.
+for (const tool of ['translationNotes', 'translationWords']) {
+  browserTest(`j4_clear_selection_leaves_no_word_selected_${tool}`, async () => {
+    await withApp(async ({ page, env }) => {
+      await openTool(page, tool);
+      await page.getByTestId('tw-2').waitFor();
+      const clear = page.getByRole('button', { name: 'Clear selection', exact: true });
+      assert.equal(await clear.count(), 1, 'INV-CLEAR-LEAVES-NO-WORD-SELECTED: clear control exists');
+      assert.equal(await clear.isDisabled(), true);
+      for (const i of [0, 1, 2]) await page.getByTestId(`tw-${i}`).click();
+      assert.equal(await clear.isEnabled(), true);
+      assert.deepEqual(await pressedWords(page), ['tw-0', 'tw-1', 'tw-2']);
+      const index = Number(await shownIndex(page));
+      await clear.click();
+      assert.equal(await page.locator('[data-testid^="tw-"][data-selected="1"]').count(), 0);
+      assert.deepEqual(await pressedWords(page), []);
+      assert.equal(await clear.isDisabled(), true);
+      await page.getByTestId('mark-valid').click();
+      await until('Mark valid stores nothing to select after clearing', async () => {
+        const view = await item(env, tool, index);
+        return view.decision.value.status === 'valid' && view.decision.value.nothingToSelect;
+      });
+      await awayAndBack(page, index);
+      assert.deepEqual(await pressedWords(page), []);
+      const indices = await page.locator('[data-testid="check-list"] [data-rail-index]').evaluateAll((rows) => rows.map((row) => Number(row.getAttribute('data-rail-index'))));
+      let blank;
+      for (const candidate of indices) {
+        if ((await item(env, tool, candidate)).target.words.length === 0) {
+          blank = candidate;
+          break;
+        }
+      }
+      assert.notEqual(blank, undefined, 'the fixture has an undrafted check');
+      await page.locator(`[data-testid="check-list"] [data-rail-index="${blank}"]`).click();
+      await waitForCheck(page, blank);
+      assert.equal(await clear.count(), 1, 'Clear selection is present on an undrafted check too');
+      assert.equal(await clear.isDisabled(), true);
+    }, { scenario: 'en-pins' });
+  });
+}
+
+browserTest('j4_clear_selection_on_a_marked_check_takes_the_mark_away', async () => {
+  await withApp(async ({ page, env }) => {
+    await openTool(page, 'translationNotes');
+    await page.getByTestId('tw-2').waitFor();
+    const index = Number(await shownIndex(page));
+    for (const i of [0, 1, 2]) await page.getByTestId(`tw-${i}`).click();
+    await page.getByTestId('mark-valid').click();
+    await storedAs(env, index, 'valid', [0, 1, 2]);
+    const clear = page.getByRole('button', { name: 'Clear selection', exact: true });
+    assert.equal(await clear.count(), 1, 'INV-CLEAR-LEAVES-NO-WORD-SELECTED: clear control exists');
+    await until('the mark has settled', () => clear.isEnabled());
+    const sent = decides(page);
+    const told = page.waitForRequest((request) => request.url().endsWith('/api/v1/check/decide') && request.postDataJSON().edit.type === 'unmark');
+    await clear.click();
+    await told;
+    await storedAs(env, index, null, []);
+    assert.equal(sent.length, 1, 'INV-CLEAR-LEAVES-NO-WORD-SELECTED: one unmark');
+    assert.equal(sent[0].edit.type, 'unmark');
+    assert.deepEqual(await pressedWords(page), []);
+    const row = page.locator(`[data-testid="check-list"] [data-rail-index="${index}"]`);
+    await until('the rail no longer counts the check', async () => (await row.getAttribute('data-decided')) === '0');
+    await page.getByTestId('check-history').getByTestId('history-toggle').click();
+    const versions = page.getByTestId('check-history').getByTestId('history-version');
+    await until('History keeps the earlier mark', async () => (await versions.count()) >= 2);
+    await versions.nth(1).getByTestId('history-restore').click();
+    await storedAs(env, index, 'valid', [0, 1, 2]);
+    await until('restoring the old mark brings its words back', async () => (await pressedWords(page)).length === 3);
+  }, { scenario: 'en-pins' });
+});
+
+browserTest('j4_clear_selection_is_in_the_detail_tab_order_and_off_during_save', async () => {
+  await withApp(async ({ page, env }) => {
+    await openTool(page, 'translationNotes');
+    await page.getByTestId('tw-2').waitFor();
+    await page.getByTestId('tw-0').click();
+    const clear = page.getByRole('button', { name: 'Clear selection', exact: true });
+    assert.equal(await clear.count(), 1, 'INV-CLEAR-LEAVES-NO-WORD-SELECTED: clear control exists');
+    await page.getByTestId('tw-0').focus();
+    await page.keyboard.press('Tab');
+    assert.equal(await clear.evaluate((el) => el === document.activeElement), true);
+    await page.keyboard.press('Enter');
+    assert.deepEqual(await pressedWords(page), []);
+    await page.getByTestId('tw-0').click();
+    let release;
+    const held = new Promise((resolve) => { release = resolve; });
+    await page.route('**/api/v1/check/decide', async (route) => {
+      await held;
+      await route.continue();
+    });
+    const index = Number(await shownIndex(page));
+    try {
+      await page.getByTestId('mark-valid').click();
+      await until('the words are off while saving', async () => (await lineSaving(page)) === '1');
+      assert.equal(await clear.isDisabled(), true);
+      await clear.click({ force: true });
+      assert.deepEqual(await pressedWords(page), ['tw-0']);
+    } finally {
+      release();
+    }
+    await storedAs(env, index, 'valid', [0]);
+    await until('Clear selection is on after saving', () => clear.isEnabled());
+    await clear.click();
+    await storedAs(env, index, null, []);
+  }, { scenario: 'en-pins' });
 });
