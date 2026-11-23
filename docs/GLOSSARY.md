@@ -63,8 +63,8 @@ detail, it is named. **Wins over:** nothing.
 | Save machine | The UI's single state machine for saving typed text (`Saves`) |
 | Draft buffer | The browser-side copy of typed text that survives a crash |
 | Port | A trait with a fake and a real implementation (`SyncPort`, `ImportPort`…), so tests and release run the same code |
-| Parity | Comparing the app's screens and components with tC4's. Done for 4.1.0 (`docs/rulings/2026-10-27-p7-review.md`), then retired (`docs/rulings/2026-10-29-tc4-is-history.md`). Its records stay in `parity/tc4-baseline`, `parity/ds-gallery` and `parity/view-gallery` |
-| Gallery | Captured view states of tC4's screens (`parity/view-gallery`) |
+| Parity | Comparing the app's screens and components with tC4's. Done for 4.1.0 (`docs/rulings/2026-10-27-p7-review.md`), then retired (`docs/rulings/2026-10-29-tc4-is-history.md`). Its capture tools and records were removed in #864; the records remain in git at b6c5df68 |
+| Gallery | A page of design-system component cases (`parity/ds-gallery`); the retired view-state gallery remains in git at b6c5df68 |
 | Residual | A known, explained difference from tC4 in the retired parity report |
 | R-request | A request from the app team to the storage team (APP-DESIGN §9.2, R1 to R30) |
 | Q-question | A question for the owner in APP-DESIGN §12 (Q-1 to Q-36) |

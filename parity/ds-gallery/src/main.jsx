@@ -1,9 +1,9 @@
 // Two modes.
-//   ?case=<id>  One case alone, its frame at the top-left corner of the page. capture.mjs sizes
+//   ?case=<id>  One case alone, its frame at the top-left corner of the page. The behavior check sizes
 //               the viewport to the frame, so a Layer's fixed scrim covers exactly the frame and
 //               an anchored popover measures the same window the frame is. The case mounts only
 //               when window.__mount() is called (or with &auto=1), so the capture can make its
-//               pointer click first (see capture.mjs).
+//               pointer click first.
 //   (none)      Every case, grouped by component, for browsing. Cases that open a layer, need
 //               an interaction or set the document language load in an iframe of the first mode.
 import React from 'react';

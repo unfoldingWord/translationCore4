@@ -1,8 +1,8 @@
 //! The screens of the H5 packet (unit C7b step 2, Q-9) that the owner's ruling kept: the review
 //! screens tC4 has no design for, as fixed data (ruling H5 dropped the conflict cards of every
-//! kind outside verse text, whose newest version now wins). The test build's probe page draws one with `?probe=q9&screen=<name>`, and
-//! `parity/app/q9-packet.mjs` photographs each. The choices' words are STORAGE §8.3's and
-//! §8.5's, in English: they become catalog keys when the signed-off screens are wired (steps 3
+//! kind outside verse text, whose newest version now wins). The test build's probe page draws
+//! one with `?probe=q9&screen=<name>`. The choices' words are STORAGE §8.3's and §8.5's,
+//! in English: they become catalog keys when the signed-off screens are wired (steps 3
 //! to 6), so a word the owner changes is changed once.
 
 use tc_api::conflicts::{NoticeView, ReviewTab, TabCount};

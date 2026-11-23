@@ -341,7 +341,7 @@ export function subtreeOf(snapshot, attr) {
 export const snapshot = (page) => page.evaluate(domSnapshot, {});
 
 /** tC4's committed DOM file of baseline screen `name`. */
-export const tc4Dom = (name) => JSON.parse(fs.readFileSync(path.join(REPO, 'parity', 'tc4-baseline', 'dom', `${name}.json`), 'utf8'));
+export const tc4Dom = (name) => JSON.parse(fs.readFileSync(path.join(REPO, 'parity', 'app', 'journeys', 'fixtures', `${name}.json`), 'utf8'));
 
 /** `test/keychain`: the test keychain's mode and what it holds, then, with `relaunch`, the
  * account as a launch finds it. Answers `{ mode, holds, keeps, reads, forgets }`. */

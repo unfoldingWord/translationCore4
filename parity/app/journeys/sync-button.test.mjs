@@ -178,7 +178,7 @@ browserTest('E1a. Download on the sync toast opens the project\'s Source texts a
 });
 
 // #724: the open Download starts is refused once, as the open refuses a project file another
-// program left unreadable (the gallery's home-open-error). The toast and its links stay, and
+// program left unreadable (the home-open-error fixture). The toast and its links stay, and
 // the next Download opens Source texts. conflict-review proves the same for Review.
 browserTest('failed_open_keeps_the_sync_toast_links', async () => {
   await withApp(async ({ page, env }) => {
@@ -190,7 +190,7 @@ browserTest('failed_open_keeps_the_sync_toast_links', async () => {
     const before = await links();
     const said = await toast(page).textContent();
     assert.ok(before.includes('sync-download'), 'Download is offered');
-    const refusal = JSON.parse(fs.readFileSync(path.join(REPO, 'parity', 'view-gallery', 'replies', 'home-open-error.json'), 'utf8')).replies[0].reply;
+    const refusal = JSON.parse(fs.readFileSync(path.join(REPO, 'parity', 'app', 'journeys', 'fixtures', 'home-open-error.json'), 'utf8')).replies[0].reply;
     await page.route('**/api/v1/session/open', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(refusal) }), { times: 1 });
     await toast(page).getByTestId('sync-download').click();
     await page.getByTestId('home-open-error').waitFor();

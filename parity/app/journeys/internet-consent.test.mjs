@@ -246,7 +246,7 @@ browserTest('c. the signed-in account button is tC4\'s', async () => {
   await withApp(async ({ page }) => {
     await turnOn(page);
     await signIn(page);
-    const want = JSON.parse(fs.readFileSync(path.join(REPO, 'parity', 'view-gallery', 'dom', 'share-done.json'), 'utf8'));
+    const want = JSON.parse(fs.readFileSync(path.join(REPO, 'parity', 'app', 'journeys', 'fixtures', 'signed-in-account.json'), 'utf8'));
     // The span around the button and the dot, with its subtree.
     const wrapper = (snap) => {
       const lines = snap.root;

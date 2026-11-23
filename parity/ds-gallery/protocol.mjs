@@ -1,6 +1,4 @@
-// The capture protocol (gallery-spec.json, `protocol`), shared by capture.mjs (tC4's React
-// gallery) and capture-rust.mjs (the Leptos port), so both sides are drawn and photographed
-// the same way.
+// Browser and DOM helpers shared by the design-system behavior check's two galleries.
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';

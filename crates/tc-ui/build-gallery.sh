@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build the design-system gallery: the tc-ui crate with the `gallery` feature, compiled to
 # wasm32, bound with wasm-bindgen, and assembled with tC4's CSS, fonts and images into a static
-# site that parity/ds-gallery/capture-rust.mjs serves.
+# site for browsing and the design-system behavior check.
 #
 #   crates/tc-ui/build-gallery.sh [--release] [--out DIR]
 #

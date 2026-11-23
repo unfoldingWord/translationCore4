@@ -1,331 +1,45 @@
-# tC4 design-system baseline gallery
+# Design-system gallery
 
-> **Retired 2026-10-29.** The screenshot comparison with tC4 was done for 4.1.0 and no longer
-> gates a change (`docs/rulings/2026-10-29-tc4-is-history.md`). This folder is kept for what
-> other checks still use from it; the rest is a record.
+The Rust gallery renders `gallery-spec.json` with tC4's design-system components, CSS, fonts
+and images. The `wasm-ui-gallery` gate compiles it. The screenshot comparison was retired on
+2026-10-29 (`docs/rulings/2026-10-29-tc4-is-history.md`); #864 removes the capture scripts,
+pixel and DOM diff tools, and their recorded output.
 
-Every component of translationCore 4's design system (`src/ds`), in its meaningful states, each
-drawn alone in a fixed-size frame and captured as a PNG. The Rust/Leptos port renders the same
-cases from `gallery-spec.json` and compares its images with `screens/`.
+| Path | Used by |
+|---|---|
+| `gallery-spec.json` | `crates/tc-ui/build-gallery.sh` and the Rust gallery: cases, props, frames, languages and interaction protocol |
+| `cases/`, `build-spec.mjs` | Generate and validate the spec from the reference tC4 checkout |
+| `src/`, `index.html`, `vite.config.mjs` | Build the React gallery used by the behavior check |
+| `scenarios.mjs` | Keyboard and mouse sequences compared on both galleries; the document claims check also reads their names |
+| `protocol.mjs` | The behavior check: local static servers, Chromium, DOM observations and node identity |
+| `package.json`, `package-lock.json` | Gallery build and behavior dependencies; the app's smoke, prepare-smoke and no-loss tools also resolve Playwright here |
 
-- tC4 source: `/home/user/unfoldingword/translationcore4`, commit
-  **`d310bf304cfee784f4ca45dee474a3faf0d5616e`** (version `4.0.0-rc.1`, clean tree). The gallery
-  imports `src/ds/index.js` and `src/ds/styles.css` from that checkout through a Vite alias. It
-  copies nothing and changes nothing there.
-- Output: **754 cases**, 754 PNGs in `screens/<Component>/<state>.png`: 717 component cases for
-  the 53 components that the 52 files in `src/ds/components` export (`Radio.jsx` exports `Radio`
-  and `RadioGroup`), plus 37 token cases. 6.7 MB in total.
-- Contract: `gallery-spec.json` lists every case with its component, state, source file, frame,
-  document language and direction, exact props as JSON, interaction steps and what it needs.
-- Versions: React 18.3.1, react-dom 18.3.1, Vite 6.4.3, @vitejs/plugin-react 4.7.0 and esbuild
-  0.25.12, the same as tC4's `package.json`. Playwright 1.56.1 with Chromium 141.0.7390.37,
-  headless. tC4 pins @playwright/test 1.61.1, but the only Chromium in `/opt/pw-browsers` is
-  build 1194, which is Playwright 1.56's (as in `parity/tc4-baseline`).
-- Two consecutive full runs, each with a fresh spec and build, gave byte-identical PNGs.
+## Build and browse
 
-## Rerun
+From the repository root:
 
 ```sh
-cd /home/user/tc-rst/parity/ds-gallery
-npm install          # the versions above, into ./node_modules (git-ignored)
-npm run capture      # spec, vite build, then one screenshot per case (about 2.5 minutes)
+crates/tc-ui/build-gallery.sh             # target/tc-ui-gallery
+crates/tc-ui/build-gallery.sh --release
 ```
 
-`npm run capture` runs `capture.mjs`, which:
+The build needs the `wasm32-unknown-unknown` Rust target and the wasm-bindgen CLI version
+pinned by tc-ui. Serve the output with a local static server. `?case=Button/primary-md&auto=1`
+mounts one case; the index lists all cases.
 
-1. Runs `build-spec.mjs`. It writes `gallery-spec.json` from `cases/*.mjs`. It stops if a
-   component file has no case, a case names a component that `index.js` does not export, or two
-   cases share an id.
-2. Builds the gallery with Vite into `dist/` (git-ignored).
-3. Serves `dist/` on a free local port and captures each case by the spec's `protocol` (below),
-   six pages at a time.
-4. Fails when a case throws, logs an error, or overflows its frame. A full run also deletes
-   screens that no longer have a case.
-
-| Option | Effect |
-|---|---|
-| `--only Button/,Select/open` | Capture only the cases whose id starts with one of these prefixes. |
-| `--jobs 6` | Pages captured at once. |
-| `--no-build` | Use the existing `gallery-spec.json` and `dist/`. |
-| `TC4_ROOT=/path/to/translationcore4` | Use another tC4 checkout (spec, build and token pages). |
-
-To browse: `npm run dev` and open the address it prints. The index shows every case. Cases that
-open a layer, need an interaction or set the document language load in an iframe, without their
-steps. `?case=Button/primary-md&auto=1` shows one case alone.
-
-## Layout
-
-| Path | What it is |
-|---|---|
-| `cases/*.mjs` | The cases, by DS folder. `cases/lib.mjs` has the helpers and the shared copy. `cases/tokens.mjs` reads tC4's token files, so the token pages follow them. |
-| `build-spec.mjs` | Writes and checks `gallery-spec.json`. |
-| `gallery-spec.json` | The contract: every case, the capture protocol and the node format. The app renders from it, so the spec and the screens cannot disagree. |
-| `src/main.jsx`, `src/render.jsx` | The gallery app: one case alone (`?case=`) or the browsing index. `render.jsx` turns a spec tree into React elements. |
-| `protocol.mjs` | The capture protocol, shared by both captures: the static server, Chromium's flags, the steps, the settle, the screenshot. |
-| `capture.mjs` | Build, serve, screenshot, check. |
-| `screens/` | The baseline. |
-| `capture-rust.mjs` | The same capture of the Leptos port (`crates/tc-ui`), into `screens-rust/`, then `diff.mjs`. |
-| `diff.mjs`, `diff-report.json` | The pixel comparison of `screens-rust/` with `screens/`, per case. |
-| `dom-diff.mjs`, `dom-report.json` | The DOM comparison of the two galleries, per case. |
-| `scenarios.mjs`, `scenario-report.json` | Behaviour parity: keyboard and mouse sequences on both galleries, compared after every step. |
-| `screens-rust/` | The port's screens. Git-ignored: `capture-rust.mjs` writes them again. |
-| `residuals.json` | A declared difference per case id: the ruling docs/DIFFERENCES.md lists, the layers that differ (`pixels`, `dom`), why, and the exact [tC4, port] DOM lines. `cargo test -p tc-ui` fails when a declared case no longer differs, differs in more than it declares, or cites a ruling PLAN lacks. |
-
-## The Leptos port
-
-`crates/tc-ui` ports every component to Leptos 0.8.22 (client-side rendering, compiled to
-`wasm32-unknown-unknown`) with the same DOM. Its `gallery` feature draws every case of
-`gallery-spec.json` by the same protocol: the same page globals (`__galleryBooted`, `__mount`,
-`__galleryMounted`), the same frame and tC4's stylesheet, fonts and images, copied verbatim into
-`crates/tc-ui/assets/` by `crates/tc-ui/vendor-tc4.sh`. `cargo test -p tc-ui` checks each of
-them against its git blob id in tC4 (`crates/tc-ui/vendored-from-tc4.txt`).
-
-### Build
-
-Needs the `wasm32-unknown-unknown` target and the wasm-bindgen CLI at the version the crate pins.
-No trunk and no cargo-leptos.
-
-```sh
-rustup target add wasm32-unknown-unknown
-cargo install wasm-bindgen-cli --version 0.2.129 --locked   # once; the crate pins =0.2.129
-
-crates/tc-ui/build-gallery.sh             # dev profile, about 1.5 minutes from clean
-crates/tc-ui/build-gallery.sh --release   # wasm-release profile: opt-level z, LTO, 1 unit
-```
-
-Run them from the repository root. The script builds `tc-ui` with `--features gallery` (cargo
-`-j 2`; set `CARGO_JOBS` to change it) and runs `wasm-bindgen --target web` on the wasm in
-cargo's target directory, which follows `CARGO_TARGET_DIR`. It assembles a static site in
-`target/tc-ui-gallery/` (`--out DIR` to change it): `index.html`, `pkg/`, `assets/` and a copy
-of `gallery-spec.json`. Both profiles drew the same pixels when last compared (719 cases, tC4
-d494a9d); the release wasm was then 1,184,058 bytes (368 KB with gzip -9), the gallery's spec
-renderer and `serde_json` included.
-
-### Capture and compare
+The React gallery uses a reference tC4 checkout through `TC4_ROOT` (see `vite.config.mjs`):
 
 ```sh
 cd parity/ds-gallery
-npm install                       # once; adds pixelmatch and pngjs to the baseline's packages
-node capture-rust.mjs             # build (dev), capture screens-rust/, compare (about 7 minutes)
-node capture-rust.mjs --release   # the same with the wasm-release build
-node diff.mjs                     # compare again without capturing
-npm run build && node dom-diff.mjs   # the DOM of both galleries; needs the React build in dist/
-node scenarios.mjs                # behaviour after each step of 53 sequences; needs both builds
+npm ci
+npm run build       # regenerate spec, then build the React gallery into dist/
+npm run dev         # browse the React gallery
+node scenarios.mjs  # compare behavior; needs dist/ and target/tc-ui-gallery/
 ```
 
-`capture-rust.mjs` takes `--only`, `--jobs` and `--no-build` as `capture.mjs` does. It serves
-`target/tc-ui-gallery/` with the same static server and captures each case with the same code
-(`protocol.mjs`) into `screens-rust/`. `diff.mjs` counts, per case, the pixels that differ in any
-channel (pixelmatch with threshold 0 and anti-aliased pixels counted) and writes
-`diff-report.json`. For a case that differs it writes `diffs/<C>/<s>.png` (git-ignored) and takes
-the explanation from `residuals.json`. It fails when a case differs without one. `dom-diff.mjs`
-compares, per case and after the steps, the frame's elements, their attributes, every longhand of
-their inline style, their text, input values and checked states, and the focused element, and
-writes `dom-report.json`. Like `diff.mjs`, a run with `--only` replaces only its own cases in
-the report.
+`node scenarios.mjs --only menu-keys` runs one sequence. The check compares DOM, focus, scroll
+lock and node identity after each action. It fails on differences or page errors and writes
+`scenario-report.json` (ignored, regenerated output). It needs Playwright's Chromium installed.
 
-A still image and the DOM after at most three steps cannot show behaviour: focus that moves or
-is lost, a layer that should close and does not, a node drawn again where React keeps it (which
-stops its transition and drops any focus on it). `scenarios.mjs` drives 53 sequences of up to 13
-steps on both galleries: roving focus and typeahead in Menu, Select and SuggestField, the focus
-trap of Modal, Drawer and ConfirmDialog, Escape and outside presses with a Select or a Menu open
-inside a Modal, state an owner keeps (a Toggle, a RadioGroup, a Table selection by keyboard, a
-Progress ring, two Accordion panels open at once), lists whose items change while they are
-drawn (Table rows inserted and changed, rows re-sorted under the focused row, rows that share a
-key, Select groups whose name comes back, suggestions replaced while the list is open),
-controlled values a change does not reach, and props a screen changes on a drawn component (a
-button that turns busy or reaches the end, a dialog that keeps its ✕, Escape and scrim only
-while it is not busy, tabs, header exits and book tiles that an editing card turns off, header
-exits that write what they do and come back when the card closes, and a press on an off control
-that keeps the focus in the field). After every step it compares the frame's DOM as
-`dom-diff.mjs` sees it, the focused element, the page's scroll lock, and which elements are
-still the nodes they were (each element is numbered once, in document order, when it first
-appears). It writes `scenario-report.json` and takes `--only` with scenario names.
-
-Result at this commit (tC4 d310bf3, dev build): 751 of 754 cases at 0 mismatched pixels, and
-every one of their `screens-rust/` files is byte-identical to its `screens/` file. 751 of 754
-cases have the same DOM. The other three are the declared difference of tC4 #552
-(`Select/disabled-while-open`, `Select/disabled-while-open-label` and
-`Select/disabled-while-open-script`, `residuals.json`): they differ in the caption alone, 186
-pixels and one DOM line, "Chosen: EST" in tC4 and "Chosen: none" in the port. A mouse click lets
-the page settle between the click's listeners, so the port's close-on-disable has closed the list
-before the row sees the click; the `-script` case dispatches the same click by script, in one task
-with the switch-off, so only the port's check of `disabled` when a choice arrives keeps the value.
-The `-label` case pins the label-press edge: a press on the label of a Select that is now off
-neither opens the list nor chooses. The browser gives a disabled button no activation from its
-label, on both sides, so no change to the #552 fix shows in it. 53 of 53 scenarios (277 steps) are the same after every step. The 719 cases that
-existed at d494a9d draw the same tC4 screens at d310bf3: the only design-system change in
-between is a `::selection` rule for `[data-words="target"]`, which only `Tokens/selection` shows.
-Both galleries are captured on the same machine, so the machine-dependent rendering under
-"Skipped, and what to know" (fallback glyphs, monospace, Nastaliq) affects both sides alike. Both
-sides of the three #552 cases were captured on the owner's Linux PC (Chromium 141, build 1194), the
-rest on the machine named above; that run had `TC4_ROOT` point at
-`/home/bot/unfoldingword/translationcore4`, so `gallery-spec.json`'s `source.repo` names that
-checkout (the same commit).
-
-CI has no Chromium and no tC4 checkout, so it cannot rerun these scripts. `cargo test -p tc-ui`
-(`crates/tc-ui/tests/gallery_record.rs`) checks what they left instead: every case has its tC4
-screen, `diff-report.json` and `dom-report.json` cover exactly the spec's cases at 0 mismatched
-pixels and the same DOM, except the declared differences of `residuals.json`, which must differ
-exactly as declared, and the states that §3.5 of `docs/TC4-DELTA-2026-10-16.md` and the tC4
-issues of `docs/TC4-ISSUES.md` §1 ask for are cases. Run the scripts again and commit their reports with any change to the cases or to tc-ui.
-
-## The contract
-
-Each case in `gallery-spec.json`:
-
-| Field | Meaning |
-|---|---|
-| `id` | `<component>/<state>`, also the screen's path. |
-| `component`, `file` | The DS export and its file in `src/ds` (`Tokens` for the token pages). |
-| `frame` | `width`, `height`, `padding` (16 unless stated) and `background` (`#F7FAFC`, which is `--surface-app`). |
-| `document` | `lang` and `dir` of `<html>`. 53 cases use the Arabic interface (`ar`, `rtl`), as tC4 sets it. |
-| `props` | The exact props of the component under test, as JSON. |
-| `render` | Only on 74 cases that place the component in something: a row, an Ocean ground, a centring box. It is the whole tree. Without it the tree is the component with `props`. |
-| `steps` | Interactions before the screenshot (117 cases): `focus` (Tab until the target has keyboard focus), `hover`, `press` (button held), `click` (with `force`, without waiting for the target to be enabled, which Playwright judges for a label by its control; with `script`, by the target's `click()` in one script, so no microtask runs between the click's listeners), `key`, `type`, `select` (the text from the start of `target` to the end of `to`, set by script). A target is a CSS selector inside the frame. |
-| `needs` | `callbacks`: props that hold a callback (259 cases). `elements`: props that hold elements, such as `children`, `footer`, `trigger`, `center` or a `title` (200 cases). |
-| `cells` | Only on 22 cases that own state, as a screen does: the first value of each cell. A prop `{ "$cell": name }` reads a cell, `{ "$if": name, … }` picks a value by one, and a callback `{ "$fn": "set", "cell": name, "from": path }` writes one. A Toggle that turns on, a RadioGroup that changes, a Table row selected by Enter, Table rows and suggestions that change while they are drawn (rows re-sorted under the focused row among them), a Progress ring that moves, a Modal that closes, and the props tC4's d310bf3 screens change on a drawn component (a sync button that turns busy, a Previous/Next pill that reaches the end, a dialog that loses its ✕ while it works, tabs, book tiles and header exits that an editing card turns off, a Select turned off while its list is open) are drawn by the component, not by a new case. A callback that the component itself turns off, Modal's `onClose` (`closable`), AppHeader's `onBrandClick` and `onProjectClick` (`exits_off`) and Layer's `onDismiss` (a signal), reaches the port as the screen passes it, without a check of the cell, so only the component's own switch keeps it from running, as on a screen. |
-| `isolate` | The case opens a layer, has steps or sets the document language. The browsing index loads it in an iframe. |
-| `note` | Present where a case needs explaining. |
-
-Props are plain JSON wherever the component allows it. A tree uses these markers:
-`{ "$el": "Name", "props": {...} }` is an element (a DS export when the name is capitalised, an
-HTML or SVG tag when it is lower case), `{ "$fn": "noop" }` is a callback that does nothing (some
-components draw a control only when they get one, such as Modal's ✕ or Toast's action), and
-`{ "$asset": "public/assets/…" }` is a file of the tC4 checkout, and `{ "$fn": "preventDefault" }` is
-a callback that calls `preventDefault` on its event (tC4's press guard,
-`onPointerDownCapture={(e) => e.preventDefault()}`). Three markers carry state: `{ "$cell":
-"on" }` reads a cell of the case's `cells`, `{ "$if": "busy", "then": a, "else": b }` is `a` while
-the cell is truthy and `b` otherwise (an absent branch is undefined, as in tC4's
-`onClose={busy ? undefined : close}`), and `{ "$fn": "set", "cell": "on", "from":
-"0.target.checked" }` writes it from the callback's arguments (or `"value"` writes a fixed
-value). A cell placed among children draws its value as text, so a case can show what a
-callback handed over. An HTML element may take `onClickCapture`, a callback run in the click's
-capture phase, before the component under test sees the click: the #552 cases turn a Select off
-with the very click that picks a row. Styles are React inline styles.
-`defaultValue` is a field's initial value.
-
-The `protocol` object in the spec states how each case is drawn. In short: load
-`src/ds/styles.css`. Set `<html lang dir>`. Size the viewport to the frame at device scale 1. The
-frame is a `<div data-case tabindex="-1">` at the top-left corner, so a Layer's fixed scrim covers
-exactly the frame and an anchored popover measures the frame as its window. Load every font.
-Click the pointer at (1, 1) before mounting: the frame takes the focus without a ring, so a
-dialog that focuses its first control on mount shows no ring, as in the app after a click opened
-it. Mount, run the steps, turn every transition and animation off, wait for fonts, images and two
-frames, and screenshot the frame.
-
-## What the cases cover
-
-Each component gets its variants, tones and sizes, disabled and selected states, hover and
-keyboard focus where it has them, long text, and right-to-left where it handles direction. Overlay
-states are real: Modal, Drawer, ConfirmDialog and Layer open in their frame, Menu opens with
-`open`, Tooltip opens on hover and focus, and Select and SuggestField open by click or arrow key
-(with the search field, groups, badges, meta, disabled rows and no matches). Two of tC4's
-d310bf3 dialogs are drawn whole from its views, with their English (and once Arabic) text: Open
-a project from Door43 empty, filled, with a name error, refused and busy
-(`src/views/modals/OpenFromDoor43.jsx`), and Add a project with its four cards
-(`src/views/modals/AddProject.jsx`).
-
-| Component | File | Cases |
-|---|---|---|
-| Badge | core/Badge.jsx | 16 |
-| Button | core/Button.jsx | 54 |
-| Divider | core/Divider.jsx | 5 |
-| IconButton | core/IconButton.jsx | 13 |
-| Overline | core/Overline.jsx | 6 |
-| ProgressBar | core/ProgressBar.jsx | 13 |
-| StatusDot | core/StatusDot.jsx | 12 |
-| Accordion | data/Accordion.jsx | 7 |
-| Avatar | data/Avatar.jsx | 12 |
-| KeyValueGrid | data/KeyValueGrid.jsx | 5 |
-| ConfirmDialog | feedback/ConfirmDialog.jsx | 6 |
-| EmptyState | feedback/EmptyState.jsx | 7 |
-| InlineError | feedback/InlineError.jsx | 3 |
-| Spinner | feedback/Spinner.jsx | 9 |
-| Toast | feedback/Toast.jsx | 9 |
-| Tooltip | feedback/Tooltip.jsx | 8 |
-| Checkbox | forms/Checkbox.jsx | 12 |
-| DropZone | forms/DropZone.jsx | 6 |
-| FilterChip | forms/FilterChip.jsx | 11 |
-| OptionCard | forms/OptionCard.jsx | 14 |
-| Radio, RadioGroup | forms/Radio.jsx | 8, 7 |
-| SearchField | forms/SearchField.jsx | 6 |
-| Select | forms/Select.jsx | 22 |
-| SuggestField | forms/SuggestField.jsx | 7 |
-| TextArea | forms/TextArea.jsx | 10 |
-| TextField | forms/TextField.jsx | 12 |
-| Toggle | forms/Toggle.jsx | 10 |
-| AppHeader | navigation/AppHeader.jsx | 13 |
-| Breadcrumb | navigation/Breadcrumb.jsx | 7 |
-| Menu | navigation/Menu.jsx | 7 |
-| Action | primitives/Action.jsx | 52 |
-| Choice | primitives/Choice.jsx | 29 |
-| Field | primitives/Field.jsx | 13 |
-| FieldGroup | primitives/FieldGroup.jsx | 7 |
-| Input | primitives/Input.jsx | 13 |
-| Layer | primitives/Layer.jsx | 7 |
-| Progress | primitives/Progress.jsx | 19 |
-| Rule | primitives/Rule.jsx | 5 |
-| Stack | primitives/Stack.jsx | 8 |
-| Surface | primitives/Surface.jsx | 55 |
-| Switcher | primitives/Switcher.jsx | 19 |
-| Table | primitives/Table.jsx | 13 |
-| Text | primitives/Text.jsx | 40 |
-| BookTile | surfaces/BookTile.jsx | 18 |
-| Callout | surfaces/Callout.jsx | 7 |
-| Card | surfaces/Card.jsx | 9 |
-| Drawer | surfaces/Drawer.jsx | 8 |
-| HelpCard | surfaces/HelpCard.jsx | 10 |
-| Modal | surfaces/Modal.jsx | 19 |
-| ScripturePassage | translation/ScripturePassage.jsx | 14 |
-| VerseMarker | translation/VerseMarker.jsx | 8 |
-| WordChip | translation/WordChip.jsx | 7 |
-| Tokens | tokens/*.css | 37 |
-
-The 37 token cases: one swatch page per section of `colors.css` (10), the nine tone slots of
-each of the seven tones on a light ground and on the Ocean ground (14), the context slots light
-and dark (2), the UI and scripture type scales, the weights, every Text role, the font families,
-spacing, radius, stroke, elevation and control heights (10), and `base.css`'s selection colours
-(1): text selected outside Check's "Your translation" line takes the soft yellow, text selected
-inside it (`[data-words="target"]`, #737) the system highlight. `motion.css` and `layer.css` hold
-durations and z-indices, which a still image cannot show, and `print.css` styles only the print
-document.
-
-## Skipped, and what to know
-
-No component was skipped: every file in `src/ds/components` has cases. These parts are not
-cases of their own:
-
-- `Layer` with `placement="anchor"`: it needs a ref to an anchor element, which JSON cannot
-  carry. Menu, Tooltip, Select and SuggestField anchor their own Layers and cover it, in both
-  directions.
-- `Table`'s `cell` and `rowKey` are render functions. The table cases use the default cell,
-  which is a `Text` of the row's value.
-- `FieldContext`, `useField`, `FieldGroupContext` and `useFieldGroup` are a context and a hook,
-  not components. The Field and FieldGroup cases exercise them.
-- Behaviour that a still image cannot show: Escape and outside-press dismissal, focus trapping,
-  roving keyboard focus past one step, dragging a VerseMarker or a WordChip, and the Layer enter
-  and exit motion. The spinning ring and the sliding bar are captured still, at their start.
-  `scenarios.mjs` compares all of these except dragging and motion between the two galleries.
-- The Hindi interface: Devanagari has no bundled face, so it would draw in whatever the machine
-  has.
-
-Rendering that depends on the machine, not on tC4:
-
-- Mulish and Charis SIL have no glyph for ✕ ✓ ▾ ▴ ★ ☰ → ← ≠. Close buttons, check marks, the
-  Select chevron and the arrows in labels such as "Create Bible →" draw in a fallback font that
-  Chromium picks from the machine's fonts (this machine has DejaVu, Free, Inter, Liberation and
-  IPA faces). tC4 has the same dependency.
-- `--font-mono` (the `meta` Text role) names no bundled face. It draws in the machine's
-  monospace font.
-- This machine has Awami Nastaliq Regular installed (`/root/.fonts`), so `local("Awami
-  Nastaliq")` in `fonts.css` picks it before the bundled `.ttf`. The two files are identical
-  (same MD5), so the images do not change. Chromium has no Graphite, so Nastaliq draws unjoined
-  in every Nastaliq case. tC4 ships in Electronite, which joins it.
-- The DS relies on `text-box: trim-both cap alphabetic` (headings and controls) and
-  `font-size-adjust` (Greek, Hebrew and Arabic scripture). Chromium 141 has both. A webview
-  without them draws different line boxes.
-
-Sample text: interface strings come from tC4's English and Arabic catalogs where they exist there.
-Scripture lines are illustrative samples in Latin, Greek, Hebrew, Arabic and Urdu script, not
-quotations of a pinned resource.
+Removed screenshots and comparison records remain in git at
+`b6c5df68aa4f31b3e4357d46eb2095f749332a72`.

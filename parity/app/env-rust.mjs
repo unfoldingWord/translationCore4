@@ -1,6 +1,6 @@
 // The Rust environment of the driver: `tc4 serve` on an empty app-data folder and projects
 // folder under target/, the page loaded with its token, and everything the shared capture needs
-// to wait for a quiet app there (APP-DESIGN 7.1). The tC4 environment is env-tc4.mjs.
+// to wait for a quiet app there (APP-DESIGN §7.7).
 //
 // Built-ins only: CI imports this file for its pure tests, with no Playwright installed.
 import { spawn } from 'node:child_process';

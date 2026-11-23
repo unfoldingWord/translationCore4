@@ -20,7 +20,7 @@ function walk(dir, keep, out = []) {
 }
 
 /** Every name a claim may resolve to: Rust fns, journey and test titles (a template title is a
- * pattern), test-binary stems, report rows and design-system scenario ids. */
+ * pattern), test-binary stems and design-system scenario ids. */
 export function testNames(repo) {
   const exact = new Set();
   const patterns = [];
@@ -36,10 +36,6 @@ export function testNames(repo) {
     const titles = titlesOf(fs.readFileSync(file, 'utf8'));
     for (const t of titles.exact) exact.add(t);
     patterns.push(...titles.patterns);
-  }
-  const report = path.join(repo, 'parity/app/report.json');
-  if (fs.existsSync(report)) {
-    for (const row of JSON.parse(fs.readFileSync(report, 'utf8')).rows ?? []) if (row.name) exact.add(row.name);
   }
   // The release pipeline's node tests and the names its scripts print as `ok <name>` (card G3).
   for (const file of walk(path.join(repo, 'scripts/release'), (n) => n.endsWith('.mjs'))) {
