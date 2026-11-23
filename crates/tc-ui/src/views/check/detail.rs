@@ -409,17 +409,12 @@ fn target_words(
     actions: &Actions,
     words: Vec<String>,
     direction: TextDir,
+    saving: Memo<bool>,
 ) -> AnyView {
     let selection = s.c.selection.clone();
     let changed = {
         let actions = send_wrapper::SendWrapper::new(actions.clone());
         move || actions.words_changed()
-    };
-    // While a mark or a restore is being saved the line takes no act: nothing of the person's
-    // can cross a save that may still fail.
-    let saving = {
-        let actions = send_wrapper::SendWrapper::new(actions.clone());
-        Memo::new(move |_| actions.words_saving() || actions.check_item_pending())
     };
     // The pointer changed the words during this press. A read that lands under a press changes
     // the line too, and is no act of the person's.
@@ -906,6 +901,12 @@ fn item_detail(s: &AppState, actions: &Actions, unit: CheckUnit) -> AnyView {
             })
         }
     });
+    // While a mark or a restore is being saved the line takes no act: nothing of the person's
+    // can cross a save that may still fail.
+    let saving = {
+        let actions = send_wrapper::SendWrapper::new(actions.clone());
+        Memo::new(move |_| actions.words_saving() || actions.check_item_pending())
+    };
     let translation = {
         let s = s.clone();
         let actions = send_wrapper::SendWrapper::new(actions.clone());
@@ -931,17 +932,7 @@ fn item_detail(s: &AppState, actions: &Actions, unit: CheckUnit) -> AnyView {
                 }
                 .into_any();
             }
-            let hint = crate::css! {
-                "font-size": "var(--fs-caption)",
-                "letter-spacing": "var(--track-12)",
-                "color": "var(--text-tertiary)",
-                "margin": "8px 0 0",
-            };
-            view! {
-                {target_words(&s, &actions, words, direction)}
-                <p style=hint.to_style()>{t(keys::check::SELECT_HINT, &[])}</p>
-            }
-            .into_any()
+            target_words(&s, &actions, words, direction, saving)
         }
     };
     let compare = {
@@ -961,12 +952,42 @@ fn item_detail(s: &AppState, actions: &Actions, unit: CheckUnit) -> AnyView {
             "border-radius": "var(--radius-xl)",
             "box-shadow": "var(--shadow-card)",
         };
+        let hint_row = crate::css! {
+            "display": "flex",
+            "align-items": "center",
+            "flex-wrap": "wrap",
+            "gap": 8,
+            "margin": "8px 0 0",
+        };
+        let hint = crate::css! {
+            "font-size": "var(--fs-caption)",
+            "letter-spacing": "var(--track-12)",
+            "color": "var(--text-tertiary)",
+            "margin": 0,
+        };
+        let selection = c.selection.clone();
+        let actions = send_wrapper::SendWrapper::new(actions.clone());
         view! {
         <div data-testid="compare-card" style=column.to_style()>
             <div data-testid="compare-sources" style=row.to_style()>{sources}</div>
             <div data-testid="compare-translation" style=yours.to_style()>
                 <Overline tone=OverlineTone::Accent>{t(keys::check::YOUR_TRANSLATION, &[])}</Overline>
                 {translation}
+                <div style=hint_row.to_style()>
+                    <p style=hint.to_style()>{t(keys::check::SELECT_HINT, &[])}</p>
+                    <Button
+                        variant=ButtonVariant::Outline
+                        size=Size::Sm
+                        attrs=Attrs::from([("data-testid", "check-clear-selection")])
+                        disabled=Signal::derive(move || saving.get() || selection.with(BTreeSet::is_empty))
+                        on_click=Callback::new(move |_| {
+                            actions.select_words(BTreeSet::new());
+                            actions.words_changed();
+                        })
+                    >
+                        {t(keys::check::CLEAR_SELECTION, &[])}
+                    </Button>
+                </div>
             </div>
         </div>
     }

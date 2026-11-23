@@ -624,3 +624,8 @@ ops log, `recoverySettled`, `unreadableSettings` and the sync generation. STORAG
 give the same outcomes, and STORAGE §9.9 keeps saves flowing while a sync runs. tC4 can
 leave a torn `metadata.json` (tC4 RISKS #13). The rebuild cannot, because it writes every
 file atomically (STORAGE L18).
+
+In Check, Clear selection beside the hint under Your translation unselects every word at once
+(#757). It takes the mark away like any change of the selected words; the earlier mark stays
+in History. It is off with no selected words and whenever the words are off. tC4 has no such
+button (`d25b7871:src/views/Check.jsx`).

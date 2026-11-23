@@ -139,7 +139,8 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
 - End state: one decision record per check, holding the marked words, the comment and the
   bookmark; they survive reopening; clearing a comment clears that field. The book text is
   unchanged.
-- Changed from tC4: a change of the selected words after a mark takes the mark away until the
+- Changed from tC4: Clear selection beside the hint removes all selected words in one click
+  (#757, `docs/DIFFERENCES.md`). A change of the selected words after a mark takes the mark away until the
   check is marked again; words selected on a check with no decision turn Previous and Next
   off, and every other way out of the check asks before it drops them (#853,
   `docs/DIFFERENCES.md`). The compare card also shows the simplified Bible (UST or GST) of
