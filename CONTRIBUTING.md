@@ -88,7 +88,8 @@ Every change goes through these steps. Skip none; most take minutes.
    review finding you did not fix with its reason. A new owner ruling becomes a file in
    `docs/rulings/`, and the documents it changes are updated in the same pull request.
 8. **Land.** The pull request needs one approving review and the required checks, and lands
-   through the merge queue (`AGENTS.md` "How work lands").
+   through the merge queue (`AGENTS.md` "How work lands"). A fix that a release branch needs
+   then goes to it by a second pull request (`docs/RELEASE.md` "Release branches").
 
 ## Fix a bug
 

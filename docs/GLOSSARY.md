@@ -74,7 +74,7 @@ detail, it is named. **Wins over:** nothing.
 | Word | Meaning |
 |---|---|
 | Issue | A unit of work, a bug or a question, on GitHub at `unfoldingWord/translationCore4`. Work is tracked there since 2026-10-28 |
-| Pull request | How every change lands on `main`, through the merge queue, with one approving review and the required checks (`AGENTS.md` "How work lands") |
+| Pull request | How every change lands on `main`, through the merge queue, with one approving review and the required checks (`AGENTS.md` "How work lands"). A fix reaches a release branch by a pull request too (`docs/RELEASE.md` "Release branches") |
 | main | `main` of `unfoldingWord/translationCore4`. The old branch name `claude/focused-ride-5uzj7p` may still name it in a local clone |
 | Card, unit | The retired work tracker's items (A1, C7a, S2, AQ1…), removed on 2026-10-28. Their last states are frozen in `scripts/tools/cards.json`, because documents still name them in `pending:` markers. A path written `tracker:<path>` is a file of that tracker, in the history of `main` at commit 9249a60d |
 | Ruling | An owner's answer, one file in `docs/rulings/`; earlier ones are the `ruling` lines of `docs/rebuild.tsv` |
@@ -86,6 +86,6 @@ detail, it is named. **Wins over:** nothing.
 | Op-count test | A test that counts the operations an action does, at Psalms scale and ten times larger |
 | Model test | A property test that drives a state machine and a simple model side by side, with crashes and restarts |
 | Mutation | A deliberate bug put into the code to prove a test catches it |
-| Required checks | The CI jobs a pull request must pass in the merge queue (`AGENTS.md` "How work lands") |
+| Required checks | The CI jobs a pull request must pass: in the merge queue for `main`, on the pull request itself for a release branch (`AGENTS.md` "How work lands") |
 | Windows VM | The owner's Windows 11 VM, for Windows builds and tests (`scripts/tools/winvm/`) |
 | Reference laptop | The owner's Windows 10 laptop, used only to measure the speed budgets (`docs/PERFORMANCE.md`) |
