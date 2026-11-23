@@ -13,7 +13,7 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { browserTest, catalog, sleep, until, withApp } from './kit.mjs';
-import { REPO } from '../../view-gallery/node-lib.mjs';
+import { REPO } from '../env-rust.mjs';
 
 const en = catalog('en');
 const BIBLE = 'sample_burrito';

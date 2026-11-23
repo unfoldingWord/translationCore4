@@ -13,11 +13,8 @@ import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { recordSequence } from './behaviour.mjs';
-import { caseRoute, mergeCaptures, screenRoute } from './capture-rust.mjs';
 import { REPO, newRequestId, rustTracks, scenarioArgs, startDoor43Fake, startRustEnv } from './env-rust.mjs';
 import { CHROMIUM_ARGS, captureScreen, settle, trackRequests } from './observe.mjs';
-import { designUnits } from './units.mjs';
 
 const at = (p) => `http://127.0.0.1:4321${p}`;
 
@@ -51,53 +48,6 @@ test('a request id is 16 random bytes in lowercase hex', () => {
   const a = newRequestId();
   assert.match(a, /^[0-9a-f]{32}$/);
   assert.notEqual(a, newRequestId());
-});
-
-test('the units of the design are read from its section 10', () => {
-  const doc = ['## 9. Before', '| A99 not here |', '## 10. Work breakdown', '| Unit | Scope |', '|---|---|',
-    '| A6b Parity harness | x |', '| G0 Electronite spike | y |', '| B1a seed | z |', 'text', '## 11. Risks', '| C9 after |'].join('\n');
-  assert.deepEqual([...designUnits(doc)], ['A6b', 'G0', 'B1a']);
-});
-
-test('a screens-only rerun keeps the case entries, and a case rerun keeps the screens', () => {
-  const screens = [{ name: 'home' }, { name: 'about' }];
-  const cases = [{ name: 'home-empty' }, { name: 'license' }];
-  const previous = [
-    { name: 'about', kind: 'screen', by: 'A5' },
-    { name: 'license', kind: 'case', by: 'A5' },
-  ];
-  assert.deepEqual(
-    mergeCaptures(previous, [{ name: 'home', kind: 'screen', by: 'B2' }], screens, cases).map((e) => `${e.kind}:${e.name}:${e.by}`),
-    ['screen:home:B2', 'screen:about:A5', 'case:license:A5'],
-  );
-  assert.deepEqual(
-    mergeCaptures(previous, [{ name: 'license', kind: 'case', by: 'B2' }, { name: 'home-empty', kind: 'case', by: 'B2' }], screens, cases).map((e) => `${e.kind}:${e.name}:${e.by}`),
-    ['screen:about:A5', 'case:home-empty:B2', 'case:license:B2'],
-  );
-  // A case and a screen of one name are two entries (the gate refuses such a case anyway).
-  assert.equal(mergeCaptures([{ name: 'home', kind: 'screen' }], [{ name: 'home', kind: 'case' }], screens, [{ name: 'home' }]).length, 2);
-});
-
-test('a case takes its rust route, or its state\'s route when it is that state as tC4 drew it', async () => {
-  const route = async () => {};
-  const rust = async () => {};
-  const portable = { portable: true, route };
-  assert.equal(caseRoute({ rust }, { portable: false, route }), rust);
-  assert.equal(caseRoute({}, { portable: false, route }), null, 'a route that writes into the project is not the Rust app\'s');
-  assert.equal(caseRoute({ patch: () => ({}) }, portable), null, 'a patched case is a state the route does not reach');
-  assert.equal(caseRoute({ returns: { x: { value: 1 } } }, portable), null);
-  const steps = [];
-  const run = caseRoute({ steps: [] }, { portable: true, route: async (app) => steps.push(['route', app.page]) });
-  await run({ page: 'the page' }, null);
-  assert.deepEqual(steps, [['route', 'the page']]);
-});
-
-test('a screen\'s rust route is for a DOM-only capture', () => {
-  const run = async () => {};
-  const rust = async () => {};
-  assert.equal(screenRoute({ name: 'share-signin', run, rust }, ['dom']), rust);
-  assert.throws(() => screenRoute({ name: 'share-signin', run, rust }, ['pixels', 'dom']), /capture its pixels the tC4 way/);
-  assert.equal(screenRoute({ name: 'about', run }, ['pixels', 'dom']), run);
 });
 
 test('the fake Door43 signs in the parity account and is steered from its control port', { skip: process.env.TC4_DOOR43_FAKE ? false : 'set TC4_DOOR43_FAKE (cargo build -p tc-door43-fake)' }, async () => {
@@ -250,33 +200,5 @@ browserTest('E5 nothing leaves the machine', async () => {
     // the token header that the context adds to every request never leaves the machine.
     await assert.rejects(page.goto('https://example.org/'), /ERR_BLOCKED_BY_CLIENT/);
     assert.deepEqual(env.refused(), ['https://example.org/']);
-  });
-});
-
-browserTest('E6 the recorder keeps node identity across a language switch', async () => {
-  await withRustPage(async ({ env, page, busy }) => {
-    const inFlight = await trackRequests(page, env.tracks);
-    const screen = { name: 'home', run: async () => { await env.load(page, { locale: 'en' }); await page.getByTestId('add-project').waitFor({ timeout: 10_000 }); } };
-    // The App language dialog's preview switches the shown language (B2 D14).
-    const steps = [
-      { click: '[data-testid="account-menu"]' },
-      { click: '[data-testid="account-language"]' },
-      { click: '[data-testid="language-select"]' },
-      { key: 'ArrowDown' },
-      { key: 'Enter' },
-    ];
-    const recording = await recordSequence({ page, app: null, sequence: 'locale-switch', screen, inFlight, busy, steps });
-    assert.deepEqual(recording.steps.map((s) => s.label), ['start', ...steps.map((s) => JSON.stringify(s))]);
-    // Home's title has no test id, as in tC4: found by its tag.
-    const line = (step) => step.dom.root.find((l) => l.trimStart().startsWith('<h1'));
-    const id = (l) => l.match(/ #(\d+|new)>$/)?.[1];
-    const [first, last] = [recording.steps[0], recording.steps.at(-1)];
-    assert.match(id(line(first)) ?? '', /^\d+$/, 'the title has a number at the start');
-    assert.equal(id(line(last)), id(line(first)), 'the title is the same node after the switch');
-    assert.match(last.focus, /^button\[combobox\] /, `the focus is on the dialog's picker, not ${last.focus}`);
-    const text = (step) => step.dom.root[step.dom.root.indexOf(line(step)) + 1];
-    assert.notEqual(text(last), text(first), 'the title changed language');
-    // The open dialog holds the page still.
-    assert.equal(last.overflow, 'hidden');
   });
 });

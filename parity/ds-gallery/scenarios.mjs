@@ -1,13 +1,12 @@
 #!/usr/bin/env node
 // Behaviour parity: drive the same keyboard and mouse sequence on tC4's React gallery and on
-// the Leptos gallery, and compare after every step: the frame's DOM (as dom-diff.mjs snapshots
-// it), which element has the focus, whether the page's scroll is locked, and which elements are
-// still the nodes they were. A port that draws a node again where React keeps it loses the
+// the Leptos gallery, and compare after every step: the frame's DOM, which element has the
+// focus, whether the page's scroll is locked, and which elements are still the nodes they were. A port that draws a node again where React keeps it loses the
 // node's transition and any focus on it, which no still image shows.
 //
 //   node scenarios.mjs [--only <name prefix>[,<prefix>...]]
 //
-// Needs both builds, as dom-diff.mjs does: dist/ (`npm run build`) and target/tc-ui-gallery/
+// Needs both builds: dist/ (`npm run build`) and target/tc-ui-gallery/
 // (crates/tc-ui/build-gallery.sh). Transitions run (no STILL style), so every step waits for
 // them. Writes scenario-report.json (a run with --only replaces only its scenarios there).
 // Exit code 1 when a scenario differs or a page reports an error.

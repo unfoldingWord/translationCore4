@@ -99,8 +99,8 @@ browserTest('J18 (#679, #724). A refused open keeps the sync toast and its Revie
     await page.getByTestId(`share-${FOLDER}`).waitFor();
     await teammatesSynced(page, env);
     // A failed open keeps the toast and its links (#724): the open refused once, as the open
-    // refuses a project file another program left unreadable (the gallery's home-open-error).
-    const refusal = JSON.parse(fs.readFileSync(path.join(REPO, 'parity', 'view-gallery', 'replies', 'home-open-error.json'), 'utf8')).replies[0].reply;
+    // refuses a project file another program left unreadable (the home-open-error fixture).
+    const refusal = JSON.parse(fs.readFileSync(path.join(REPO, 'parity', 'app', 'journeys', 'fixtures', 'home-open-error.json'), 'utf8')).replies[0].reply;
     await page.route('**/api/v1/session/open', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(refusal) }), { times: 1 });
     await toast(page).getByTestId('sync-review').click();
     await page.getByTestId('home-open-error').waitFor();

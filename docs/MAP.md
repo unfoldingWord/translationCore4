@@ -28,7 +28,7 @@ exist. A new document gets its row in the same pull request.
 | `docs/P-LEDGER.md` | checks | rule | For each of P1–P10, the CI job and the tests that show it (checked by `scripts/tools/claims.test.mjs`) |
 | `docs/ARCHITECTURE.md` | design | rule | Processes, the local server's security, the internet switch, the crates and their rules, UI, PDF |
 | `docs/STORAGE.md` | design | rule | Normative: the journal, the fold, the store, merge, sync, exchange, import, crash safety, format versions |
-| `docs/APP-DESIGN.md` | design | rule | `tc-api`, `tc-app`, `tc-server`, the UI port, parity testing; §0 says how to read it |
+| `docs/APP-DESIGN.md` | design | rule | `tc-api`, `tc-app`, `tc-server`, the UI port, app journey harness; §0 says how to read it |
 | `docs/PERFORMANCE.md` | design | rule | The project sizes, the budgets per action, how they are proven |
 | `docs/RELEASE.md` | design | rule | How the app is built, signed and released per platform |
 | `docs/contracts/SHELL.md` | design | rule | The frozen contract between the server and the desktop shell |

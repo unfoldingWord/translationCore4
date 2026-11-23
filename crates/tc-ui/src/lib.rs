@@ -4,7 +4,7 @@
 //! React component, with the same name, the same props and the same DOM (elements, `data-*`
 //! hooks, inline styles, ARIA attributes, test ids), so tC4's own CSS in `assets/` applies
 //! unchanged. The `gallery` feature adds the page that draws every case of
-//! `parity/ds-gallery/gallery-spec.json` for the pixel comparison with tC4.
+//! `parity/ds-gallery/gallery-spec.json` for browsing and behavior checks.
 //!
 //! [`i18n`] is tC4's locale registry, `t()`, and the message catalogs in `assets/i18n`.
 //!

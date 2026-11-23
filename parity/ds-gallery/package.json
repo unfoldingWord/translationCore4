@@ -2,13 +2,12 @@
   "name": "tc4-ds-gallery",
   "version": "1.0.0",
   "private": true,
-  "description": "Design-system baseline gallery for translationCore 4: every vendored DS component and token rendered case by case, with a Playwright capture script.",
+  "description": "Design-system gallery and keyboard and mouse behavior checks for translationCore 4.",
   "type": "module",
   "scripts": {
     "spec": "node build-spec.mjs",
     "dev": "node build-spec.mjs && vite",
-    "build": "node build-spec.mjs && vite build",
-    "capture": "node capture.mjs"
+    "build": "node build-spec.mjs && vite build"
   },
   "dependencies": {
     "react": "18.3.1",
@@ -16,9 +15,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "4.7.0",
-    "pixelmatch": "7.1.0",
     "playwright": "1.56.1",
-    "pngjs": "7.0.0",
     "vite": "6.4.3"
   },
   "engines": {
