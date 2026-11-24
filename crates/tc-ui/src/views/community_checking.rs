@@ -42,7 +42,7 @@ use crate::ds::{
     Button, ButtonVariant, Callout, CalloutTone, FilterChip, Menu, MenuItem, Overline, Toast,
     ToastProps, Toggle,
 };
-use crate::i18n::{Key, keys, t};
+use crate::i18n::{Key, book_name, keys, t};
 use crate::tokens::Size;
 
 /// tC4's `CommunityChecking`.
@@ -144,25 +144,22 @@ fn book_checking(
         // Outside the read's closure: a refresh of the book rebuilds the screen, and the
         // export running meanwhile still answers into this panel.
         let panel = RwSignal::new(ExportPanel::Idle);
-        let title = book.english_name().to_owned();
-        let of = ExportOf {
-            at: at.clone(),
-            subject: Subject::Book { book },
-            title: title.clone(),
-        };
+        let at = at.clone();
         (move || {
+            // Named here, where the screen follows the language: named outside, a change of
+            // language would make a new panel and drop a running export's answer.
+            let title = book_name(book);
+            let of = ExportOf {
+                at: at.clone(),
+                subject: Subject::Book { book },
+                title: title.clone(),
+            };
             read.with(|loaded| match loaded {
                 Load::Loading => note(t(keys::draft::LOADING, &[])),
                 Load::Failed(error) => note(format!("{} {error}", t(keys::draft::LOAD_ERROR, &[]))),
-                Load::Ready(print) | Load::Refreshing(print) => book_screen(
-                    &actions,
-                    print.clone(),
-                    title.clone(),
-                    dir,
-                    setup,
-                    panel,
-                    of.clone(),
-                ),
+                Load::Ready(print) | Load::Refreshing(print) => {
+                    book_screen(&actions, print.clone(), title, dir, setup, panel, of)
+                }
             })
         })
         .into_any()

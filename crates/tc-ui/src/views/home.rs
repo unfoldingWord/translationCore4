@@ -35,7 +35,7 @@ use crate::ds::{
     Badge, BadgeSize, BadgeTone, BookTile, Button, ButtonVariant, Callout, CalloutTone, Card, Menu,
     MenuItem, Overline, Size, Toast, ToastTone,
 };
-use crate::i18n::{keys, refusal_text, t};
+use crate::i18n::{book_name, keys, refusal_text, t};
 use crate::views::sync_result::SyncResult;
 
 fn dir_str(dir: Direction) -> &'static str {
@@ -878,7 +878,7 @@ fn project_card(
                     let (actions, project) = (actions.clone(), project.clone());
                     view! {
                         <BookTile
-                            name=book.english_name().to_owned()
+                            name=Signal::derive(move || book_name(book))
                             percent=percent
                             meta=meta
                             attrs=Attrs::new().with("data-testid", format!("book-tile-{}", book.code()))

@@ -35,7 +35,7 @@ use crate::ds::{
     Button, ButtonVariant, Callout, CalloutTone, FilterChip, IconButton, Indicator, Overline, Size,
     Status, StatusDot, Switcher, SwitcherOption, Tone,
 };
-use crate::i18n::{keys, t};
+use crate::i18n::{book_name, keys, t};
 
 /// The reads of one open book.
 #[derive(Clone, PartialEq)]
@@ -533,7 +533,7 @@ fn header(actions: &Actions, book: BookId, chapter: u16) -> impl IntoView + use<
     view! {
         <div style=bar.to_style()>
             <IconButton title=t(keys::draft::TOGGLE_RAIL, &[]) on_click=toggle>{rail_icon()}</IconButton>
-            <h2 style=h2.to_style()>{book.english_name()}" "{chapter}</h2>
+            <h2 style=h2.to_style()>{move || book_name(book)}" "{chapter}</h2>
             <span style=note.to_style()>{move || t(keys::understand::NOTE, &[])}</span>
             <HelpsToggleButton />
         </div>

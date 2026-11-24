@@ -6,12 +6,12 @@ use tc_api::event::SessionMode;
 use tc_api::session::{KeptCopy, KeptImported, KeptWhy, WaitingBook};
 use tc_core::BookId;
 
-use crate::i18n::{keys, t};
+use crate::i18n::{book_name, keys, t};
 
 /// A file by the name the question uses: the book's name, else the file's own name.
 pub fn name_of(file: &str, book: Option<BookId>) -> String {
     match book {
-        Some(book) => book.english_name().to_owned(),
+        Some(book) => book_name(book),
         None => file_name(file).to_owned(),
     }
 }

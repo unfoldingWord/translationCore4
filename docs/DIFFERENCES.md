@@ -36,6 +36,16 @@ from `d494a9d` to `d310bf3`, and `docs/TC4-DELTA-2026-10-23.md` (SWEEP) the chan
   ULT or UST (labelled `ULT` or `UST`) without changing the pane's pin. tC4 4.0 matches only
   `ar_avd` and the `_ult`/`_glt` and `_ust`/`_gst` suffixes, never moves an existing pane on
   download or open, and has no per-book fallback on source panes (#1048).
+- A book is named in the interface language wherever the app's own labels name one: Home's
+  tiles and Resume line, the book rail, the Understand and Translate headings, the Check
+  picker and a check's header, Align, the book lists of Add a book and New Bible, Review,
+  History, the comment box, the Received sheet, the question about a file changed outside
+  the app, Share, Update book, the guided fix, the upgrade plan and the heading of the
+  printed Community checking sheet. The 66 names are keys of the interface catalog
+  (`book.*`), so a book reads the same on every screen whatever the project and its gateway
+  hold, and a name not translated yet shows in English. Chapter and verse numbers stay
+  Western digits, an export's file name stays the book code, and no file's content changes.
+  tC4 4.0 shows one fixed English name in every language (`src/data/bookNames.ts`) (#1043).
 - A source Bible is named by the abbreviation in its metadata (`identification.abbreviation`)
   wherever tC4 4.0 shows GLT or GST: Translate's tabs and the name under them, Understand's
   chips and passage name, the helps' simplified tab, the Check cards and Align's lens. The

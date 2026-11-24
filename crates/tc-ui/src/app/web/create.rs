@@ -22,9 +22,9 @@ use wasm_bindgen_futures::spawn_local;
 use super::app_ctx::{Actions, Dialog, OpenTarget};
 use super::js;
 use crate::app::client::CallError;
-use crate::app::forms::{AddBookForm, AddBookStep, NewKind, NewStart, UsfmState};
+use crate::app::forms::{AddBookForm, AddBookStep, NewKind, NewStart, UsfmState, problem_words};
 use crate::app::uploads::{Opening, Slot};
-use crate::i18n::{keys, t, t_dyn};
+use crate::i18n::{keys, t};
 
 /// What a refusal says: its sentence, with the diagnosis after it where it has one. A create
 /// that failed for its own reason says that reason alone, as tC4 does.
@@ -453,12 +453,7 @@ impl Actions {
                                 &[("file", &row.name), ("reason", &reason)],
                             )),
                             UsfmOutcome::Refused(problem) => {
-                                let owned = problem.vars(&row.name);
-                                let vars: Vec<(&str, &dyn std::fmt::Display)> = owned
-                                    .iter()
-                                    .map(|(k, v)| (*k, v as &dyn std::fmt::Display))
-                                    .collect();
-                                problems.push(t_dyn(problem.key(), &vars, None));
+                                problems.push(problem_words(&problem, &row.name));
                             }
                         }
                     }

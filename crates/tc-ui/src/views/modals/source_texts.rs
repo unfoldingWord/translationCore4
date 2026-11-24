@@ -24,7 +24,7 @@ use crate::ds::{
     Attrs, Badge, BadgeTone, Button, ButtonVariant, Callout, CalloutTone, OptionCard, Overline,
     Select, SelectOption, Size,
 };
-use crate::i18n::{Key, keys, t};
+use crate::i18n::{Key, book_name, keys, t};
 
 fn dir_attr(dir: Direction) -> &'static str {
     match dir {
@@ -440,7 +440,7 @@ pub(super) fn book_options(held: &[BookId]) -> Vec<SelectOption> {
             let already = held.contains(book);
             SelectOption {
                 value: book.code().to_owned(),
-                label: book.english_name().to_owned(),
+                label: book_name(*book),
                 code: Some(book.code().to_owned()),
                 meta: Some(t(
                     keys::add_book::CHAPTERS_SHORT,
@@ -598,7 +598,7 @@ fn package_contents(
     let none = rows.is_empty().then(|| {
         view! {
             <p style=format!("{caption} color: var(--text-tertiary);")>
-                {t(keys::sources::NONE_FOR_BOOK, &[("book", &book.english_name()), ("lang", &g.autonym)])}
+                {t(keys::sources::NONE_FOR_BOOK, &[("book", &book_name(book)), ("lang", &g.autonym)])}
             </p>
         }
     });
@@ -689,7 +689,7 @@ fn footer(
                     Downloaded::AlreadyHere => keys::sources::ALREADY_HERE,
                 },
                 &[
-                    ("book", &what.book.english_name()),
+                    ("book", &book_name(what.book)),
                     ("lang", &what.gateway.autonym),
                 ],
             ),

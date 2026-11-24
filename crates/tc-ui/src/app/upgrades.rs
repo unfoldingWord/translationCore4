@@ -454,10 +454,10 @@ pub fn tool_key(tool: Tool) -> crate::i18n::Key {
     }
 }
 
-/// The unit's name: a book's English name, or the stories'.
+/// The unit's name: a book's name in the shown language, or the stories'.
 pub fn unit_name(unit: CheckCollection) -> String {
     match unit {
-        CheckCollection::Book(book) => book.english_name().to_owned(),
+        CheckCollection::Book(book) => crate::i18n::book_name(book),
         CheckCollection::Stories => "Open Bible Stories".to_owned(),
     }
 }

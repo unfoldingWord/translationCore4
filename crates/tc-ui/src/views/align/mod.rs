@@ -17,7 +17,7 @@ use crate::app::web::align::Rail;
 use crate::app::web::{Actions, AppState};
 use crate::css::Css;
 use crate::ds::{Button, ButtonVariant, ProgressBar, Size, Tone};
-use crate::i18n::{keys, t, t_dyn};
+use crate::i18n::{book_name, keys, t, t_dyn};
 
 pub use session::align_session;
 
@@ -348,7 +348,7 @@ fn align_rail(s: &AppState, actions: &Actions, book: BookId) -> impl IntoView + 
                     {t(keys::check::BACK, &[])}
                 </Button>
                 <h2 style=h2.to_style()>{t(keys::nav::ALIGN, &[])}</h2>
-                <p style=unit_style.to_style()>{book.english_name().to_owned()}</p>
+                <p style=unit_style.to_style()>{book_name(book)}</p>
                 {bar}
                 <div style="display: flex; gap: 6px;">{chips}</div>
                 {failure}

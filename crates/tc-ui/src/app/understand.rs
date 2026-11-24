@@ -12,7 +12,7 @@ use tc_api::token::ShownToken;
 use tc_core::BookId;
 use tc_core::js::is_space as js_space;
 
-use crate::i18n::{Key, keys, t, t_dyn};
+use crate::i18n::{Key, book_name, keys, t, t_dyn};
 
 // ---------------------------------------------------------------------------------------
 // The open overlay (S14)
@@ -312,7 +312,7 @@ pub enum UnitNotice {
 /// The design's unit label (tC4's `refLabel`): "John 1:1–2".
 pub fn ref_label(book: BookId, chapter: u16, keys: &[String]) -> String {
     let (Some(from), Some(to)) = (keys.first(), keys.last()) else {
-        return format!("{} {chapter}", book.english_name());
+        return format!("{} {chapter}", book_name(book));
     };
     let span = if keys.len() > 1 || from.contains('-') {
         let end = match to.split_once('-') {
@@ -326,7 +326,7 @@ pub fn ref_label(book: BookId, chapter: u16, keys: &[String]) -> String {
     } else {
         from.clone()
     };
-    format!("{} {chapter}:{span}", book.english_name())
+    format!("{} {chapter}:{span}", book_name(book))
 }
 
 /// The chapter's verse keys in order of their first verse (tC4 sorts `Object.keys`).
@@ -367,7 +367,7 @@ pub fn units(mode: UnitMode, book: BookId, chapter: u16, pane: Option<&PaneChapt
             .map(|head| Unit {
                 key: "whole".to_owned(),
                 head: head.clone(),
-                label: format!("{} {chapter}", book.english_name()),
+                label: format!("{} {chapter}", book_name(book)),
                 verses: keys.clone(),
                 number: None,
                 notice: None,
@@ -416,7 +416,7 @@ pub fn frame_units(book: BookId, chapter: u16, rows: &[FrameRow]) -> Vec<Unit> {
                     verse: v,
                 } => (
                     format!("m{at}"),
-                    format!("{} {c}:{v}", book.english_name()),
+                    format!("{} {c}:{v}", book_name(book)),
                     Some(v.as_str().to_owned()),
                     None,
                 ),

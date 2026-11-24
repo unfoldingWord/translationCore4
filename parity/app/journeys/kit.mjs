@@ -132,6 +132,13 @@ export const settled = (page) => page.evaluate(() => new Promise((done) => reque
 /** A message catalog of the app, as it ships (tC4's, vendored). */
 export const catalog = (id) => JSON.parse(fs.readFileSync(path.join(REPO, 'crates', 'tc-ui', 'assets', 'i18n', `${id}.json`), 'utf8'));
 
+/** The rebuild's own messages of a language, as they ship (crates/tc-ui/assets/i18n-rebuild). */
+export const rebuildCatalog = (id) => JSON.parse(fs.readFileSync(path.join(REPO, 'crates', 'tc-ui', 'assets', 'i18n-rebuild', `${id}.json`), 'utf8'));
+
+/** A book's name as the interface shows it in language `id` (#1043): the language's own, or
+ * English's until it is translated. `book` is the last part of its key: `titus`, `firstSamuel`. */
+export const bookName = (id, book) => rebuildCatalog(id)[`book.${book}`] ?? rebuildCatalog('en')[`book.${book}`];
+
 /** The installed languages, ids and native names in picker order, from the registry the app uses. */
 export const LOCALES = [...fs.readFileSync(path.join(REPO, 'crates', 'tc-ui', 'src', 'i18n.rs'), 'utf8')
   .matchAll(/id: "([^"]+)",\s*label: "([^"]+)"/g)].map(([, id, label]) => ({ id, label }));

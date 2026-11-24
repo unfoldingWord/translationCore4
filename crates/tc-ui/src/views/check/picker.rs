@@ -18,7 +18,7 @@ use crate::app::web::{Actions, AppState, use_runtime};
 use crate::attrs::Attrs;
 use crate::css::Css;
 use crate::ds::{Button, ButtonVariant, Callout, CalloutTone, ProgressBar, Size, Tone};
-use crate::i18n::{Key, keys, t, t_dyn};
+use crate::i18n::{Key, book_name, keys, t, t_dyn};
 
 const MONO: &str = "var(--font-mono)";
 
@@ -333,7 +333,7 @@ fn fallback_warning(actions: &Actions, tool: Tool, missing: &PinCitation) -> imp
 /// What a unit is called in the picker's words: the book's name, or "Story 3".
 pub(super) fn unit_label(unit: CheckUnit) -> String {
     match unit {
-        CheckUnit::Book(book) => book.english_name().to_owned(),
+        CheckUnit::Book(book) => book_name(book),
         CheckUnit::Story(story) => crate::app::story::story_label(story),
     }
 }
@@ -528,7 +528,7 @@ fn community_card(actions: &Actions, unit: CheckUnit) -> impl IntoView + use<> {
             t(keys::cc::WHOLE_CHAPTER, &[]),
             t(
                 keys::cc::NEXT_READ,
-                &[("ref", &format!("{} 1", book.english_name()))],
+                &[("ref", &format!("{} 1", book_name(book)))],
             ),
         ),
         CheckUnit::Story(_) => (

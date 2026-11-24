@@ -10,7 +10,7 @@ use tc_api::jobs::{ReplacedKind, ReplacedValue, ReplacedView, SyncResultView};
 use tc_api::refusal::{Message, Refusal};
 use tc_api::shown::{Computer, Direction, PersonLabel, Who};
 
-use crate::i18n::{Key, keys, t, t_dyn};
+use crate::i18n::{Key, book_name, keys, t, t_dyn};
 
 /// How a sync of `project` ended: tC4's `syncResult`. Never stored.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -308,7 +308,7 @@ pub fn replaced_text(row: &ReplacedView) -> String {
                 t(
                     keys::sync_result::ALIGN_REPLACED,
                     &[
-                        ("book", &book.english_name()),
+                        ("book", &book_name(*book)),
                         ("ref", &format!("{chapter}:{verse}")),
                         ("name", &name),
                     ],

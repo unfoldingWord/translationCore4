@@ -34,7 +34,7 @@ use crate::css::Css;
 use crate::ds::{
     Button, ButtonVariant, Callout, CalloutTone, Drawer, Overline, OverlineTone, Size,
 };
-use crate::i18n::{TextDir as LocaleDir, keys, locale_of, shown_locale, t};
+use crate::i18n::{TextDir as LocaleDir, book_name, keys, locale_of, shown_locale, t};
 use crate::views::helps_panel::{
     block_text, expandable_note, list_indent, number_mark, quoted, with_tables,
 };
@@ -649,7 +649,7 @@ fn item_detail(s: &AppState, actions: &Actions, unit: CheckUnit) -> AnyView {
     });
     let story = matches!(unit, CheckUnit::Story(_));
     let unit = match unit {
-        CheckUnit::Book(book) => book.english_name().to_owned(),
+        CheckUnit::Book(book) => book_name(book),
         CheckUnit::Story(story) => crate::app::story::story_label(story),
     };
     let direction = s

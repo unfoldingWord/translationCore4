@@ -23,7 +23,7 @@ use crate::ds::{
     ProgressBar, Select, SelectOption, Size, Spinner, Status, StatusDot, Surface, Text, TextRole,
     TextTone, Tone,
 };
-use crate::i18n::{Key, keys, t, t_dyn};
+use crate::i18n::{Key, book_name, keys, t, t_dyn};
 
 /// `importer.kind.<id>.<part>`.
 fn kind_text(kind: ImportKind, part: &str) -> String {
@@ -836,7 +836,7 @@ fn found(
             view! {
                 <Surface fill=Fill::Muted radius=Corner::Md pad="10px 14px" attrs=Attrs::new().with("data-testid", format!("import-book-{}", b.book.code()))>
                     <div style="display: flex; flex-direction: column; gap: 4px;">
-                        <Text role=TextRole::Strong>{b.book.english_name()}</Text>
+                        <Text role=TextRole::Strong>{book_name(b.book)}</Text>
                         <Text role=TextRole::Caption tone=TextTone::Muted>{line}</Text>
                         {not_kept}
                     </div>

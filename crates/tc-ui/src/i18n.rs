@@ -25,6 +25,7 @@ use std::fmt::Display;
 use std::rc::Rc;
 
 use tc_api::ids::LocaleId;
+use tc_core::BookId;
 
 /// The direction an interface reads in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -354,6 +355,87 @@ pub fn refusal_text(message: &dyn tc_api::refusal::Message) -> String {
         .map(|(k, v)| (*k, v as &dyn std::fmt::Display))
         .collect();
     t_dyn(message.key(), &vars, None)
+}
+
+/// A book's name in the shown language (#1043). Every label that names a book takes it from
+/// here, so a book reads the same on every screen, whatever the project and its resources hold.
+/// A name not translated yet shows in English, as every pending key does. `BookId::english_name`
+/// is for file contents and English sentences: `clippy.toml` forbids it in this crate.
+pub fn book_name(book: BookId) -> String {
+    t(book_key(book), &[])
+}
+
+/// The catalog key of a book's name. The match names every book, so a book without a key does
+/// not compile.
+pub fn book_key(book: BookId) -> Key {
+    match book {
+        BookId::Genesis => keys::book::GENESIS,
+        BookId::Exodus => keys::book::EXODUS,
+        BookId::Leviticus => keys::book::LEVITICUS,
+        BookId::Numbers => keys::book::NUMBERS,
+        BookId::Deuteronomy => keys::book::DEUTERONOMY,
+        BookId::Joshua => keys::book::JOSHUA,
+        BookId::Judges => keys::book::JUDGES,
+        BookId::Ruth => keys::book::RUTH,
+        BookId::FirstSamuel => keys::book::FIRST_SAMUEL,
+        BookId::SecondSamuel => keys::book::SECOND_SAMUEL,
+        BookId::FirstKings => keys::book::FIRST_KINGS,
+        BookId::SecondKings => keys::book::SECOND_KINGS,
+        BookId::FirstChronicles => keys::book::FIRST_CHRONICLES,
+        BookId::SecondChronicles => keys::book::SECOND_CHRONICLES,
+        BookId::Ezra => keys::book::EZRA,
+        BookId::Nehemiah => keys::book::NEHEMIAH,
+        BookId::Esther => keys::book::ESTHER,
+        BookId::Job => keys::book::JOB,
+        BookId::Psalms => keys::book::PSALMS,
+        BookId::Proverbs => keys::book::PROVERBS,
+        BookId::Ecclesiastes => keys::book::ECCLESIASTES,
+        BookId::SongofSongs => keys::book::SONG_OF_SONGS,
+        BookId::Isaiah => keys::book::ISAIAH,
+        BookId::Jeremiah => keys::book::JEREMIAH,
+        BookId::Lamentations => keys::book::LAMENTATIONS,
+        BookId::Ezekiel => keys::book::EZEKIEL,
+        BookId::Daniel => keys::book::DANIEL,
+        BookId::Hosea => keys::book::HOSEA,
+        BookId::Joel => keys::book::JOEL,
+        BookId::Amos => keys::book::AMOS,
+        BookId::Obadiah => keys::book::OBADIAH,
+        BookId::Jonah => keys::book::JONAH,
+        BookId::Micah => keys::book::MICAH,
+        BookId::Nahum => keys::book::NAHUM,
+        BookId::Habakkuk => keys::book::HABAKKUK,
+        BookId::Zephaniah => keys::book::ZEPHANIAH,
+        BookId::Haggai => keys::book::HAGGAI,
+        BookId::Zechariah => keys::book::ZECHARIAH,
+        BookId::Malachi => keys::book::MALACHI,
+        BookId::Matthew => keys::book::MATTHEW,
+        BookId::Mark => keys::book::MARK,
+        BookId::Luke => keys::book::LUKE,
+        BookId::John => keys::book::JOHN,
+        BookId::Acts => keys::book::ACTS,
+        BookId::Romans => keys::book::ROMANS,
+        BookId::FirstCorinthians => keys::book::FIRST_CORINTHIANS,
+        BookId::SecondCorinthians => keys::book::SECOND_CORINTHIANS,
+        BookId::Galatians => keys::book::GALATIANS,
+        BookId::Ephesians => keys::book::EPHESIANS,
+        BookId::Philippians => keys::book::PHILIPPIANS,
+        BookId::Colossians => keys::book::COLOSSIANS,
+        BookId::FirstThessalonians => keys::book::FIRST_THESSALONIANS,
+        BookId::SecondThessalonians => keys::book::SECOND_THESSALONIANS,
+        BookId::FirstTimothy => keys::book::FIRST_TIMOTHY,
+        BookId::SecondTimothy => keys::book::SECOND_TIMOTHY,
+        BookId::Titus => keys::book::TITUS,
+        BookId::Philemon => keys::book::PHILEMON,
+        BookId::Hebrews => keys::book::HEBREWS,
+        BookId::James => keys::book::JAMES,
+        BookId::FirstPeter => keys::book::FIRST_PETER,
+        BookId::SecondPeter => keys::book::SECOND_PETER,
+        BookId::FirstJohn => keys::book::FIRST_JOHN,
+        BookId::SecondJohn => keys::book::SECOND_JOHN,
+        BookId::ThirdJohn => keys::book::THIRD_JOHN,
+        BookId::Jude => keys::book::JUDE,
+        BookId::Revelation => keys::book::REVELATION,
+    }
 }
 
 /// tC4's `t(key, vars, fallback)` for a key that is not a constant: one a `tc-api` type names

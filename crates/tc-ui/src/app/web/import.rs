@@ -20,7 +20,7 @@ use crate::app::jobs::JobEnd;
 use crate::app::net::NetEnd;
 use crate::app::update_book::{UpdateBookForm, UpdateState};
 use crate::app::uploads::Slot;
-use crate::i18n::{keys, t};
+use crate::i18n::{book_name, keys, t};
 
 /// A refusal as the damaged panel and the failed step show it: every refusal through
 /// `refusal_text` (INV-EVERY-REFUSAL-RENDERS), never its code alone (#833.3).
@@ -320,7 +320,7 @@ impl Actions {
                                 .found
                                 .books
                                 .iter()
-                                .map(|b| b.book.english_name())
+                                .map(|b| book_name(b.book))
                                 .collect::<Vec<_>>()
                                 .join(" · "),
                             _ => String::new(),

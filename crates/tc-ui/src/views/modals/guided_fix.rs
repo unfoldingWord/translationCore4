@@ -16,7 +16,7 @@ use crate::attrs::Attrs;
 use crate::ds::{
     Button, ButtonVariant, Callout, CalloutTone, DropZone, OptionCard, Overline, Size,
 };
-use crate::i18n::{keys, t};
+use crate::i18n::{book_name, keys, t};
 
 /// `es-419_twl · v18`, or the first 12 digits of the commit with no tag (tC4's `label`).
 fn label(pin: &PinLabel) -> String {
@@ -267,10 +267,7 @@ pub fn GuidedFix() -> impl IntoView {
     };
     let subtitle = {
         Signal::derive(move || {
-            let book = book
-                .get()
-                .map(|b| b.english_name().to_owned())
-                .unwrap_or_default();
+            let book = book.get().map(book_name).unwrap_or_default();
             fix.with(|f| match f {
                 Some(Fix::Ready(screen)) => t(
                     keys::fix::SUBTITLE,

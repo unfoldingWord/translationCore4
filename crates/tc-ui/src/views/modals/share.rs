@@ -20,7 +20,7 @@ use crate::ds::{
     Attrs, Button, ButtonVariant, Callout, CalloutTone, OptionCard, OptionControl, Spinner, Text,
     TextField, TextRole, TextTone,
 };
-use crate::i18n::{keys, t};
+use crate::i18n::{book_name, keys, t};
 
 /// tC4's `CHANGE`: a link-coloured button inside the account line.
 const CHANGE: &str = "border: 0px; background: transparent; padding: 0px; font: inherit; letter-spacing: inherit; color: var(--link); cursor: pointer;";
@@ -424,7 +424,7 @@ fn check_step(
             keys::share_dialog::BOOKS_LABEL,
             books
                 .iter()
-                .map(|b| b.english_name())
+                .map(|b| book_name(*b))
                 .collect::<Vec<_>>()
                 .join(", "),
         ),

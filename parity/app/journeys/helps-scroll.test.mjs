@@ -61,7 +61,7 @@ for (const mode of ['Understand', 'Translate']) {
         reply.value.questions = { type: 'ready', value: { items, dir: 'ltr', fallback: false } };
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(reply) });
       });
-      await page.getByTestId('project-sample_burrito').getByRole('button', { name: /Titus/ }).click();
+      await page.getByTestId('project-sample_burrito').getByTestId('book-tile-TIT').click();
       await page.getByTestId('helps-note').first().waitFor();
       if (mode === 'Translate') {
         await page.getByTestId('mode-switch').getByRole('tab', { name: mode, exact: true }).click();
@@ -152,7 +152,7 @@ for (const locale of ['fr', 'ar']) {
     browserTest(`fitting_helps_keep_translated_tabs_inside_the_panel_in_${locale}_${mode.toLowerCase()}`, async () => {
       const records = [];
       await withApp(async ({ page }) => {
-        await page.getByTestId('project-sample_burrito').getByRole('button', { name: /Titus/ }).click();
+        await page.getByTestId('project-sample_burrito').getByTestId('book-tile-TIT').click();
         await page.getByTestId('helps-note').first().waitFor();
         if (mode === 'Translate') await page.getByTestId('mode-switch').getByRole('tab').nth(1).click();
         // The tab order is Notes, Words, Questions, Simplified in every interface language.

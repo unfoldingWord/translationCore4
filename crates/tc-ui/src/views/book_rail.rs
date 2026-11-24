@@ -11,7 +11,7 @@ use super::rail_chrome::{rail_group, rail_number_button, rail_numbers, rail_shel
 use crate::app::web::{Actions, AppState};
 use crate::attrs::Attrs;
 use crate::ds::{BookTile, TileLayout};
-use crate::i18n::{keys, t};
+use crate::i18n::{book_name, keys, t};
 
 /// tC4's `BookRail` over the open book's read.
 pub fn book_rail(s: &AppState, actions: &Actions, book: &BookView) -> AnyView {
@@ -48,7 +48,7 @@ pub fn book_rail(s: &AppState, actions: &Actions, book: &BookView) -> AnyView {
                     <BookTile
                         layout=TileLayout::Row
                         active=active
-                        name=code.english_name().to_owned()
+                        name=Signal::derive(move || book_name(code))
                         percent=f64::from(n)
                         meta=Some(format!("{n}%"))
                         meta_title=t(keys::draft::BOOK_PERCENT_TITLE, &[("n", &n.to_string())])
@@ -62,7 +62,7 @@ pub fn book_rail(s: &AppState, actions: &Actions, book: &BookView) -> AnyView {
                     <BookTile
                         layout=TileLayout::Row
                         active=active
-                        name=code.english_name().to_owned()
+                        name=Signal::derive(move || book_name(code))
                         percent=0.0
                         meta=Some(String::new())
                         disabled=off

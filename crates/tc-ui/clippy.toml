@@ -1,0 +1,16 @@
+# Clippy reads the clippy.toml nearest the crate, so this file replaces the workspace's: its
+# keys first, as the root's clippy.toml has them.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+allow-dbg-in-tests = true
+# INV-NO-BAGS-OF-BOOLEANS
+max-struct-bools = 3
+# INV-NO-BAGS-OF-BOOLEANS
+max-fn-params-bools = 3
+
+# A label names a book in the interface language, the same on every screen (#1043). tc-core's
+# English table is for file contents and for the English sentences of the store and the journal.
+disallowed-methods = [
+  { path = "tc_core::BookId::english_name", reason = "a label names a book in the interface language: use i18n::book_name (#1043)" },
+]
