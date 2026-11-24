@@ -23,6 +23,7 @@ pub mod attrs;
 pub mod geometry;
 pub mod i18n;
 pub mod keyed;
+pub mod quotation;
 pub mod roving;
 pub mod scrim;
 pub mod text;

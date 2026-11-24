@@ -751,7 +751,7 @@ fn item_detail(s: &AppState, actions: &Actions, unit: CheckUnit) -> AnyView {
             "color": "var(--text-heading)",
             "margin": "0 0 14px",
         };
-        view! { <h1 data-testid="check-quote" data-check-index=move || index.get() style=style.to_style()>"“"{move || quote.get()}"”"</h1> }
+        view! { <h1 data-testid="check-quote" data-check-index=move || index.get() style=style.to_style()>{move || crate::quotation::quoted(&quote.get()).inline()}</h1> }
     };
     let note = Memo::new({
         let detail = detail.clone();
