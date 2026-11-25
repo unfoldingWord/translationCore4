@@ -262,7 +262,7 @@ fn rail_row(
             }
         >
             <span style=dot_style.to_style()></span>
-            <span style=title_style.to_style()>"“"{row.title.clone()}"”"</span>
+            <span style=title_style.to_style()>{crate::quotation::quoted(&row.title).inline()}</span>
             {flags.bookmarked.then(|| view! {
                 <span data-testid="row-bookmark" aria-label=t(keys::check::filter::BOOKMARKED, &[]) style=glyph("var(--uw-kindle, #E59D33)").to_style()>
                     {t(keys::check::glyph::BOOKMARK, &[])}

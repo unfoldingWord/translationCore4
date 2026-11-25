@@ -323,8 +323,15 @@ pub fn HelpCard(
         attrs,
         children: Some(Box::new(move || {
             let title = title.filter(|t| !t.is_empty()).map(|t| {
-                let text = if word { t } else { format!("\u{201C}{t}\u{201D}") };
-                view! { <Text role=TextRole::Quote tag="p" dir="auto" style=css! { "margin-bottom": 2 }>{text}</Text> }
+                // A word reads its own way. A quoted phrase reads the way its marks were
+                // ordered for.
+                let (text, dir) = if word {
+                    (t, "auto")
+                } else {
+                    let quoted = crate::quotation::quoted(&t);
+                    (quoted.text(), quoted.dir.as_str())
+                };
+                view! { <Text role=TextRole::Quote tag="p" dir=dir style=css! { "margin-bottom": 2 }>{text}</Text> }
             });
             let action = on_action.map(|cb| {
                 crate::ds::Action(crate::ds::ActionProps {

@@ -1,0 +1,938 @@
+[
+  {
+    "place": "check-list-row-cut-short",
+    "case": "c-english-interface-english-phrase",
+    "file": "check-list-row-cut-short--c-english-interface-english-phrase.png",
+    "note": "row 1",
+    "text": "“for the faith of the chosen people of God and knowledge of the truth”",
+    "script": "Latin",
+    "dirAttr": "none",
+    "direction": "ltr",
+    "unicodeBidi": "normal",
+    "textAlign": "start",
+    "sits": "right edge",
+    "gapLeft": 0,
+    "gapRight": -233,
+    "clipped": true,
+    "lines": 1,
+    "tag": "span",
+    "children": "text(1) text(68) text(1)",
+    "htmlDir": "ltr",
+    "htmlLang": "en",
+    "marks": [
+      {
+        "char": "U+201C",
+        "at": 0,
+        "line": 1,
+        "x": 48.9,
+        "end": "left",
+        "insideBox": true
+      },
+      {
+        "char": "U+201D",
+        "at": 69,
+        "line": 1,
+        "x": 476.9,
+        "end": "right",
+        "insideBox": false
+      }
+    ]
+  },
+  {
+    "place": "check-list-row",
+    "case": "c-english-interface-english-phrase",
+    "file": "check-list-row--c-english-interface-english-phrase.png",
+    "note": "row 2",
+    "text": "“of the chosen people of God”",
+    "script": "Latin",
+    "dirAttr": "none",
+    "direction": "ltr",
+    "unicodeBidi": "normal",
+    "textAlign": "start",
+    "sits": "left edge",
+    "gapLeft": 0,
+    "gapRight": 17,
+    "clipped": false,
+    "lines": 1,
+    "tag": "span",
+    "children": "text(1) text(27) text(1)",
+    "htmlDir": "ltr",
+    "htmlLang": "en",
+    "marks": [
+      {
+        "char": "U+201C",
+        "at": 0,
+        "line": 1,
+        "x": 48.7,
+        "end": "left",
+        "insideBox": true
+      },
+      {
+        "char": "U+201D",
+        "at": 28,
+        "line": 1,
+        "x": 227.2,
+        "end": "right",
+        "insideBox": true
+      }
+    ]
+  },
+  {
+    "place": "check-heading-two-lines",
+    "case": "c-english-interface-english-phrase",
+    "file": "check-heading-two-lines--c-english-interface-english-phrase.png",
+    "note": "row 1, window 1280 px wide",
+    "text": "“for the faith of the chosen people of God and knowledge of the truth”",
+    "script": "Latin",
+    "dirAttr": "none",
+    "direction": "ltr",
+    "unicodeBidi": "isolate",
+    "textAlign": "start",
+    "sits": "left edge",
+    "gapLeft": 0,
+    "gapRight": 49,
+    "clipped": false,
+    "lines": 2,
+    "tag": "h1",
+    "children": "text(1) text(68) text(1)",
+    "htmlDir": "ltr",
+    "htmlLang": "en",
+    "marks": [
+      {
+        "char": "U+201C",
+        "at": 0,
+        "line": 1,
+        "x": 339.6,
+        "end": "left",
+        "insideBox": true
+      },
+      {
+        "char": "U+201D",
+        "at": 69,
+        "line": 2,
+        "x": 468.5,
+        "end": "right",
+        "insideBox": true
+      }
+    ]
+  },
+  {
+    "place": "check-heading-one-line",
+    "case": "c-english-interface-english-phrase",
+    "file": "check-heading-one-line--c-english-interface-english-phrase.png",
+    "note": "row 2, window 1280 px wide",
+    "text": "“of the chosen people of God”",
+    "script": "Latin",
+    "dirAttr": "none",
+    "direction": "ltr",
+    "unicodeBidi": "isolate",
+    "textAlign": "start",
+    "sits": "left edge",
+    "gapLeft": 0,
+    "gapRight": 483,
+    "clipped": false,
+    "lines": 1,
+    "tag": "h1",
+    "children": "text(1) text(27) text(1)",
+    "htmlDir": "ltr",
+    "htmlLang": "en",
+    "marks": [
+      {
+        "char": "U+201C",
+        "at": 0,
+        "line": 1,
+        "x": 339.6,
+        "end": "left",
+        "insideBox": true
+      },
+      {
+        "char": "U+201D",
+        "at": 28,
+        "line": 1,
+        "x": 757.6,
+        "end": "right",
+        "insideBox": true
+      }
+    ]
+  },
+  {
+    "place": "note-card",
+    "case": "d-english-interface-arabic-phrase",
+    "file": "note-card--d-english-interface-arabic-phrase.png",
+    "note": "card title 1",
+    "text": "“لِأَجْلِ إِيمَانِ مُخْتَارِي ٱللهِ وَمَعْرِفَةِ ٱلْحَقِّ”",
+    "script": "Arabic",
+    "dirAttr": "auto",
+    "direction": "rtl",
+    "unicodeBidi": "isolate",
+    "textAlign": "start",
+    "sits": "right edge",
+    "gapLeft": 73,
+    "gapRight": 0,
+    "clipped": false,
+    "lines": 1,
+    "tag": "p",
+    "children": "text(58)",
+    "htmlDir": "ltr",
+    "htmlLang": "en",
+    "marks": [
+      {
+        "char": "U+201C",
+        "at": 0,
+        "line": 1,
+        "x": 1247,
+        "end": "right",
+        "insideBox": true
+      },
+      {
+        "char": "U+201D",
+        "at": 57,
+        "line": 1,
+        "x": 1046.8,
+        "end": "left",
+        "insideBox": true
+      }
+    ]
+  },
+  {
+    "place": "note-card-two-lines",
+    "case": "d-english-interface-arabic-phrase",
+    "file": "note-card-two-lines--d-english-interface-arabic-phrase.png",
+    "note": "card title 17",
+    "text": "“نِعْمَةٌ وَرَحْمَةٌ وَسَلَامٌ مِنَ ٱللهِ ٱلْآبِ وَٱلرَّبِّ يَسُوعَ ٱلْمَسِيحِ مُخَلِّصِنَا”",
+    "script": "Arabic",
+    "dirAttr": "auto",
+    "direction": "rtl",
+    "unicodeBidi": "isolate",
+    "textAlign": "start",
+    "sits": "right edge",
+    "gapLeft": 35,
+    "gapRight": 0,
+    "clipped": false,
+    "lines": 2,
+    "tag": "p",
+    "children": "text(92)",
+    "htmlDir": "ltr",
+    "htmlLang": "en",
+    "marks": [
+      {
+        "char": "U+201C",
+        "at": 0,
+        "line": 1,
+        "x": 1247,
+        "end": "right",
+        "insideBox": true
+      },
+      {
+        "char": "U+201D",
+        "at": 91,
+        "line": 2,
+        "x": 1166.2,
+        "end": "left",
+        "insideBox": true
+      }
+    ]
+  },
+  {
+    "place": "check-list-row-cut-short",
+    "case": "d-english-interface-arabic-phrase",
+    "file": "check-list-row-cut-short--d-english-interface-arabic-phrase.png",
+    "note": "row 1",
+    "text": "“لِأَجْلِ إِيمَانِ مُخْتَارِي ٱللهِ وَمَعْرِفَةِ ٱلْحَقِّ”",
+    "script": "Arabic",
+    "dirAttr": "none",
+    "direction": "ltr",
+    "unicodeBidi": "normal",
+    "textAlign": "start",
+    "sits": "right edge",
+    "gapLeft": 0,
+    "gapRight": -13,
+    "clipped": true,
+    "lines": 1,
+    "tag": "span",
+    "children": "text(1) text(56) text(1)",
+    "htmlDir": "ltr",
+    "htmlLang": "en",
+    "marks": [
+      {
+        "char": "U+201C",
+        "at": 0,
+        "line": 1,
+        "x": 48.9,
+        "end": "left",
+        "insideBox": true
+      },
+      {
+        "char": "U+201D",
+        "at": 57,
+        "line": 1,
+        "x": 257.3,
+        "end": "right",
+        "insideBox": false
+      }
+    ]
+  },
+  {
+    "place": "check-list-row",
+    "case": "d-english-interface-arabic-phrase",
+    "file": "check-list-row--d-english-interface-arabic-phrase.png",
+    "note": "row 2",
+    "text": "“مُخْتَارِي ٱللهِ”",
+    "script": "Arabic",
+    "dirAttr": "none",
+    "direction": "ltr",
+    "unicodeBidi": "normal",
+    "textAlign": "start",
+    "sits": "left edge",
+    "gapLeft": 0,
+    "gapRight": 125,
+    "clipped": false,
+    "lines": 1,
+    "tag": "span",
+    "children": "text(1) text(16) text(1)",
+    "htmlDir": "ltr",
+    "htmlLang": "en",
+    "marks": [
+      {
+        "char": "U+201C",
+        "at": 0,
+        "line": 1,
+        "x": 48.9,
+        "end": "left",
+        "insideBox": true
+      },
+      {
+        "char": "U+201D",
+        "at": 17,
+        "line": 1,
+        "x": 118.9,
+        "end": "right",
+        "insideBox": true
+      }
+    ]
+  },
+  {
+    "place": "check-heading-one-line",
+    "case": "d-english-interface-arabic-phrase",
+    "file": "check-heading-one-line--d-english-interface-arabic-phrase.png",
+    "note": "row 1, window 1280 px wide",
+    "text": "“لِأَجْلِ إِيمَانِ مُخْتَارِي ٱللهِ وَمَعْرِفَةِ ٱلْحَقِّ”",
+    "script": "Arabic",
+    "dirAttr": "none",
+    "direction": "ltr",
+    "unicodeBidi": "isolate",
+    "textAlign": "start",
+    "sits": "left edge",
+    "gapLeft": 0,
+    "gapRight": 494,
+    "clipped": false,
+    "lines": 1,
+    "tag": "h1",
+    "children": "text(1) text(56) text(1)",
+    "htmlDir": "ltr",
+    "htmlLang": "en",
+    "marks": [
+      {
+        "char": "U+201C",
+        "at": 0,
+        "line": 1,
+        "x": 340,
+        "end": "left",
+        "insideBox": true
+      },
+      {
+        "char": "U+201D",
+        "at": 57,
+        "line": 1,
+        "x": 746.3,
+        "end": "right",
+        "insideBox": true
+      }
+    ]
+  },
+  {
+    "place": "check-heading-two-lines",
+    "case": "d-english-interface-arabic-phrase",
+    "file": "check-heading-two-lines--d-english-interface-arabic-phrase.png",
+    "note": "row 93, window 900 px wide",
+    "text": "“ٱلرَّجَاءَ ٱلْمُبَارَكَ وَظُهُورَ مَجْدِ ٱللهِ ٱلْعَظِيمِ وَمُخَلِّصِنَا يَسُوعَ ٱلْمَسِيحِ”",
+    "script": "Arabic",
+    "dirAttr": "none",
+    "direction": "ltr",
+    "unicodeBidi": "isolate",
+    "textAlign": "start",
+    "sits": "left edge",
+    "gapLeft": 0,
+    "gapRight": 15,
+    "clipped": false,
+    "lines": 2,
+    "tag": "h1",
+    "children": "text(1) text(91) text(1)",
+    "htmlDir": "ltr",
+    "htmlLang": "en",
+    "marks": [
+      {
+        "char": "U+201C",
+        "at": 0,
+        "line": 1,
+        "x": 340,
+        "end": "left",
+        "insideBox": true
+      },
+      {
+        "char": "U+201D",
+        "at": 92,
+        "line": 2,
+        "x": 483.1,
+        "end": "right",
+        "insideBox": true
+      }
+    ]
+  },
+  {
+    "place": "note-card",
+    "case": "b-arabic-interface-english-phrase",
+    "file": "note-card--b-arabic-interface-english-phrase.png",
+    "note": "card title 2",
+    "text": "“of the chosen people of God”",
+    "script": "Latin",
+    "dirAttr": "auto",
+    "direction": "ltr",
+    "unicodeBidi": "isolate",
+    "textAlign": "start",
+    "sits": "left edge",
+    "gapLeft": 0,
+    "gapRight": 53,
+    "clipped": false,
+    "lines": 1,
+    "tag": "p",
+    "children": "text(29)",
+    "htmlDir": "rtl",
+    "htmlLang": "ar",
+    "marks": [
+      {
+        "char": "U+201C",
+        "at": 0,
+        "line": 1,
+        "x": 33,
+        "end": "left",
+        "insideBox": true
+      },
+      {
+        "char": "U+201D",
+        "at": 28,
+        "line": 1,
+        "x": 253.2,
+        "end": "right",
+        "insideBox": true
+      }
+    ]
+  },
+  {
+    "place": "note-card-two-lines",
+    "case": "b-arabic-interface-english-phrase",
+    "file": "note-card-two-lines--b-arabic-interface-english-phrase.png",
+    "note": "card title 1",
+    "text": "“for the faith of the chosen people of God and knowledge of the truth”",
+    "script": "Latin",
+    "dirAttr": "auto",
+    "direction": "ltr",
+    "unicodeBidi": "isolate",
+    "textAlign": "start",
+    "sits": "left edge",
+    "gapLeft": 0,
+    "gapRight": 9,
+    "clipped": false,
+    "lines": 2,
+    "tag": "p",
+    "children": "text(70)",
+    "htmlDir": "rtl",
+    "htmlLang": "ar",
+    "marks": [
+      {
+        "char": "U+201C",
+        "at": 0,
+        "line": 1,
+        "x": 33,
+        "end": "left",
+        "insideBox": true
+      },
+      {
+        "char": "U+201D",
+        "at": 69,
+        "line": 2,
+        "x": 296.5,
+        "end": "right",
+        "insideBox": true
+      }
+    ]
+  },
+  {
+    "place": "check-list-row-cut-short",
+    "case": "b-arabic-interface-english-phrase",
+    "file": "check-list-row-cut-short--b-arabic-interface-english-phrase.png",
+    "note": "row 1",
+    "text": "“for the faith of the chosen people of God and knowledge of the truth”",
+    "script": "Latin",
+    "dirAttr": "none",
+    "direction": "rtl",
+    "unicodeBidi": "normal",
+    "textAlign": "start",
+    "sits": "left edge",
+    "gapLeft": -232,
+    "gapRight": 0,
+    "clipped": true,
+    "lines": 1,
+    "tag": "span",
+    "children": "text(1) text(68) text(1)",
+    "htmlDir": "rtl",
+    "htmlLang": "ar",
+    "marks": [
+      {
+        "char": "U+201C",
+        "at": 0,
+        "line": 1,
+        "x": 1231.1,
+        "end": "right",
+        "insideBox": true
+      },
+      {
+        "char": "U+201D",
+        "at": 69,
+        "line": 1,
+        "x": 802.9,
+        "end": "left",
+        "insideBox": false
+      }
+    ]
+  },
+  {
+    "place": "check-list-row",
+    "case": "b-arabic-interface-english-phrase",
+    "file": "check-list-row--b-arabic-interface-english-phrase.png",
+    "note": "row 2",
+    "text": "“of the chosen people of God”",
+    "script": "Latin",
+    "dirAttr": "none",
+    "direction": "rtl",
+    "unicodeBidi": "normal",
+    "textAlign": "start",
+    "sits": "right edge",
+    "gapLeft": 17,
+    "gapRight": 0,
+    "clipped": false,
+    "lines": 1,
+    "tag": "span",
+    "children": "text(1) text(27) text(1)",
+    "htmlDir": "rtl",
+    "htmlLang": "ar",
+    "marks": [
+      {
+        "char": "U+201C",
+        "at": 0,
+        "line": 1,
+        "x": 1231.1,
+        "end": "right",
+        "insideBox": true
+      },
+      {
+        "char": "U+201D",
+        "at": 28,
+        "line": 1,
+        "x": 1052.3,
+        "end": "left",
+        "insideBox": true
+      }
+    ]
+  },
+  {
+    "place": "check-heading-two-lines",
+    "case": "b-arabic-interface-english-phrase",
+    "file": "check-heading-two-lines--b-arabic-interface-english-phrase.png",
+    "note": "row 1, window 1280 px wide",
+    "text": "“for the faith of the chosen people of God and knowledge of the truth”",
+    "script": "Latin",
+    "dirAttr": "none",
+    "direction": "rtl",
+    "unicodeBidi": "isolate",
+    "textAlign": "start",
+    "sits": "fills the box",
+    "gapLeft": 2,
+    "gapRight": 0,
+    "clipped": false,
+    "lines": 2,
+    "tag": "h1",
+    "children": "text(1) text(68) text(1)",
+    "htmlDir": "rtl",
+    "htmlLang": "ar",
+    "marks": [
+      {
+        "char": "U+201C",
+        "at": 0,
+        "line": 1,
+        "x": 940,
+        "end": "right",
+        "insideBox": true
+      },
+      {
+        "char": "U+201D",
+        "at": 69,
+        "line": 2,
+        "x": 803.9,
+        "end": "left",
+        "insideBox": true
+      }
+    ]
+  },
+  {
+    "place": "check-heading-one-line",
+    "case": "b-arabic-interface-english-phrase",
+    "file": "check-heading-one-line--b-arabic-interface-english-phrase.png",
+    "note": "row 2, window 1280 px wide",
+    "text": "“of the chosen people of God”",
+    "script": "Latin",
+    "dirAttr": "none",
+    "direction": "rtl",
+    "unicodeBidi": "isolate",
+    "textAlign": "start",
+    "sits": "right edge",
+    "gapLeft": 460,
+    "gapRight": 0,
+    "clipped": false,
+    "lines": 1,
+    "tag": "h1",
+    "children": "text(1) text(27) text(1)",
+    "htmlDir": "rtl",
+    "htmlLang": "ar",
+    "marks": [
+      {
+        "char": "U+201C",
+        "at": 0,
+        "line": 1,
+        "x": 940,
+        "end": "right",
+        "insideBox": true
+      },
+      {
+        "char": "U+201D",
+        "at": 28,
+        "line": 1,
+        "x": 499.6,
+        "end": "left",
+        "insideBox": true
+      }
+    ]
+  },
+  {
+    "place": "align-heading",
+    "case": "b-arabic-interface-english-phrase",
+    "file": "align-heading--b-arabic-interface-english-phrase.png",
+    "note": "Align, Titus 1:1",
+    "text": "“Titus 1:1”",
+    "script": "Latin",
+    "dirAttr": "none",
+    "direction": "rtl",
+    "unicodeBidi": "isolate",
+    "textAlign": "start",
+    "sits": "right edge",
+    "gapLeft": 751,
+    "gapRight": 0,
+    "clipped": false,
+    "lines": 1,
+    "tag": "h1",
+    "children": "text(1) text(9) text(1)",
+    "htmlDir": "rtl",
+    "htmlLang": "ar",
+    "marks": [
+      {
+        "char": "U+201C",
+        "at": 0,
+        "line": 1,
+        "x": 940,
+        "end": "right",
+        "insideBox": true
+      },
+      {
+        "char": "U+201D",
+        "at": 10,
+        "line": 1,
+        "x": 790.5,
+        "end": "left",
+        "insideBox": true
+      }
+    ]
+  },
+  {
+    "place": "note-card",
+    "case": "a-arabic-interface-arabic-phrase",
+    "file": "note-card--a-arabic-interface-arabic-phrase.png",
+    "note": "card title 1",
+    "text": "“لِأَجْلِ إِيمَانِ مُخْتَارِي ٱللهِ وَمَعْرِفَةِ ٱلْحَقِّ”",
+    "script": "Arabic",
+    "dirAttr": "auto",
+    "direction": "rtl",
+    "unicodeBidi": "isolate",
+    "textAlign": "start",
+    "sits": "right edge",
+    "gapLeft": 73,
+    "gapRight": 0,
+    "clipped": false,
+    "lines": 1,
+    "tag": "p",
+    "children": "text(58)",
+    "htmlDir": "rtl",
+    "htmlLang": "ar",
+    "marks": [
+      {
+        "char": "U+201C",
+        "at": 0,
+        "line": 1,
+        "x": 306,
+        "end": "right",
+        "insideBox": true
+      },
+      {
+        "char": "U+201D",
+        "at": 57,
+        "line": 1,
+        "x": 105.8,
+        "end": "left",
+        "insideBox": true
+      }
+    ]
+  },
+  {
+    "place": "note-card-two-lines",
+    "case": "a-arabic-interface-arabic-phrase",
+    "file": "note-card-two-lines--a-arabic-interface-arabic-phrase.png",
+    "note": "card title 17",
+    "text": "“نِعْمَةٌ وَرَحْمَةٌ وَسَلَامٌ مِنَ ٱللهِ ٱلْآبِ وَٱلرَّبِّ يَسُوعَ ٱلْمَسِيحِ مُخَلِّصِنَا”",
+    "script": "Arabic",
+    "dirAttr": "auto",
+    "direction": "rtl",
+    "unicodeBidi": "isolate",
+    "textAlign": "start",
+    "sits": "right edge",
+    "gapLeft": 35,
+    "gapRight": 0,
+    "clipped": false,
+    "lines": 2,
+    "tag": "p",
+    "children": "text(92)",
+    "htmlDir": "rtl",
+    "htmlLang": "ar",
+    "marks": [
+      {
+        "char": "U+201C",
+        "at": 0,
+        "line": 1,
+        "x": 306,
+        "end": "right",
+        "insideBox": true
+      },
+      {
+        "char": "U+201D",
+        "at": 91,
+        "line": 2,
+        "x": 225.2,
+        "end": "left",
+        "insideBox": true
+      }
+    ]
+  },
+  {
+    "place": "check-list-row-cut-short",
+    "case": "a-arabic-interface-arabic-phrase",
+    "file": "check-list-row-cut-short--a-arabic-interface-arabic-phrase.png",
+    "note": "row 1",
+    "text": "“لِأَجْلِ إِيمَانِ مُخْتَارِي ٱللهِ وَمَعْرِفَةِ ٱلْحَقِّ”",
+    "script": "Arabic",
+    "dirAttr": "none",
+    "direction": "rtl",
+    "unicodeBidi": "normal",
+    "textAlign": "start",
+    "sits": "left edge",
+    "gapLeft": -13,
+    "gapRight": 0,
+    "clipped": true,
+    "lines": 1,
+    "tag": "span",
+    "children": "text(1) text(56) text(1)",
+    "htmlDir": "rtl",
+    "htmlLang": "ar",
+    "marks": [
+      {
+        "char": "U+201C",
+        "at": 0,
+        "line": 1,
+        "x": 1231.1,
+        "end": "right",
+        "insideBox": true
+      },
+      {
+        "char": "U+201D",
+        "at": 57,
+        "line": 1,
+        "x": 1022.7,
+        "end": "left",
+        "insideBox": false
+      }
+    ]
+  },
+  {
+    "place": "check-list-row",
+    "case": "a-arabic-interface-arabic-phrase",
+    "file": "check-list-row--a-arabic-interface-arabic-phrase.png",
+    "note": "row 2",
+    "text": "“مُخْتَارِي ٱللهِ”",
+    "script": "Arabic",
+    "dirAttr": "none",
+    "direction": "rtl",
+    "unicodeBidi": "normal",
+    "textAlign": "start",
+    "sits": "right edge",
+    "gapLeft": 126,
+    "gapRight": 0,
+    "clipped": false,
+    "lines": 1,
+    "tag": "span",
+    "children": "text(1) text(16) text(1)",
+    "htmlDir": "rtl",
+    "htmlLang": "ar",
+    "marks": [
+      {
+        "char": "U+201C",
+        "at": 0,
+        "line": 1,
+        "x": 1231.1,
+        "end": "right",
+        "insideBox": true
+      },
+      {
+        "char": "U+201D",
+        "at": 17,
+        "line": 1,
+        "x": 1161.1,
+        "end": "left",
+        "insideBox": true
+      }
+    ]
+  },
+  {
+    "place": "check-heading-one-line",
+    "case": "a-arabic-interface-arabic-phrase",
+    "file": "check-heading-one-line--a-arabic-interface-arabic-phrase.png",
+    "note": "row 1, window 1280 px wide",
+    "text": "“لِأَجْلِ إِيمَانِ مُخْتَارِي ٱللهِ وَمَعْرِفَةِ ٱلْحَقِّ”",
+    "script": "Arabic",
+    "dirAttr": "none",
+    "direction": "rtl",
+    "unicodeBidi": "isolate",
+    "textAlign": "start",
+    "sits": "right edge",
+    "gapLeft": 499,
+    "gapRight": 0,
+    "clipped": false,
+    "lines": 1,
+    "tag": "h1",
+    "children": "text(1) text(56) text(1)",
+    "htmlDir": "rtl",
+    "htmlLang": "ar",
+    "marks": [
+      {
+        "char": "U+201C",
+        "at": 0,
+        "line": 1,
+        "x": 940,
+        "end": "right",
+        "insideBox": true
+      },
+      {
+        "char": "U+201D",
+        "at": 57,
+        "line": 1,
+        "x": 539.5,
+        "end": "left",
+        "insideBox": true
+      }
+    ]
+  },
+  {
+    "place": "check-heading-two-lines",
+    "case": "a-arabic-interface-arabic-phrase",
+    "file": "check-heading-two-lines--a-arabic-interface-arabic-phrase.png",
+    "note": "row 93, window 900 px wide",
+    "text": "“ٱلرَّجَاءَ ٱلْمُبَارَكَ وَظُهُورَ مَجْدِ ٱللهِ ٱلْعَظِيمِ وَمُخَلِّصِنَا يَسُوعَ ٱلْمَسِيحِ”",
+    "script": "Arabic",
+    "dirAttr": "none",
+    "direction": "rtl",
+    "unicodeBidi": "isolate",
+    "textAlign": "start",
+    "sits": "right edge",
+    "gapLeft": 21,
+    "gapRight": 0,
+    "clipped": false,
+    "lines": 2,
+    "tag": "h1",
+    "children": "text(1) text(91) text(1)",
+    "htmlDir": "rtl",
+    "htmlLang": "ar",
+    "marks": [
+      {
+        "char": "U+201C",
+        "at": 0,
+        "line": 1,
+        "x": 560,
+        "end": "right",
+        "insideBox": true
+      },
+      {
+        "char": "U+201D",
+        "at": 92,
+        "line": 2,
+        "x": 416.9,
+        "end": "left",
+        "insideBox": true
+      }
+    ]
+  },
+  {
+    "place": "check-heading",
+    "case": "french-interface-english-phrase",
+    "file": "check-heading--french-interface-english-phrase.png",
+    "note": "row 1",
+    "text": "“for the faith of the chosen people of God and knowledge of the truth”",
+    "script": "Latin",
+    "dirAttr": "none",
+    "direction": "ltr",
+    "unicodeBidi": "isolate",
+    "textAlign": "start",
+    "sits": "left edge",
+    "gapLeft": 0,
+    "gapRight": 49,
+    "clipped": false,
+    "lines": 2,
+    "tag": "h1",
+    "children": "text(1) text(68) text(1)",
+    "htmlDir": "ltr",
+    "htmlLang": "fr",
+    "marks": [
+      {
+        "char": "U+201C",
+        "at": 0,
+        "line": 1,
+        "x": 339.6,
+        "end": "left",
+        "insideBox": true
+      },
+      {
+        "char": "U+201D",
+        "at": 69,
+        "line": 2,
+        "x": 468.5,
+        "end": "right",
+        "insideBox": true
+      }
+    ]
+  }
+]
