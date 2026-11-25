@@ -897,14 +897,29 @@ browserTest('j5_the_check_tab_in_align_saves_links_first_and_shows_all_checking_
     await expectTwoLinks(page);
     assert.equal(await saveState(page), 'dirty');
 
-    await page.route('**/api/v1/align/close', (route) => route.fulfill({ status: 500, contentType: 'text/plain', body: 'boom' }));
-    const failedClose = page.waitForResponse((r) => r.url().endsWith('/api/v1/align/close') && r.status() === 500, { timeout: 5_000 });
-    await tab('Check').click();
-    await failedClose.catch(() => {
-      throw new Error('INV-CHECK-TAB-LEADS-TO-TOOLS: Check tab in Align closes through align/close');
+    let releaseClose;
+    let closeEntered;
+    const heldClose = new Promise((resolve) => { releaseClose = resolve; });
+    const enteredClose = new Promise((resolve) => { closeEntered = resolve; });
+    let closeCalls = 0;
+    await page.route('**/api/v1/align/close', async (route) => {
+      closeCalls += 1;
+      closeEntered();
+      await heldClose;
+      await route.fulfill({ status: 500, contentType: 'text/plain', body: 'boom' });
     });
-    await page.getByTestId('align-workspace').waitFor();
-    assert.equal(await page.getByTestId('open-align').count(), 0, 'a failed align/close keeps Align open');
+    try {
+      await tab('Check').click();
+      await enteredClose;
+      // Double-clicking Check while align/close is in flight must not skip the close or show the picker.
+      await tab('Check').click();
+      assert.equal(await page.getByTestId('open-align').count(), 0, 'second Check press while closing keeps Align open');
+    } finally {
+      releaseClose();
+    }
+    await until('close failure leaves Align open', async () => (await page.getByTestId('align-bank').count()) === 1);
+    assert.equal(closeCalls, 1, 'second Check press sends no duplicate align/close');
+    assert.equal(await page.getByTestId('open-align').count(), 0, 'failed align/close keeps Align open');
 
     await page.unroute('**/api/v1/align/close');
     const savedClose = page.waitForResponse((r) => r.url().endsWith('/api/v1/align/close') && r.status() === 200, { timeout: 5_000 });

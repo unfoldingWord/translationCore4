@@ -42,6 +42,8 @@ use crate::app::latest::Latest;
 pub enum Screen {
     /// "Opening the alignment…".
     Loading,
+    /// Saving and closing the verse before returning to the tools list (#854).
+    Closing,
     Ready(Box<AlignerView>),
     /// There is nothing to align here; the screen says why (tC4's `unavailable`).
     Blocked(Blocked),
@@ -252,6 +254,14 @@ impl Actions {
     /// "← All checking tools" (tC4 `closeAlign`): the links are saved first; a save that fails
     /// keeps the person in the tool, with the indicator saying so.
     pub fn close_align(&self) {
+        if self
+            .s()
+            .a
+            .screen
+            .with_untracked(|s| matches!(s, Screen::Closing))
+        {
+            return;
+        }
         let navigation = NAVIGATIONS.with(Latest::begin);
         let this = self.clone();
         spawn_local(async move {
@@ -262,15 +272,16 @@ impl Actions {
                 this.reset_align();
                 return;
             };
-            let view = this.s().a.screen.with_untracked(|s| match s {
-                Screen::Ready(view) => Some(view.clone()),
-                _ => None,
-            });
+            let view = match this.s().a.screen.get_untracked() {
+                Screen::Closing => return,
+                Screen::Ready(view) => Some(view),
+                Screen::Loading | Screen::Blocked(_) | Screen::Failed(_) => None,
+            };
             if let Some(mut view) = view {
                 // Once every click has arrived, stop offering controls while Close saves the
                 // verse. An edit sent after Close could otherwise name an aligner that is gone.
                 OPENS.with(Latest::begin);
-                this.s().a.screen.try_set(Screen::Loading);
+                this.s().a.screen.try_set(Screen::Closing);
                 let aligner = view.aligner;
                 let close = Close {
                     at,
