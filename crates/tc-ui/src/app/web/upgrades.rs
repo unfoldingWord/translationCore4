@@ -95,9 +95,7 @@ impl Actions {
             let answer = this.run_net(Pending::Updates, &request).await.said();
             let end = match answer {
                 Ok(view) if this.shows(&at) => CheckEnd::Offers(view),
-                Err(Some(said)) if this.shows(&at) => {
-                    CheckEnd::Failed(t(keys::upgrade::CHECK_FAILED, &[("reason", &said)]))
-                }
+                Err(Some(said)) if this.shows(&at) => CheckEnd::Failed(said),
                 Ok(_) | Err(_) => CheckEnd::Nothing,
             };
             this.s().up.try_update(|up| up.check_ended(&at, end));

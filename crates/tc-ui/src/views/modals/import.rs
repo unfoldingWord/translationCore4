@@ -454,15 +454,36 @@ fn file_row(actions: &Actions, entry: ImportEntry) -> impl IntoView + use<> {
     }
 }
 
+/// A support code label for refusal panels (#833.3).
+pub(super) fn support_code(code: &str) -> String {
+    t(keys::common::SUPPORT_CODE, &[("code", &code)])
+}
+
+/// The bottom line of a failed import or update: the labelled support code, then any detail.
+pub(super) fn failed_below(failure: &ImportFailure) -> String {
+    [
+        failure.code.as_deref().map(support_code),
+        failure.detail.clone(),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>()
+    .join(" · ")
+}
+
 /// tC4's damaged panel and failed step: the sentence, then the code and the detail.
-fn refusal_panel(
+pub(super) fn refusal_panel(
     failure: &ImportFailure,
     test_id: &'static str,
+    sentence_test_id: Option<&'static str>,
     title: Key,
     below: String,
 ) -> impl IntoView + use<> {
     let code = failure.code.clone().unwrap_or_default();
     let sentence = failure.sentence.clone();
+    let sentence_attrs = sentence_test_id
+        .map(|id| Attrs::from([("data-testid", id)]))
+        .unwrap_or_default();
     view! {
         <Surface
             tone=Tone::Invalid
@@ -474,7 +495,7 @@ fn refusal_panel(
         >
             <div style="display: flex; flex-direction: column; gap: 6px;">
                 <Text role=TextRole::Strong tone=TextTone::Tone>{t(title, &[])}</Text>
-                <Text role=TextRole::Ui>{sentence}</Text>
+                <Text role=TextRole::Ui attrs=sentence_attrs>{sentence}</Text>
                 <Text role=TextRole::Meta tone=TextTone::Muted style=crate::css! { "overflow-wrap": "anywhere" }>{below}</Text>
             </div>
         </Surface>
@@ -494,10 +515,13 @@ fn review_step(
                 .code
                 .clone()
                 .unwrap_or_else(|| "import.damaged".to_owned());
-            let below = t(keys::importer::review::DAMAGED_CODE, &[("code", &code)]);
+            let below = t(
+                keys::importer::review::DAMAGED_SUPPORT_CODE,
+                &[("code", &code)],
+            );
             view! {
                 <div data-testid="import-review" style="display: flex; flex-direction: column; gap: 16px;">
-                    {refusal_panel(&failure, "import-damaged", keys::importer::review::DAMAGED_TITLE, below)}
+                    {refusal_panel(&failure, "import-damaged", None, keys::importer::review::DAMAGED_TITLE, below)}
                 </div>
             }
             .into_any()
@@ -1064,14 +1088,11 @@ fn failed_step(im: &Signal<Option<ImportForm>>) -> AnyView {
     });
     match failure {
         Some(failure) => {
-            let below = [failure.code.clone(), failure.detail.clone()]
-                .into_iter()
-                .flatten()
-                .collect::<Vec<_>>()
-                .join(" ");
+            let below = failed_below(&failure);
             refusal_panel(
                 &failure,
                 "import-failed",
+                None,
                 keys::importer::failed::TITLE,
                 below,
             )

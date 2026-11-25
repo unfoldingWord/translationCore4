@@ -1,3 +1,5 @@
 [
-  "check.clearSelection"
+  "check.clearSelection",
+  "common.supportCode",
+  "importer.review.damagedSupportCode"
 ]
