@@ -490,9 +490,7 @@ fn side_head(
         "margin": 0,
     };
     view! {
-        <Button variant=ButtonVariant::Ghost on_click=back style=crate::css! { "align-self": "flex-start" }>
-            {t(keys::cc::BACK, &[])}
-        </Button>
+        {crate::views::check::back_to_tools(back, crate::css! { "align-self": "flex-start" })}
         <h2 style=h2.to_style()>{t(keys::cc::TITLE, &[])}</h2>
         {export_menu(actions, kind, of, setup, panel)}
     }

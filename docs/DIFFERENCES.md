@@ -639,3 +639,14 @@ In Check, Clear selection beside the hint under Your translation unselects every
 (#757). It takes the mark away like any change of the selected words; the earlier mark stays
 in History. It is off with no selected words and whenever the words are off. tC4 has no such
 button (`d25b7871:src/views/Check.jsx`).
+
+In translationNotes, Translation Words, Align and Community Checking, "← All checking tools"
+is a bordered small button (`ButtonVariant::Secondary`, `Size::Sm`, 30 px high) at the top of
+the rail, and asking for Check while Check already shows translationNotes, Translation Words
+or Align closes the tool through that button's path — asking Stay or Leave without them when
+words are unsaved (#853), or saving the verse's links in Align — and shows the tools list;
+switching to Check from Understand or Translate still shows the tool left open (#854). tC4
+4.0 draws "← All checking tools" as a 0-padded ghost link in the check and align rails and as
+a ghost button in Community Checking (`d25b7871:src/views/Check.jsx`, `CommunityChecking.jsx`),
+and clicking the Check tab inside an open checking tool leaves the tool open
+(`d25b7871:src/App.jsx`, `src/state.jsx`).

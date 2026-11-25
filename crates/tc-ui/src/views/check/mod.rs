@@ -25,6 +25,28 @@ pub fn tool_name_key(tool: tc_api::check::Tool) -> crate::i18n::Key {
     picker::tool_name(tool)
 }
 
+/// "← All checking tools" at the top of every checking tool's rail (#854).
+pub(crate) fn back_to_tools(
+    on_click: Callback<leptos::ev::MouseEvent>,
+    style: crate::css::Css,
+) -> impl IntoView {
+    use crate::attrs::Attrs;
+    use crate::ds::{Button, ButtonVariant, Size};
+    use crate::i18n::{keys, t};
+
+    view! {
+        <Button
+            variant=ButtonVariant::Secondary
+            size=Size::Sm
+            attrs=Attrs::from([("data-testid", "check-back")])
+            on_click=on_click
+            style=style
+        >
+            {t(keys::check::BACK, &[])}
+        </Button>
+    }
+}
+
 /// tC4's `Check`: the session of the open tool, else the picker, of the open book or the open
 /// story.
 #[component]
