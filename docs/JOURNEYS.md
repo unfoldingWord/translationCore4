@@ -324,11 +324,13 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
 - Steps: on Home, click "N conflicts · Review" (or the marker on a verse in Translate, or Review
   on a story screen) · see
   "Conflict n of m" with each version, newest first, its owner and its date · click one version ·
-  "Keep this version" · Previous and Next · "Back to …" at any time.
+  "Keep this version" (or open History · click "Restore this version" · confirm in the dialog) ·
+  Previous and Next · "Back to …" at any time.
 - End state: the kept text is the verse; the other versions stay in History; Home, Translate and
   the story screen count only the conflicts still open; the next sync sends the choice to the
   team.
-- Must not: start a sync; write anything when the translator only leaves the review.
+- Must not: start a sync; write anything when the translator only leaves the review or cancels a
+  restore.
 - Differs from tC4: only verse and frame text conflict (H5). Check, alignment, comment and
   setting differences never ask; see J28. A passage conflict (verses joined, renumbered or moved
   on one side) is shown too.
@@ -439,11 +441,11 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
   setting.
 - Steps: read the Received sheet ("Juan's alignment of Titus 1:1 replaced yours. Your version is
   in History.") · open History under the check's marks, the aligner's verse reference or the
-  comment · choose "Restore this version".
+  comment · click "Restore this version" · confirm in the dialog.
 - End state: the newest version is in place with no question asked; the older one is in History,
-  and Restore brings it back and saves it as a new change. A replaced setting names its older
-  value, and Project settings can set it again. Two versions of an audio file are both kept, the
-  older under its author's name.
+  and confirming Restore brings it back and saves it as a new change; canceling writes nothing. A
+  replaced setting names its older value, and Project settings can set it again. Two versions of
+  an audio file are both kept, the older under its author's name.
 - Must not: drop the older version; ask a question for a difference that is not verse or frame
   text (H5).
 

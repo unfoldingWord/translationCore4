@@ -813,6 +813,7 @@ browserTest('a_check_restored_from_history_shows_its_restored_words', async () =
     await until('History lists the three versions', async () => (await versions.count()) >= 3);
     // Newest first: valid with two words, no decision, valid with one word.
     await versions.nth(2).getByTestId('history-restore').click();
+    await page.getByTestId('history-restore-accept').click();
     await storedAs(env, index, 'valid', [1]);
     await until('the restored word shows alone', async () => String(await pressedWords(page)) === 'tw-1');
     assert.deepEqual(await navOff(page).then((off) => off[1]), false, 'Next is on: the words are the stored ones');
@@ -846,6 +847,7 @@ const offUntilARestoreShows = (slow) => async () => {
     });
     const sent = decides(page);
     await versions.nth(2).getByTestId('history-restore').click();
+    await page.getByTestId('history-restore-accept').click();
     await until('the line is off', async () => (await lineSaving(page)) === '1');
     await storedAs(env, index, 'valid', [1]);
     assert.deepEqual(await marksOff(page), [true, true, true]);
@@ -1376,6 +1378,7 @@ browserTest('j4_clear_selection_on_a_marked_check_takes_the_mark_away', async ()
     const versions = page.getByTestId('check-history').getByTestId('history-version');
     await until('History keeps the earlier mark', async () => (await versions.count()) >= 2);
     await versions.nth(1).getByTestId('history-restore').click();
+    await page.getByTestId('history-restore-accept').click();
     await storedAs(env, index, 'valid', [0, 1, 2]);
     await until('restoring the old mark brings its words back', async () => (await pressedWords(page)).length === 3);
   }, { scenario: 'en-pins' });

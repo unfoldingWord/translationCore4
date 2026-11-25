@@ -302,7 +302,11 @@ browserTest('C7a (#78). Every History row but the one shown has Restore this ver
     const restore = rows.nth(1).getByTestId('history-restore');
     const from = await restore.getAttribute('data-ts');
     const sent = resolutions(page);
-    await restore.dblclick();
+    await restore.click();
+    const confirm = page.getByTestId('history-restore-confirm');
+    await confirm.waitFor();
+    assert.equal(sent.length, 0, 'INV-RESTORE-WAITS-FOR-CONFIRMATION: clicking the link writes nothing before confirmation');
+    await confirm.getByTestId('history-restore-accept').dblclick();
     await page.getByTestId('conflict-none').waitFor({ timeout: 30_000 });
     assert.ok(sent.length >= 1);
     assert.equal(new Set(sent.map((r) => r.request)).size, 1, 'one request however often Restore was pressed');
@@ -354,4 +358,164 @@ browserTest('C7a. With two verses in conflict, Keep all of Teammate 1’s keeps 
     assert.equal(texts['1'], ONE);
     assert.equal(texts['2'], later[0]);
   }, opts);
+});
+
+browserTest('j18_restore_from_history_asks_before_writing_and_returns_focus_on_cancel_escape_and_outside_click', async () => {
+  await withApp(async ({ page, env }) => {
+    await page.getByTestId(`share-${FOLDER}`).waitFor();
+    await teammatesSynced(page, env);
+    await toast(page).getByTestId('sync-review').click();
+    await review(page).waitFor();
+    await versions(page).nth(1).waitFor();
+    await page.getByTestId('conflict-history').click();
+    const rows = page.getByTestId('history-version');
+    await rows.nth(2).waitFor();
+
+    const at = await scope(env);
+    const { record } = (await env.call('conflicts/list', { at, tab: 'text' })).entries.value[0];
+    const restore = rows.nth(1).getByTestId('history-restore');
+    const from = await restore.getAttribute('data-ts');
+    const sent = resolutions(page);
+    const dialog = page.getByTestId('history-restore-confirm');
+    const panel = dialog.locator('[role="dialog"]');
+    const linkFocused = () => restore.evaluate((el) => el === document.activeElement);
+
+    await restore.click();
+    await dialog.waitFor();
+    assert.equal(sent.length, 0, 'INV-RESTORE-WAITS-FOR-CONFIRMATION: opening confirmation writes nothing');
+    assert.equal(await panel.getAttribute('aria-modal'), 'true');
+    const labelledBy = await panel.getAttribute('aria-labelledby');
+    assert.ok(labelledBy, 'dialog is labelled for screen readers');
+    assert.equal(await panel.locator(`#${labelledBy}`).textContent(), 'Restore this version of Titus 1:1?');
+    const preview = await dialog.getByTestId('history-restore-preview').textContent();
+    assert.match(preview, /Teammate 1/);
+    assert.match(preview, /\d{4}/);
+    assert.equal(await dialog.getByTestId('history-restore-text').textContent(), ONE);
+    assert.equal(
+      await dialog.getByTestId('history-restore-consequence').textContent(),
+      'This version replaces the other 2 versions. They stay in the project history.',
+    );
+    assert.equal(await dialog.getByTestId('history-restore-cancel').textContent(), 'Cancel');
+    assert.equal(await dialog.getByTestId('history-restore-accept').textContent(), 'Restore this version');
+
+    await until('focus moves into the dialog', () => page.evaluate(() => document.activeElement?.closest('[role="dialog"]') != null));
+    for (let i = 0; i < 4; i += 1) {
+      await page.keyboard.press('Tab');
+      assert.ok(await page.evaluate(() => document.activeElement?.closest('[role="dialog"]') != null), 'Tab stays in the dialog');
+    }
+    await page.keyboard.press('Shift+Tab');
+    assert.ok(await page.evaluate(() => document.activeElement?.closest('[role="dialog"]') != null), 'Shift+Tab stays in the dialog');
+
+    await page.keyboard.press('Escape');
+    await dialog.waitFor({ state: 'detached' });
+    assert.equal(sent.length, 0, 'Escape writes nothing');
+    await until('focus returns to Restore this version after Escape', linkFocused);
+
+    await page.keyboard.press('Enter');
+    await dialog.waitFor();
+    await dialog.getByTestId('history-restore-cancel').click();
+    await dialog.waitFor({ state: 'detached' });
+    assert.equal(sent.length, 0, 'Cancel writes nothing');
+    await until('focus returns to Restore this version after Cancel', linkFocused);
+
+    await restore.click();
+    await dialog.waitFor();
+    await dialog.click({ position: { x: 8, y: 8 } });
+    await dialog.waitFor({ state: 'detached' });
+    assert.equal(sent.length, 0, 'clicking outside writes nothing');
+    await until('focus returns to Restore this version after outside click', linkFocused);
+
+    await restore.click();
+    await dialog.waitFor();
+    for (let i = 0; i < 5; i += 1) {
+      if (await dialog.getByTestId('history-restore-accept').evaluate((el) => el === document.activeElement)) break;
+      await page.keyboard.press('Tab');
+    }
+    assert.equal(
+      await dialog.getByTestId('history-restore-accept').evaluate((el) => el === document.activeElement),
+      true,
+      'Restore this version is reachable with Tab',
+    );
+    await page.keyboard.press('Enter');
+    await dialog.waitFor({ state: 'detached' });
+    await page.getByTestId('conflict-none').waitFor({ timeout: 30_000 });
+    assert.equal(sent.length, 1);
+    assert.deepEqual(sent[0].choice, { type: 'restore', value: { from } });
+    const after = await env.call('conflicts/history', { at, record });
+    assert.equal(after.versions[0].cause, 'kept');
+    assert.deepEqual(after.versions[0].version.value, { type: 'text', value: ONE });
+    assert.ok(after.versions.some((v) => v.cause === 'edited' && v.version.value.value === TWO));
+  }, opts);
+});
+
+browserTest('j18_restore_from_history_asks_before_writing_in_a_story_frame_conflict', async () => {
+  await withApp(async ({ page, env }) => {
+    const OBS = 'sample_burrito_obs';
+    await page.getByTestId(`project-${OBS}`).getByTestId('story-tile-1').click();
+    await page.getByTestId('story-understand').waitFor();
+    await page.getByRole('tab', { name: 'Translate', exact: true }).click();
+    await page.getByTestId('story-draft').waitFor();
+
+    const story = path.join(env.projectsDir, OBS, 'ingredients', 'content', '01.md');
+    const md = fs.readFileSync(story, 'utf8');
+    const edited = md.replace(/(\n\n)([^!\n#][^\n]{5})/, '$1STORY OUTSIDE $2');
+    assert.notEqual(edited, md);
+    fs.writeFileSync(story, edited);
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    const changed = page.getByTestId('changed-books');
+    await changed.waitFor();
+    await changed.getByRole('button', { name: 'Not now' }).click();
+    await changed.waitFor({ state: 'detached' });
+
+    const row = page.getByTestId('story-frame-1');
+    const text = row.getByTestId('story-unit-text');
+    if (await text.count()) await text.click();
+    else await row.getByRole('button').click();
+    const editor = page.getByTestId('story-unit-editor');
+    await editor.waitFor();
+    await row.getByRole('textbox').fill('STORY APP Frame 1');
+    await editor.getByRole('button', { name: 'Save', exact: true }).click();
+    await editor.waitFor({ state: 'detached' });
+    await until('saved', async () => (await page.getByTestId('save-indicator').getAttribute('data-state')) === 'saved');
+
+    await page.getByTestId('conflicts-review').click();
+    await review(page).waitFor();
+    await page.getByRole('tab', { name: /Notices/ }).click();
+    await page.getByTestId('kept-import').click();
+    await until('the import report shows', async () => /imported/.test(await changed.innerText().catch(() => '')));
+    await changed.getByRole('button', { name: 'Close' }).click();
+    await changed.waitFor({ state: 'detached' });
+
+    await page.getByRole('tab', { name: 'Text' }).click();
+    await versions(page).nth(1).waitFor();
+    await page.getByTestId('conflict-history').click();
+    const rows = page.getByTestId('history-version');
+    await rows.nth(1).waitFor();
+
+    const restore = rows.filter({ has: page.getByTestId('history-restore') }).first().getByTestId('history-restore');
+    const sent = resolutions(page);
+    const dialog = page.getByTestId('history-restore-confirm');
+    await restore.click();
+    await dialog.waitFor();
+    assert.equal(sent.length, 0, 'INV-RESTORE-WAITS-FOR-CONFIRMATION: clicking Restore in OBS History writes nothing');
+    const panel = dialog.locator('[role="dialog"]');
+    const labelledBy = await panel.getAttribute('aria-labelledby');
+    assert.equal(await panel.locator(`#${labelledBy}`).textContent(), 'Restore this version of Story 1, frame 1?');
+    assert.equal(
+      await dialog.getByTestId('history-restore-consequence').textContent(),
+      'This version replaces the other version. It stays in the project history.',
+    );
+
+    await dialog.getByTestId('history-restore-cancel').click();
+    await dialog.waitFor({ state: 'detached' });
+    assert.equal(sent.length, 0);
+    await until('focus returns to OBS Restore link after Cancel', () => restore.evaluate((el) => el === document.activeElement));
+
+    await restore.click();
+    await dialog.waitFor();
+    await dialog.getByTestId('history-restore-accept').click();
+    await dialog.waitFor({ state: 'detached' });
+    await page.getByTestId('conflict-none').waitFor({ timeout: 30_000 });
+    assert.equal(sent.length, 1);
+  });
 });

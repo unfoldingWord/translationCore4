@@ -28,9 +28,10 @@ use crate::app::load::Load;
 use crate::app::outside::{KeptOffer, kept_import_label, kept_line, kept_offer, with_kept};
 use crate::app::q9::{Q9Body, Q9Question, Q9Review, Q9Row, Q9Screen};
 use crate::app::review::{
-    BackTo, Choices, KeepOutcome, Owner, back_label, cause_label, choices, consequence,
-    group_others, keep_all_label, keep_passage_label, kept_all_text, kept_name, made_by,
-    notice_text, persons, place_label, tab_label, tabs_shown, version_text,
+    BackTo, Choices, KeepOutcome, Owner, RestorePrompt, back_label, cause_label, choices,
+    consequence, group_others, keep_all_label, keep_passage_label, kept_all_text, kept_name,
+    made_by, notice_text, persons, place_label, restore_prompt, tab_label, tabs_shown,
+    version_text,
 };
 use crate::app::web::{Actions, AppCtx, AppState, use_app, use_runtime};
 use crate::attrs::Attrs;
@@ -1240,23 +1241,29 @@ fn history_list(
         at: at.clone(),
         record: entry.record.clone(),
     });
-    let title = t(keys::review::HISTORY_OF, &[("ref", &reference)]);
     let (actions, entry) = (actions.clone(), entry.clone());
     let restore = Callback::new(move |from| {
         actions.restore_version(entry.clone(), position, from);
     });
-    Some(history_section(read, title, restore, busy))
+    Some(history_section(read, reference.to_owned(), restore, busy))
 }
 
 /// Every version of a record, newest first, each with *Restore this version* but the one shown
-/// (#78; owner ruling H5 for a record in no conflict).
+/// (#78; owner ruling H5 for a record in no conflict). The link asks first (#1015): only the
+/// dialog's button runs `restore`.
 pub(crate) fn history_section(
     read: Signal<Load<Arc<tc_api::conflicts::HistoryView>>>,
-    title: String,
+    reference: String,
     restore: Callback<ChangeRef>,
     busy: Signal<bool>,
 ) -> AnyView {
+    let title = t(keys::review::HISTORY_OF, &[("ref", &reference)]);
     let label = title.clone();
+    let asking = RwSignal::new(None::<ChangeRef>);
+    let prompt = Memo::new(move |_| {
+        let from = asking.get()?;
+        read.with(|l| l.value().and_then(|view| restore_prompt(view, &from)))
+    });
     let rows = move || {
         read.with(|l| {
             l.value().map(|view: &Arc<tc_api::conflicts::HistoryView>| {
@@ -1271,7 +1278,7 @@ pub(crate) fn history_section(
                         );
                         let restore = (!v.version.shown).then(|| {
                             let from = v.version.change.clone();
-                            let on_click = Callback::new(move |_| restore.run(from.clone()));
+                            let on_click = Callback::new(move |_| asking.set(Some(from.clone())));
                             view! {
                                 <Button variant=ButtonVariant::Ghost size=Size::Sm disabled=busy on_click=on_click
                                     style=crate::css! { "align-self": "flex-start", "padding": 0, "height": "auto" }
@@ -1304,8 +1311,75 @@ pub(crate) fn history_section(
         <section data-testid="conflict-history-list" aria-label=label style=style.to_style()>
             <Overline tone=OverlineTone::Muted>{title}</Overline>
             <ul style="list-style: none; margin: 6px 0 0; padding: 0;">{rows}</ul>
+            {move || prompt.get().map(|p| restore_modal(&reference, p, asking, restore, busy))}
         </section>
     }
+    .into_any()
+}
+
+/// The question before *Restore this version* writes anything (#1015). Cancel, Escape, the ✕ and
+/// a press on the scrim close it and write nothing; the layer returns the focus to the link.
+fn restore_modal(
+    reference: &str,
+    prompt: RestorePrompt,
+    asking: RwSignal<Option<ChangeRef>>,
+    restore: Callback<ChangeRef>,
+    busy: Signal<bool>,
+) -> AnyView {
+    let title = t(keys::review::restore_confirm::TITLE, &[("ref", &reference)]);
+    let meta = format!(
+        "{} · {} · {}",
+        prompt.author,
+        version_date(prompt.at.0),
+        prompt.cause
+    );
+    let RestorePrompt {
+        text, consequence, ..
+    } = prompt;
+    let footer: ChildrenFn = Arc::new(move || {
+        let confirm = Callback::new(move |_| {
+            if let Some(from) = asking.try_update(Option::take).flatten() {
+                restore.run(from);
+            }
+        });
+        view! {
+            <Button variant=ButtonVariant::Secondary on_click=Callback::new(move |_| asking.set(None))
+                attrs=Attrs::new().with("data-testid", "history-restore-cancel")>
+                {t(keys::conflicts::CANCEL, &[])}
+            </Button>
+            <Button disabled=busy on_click=confirm attrs=Attrs::new().with("data-testid", "history-restore-accept")>
+                {t(keys::review::RESTORE, &[])}
+            </Button>
+        }
+        .into_any()
+    });
+    let children: ChildrenFn = Arc::new(move || {
+        let (meta, text, consequence) = (meta.clone(), text.clone(), consequence.clone());
+        let text = text.map(|text| {
+            view! {
+                <span data-testid="history-restore-text" dir="auto" style="font-family: var(--font-scripture); font-size: var(--fs-verse); line-height: var(--lh-verse); color: var(--text-scripture); white-space: pre-wrap;">{text}</span>
+            }
+        });
+        view! {
+            <div data-testid="history-restore-preview"
+                style="padding: 10px 12px; border-radius: var(--radius-md); background: var(--surface-app); border: var(--stroke-hair) solid var(--border-hair); display: flex; flex-direction: column; gap: 4px;">
+                <span style="font-size: var(--fs-caption); font-weight: var(--fw-bold); color: var(--uw-slate);">{meta}</span>
+                {text}
+            </div>
+            <p data-testid="history-restore-consequence" style="margin: 0; font-size: var(--fs-ui-sm); letter-spacing: var(--track-13); color: var(--text-secondary); line-height: var(--lh-body);">{consequence}</p>
+        }
+        .into_any()
+    });
+    crate::ds::Modal(crate::ds::ModalProps {
+        title: Some((move || title.clone()).into()),
+        width: Some(460.into()),
+        close_label: Some(Signal::derive(|| t(keys::common::CLOSE, &[]))),
+        on_close: Some(Callback::new(move |()| asking.set(None))),
+        footer: Some(footer),
+        attrs: Attrs::from([("data-testid", "history-restore-confirm")]),
+        children: Some(children),
+        ..Default::default()
+    })
     .into_any()
 }
 

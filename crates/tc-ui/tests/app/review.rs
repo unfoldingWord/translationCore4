@@ -733,3 +733,74 @@ fn a_checks_version_names_its_selection_and_comment() {
     );
     assert_eq!(version_text(&VersionValue::NotShown), None);
 }
+
+/// INV-RESTORE-WAITS-FOR-CONFIRMATION (#1015): the confirmation prompt shows only for an unshown
+/// version present in History, with its author, timestamp, cause, text, and singular/plural
+/// consequence.
+#[test]
+fn restore_prompt_builds_confirmation_only_for_unshown_versions() {
+    use tc_api::conflicts::{HistoryVersion, HistoryView, VersionCause};
+    use tc_ui::app::review::restore_prompt;
+
+    let mut shown = version('a', person(Who::Mine));
+    shown.shown = true;
+    shown.value = VersionValue::Text("Newest".into());
+    let mut older_one = version('b', person(Who::Teammate(1)));
+    older_one.value = VersionValue::Text("  First teammate  ".into());
+    let mut older_two = version('c', person(Who::Teammate(2)));
+    older_two.value = VersionValue::Text("Second teammate".into());
+
+    let two = HistoryView {
+        versions: vec![
+            HistoryVersion {
+                version: shown.clone(),
+                cause: VersionCause::Edited,
+            },
+            HistoryVersion {
+                version: older_one.clone(),
+                cause: VersionCause::Kept,
+            },
+        ],
+    };
+    assert_eq!(
+        restore_prompt(&two, &change('a')),
+        None,
+        "INV-RESTORE-WAITS-FOR-CONFIRMATION: shown version cannot be confirmed"
+    );
+    assert_eq!(
+        restore_prompt(&two, &change('d')),
+        None,
+        "INV-RESTORE-WAITS-FOR-CONFIRMATION: absent version has no prompt"
+    );
+    let prompt_one = restore_prompt(&two, &change('b')).expect("unshown version prompts");
+    assert_eq!(prompt_one.author, "Teammate 1");
+    assert_eq!(prompt_one.at, older_one.at);
+    assert_eq!(prompt_one.cause, "Kept in a conflict");
+    assert_eq!(prompt_one.text.as_deref(), Some("First teammate"));
+    assert_eq!(
+        prompt_one.consequence,
+        "This version replaces the other version. It stays in the project history."
+    );
+
+    let three = HistoryView {
+        versions: vec![
+            HistoryVersion {
+                version: shown,
+                cause: VersionCause::Edited,
+            },
+            HistoryVersion {
+                version: older_one,
+                cause: VersionCause::Kept,
+            },
+            HistoryVersion {
+                version: older_two,
+                cause: VersionCause::Edited,
+            },
+        ],
+    };
+    let prompt_many = restore_prompt(&three, &change('b')).expect("unshown version prompts");
+    assert_eq!(
+        prompt_many.consequence,
+        "This version replaces the other 2 versions. They stay in the project history."
+    );
+}
