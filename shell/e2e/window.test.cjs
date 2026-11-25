@@ -279,13 +279,39 @@ h.shellTest(
       await page.locator('body').click({ button: 'right', position: { x: 2, y: 2 } });
       await field.click({ button: 'right' });
       await h.until('the text menu', async () => (await app.evaluate(() => globalThis.__menus.length)) > 0, 30000);
-      assert.deepEqual(await app.evaluate(() => globalThis.__menus), [['cut', 'copy', 'paste']], 'only the text field has the menu');
+      assert.deepEqual(await app.evaluate(() => globalThis.__menus), [['cut', 'copy', 'paste', 'selectAll']], 'only the text field has the menu');
     } finally {
       await h.finish(app);
     }
   },
   { hooks: true },
 );
+
+h.shellTest('download_save_dialog_has_a_readable_title', async () => {
+  const dir = h.appDataDir('download-title');
+  const app = await h.launch(dir);
+  try {
+    const page = await h.home(app);
+    await app.evaluate(({ session }) => {
+      globalThis.__downloadSaveTitles = [];
+      session.defaultSession.on('will-download', (_e, item) => {
+        globalThis.__downloadSaveTitles.push(item.getSaveDialogOptions().title);
+        item.cancel();
+      });
+    });
+    await page.evaluate(() => {
+      const link = document.createElement('a');
+      link.href = '/help/al-open.html';
+      link.download = 'al-open.html';
+      document.body.append(link);
+      link.click();
+    });
+    await h.until('the download dialog options', async () => (await app.evaluate(() => globalThis.__downloadSaveTitles.length)) > 0, 30000);
+    assert.deepEqual(await app.evaluate(() => globalThis.__downloadSaveTitles), ['Save file']);
+  } finally {
+    await h.finish(app);
+  }
+});
 
 h.shellTest('feedback_send_without_a_key_answers_not_configured', async () => {
   const dir = h.appDataDir('feedback');
