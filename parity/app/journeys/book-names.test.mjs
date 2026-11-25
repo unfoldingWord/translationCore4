@@ -1,11 +1,14 @@
 // Book names in the interface language (#1043). Home's tiles, the Add a book list, the
 // Understand and Translate headings, the book rail and the Check item header name a book as the
 // interface catalog does, with Western digits after the name. In English the same project reads
-// "Titus", whatever its own language.
+// "Titus", whatever its own language. A language applied with a book open renames it in place.
+//
+// The Arabic names are the owner's (ruling H10): this file reads them from the shipped catalog
+// and writes none. Until they are in `i18n-rebuild/ar.json`, the two Arabic tests fail and say so.
 //
 //   TC4_BIN=target/debug/tc4 TC4_UI=target/tc-ui-app node --test parity/app/journeys/book-names.test.mjs
 import assert from 'node:assert/strict';
-import { bookName, browserTest, catalog, rebuildCatalog, until, withApp } from './kit.mjs';
+import { applyLanguage, bookName, browserTest, catalog, rebuildCatalog, until, withApp } from './kit.mjs';
 
 // The sample project is Spanish (es-419) with Titus and Jonah.
 const PROJECT = 'sample_burrito';
@@ -18,6 +21,14 @@ function words(id) {
   const own = { ...catalog(id), ...rebuildCatalog(id) };
   const english = { ...catalog('en'), ...rebuildCatalog('en') };
   return (key) => own[key] ?? english[key];
+}
+
+/** The Arabic name of a book, which must be there and must not be the English one. */
+function arabic(book) {
+  const name = rebuildCatalog('ar')[`book.${book}`];
+  const english = rebuildCatalog('en')[`book.${book}`];
+  assert.ok(name && name !== english, `i18n-rebuild/ar.json does not name ${english} yet: this journey needs the owner's names (#1043, "Owner steps")`);
+  return name;
 }
 
 /** The book rail's rows: each book's tile, then the open book's chapter numbers. */
@@ -75,7 +86,29 @@ async function walk(page, id) {
   assert.match(place.slice(name('titus').length + 1), /^[0-9]+:[0-9]+$/, `the check's header reads ${JSON.stringify(place)}`);
 }
 
+browserTest('book_names_follow_the_interface_language', async () => {
+  for (const book of ['titus', 'jonah', 'genesis', 'firstSamuel', 'songOfSongs', 'revelation']) arabic(book);
+  await withApp(async ({ page }) => walk(page, 'ar'), { locale: 'ar' });
+});
+
 browserTest('an_english_interface_names_books_in_english_whatever_the_project', async () => {
   assert.equal(bookName('en', 'titus'), 'Titus');
   await withApp(async ({ page }) => walk(page, 'en'));
+});
+
+browserTest('a_language_switch_renames_the_open_book_in_place', async () => {
+  const [titus, jonah] = [arabic('titus'), arabic('jonah')];
+  await withApp(async ({ page }) => {
+    await tile(page, 'TIT').click();
+    await page.getByTestId('understand').waitFor();
+    await until('Titus 1', async () => (await heading(page).textContent()) === 'Titus 1');
+    await applyLanguage(page, 'ar');
+    await until('the heading in Arabic', async () => (await heading(page).textContent()) === `${titus} 1`);
+    // The open book's row and the other book's row are two tiles of the rail.
+    const rows = await railRows(page, words('ar'));
+    for (const name of [titus, jonah]) assert.ok(rows.some((row) => row.startsWith(name)), `the rail still reads ${JSON.stringify(rows)}`);
+    for (const english of ['Titus', 'Jonah']) assert.ok(!rows.some((row) => row.startsWith(english)), `the rail still reads ${JSON.stringify(rows)}`);
+    await applyLanguage(page, 'en');
+    await until('the heading in English again', async () => (await heading(page).textContent()) === 'Titus 1');
+  });
 });
