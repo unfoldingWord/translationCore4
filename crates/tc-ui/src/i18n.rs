@@ -27,6 +27,8 @@ use std::rc::Rc;
 use tc_api::ids::LocaleId;
 use tc_core::BookId;
 
+use crate::quotation::Marks;
+
 /// The direction an interface reads in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextDir {
@@ -53,6 +55,9 @@ pub struct Locale {
     pub label: &'static str,
     /// The direction the interface reads in (#657). Scripture sets its own from the project.
     pub dir: TextDir,
+    /// The quotation marks this language puts around a quoted phrase: the ones its catalog has
+    /// around `{quote}` in `check.next` (#1075).
+    pub marks: Marks,
     /// The folder of this language's help below `/help/`, as `vendor-help.sh` places it
     /// (#1036). `None` shows the English help, which is the help folder's own: for English,
     /// and for a language translationcore.com has no help in.
@@ -76,60 +81,70 @@ pub const LOCALES: [Locale; 10] = [
         id: "en",
         label: "English",
         dir: TextDir::Ltr,
+        marks: Marks::Curly,
         help: None,
     },
     Locale {
         id: "es-419",
         label: "Español (Latinoamérica)",
         dir: TextDir::Ltr,
+        marks: Marks::Curly,
         help: Some("es"),
     },
     Locale {
         id: "fr",
         label: "Français",
         dir: TextDir::Ltr,
+        marks: Marks::SpacedGuillemets,
         help: Some("fr"),
     },
     Locale {
         id: "hi",
         label: "हिन्दी",
         dir: TextDir::Ltr,
+        marks: Marks::Curly,
         help: Some("hi"),
     },
     Locale {
         id: "pt-BR",
         label: "Português (Brasil)",
         dir: TextDir::Ltr,
+        marks: Marks::Curly,
         help: Some("pt"),
     },
     Locale {
         id: "id",
         label: "Bahasa Indonesia",
         dir: TextDir::Ltr,
+        marks: Marks::Curly,
         help: Some("id"),
     },
     Locale {
         id: "uk",
         label: "Українська",
         dir: TextDir::Ltr,
+        marks: Marks::Guillemets,
         help: None,
     },
     Locale {
         id: "ru",
         label: "Русский",
         dir: TextDir::Ltr,
+        marks: Marks::Guillemets,
         help: Some("ru"),
     },
     Locale {
         id: "vi",
         label: "Tiếng Việt",
         dir: TextDir::Ltr,
+        marks: Marks::Curly,
         help: Some("vi"),
     },
     Locale {
         id: "ar",
         label: "العربية",
         dir: TextDir::Rtl,
+        marks: Marks::Guillemets,
         help: Some("ar"),
     },
 ];

@@ -119,8 +119,9 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
   `AVD`) where tC4 shows GLT or GST, the name under the tabs is the full name in its metadata
   ("Texto Puente Literal"), and the helps' simplified tab shows its own (#1045, DIFFERENCES).
   The helps tabs wrap at narrow panel widths so they do not push the panel sideways (#993,
-  DIFFERENCES). The heading, the book rail and each verse's reference name the book in the
-  interface language, with Western digits (#1043, DIFFERENCES).
+  DIFFERENCES). A note card's phrase has the interface language's quotation marks, as in J16
+  (#1075, DIFFERENCES). The heading, the book rail and each verse's reference name the book in
+  the interface language, with Western digits (#1043, DIFFERENCES).
 
 ### J3 Get pinned resources
 
@@ -150,8 +151,10 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
   `docs/DIFFERENCES.md`). The compare card also shows the simplified Bible (UST or GST) of
   the checking package as a source text of its own (#996, `docs/DIFFERENCES.md`). Each source
   card is named after its Bible alone, by the abbreviation in its metadata (`ULT`, `TPL`),
-  with no "Gateway ·" (#1045, `docs/DIFFERENCES.md`). The tool picker and a check's header name
-  the book in the interface language (#1043, `docs/DIFFERENCES.md`).
+  with no "Gateway ·" (#1045, `docs/DIFFERENCES.md`). The quotation marks around a check's
+  phrase, in its heading and on its row of the list, are the interface language's, at the two
+  ends of the phrase whichever way it reads (#1075, `docs/DIFFERENCES.md`). The tool picker
+  and a check's header name the book in the interface language (#1043, `docs/DIFFERENCES.md`).
 - Must not: store a check comment anywhere but its decision; count a bookmarked or commented check
   differently from a plain one.
 
@@ -168,8 +171,9 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
 - Differs from tC4: across a verse edit, each link moves with its own word. Clear alignments
   is new (#758). The gateway lens's switch and the heading over its text name the project's
   literal Bible by the abbreviation in its metadata (`ULT`, `TPL`), with no "Gateway ·"
-  (#1045, `docs/DIFFERENCES.md`). A verse's reference names the book in the interface language
-  (#1043, `docs/DIFFERENCES.md`).
+  (#1045, `docs/DIFFERENCES.md`). The reference in the heading has the interface language's
+  quotation marks (#1075, `docs/DIFFERENCES.md`). A verse's reference names the book in the
+  interface language (#1043, `docs/DIFFERENCES.md`).
 
 ### J6 Edit a checked verse
 
@@ -300,8 +304,9 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
   `x-ref` names that verse, where tC4 reads the whole span (#409, DIFFERENCES); the helps stay
   filtered to the unit clicked, also after a comment is saved (#991, DIFFERENCES). The helps
   tabs wrap at narrow panel widths so they do not push the panel sideways (#993, DIFFERENCES).
-  The heading and each unit's reference name the book in the interface language (#1043,
-  DIFFERENCES).
+  A note card's phrase has the interface language's quotation marks, at its two ends whichever
+  way it reads (#1075, DIFFERENCES). The heading and each unit's reference name the book in the
+  interface language (#1043, DIFFERENCES).
 
 ### J17 Open a shared project on another computer
 
@@ -364,7 +369,8 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
   title and the reference line.
 - End state: the story file changes only inside the written frame, title or reference line.
 - Must not: touch another frame; write two paragraphs into one frame; save a picture line.
-- Differs from tC4: a frame's editor fills the row its picture and text set (#915).
+- Differs from tC4: a frame's editor fills the row its picture and text set (#915). A note
+  card's phrase has the interface language's quotation marks, as in J16 (#1075, DIFFERENCES).
 
 ### J22 Check an OBS story
 
@@ -375,6 +381,8 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
 - End state: decisions stored under their story and frame; a later frame edit marks them invalid
   and keeps them; the story file is unchanged.
 - Must not: offer an Align tool; write a PDF (that is J23).
+- Differs from tC4: the quotation marks around a check's phrase are the interface language's,
+  as in J4 (#1075, DIFFERENCES).
 
 ### J23 Export an OBS project as Markdown and PDF
 
@@ -399,7 +407,8 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
   same story in Understand.
 - Must not: change progress.
 - Differs from tC4: the helps list only the frame in focus, also after Save (#991,
-  DIFFERENCES).
+  DIFFERENCES). A note card's phrase has the interface language's quotation marks, as in J16
+  (#1075, DIFFERENCES).
 
 ### J26 Sync one project with two teammates through Door43
 

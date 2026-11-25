@@ -1177,7 +1177,7 @@ fn header(
             <div style="flex: 1;"></div>
             {item_of.map(|text| view! { <span data-testid="align-item-counter" style=counter.to_style()>{text}</span> })}
         </div>
-        <h1 style=h1.to_style()>"“"{label}"”"</h1>
+        <h1 style=h1.to_style()>{crate::quotation::quoted(&label).inline()}</h1>
     }
 }
 

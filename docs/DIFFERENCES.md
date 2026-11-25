@@ -253,6 +253,16 @@ Under the same rule, tC4 4.0 bugs the rebuild fixes on purpose (FIX-R, 2026-10-2
   placed words read backwards (#830).
 - Each note, word and question text reads in its own direction under its pane's layout, so
   an English question in an Arabic set is not laid out right to left (#836).
+- The quotation marks around a check's phrase (in its heading and on its row of the Check
+  list), around the phrase of a note card and around the reference on Align are the interface
+  language's, as its catalog has them in `check.next`: «…» in Arabic, « … » in French, “…” in
+  English. A mark is before the first word of the phrase and the other after its last word,
+  on one line and on two, whichever way the phrase and the interface read; a French mark stays
+  with its word. Around a right-to-left phrase, “…” keeps “ at the left end and ” at the right
+  end. tC4 types “ and ” in the four places for every language
+  (`d25b7871:src/views/Check.jsx`, `src/views/Align.jsx`,
+  `src/ds/components/surfaces/HelpCard.jsx`), so an Arabic interface shows them at the wrong
+  ends (#1075).
 - A helps article or note draws its `<br>` as a line break, its `<sup>` as superscript and its
   `<u>` as underlined, in Understand, in the note cards and in Check. tC4 shows the tags as
   text. A tag with no end tag still shows as written (#910).
