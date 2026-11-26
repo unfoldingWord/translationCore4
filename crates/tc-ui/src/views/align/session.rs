@@ -58,7 +58,7 @@ pub fn align_session(s: &AppState, actions: &Actions, book: BookId) -> impl Into
     let screen = move || {
         let screen = s.a.screen.get();
         match screen {
-            Screen::Loading => {
+            Screen::Loading | Screen::Closing => {
                 let style = crate::css! {
                     "font-size": "var(--fs-ui-md)",
                     "color": "var(--text-tertiary)",

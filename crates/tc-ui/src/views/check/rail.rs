@@ -102,9 +102,7 @@ fn check_empty(actions: &Actions, rail: &Rail, empty: CheckEmpty) -> AnyView {
     });
     view! {
         <div data-testid="check-empty" data-empty=empty_id(empty)>
-            <Button variant=ButtonVariant::Secondary size=Size::Sm on_click=back style=crate::css! { "margin-bottom": 16 }>
-                {t(keys::check::BACK, &[])}
-            </Button>
+            {super::back_to_tools(back, crate::css! { "margin-bottom": 16 })}
             <div style=boxed.to_style()>
                 <p style=title_style.to_style()>{t_dyn(title, &[], None)}</p>
                 <p style=body_style.to_style()>{t_dyn(body, &[], None)}</p>
@@ -920,9 +918,7 @@ fn check_rail(
     view! {
         <aside data-testid="check-rail" data-resource=rail.view.citation.as_ref().map(|c| c.pin.repo_path.clone()) style=aside.to_style()>
             <div style=head.to_style()>
-                <Button variant=ButtonVariant::Ghost size=Size::Sm attrs=Attrs::from([("data-testid", "check-back")]) on_click=back style=crate::css! { "padding": 0, "margin-bottom": 8 }>
-                    {t(keys::check::BACK, &[])}
-                </Button>
+                {super::back_to_tools(back, crate::css! { "margin-bottom": 8 })}
                 <h2 style=h2.to_style()>{t(tool_name(tool), &[])}</h2>
                 <p style=unit_style.to_style()>{unit.clone()}</p>
                 <ProgressBar

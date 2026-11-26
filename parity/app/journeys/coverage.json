@@ -160,6 +160,13 @@
     ],
     "J4": [
       {
+        "file": "parity/app/journeys/check-picker.test.mjs",
+        "tests": [
+          "j4_the_way_back_to_all_checking_tools_reads_as_a_button_in_every_tool_ltr_and_rtl",
+          "j4_the_check_tab_closes_an_open_tool_and_translate_back_to_check_keeps_it"
+        ]
+      },
+      {
         "file": "parity/app/journeys/check-writes.test.mjs",
         "tests": [
           "j4_a_mark_on_dragged_words_a_comment_and_a_bookmark_are_one_decision_record_on_disk"
@@ -182,6 +189,7 @@
           "words_tapped_on_a_check_with_no_decision_record_nothing",
           "previous_and_next_are_off_while_selected_words_are_not_saved",
           "leaving_a_check_with_selected_words_not_saved_asks_first",
+          "j4_the_check_tab_asks_about_unsaved_words_and_waits_for_a_mark_save",
           "a_check_restored_from_history_shows_its_restored_words",
           "the_words_and_marks_are_off_until_a_restore_is_answered",
           "the_words_and_marks_are_off_until_a_restores_read_lands",
@@ -207,7 +215,8 @@
         "file": "parity/app/journeys/align.test.mjs",
         "tests": [
           "j5_align_steps_that_do_not_save",
-          "j5_clear_alignments_asks_then_starts_the_verse_over"
+          "j5_clear_alignments_asks_then_starts_the_verse_over",
+          "j5_the_check_tab_in_align_saves_links_first_and_shows_all_checking_tools"
         ]
       },
       {

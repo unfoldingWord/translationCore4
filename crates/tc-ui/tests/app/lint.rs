@@ -214,3 +214,22 @@ fn only_refusal_text_reads_vars() {
         "INV-EVERY-REFUSAL-RENDERS: a refusal's values are read outside i18n::refusal_text: {readers:#?}"
     );
 }
+
+/// INV-ONE-CHECK-BACK-CONTROL (#854): the "All checking tools" button of every checking tool
+/// is drawn by `views::check::back_to_tools`, so no tool draws its own ghost link, variant or
+/// size of it.
+#[test]
+fn only_back_to_tools_draws_the_all_checking_tools_button() {
+    let drawers = found(
+        &["keys::check::BACK,", "keys::cc::BACK,"],
+        |file, text, line| {
+            file == "views/check/mod.rs"
+                && text.contains("fn back_to_tools(")
+                && fn_lines(text, "back_to_tools").contains(&line)
+        },
+    );
+    assert!(
+        drawers.is_empty(),
+        "INV-ONE-CHECK-BACK-CONTROL: \"All checking tools\" is drawn outside views::check::back_to_tools: {drawers:#?}"
+    );
+}

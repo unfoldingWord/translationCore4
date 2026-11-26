@@ -647,3 +647,14 @@ button (`d25b7871:src/views/Check.jsx`).
   Windows does not show the loopback download URL, and the text-field right-click menu
   includes Select all (#833.2, #833.4). tC4 4.0 leaves the download dialog untitled and its
   text menu without Select all (`d25b7871:scripts/desktop-main.cjs`).
+
+In translationNotes, Translation Words, Align and Community Checking, "← All checking tools"
+is a bordered small button (`ButtonVariant::Secondary`, `Size::Sm`, 30 px high) at the top of
+the rail, and asking for Check while Check already shows translationNotes, Translation Words
+or Align closes the tool through that button's path — asking Stay or Leave without them when
+words are unsaved (#853), or saving the verse's links in Align — and shows the tools list;
+switching to Check from Understand or Translate still shows the tool left open (#854). tC4
+4.0 draws "← All checking tools" as a 0-padded ghost link in the check and align rails and as
+a ghost button in Community Checking (`d25b7871:src/views/Check.jsx`, `CommunityChecking.jsx`),
+and clicking the Check tab inside an open checking tool leaves the tool open
+(`d25b7871:src/App.jsx`, `src/state.jsx`).

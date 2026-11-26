@@ -149,7 +149,9 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
   card is named after its Bible alone, by the abbreviation in its metadata (`ULT`, `TPL`),
   with no "Gateway ·" (#1045, `docs/DIFFERENCES.md`). The quotation marks around a check's
   phrase, in its heading and on its row of the list, are the interface language's, at the two
-  ends of the phrase whichever way it reads (#1075, `docs/DIFFERENCES.md`).
+  ends of the phrase whichever way it reads (#1075, `docs/DIFFERENCES.md`). "← All checking tools"
+  is a bordered button in every checking tool, and the Check tab inside an open tool returns to
+  the tools list through the same close path (#854, `docs/DIFFERENCES.md`).
 - Must not: store a check comment anywhere but its decision; count a bookmarked or commented check
   differently from a plain one.
 
@@ -167,7 +169,9 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
   is new (#758). The gateway lens's switch and the heading over its text name the project's
   literal Bible by the abbreviation in its metadata (`ULT`, `TPL`), with no "Gateway ·"
   (#1045, `docs/DIFFERENCES.md`). The reference in the heading has the interface language's
-  quotation marks (#1075, `docs/DIFFERENCES.md`).
+  quotation marks (#1075, `docs/DIFFERENCES.md`). "← All checking tools" is a bordered button,
+  and the Check tab inside Align saves the verse's links and returns to the tools list (#854,
+  `docs/DIFFERENCES.md`).
 
 ### J6 Edit a checked verse
 

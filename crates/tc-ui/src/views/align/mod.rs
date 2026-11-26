@@ -344,9 +344,7 @@ fn align_rail(s: &AppState, actions: &Actions, book: BookId) -> impl IntoView + 
     view! {
         <aside data-testid="align-rail" style=aside.to_style()>
             <div style=head.to_style()>
-                <Button variant=ButtonVariant::Ghost size=Size::Sm on_click=back style=crate::css! { "padding": 0, "margin-bottom": 8 }>
-                    {t(keys::check::BACK, &[])}
-                </Button>
+                {crate::views::check::back_to_tools(back, crate::css! { "margin-bottom": 8 })}
                 <h2 style=h2.to_style()>{t(keys::nav::ALIGN, &[])}</h2>
                 <p style=unit_style.to_style()>{book.english_name().to_owned()}</p>
                 {bar}
