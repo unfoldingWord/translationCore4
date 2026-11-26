@@ -102,7 +102,9 @@ browserTest('J17 (#1013). An open from Door43 downloads the versions the project
     // In plain words: which version, and that Door43 does not have it. Door43's own words and
     // the request stay out of the sentence (Q36); "Ask for help" carries them.
     assert.equal(said, rebuild['refusal.open-door43.pin-not-on-door43'].replace('{pin}', 'en_ult v91'));
-    assert.ok((await refused.textContent()).includes(en['openDoor43.nothingWritten']), 'and says that no project was added');
+    const refusedText = await refused.textContent();
+    assert.ok(refusedText.includes(rebuild['common.supportCode'].replace('{code}', 'open-door43.pin-not-downloaded')), refusedText);
+    assert.ok(refusedText.includes(en['openDoor43.nothingWritten']), 'and says that no project was added');
     assert.deepEqual((await c.env.call('home/list', {})).cards, [], 'INV-OPEN-FROM-DOOR43-IS-ALL-OR-NOTHING: no project was added');
     // The form can be used again.
     assert.equal(await cPage.getByTestId('open-door43-submit').isEnabled(), true);

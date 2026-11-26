@@ -168,6 +168,7 @@ browserTest('Open a project from Door43: it asks no name (ruling H14); Open proj
     assert.equal(await page.getByTestId('share-signin').count(), 0, 'INV-PRIVATE-OPEN-ASKS-SIGN-IN-ONCE: no second ask');
     const words = await refused.textContent();
     assert.ok(words.includes(rebuild['openDoor43.refused.notOpened']), words);
+    assert.ok(words.includes(rebuild['common.supportCode'].replace('{code}', 'sync.clone-failed')), words);
     assert.ok(words.includes(en['openDoor43.nothingWritten']));
     assert.ok(!words.includes('public'), 'the sentence does not ask for a public repository (Q-21)');
     assert.equal(await refused.getAttribute('data-code'), 'sync.clone-failed', 'tC4\'s code for a clone that failed');

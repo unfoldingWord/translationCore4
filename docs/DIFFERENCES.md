@@ -640,6 +640,14 @@ In Check, Clear selection beside the hint under Your translation unselects every
 in History. It is off with no selected words and whenever the words are off. tC4 has no such
 button (`d25b7871:src/views/Check.jsx`).
 
+- In Import, Update a book from USFM and Open a project from Door43, any refusal or damaged
+  panel that prints a support code labels it "Support code: {code}" (#833.3). tC4 4.0 prints
+  the raw code unlabelled (`d25b7871:src/views/modals/Import.jsx`, `OpenFromDoor43.jsx`).
+- The desktop shell's Save dialog for `<a download>` exports sets the title "Save file" so
+  Windows does not show the loopback download URL, and the text-field right-click menu
+  includes Select all (#833.2, #833.4). tC4 4.0 leaves the download dialog untitled and its
+  text menu without Select all (`d25b7871:scripts/desktop-main.cjs`).
+
 In translationNotes, Translation Words, Align and Community Checking, "← All checking tools"
 is a bordered small button (`ButtonVariant::Secondary`, `Size::Sm`, 30 px high) at the top of
 the rail, and asking for Check while Check already shows translationNotes, Translation Words

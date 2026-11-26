@@ -213,6 +213,8 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
   with no pins gets the installed sources at its first open.
 - Must not: create a project from damaged or incomplete input; leave part of a project after a
   failed or stopped import.
+- **J9a differs from tC4:** a damaged or failed import labels its code with "Support code:"
+  (#833.3, `docs/DIFFERENCES.md`).
 - J9c steps: New Bible · From USFM files · pick the files; each row says what its file is, and a
   damaged file (with its line) or a second file of one book is refused until it is removed · Next ·
   the New Bible fields, with the files' books and the versification their verse counts fit (H13;
@@ -318,7 +320,8 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
   and adds no project when one of them cannot be had (#1013, `docs/DIFFERENCES.md`); a private
   repository opens after a sign-in (Q3); the open asks no name, and
   the project keeps its one name (H14); when the project is already here, the app says so and
-  offers to open it (H14); the project can also arrive as a file (J27).
+  offers to open it (H14); a refusal labels its code with "Support code:" (#833.3,
+  `docs/DIFFERENCES.md`); the project can also arrive as a file (J27).
 
 ### J18 Keep one version of a verse in conflict
 

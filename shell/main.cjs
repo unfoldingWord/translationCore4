@@ -452,6 +452,7 @@ app.whenReady().then(() => {
   }));
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
   session.defaultSession.on('will-download', (_event, item, contents) => {
+    item.setSaveDialogOptions({ title: 'Save file' });
     item.once('done', (_done, state) => {
       const saved = item.getSavePath();
       const filename = saved ? path.basename(saved) : item.getFilename();
