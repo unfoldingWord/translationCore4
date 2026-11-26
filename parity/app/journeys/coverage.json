@@ -322,6 +322,7 @@
           "j12_a_check_answered_after_its_project_closed_leaves_check_for_updates_ready",
           "j12_a_check_from_an_earlier_open_never_holds_or_fills_the_reopened_project",
           "j12_a_failed_check_is_said_only_in_the_open_it_was_made_for",
+          "j12_an_unreachable_check_shows_one_plain_sentence",
           "j12_a_confirmation_made_for_a_project_that_was_left_never_shows_over_another",
           "j12_a_failed_install_is_said_only_in_the_open_it_was_pressed_in"
         ]
