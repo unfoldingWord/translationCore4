@@ -1,10 +1,12 @@
 // Book names in the interface language (#1043). Home's tiles, the Add a book list, the
 // Understand and Translate headings, the book rail and the Check item header name a book as the
-// interface catalog does, with Western digits after the name. In English the same project reads
-// "Titus", whatever its own language. A language applied with a book open renames it in place.
+// interface catalog does. Where a chapter or a verse shows (the two headings, the rail's chapter
+// numbers, a check's header), its digits are Western. In English the same project reads "Titus",
+// whatever its own language. A language applied with a book open renames it in place: the
+// heading stays the node it was.
 //
 // The Arabic names are the owner's (ruling H10): this file reads them from the shipped catalog
-// and writes none. Until they are in `i18n-rebuild/ar.json`, the two Arabic tests fail and say so.
+// and writes none. Without them in `i18n-rebuild/ar.json`, the two Arabic tests fail and say so.
 //
 //   TC4_BIN=target/debug/tc4 TC4_UI=target/tc-ui-app node --test parity/app/journeys/book-names.test.mjs
 import assert from 'node:assert/strict';
@@ -67,6 +69,9 @@ async function walk(page, id) {
   await until('the Understand heading', async () => (await heading(page).textContent()) === `${name('titus')} 1`);
   const rows = await railRows(page, say);
   for (const book of ['titus', 'jonah']) assert.ok(rows.some((row) => row.startsWith(name(book))), `the rail has no row for ${name(book)}: ${JSON.stringify(rows)}`);
+  // The rail's other rows are the open book's chapter numbers.
+  const chapters = rows.filter((row) => !['titus', 'jonah'].some((book) => row.startsWith(name(book))));
+  assert.ok(chapters.length > 0 && chapters.every((row) => /^[0-9]+$/.test(row)), `the rail's chapter numbers read ${JSON.stringify(chapters)}`);
 
   // Translate's heading.
   await page.getByTestId('mode-switch').getByRole('tab', { name: say('nav.draft') }).click();
@@ -102,8 +107,11 @@ browserTest('a_language_switch_renames_the_open_book_in_place', async () => {
     await tile(page, 'TIT').click();
     await page.getByTestId('understand').waitFor();
     await until('Titus 1', async () => (await heading(page).textContent()) === 'Titus 1');
+    const english = await heading(page).elementHandle();
     await applyLanguage(page, 'ar');
     await until('the heading in Arabic', async () => (await heading(page).textContent()) === `${titus} 1`);
+    // In place: the heading that read "Titus 1" is still on the page, with the Arabic name in it.
+    assert.equal(await english.evaluate((node) => node.isConnected && node.textContent), `${titus} 1`, 'the heading was drawn again as another node');
     // The open book's row and the other book's row are two tiles of the rail.
     const rows = await railRows(page, words('ar'));
     for (const name of [titus, jonah]) assert.ok(rows.some((row) => row.startsWith(name)), `the rail still reads ${JSON.stringify(rows)}`);

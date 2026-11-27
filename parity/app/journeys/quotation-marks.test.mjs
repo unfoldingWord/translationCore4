@@ -6,9 +6,11 @@
 // whichever way the phrase and the interface read; the phrase stays on the side of its box
 // where it sat before.
 //
-// The fixtures hold English helps, so a journey reaches an English phrase only: #1075's case b
-// (Arabic interface), case c (English), the French marks and Align. An Arabic phrase (cases a
-// and d) needs Arabic helps; the helper's unit tests prove those (crates/tc-ui/src/quotation.rs).
+// The fixtures hold English helps, so a journey reaches only an English phrase of a check or a
+// note: #1075's case b (Arabic interface), case c (English) and the French marks. An Arabic
+// phrase there (cases a and d) needs Arabic helps; the helper's unit tests prove those
+// (crates/tc-ui/src/quotation.rs). The reference on Align starts with the book's name in the
+// interface language (#1043), so under the Arabic interface it reads right to left.
 //
 //   TC4_BIN=target/debug/tc4 TC4_UI=target/tc-ui-app node --test parity/app/journeys/quotation-marks.test.mjs
 import assert from 'node:assert/strict';
