@@ -11,7 +11,7 @@ use crate::app::save::{FieldScope, Pair, Source};
 use crate::app::shell::js_trim;
 use crate::app::translate::comment_key;
 use crate::app::web::{use_app, use_runtime};
-use crate::i18n::{keys, t};
+use crate::i18n::{book_name, keys, t};
 
 #[component]
 pub fn CommentBox(
@@ -189,7 +189,7 @@ fn comment_history(
                 book,
                 chapter,
                 verse,
-            } => format!("{} {chapter}:{verse}", book.english_name()),
+            } => format!("{} {chapter}:{verse}", book_name(*book)),
             CommentTarget::Frame { story, frame } => t(
                 keys::review::place::FRAME,
                 &[("story", &story.get()), ("frame", frame)],

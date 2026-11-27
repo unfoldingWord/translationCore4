@@ -165,7 +165,7 @@ for (const id of ['en', 'ar']) {
         const r = el.getBoundingClientRect();
         return r.left + r.width / 2 - document.documentElement.clientWidth / 2;
       });
-      await page.getByTestId('project-sample_burrito').getByRole('button', { name: /Titus|تيطس/ }).first().click();
+      await page.getByTestId('project-sample_burrito').getByTestId('book-tile-TIT').click();
       await page.getByTestId('mode-switch').getByRole('tab', { name: words['nav.draft'] }).click();
       await page.getByTestId('draft-target-text').first().waitFor();
       const at = [await centre()];

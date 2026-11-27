@@ -544,6 +544,17 @@ pub enum RowState {
     Unreadable(String),
 }
 
+/// The sentence of a refused file in the shown language. It names a book as every label does
+/// (#1043).
+pub fn problem_words(problem: &UsfmProblem, file: &str) -> String {
+    let owned = problem.vars(file, crate::i18n::book_name);
+    let vars: Vec<(&str, &dyn std::fmt::Display)> = owned
+        .iter()
+        .map(|(k, v)| (*k, v as &dyn std::fmt::Display))
+        .collect();
+    crate::i18n::t_dyn(problem.key(), &vars, None)
+}
+
 /// The USFM files a dialog picked, in the order they were picked, each with what the server
 /// made of it: Add a book's (#484) and New Bible's from USFM files (J9c).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

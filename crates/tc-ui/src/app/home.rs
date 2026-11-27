@@ -12,7 +12,7 @@ use tc_api::home::{
 use tc_api::ids::ProjectRef;
 use tc_api::shown::Known;
 
-use crate::i18n::{Key, keys, t};
+use crate::i18n::{Key, book_name, keys, t};
 
 /// Above this many books a card shows only its books in progress until expanded
 /// (`Home.jsx:18`).
@@ -228,7 +228,7 @@ pub fn where_line(card: &HomeCard, shared: &[String]) -> Option<String> {
 /// The Resume card's title after the project's name: "Titus 1", or "Story 3".
 pub fn resume_place(resume: &LastEditView) -> String {
     match &resume.place {
-        ResumePlace::Book { book, chapter, .. } => format!("{} {chapter}", book.english_name()),
+        ResumePlace::Book { book, chapter, .. } => format!("{} {chapter}", book_name(*book)),
         ResumePlace::Story { story, .. } => t(
             keys::story_draft::STORY_NUMBER,
             &[("n", &story.get().to_string())],

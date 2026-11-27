@@ -8,10 +8,10 @@
 //     node --test parity/app/journeys/translate.test.mjs
 import assert from 'node:assert/strict';
 import { newRequestId } from '../env-rust.mjs';
-import { browserTest, catalog, choose, openLanguage, recordRequests, sleep, tabSize, until, withApp } from './kit.mjs';
+import { bookName, browserTest, catalog, choose, openLanguage, recordRequests, sleep, tabSize, until, withApp } from './kit.mjs';
 
 const BIBLE = 'sample_burrito';
-const titus = (page) => page.getByTestId(`project-${BIBLE}`).getByRole('button', { name: /Titus/ });
+const titus = (page) => page.getByTestId(`project-${BIBLE}`).getByTestId('book-tile-TIT');
 const indicator = (page) => page.getByTestId('save-indicator');
 const box = (page, n) => page.getByLabel(`Verse ${n}`, { exact: true });
 
@@ -408,7 +408,7 @@ browserTest('app_language_e_a_verse_typed_before_the_switch_survives_it', async 
     await choose(page, 'es-419');
     await page.getByTestId('language-apply').click();
     await until('the dialog closes', async () => (await page.getByTestId('language-dialog').count()) === 0);
-    await page.getByRole('heading', { name: 'Titus 2' }).waitFor();
+    await page.getByRole('heading', { name: `${bookName('es-419', 'titus')} 2` }).waitFor();
     assert.ok((await page.getByTestId('draft-target-text').first().textContent()).includes(TEXT));
     const view = await env.call('editor/chapters', { at: (await env.call('app/hello', {})).sessions[0].at, book: 'TIT' });
     assert.equal(view.chapters[1].verses[0].words.value, TEXT);

@@ -52,7 +52,7 @@ use crate::ds::{
     Button, ButtonVariant, Callout, CalloutTone, FilterChip, IconButton, Indicator, Overline,
     OverlineTone, Size, Switcher, SwitcherOption, Tone,
 };
-use crate::i18n::{keys, t, t_dyn};
+use crate::i18n::{book_name, keys, t, t_dyn};
 
 /// The reads of one open book.
 #[derive(Clone, PartialEq)]
@@ -434,7 +434,7 @@ fn chapter_view(
                     .iter()
                     .map(|keys| {
                         let span = range_span(keys);
-                        let label = format!("{} {chapter}:{span}", book_id.english_name());
+                        let label = format!("{} {chapter}:{span}", book_name(book_id));
                         // #1057: the source is one cell per section in both modes, so in Verse
                         // mode the click names the verse under the pointer.
                         let pick = {
@@ -495,7 +495,7 @@ fn chapter_view(
         <main style=main.to_style() on:pointerdown=note_press>
             <div style=bar.to_style()>
                 <IconButton title=t(keys::draft::TOGGLE_RAIL, &[]) on_click=toggle>{rail_icon()}</IconButton>
-                <h2 style=h2.to_style()>{book_id.english_name()}" "{chapter}</h2>
+                <h2 style=h2.to_style()>{move || book_name(book_id)}" "{chapter}</h2>
                 <div style="flex: 1;"></div>
                 {button}
                 <HelpsToggleButton />
@@ -531,7 +531,7 @@ fn dropped_links(
                         format!(
                             "{} ({} {}:{})",
                             l.word.word,
-                            v.book.english_name(),
+                            book_name(v.book),
                             v.chapter,
                             v.verse
                         )
@@ -1217,7 +1217,7 @@ fn target_verse(
                 })
             };
             let place = format!("{chapter}:{key}");
-            let reference = format!("{} {place}", book.english_name());
+            let reference = format!("{} {place}", book_name(book));
             view! {
                 {conflict_verse(place, reference, marker.versions, number, verse.into_any(), off, review)}
                 " "

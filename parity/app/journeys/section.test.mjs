@@ -17,7 +17,7 @@ const BIBLE = 'sample_burrito';
 const NINE = 'Exhorta a los siervos a que se sujeten a sus amos y a que agraden en todo';
 const TEN = 'no defraudando sino mostrando toda buena fe';
 
-const titus = (page) => page.getByTestId(`project-${BIBLE}`).getByRole('button', { name: /Titus/ });
+const titus = (page) => page.getByTestId(`project-${BIBLE}`).getByTestId('book-tile-TIT');
 const indicator = (page) => page.getByTestId('save-indicator');
 const pill = (page, span) => page.getByRole('button', { name: `Draft section ${span}` });
 const card = (page) => page.getByTestId('section-editor');

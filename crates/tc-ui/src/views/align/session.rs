@@ -21,7 +21,7 @@ use crate::css::Css;
 use crate::ds::{
     Button, ButtonVariant, Callout, CalloutTone, ChipState, Overline, OverlineTone, Size, WordChip,
 };
-use crate::i18n::{keys, t, t_dyn};
+use crate::i18n::{book_name, keys, t, t_dyn};
 use crate::views::item_nav::{Which, item_nav_button};
 
 /// What is on the screen where the aligner goes: loading, a failure with a Retry, why there is
@@ -109,7 +109,7 @@ fn clear_question(s: &AppState, actions: &Actions, book: BookId) -> impl IntoVie
         let (place, placed) = shown.get()?;
         let verse = t(
             keys::align::REF,
-            &[("book", &book.english_name()), ("ref", &place)],
+            &[("book", &book_name(book)), ("ref", &place)],
         );
         let body = match placed {
             1 => t(keys::align::clear::BODY_ONE, &[]),
@@ -204,7 +204,7 @@ fn blocked(why: Blocked, book: BookId) -> AnyView {
         "line-height": 1.6,
         "margin": 0,
     };
-    let name = book.english_name().to_owned();
+    let name = book_name(book);
     view! {
         <div data-testid="align-unavailable">
             <div style="margin-bottom: 16px;"></div>
@@ -1116,7 +1116,7 @@ fn header(
         Rail::Loading | Rail::Failed(_) => None,
     });
     let neighbours = nav(items.as_deref().map_or(&[], Vec::as_slice), view.place);
-    let name = book.english_name().to_owned();
+    let name = book_name(book);
     let label = t(
         keys::align::REF,
         &[("book", &name), ("ref", &view.place.label())],
@@ -1340,7 +1340,7 @@ fn align_history(s: &AppState, actions: &Actions, view: &AlignerView, book: Book
     let shown = view.history.clone().filter(|_| view.marker.is_none());
     let reference = t(
         keys::align::REF,
-        &[("book", &book.english_name()), ("ref", &view.place.label())],
+        &[("book", &book_name(book)), ("ref", &view.place.label())],
     );
     let (restoring, failed) = (s.a.restoring.clone(), s.a.restore_failed.clone());
     let actions = actions.clone();

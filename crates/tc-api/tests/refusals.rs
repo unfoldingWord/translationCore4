@@ -600,6 +600,38 @@ fn pending_lists_hold_exactly_the_untranslated_rebuild_keys() {
     }
 }
 
+/// #1043: every interface language names every book. No book key waits in a pending list, and
+/// no name is blank, so a book never falls back to English in a language the app offers.
+#[test]
+fn every_language_names_every_book() {
+    let rebuild = rebuild();
+    let books: Vec<&String> = rebuild["en"]
+        .keys()
+        .filter(|key| key.starts_with("book."))
+        .collect();
+    assert_eq!(books.len(), 66);
+    let mut problems = Vec::new();
+    for (locale, pending) in common::pending() {
+        for key in &books {
+            if pending.contains(*key) {
+                problems.push(format!("{locale}: {key} is pending"));
+            }
+            let named = rebuild[locale]
+                .get(*key)
+                .is_some_and(|name| !name.trim().is_empty());
+            if !named {
+                problems.push(format!("{locale}: {key} has no name"));
+            }
+        }
+    }
+    assert!(
+        problems.is_empty(),
+        "{} problems, the first: {:?}",
+        problems.len(),
+        &problems[..problems.len().min(4)]
+    );
+}
+
 /// A release waits for every rebuild key to be translated (Q-10, A-32). Debug builds, where
 /// development happens, pass and say how many keys are still pending.
 #[test]

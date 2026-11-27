@@ -15,7 +15,7 @@ import { browserTest, catalog, sleep, until, waitForCheck, withApp } from './kit
 const BIBLE = 'sample_burrito';
 
 async function openTool(page, tool, locale = 'en') {
-  await page.getByTestId(`project-${BIBLE}`).getByRole('button', { name: /Titus/ }).click();
+  await page.getByTestId(`project-${BIBLE}`).getByTestId('book-tile-TIT').click();
   await page.getByTestId('understand-unit-s1').waitFor();
   await page.getByRole('tab', { name: catalog(locale)['nav.check'], exact: true }).click();
   await page.getByTestId(`open-${tool}`).click();

@@ -170,7 +170,8 @@ impl BookId {
         TABLE[self.index()].1
     }
 
-    /// The English name, used only where no localized name exists.
+    /// The English name, for file contents and English sentences. A label on a screen names
+    /// a book in the interface language, from the interface's catalog (#1043).
     pub fn english_name(self) -> &'static str {
         TABLE[self.index()].2
     }

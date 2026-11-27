@@ -1,0 +1,16 @@
+# Clippy reads the clippy.toml nearest the crate, so this file replaces the workspace's: its
+# keys first, as the root's clippy.toml has them.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+allow-dbg-in-tests = true
+# INV-NO-BAGS-OF-BOOLEANS
+max-struct-bools = 3
+# INV-NO-BAGS-OF-BOOLEANS
+max-fn-params-bools = 3
+
+# A sentence the interface shows names a book in the interface language, which the wire does
+# not know: the interface fills the name in (#1043, `UsfmProblem::vars`).
+disallowed-methods = [
+  { path = "tc_core::BookId::english_name", reason = "the interface names a book in its own language: take the name from the caller (#1043)" },
+]

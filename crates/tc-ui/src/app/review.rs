@@ -21,7 +21,7 @@ use tc_core::BookId;
 use crate::app::client::CallError;
 use crate::app::net::NetEnd;
 use crate::app::sync::person_label;
-use crate::i18n::{keys, t};
+use crate::i18n::{book_name, keys, t};
 
 /// The review as it stands: tC4's `s.conflictReview` and the view's own state.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -473,12 +473,12 @@ pub fn place_label(place: &ReviewPlace) -> String {
             book,
             chapter,
             verse,
-        } => format!("{} {chapter}:{verse}", book.english_name()),
+        } => format!("{} {chapter}:{verse}", book_name(*book)),
         ReviewPlace::ChapterFront { book, chapter } => t(
             keys::review::place::CHAPTER_FRONT,
-            &[("book", &book.english_name()), ("chapter", chapter)],
+            &[("book", &book_name(*book)), ("chapter", chapter)],
         ),
-        ReviewPlace::Book { book } => book.english_name().to_owned(),
+        ReviewPlace::Book { book } => book_name(*book),
         ReviewPlace::Check { tool, place } => {
             let tool = match tool {
                 Some(tc_api::check::Tool::TranslationNotes) => {
@@ -494,7 +494,7 @@ pub fn place_label(place: &ReviewPlace) -> String {
                     book,
                     chapter,
                     verse,
-                } => format!("{} {chapter}:{verse}", book.english_name()),
+                } => format!("{} {chapter}:{verse}", book_name(*book)),
                 tc_api::check::CheckPlace::Frame { story, frame } => t(
                     keys::review::place::FRAME,
                     &[("story", &story.get()), ("frame", frame)],
@@ -546,7 +546,7 @@ pub fn back_label(to: BackTo) -> String {
     match to {
         BackTo::Translate(Some(book), chapter) => t(
             keys::conflicts::BACK,
-            &[("place", &format!("{} {chapter}", book.english_name()))],
+            &[("place", &format!("{} {chapter}", book_name(book)))],
         ),
         BackTo::Translate(None, _) => t(keys::conflicts::BACK_TO_TRANSLATE, &[]),
         BackTo::Check => t(

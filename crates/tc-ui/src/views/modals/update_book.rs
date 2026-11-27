@@ -17,7 +17,7 @@ use crate::ds::{
     Attrs, Button, ButtonVariant, Callout, CalloutTone, Corner, DropZone, Edge, Fill, Overline,
     ProgressBar, Select, Spinner, Surface, Text, TextRole, TextTone,
 };
-use crate::i18n::{Key, keys, t};
+use crate::i18n::{Key, book_name, keys, t};
 
 use super::source_texts::book_options;
 
@@ -316,10 +316,7 @@ fn book_step(actions: &Actions, ub: &Signal<Option<UpdateBookForm>>) -> impl Int
 
 fn working_step(ub: &Signal<Option<UpdateBookForm>>) -> impl IntoView + use<> {
     let book = ub.with_untracked(|ub| ub.as_ref().map_or(BookId::Genesis, |ub| ub.book));
-    let label = t(
-        keys::update_book::WORKING,
-        &[("book", &book.english_name())],
-    );
+    let label = t(keys::update_book::WORKING, &[("book", &book_name(book))]);
     let fraction = read(
         ub,
         |ub| match &ub.state {
@@ -347,7 +344,7 @@ fn working_step(ub: &Signal<Option<UpdateBookForm>>) -> impl IntoView + use<> {
 /// The report's lines (delta U6): the counts, the book added, the verses left as they were and
 /// those whose alignment markup was kept.
 pub fn report_lines(report: &UpdateReport) -> Vec<(&'static str, String)> {
-    let book = report.book.english_name();
+    let book = book_name(report.book);
     let mut lines = vec![(
         "update-book-counts",
         if report.imported == 1 {

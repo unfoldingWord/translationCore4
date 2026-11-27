@@ -10,18 +10,19 @@
 use std::sync::Arc;
 
 use leptos::prelude::*;
-use tc_api::create::UsfmProblem;
 use tc_core::BookId;
 
 use super::source_texts::book_options;
-use crate::app::forms::{AddBookForm, AddBookStep, RowState, UsfmRow, book_info_key, chapters};
+use crate::app::forms::{
+    AddBookForm, AddBookStep, RowState, UsfmRow, book_info_key, chapters, problem_words,
+};
 use crate::app::web::{Actions, AppCtx, use_app};
 use crate::ds::{
     Attrs, Button, ButtonVariant, Callout, CalloutTone, Corner, DropZone, Edge, Fill, FilterChip,
     IconButton, IconButtonVariant, OptionCard, Overline, Select, Status, StatusDot, Surface, Text,
     TextRole, TextTone,
 };
-use crate::i18n::{keys, t, t_dyn};
+use crate::i18n::{book_name, keys, t};
 
 /// The drafting sources the pick step names (tC4 `SUITE_VERSION`).
 fn suite_version() -> &'static str {
@@ -33,21 +34,11 @@ fn row_words(row: &UsfmRow) -> String {
         RowState::Reading => t(keys::add_book::USFM_READING, &[]),
         RowState::Adds(book) => t(
             keys::add_book::USFM_WILL_ADD,
-            &[("name", &book.english_name())],
+            &[("name", &book_name(*book))],
         ),
         RowState::Refused(problem) => problem_words(problem, &row.name),
         RowState::Unreadable(reason) => reason.clone(),
     }
-}
-
-/// The sentence of a refused file.
-pub fn problem_words(problem: &UsfmProblem, file: &str) -> String {
-    let owned = problem.vars(file);
-    let vars: Vec<(&str, &dyn std::fmt::Display)> = owned
-        .iter()
-        .map(|(k, v)| (*k, v as &dyn std::fmt::Display))
-        .collect();
-    t_dyn(problem.key(), &vars, None)
 }
 
 /// The dialog, while `s.modal` is AddBook.
@@ -354,11 +345,11 @@ fn pick_step(actions: &Actions, ab: &Signal<Option<AddBookForm>>) -> impl IntoVi
             let held = ab.with(|ab| ab.as_ref().map(AddBookForm::held_picks).unwrap_or_default());
             let text = match held.as_slice() {
                 [] => return None,
-                [one] => t(keys::add_book::EXISTS_ONE, &[("name", &one.english_name())]),
+                [one] => t(keys::add_book::EXISTS_ONE, &[("name", &book_name(*one))]),
                 many => {
                     let names = many
                         .iter()
-                        .map(|book| book.english_name())
+                        .map(|book| book_name(*book))
                         .collect::<Vec<_>>()
                         .join(" · ");
                     t(keys::add_book::EXISTS_MANY, &[("names", &names)])
@@ -419,7 +410,7 @@ fn single(actions: &Actions, ab: &Signal<Option<AddBookForm>>) -> impl IntoView 
             t(
                 book_info_key(book),
                 &[
-                    ("name", &book.english_name()),
+                    ("name", &book_name(book)),
                     ("chapters", &chapters(book)),
                     ("testament", &testament),
                 ],
@@ -476,7 +467,7 @@ fn chip(
     book: BookId,
 ) -> impl IntoView + use<> {
     let held = ab.with_untracked(|ab| ab.as_ref().is_some_and(|ab| ab.existing.contains(&book)));
-    let name = book.english_name();
+    let name = move || book_name(book);
     if held {
         return view! {
             <span

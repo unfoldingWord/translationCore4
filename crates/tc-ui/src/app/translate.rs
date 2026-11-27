@@ -13,7 +13,7 @@ use tc_core::BookId;
 
 use crate::app::shell::{Editing, js_trim};
 use crate::app::understand::{Unit, UnitMode, key_carries, leading_num, section_of};
-use crate::i18n::{keys, t};
+use crate::i18n::{book_name, keys, t};
 
 /// Comments keep their durable target when a source section or tab groups verses differently.
 pub fn comment_key(
@@ -139,7 +139,7 @@ pub fn source_place(book: BookId, chapter: u16, key: &str, frame: &SourceFrame) 
         .map(|r| &r.source)
     {
         Some(RowSource::Verse { chapter, verse }) => SourcePlace::Verse {
-            label: format!("{} {chapter}:{verse}", book.english_name()),
+            label: format!("{} {chapter}:{verse}", book_name(book)),
             number: verse.as_str().to_owned(),
         },
         Some(RowSource::OtherBook { to }) => SourcePlace::OtherBook { at, to: to.clone() },

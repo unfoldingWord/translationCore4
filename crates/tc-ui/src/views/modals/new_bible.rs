@@ -29,7 +29,7 @@ use crate::ds::{
     Attrs, Button, ButtonVariant, Callout, CalloutTone, DropZone, FilterChip, OptionCard, Overline,
     Select, SelectOption, Text, TextField, TextRole, TextTone,
 };
-use crate::i18n::{keys, t};
+use crate::i18n::{book_name, keys, t};
 
 /// The single gateway language row, selected and not interactive (`GlRow`).
 pub fn gl_row() -> impl IntoView {
@@ -473,7 +473,7 @@ fn from_burrito(np: &Signal<Option<NewProjectForm>>) -> impl IntoView + use<> {
             let books = found
                 .books
                 .iter()
-                .map(|book| book.english_name())
+                .map(|book| book_name(*book))
                 .collect::<Vec<_>>()
                 .join(", ");
             let files = (!found.carried.is_empty()).then(|| {
@@ -515,7 +515,7 @@ fn from_files(np: &Signal<Option<NewProjectForm>>) -> impl IntoView + use<> {
             let books = np
                 .file_books()
                 .iter()
-                .map(|book| book.english_name())
+                .map(|book| book_name(*book))
                 .collect::<Vec<_>>()
                 .join(", ");
             let (note, fit) = super::import::scheme_note(guess);

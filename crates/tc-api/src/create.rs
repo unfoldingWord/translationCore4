@@ -251,14 +251,19 @@ impl UsfmProblem {
         }
     }
 
-    /// The values of the sentence's placeholders, for the file named `file`.
-    pub fn vars(&self, file: &str) -> Vec<(&'static str, String)> {
+    /// The values of the sentence's placeholders, for the file named `file`. `book_name` names
+    /// a book in the language the sentence is shown in, which the wire does not know (#1043).
+    pub fn vars(
+        &self,
+        file: &str,
+        book_name: impl Fn(BookId) -> String,
+    ) -> Vec<(&'static str, String)> {
         match self {
             Self::NoId | Self::NotText => vec![("file", file.to_owned())],
             Self::Damaged { reason } => {
                 vec![("file", file.to_owned()), ("reason", reason.clone())]
             }
-            Self::Exists { book } => vec![("name", book.english_name().to_owned())],
+            Self::Exists { book } => vec![("name", book_name(*book))],
             Self::TwoFiles { book, first } => vec![
                 ("first", first.clone()),
                 ("file", file.to_owned()),

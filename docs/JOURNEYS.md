@@ -90,6 +90,8 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
   private-use language code is kept whole; an invalid one is refused and leaves nothing.
 - Must not: touch any other project. A second project is a second folder, and the first stays
   byte for byte the same.
+- Differs from tC4: the book lists of New Bible and Add a book name each book in the interface
+  language, where tC4 shows its English name (#1043, DIFFERENCES).
 
 ### J2 Draft verses beside the sources
 
@@ -118,7 +120,8 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
   ("Texto Puente Literal"), and the helps' simplified tab shows its own (#1045, DIFFERENCES).
   The helps tabs wrap at narrow panel widths so they do not push the panel sideways (#993,
   DIFFERENCES). A note card's phrase has the interface language's quotation marks, as in J16
-  (#1075, DIFFERENCES).
+  (#1075, DIFFERENCES). The heading, the book rail and each verse's reference name the book in
+  the interface language, with Western digits (#1043, DIFFERENCES).
 
 ### J3 Get pinned resources
 
@@ -129,7 +132,8 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
   missing. Download is always offered, except while a download runs. While the internet is off
   it asks "Turn on the internet?" first, and Not now sends nothing. A download keeps its progress
   line and its Cancel until it ends, whatever is chosen meanwhile, and its finished line names
-  the book and language it downloaded (#982, `docs/DIFFERENCES.md`).
+  the book and language it downloaded (#982, `docs/DIFFERENCES.md`). The book list, those lines
+  and the guided fix name a book in the interface language (#1043, `docs/DIFFERENCES.md`).
 - Must not: install a file of another release than the pin; change the book text.
 
 ### J4 Check a book
@@ -151,7 +155,8 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
   phrase, in its heading and on its row of the list, are the interface language's, at the two
   ends of the phrase whichever way it reads (#1075, `docs/DIFFERENCES.md`). "← All checking tools"
   is a bordered button in every checking tool, and the Check tab inside an open tool returns to
-  the tools list through the same close path (#854, `docs/DIFFERENCES.md`).
+  the tools list through the same close path (#854, `docs/DIFFERENCES.md`). The tool picker
+  and a check's header name the book in the interface language (#1043, `docs/DIFFERENCES.md`).
 - Must not: store a check comment anywhere but its decision; count a bookmarked or commented check
   differently from a plain one.
 
@@ -171,6 +176,7 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
   (#1045, `docs/DIFFERENCES.md`). The reference in the heading has the interface language's
   quotation marks (#1075, `docs/DIFFERENCES.md`). "← All checking tools" is a bordered button,
   and the Check tab inside Align saves the verse's links and returns to the tools list (#854,
+  `docs/DIFFERENCES.md`). A verse's reference names the book in the interface language (#1043,
   `docs/DIFFERENCES.md`).
 
 ### J6 Edit a checked verse
@@ -191,7 +197,9 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
 - Differs from tC4: aligned USFM weaves a verse's alignment only when the verse needs no review
   and its words match; any other verse keeps its stored text, and the export names it. An export
   of a book with verses in conflict asks first. Beside a drop-cap chapter number, verse 1 (or a
-  span from 1) shows no verse number in the preview or the PDF (#992).
+  span from 1) shows no verse number in the preview or the PDF (#992). The heading of the
+  preview and of the printed sheet is the book's name in the interface language; the file's name
+  stays the book code (#1043, DIFFERENCES).
 
 ### J8 Resume work
 
@@ -201,7 +209,8 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
   leaving with none makes none; the last draft is what opens again. A quit within the two seconds after an
   aligner change saves the change first, then checkpoints.
 - Differs from tC4: a mode switch checkpoints at most once every two minutes after one that
-  committed.
+  committed. Home's book tiles and its Resume line name a book in the interface language
+  (#1043, DIFFERENCES).
 
 ### J9a, J9c, J9d Import as a new project
 
@@ -232,7 +241,8 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
   Add a book, as after a blank project.
 - **Differs from tC4:** a Burrito starts in New Bible rather than in Import, and its
   abbreviation, copyright and license are kept as written, not shown as fields (#845,
-  `docs/DIFFERENCES.md`).
+  `docs/DIFFERENCES.md`). The books a file or a Burrito holds, and the import's review, are
+  listed by their names in the interface language (#1043, `docs/DIFFERENCES.md`).
 
 ### J11 Share the project to Door43
 
@@ -250,7 +260,8 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
 - Must not: force-push; put the token anywhere but the password store, or in a URL or a log;
   store the password.
 - **Differs from tC4:** on a computer with no password store, the sign-in step has no "Stay
-  signed in" box and no line about it (#496).
+  signed in" box and no line about it (#496). The check step lists the project's books by
+  their names in the interface language (#1043, `docs/DIFFERENCES.md`).
 
 ### J12 Upgrade the pinned resources
 
@@ -264,6 +275,8 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
   it touches first, and marks their alignments invalid and keeps them.
 - Must not: upgrade silently; move a pin before every resource of the release is installed and
   verified.
+- Differs from tC4: the upgrade plan names each book in the interface language (#1043,
+  DIFFERENCES).
 
 ### J13 Change the gateway-language resource set
 
@@ -278,7 +291,8 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
   A package may name its literal and simplified Bibles (`ar_avd` and `ar_arst` for BSOJ,
   `ru_rlob` and `ru_rsob` for `ru_gl`); choosing the package pins them in the source panes
   and the primary set's simplified-text slot, and a project already on the package moves an
-  English pane to the package's Bible when it is installed on download or open (#1048).
+  English pane to the package's Bible when it is installed on download or open (#1048). The
+  books a change of package touches are named in the interface language (#1043, DIFFERENCES).
 
 ### J16 Read a passage with helps and write a user comment
 
@@ -297,7 +311,8 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
   filtered to the unit clicked, also after a comment is saved (#991, DIFFERENCES). The helps
   tabs wrap at narrow panel widths so they do not push the panel sideways (#993, DIFFERENCES).
   A note card's phrase has the interface language's quotation marks, at its two ends whichever
-  way it reads (#1075, DIFFERENCES).
+  way it reads (#1075, DIFFERENCES). The heading and each unit's reference name the book in the
+  interface language (#1043, DIFFERENCES).
 
 ### J17 Open a shared project on another computer
 
@@ -338,7 +353,8 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
 - Must not: start a sync; write anything when the translator only leaves the review.
 - Differs from tC4: only verse and frame text conflict (H5). Check, alignment, comment and
   setting differences never ask; see J28. A passage conflict (verses joined, renumbered or moved
-  on one side) is shown too.
+  on one side) is shown too. Each place in Review names its book in the interface language
+  (#1043, DIFFERENCES).
 
 ### J19 Record findings (Phase 2)
 
@@ -425,6 +441,7 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
 - Differs from tC4: saves continue while a sync runs, and a save made during a sync is sent by the
   next one; any default branch works; a dropped connection keeps what was received and says so;
   the sync downloads the versions the project pins and the computer lacks (#1013,
+  `docs/DIFFERENCES.md`). The sync's result names a book in the interface language (#1043,
   `docs/DIFFERENCES.md`).
 
 ### J27 Exchange a project by file, with no internet
@@ -438,6 +455,7 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
   the file is kept and the person is told it was not checked there. A receive is whole or not at all.
 - Must not: lose a change on either side; take in anything the file does not hold; run while a
   sync of the same project runs (the receive waits).
+- Book names: the Received sheet names a book in the interface language (#1043).
 
 ### J28 See what a newer version replaced, and restore the older one
 
@@ -453,6 +471,7 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
   older under its author's name.
 - Must not: drop the older version; ask a question for a difference that is not verse or frame
   text (H5).
+- Book names: the Received sheet and History name a book in the interface language (#1043).
 
 ### J29 Take in a book another program changed
 
@@ -465,6 +484,7 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
   Import says why.
 - Must not: overwrite the project's text, or drop the outside file, without the translator's
   choice.
+- Book names: the question and Update book name a book in the interface language (#1043).
 
 ### J30 Read helps from Aquifer
 
