@@ -9,10 +9,10 @@
 
 use tc_api::check::DecisionStatus;
 use tc_api::conflicts::{
-    ConflictEntry, ConflictKind, KeepChoice, MadeBy, NoticeView, ReviewPlace, ReviewTab, TabCount,
-    Version, VersionCause, VersionValue,
+    ConflictEntry, ConflictKind, HistoryView, KeepChoice, MadeBy, NoticeView, ReviewPlace,
+    ReviewTab, TabCount, Version, VersionCause, VersionValue,
 };
-use tc_api::ids::{ChangeRef, ConflictRef, RecordRef, RequestId};
+use tc_api::ids::{ChangeRef, ConflictRef, RecordRef, RequestId, WallMs};
 use tc_api::shown::{PersonLabel, Who};
 use tc_api::write::SaveRefusal;
 use tc_api::{ApiError, NotSaved};
@@ -674,6 +674,40 @@ pub fn cause_label(cause: VersionCause) -> String {
         },
         &[],
     )
+}
+
+/// What the confirmation of *Restore this version* shows for one version of History (#1015).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RestorePrompt {
+    pub author: String,
+    pub at: WallMs,
+    pub cause: String,
+    pub text: Option<String>,
+    pub consequence: String,
+}
+
+/// The confirmation for restoring `from`, or `None` when `from` is the version shown (it has no
+/// Restore) or is not in `view`.
+#[must_use]
+pub fn restore_prompt(view: &HistoryView, from: &ChangeRef) -> Option<RestorePrompt> {
+    use keys::review::restore_confirm as k;
+    let entry = view
+        .versions
+        .iter()
+        .find(|v| !v.version.shown && &v.version.change == from)?;
+    let others = view.versions.len().saturating_sub(1);
+    let consequence = if others == 1 {
+        t(k::REPLACES_ONE, &[])
+    } else {
+        t(k::REPLACES_MANY, &[("n", &others)])
+    };
+    Some(RestorePrompt {
+        author: made_by(&entry.version.by),
+        at: entry.version.at,
+        cause: cause_label(entry.cause),
+        text: version_text(&entry.version.value),
+        consequence,
+    })
 }
 
 /// A notice's sentence.

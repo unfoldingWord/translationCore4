@@ -44,7 +44,6 @@ pub fn record_history(h: RecordHistory) -> AnyView {
         let open = open.clone();
         Callback::new(move |_| open.update(|o| *o = !*o))
     };
-    let title = move || t(keys::review::HISTORY_OF, &[("ref", &reference.get())]);
     let history = move || {
         let shown = shown.get()?;
         let list = open
@@ -54,7 +53,7 @@ pub fn record_history(h: RecordHistory) -> AnyView {
                     at: at.clone(),
                     shown,
                 });
-                Some(history_section(read, title(), restore, busy))
+                Some(history_section(read, reference.get(), restore, busy))
             })
             .flatten();
         let label = if open.get() {
