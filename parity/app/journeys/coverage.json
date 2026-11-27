@@ -145,7 +145,8 @@
       {
         "file": "parity/app/journeys/book-names.test.mjs",
         "tests": [
-          "book_names_follow_the_interface_language"
+          "book_names_follow_the_interface_language",
+          "an_english_interface_names_books_in_english_whatever_the_project"
         ]
       }
     ],
@@ -225,7 +226,8 @@
       {
         "file": "parity/app/journeys/book-names.test.mjs",
         "tests": [
-          "book_names_follow_the_interface_language"
+          "book_names_follow_the_interface_language",
+          "an_english_interface_names_books_in_english_whatever_the_project"
         ]
       }
     ],
@@ -285,6 +287,13 @@
         "file": "parity/app/journeys/j08-resume.test.mjs",
         "tests": [
           "commits happen at exactly the checkpoints: a mode switch and leaving the project commit pending work; a switch with nothing pending commits nothing"
+        ]
+      },
+      {
+        "file": "parity/app/journeys/book-names.test.mjs",
+        "tests": [
+          "book_names_follow_the_interface_language",
+          "an_english_interface_names_books_in_english_whatever_the_project"
         ]
       }
     ],
@@ -401,6 +410,7 @@
         "file": "parity/app/journeys/book-names.test.mjs",
         "tests": [
           "book_names_follow_the_interface_language",
+          "an_english_interface_names_books_in_english_whatever_the_project",
           "a_language_switch_renames_the_open_book_in_place"
         ]
       }
