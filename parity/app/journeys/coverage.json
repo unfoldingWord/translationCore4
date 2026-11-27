@@ -91,6 +91,13 @@
           "tC4 #552: two quick presses on the scrim with the book list open close the list, then the dialog",
           "tC4 #552: a list that turns off while it is open closes and takes no choice"
         ]
+      },
+      {
+        "file": "parity/app/journeys/book-names.test.mjs",
+        "tests": [
+          "book_names_follow_the_interface_language",
+          "an_english_interface_names_books_in_english_whatever_the_project"
+        ]
       }
     ],
     "J2": [
@@ -133,6 +140,12 @@
           "fitting_helps_keep_their_focus_and_scroll_after_clicks_in_translate",
           "fitting_helps_keep_translated_tabs_inside_the_panel_in_fr_translate",
           "fitting_helps_keep_translated_tabs_inside_the_panel_in_ar_translate"
+        ]
+      },
+      {
+        "file": "parity/app/journeys/book-names.test.mjs",
+        "tests": [
+          "book_names_follow_the_interface_language"
         ]
       }
     ],
@@ -207,6 +220,12 @@
           "j4_an_english_phrase_in_the_arabic_interface_has_guillemets_at_its_two_ends",
           "j4_a_french_mark_stays_with_its_word_at_every_width",
           "j4_the_marks_follow_a_change_of_the_interface_language_with_a_check_open"
+        ]
+      },
+      {
+        "file": "parity/app/journeys/book-names.test.mjs",
+        "tests": [
+          "book_names_follow_the_interface_language"
         ]
       }
     ],
@@ -376,6 +395,13 @@
         "file": "parity/app/journeys/quotation-marks.test.mjs",
         "tests": [
           "j16_a_note_card_title_in_the_arabic_interface_has_guillemets_at_its_two_ends"
+        ]
+      },
+      {
+        "file": "parity/app/journeys/book-names.test.mjs",
+        "tests": [
+          "book_names_follow_the_interface_language",
+          "a_language_switch_renames_the_open_book_in_place"
         ]
       }
     ],
