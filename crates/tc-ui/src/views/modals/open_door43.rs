@@ -259,7 +259,7 @@ fn refused(actions: &crate::app::web::Actions, refusal: OpenRefusal) -> impl Int
                 <Text role=TextRole::Strong>{move || t(keys::open_door43::REFUSED_TITLE, &[])}</Text>
                 <span data-testid="open-door43-refusal">{said}</span>
                 <span>
-                    {shown_code.map(|code| view! { <code>{code}</code> " · " })}
+                    {shown_code.map(|code| view! { {super::import::support_code(&code)} " · " })}
                     {move || t(keys::open_door43::NOTHING_WRITTEN, &[])}
                 </span>
                 <div>

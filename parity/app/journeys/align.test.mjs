@@ -873,3 +873,60 @@ browserTest('j5_clear_alignments_asks_then_starts_the_verse_over', async () => {
     assert.equal(verse.wordBank.length, 27);
   });
 });
+
+// INV-CHECK-TAB-LEADS-TO-TOOLS (#854): from Translate, the Check tab keeps Align open; inside
+// Align, the Check tab closes through Align's own close (saving links first, staying on failure).
+browserTest('j5_the_check_tab_in_align_saves_links_first_and_shows_all_checking_tools', async () => {
+  await withApp(async ({ page, env, allow }) => {
+    allow(/^console: Failed to load resource: the server responded with a status of 500/);
+    await openAlign(page);
+    const tab = (name) => page.getByTestId('mode-switch').getByRole('tab', { name, exact: true });
+    await tab('Translate').click();
+    await page.getByTestId('align-workspace').waitFor({ state: 'detached' });
+    await tab('Check').click();
+    await page.getByTestId('align-bank').waitFor();
+    assert.equal(await page.getByTestId('open-align').count(), 0, 'returning from Translate keeps Align open');
+
+    await chip(page, 'fe').click();
+    await until('fe armed', async () => (await chip(page, 'fe').getAttribute('data-armed')) === '1');
+    await card(page, 'πίστιν').click();
+    await until('seven words placed', async () => (await placed(page)) === '7 of 27 words placed');
+    await chip(page, 'verdad').click();
+    await until('verdad armed', async () => (await chip(page, 'verdad').getAttribute('data-armed')) === '1');
+    await card(page, 'ἀληθείας').click();
+    await expectTwoLinks(page);
+    assert.equal(await saveState(page), 'dirty');
+
+    let releaseClose;
+    let closeEntered;
+    const heldClose = new Promise((resolve) => { releaseClose = resolve; });
+    const enteredClose = new Promise((resolve) => { closeEntered = resolve; });
+    let closeCalls = 0;
+    await page.route('**/api/v1/align/close', async (route) => {
+      closeCalls += 1;
+      closeEntered();
+      await heldClose;
+      await route.fulfill({ status: 500, contentType: 'text/plain', body: 'boom' });
+    });
+    try {
+      await tab('Check').click();
+      await enteredClose;
+      // Double-clicking Check while align/close is in flight must not skip the close or show the picker.
+      await tab('Check').click();
+      assert.equal(await page.getByTestId('open-align').count(), 0, 'second Check press while closing keeps Align open');
+    } finally {
+      releaseClose();
+    }
+    await until('close failure leaves Align open', async () => (await page.getByTestId('align-bank').count()) === 1);
+    assert.equal(closeCalls, 1, 'second Check press sends no duplicate align/close');
+    assert.equal(await page.getByTestId('open-align').count(), 0, 'failed align/close keeps Align open');
+
+    await page.unroute('**/api/v1/align/close');
+    const savedClose = page.waitForResponse((r) => r.url().endsWith('/api/v1/align/close') && r.status() === 200, { timeout: 5_000 });
+    await tab('Check').click();
+    await savedClose;
+    await page.getByTestId('open-align').waitFor({ timeout: 5_000 });
+    assert.equal(await page.getByTestId('align-workspace').count(), 0);
+    await expectTwoStoredLinks(page, env);
+  });
+});

@@ -153,7 +153,9 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
   card is named after its Bible alone, by the abbreviation in its metadata (`ULT`, `TPL`),
   with no "Gateway ·" (#1045, `docs/DIFFERENCES.md`). The quotation marks around a check's
   phrase, in its heading and on its row of the list, are the interface language's, at the two
-  ends of the phrase whichever way it reads (#1075, `docs/DIFFERENCES.md`). The tool picker
+  ends of the phrase whichever way it reads (#1075, `docs/DIFFERENCES.md`). "← All checking tools"
+  is a bordered button in every checking tool, and the Check tab inside an open tool returns to
+  the tools list through the same close path (#854, `docs/DIFFERENCES.md`). The tool picker
   and a check's header name the book in the interface language (#1043, `docs/DIFFERENCES.md`).
 - Must not: store a check comment anywhere but its decision; count a bookmarked or commented check
   differently from a plain one.
@@ -172,8 +174,10 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
   is new (#758). The gateway lens's switch and the heading over its text name the project's
   literal Bible by the abbreviation in its metadata (`ULT`, `TPL`), with no "Gateway ·"
   (#1045, `docs/DIFFERENCES.md`). The reference in the heading has the interface language's
-  quotation marks (#1075, `docs/DIFFERENCES.md`). A verse's reference names the book in the
-  interface language (#1043, `docs/DIFFERENCES.md`).
+  quotation marks (#1075, `docs/DIFFERENCES.md`). "← All checking tools" is a bordered button,
+  and the Check tab inside Align saves the verse's links and returns to the tools list (#854,
+  `docs/DIFFERENCES.md`). A verse's reference names the book in the interface language (#1043,
+  `docs/DIFFERENCES.md`).
 
 ### J6 Edit a checked verse
 
@@ -218,6 +222,8 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
   with no pins gets the installed sources at its first open.
 - Must not: create a project from damaged or incomplete input; leave part of a project after a
   failed or stopped import.
+- **J9a differs from tC4:** a damaged or failed import labels its code with "Support code:"
+  (#833.3, `docs/DIFFERENCES.md`).
 - J9c steps: New Bible · From USFM files · pick the files; each row says what its file is, and a
   damaged file (with its line) or a second file of one book is refused until it is removed · Next ·
   the New Bible fields, with the files' books and the versification their verse counts fit (H13;
@@ -329,7 +335,8 @@ This extends tC4's menu accelerators to unshifted plus keys (#976, `docs/DIFFERE
   and adds no project when one of them cannot be had (#1013, `docs/DIFFERENCES.md`); a private
   repository opens after a sign-in (Q3); the open asks no name, and
   the project keeps its one name (H14); when the project is already here, the app says so and
-  offers to open it (H14); the project can also arrive as a file (J27).
+  offers to open it (H14); a refusal labels its code with "Support code:" (#833.3,
+  `docs/DIFFERENCES.md`); the project can also arrive as a file (J27).
 
 ### J18 Keep one version of a verse in conflict
 

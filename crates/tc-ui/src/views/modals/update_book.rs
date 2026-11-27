@@ -10,12 +10,12 @@ use leptos::prelude::*;
 use tc_api::import::UpdateReport;
 use tc_core::BookId;
 
-use crate::app::forms::{ImportFailure, ImportUpload};
+use crate::app::forms::ImportUpload;
 use crate::app::update_book::{UpdateBookForm, UpdateState, UpdateStep, verse_list};
 use crate::app::web::{Actions, AppCtx, use_app};
 use crate::ds::{
-    Attrs, Button, ButtonVariant, Callout, CalloutTone, Corner, DropZone, Edge, Fill, Inset,
-    Overline, ProgressBar, Select, Spinner, Surface, Text, TextRole, TextTone, Tone,
+    Attrs, Button, ButtonVariant, Callout, CalloutTone, Corner, DropZone, Edge, Fill, Overline,
+    ProgressBar, Select, Spinner, Surface, Text, TextRole, TextTone,
 };
 use crate::i18n::{Key, book_name, keys, t};
 
@@ -428,27 +428,18 @@ fn failed_step(ub: &Signal<Option<UpdateBookForm>>) -> AnyView {
         Some(UpdateState::Failed(failure)) => Some(failure.clone()),
         _ => None,
     });
-    let Some(ImportFailure {
-        code,
-        sentence,
-        detail,
-    }) = failure
-    else {
-        return ().into_any();
-    };
-    let below = [code, detail]
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>()
-        .join(" ");
-    view! {
-        <Surface tone=Tone::Invalid fill=Fill::Soft border=Edge::Tone radius=Corner::Lg pad=Inset::Md attrs=Attrs::from([("role", "alert"), ("data-testid", "update-book-failed")])>
-            <div style="display: flex; flex-direction: column; gap: 6px;">
-                <Text role=TextRole::Strong tone=TextTone::Tone>{t(keys::update_book::FAILED_TITLE, &[])}</Text>
-                <Text role=TextRole::Ui attrs=Attrs::from([("data-testid", "update-book-refusal")])>{sentence}</Text>
-                <Text role=TextRole::Meta tone=TextTone::Muted style=crate::css! { "overflow-wrap": "anywhere" }>{below}</Text>
-            </div>
-        </Surface>
+    match failure {
+        Some(failure) => {
+            let below = super::import::failed_below(&failure);
+            super::import::refusal_panel(
+                &failure,
+                "update-book-failed",
+                Some("update-book-refusal"),
+                keys::update_book::FAILED_TITLE,
+                below,
+            )
+            .into_any()
+        }
+        None => ().into_any(),
     }
-    .into_any()
 }

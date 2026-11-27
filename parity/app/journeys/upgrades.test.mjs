@@ -9,9 +9,11 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { REPO } from '../env-rust.mjs';
 import { LOCALES, browserTest, catalog, settled, sleep, until, withApp } from './kit.mjs';
 
 const en = catalog('en');
+const rebuildEn = JSON.parse(fs.readFileSync(path.join(REPO, 'crates', 'tc-ui', 'assets', 'i18n-rebuild', 'en.json'), 'utf8'));
 const BIBLE = 'sample_burrito';
 const settings = (page) => page.getByTestId(`project-${BIBLE}`).getByRole('button', { name: en['home.settings'], exact: true });
 const english = (page) => page.getByTestId('settings-gateway-en::unfoldingWord');
@@ -306,12 +308,26 @@ browserTest('j12_a_failed_check_is_said_only_in_the_open_it_was_made_for', async
     await page.getByTestId('check-updates').click();
     await page.getByTestId('net-confirm').click();
     await page.getByTestId('upgrade-error').waitFor();
+    // #833.1: the sentence of the cause, once.
+    assert.equal(await page.getByTestId('upgrade-error').textContent(), rebuildEn['upgrade.checkFailedServer']);
     await closeSourceTexts(page);
     await toHome(page);
     await getSourceTexts(page);
     await assertCheckIsReady(page, 'after the earlier open\'s check failed');
     assert.equal(await page.getByTestId('upgrade-error').count(), 0, 'INV-RESOURCE-ANSWER-HAS-AN-OWNER: the earlier open\'s failed check is said in this open');
   }, { door43: true });
+});
+
+// #833.1: when Door43 cannot be reached, Check for updates shows the sentence once.
+browserTest('j12_an_unreachable_check_shows_one_plain_sentence', async () => {
+  await withApp(async ({ page }) => {
+    await getSourceTexts(page);
+    await page.getByTestId('check-updates').click();
+    await page.getByTestId('net-confirm').click();
+    const error = page.getByTestId('upgrade-error');
+    await error.waitFor();
+    assert.equal(await error.textContent(), rebuildEn['upgrade.checkFailedUnreachable']);
+  });
 });
 
 // #982 C. The sample has two projects, the Bible and the stories: one's late answers must

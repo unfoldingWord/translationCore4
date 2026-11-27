@@ -603,8 +603,27 @@ impl Actions {
 
     /// A mode tab (tC4 `go`, `tC4:src/state.jsx:4018-4040`): every field is drained first, and
     /// a standing failure keeps the person where they are (FR-32). D1 adds the checkpoint of a
-    /// mode switch.
+    /// mode switch. Asking for `View::Check` while `View::Check` already shows a tool closes it
+    /// through its own close (`close_check_tool_to(None)` or `close_align()`, #854).
     pub fn go(&self, view: View) {
+        let s = self.s();
+        if view == View::Check
+            && s.view.get_untracked() == View::Check
+            && s.review.with_untracked(Option::is_none)
+            && s.view_error.with_untracked(Option::is_none)
+        {
+            match s.c.view.get_untracked() {
+                crate::app::check::CheckView::Tool(_) => {
+                    self.close_check_tool_to(None);
+                    return;
+                }
+                crate::app::check::CheckView::Align => {
+                    self.close_align();
+                    return;
+                }
+                crate::app::check::CheckView::Picker => {}
+            }
+        }
         let this = self.clone();
         spawn_local(async move {
             if !this.leave(LeaveTo::Tab(view)).await {

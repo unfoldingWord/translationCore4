@@ -121,10 +121,11 @@ browserTest('resume_and_tab_click_open_the_tool_once', async () => {
     const mark = requests.mark();
     await page.getByTestId(`project-${BIBLE}`).getByRole('button', { name: /Titus/ }).click();
     await page.getByTestId('check-progress').waitFor();
-    // A tab click meanwhile changes nothing: the tool stays open.
+    // Translate and back to Check changes nothing: the tool stays open (#854).
+    await page.getByRole('tab', { name: 'Translate' }).click();
     await page.getByRole('tab', { name: 'Check' }).click();
     await page.getByTestId('check-progress').waitFor();
-    assert.equal(pickerSeen, false, 'no picker shows while the tool opens');
+    assert.equal(pickerSeen, false, 'no picker shows on resume or on returning to Check');
     const opens = requests.api(mark).filter((p) => p === '/api/v1/check/open');
     assert.equal(opens.length, 1, `${opens}`);
   });

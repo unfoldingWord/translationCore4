@@ -87,6 +87,9 @@ browserTest('refuse: a damaged file is refused on the review page and nothing is
     const damaged = page.getByTestId('import-damaged');
     assert.equal(await damaged.getAttribute('data-code'), 'import.damaged.truncated');
     assert.match(await damaged.textContent(), /cfm-damaged\.zip is not a complete zip file\./);
+    assert.ok(
+      (await damaged.textContent()).includes(rebuildEn['importer.review.damagedSupportCode'].replace('{code}', 'import.damaged.truncated')),
+    );
     assert.ok(await page.getByTestId('import-run').isDisabled());
     assert.deepEqual(listed(env), before);
   });
@@ -105,6 +108,7 @@ browserTest('all or nothing: a write failure leaves no project and says import.w
       await failed.waitFor({ timeout: 120_000 });
       assert.equal(await failed.getAttribute('data-code'), 'import.write-failed');
       assert.match(await failed.textContent(), new RegExp(en['refusal.import.write-failed'].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+      assert.ok((await failed.textContent()).includes(rebuildEn['common.supportCode'].replace('{code}', 'import.write-failed')));
     } finally {
       fs.chmodSync(env.projectsDir, 0o755);
     }
@@ -238,6 +242,7 @@ browserTest('tC3 name clash: a Bible name of a project on this computer is flagg
     await failed.waitFor({ timeout: 60_000 });
     assert.equal(await failed.getAttribute('data-code'), 'import.name-exists');
     assert.ok((await failed.textContent()).includes(message));
+    assert.ok((await failed.textContent()).includes(rebuildEn['common.supportCode'].replace('{code}', 'import.name-exists')));
     assert.deepEqual(listed(env), [...before, 'tita_tc3_clash'].sort(), 'nothing else written');
     fs.rmSync(path.join(env.projectsDir, 'tita_tc3_clash'), { recursive: true, force: true });
   });

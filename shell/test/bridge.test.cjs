@@ -270,7 +270,7 @@ test('windows_frames_and_the_menu_keys_follow_tc4', () => {
   assert.deepEqual(keys('win32').filter((k) => /zoom|Ctrl\+(0|R)/.test(k)), ['Ctrl+0', 'zoomIn', 'zoomOut', 'Ctrl+R']);
   assert.ok(keys('darwin').includes('Cmd+R'));
   const editable = { isEditable: true, editFlags: { canCut: true, canCopy: true, canPaste: false } };
-  assert.deepEqual(lib.contextMenuTemplate(editable).map((i) => i.role), ['cut', 'copy', 'paste']);
+  assert.deepEqual(lib.contextMenuTemplate(editable).map((i) => i.role), ['cut', 'copy', 'paste', 'selectAll']);
   assert.deepEqual(lib.contextMenuTemplate({ isEditable: false, editFlags: {} }), []);
 });
 

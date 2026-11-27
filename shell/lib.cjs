@@ -393,6 +393,7 @@ function contextMenuTemplate(params) {
     { role: 'cut', enabled: params.editFlags.canCut },
     { role: 'copy', enabled: params.editFlags.canCopy },
     { role: 'paste', enabled: params.editFlags.canPaste },
+    { role: 'selectAll' },
   ];
 }
 

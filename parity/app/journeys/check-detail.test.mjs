@@ -1416,3 +1416,57 @@ browserTest('j4_clear_selection_is_in_the_detail_tab_order_and_off_during_save',
     await storedAs(env, index, null, []);
   }, { scenario: 'en-pins' });
 });
+
+// INV-CHECK-TAB-LEADS-TO-TOOLS (#854): the Check tab inside a tool asks Stay or Leave without
+// them when words are unsaved (#853), and waits for a mark save in flight (#995).
+browserTest('j4_the_check_tab_asks_about_unsaved_words_and_waits_for_a_mark_save', async () => {
+  await withApp(async ({ page, env }) => {
+    await openTool(page, 'translationNotes');
+    await page.getByTestId('tw-4').waitFor();
+    const checkTab = page.getByTestId('mode-switch').getByRole('tab', { name: catalog('en')['nav.check'], exact: true });
+    const index = Number(await shownIndex(page));
+    await page.getByTestId('tw-1').click();
+
+    await checkTab.click();
+    await question(page).waitFor({ timeout: 5_000 }).catch(() => {
+      throw new Error('INV-CHECK-TAB-LEADS-TO-TOOLS: Check tab with unsaved words asks Stay or Leave');
+    });
+    await answer(page, 'check.leave.stay');
+    await question(page).waitFor({ state: 'detached' });
+    assert.equal(Number(await shownIndex(page)), index, 'Stay keeps the check');
+    assert.deepEqual(await pressedWords(page), ['tw-1'], 'Stay keeps the words');
+
+    await checkTab.click();
+    await question(page).waitFor();
+    await answer(page, 'check.leave.leave');
+    await page.getByTestId('open-translationNotes').waitFor({ timeout: 5_000 });
+
+    // Reopen, start a mark save, press Check while saving: waits for the save, stays on failure.
+    await page.getByTestId('open-translationNotes').click();
+    await page.getByTestId('tw-4').waitFor();
+    let release;
+    const held = new Promise((resolve) => { release = resolve; });
+    const DISK_FULL = '{"type":"err","value":{"type":"notSaved","value":{"type":"disk","value":"full"}}}';
+    await page.route('**/api/v1/check/decide', async (route) => {
+      await held;
+      await route.fulfill({ status: 200, contentType: 'application/json', body: DISK_FULL });
+    });
+    try {
+      await page.getByTestId('mark-valid').click();
+      await until('the mark save is in flight', async () => (await lineSaving(page)) === '1');
+      await checkTab.click();
+      assert.equal(await page.getByTestId('open-translationNotes').count(), 0, 'Check tab waits while a mark saves');
+    } finally {
+      release();
+    }
+    await page.getByText(/not saved/i).first().waitFor();
+    assert.equal(await page.getByTestId('open-translationNotes').count(), 0, 'failed mark save keeps the person on the check');
+
+    await page.unroute('**/api/v1/check/decide');
+    const savedIndex = Number(await shownIndex(page));
+    await page.getByTestId('mark-valid').click();
+    await storedAs(env, savedIndex, 'valid', []);
+    await checkTab.click();
+    await page.getByTestId('open-translationNotes').waitFor({ timeout: 5_000 });
+  }, { scenario: 'en-pins' });
+});
